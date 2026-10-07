@@ -365,6 +365,10 @@ test('an upload that answers after a Team change never joins a later message', a
   // The upload started for Marketing is answered only after the Team changed; the change already let it go.
   await held[0].fallback().catch(() => {});
   await selectTeam(page, 'Marketing');
+  // Trinity's composer is enabled until Marketing takes its place, and a draft typed into it before the switch is
+  // discarded with it: the message is written only once Marketing is the Team shown.
+  await expect(page).toHaveURL(/team=marketing/);
+  await expect(page.getByRole('region', { name: 'Marketing' })).toBeVisible();
   await expect(composer).toBeEnabled({ timeout: 20_000 });
   await expect(attachmentList(page)).toHaveCount(0);
   await composer.fill('Hello');

@@ -255,7 +255,8 @@ test('releases the Assistants route when initial catalog hydration does not sett
   await page.goto('/assistants/');
   const boot = page.locator('[data-slot="boot-screen"]');
   await catalogRequested.promise;
-  await expect(boot).toHaveCount(0, { timeout: 3500 });
+  // The catalog stays unanswered, so the boot screen leaving at all proves it does not wait for the catalog.
+  await expect(boot).toHaveCount(0);
   expect(await page.evaluate(() => window.bootScreenShown)).toBe(true);
   await expect(page.locator('.assistant-catalog-loading')).toBeVisible();
 

@@ -123,6 +123,14 @@ function humanRequest(kind) {
 }
 
 // The composer accepts text only once the Team's history, connection, and first sync are ready, and then keeps it.
+// The page's clock stands still a minute after `time`, before any page loads, until the test moves it: an expiry or a
+// budget then depends only on the test's own clock steps, never on how fast this runner acts on a loaded host. The
+// installed clock runs until the pause, so the pause leaves it ample room to still be ahead.
+async function freezeClock(page, time = new Date()) {
+  await page.clock.install({ time });
+  await page.clock.pauseAt(new Date(time.getTime() + 60_000));
+}
+
 async function fillWhenReady(page, composer, message) {
   await composer.fill(message);
   await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
@@ -2747,6 +2755,8 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
     holdAssistantUninstall: true,
     holdAssistantInventoryRefresh: true,
   });
+  // The page's own clock decides when an icon snapshot gives up (2 s), never how fast this runner acts.
+  await freezeClock(page);
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -2781,7 +2791,8 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
   const uninstall = task.getByRole('button', { name: 'Uninstall Shimpz Cloudflare' });
   await expect(uninstall).toBeEnabled();
 
-  await page.waitForTimeout(2100);
+  // The snapshot started with the proposal gives up; approving starts a new one that the decision waits for.
+  await page.clock.runFor(2100);
   await uninstall.click();
   await expect(task).toHaveAttribute('data-state', 'pending');
   expect(chat.chatFrames()).toHaveLength(1);
@@ -3300,7 +3311,7 @@ const humanPresentations = [
 
 for (const [kind, title] of humanPresentations) {
   test(`completes the ${kind} Action request with its exact value`, async ({ page }) => {
-    await page.clock.install({ time: new Date('2026-08-09T12:00:00Z') });
+    await freezeClock(page, new Date('2026-08-09T12:00:00Z'));
     const contract = await routeReadyChat(page, { humanKind: kind });
     await page.goto('/chat/');
     const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -3378,7 +3389,7 @@ test('bounds a human text response in Unicode code points like the Admin backend
 });
 
 test('updates the Action human request countdown without a page refresh', async ({ page }) => {
-  await page.clock.install({ time: new Date('2026-08-09T12:00:00Z') });
+  await freezeClock(page, new Date('2026-08-09T12:00:00Z'));
   await routeReadyChat(page, { humanKind: 'approval' });
   await page.goto('/chat/');
   await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Continue');
@@ -3393,7 +3404,7 @@ test('updates the Action human request countdown without a page refresh', async 
 });
 
 test('closes and reconciles an expired Action human request', async ({ page }) => {
-  await page.clock.install({ time: new Date('2026-08-09T12:00:00Z') });
+  await freezeClock(page, new Date('2026-08-09T12:00:00Z'));
   const contract = await routeReadyChat(page, { humanKind: 'approval', humanExpiresIn: 3 });
   await page.goto('/chat/');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -3415,7 +3426,7 @@ test('closes and reconciles an expired Action human request', async ({ page }) =
 });
 
 test('waits for in-flight Supervisor validation before reconciling expiry', async ({ page }) => {
-  await page.clock.install({ time: new Date('2026-08-09T12:00:00Z') });
+  await freezeClock(page, new Date('2026-08-09T12:00:00Z'));
   const contract = await routeReadyChat(page, {
     holdHumanResponse: true,
     humanKind: 'auth:password',
@@ -3451,7 +3462,7 @@ test('waits for in-flight Supervisor validation before reconciling expiry', asyn
 });
 
 test('reopens a server-authoritative human request redelivered after local expiry', async ({ page }) => {
-  await page.clock.install({ time: new Date('2026-08-09T12:00:00Z') });
+  await freezeClock(page, new Date('2026-08-09T12:00:00Z'));
   const contract = await routeReadyChat(page, {
     humanKind: 'approval',
     humanExpiresIn: 3,
@@ -3536,7 +3547,7 @@ test('restores Supervisor password authorization as a focused validation modal',
 });
 
 test('blocks Supervisor password retry behind the server countdown', async ({ page }) => {
-  await page.clock.install({ time: new Date('2026-08-09T12:00:00Z') });
+  await freezeClock(page, new Date('2026-08-09T12:00:00Z'));
   await routeReadyChat(page, {
     humanKind: 'auth:password',
     humanRejections: [{

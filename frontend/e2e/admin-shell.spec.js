@@ -687,7 +687,7 @@ test('shows an over-budget public icon as unavailable instead of loading forever
   await page.goto('/assistants/');
   const iconBox = page.getByRole('article', { name: 'hello-pulse' }).locator('.shimpz-assistant-icon');
   await expect(iconBox).toHaveAttribute('data-state', 'loading');
-  await expect(iconBox).toHaveAttribute('data-state', 'failed', { timeout: 5000 });
+  await expect(iconBox).toHaveAttribute('data-state', 'failed');
   await expect(iconBox.locator('img')).toHaveCount(0);
 });
 
