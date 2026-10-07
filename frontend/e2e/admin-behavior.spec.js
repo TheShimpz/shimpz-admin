@@ -11,10 +11,6 @@ import { routeScenario } from './scenarioRoutes.js';
 import { planPage, planSummary, ROUTINE_TEXT, runStepsPage } from './routineScenarios.js';
 import { CLARIFICATION as SCENARIO_CLARIFICATION, ROUTINE_PLAN, ROUTINE_VIEW, TEAMS } from './scenarios.js';
 
-// The page-level WebSocket transport mock is stateful. Keep this file ordered while
-// the independent shell and boot contracts continue using the full worker pool.
-test.describe.configure({ mode: 'default' });
-
 // Every stored chat history row carries the UTC time Admin wrote it.
 const HISTORY_AT = '2026-10-01T12:00:00Z';
 
