@@ -646,8 +646,10 @@ test('shows the first Assistants view before a public icon finishes loading', as
   const iconBox = card.locator('.shimpz-assistant-icon');
   try {
     await expect(page.locator('[data-slot="boot-screen"]')).toHaveCount(0);
-    // The first view never waited for the icon: it was still loading when the boot screen left.
-    expect(await page.evaluate(() => window.iconStateAtBootExit)).toBe('loading');
+    // The first view never waited for the icon: when the boot screen left, the icon was still loading, or the card was
+    // not shown yet because the boot screen's own deadline came first. A boot screen that waited out the icon would
+    // leave only once the icon had failed or loaded.
+    expect(['loading', 'absent']).toContain(await page.evaluate(() => window.iconStateAtBootExit));
     await expect(card).toBeVisible();
     await expect(iconBox.locator('img')).toHaveCount(0);
     releaseIcon();

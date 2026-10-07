@@ -5519,6 +5519,32 @@ test.describe('Team Routines', () => {
     expect(dialogs).toEqual([]);
   });
 
+  test("a Routine plan whose step read failed resumes when the Routine list is read again", async ({ page }) => {
+    const scenario = await routeScenario(page, 'routine-lifecycle');
+    const [watch] = scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json.routines;
+    let refusals = 1;
+    await page.route(`**/api/teams/marketing/routines/${watch.routine_id}/revisions/*/steps/*`, (route) => {
+      if (refusals === 0) return route.fallback();
+      refusals -= 1;
+      return route.fulfill({ status: 503, json: { detail: 'unavailable' } });
+    });
+    await page.goto('/chat/?team=marketing');
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
+    await list.getByRole('button', { name: new RegExp(watch.name) }).click();
+    const panel = page.getByRole('dialog', { name: watch.name });
+    await panel.getByRole('tab', { name: 'Steps' }).click();
+    const steps = panel.getByRole('list', { name: 'Steps' }).locator(':scope > li');
+    await expect(panel.getByText(messages.en.routine.plan.unavailable)).toBeVisible();
+    await expect(steps).toHaveCount(0);
+    const reread = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/teams/marketing/routines');
+    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    await reread;
+    await expect(steps).toHaveCount(10);
+    await expect(panel.getByText(messages.en.routine.plan.unavailable)).toHaveCount(0);
+  });
+
   test("a 120-step Routine's plan shows its summary at once and reads its steps page by page as they are revealed", { tag: '@slow' }, async ({ page }) => {
     // ADR-0092 amendment, 2026-10-05 (scale): the continuous watch repeats one Action for each of its zones.
     const scenario = await routeScenario(page, 'routine-lifecycle');

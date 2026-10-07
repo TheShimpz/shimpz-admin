@@ -63,12 +63,19 @@
   }
 
   // A new Routine or revision starts again from its first page. The Routine is read again in the background, which
-  // hands in an equal object; the steps already read and revealed stay as they are for the same revision.
+  // hands in an equal object; the steps already read and revealed stay as they are for the same revision, and a read
+  // of it that failed resumes where it stopped.
   let readFor = '';
   $effect(() => {
     const revision = `${routine.routine_id}:${plan.revision}:${plan.plan_digest}`;
     untrack(() => {
-      if (revision === readFor) return;
+      if (revision === readFor) {
+        if (failed && !loading) {
+          failed = false;
+          void load(pages * pageSize);
+        }
+        return;
+      }
       readFor = revision;
       reading += 1;
       steps = [];
