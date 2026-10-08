@@ -8,7 +8,6 @@ import { messages } from '../src/lib/messages.js';
 const REFUSED = `sha256:${'a'.repeat(64)}`;
 const ADMITTED = `sha256:${'b'.repeat(64)}`;
 const UNAVAILABLE = `sha256:${'c'.repeat(64)}`;
-const RESTAGED = `sha256:${'d'.repeat(64)}`;
 const ICON = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlN7eIAAAAASUVORK5CYII=',
   'base64',
@@ -135,25 +134,23 @@ async function reloadInPortuguese(page) {
   await page.getByRole('menuitemradio', { name: name('pt') }).click();
 }
 
-for (const [scenario, nextImageId] of [['a restaged new image', RESTAGED], ['the same image', REFUSED]]) {
-  test(`a refusal is validated again on the next load for ${scenario}`, async ({ page }) => {
-    let imageId = REFUSED;
-    let admitted = false;
-    await routeStore(page, {
-      snapshots: () => [snapshot('restaged', imageId)],
-      preview: () => (admitted ? {} : refusal('local-assistant-preview-invalid', 409)),
-    });
-
-    await page.goto('/assistants/');
-    await expect(card(page, 'restaged').getByRole('button', { name: 'Install or replace' })).toBeDisabled();
-
-    imageId = nextImageId;
-    admitted = true;
-    await reloadInPortuguese(page);
-
-    const restaged = card(page, 'restaged');
-    await expect(restaged.locator('.shimpz-assistant-icon img')).toHaveAttribute('src', /^blob:/);
-    await expect(restaged.getByRole('button', { name: messages.pt.store.localInstall })).toBeEnabled();
-    await expect(restaged.getByRole('status')).toHaveCount(0);
+// The same image proves the refusal is never cached: a refusal cached per image would also block it, so a restaged
+// new image adds nothing.
+test('a refusal is validated again on the next load for the same image', async ({ page }) => {
+  let admitted = false;
+  await routeStore(page, {
+    snapshots: () => [snapshot('restaged', REFUSED)],
+    preview: () => (admitted ? {} : refusal('local-assistant-preview-invalid', 409)),
   });
-}
+
+  await page.goto('/assistants/');
+  await expect(card(page, 'restaged').getByRole('button', { name: 'Install or replace' })).toBeDisabled();
+
+  admitted = true;
+  await reloadInPortuguese(page);
+
+  const restaged = card(page, 'restaged');
+  await expect(restaged.locator('.shimpz-assistant-icon img')).toHaveAttribute('src', /^blob:/);
+  await expect(restaged.getByRole('button', { name: messages.pt.store.localInstall })).toBeEnabled();
+  await expect(restaged.getByRole('status')).toHaveCount(0);
+});

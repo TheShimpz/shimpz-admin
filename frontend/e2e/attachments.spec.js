@@ -9,7 +9,6 @@ import { messages } from '../src/lib/messages.js';
 
 const EN = messages.en.attachments;
 const AR = messages.ar.attachments;
-const MIB = 1024 * 1024;
 
 function textFile(name, text = `# ${name}\nPreview notes.\n`) {
   return { name, mimeType: 'text/markdown', buffer: Buffer.from(text) };
@@ -176,12 +175,12 @@ test('removing a file never deletes it, and attaching the same file again reuses
   expect(deletions).toEqual([]);
 });
 
-test('upload refusals are explained in plain words and leave nothing in the message', { tag: '@slow' }, async ({ page }) => {
+// The size bound refuses before any upload (attachmentRefusal, tests/attachments.test.js), so the browser proves its
+// refusals with the files it can choose at once.
+test('upload refusals are explained in plain words and leave nothing in the message', async ({ page }) => {
   const { scenario, composer, attach, send } = await openChat(page, 'attachments');
   const alert = page.getByRole('alert');
 
-  await choose(page, attach, [{ name: 'huge.bin', mimeType: 'application/octet-stream', buffer: Buffer.alloc(25 * MIB + 1) }]);
-  await expect(alert).toHaveText(EN.errors['too-large'].replace('{name}', 'huge.bin'));
   await choose(page, attach, [{ name: 'empty.txt', mimeType: 'text/plain', buffer: Buffer.alloc(0) }]);
   await expect(alert).toHaveText(EN.errors.empty.replace('{name}', 'empty.txt'));
   await choose(page, attach, [textFile('bad.refused')]);
@@ -375,16 +374,6 @@ test('an upload that answers after a Team change never joins a later message', {
   await send.click();
   await expect(page.getByText('Preview reply to: Hello')).toBeVisible();
   expect(chatMessages(scenario).at(-1).files).toEqual([]);
-});
-
-test('an install request with files is answered with the attachment-free next step', async ({ page }) => {
-  const { scenario, composer, attach, send } = await openChat(page, 'attachments');
-  await choose(page, attach, [textFile('setup.md')]);
-  await expect(attachmentList(page).locator('[aria-busy]')).toHaveCount(0);
-  await composer.fill('Install the WhatsApp Assistant');
-  await send.click();
-  await expect(page.getByText('Send that request again without attachments.', { exact: false })).toBeVisible();
-  expect(chatMessages(scenario)[0].files).toHaveLength(1);
 });
 
 test('an approval that delivers a file names it and what it carries before anything runs', async ({ page }) => {

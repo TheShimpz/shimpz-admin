@@ -1894,8 +1894,8 @@ test('loads earlier history only when the transcript is scrolled to its top', as
 test('keeps the message at the top of the transcript where it was once earlier history arrives @browser-sensitive', async ({ page }) => {
   const cursor = 'AAAAAAAAAAI';
   await routeReadyChat(page, {
-    history: longHistory('f', 32, cursor),
-    olderHistory: longHistory('e', 32, null),
+    history: longHistory('f', 12, cursor),
+    olderHistory: longHistory('e', 12, null),
   });
   let releaseOlder;
   const olderHeld = new Promise((resolve) => { releaseOlder = resolve; });
@@ -1907,11 +1907,14 @@ test('keeps the message at the top of the transcript where it was once earlier h
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.goto('/chat/');
   const turns = page.locator('.turns');
-  await expect(page.getByText('Recent answer 32', { exact: false })).toBeInViewport();
+  await expect(page.getByText('Recent answer 12', { exact: false })).toBeInViewport();
   // The reader scrolls the transcript to its top with the wheel, as they reach earlier history; an engine may move
   // less than one gesture asks, so the reader keeps scrolling until the transcript is at its top, where the earlier
   // page is requested.
   const loading = page.getByRole('status').filter({ hasText: 'Loading earlier messages…' });
+  // The recent page overflows the transcript, so only the reader's own scroll reaches the earlier page.
+  expect(await turns.evaluate((element) => element.scrollHeight > element.clientHeight + 1000)).toBe(true);
+  await expect(loading).toHaveCount(0);
   await turns.hover();
   await expect(async () => {
     await page.mouse.wheel(0, -((await turns.evaluate((element) => element.scrollTop)) + 1000));
@@ -1922,7 +1925,7 @@ test('keeps the message at the top of the transcript where it was once earlier h
   const shownAt = async () => (await reading.boundingBox()).y;
   const before = await shownAt();
   releaseOlder();
-  await expect(page.getByText('Earlier question 32', { exact: true })).toBeAttached();
+  await expect(page.getByText('Earlier question 12', { exact: true })).toBeAttached();
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   // The reader's place is the message they were reading, not just any part of the screen.
   expect(Math.abs((await shownAt()) - before)).toBeLessThanOrEqual(2);
@@ -6603,11 +6606,13 @@ test.describe('Team Routines', () => {
     const panel = await openRoutinePanel(page);
     const choices = panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
     await expect.poll(() => choiceNames(panel)).toEqual(['Run', 'Delete']);
-    // Once Team's five minutes pass the card is withdrawn; nothing opens another until the person asks.
-    await page.clock.runFor(300_000);
+    // Once Team's five minutes pass the card is withdrawn; nothing opens another until the person asks. Jumping the
+    // clock fires the card's deadline and each periodic refresh once, without replaying every tick in between.
+    await page.clock.fastForward(300_000);
     await expect(choices).toHaveCount(0);
     await expect(panel.getByRole('status')).toHaveText('This recovery card expired.');
-    await page.clock.runFor(600_000);
+    await page.clock.fastForward(600_000);
+    await expect(panel.getByRole('button', { name: 'Open the card again' })).toBeVisible();
     expect(opened).toBe(1);
     await panel.getByRole('button', { name: 'Open the card again' }).click();
     await expect.poll(() => choiceNames(panel)).toEqual(['Run', 'Delete']);

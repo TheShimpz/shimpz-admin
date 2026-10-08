@@ -137,7 +137,7 @@ test('keeps one boot surface through Team and model hydration, then focuses usab
   await expect(composer).toBeFocused();
 });
 
-test('releases to the empty-Team final state without waiting for a model request', async ({ page }) => {
+test('keeps boot visible across the authenticated root redirect and releases without a model request', async ({ page }) => {
   const teamGate = deferred();
   let inferenceRequests = 0;
   page.on('request', (request) => {
@@ -159,31 +159,6 @@ test('releases to the empty-Team final state without waiting for a model request
   });
   await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
 
-  await page.goto('/chat/');
-  const boot = page.locator('[data-slot="boot-screen"]');
-  await expect(boot).toBeVisible();
-  teamGate.resolve();
-  await expect(boot).toHaveCount(0);
-  await expect(page.getByText('Create a Team with the + button to start chatting.')).toBeVisible();
-  expect(inferenceRequests).toBe(0);
-});
-
-test('keeps boot visible across the authenticated root redirect', async ({ page }) => {
-  const teamGate = deferred();
-  await page.route('**/api/**', (route) => json(
-    route,
-    { detail: 'Unavailable outside this boot contract.' },
-    503,
-  ));
-  await routeSession(page, {
-    body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
-  });
-  await page.route('**/api/teams', async (route) => {
-    await teamGate.promise;
-    await json(route, { teams: [] });
-  });
-  await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
-
   await page.goto('/');
   const boot = page.locator('[data-slot="boot-screen"]');
   await expect(boot).toBeVisible();
@@ -191,7 +166,9 @@ test('keeps boot visible across the authenticated root redirect', async ({ page 
   await expect(page.locator('.chat-route')).toBeHidden();
   teamGate.resolve();
   await expect(boot).toHaveCount(0);
+  // The empty-Team final state is released without waiting for a model request.
   await expect(page.getByText('Create a Team with the + button to start chatting.')).toBeVisible();
+  expect(inferenceRequests).toBe(0);
 });
 
 test('releases to the final Chat error when Team hydration fails', async ({ page }) => {

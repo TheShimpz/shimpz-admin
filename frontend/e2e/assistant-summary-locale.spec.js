@@ -117,25 +117,6 @@ test('a public catalog answered in another language is refused instead of shown'
   await expect(page.getByRole('article', { name: 'dns-publisher' })).toHaveCount(0);
 });
 
-test("hides the previous language's published summary while the new catalog is delayed", async ({ page }) => {
-  const pt = held();
-  const requests = await routeAssistants(page, { catalogGate: (locale) => (locale === 'pt' ? pt.promise : undefined) });
-  await page.goto('/assistants/');
-  const published = page.getByRole('article', { name: 'dns-publisher' });
-  await expect(published).toContainText(PUBLISHED.en);
-
-  await switchLanguage(page, 'en', 'pt');
-  await expect.poll(() => requests.catalog).toEqual(['en', 'pt']);
-  await expect(published).toBeVisible();
-  await expect(published).not.toContainText(PUBLISHED.en);
-  await expect(published).not.toContainText(PUBLISHED.pt);
-
-  pt.release();
-  await expect(page.getByRole('article', { name: /^zone-inspector/ })).toContainText(STAGED.pt);
-  await expect(published).toContainText(PUBLISHED.pt);
-  await expect(published).not.toContainText(PUBLISHED.en);
-});
-
 test("rapid language switches present only the selected language's published summary", async ({ page }) => {
   const gates = { pt: held(), es: held() };
   const requests = await routeAssistants(page, { catalogGate: (locale) => gates[locale]?.promise });
@@ -158,6 +139,8 @@ test("rapid language switches present only the selected language's published sum
   for (const summary of Object.values(PUBLISHED)) await expect(published).not.toContainText(summary);
   gates.es.release();
   await expect(published).toContainText(PUBLISHED.es);
+  // The staged Local summary is shown in the selected language once its catalog is presented.
+  await expect(page.getByRole('article', { name: /^zone-inspector/ })).toContainText(STAGED.es);
 
   // Returning to English hides the Spanish summary until the English catalog is presented again.
   const en = held();
