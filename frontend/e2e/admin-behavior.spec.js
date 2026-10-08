@@ -1684,7 +1684,7 @@ test('finishing a measured span updates its duration and announcements across tu
   await expect(page.getByText('Execution stages recorded: 1')).toHaveCount(2);
 });
 
-test('overlapping progress returns the visible summary to the earlier active phase @browser-sensitive', async ({ page }) => {
+test('overlapping progress returns the visible summary to the earlier active phase', async ({ page }) => {
   const chat = await routeReadyChat(page, { holdProgressFinish: true, holdReply: true });
   await page.goto('/chat/');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
