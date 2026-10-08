@@ -5,8 +5,9 @@ import { writable } from 'svelte/store';
 import { listRoutines } from './routine.js';
 
 /**
- * Team id -> the Team's listed Routines, runs, and unresolved incidents; a Map, so no Team id can resolve to an
- * inherited property.
+ * Team id -> the Team's listed Routines, runs, and unresolved incidents, and whether its newest listing failed; a Map,
+ * so no Team id can resolve to an inherited property. A failed listing keeps the last known lists, so it never reads
+ * as a Team without Routines.
  */
 export const routineContext = writable(new Map());
 
@@ -21,11 +22,29 @@ function issue(teamId) {
   return sequence;
 }
 
-/** Load one Team's Routines; a failure leaves that Team's last known state in place and is reported to the caller. */
+const NOTHING_LISTED = Object.freeze({ routines: [], runs: [], incidents: [] });
+
+/**
+ * Load one Team's Routines. A failure keeps that Team's last known lists, marks them as failed until a listing
+ * succeeds, and is reported to the caller.
+ */
 export async function loadTeamRoutines(fetcher, teamId) {
   const ticket = issue(teamId);
-  const listed = await listRoutines(fetcher, teamId);
-  if (latest.get(teamId) === ticket) routineContext.update((current) => new Map(current).set(teamId, listed));
+  let listed;
+  try {
+    listed = await listRoutines(fetcher, teamId);
+  } catch (error) {
+    if (latest.get(teamId) === ticket) {
+      routineContext.update((current) => new Map(current).set(teamId, {
+        ...(current.get(teamId) ?? NOTHING_LISTED),
+        failed: true,
+      }));
+    }
+    throw error;
+  }
+  if (latest.get(teamId) === ticket) {
+    routineContext.update((current) => new Map(current).set(teamId, { ...listed, failed: false }));
+  }
   return listed;
 }
 
@@ -47,6 +66,7 @@ export function dropTeamRoutine(teamId, routineId) {
       runs: listed.runs.filter((run) => run.routine_id !== routineId),
       // Deleting a Routine sets its held runs aside, so none of its incidents waits for a card any more (ADR-0092).
       incidents: listed.incidents.filter((item) => item.routine_id !== routineId),
+      failed: listed.failed,
     });
   });
 }

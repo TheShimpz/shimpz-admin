@@ -393,6 +393,10 @@ async function routeReadyChat(page, {
     contentType: 'application/json',
     body: JSON.stringify({ files: [] }),
   }));
+  // Every listed Team has no Routine unless a test says otherwise; a failed listing would offer its Routines' error.
+  await page.route('**/api/teams/*/routines', (route) => route.fulfill({
+    json: { team_id: new URL(route.request().url()).pathname.split('/')[3], routines: [], runs: [], incidents: [] },
+  }));
   await page.route('**/api/teams/marketing/chat/history**', async (route) => {
     const requestUrl = new URL(route.request().url());
     historyRequests.push(requestUrl.searchParams.get('before'));
@@ -4864,6 +4868,35 @@ test.describe('Team Routines', () => {
     await expect(navigation.getByRole('button', { name: 'Routines for Marketing', exact: true })).toBeVisible();
     await expect(navigation.getByRole('button', { name: /needs your attention/ })).toHaveCount(0);
     await expect(navigation.getByRole('button', { name: /^Routines for (?!Marketing)/ })).toHaveCount(0);
+  });
+
+  test("a Team whose Routines could not be loaded keeps its Routines button, whose list says so and reads them again", { tag: '@mobile' }, async ({ page }) => {
+    await routeReadyChat(page);
+    let available = false;
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill(available
+      ? { json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] } }
+      : { status: 503, json: { code: 'routine-unavailable' } }));
+    await page.goto('/chat/?team=marketing');
+    const navigation = await openTeamNavigation(page);
+    // A failed listing is never a Team without Routines: the button stays and its name says the list failed.
+    const button = navigation.getByRole('button', { name: 'Routines for Marketing: they could not be loaded' });
+    await button.click();
+    const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
+    await expect(list.getByRole('alert')).toBeVisible();
+    const retry = list.getByRole('button', { name: messages.en.routine.list.retry });
+    await expect(retry).toBeFocused();
+    expect(await accessibilityViolations(page)).toEqual([]);
+    // A retry that fails again keeps the list open with its error.
+    await retry.click();
+    await expect(retry).toBeEnabled();
+    await expect(list.getByRole('alert')).toBeVisible();
+    // Once Team answers, the error leaves and the Routine is listed.
+    available = true;
+    await retry.click();
+    await expect(list.getByRole('alert')).toHaveCount(0);
+    await expect(list.getByRole('group', { name: 'Routines' }).getByRole('button', { name: ROUTINE_VIEW.name })).toBeVisible();
+    await list.getByRole('button', { name: 'Close' }).click();
+    await expect(navigation.getByRole('button', { name: 'Routines for Marketing', exact: true })).toBeVisible();
   });
 
   test('a Routine opens in a panel from the keyboard: it resumes, pauses, shows its runs, and is deleted after a confirmation', { tag: ['@slow', '@mobile'] }, async ({ page }) => {

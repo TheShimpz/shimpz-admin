@@ -116,7 +116,14 @@
   }
 
   function teamRoutines(teamId) {
-    return $routineContext.get(teamId) ?? { routines: [], runs: [], incidents: [] };
+    return $routineContext.get(teamId) ?? { routines: [], runs: [], incidents: [], failed: false };
+  }
+
+  // A Team offers its Routines while it lists any, and while its newest listing failed: a failure never reads as a Team
+  // without Routines, and its list says so with a retry.
+  function offersRoutines(teamId) {
+    const listed = teamRoutines(teamId);
+    return listed.routines.length > 0 || listed.failed;
   }
 
   // A Team's Routines need the person when one is held for recovery, paused, or waiting to be asked again.
@@ -422,9 +429,12 @@
                     <svg class="glitch-icon" viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"></path></svg>
                   {/snippet}
                 </ActionLink>
-                {#if routines && teamRoutines(team.id).routines.length > 0}
-                  {@const attention = routinesNeedAttention(team.id)}
-                  {@const routinesLabel = $t(attention ? 'teamNavigation.routinesAttention' : 'teamNavigation.routines', { team: team.name })}
+                {#if routines && offersRoutines(team.id)}
+                  {@const failed = teamRoutines(team.id).failed}
+                  {@const attention = failed || routinesNeedAttention(team.id)}
+                  {@const routinesLabel = $t(failed
+                    ? 'teamNavigation.routinesUnavailable'
+                    : attention ? 'teamNavigation.routinesAttention' : 'teamNavigation.routines', { team: team.name })}
                   <!-- The attention dot sits beside the button, not in it, so the button's hover glitch never moves it. -->
                   <span class="routines-slot">
                   <Button
@@ -450,7 +460,7 @@
                   onrename={routines ? () => startRename(team) : null}
                   ondelete={() => ondelete(team)}
                   routinesLabel={$t('routine.list.open')}
-                  onroutines={routines && teamRoutines(team.id).routines.length > 0
+                  onroutines={routines && offersRoutines(team.id)
                     ? () => (routinesOpen = team.id)
                     : null}
                   moveUpLabel={copy.moveUp}
@@ -469,6 +479,7 @@
                 routines={teamRoutines(team.id).routines}
                 runs={teamRoutines(team.id).runs}
                 incidents={teamRoutines(team.id).incidents}
+                failed={teamRoutines(team.id).failed}
                 onclose={() => closeRoutines(team.id)}
               />
             {/if}
