@@ -39,12 +39,15 @@ function stringValue(node) {
   return undefined;
 }
 
-// The mobile-skip conditions this guard recognizes: each keeps the test off every phone project.
-function excludesPhones(condition) {
+// The phone-skip conditions this guard recognizes, each for the phone project that would run the test: mobile-slow
+// for a test tagged @slow, mobile otherwise. A phone viewport or a touch screen excludes both.
+function excludesPhones(condition, slow) {
+  if (condition?.type === 'MemberExpression' && memberName(condition) === 'hasTouch') return true;
   if (condition?.type !== 'BinaryExpression') return false;
   const { left, operator, right } = condition;
   if (isProjectName(left) && right.type === 'Literal') {
-    return (operator === '===' && right.value === 'mobile') || (operator === '!==' && right.value === 'desktop');
+    return (operator === '===' && right.value === (slow ? 'mobile-slow' : 'mobile'))
+      || (operator === '!==' && right.value === (slow ? 'desktop-slow' : 'desktop'));
   }
   return operator === '<=' && memberName(left) === 'width' && left.object.type === 'CallExpression'
     && memberName(left.object.callee) === 'viewportSize' && right.type === 'Literal' && right.value >= 390;
@@ -55,11 +58,20 @@ function isSkip(node) {
     && node.callee.object.type === 'Identifier' && node.callee.object.name === 'test';
 }
 
-// What in a function body signals a phone-specific path, apart from a recognized phone exclusion.
-function signals(body, helpers) {
+// The statements a test runs first and unconditionally that skip it on its phone project: only those exempt it.
+function exemptions(test, slow) {
+  const block = test.type === 'BlockStatement' ? test : test.body;
+  return (block?.type === 'BlockStatement' ? block.body : []).filter((statement) => (
+    statement.type === 'ExpressionStatement' && isSkip(statement.expression)
+    && excludesPhones(statement.expression.arguments[0], slow)
+  ));
+}
+
+// What in a function body signals a phone-specific path, apart from the statements given.
+function signals(body, helpers, skipped = []) {
   const found = [];
   walk(body, (node) => {
-    if (isSkip(node) && excludesPhones(node.arguments[0])) return false;
+    if (skipped.includes(node)) return false;
     const member = memberName(node);
     if (SIGNAL_MEMBERS.has(member)) found.push(`.${member}`);
     if (isProjectName(node)) found.push('project.name');
@@ -68,14 +80,6 @@ function signals(body, helpers) {
       found.push(`${node.callee.name}()`);
     }
     return undefined;
-  });
-  return found;
-}
-
-function excluded(body) {
-  let found = false;
-  walk(body, (node) => {
-    if (isSkip(node) && excludesPhones(node.arguments[0])) found = true;
   });
   return found;
 }
@@ -153,8 +157,9 @@ test('static selection: every test whose path differs on a phone or by touch is 
     const helpers = phoneHelpers(program);
     for (const { title, line, tags, body } of tests(program)) {
       if (tags.includes('@mobile')) tagged += 1;
-      const found = signals(body, helpers);
-      if (found.length > 0 && !tags.includes('@mobile') && !excluded(body)) {
+      const exempt = exemptions(body, tags.includes('@slow'));
+      const found = signals(body, helpers, exempt);
+      if (found.length > 0 && !tags.includes('@mobile') && exempt.length === 0) {
         untagged.push(`${name}:${line} ${title} (${[...new Set(found)].join(', ')})`);
       }
     }
@@ -201,19 +206,45 @@ test('static selection: a phone signal is found through local helpers and only a
     test('skips wide screens only', async ({ page }) => {
       test.skip(page.viewportSize().width > 820, 'wrong way round');
     });
+    test('slow but skips only the regular phone project', { tag: '@slow' }, async ({ page }, testInfo) => {
+      test.skip(testInfo.project.name === 'mobile', 'mobile-slow still runs it');
+      await openList(page);
+    });
+    test('slow and skips its phone project', { tag: '@slow' }, async ({ page }, testInfo) => {
+      test.skip(testInfo.project.name === 'mobile-slow', 'kept off phones');
+      await openList(page);
+    });
+    test('skips only in a branch', async ({ page }, testInfo) => {
+      if (false) test.skip(testInfo.project.name === 'mobile', 'never runs');
+      await openList(page);
+    });
+    test('skips only in an uncalled function', async ({ page }, testInfo) => {
+      const later = () => test.skip(testInfo.project.name === 'mobile', 'never called');
+      await openList(page);
+    });
+    test('skips on touch', async ({ page }, testInfo) => {
+      test.skip(testInfo.project.use.hasTouch, 'pointer only');
+      await page.mouse.move(1, 1);
+    });
     test('plain', async ({ page }) => { await page.click('a'); });
   `, { ecmaVersion: 'latest', sourceType: 'module', locations: true });
   const helpers = phoneHelpers(program);
-  assert.deepEqual([...helpers].sort(), ['openList', 'wrapper']);
-  const verdict = Object.fromEntries(tests(program).map(({ title, tags, body }) => [
-    title, signals(body, helpers).length === 0 || tags.includes('@mobile') || excluded(body),
-  ]));
+  assert.deepEqual([...helpers].sort(), ['later', 'openList', 'wrapper']);
+  const verdict = Object.fromEntries(tests(program).map(({ title, tags, body }) => {
+    const exempt = exemptions(body, tags.includes('@slow'));
+    return [title, signals(body, helpers, exempt).length === 0 || tags.includes('@mobile') || exempt.length > 0];
+  }));
   assert.deepEqual(verdict, {
     'uses the wrapper': false,
     'is tagged': true,
     inherits: true,
     'desktop only': true,
     'skips wide screens only': false,
+    'slow but skips only the regular phone project': false,
+    'slow and skips its phone project': true,
+    'skips only in a branch': false,
+    'skips only in an uncalled function': false,
+    'skips on touch': true,
     plain: true,
   });
 });

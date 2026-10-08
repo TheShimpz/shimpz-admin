@@ -1058,7 +1058,7 @@ test('the Supervisor adds and removes the Jev key', { tag: '@mobile' }, async ({
   const chat = await routeReadyChat(page);
   await page.goto('/chat/');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-  const { fast } = await openFastRouting(page);
+  const { trigger, fast } = await openFastRouting(page);
   await expect(fast.getByRole('link', { name: /Create your key here/ }))
     .toHaveAttribute('href', 'https://console.typesafe.ai/keys');
   const key = fast.getByLabel('TypeSafe API key');
@@ -1083,6 +1083,10 @@ test('the Supervisor adds and removes the Jev key', { tag: '@mobile' }, async ({
     { method: 'DELETE', body: null },
   ]);
   expect(chat.credentialBodies()).toEqual([]);
+  // Escape closes the panel and returns focus to the control that opened it.
+  await page.keyboard.press('Escape');
+  await expect(fast).toBeHidden();
+  await expect(trigger).toBeFocused();
 });
 
 test('a rejected Jev key is reported and an unsent one never outlives the panel', async ({ page }) => {

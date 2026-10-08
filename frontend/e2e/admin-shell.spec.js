@@ -297,9 +297,12 @@ test('shows the installed Admin version with the read-only Local release status'
   await expect(status).toBeVisible();
   await expect(status.locator('..')).toHaveAttribute('title', 'Local platform release 42');
   await page.getByRole('button', { name: 'Language: English' }).click();
+  await expect(page.getByRole('menu')).toBeVisible();
   await page.getByRole('menuitemradio', { name: /Português/ }).click();
+  // Choosing a language closes the menu and returns focus to its trigger, named in the chosen language.
+  await expect(page.getByRole('menu')).toBeHidden();
   await expect(status).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Idioma: Português' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Idioma: Português' })).toBeFocused();
 });
 
 test('names a developer release built on this host in the Local release status', async ({ page }) => {
