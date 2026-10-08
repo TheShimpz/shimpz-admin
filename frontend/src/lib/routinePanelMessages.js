@@ -17,7 +17,7 @@ export const routinePanelMessages = {
       storedInput: "Uses the saved key: {name}",
       loading: "Reading the steps…",
       unavailable: "The steps could not be read.",
-      output: { show: "Shows the result of step {n} after every run", changes: "Shows the result of step {n} only when it changes", none: "Shows nothing after a run", "decide-always": "Decides after every run what to do with its results", "decide-changes": "Decides what to do only when the results change" },
+      output: { show: "Shows the result of step {n} after every run", changes: "Shows the result of step {n} only when it changes", none: "Shows nothing after a run" },
     },
     panel: {
       summaryLine: "{schedule}, using the {timezone} timezone ({now}).",
@@ -60,7 +60,7 @@ export const routinePanelMessages = {
       storedInput: "Usa a chave salva: {name}",
       loading: "Lendo as etapas…",
       unavailable: "Não foi possível ler as etapas.",
-      output: { show: "Mostra o resultado da etapa {n} a cada execução", changes: "Mostra o resultado da etapa {n} só quando ele muda", none: "Não mostra nada após uma execução", "decide-always": "Decide depois de cada execução o que fazer com os resultados", "decide-changes": "Decide o que fazer só quando os resultados mudam" },
+      output: { show: "Mostra o resultado da etapa {n} a cada execução", changes: "Mostra o resultado da etapa {n} só quando ele muda", none: "Não mostra nada após uma execução" },
     },
     panel: {
       summaryLine: "{schedule}, usando o timezone {timezone} ({now}).",
@@ -103,7 +103,7 @@ export const routinePanelMessages = {
       storedInput: "Usa la clave guardada: {name}",
       loading: "Leyendo los pasos…",
       unavailable: "No se pudieron leer los pasos.",
-      output: { show: "Muestra el resultado del paso {n} tras cada ejecución", changes: "Muestra el resultado del paso {n} solo cuando cambia", none: "No muestra nada tras una ejecución", "decide-always": "Decide tras cada ejecución qué hacer con los resultados", "decide-changes": "Decide qué hacer solo cuando los resultados cambian" },
+      output: { show: "Muestra el resultado del paso {n} tras cada ejecución", changes: "Muestra el resultado del paso {n} solo cuando cambia", none: "No muestra nada tras una ejecución" },
     },
     panel: {
       summaryLine: "{schedule}, usando la zona horaria {timezone} ({now}).",
@@ -146,7 +146,7 @@ export const routinePanelMessages = {
       storedInput: "使用已保存的密钥：{name}",
       loading: "正在读取步骤…",
       unavailable: "无法读取步骤。",
-      output: { show: "每次运行后显示步骤 {n} 的结果", changes: "仅在步骤 {n} 的结果变化时显示", none: "运行后不显示任何内容", "decide-always": "每次运行后决定如何处理结果", "decide-changes": "仅在结果变化时决定如何处理" },
+      output: { show: "每次运行后显示步骤 {n} 的结果", changes: "仅在步骤 {n} 的结果变化时显示", none: "运行后不显示任何内容" },
     },
     panel: {
       summaryLine: "{schedule}，使用时区 {timezone}（{now}）。",
@@ -189,7 +189,7 @@ export const routinePanelMessages = {
       storedInput: "Utilise la clé enregistrée : {name}",
       loading: "Lecture des étapes…",
       unavailable: "Impossible de lire les étapes.",
-      output: { show: "Affiche le résultat de l’étape {n} après chaque exécution", changes: "Affiche le résultat de l’étape {n} seulement quand il change", none: "N’affiche rien après une exécution", "decide-always": "Décide après chaque exécution quoi faire de ses résultats", "decide-changes": "Décide quoi faire seulement quand les résultats changent" },
+      output: { show: "Affiche le résultat de l’étape {n} après chaque exécution", changes: "Affiche le résultat de l’étape {n} seulement quand il change", none: "N’affiche rien après une exécution" },
     },
     panel: {
       summaryLine: "{schedule}, avec le fuseau horaire {timezone} ({now}).",
@@ -232,7 +232,7 @@ export const routinePanelMessages = {
       storedInput: "Verwendet den gespeicherten Schlüssel: {name}",
       loading: "Die Schritte werden gelesen…",
       unavailable: "Die Schritte konnten nicht gelesen werden.",
-      output: { show: "Zeigt das Ergebnis von Schritt {n} nach jeder Ausführung", changes: "Zeigt das Ergebnis von Schritt {n} nur, wenn es sich ändert", none: "Zeigt nach einer Ausführung nichts an", "decide-always": "Entscheidet nach jeder Ausführung, was mit den Ergebnissen geschieht", "decide-changes": "Entscheidet nur, wenn sich die Ergebnisse ändern" },
+      output: { show: "Zeigt das Ergebnis von Schritt {n} nach jeder Ausführung", changes: "Zeigt das Ergebnis von Schritt {n} nur, wenn es sich ändert", none: "Zeigt nach einer Ausführung nichts an" },
     },
     panel: {
       summaryLine: "{schedule}, in der Zeitzone {timezone} ({now}).",
@@ -275,7 +275,7 @@ export const routinePanelMessages = {
       storedInput: "保存済みのキーを使用：{name}",
       loading: "ステップを読み込んでいます…",
       unavailable: "ステップを読み込めませんでした。",
-      output: { show: "実行のたびにステップ {n} の結果を表示", changes: "ステップ {n} の結果が変わったときだけ表示", none: "実行後に何も表示しない", "decide-always": "実行のたびに結果をどうするか判断します", "decide-changes": "結果が変わったときだけ判断します" },
+      output: { show: "実行のたびにステップ {n} の結果を表示", changes: "ステップ {n} の結果が変わったときだけ表示", none: "実行後に何も表示しない" },
     },
     panel: {
       summaryLine: "{schedule}（タイムゾーン {timezone}、{now}）。",
@@ -318,7 +318,7 @@ export const routinePanelMessages = {
       storedInput: "يستخدم المفتاح المحفوظ: {name}",
       loading: "جارٍ قراءة الخطوات…",
       unavailable: "تعذّرت قراءة الخطوات.",
-      output: { show: "يعرض نتيجة الخطوة {n} بعد كل تشغيل", changes: "يعرض نتيجة الخطوة {n} فقط عند تغيّرها", none: "لا يعرض شيئًا بعد التشغيل", "decide-always": "يقرر بعد كل تشغيل ما يفعله بالنتائج", "decide-changes": "يقرر ما يفعله فقط عندما تتغير النتائج" },
+      output: { show: "يعرض نتيجة الخطوة {n} بعد كل تشغيل", changes: "يعرض نتيجة الخطوة {n} فقط عند تغيّرها", none: "لا يعرض شيئًا بعد التشغيل" },
     },
     panel: {
       summaryLine: "{schedule}، باستخدام المنطقة الزمنية {timezone} ({now}).",

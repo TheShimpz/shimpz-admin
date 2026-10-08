@@ -19,9 +19,8 @@
   // The card of a Routine a recording turn recorded (ADR-0101 section 5.2), under its reply: everything the person
   // confirms, in full and as escaped text — its name, schedule, timezone, next runs, daily cap, what each run does
   // with its result, every step with whether it changes something and each input with where its value comes from, the
-  // Actions it may call, and, for a decision, what it decides with its model and allowance. It states facts only: the
-  // work ran once now, and approvals ask on every run. Exactly
-  // two buttons, none preselected or recommended: Create confirms the card, Cancel revokes it. A card past its
+  // Actions it may call. It states facts only: the work ran once now, and approvals ask on every run. Exactly two
+  // buttons, none preselected or recommended: Create confirms the card, Cancel revokes it. A card past its
   // lifetime offers neither and says so.
   let { teamId, proposal, copy, locale } = $props();
 
@@ -124,18 +123,6 @@
     {/each}
   </ol>
 
-  {#if proposal.decision}
-    <dl class="facts">
-      <div><dt>{card.decisionRequest}</dt><dd class="text">{proposal.decision.request}</dd></div>
-      {#if proposal.decision.notes}<div><dt>{card.decisionNotes}</dt><dd class="text">{proposal.decision.notes}</dd></div>{/if}
-      <div>
-        <dt>{card.decisionModel}</dt>
-        <dd>{proposal.decision.model.provider} · {proposal.decision.model.model} · {proposal.decision.model.effort}</dd>
-      </div>
-      <div><dt>{fillRoutineCopy(card.decisionAllowance, { count: proposal.decision.allowance })}</dt></div>
-    </dl>
-  {/if}
-
   {#if proposal.permitted.length}
     <h4>{card.permitted}</h4>
     <ul class="permitted">
@@ -198,7 +185,6 @@
   .inputs dd { display: grid; gap: 0.1rem; }
   .value { font: 0.76rem/1.4 var(--shimpz-font-mono); }
   .origin, .dim { color: var(--shimpz-color-text-dim); font-size: 0.75rem; }
-  .text { white-space: pre-wrap; }
   .statements { color: var(--shimpz-color-text-muted); }
   .actions { display: flex; flex-wrap: wrap; gap: var(--shimpz-space-2); }
   .routine-result { color: var(--shimpz-color-text-muted); }

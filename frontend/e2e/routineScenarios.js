@@ -47,7 +47,7 @@ function permittedOf(steps) {
   return { total: seen.size, changes: [...seen.values()].filter((readOnly) => !readOnly).length };
 }
 
-/** A Routine view as Team lists it: no decision, so no model and no allowance. */
+/** A Routine view as Team lists it. */
 export function routineView(fields, steps) {
   return {
     timezone: 'America/Sao_Paulo',
@@ -58,9 +58,6 @@ export function routineView(fields, steps) {
     deleting: false,
     state: 'active',
     permitted: permittedOf(steps),
-    permissions_revision: 0,
-    model: null,
-    allowance: 0,
     ...fields,
     plan: fields.plan ?? planSummary(steps),
   };
@@ -159,22 +156,22 @@ const PLANS = [WATCH, [...STEPS, UPDATE], STEPS, [...STEPS, DELETE]];
 function routines(locale) {
   const { names } = textFor(locale);
   return [
-    { routine_id: id('1'), output: { mode: 'none', step: null, when: null }, schedule: { kind: 'continuous', gap: 5, cap: 17280 } },
+    { routine_id: id('1'), output: { mode: 'none', step: null }, schedule: { kind: 'continuous', gap: 5, cap: 17280 } },
     {
       routine_id: id('2'),
-      output: { mode: 'show', step: 2, when: null },
+      output: { mode: 'show', step: 2 },
       schedule: { kind: 'weekly', weekday: 6, time: '08:00' },
       next_run_at: '2026-10-04T11:00:00Z',
     },
     {
       routine_id: id('3'),
-      output: { mode: 'changes', step: 1, when: null },
+      output: { mode: 'changes', step: 1 },
       schedule: { kind: 'daily', time: '09:00' },
       state: 'paused',
     },
     {
       routine_id: id('4'),
-      output: { mode: 'none', step: null, when: null },
+      output: { mode: 'none', step: null },
       schedule: { kind: 'monthly', day: 1, time: '10:00' },
       state: 'paused',
     },
@@ -224,8 +221,8 @@ function row(noticeId, routine, outcome, detail, { at = '2026-10-01T12:00:00Z', 
 }
 
 function defined(routine) {
-  const { name, plan, output, schedule, timezone, timezone_source: source, state, permitted, model, allowance } = routine;
-  return { name, plan, output, schedule, timezone, timezone_source: source, state, permitted, model, allowance };
+  const { name, plan, output, schedule, timezone, timezone_source: source, state, permitted } = routine;
+  return { name, plan, output, schedule, timezone, timezone_source: source, state, permitted };
 }
 
 const text = (value) => ({ kind: 'text', value, cut: false });
@@ -284,7 +281,7 @@ function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now, removedName) {
   const at = (offset) => instant(opened + offset * 1000);
   const yesterday = (offset) => at(offset - 86_400);
   const removed = { routine_id: REMOVED, name: removedName };
-  const completed = (plan, output) => ({ plan, output, decision: null });
+  const completed = (plan, output) => ({ plan, output });
   return [
     row(id('a'), CONTINUOUS, 'created', defined(CONTINUOUS), { at: yesterday(-120) }),
     row(id('b'), HELD, 'changed', defined(HELD), { at: yesterday(-90) }),
@@ -495,16 +492,13 @@ export function planPage(routineId, plan, steps, offset) {
   return { routine_id: routineId, revision: plan.revision, plan_digest: plan.plan_digest, total: steps.length, offset, steps: page, next };
 }
 
-/**
- * One page of a run's records from `offset`, of one snapshot, bound to the revision its notice summarizes: its replay
- * steps, then any decision calls, and the run's one decision record.
- */
-export function runStepsPage(runId, routineId, plan, records, { snapshot = SNAPSHOT, offset = 0, ended = true, decision = null } = {}) {
+/** One page of a run's records from `offset`, of one snapshot, bound to the revision its notice summarizes. */
+export function runStepsPage(runId, routineId, plan, records, { snapshot = SNAPSHOT, offset = 0, ended = true } = {}) {
   const page = records.slice(offset, offset + PAGE_STEPS);
   const next = offset + page.length === records.length ? null : offset + page.length;
   return {
     team_id: 'marketing', run_id: runId, routine_id: routineId, revision: plan.revision, plan_digest: plan.plan_digest,
-    replay: plan.steps, total: records.length, snapshot, ended, offset, steps: page, next, decision,
+    total: records.length, snapshot, ended, offset, steps: page, next,
   };
 }
 
@@ -583,7 +577,7 @@ export function cloudflareCard(proposalId, locale = 'en', now = Date.now(), mode
     timezone_source: 'browser',
     next_runs: [30, 60, 90].map((seconds) => instant(now + seconds * 1000)),
     daily_cap: 2880,
-    output: { mode, when: null },
+    output: { mode },
     steps: [
       { position: 1, assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true, inputs: [] },
       {
@@ -598,7 +592,6 @@ export function cloudflareCard(proposalId, locale = 'en', now = Date.now(), mode
       { assistant: 'shimpz-cloudflare', action: 'list-dns-records', read_only: true },
       { assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true },
     ],
-    decision: null,
   };
 }
 
@@ -699,7 +692,7 @@ export function routineProposalRoutes(state, method, path, body) {
   const routine = routineView({
     routine_id: `9${proposalId.slice(-8)}`.padStart(32, '0'),
     name: proposal.name,
-    output: { mode: 'show', step: 2, when: null },
+    output: { mode: 'show', step: 2 },
     schedule: proposal.schedule,
     timezone: proposal.timezone,
     timezone_source: proposal.timezone_source,

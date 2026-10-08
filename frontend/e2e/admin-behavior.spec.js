@@ -4315,7 +4315,7 @@ function recoveryCard(incidentId, { nonce = 'f'.repeat(32), action = 'replace-dn
 const SUPERVISOR_PASSWORD = 'correct supervisor passphrase';
 
 // Opens a Routine's panel the way a person reaches it: the Team's Routines button, then the Routine in its list. The
-// chat shows only each Routine's creation, so this is the one way to a Routine's runs and decisions.
+// chat shows only each Routine's creation, so this is the one way to a Routine's runs.
 async function openRoutinePanel(page, name = ROUTINE_VIEW.name, locale = 'en') {
   const copy = messages[locale];
   const button = copy.teamNavigation.routines.replace('{team}', 'Marketing');
@@ -5411,7 +5411,7 @@ test.describe('Team Routines', () => {
       ...noticeExtras(outcome),
     });
     const defined = Object.fromEntries(['name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'state',
-      'permitted', 'model', 'allowance'].map((key) => [key, ROUTINE_VIEW[key]]));
+      'permitted'].map((key) => [key, ROUTINE_VIEW[key]]));
     await routeReadyChat(page, {
       history: {
         entries: [
@@ -5419,7 +5419,7 @@ test.describe('Team Routines', () => {
           entry('f'.repeat(32), 'skipped', { missed: 2 }, null, '2026-10-01T11:30:00Z'),
           entry('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']], position: null, steps: null }),
           entry('d'.repeat(32), 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 }),
-          entry('b'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: null, decision: null }),
+          entry('b'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: null }),
         ],
         before: null,
       },
@@ -5501,9 +5501,9 @@ test.describe('Team Routines', () => {
     await routeReadyChat(page, {
       history: {
         entries: [
-          entry(run, { plan, output: shown, decision: null }),
-          entry('c'.repeat(32), { plan, output: unchanged, decision: null }),
-          entry(other, { plan: twoSteps, output: shown, decision: null }),
+          entry(run, { plan, output: shown }),
+          entry('c'.repeat(32), { plan, output: unchanged }),
+          entry(other, { plan: twoSteps, output: shown }),
         ],
         before: null,
       },
@@ -5777,7 +5777,7 @@ test.describe('Team Routines', () => {
           run_id: run,
           outcome: 'done',
           created_at: '2026-10-01T12:01:07Z',
-          detail: { plan, output: { step: 1, state: 'shown', value: { kind: 'text', value: 'ok', cut: false }, truncated: false }, decision: null },
+          detail: { plan, output: { step: 1, state: 'shown', value: { kind: 'text', value: 'ok', cut: false }, truncated: false } },
           version: 1,
           ...noticeExtras('done'),
         }],
@@ -5929,7 +5929,7 @@ test.describe('Team Routines', () => {
       ...noticeExtras(outcome),
     });
     const { name: _name, ...definition } = Object.fromEntries(
-      ['name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'state', 'permitted', 'model', 'allowance']
+      ['name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'state', 'permitted']
         .map((key) => [key, ROUTINE_VIEW[key]]),
     );
     await routeReadyChat(page, {
@@ -5937,7 +5937,7 @@ test.describe('Team Routines', () => {
         entries: [
           row('b'.repeat(32), 'a'.repeat(32), 'created', { name, ...definition }, null),
           row('c'.repeat(32), listed.routine_id, 'failed', { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']], position: null, steps: null }),
-          row('d'.repeat(32), 'f'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: null, decision: null }),
+          row('d'.repeat(32), 'f'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: null }),
         ],
         before: null,
       },
@@ -5994,7 +5994,7 @@ test.describe('Team Routines', () => {
   // A Routine's creation notice, the one Routine row the chat shows, naming what `routine` was created to do.
   function createdRow(id, routine = ROUTINE_VIEW) {
     const detail = Object.fromEntries(['name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'state',
-      'permitted', 'model', 'allowance'].map((key) => [key, routine[key]]));
+      'permitted'].map((key) => [key, routine[key]]));
     return { ...routineRow(id, 'created', detail, { routine }), run_id: null };
   }
 
@@ -6204,7 +6204,7 @@ test.describe('Team Routines', () => {
     await expect(dialog).not.toContainText('httpx.HTTPStatusError');
   });
 
-  test("a repeated Action's failed attempts at two positions read apart in the panel's execution details", { tag: '@mobile' }, async ({ page }) => {
+  test("a repeated Action's failed attempts at three positions read apart in the panel's execution details", { tag: '@mobile' }, async ({ page }) => {
     const failed = 'c'.repeat(32);
     await routeReadyChat(page, {
       history: { entries: [routineRow(failed, 'failed', { code: 'assistant-rpc-failed', actions: [], position: { phase: 'replay', step: 5 }, steps: 6 })], before: null },
@@ -6212,8 +6212,7 @@ test.describe('Team Routines', () => {
     await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
       json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
     }));
-    // The same Action's first attempt failed at step 2, at step 5, and as the decision's second call: one operation
-    // per position.
+    // The same Action's first attempt failed at steps 2, 5, and 7: one operation per position.
     const attempt = (operation, position) => ({
       operation_id: `6f1c2b8e-3a4d-4c5e-9f60-${operation}`,
       attempt: 1,
@@ -6228,7 +6227,7 @@ test.describe('Team Routines', () => {
       json: { team_id: 'marketing', run_id: failed, diagnostics: [
         attempt('718293a4b5c6', { phase: 'replay', step: 2 }),
         attempt('718293a4b5c7', { phase: 'replay', step: 5 }),
-        attempt('718293a4b5c8', { phase: 'decision', call: 2 }),
+        attempt('718293a4b5c8', { phase: 'replay', step: 7 }),
       ] },
     }));
     await page.goto('/chat/?team=marketing');
@@ -6247,11 +6246,11 @@ test.describe('Team Routines', () => {
     expect(new Set(headings).size).toBe(3);
     expect(headings[0]).toContain('2');
     expect(headings[1]).toContain('5');
-    expect(headings[2]).toContain('Decision call 2');
+    expect(headings[2]).toContain('7');
   });
 
   test("a Routine's panel reads its own history, never the chat's, however much the chat holds", { tag: '@mobile' }, async ({ page }) => {
-    const done = { plan: ROUTINE_VIEW.plan, output: null, decision: null };
+    const done = { plan: ROUTINE_VIEW.plan, output: null };
     const chat = Array.from({ length: 64 }, (_, index) => ({
       id: `${index.toString(16).padStart(32, '0')}:user`,
       created_at: '2026-10-02T09:00:00Z',
@@ -6292,7 +6291,7 @@ test.describe('Team Routines', () => {
   });
 
   test("a Routine's older runs are reached by continuing its history, and a run that ends joins them", { tag: '@mobile' }, async ({ page }) => {
-    const done = { plan: ROUTINE_VIEW.plan, output: null, decision: null };
+    const done = { plan: ROUTINE_VIEW.plan, output: null };
     const run = (index) => routineRow((index + 1).toString(16).padStart(32, '0'), 'done', done);
     const searched = [];
     // A run that ends while the panel is open is written after the newest run.
@@ -6365,7 +6364,7 @@ test.describe('Team Routines', () => {
   });
 
   test("a Routine's panel that stays open lists every run that ends, and every older run stays reachable", { tag: '@mobile' }, async ({ page }) => {
-    const done = { plan: ROUTINE_VIEW.plan, output: null, decision: null };
+    const done = { plan: ROUTINE_VIEW.plan, output: null };
     const failed = { code: 'assistant-rpc-failed', actions: [], position: null, steps: null };
     // The Routine's stored history, oldest first; a row's position is its place in it, as Admin's cursor names it.
     const stored = [];
@@ -6439,7 +6438,7 @@ test.describe('Team Routines', () => {
   });
 
   test("an older search that a newer reading of the panel's history overtook never hides that reading", { tag: '@mobile' }, async ({ page }) => {
-    const done = { plan: ROUTINE_VIEW.plan, output: null, decision: null };
+    const done = { plan: ROUTINE_VIEW.plan, output: null };
     const stored = [];
     const write = (count) => {
       for (let index = 0; index < count; index += 1) {
@@ -6557,10 +6556,9 @@ test.describe('Team Routines', () => {
     await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(0);
   });
 
-  test("a Routine's history gives each run its outcome, usage, decision, and time, and opens the result it showed", { tag: '@mobile' }, async ({ page }) => {
+  test("a Routine's history gives each run its outcome, usage, and time, and opens the result it showed", { tag: '@mobile' }, async ({ page }) => {
     const text = (value) => ({ kind: 'text', value, cut: false });
     const shown = { step: 1, state: 'shown', value: { kind: 'fields', fields: [['zone', text('example.com')]], omitted: 0 }, truncated: false };
-    const decided = { state: 'decided', code: null, message: 'Deleted 12 stale <b>records</b>.' };
     const at = (row, createdAt) => ({ ...row, created_at: createdAt });
     const missed = { ...at(routineRow('a'.repeat(32), 'skipped', { missed: 2 }), '2026-10-01T11:00:00Z'), run_id: null };
     const lost = {
@@ -6568,7 +6566,7 @@ test.describe('Team Routines', () => {
       protection_lost: true,
     };
     const done = {
-      ...at(routineRow('d'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: shown, decision: decided }), '2026-10-01T12:01:07Z'),
+      ...at(routineRow('d'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: shown }), '2026-10-01T12:01:07Z'),
       usage: { duration_ms: 7400, models: [] },
     };
     await routeReadyChat(page, { history: { entries: [missed, lost, done], before: null } });
@@ -6588,10 +6586,8 @@ test.describe('Team Routines', () => {
     for (const [index, row] of [done, lost, missed].entries()) {
       await expect(rows.nth(index).locator(`time[datetime="${row.created_at}"]`)).toBeVisible();
     }
-    // The completed run: its outcome opens it, with its usage and its decision in Team's escaped words.
+    // The completed run: its outcome opens it, with its usage.
     await expect(rows.nth(0)).toContainText('7.4 s');
-    await expect(rows.nth(0)).toContainText(decided.message);
-    await expect(rows.nth(0).locator('b')).toHaveCount(0);
     // The failed run says its results are hidden to protect secret values; the missed runs say how many and open nothing.
     await expect(rows.nth(1)).toContainText(messages.en.routine.notice.protectionLost);
     await expect(rows.nth(2)).toContainText('2 runs missed');
@@ -6955,7 +6951,7 @@ test.describe('Team Routines', () => {
     await expect(panel).toHaveCount(0);
 
     // The run's newer version is the Routine's history too; the transcript and the draft stay as they were.
-    const published = { plan: planSummary([{ assistant: 'shimpz-cloudflare', action: 'replace-dns-record' }]), output: null, decision: null };
+    const published = { plan: planSummary([{ assistant: 'shimpz-cloudflare', action: 'replace-dns-record' }]), output: null };
     history = { entries: [earlier, { ...frozen, outcome: 'done', detail: published, version: 2 }], before: null };
     runs = [];
     await page.clock.fastForward(15_000);

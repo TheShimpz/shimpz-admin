@@ -60,7 +60,7 @@
   let recovery = $derived(outcome === 'held' || outcome === 'paused');
 
   // Where a held or paused run stopped, as one sentence: its position the card, its incident, and its notice name, a
-  // replay step of the plan the run executed or a call its decision turn made.
+  // replay step of the plan the run executed.
   let situation = $derived.by(() => {
     if (!recovery) return '';
     const step = card ?? detail;
@@ -69,7 +69,6 @@
       assistant: $assistantNames[step.assistant_id] ?? humanizeId(step.assistant_id),
       action: humanizeId(step.action),
     }).replace(' · ', ' › ');
-    if (step.position.phase === 'decision') return fillRoutineCopy(copy.card.stoppedAtCall, { n: step.position.call, step: words });
     return fillRoutineCopy(copy.card.stoppedAt, { n: step.position.step, total: step.steps, step: words });
   });
   // What the person is asked to decide: a held run waits for them, a paused one says why it paused, and a frozen one
@@ -77,7 +76,7 @@
   let reason = $derived.by(() => {
     if (outcome === 'held') return copy.card.heldLead;
     if (outcome === 'paused') return fillRoutineCopy(copy.run.paused, { reason: copy.run.pauseReasons[detail.reason] ?? '' });
-    const frozen = { human: copy.run.frozenHuman, integrations: copy.run.frozenIntegrations, permission: copy.run.frozenPermission };
+    const frozen = { human: copy.run.frozenHuman, integrations: copy.run.frozenIntegrations };
     return fillRoutineCopy(frozen[detail.request_kind], {
       assistant: $assistantNames[detail.assistant_id] ?? humanizeId(detail.assistant_id),
       action: humanizeId(detail.action),

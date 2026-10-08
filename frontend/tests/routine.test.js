@@ -48,10 +48,8 @@ import {
   proposalInputWords,
   confirmRoutineProposal,
   revokeRoutineProposal,
-  decisionWords,
   attemptWords,
   runPosition,
-  isDecisionRecord,
   pauseRoutine,
   pointerWords,
   humanizeId,
@@ -134,7 +132,7 @@ const PROPOSAL = Object.freeze({
   timezone_source: 'browser',
   next_runs: ['2026-10-05T12:01:37Z', '2026-10-05T12:02:07Z', '2026-10-05T12:02:37Z'],
   daily_cap: 2880,
-  output: { mode: 'show', when: null },
+  output: { mode: 'show' },
   steps: [
     { position: 1, assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true, inputs: [] },
     {
@@ -152,7 +150,6 @@ const PROPOSAL = Object.freeze({
     { assistant: 'shimpz-cloudflare', action: 'list-dns-records', read_only: true },
     { assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true },
   ],
-  decision: null,
 });
 
 test("a recording turn's reply and its stored history carry at most one Routine card or refusal, never beside a question", async () => {
@@ -328,17 +325,24 @@ test('a Routine card is admitted only whole, and its inputs say where each value
   // A step that changes something reads like any other: the card names it, and nothing waits for a rehearsal.
   const changing = { ...PROPOSAL, steps: [PROPOSAL.steps[0], { ...PROPOSAL.steps[1], read_only: false }] };
   assert.equal(parseRoutineProposal(changing).steps[1].read_only, false);
-  const decide = {
-    ...PROPOSAL,
-    output: { mode: 'decide', when: 'changes' },
-    decision: {
-      request: 'apague registros vencidos',
-      notes: '',
-      model: { provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'medium' },
-      allowance: 4,
-    },
+  // A decision is retired: its member, its mode, and a condition are refused, even when empty.
+  const decision = {
+    request: 'apague registros vencidos',
+    notes: '',
+    model: { provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'medium' },
+    allowance: 4,
   };
-  assert.equal(parseRoutineProposal(decide).decision.allowance, 4);
+  for (const invalid of [
+    { ...PROPOSAL, decision: null },
+    { ...PROPOSAL, decision },
+    { ...PROPOSAL, output: { mode: 'decide' }, decision },
+    { ...PROPOSAL, output: { mode: 'decide' } },
+    { ...PROPOSAL, output: { mode: 'show', when: null } },
+    { ...PROPOSAL, output: { mode: 'decide', when: 'changes' } },
+    { ...PROPOSAL, steps: [], permitted: [] },
+  ]) {
+    assert.throws(() => parseRoutineProposal(invalid), RoutineError, JSON.stringify(invalid));
+  }
   for (const invalid of [
     { ...PROPOSAL, extra: 1 },
     { ...PROPOSAL, rehearsal: false },
@@ -346,9 +350,7 @@ test('a Routine card is admitted only whole, and its inputs say where each value
     { ...PROPOSAL, next_runs: [PROPOSAL.next_runs[1], PROPOSAL.next_runs[0]] },
     { ...PROPOSAL, daily_cap: 1001 },
     { ...PROPOSAL, name: ' padded ' },
-    { ...PROPOSAL, decision: decide.decision },
-    { ...decide, decision: null },
-    { ...PROPOSAL, output: { mode: 'show', step: 2, when: null } },
+    { ...PROPOSAL, output: { mode: 'show', step: 2 } },
     { ...PROPOSAL, permitted: [...PROPOSAL.permitted].reverse() },
     { ...PROPOSAL, steps: [{ ...PROPOSAL.steps[0], position: 2 }] },
     { ...PROPOSAL, steps: [PROPOSAL.steps[0], { ...PROPOSAL.steps[1], inputs: [{ ...PROPOSAL.steps[1].inputs[0], where: null }] }] },
@@ -439,7 +441,7 @@ const ROUTINE = {
   routine_id: 'a'.repeat(32),
   name: 'DNS semanal',
   plan: SUMMARY,
-  output: { mode: 'show', step: 1, when: null },
+  output: { mode: 'show', step: 1 },
   schedule: WEEKLY,
   timezone: 'America/Sao_Paulo',
   timezone_source: 'browser',
@@ -449,9 +451,6 @@ const ROUTINE = {
   deleting: false,
   state: 'active',
   permitted: { total: 1, changes: 0 },
-  permissions_revision: 0,
-  model: null,
-  allowance: 0,
 };
 const LEASED = {
   run_id: 'b'.repeat(32),
@@ -515,12 +514,23 @@ test('Routines and runs are admitted only in their closed views', () => {
     { ...ROUTINE, assistant_ids: ['Bad'] },
     { ...ROUTINE, state: 'running' },
     stateless,
+    // A decision is retired: its model, allowance, permissions revision, mode, and condition stay refused.
     { ...ROUTINE, model: { provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'medium' } },
+    { ...ROUTINE, model: null },
+    { ...ROUTINE, allowance: 0 },
+    { ...ROUTINE, permissions_revision: 0 },
+    { ...ROUTINE, model: null, allowance: 0, permissions_revision: 0 },
+    { ...ROUTINE, output: { mode: 'show', step: 1, when: null } },
+    { ...ROUTINE, output: { mode: 'decide', step: null } },
+    { ...ROUTINE, output: { mode: 'decide', step: null, when: 'always' } },
+    { ...ROUTINE, plan: { ...SUMMARY, steps: 0, actions: [] }, output: { mode: 'none', step: null } },
     { ...ROUTINE, permitted: { total: 1, changes: 2 } },
+    { ...ROUTINE, permitted: { total: 0, changes: 0 } },
+    { ...ROUTINE, permitted: { total: 257, changes: 0 } },
     // A Routine view carries its summary, never its steps, and shows a step by its position.
     { ...Object.fromEntries(Object.entries(ROUTINE).filter(([key]) => key !== 'plan')), steps: PLAN },
-    { ...ROUTINE, output: { mode: 'show', step: 2, when: null } },
-    { ...ROUTINE, output: { mode: 'show', step: 'zones', when: null } },
+    { ...ROUTINE, output: { mode: 'show', step: 2 } },
+    { ...ROUTINE, output: { mode: 'show', step: 'zones' } },
   ]) {
     assert.throws(() => parseRoutineView(invalid), RoutineError, JSON.stringify(invalid));
   }
@@ -534,6 +544,9 @@ test('Routines and runs are admitted only in their closed views', () => {
     { ...HELD, assistant_id: 'shimpz-cloudflare' },
     { ...FROZEN, action: null },
     { ...FROZEN, position: null },
+    // A permission to call an Action outside the permitted set, and a decision call's position, are retired.
+    { ...FROZEN, request_kind: 'permission' },
+    { ...FROZEN, position: { phase: 'decision', call: 1 } },
     { ...FROZEN, request_kind: 'email' },
   ]) {
     assert.throws(() => parseRunView(invalid), RoutineError, JSON.stringify(invalid));
@@ -689,16 +702,14 @@ test('schedules, instants, and failures read naturally in each locale', () => {
 const DEFINED = {
   name: 'DNS semanal',
   plan: SUMMARY,
-  output: { mode: 'show', step: 1, when: null },
+  output: { mode: 'show', step: 1 },
   schedule: WEEKLY,
   timezone: 'America/Sao_Paulo',
   timezone_source: 'browser',
   state: 'active',
   permitted: { total: 1, changes: 0 },
-  model: null,
-  allowance: 0,
 };
-// A run that called no model reports only its duration; one whose decision called a model reports its tokens.
+// A run that called no model reports only its duration; one whose recovery called a model reports its tokens.
 const REPLAY_USAGE = Object.freeze({ duration_ms: 4120, models: [] });
 const RUN_ENTRY = {
   id: `${'b'.repeat(32)}:routine`,
@@ -709,12 +720,13 @@ const RUN_ENTRY = {
   run_id: 'b'.repeat(32),
   outcome: 'done',
   created_at: '2026-10-05T12:01:07Z',
-  detail: { plan: SUMMARY, output: null, decision: null },
+  detail: { plan: SUMMARY, output: null },
   version: 2,
   usage: REPLAY_USAGE,
   protection_lost: false,
 };
 const STEP = { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 };
+// A decision call's position, which is retired.
 const CALL = { assistant_id: 'shimpz-cloudflare', action: 'delete-dns-record', position: { phase: 'decision', call: 1 }, steps: 2 };
 // A two-step plan's summary, and a 120-step one whose middle Action repeats.
 const TWO = Object.freeze({ ...SUMMARY, steps: 2, actions: [['shimpz-cloudflare', 'list-zones', 1], ['shimpz-cloudflare', 'list-dns-records', 1]] });
@@ -761,16 +773,12 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     protectionLost: false,
   });
   const valid = [
-    { ...RUN_ENTRY, outcome: 'recovered', detail: { plan: LONG, output: { ...UNSHOWN, step: 120 }, decision: null } },
-    { ...RUN_ENTRY, detail: { ...RUN_ENTRY.detail, decision: { state: 'decided', code: null, message: 'Apaguei 12 registros.' } } },
-    { ...RUN_ENTRY, detail: { ...RUN_ENTRY.detail, decision: { state: 'unavailable', code: 'routine-protection-lost', message: null } } },
+    { ...RUN_ENTRY, outcome: 'recovered', detail: { plan: LONG, output: { ...UNSHOWN, step: 120 } } },
     { ...RUN_ENTRY, protection_lost: true },
     {
       ...RUN_ENTRY,
       usage: { duration_ms: 9800, models: [{ provider: 'openai', model: 'gpt-6-luna', input_tokens: 6500, output_tokens: 300 }] },
     },
-    { ...RUN_ENTRY, outcome: 'held', detail: CALL },
-    { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'permission', ...CALL } },
     { ...RUN_ENTRY, outcome: 'deleted', run_id: null, usage: null, detail: {} },
     { ...RUN_ENTRY, outcome: 'held', detail: STEP },
     { ...RUN_ENTRY, outcome: 'held', detail: UNPLACED },
@@ -810,8 +818,16 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, usage: null },
     { ...RUN_ENTRY, usage: { duration_ms: 1, models: [], extra: 1 } },
     { ...RUN_ENTRY, protection_lost: 'no' },
-    { ...RUN_ENTRY, detail: { ...RUN_ENTRY.detail, decision: { state: 'decided', code: 'x', message: null } } },
-    { ...RUN_ENTRY, detail: { ...RUN_ENTRY.detail, decision: { state: 'unavailable', code: null, message: null } } },
+    // A decision is retired: its record on a completed run, its call's position, and a permission request stay refused.
+    { ...RUN_ENTRY, detail: { ...RUN_ENTRY.detail, decision: null } },
+    { ...RUN_ENTRY, detail: { ...RUN_ENTRY.detail, decision: { state: 'decided', code: null, message: 'Apaguei 12 registros.' } } },
+    { ...RUN_ENTRY, detail: { ...RUN_ENTRY.detail, decision: { state: 'unavailable', code: 'routine-protection-lost', message: null } } },
+    { ...RUN_ENTRY, outcome: 'held', detail: CALL },
+    { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'permission', ...CALL } },
+    { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'permission', ...STEP } },
+    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, model: null, allowance: 0 } },
+    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, output: { mode: 'decide', step: null } } },
+    { ...RUN_ENTRY, outcome: 'changed', run_id: null, usage: null, detail: { ...DEFINED, output: { mode: 'show', step: 1, when: null } } },
     { ...RUN_ENTRY, outcome: 'deleted', run_id: null, usage: null, detail: { name: 'x' } },
     { ...RUN_ENTRY, outcome: 'deleted', run_id: null, usage: REPLAY_USAGE, detail: {} },
     { ...RUN_ENTRY, outcome: 'deleted', run_id: null, usage: null, detail: {}, protection_lost: true },
@@ -820,11 +836,11 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, version: 0 },
     // A done row carries the summary of the plan it carried out, never a reply or a result.
     { ...RUN_ENTRY, detail: { reply: 'Done.' } },
-    { ...RUN_ENTRY, detail: { actions: [['shimpz-cloudflare', 'list-zones']], output: null, decision: null } },
-    { ...RUN_ENTRY, detail: { plan: SUMMARY, output: null, decision: null, result: { ip: '1.2.3.4' } } },
-    { ...RUN_ENTRY, detail: { plan: SUMMARY, output: { ...UNSHOWN, step: 2 }, decision: null } },
-    { ...RUN_ENTRY, detail: { plan: { ...SUMMARY, steps: 2 }, output: null, decision: null } },
-    { ...RUN_ENTRY, detail: { plan: SUMMARY, output: null } },
+    { ...RUN_ENTRY, detail: { actions: [['shimpz-cloudflare', 'list-zones']], output: null } },
+    { ...RUN_ENTRY, detail: { plan: SUMMARY, output: null, result: { ip: '1.2.3.4' } } },
+    { ...RUN_ENTRY, detail: { plan: SUMMARY, output: { ...UNSHOWN, step: 2 } } },
+    { ...RUN_ENTRY, detail: { plan: { ...SUMMARY, steps: 2 }, output: null } },
+    { ...RUN_ENTRY, detail: { plan: SUMMARY } },
     { ...RUN_ENTRY, outcome: 'uncertain', detail: { actions: [] } },
     { ...RUN_ENTRY, outcome: 'needs-input', detail: { question: 'Which zone?' } },
     { ...RUN_ENTRY, outcome: 'held', detail: { ...STEP, action: null } },
@@ -848,7 +864,7 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'skipped', run_id: null, usage: null, detail: { missed: 0 } },
     { ...RUN_ENTRY, outcome: 'created', detail: DEFINED },
     { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, plan: { ...SUMMARY, steps: 2 } } },
-    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, output: { mode: 'show', step: 2, when: null } } },
+    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, output: { mode: 'show', step: 2 } } },
     { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, plan: undefined, steps: PLAN } },
     { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, state: 'stopped' } },
     { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, actions: [] } },
@@ -903,9 +919,8 @@ function noticeShown(entry) {
 
 test('a creation and every run read as one line: a status phrase colored by meaning and its time', () => {
   const cases = [
-    [{ outcome: 'done', detail: { plan: SUMMARY, output: SHOWN_OUTPUT, decision: null } }, ['healthy', 'concluída']],
-    [{ outcome: 'recovered', detail: { plan: LONG, output: UNSHOWN, decision: null } }, ['healthy', 'concluída após recuperação']],
-    [{ outcome: 'frozen', detail: { request_kind: 'permission', ...CALL } }, ['waiting', 'aguardando permissão']],
+    [{ outcome: 'done', detail: { plan: SUMMARY, output: SHOWN_OUTPUT } }, ['healthy', 'concluída']],
+    [{ outcome: 'recovered', detail: { plan: LONG, output: UNSHOWN } }, ['healthy', 'concluída após recuperação']],
     [{ outcome: 'failed', detail: { code: 'plan-input-type', actions: [['shimpz-cloudflare', 'list-zones']], position: { phase: 'replay', step: 37 }, steps: 120 } },
       ['danger', 'falhou']],
     [{ outcome: 'denied', detail: { actions: [] } }, ['danger', 'negada']],
@@ -1115,10 +1130,10 @@ test('a Routine plan projection is admitted only in its closed, bounded form', (
   // A summary's runs cover its steps in order, each differing from the one before; more counts only past sixteen runs.
   assert.ok(isSummary(SUMMARY));
   assert.ok(isSummary(LONG));
-  // A decision's plan may have no steps at all.
-  assert.ok(isSummary({ ...SUMMARY, steps: 0, actions: [] }));
   for (const invalid of [
     null,
+    // Every plan has at least one step: the retired decision plan without steps stays refused.
+    { ...SUMMARY, steps: 0, actions: [] },
     { ...SUMMARY, steps: 2 },
     { ...SUMMARY, revision: 0 },
     { ...SUMMARY, plan_digest: 'sha256:x' },
@@ -1207,13 +1222,13 @@ const GAP = Object.freeze({
   position: { phase: 'replay', step: 2 }, status: 'not_run', assistant_id: null, action: null, attempt: null, duration_ms: null, recorded_at: null, inputs: null,
 });
 
-function runPage(offset, steps, { replay = 2, total = replay, snapshot = SNAPSHOT, ended = true, decision = null } = {}) {
+function runPage(offset, steps, { total = 2, snapshot = SNAPSHOT, ended = true } = {}) {
   return {
-    team_id: 'team_1', run_id: RUN_ENTRY.run_id, routine_id: ROUTINE.routine_id, revision: 1, plan_digest: DIGEST, replay,
-    total, snapshot, ended, offset, steps, next: offset + steps.length === total ? null : offset + steps.length, decision,
+    team_id: 'team_1', run_id: RUN_ENTRY.run_id, routine_id: ROUTINE.routine_id, revision: 1, plan_digest: DIGEST,
+    total, snapshot, ended, offset, steps, next: offset + steps.length === total ? null : offset + steps.length,
   };
 }
-// A decision call the run's decision turn made after its replay, and the record of what that turn decided.
+// A retired decision call, its run input, and its decision record: each stays refused.
 const CALLED = Object.freeze({
   ...RECORDED, position: { phase: 'decision', call: 1 }, action: 'delete-dns-record',
   inputs: [{ member: 'record_id', source: 'decision', value: '"r1"' }],
@@ -1241,7 +1256,6 @@ test("a run's step records are admitted only for its own revision and one snapsh
     assert.ok(isRunStep({ ...RECORDED, status }, REPLAY_1, 2), status);
   }
   const call = CALLED.position;
-  for (const status of ['done', 'failed']) assert.ok(isRunStep({ ...CALLED, status }, call, 2), status);
   for (const valid of [
     { ...RECORDED, status: 'recovered', duration_ms: null },
     { ...RECORDED, inputs: null },
@@ -1250,13 +1264,18 @@ test("a run's step records are admitted only for its own revision and one snapsh
   ]) {
     assert.ok(isRunStep(valid, valid.position, 2), JSON.stringify(valid));
   }
-  // A run's entries are its replay steps first, then its decision calls, each at its own position.
-  assert.deepEqual([1, 2, 3].map((index) => runPosition(index, 2)), [
-    { phase: 'replay', step: 1 }, { phase: 'replay', step: 2 }, { phase: 'decision', call: 1 },
+  // A run's entries are its replay steps, each at its own position.
+  assert.deepEqual([1, 2, 3].map((index) => runPosition(index)), [
+    { phase: 'replay', step: 1 }, { phase: 'replay', step: 2 }, { phase: 'replay', step: 3 },
   ]);
   for (const [invalid, position] of [
     [RECORDED, { phase: 'replay', step: 2 }],
     [RECORDED, call],
+    // A decision call and its decision input source are retired.
+    [CALLED, call],
+    [{ ...CALLED, status: 'done' }, call],
+    [{ ...RECORDED, inputs: [{ member: 'record_id', source: 'decision', value: '"r1"' }] }, REPLAY_1],
+    [{ ...RECORDED, position: { phase: 'decision', step: 1 } }, { phase: 'decision', step: 1 }],
     [{ ...RECORDED, position: 1 }, REPLAY_1],
     [{ ...RECORDED, status: 'running' }, REPLAY_1],
     // No rehearsal statuses: a step never reads as rehearsed, untested, or not permitted.
@@ -1277,30 +1296,21 @@ test("a run's step records are admitted only for its own revision and one snapsh
   ]) {
     assert.equal(isRunStep(invalid, position, 2), false, JSON.stringify(invalid));
   }
-  // A page's decision calls follow its replay steps, with the run's one decision record.
-  const decided = runPage(0, [RECORDED, GAP, CALLED], { total: 3, decision: DECIDED });
-  const read = await readRunSteps(fetcher([[200, decided]]).fetch, 'team_1', run, plan, 'latest', 0);
-  assert.deepEqual(read.decision, DECIDED);
-  assert.ok(isDecisionRecord(DECIDED));
-  for (const invalid of [
-    { ...DECIDED, code: 'x' },
-    { ...DECIDED, model: null },
-    { ...DECIDED, rules: [''] },
-    { ...DECIDED, rationale: 'a\u202eb' },
-    { ...DECIDED, state: 'unavailable' },
-  ]) {
-    assert.equal(isDecisionRecord(invalid), false, JSON.stringify(invalid));
-  }
   for (const [body, snapshot, offset] of [
+    // A run page no longer names its replay count, a decision record, or decision calls beyond its steps.
+    [{ ...runPage(0, steps), replay: 2 }, 'latest', 0],
+    [{ ...runPage(0, steps), decision: null }, 'latest', 0],
+    [{ ...runPage(0, steps), decision: DECIDED }, 'latest', 0],
+    [runPage(0, [RECORDED, GAP, CALLED], { total: 3 }), 'latest', 0],
+    // A run of no steps has no page.
+    [runPage(0, [], { total: 0 }), 'latest', 0],
     [{ ...runPage(0, steps), team_id: 'team_2' }, 'latest', 0],
     [{ ...runPage(0, steps), run_id: 'd'.repeat(32) }, 'latest', 0],
     [{ ...runPage(0, steps), revision: 2 }, 'latest', 0],
     [{ ...runPage(0, steps), routine_id: 'c'.repeat(32) }, 'latest', 0],
     [{ ...runPage(0, steps), plan_digest: `sha256:${'e'.repeat(64)}` }, 'latest', 0],
-    [runPage(0, steps, { replay: 3 }), 'latest', 0],
     [{ ...runPage(0, steps, { total: 3 }), next: null }, 'latest', 0],
     [runPage(0, [RECORDED, CALLED], { total: 2 }), 'latest', 0],
-    [runPage(0, steps, { decision: { ...DECIDED, notify: 'yes' } }), 'latest', 0],
     [runPage(0, steps, { snapshot: 'e'.repeat(32) }), SNAPSHOT, 0],
     [runPage(0, steps, { snapshot: 'latest' }), 'latest', 0],
     [{ ...runPage(0, steps), ended: 'yes' }, 'latest', 0],
@@ -1324,9 +1334,10 @@ test("a run's step records are admitted only for its own revision and one snapsh
     () => readRunSteps(fetcher([]).fetch, 'team_1', run, plan, null, 0),
     () => readRunSteps(fetcher([]).fetch, 'team_1', run, null, 'latest', 0),
     () => readRunSteps(fetcher([]).fetch, 'team_1', run, TWO, 'latest', 0),
-    () => readRunSteps(fetcher([]).fetch, 'team_1', run, { ...plan, replay: null }, 'latest', 0),
+    () => readRunSteps(fetcher([]).fetch, 'team_1', run, { ...plan, total: null }, 'latest', 0),
+    () => readRunSteps(fetcher([]).fetch, 'team_1', run, (({ total: _total, ...rest }) => ({ ...rest, replay: 2 }))(plan), 'latest', 0),
     () => readRunSteps(fetcher([]).fetch, 'team_1', run, runBinding('x'), 'latest', 0),
-    () => readRunSteps(fetcher([]).fetch, 'team_1', run, plan, 'latest', 320),
+    () => readRunSteps(fetcher([]).fetch, 'team_1', run, plan, 'latest', 256),
   ]) {
     await assert.rejects(refused(), (error) => error.code === 'routine-request-invalid');
   }
@@ -1335,13 +1346,13 @@ test("a run's step records are admitted only for its own revision and one snapsh
 test("a run whose notice names no plan binds its records to the run its first page names, for every later page", async () => {
   const run = RUN_ENTRY.run_id;
   const unknown = runBinding(ROUTINE.routine_id);
-  assert.deepEqual(unknown, { routine_id: ROUTINE.routine_id, revision: null, plan_digest: null, replay: null });
+  assert.deepEqual(unknown, { routine_id: ROUTINE.routine_id, revision: null, plan_digest: null, total: null });
   const steps = Array.from({ length: 70 }, (_, index) => ({ ...RECORDED, position: { phase: 'replay', step: index + 1 } }));
-  const first = runPage(0, steps.slice(0, 64), { replay: 70 });
+  const first = runPage(0, steps.slice(0, 64), { total: 70 });
   const page = await readRunSteps(fetcher([[200, first]]).fetch, 'team_1', run, unknown, 'latest', 0);
   const bound = pageBinding(page);
-  assert.deepEqual(bound, { routine_id: ROUTINE.routine_id, revision: 1, plan_digest: DIGEST, replay: 70 });
-  const second = runPage(64, steps.slice(64), { replay: 70 });
+  assert.deepEqual(bound, { routine_id: ROUTINE.routine_id, revision: 1, plan_digest: DIGEST, total: 70 });
+  const second = runPage(64, steps.slice(64), { total: 70 });
   assert.equal((await readRunSteps(fetcher([[200, second]]).fetch, 'team_1', run, bound, SNAPSHOT, 64)).next, null);
   // A later page of another revision, digest, size, or Routine never joins the first.
   for (const other of [{ revision: 2 }, { plan_digest: `sha256:${'e'.repeat(64)}` }, { routine_id: 'c'.repeat(32) }]) {
@@ -1351,7 +1362,7 @@ test("a run whose notice names no plan binds its records to the run its first pa
     );
   }
   await assert.rejects(
-    readRunSteps(fetcher([[200, runPage(64, steps.slice(64, 69), { replay: 69 })]]).fetch, 'team_1', run, bound, SNAPSHOT, 64),
+    readRunSteps(fetcher([[200, runPage(64, steps.slice(64, 69), { total: 69 })]]).fetch, 'team_1', run, bound, SNAPSHOT, 64),
     (error) => error.code === 'routine-response-invalid',
   );
   // Even before it is bound, a page must name a valid revision and digest and the run's own Routine.
@@ -1387,12 +1398,15 @@ test('a recovery card shows its recorded failure, offers exactly Rodar and Exclu
   assert.equal(api.calls[0].path, `/api/teams/team_1/routines/incidents/${INCIDENT.incident_id}/card`);
   assert.equal(api.calls[1].path, `/api/teams/team_1/routines/incidents/${INCIDENT.incident_id}/answer`);
   assert.deepEqual(JSON.parse(api.calls[1].init.body), { nonce: card.nonce, choice: 'run' });
-  // A decision call's card names its call.
+  // A card at a retired decision call's position is refused.
   const called = {
     ...card, action: 'delete-dns-record', position: { phase: 'decision', call: 1 },
     diagnostic: { ...card.diagnostic, action: 'delete-dns-record', position: { phase: 'decision', call: 1 } },
   };
-  assert.deepEqual(await openRoutineCard(fetcher([[200, called]]).fetch, 'team_1', INCIDENT.incident_id), called);
+  await assert.rejects(
+    openRoutineCard(fetcher([[200, called]]).fetch, 'team_1', INCIDENT.incident_id),
+    (error) => error.code === 'routine-response-invalid',
+  );
   // The retired Recriar is refused before any request.
   await assert.rejects(
     answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, card, 'recreate'),
@@ -1498,8 +1512,8 @@ const RUN_ID = 'b'.repeat(32);
 
 test("a run's execution details admit exactly Team's diagnostics view for that run", async () => {
   const transport = { ...ATTEMPT, attempt: 2, failure: null, condition: 'exit-status:1' };
-  const call = { ...ATTEMPT, attempt: 3, position: { phase: 'decision', call: 2 } };
-  for (const diagnostics of [[], [ATTEMPT], [ATTEMPT, transport, call]]) {
+  const later = { ...ATTEMPT, attempt: 3, position: { phase: 'replay', step: 2 } };
+  for (const diagnostics of [[], [ATTEMPT], [ATTEMPT, transport, later]]) {
     const api = fetcher([[200, { team_id: 'team_1', run_id: RUN_ID, diagnostics: structuredClone(diagnostics) }]]);
     assert.deepEqual(await readRunDiagnostics(api.fetch, 'team_1', RUN_ID), diagnostics);
     assert.equal(api.calls[0].path, `/api/teams/team_1/routines/runs/${RUN_ID}/diagnostics`);
@@ -1510,9 +1524,10 @@ test("a run's execution details admit exactly Team's diagnostics view for that r
     { ...ATTEMPT, failure: null },
     { ...ATTEMPT, operation_id: '6f1c2b8e-3a4d-1c5e-9f60-718293a4b5c6' },
     { ...ATTEMPT, attempt: 65 },
-    // Each attempt names its position: a replay step or a decision call.
+    // Each attempt names its replay step; a retired decision call's position is refused.
     { ...ATTEMPT, position: { phase: 'replay', step: 0 } },
-    { ...ATTEMPT, position: { phase: 'decision', call: 65 } },
+    { ...ATTEMPT, position: { phase: 'replay', step: 257 } },
+    { ...ATTEMPT, position: { phase: 'decision', call: 1 } },
     { ...ATTEMPT, position: 2 },
     { ...ATTEMPT, recorded_at: '2026-02-30T12:00:00Z' },
     { ...ATTEMPT, failure: null, condition: 'stderr: secret' },
@@ -1690,22 +1705,21 @@ test('a shown result is admitted only in Team\'s closed form and reads as plain 
   ]) assert.equal(isOutput(invalid), false, JSON.stringify(invalid)?.slice(0, 80));
   assert.ok(isOutput({ ...SHOWN_OUTPUT, value: nested(4) }));
   // A disposition names the position of one of the plan's steps exactly when it shows one.
-  assert.ok(isDisposition({ mode: 'changes', step: 1, when: null }, 1));
-  assert.ok(isDisposition({ mode: 'show', step: 120, when: null }, 120));
-  assert.ok(isDisposition({ mode: 'none', step: null, when: null }, 1));
-  // Only a decision has a condition, and only its plan may have no steps.
-  assert.ok(isDisposition({ mode: 'decide', step: null, when: 'always' }, 0));
-  assert.ok(isDisposition({ mode: 'decide', step: null, when: 'changes' }, 3));
+  assert.ok(isDisposition({ mode: 'changes', step: 1 }, 1));
+  assert.ok(isDisposition({ mode: 'show', step: 120 }, 120));
+  assert.ok(isDisposition({ mode: 'none', step: null }, 1));
   for (const [invalid, total] of [
-    [{ mode: 'show', step: 2, when: null }, 1], [{ mode: 'show', step: 'zones', when: null }, 1], [{ mode: 'none', step: 1, when: null }, 1],
-    [{ mode: 'loud', step: null, when: null }, 1], [{ mode: 'show', step: 1 }, 1], [{ mode: 'none', step: null, when: null }, 0],
-    [{ mode: 'chain', step: null, when: null }, 1], [{ mode: 'decide', step: null, when: null }, 1],
+    [{ mode: 'show', step: 2 }, 1], [{ mode: 'show', step: 'zones' }, 1], [{ mode: 'none', step: 1 }, 1],
+    [{ mode: 'loud', step: null }, 1], [{ mode: 'none', step: null }, 0], [{ mode: 'chain', step: null }, 1],
+    // A decision is retired: its mode, its condition, and a plan without steps stay refused.
+    [{ mode: 'decide', step: null }, 1], [{ mode: 'decide', step: null, when: 'always' }, 0],
+    [{ mode: 'decide', step: null, when: 'changes' }, 3], [{ mode: 'show', step: 1, when: null }, 1],
     [{ mode: 'show', step: 1, when: 'always' }, 1],
   ]) {
     assert.equal(isDisposition(invalid, total), false, JSON.stringify(invalid));
   }
   const copy = routineMessages.pt;
-  assert.equal(dispositionWords({ mode: 'changes', step: 1, when: null }, copy.plan), 'Mostra o resultado da etapa 1 só quando ele muda');
+  assert.equal(dispositionWords({ mode: 'changes', step: 1 }, copy.plan), 'Mostra o resultado da etapa 1 só quando ele muda');
   // A list of field sets reads as one table, its columns in first-seen order and a missing cell empty.
   const zones = SHOWN_OUTPUT.value.fields[0][1];
   const table = outputTable(zones);
@@ -1742,37 +1756,28 @@ test('a shown result is admitted only in Team\'s closed form and reads as plain 
     for (const key of ['empty', 'yes', 'no', 'redacted', 'truncated']) {
       assert.equal(typeof catalog.notice.output[key], 'string', `${locale} ${key}`);
     }
-    for (const [mode, when] of [['show', null], ['changes', null], ['none', null], ['decide', 'always'], ['decide', 'changes']]) {
-      const words = dispositionWords({ mode, step: mode === 'show' || mode === 'changes' ? 1 : null, when }, catalog.plan);
+    for (const mode of ['show', 'changes', 'none']) {
+      const words = dispositionWords({ mode, step: mode === 'show' || mode === 'changes' ? 1 : null }, catalog.plan);
       assert.doesNotMatch(words, /\{|undefined/, `${locale} ${mode}`);
-    }
-    // A completed run's decision reads as Team escaped its message, or by its state or code.
-    for (const decision of [
-      { state: 'unchanged', code: null, message: null },
-      { state: 'ceiling', code: null, message: null },
-      { state: 'unavailable', code: 'routine-protection-lost', message: null },
-      { state: 'unavailable', code: 'routine-decision-other', message: null },
-    ]) {
-      assert.ok(decisionWords(decision, catalog).length > 0, `${locale} ${decision.state}`);
     }
     assert.doesNotMatch(omittedWords(catalog.notice.output, 3, locale), /\{/, locale);
   }
 });
 
-test("a completed run's decision and a decision call's attempt read in words", () => {
+test("a recorded attempt reads in words by its replay step", () => {
   const copy = routineMessages.en;
-  assert.equal(decisionWords(null, copy), '');
-  assert.equal(decisionWords({ state: 'decided', code: null, message: 'Deleted <b>12</b> records.' }, copy), 'Deleted <b>12</b> records.');
-  assert.equal(decisionWords({ state: 'decided', code: null, message: null }, copy), '');
-  assert.equal(decisionWords({ state: 'unavailable', code: 'routine-protection-lost', message: null }, copy),
-    copy.decision.codes['routine-protection-lost']);
-  assert.equal(decisionWords({ state: 'unavailable', code: 'routine-other', message: null }, copy), copy.decision.unavailable);
   const item = { assistant_id: 'shimpz-cloudflare', action: 'delete-dns-record', attempt: 2 };
-  const templates = { step: copy.details.attempt, call: copy.details.attemptCall };
   const names = { assistant: () => 'Cloudflare', action: humanizeId };
-  assert.match(attemptWords({ ...item, position: { phase: 'decision', call: 3 } }, templates, names), /^Decision call 3: Cloudflare · Delete DNS record/u);
   assert.notEqual(
-    attemptWords({ ...item, position: { phase: 'replay', step: 3 } }, templates, names),
-    attemptWords({ ...item, position: { phase: 'decision', call: 3 } }, templates, names),
+    attemptWords({ ...item, position: { phase: 'replay', step: 3 } }, copy.details.attempt, names),
+    attemptWords({ ...item, position: { phase: 'replay', step: 4 } }, copy.details.attempt, names),
   );
+  // No catalog keeps the retired decision copy.
+  for (const catalog of Object.values(routineMessages)) {
+    assert.equal(catalog.decision, undefined);
+    assert.equal(catalog.details.attemptCall, undefined);
+    assert.equal(catalog.card.stoppedAtCall, undefined);
+    assert.equal(catalog.run.frozenPermission, undefined);
+    assert.equal(catalog.notice.status.frozenPermission, undefined);
+  }
 });

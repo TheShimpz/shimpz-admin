@@ -124,38 +124,24 @@ function view(value, keys, valid) {
 
 // A Routine's state (ADR-0101): it runs, or a person paused it.
 export const ROUTINE_STATES = ['active', 'paused'];
-// The Actions a Routine may call at most in its lifetime, and the most its decision may call in one run.
-const MAX_PERMITTED = 288;
-const MAX_ALLOWANCE = 64;
-const MODEL_PROVIDERS = ['anthropic', 'openai'];
-const MODEL_EFFORTS = ['low', 'medium', 'high'];
-const MODEL_ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/;
-
-/** Whether a value is a decision's frozen model: its provider, catalog model, and effort. */
-export function isModel(value) {
-  return exact(value, ['provider', 'model', 'effort']) && MODEL_PROVIDERS.includes(value.provider) &&
-    typeof value.model === 'string' && MODEL_ID_RE.test(value.model) && MODEL_EFFORTS.includes(value.effort);
-}
+// The Actions a Routine may call at most in its lifetime: every replayed step's.
+const MAX_PERMITTED = 256;
 
 function isPermittedSummary(value) {
-  return exact(value, ['total', 'changes']) && whole(value.total, 0, MAX_PERMITTED) &&
+  return exact(value, ['total', 'changes']) && whole(value.total, 1, MAX_PERMITTED) &&
     whole(value.changes, 0, value.total);
 }
 
-// A Routine's standing scope: only a decision has a model and an allowance, which its steps leave room for.
-function isScope(item, steps) {
-  const decide = item.output.mode === 'decide';
-  return ROUTINE_STATES.includes(item.state) && isPermittedSummary(item.permitted) &&
-    (decide ? isModel(item.model) : item.model === null) &&
-    whole(item.allowance, decide ? 1 : 0, decide ? MAX_ALLOWANCE : 0) &&
-    steps + item.allowance <= MAX_ROUTINE_STEPS;
+// A Routine's standing scope: whether it runs, and its permitted Actions.
+function isScope(item) {
+  return ROUTINE_STATES.includes(item.state) && isPermittedSummary(item.permitted);
 }
 
 /** One confirmed Routine as a Supervisor sees it. */
 export function parseRoutineView(value) {
   const keys = [
     'routine_id', 'name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'assistant_ids', 'next_run_at',
-    'needs_reconfirm', 'deleting', 'state', 'permitted', 'permissions_revision', 'model', 'allowance',
+    'needs_reconfirm', 'deleting', 'state', 'permitted',
   ];
   return view(value, keys, (item) =>
     typeof item.routine_id === 'string' &&
@@ -169,8 +155,7 @@ export function parseRoutineView(value) {
     isInstant(item.next_run_at) &&
     typeof item.needs_reconfirm === 'boolean' &&
     typeof item.deleting === 'boolean' &&
-    whole(item.permissions_revision, 0, 2 ** 31 - 1) &&
-    isScope(item, item.plan.steps));
+    isScope(item));
 }
 
 // A Routine plan's safe projection, mirroring Team's `routine.canonical_step` (ADR-0092, ADR-0101): each step's Action,
@@ -277,7 +262,7 @@ export function isPlanStep(value, position) {
 /**
  * Whether a value is a revision's plan summary, mirroring Team's `routine.canonical_summary`: its revision and digest,
  * its step count, and its Actions as runs of consecutive equal `[assistant, action, count]` that cover the first steps
- * in order; `more` counts the steps after the sixteenth run. A decision's plan may have no steps at all.
+ * in order; `more` counts the steps after the sixteenth run. A plan always has at least one step.
  */
 export function isSummary(value) {
   if (!exact(value, ['revision', 'plan_digest', 'steps', 'actions', 'more'])) return false;
@@ -285,8 +270,8 @@ export function isSummary(value) {
   return (
     whole(value.revision, 1, 2 ** 31 - 1) &&
     typeof value.plan_digest === 'string' && PLAN_DIGEST_RE.test(value.plan_digest) &&
-    whole(total, 0, MAX_ROUTINE_STEPS) &&
-    Array.isArray(runs) && (total === 0 ? runs.length === 0 : runs.length > 0 && runs.length <= MAX_SUMMARY_RUNS) &&
+    whole(total, 1, MAX_ROUTINE_STEPS) &&
+    Array.isArray(runs) && runs.length > 0 && runs.length <= MAX_SUMMARY_RUNS &&
     runs.every((run) => Array.isArray(run) && run.length === 3 && isAssistantId(run[0]) && isActionId(run[1]) &&
       isPosition(run[2])) &&
     runs.every((run, index) => index === 0 || run[0] !== runs[index - 1][0] || run[1] !== runs[index - 1][1]) &&
@@ -295,13 +280,11 @@ export function isSummary(value) {
   );
 }
 
-// Whole consecutive items from `offset` of `total`, each admitted at its own position, and the next offset or null. A
-// total of zero has one page: offset zero, nothing in it, and no next one.
+// Whole consecutive items from `offset` of `total`, each admitted at its own position, and the next offset or null.
 function isPageOf(value, admit) {
   const { total, offset, steps, next } = value;
-  if (total === 0) return offset === 0 && Array.isArray(steps) && steps.length === 0 && next === null;
   return (
-    whole(total, 1, MAX_ROUTINE_STEPS + MAX_DECISION_CALLS) &&
+    whole(total, 1, MAX_ROUTINE_STEPS) &&
     Number.isInteger(offset) && offset >= 0 && offset < total &&
     Array.isArray(steps) && steps.length > 0 && steps.length <= Math.min(MAX_PAGE_STEPS, total - offset) &&
     steps.every((step, index) => admit(step, offset + index + 1)) &&
@@ -315,8 +298,8 @@ function revisionPath(value) {
   return String(value);
 }
 
-function offsetPath(value, bound = MAX_ROUTINE_STEPS) {
-  if (!whole(value, 0, bound - 1)) throw new RoutineError('routine-request-invalid');
+function offsetPath(value) {
+  if (!whole(value, 0, MAX_ROUTINE_STEPS - 1)) throw new RoutineError('routine-request-invalid');
   return String(value);
 }
 
@@ -338,15 +321,13 @@ export async function readPlanSteps(fetcher, teamId, routineId, plan, offset) {
     item.routine_id === routineId && ofPlan(item, plan) && item.offset === offset && isPageOf(item, isPlanStep));
 }
 
-// What one run did, call by call (ADR-0092 amendment, 2026-10-05, scale; ADR-0101), mirroring Team's
-// `routine.canonical_run_step`: a recorded replay step or decision call's status, Action, attempt, duration, instant,
+// What one run did, step by step (ADR-0092 amendment, 2026-10-05, scale; ADR-0101), mirroring Team's
+// `routine.canonical_run_step`: a recorded replay step's status, Action, attempt, duration, instant,
 // and its inputs as redacted previews, or a gap. `stopped`: Stop or the run's deadline cut the attempt, which says
 // nothing about whether the Action acted.
 const RUN_STEP_STATUSES = ['done', 'recovered', 'failed', 'stopped', 'waiting'];
 const RUN_STEP_GAPS = ['not_run', 'unavailable'];
-const RUN_INPUT_SOURCES = ['literal', 'run_clock', 'step_output', 'decision'];
-// The Actions one decision turn may call at most.
-export const MAX_DECISION_CALLS = 64;
+const RUN_INPUT_SOURCES = ['literal', 'run_clock', 'step_output'];
 const RUN_STEP_KEYS = ['position', 'status', 'assistant_id', 'action', 'attempt', 'duration_ms', 'recorded_at', 'inputs'];
 const SNAPSHOT_RE = /^[0-9a-f]{32}$/;
 
@@ -355,28 +336,19 @@ function isRunInput(value) {
     RUN_INPUT_SOURCES.includes(value.source) && (value.value === null || plain(value.value, MAX_PREVIEW_CHARS));
 }
 
-/**
- * Whether a value is a call's position: a replay step among `steps`, `{phase: "replay", step}`, or a decision call,
- * `{phase: "decision", call}`.
- */
+/** Whether a value is a call's position: a replay step among `steps`, `{phase: "replay", step}`. */
 export function isCallPosition(value, steps) {
   if (!whole(steps, 0, MAX_ROUTINE_STEPS)) return false;
-  if (exact(value, ['phase', 'step']) && value.phase === 'replay') return isPosition(value.step, steps);
-  return exact(value, ['phase', 'call']) && value.phase === 'decision' && isPosition(value.call, MAX_DECISION_CALLS);
+  return exact(value, ['phase', 'step']) && value.phase === 'replay' && isPosition(value.step, steps);
 }
 
-/** The position of a run page's `index`-th entry (1-based): its replay steps first, then its decision calls. */
-export function runPosition(index, steps) {
-  return index <= steps ? { phase: 'replay', step: index } : { phase: 'decision', call: index - steps };
+/** The position of a run page's `index`-th entry (1-based): its replay step. */
+export function runPosition(index) {
+  return { phase: 'replay', step: index };
 }
 
 function samePosition(left, right) {
-  return left.phase === right.phase && left.step === right.step && left.call === right.call;
-}
-
-// Which statuses each phase records: not run is a replay step's alone.
-function isStatusOf(status, phase) {
-  return phase === 'replay' || status !== 'not_run';
+  return left.phase === right.phase && left.step === right.step;
 }
 
 /** Whether a value is one run entry at exactly `position`: what its attempt did, or only that it never ran or is gone. */
@@ -384,7 +356,6 @@ export function isRunStep(value, position, steps) {
   if (!exact(value, RUN_STEP_KEYS) || !isCallPosition(value.position, steps) || !samePosition(value.position, position)) {
     return false;
   }
-  if (!isStatusOf(value.status, position.phase)) return false;
   if (RUN_STEP_GAPS.includes(value.status)) {
     return RUN_STEP_KEYS.slice(2).every((key) => value[key] === null);
   }
@@ -405,7 +376,7 @@ export function isRunStep(value, position, steps) {
 
 /**
  * The historical binding every page of one run's records must match: its Routine always, and its revision, plan
- * digest, and replay step count once known. A completed run's notice carries its plan summary, which binds them from
+ * digest, and step count once known. A completed run's notice carries its plan summary, which binds them from
  * the start; a failed, stopped, or held run's notice carries none, so its first page binds them for every later page.
  * A run's page never needs its revision's plan, so it reads the same after the Routine changed or went.
  */
@@ -414,23 +385,23 @@ export function runBinding(routineId, plan = null) {
     routine_id: routineId,
     revision: plan?.revision ?? null,
     plan_digest: plan?.plan_digest ?? null,
-    replay: plan?.steps ?? null,
+    total: plan?.steps ?? null,
   };
 }
 
-/** The binding a run page names: its Routine, revision, plan digest, and replay step count. */
+/** The binding a run page names: its Routine, revision, plan digest, and step count. */
 export function pageBinding(page) {
-  return { routine_id: page.routine_id, revision: page.revision, plan_digest: page.plan_digest, replay: page.replay };
+  return { routine_id: page.routine_id, revision: page.revision, plan_digest: page.plan_digest, total: page.total };
 }
 
-// A binding is its Routine with its revision, digest, and replay step count all known or all still unknown.
+// A binding is its Routine with its revision, digest, and step count all known or all still unknown.
 function isBinding(value) {
-  if (!exact(value, ['routine_id', 'revision', 'plan_digest', 'replay'])) return false;
-  const { routine_id: routineId, revision, plan_digest: digest, replay } = value;
+  if (!exact(value, ['routine_id', 'revision', 'plan_digest', 'total'])) return false;
+  const { routine_id: routineId, revision, plan_digest: digest, total } = value;
   const known = whole(revision, 1, 2 ** 31 - 1) && typeof digest === 'string' && PLAN_DIGEST_RE.test(digest) &&
-    whole(replay, 0, MAX_ROUTINE_STEPS);
+    whole(total, 1, MAX_ROUTINE_STEPS);
   return typeof routineId === 'string' && ID_RE.test(routineId) &&
-    (known || (revision === null && digest === null && replay === null));
+    (known || (revision === null && digest === null && total === null));
 }
 
 /**
@@ -442,70 +413,26 @@ export async function readRunSteps(fetcher, teamId, runId, binding, snapshot, of
   if (!isBinding(binding) || (snapshot !== 'latest' && (typeof snapshot !== 'string' || !SNAPSHOT_RE.test(snapshot)))) {
     throw new RoutineError('routine-request-invalid');
   }
-  const bound = MAX_ROUTINE_STEPS + MAX_DECISION_CALLS;
-  const path = `/runs/${opaque(runId)}/steps/${snapshot}/${offsetPath(offset, bound)}`;
+  const path = `/runs/${opaque(runId)}/steps/${snapshot}/${offsetPath(offset)}`;
   const body = await request(fetcher, teamPath(teamId, path));
   const keys = [
-    'team_id', 'run_id', 'routine_id', 'revision', 'plan_digest', 'replay', 'total', 'snapshot', 'ended', 'offset',
-    'steps', 'next', 'decision',
+    'team_id', 'run_id', 'routine_id', 'revision', 'plan_digest', 'total', 'snapshot', 'ended', 'offset', 'steps',
+    'next',
   ];
   return view(body, keys, (item) =>
     item.team_id === teamId &&
     item.run_id === runId &&
     whole(item.revision, 1, 2 ** 31 - 1) &&
     typeof item.plan_digest === 'string' && PLAN_DIGEST_RE.test(item.plan_digest) &&
-    whole(item.replay, 0, MAX_ROUTINE_STEPS) &&
-    whole(item.total, item.replay, item.replay + MAX_DECISION_CALLS) &&
     Object.entries(binding).every(([key, expected]) => expected === null || item[key] === expected) &&
     typeof item.snapshot === 'string' && SNAPSHOT_RE.test(item.snapshot) &&
     (snapshot === 'latest' || item.snapshot === snapshot) &&
     typeof item.ended === 'boolean' &&
     item.offset === offset &&
-    isPageOf(item, (step, index) => isRunStep(step, runPosition(index, item.replay), item.replay)) &&
-    (item.decision === null || isDecisionRecord(item.decision)));
+    isPageOf(item, (step, index) => isRunStep(step, runPosition(index), item.total)));
 }
 
-// How a decision turn ended (ADR-0101 section 6.8): it decided, found the results unchanged, could not decide, or hit
-// the Team's decision ceiling. A decided one names its model, quoted rules, rationale, whether it notified, and usage.
-const DECISION_STATES = ['decided', 'unchanged', 'unavailable', 'ceiling'];
-const MAX_DECISION_MESSAGE_CHARS = 4000;
-const MAX_DECISION_RULES = 8;
-const MAX_DECISION_RULE_CHARS = 200;
-const MAX_DECISION_RATIONALE_CHARS = 500;
 const ERROR_CODE_RE = /^[a-z][a-z0-9-]{0,63}$/;
-
-function decisionText(value, maximum) {
-  return typeof value === 'string' && codePointLength(value) <= maximum && !PLAN_UNSAFE_RE.test(value);
-}
-
-function isUsage(value) {
-  try {
-    parseRunUsage(value);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/** Whether a value is a run's one decision record, mirroring Team's `routine.canonical_decision_record`. */
-export function isDecisionRecord(value) {
-  const keys = ['state', 'code', 'model', 'rules', 'rationale', 'notify', 'usage'];
-  if (!exact(value, keys) || !DECISION_STATES.includes(value.state)) return false;
-  const quoted = Array.isArray(value.rules) && value.rules.length <= MAX_DECISION_RULES &&
-    value.rules.every((rule) => rule.length > 0 && decisionText(rule, MAX_DECISION_RULE_CHARS));
-  if (value.state === 'decided') {
-    return value.code === null && isModel(value.model) && quoted &&
-      (value.rationale === null || decisionText(value.rationale, MAX_DECISION_RATIONALE_CHARS)) &&
-      typeof value.notify === 'boolean' && isUsage(value.usage);
-  }
-  if (value.state === 'unavailable') {
-    return typeof value.code === 'string' && ERROR_CODE_RE.test(value.code) &&
-      (value.model === null || isModel(value.model)) && value.rules.length === 0 && value.rationale === null &&
-      value.notify === null && (value.usage === null || isUsage(value.usage));
-  }
-  return keys.filter((key) => !['state', 'rules'].includes(key)).every((key) => value[key] === null) &&
-    Array.isArray(value.rules) && value.rules.length === 0;
-}
 
 /**
  * Whether a page reader must read the next page before it can reveal `wanted` steps: fewer are loaded and Team named a
@@ -517,11 +444,9 @@ export function needsPage(loaded, wanted, next) {
 
 // What a completed run does with its result (ADR-0092 amendment, 2026-10-05, output; ADR-0101), mirroring Team's
 // `routine.canonical_disposition` and `routine.canonical_output`: show one step's result after every run, only when it
-// changed, show nothing, or hand every result to a decision turn, `always` or only when they changed; and a shown
-// result as Team's bounded, redacted, ordered projection.
-const OUTPUT_MODES = ['show', 'changes', 'none', 'decide'];
+// changed, or show nothing; and a shown result as Team's bounded, redacted, ordered projection.
+const OUTPUT_MODES = ['show', 'changes', 'none'];
 const SHOWN_MODES = ['show', 'changes'];
-const DECISION_WHEN = ['always', 'changes'];
 const OUTPUT_STATES = ['shown', 'unchanged', 'unavailable'];
 const MAX_OUTPUT_DEPTH = 4;
 const MAX_OUTPUT_ITEMS = 50;
@@ -551,15 +476,12 @@ const SCALAR_NODES = {
 };
 
 /**
- * Whether a plan's output disposition is closed: it names one of its `total` steps' positions when it shows one, and
- * only a decision has a condition or may have no steps.
+ * Whether a plan's output disposition is closed: it names one of its `total` steps' positions when it shows one.
  */
 export function isDisposition(value, total) {
-  if (!exact(value, ['mode', 'step', 'when']) || !OUTPUT_MODES.includes(value.mode)) return false;
-  const decide = value.mode === 'decide';
-  if (!whole(total, decide ? 0 : 1, MAX_ROUTINE_STEPS)) return false;
-  const shown = SHOWN_MODES.includes(value.mode) ? isPosition(value.step, total) : value.step === null;
-  return shown && (decide ? DECISION_WHEN.includes(value.when) : value.when === null);
+  if (!exact(value, ['mode', 'step']) || !OUTPUT_MODES.includes(value.mode)) return false;
+  if (!whole(total, 1, MAX_ROUTINE_STEPS)) return false;
+  return SHOWN_MODES.includes(value.mode) ? isPosition(value.step, total) : value.step === null;
 }
 
 function isOutputNode(node, depth) {
@@ -602,9 +524,8 @@ function isActions(value) {
   );
 }
 
-// What a frozen run waits for: a person's answer, an Integration, or a permission to call an Action outside the
-// Routine's permitted set (ADR-0101 section 6.7).
-export const REQUEST_KINDS = ['human', 'integrations', 'permission'];
+// What a frozen run waits for: a person's answer or an Integration.
+export const REQUEST_KINDS = ['human', 'integrations'];
 
 /** One live run: a frozen run names its request and its call's position; a leased or held one only that it is live. */
 export function parseRunView(value) {
@@ -1080,26 +1001,10 @@ function closedText(value, maximum) {
   return typeof value === 'string' && value.length > 0 && [...value].length <= maximum && value.trim() === value;
 }
 
-// A notice's decision: its state, its code when it could not decide, and its message when it decided; a decision that
-// only ends a run that already had a waiting notice has no message (ADR-0101 section 6.8).
-function isNoticeDecision(value) {
-  if (value === null) return true;
-  if (!exact(value, ['state', 'code', 'message']) || !DECISION_STATES.includes(value.state)) return false;
-  if (value.state === 'decided') {
-    return value.code === null &&
-      (value.message === null || (value.message.length > 0 && decisionText(value.message, MAX_DECISION_MESSAGE_CHARS)));
-  }
-  if (value.state === 'unavailable') {
-    return typeof value.code === 'string' && ERROR_CODE_RE.test(value.code) && value.message === null;
-  }
-  return value.code === null && value.message === null;
-}
-
-// The summary of the plan a completed run carried out, never an input, the result it shows, if any, and its decision.
+// The summary of the plan a completed run carried out, never an input, and the result it shows, if any.
 function isCompleted(detail) {
   return isSummary(detail.plan) &&
-    (detail.output === null || (isOutput(detail.output) && detail.output.step <= detail.plan.steps)) &&
-    isNoticeDecision(detail.decision);
+    (detail.output === null || (isOutput(detail.output) && detail.output.step <= detail.plan.steps));
 }
 
 // The call a failed run stopped at by position, or both null when it failed before any call.
@@ -1108,10 +1013,8 @@ function isFailedAt(detail) {
 }
 
 const STEP_KEYS = ['assistant_id', 'action', 'position', 'steps'];
-const COMPLETED_KEYS = ['plan', 'output', 'decision'];
-const DEFINED_KEYS = [
-  'name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'state', 'permitted', 'model', 'allowance',
-];
+const COMPLETED_KEYS = ['plan', 'output'];
+const DEFINED_KEYS = ['name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'state', 'permitted'];
 
 const NOTICE_DETAILS = {
   done: [COMPLETED_KEYS, isCompleted],
@@ -1151,7 +1054,7 @@ function isName(value) {
 function isDefinition(detail) {
   return isName(detail.name) && isSummary(detail.plan) && isDisposition(detail.output, detail.plan.steps) &&
     isSchedule(detail.schedule) && isZoned(detail.timezone, detail.timezone_source) &&
-    isScope(detail, detail.plan.steps);
+    isScope(detail);
 }
 
 function isAssistantList(value) {
@@ -1276,7 +1179,6 @@ export function routineNotice(entry, { copy, locale }) {
   const frozen = {
     human: notice.status.frozenHuman,
     integrations: notice.status.frozenIntegrations,
-    permission: notice.status.frozenPermission,
   };
   const status = {
     'user-skipped': notice.status.userSkipped,
@@ -1285,21 +1187,9 @@ export function routineNotice(entry, { copy, locale }) {
   return { tone: NOTICE_TONES[entry.outcome], status, time: clockTime(Date.parse(entry.createdAt), locale) };
 }
 
-/**
- * What a completed run's decision said, in words: a decided message as Team escaped it, an unavailable decision by
- * its code, or nothing when the run had no decision to show.
- */
-export function decisionWords(decision, copy) {
-  if (decision === null) return '';
-  if (decision.state === 'decided') return decision.message ?? '';
-  if (decision.state === 'unavailable') return copy.decision.codes[decision.code] ?? copy.decision.unavailable;
-  return copy.decision[decision.state];
-}
-
 /** What a Routine does with each run's result, in words: the shown step is named by its place in the plan. */
 export function dispositionWords(output, copy) {
-  const key = output.mode === 'decide' ? `decide-${output.when}` : output.mode;
-  return fill(copy.output[key], { n: output.step });
+  return fill(copy.output[output.mode], { n: output.step });
 }
 
 /**
@@ -1490,17 +1380,12 @@ function isDiagnostic(value) {
 }
 
 /**
- * A recorded attempt's heading: the position Team recorded (a replay step, or a decision call), its Assistant and
- * Action, and its attempt number, so attempts of one Action repeated at different positions never read alike.
- * `template` is the copy for a replay step, or `{ step, call }` for both positions; `names` words the Assistant and
- * Action.
+ * A recorded attempt's heading: the replay step Team recorded, its Assistant and Action, and its attempt number, so
+ * attempts of one Action repeated at different steps never read alike. `names` words the Assistant and Action.
  */
 export function attemptWords(item, template, { assistant = (id) => id, action = (id) => id } = {}) {
-  const decision = item.position.phase === 'decision';
-  const chosen = typeof template === 'string' ? template : decision ? template.call : template.step;
-  return fill(chosen, {
-    step: decision ? item.position.call : item.position.step,
-    call: item.position.call,
+  return fill(template, {
+    step: item.position.step,
     assistant: assistant(item.assistant_id),
     action: action(item.action),
     attempt: item.attempt,
@@ -1533,12 +1418,10 @@ export async function readRunDiagnostics(fetcher, teamId, runId) {
 
 // The confirmation card of a recorded Routine (ADR-0101 section 5.2), mirroring Team's `routine.canonical_proposal`:
 // every literal complete and escaped, every source and selector described completely, the schedule, the output, every
-// permitted Action, and for a decision its request, notes, model, and allowance. Nothing in it is paged or cut.
+// permitted Action. Nothing in it is paged or cut.
 const MAX_PROPOSAL_BYTES = 160 * 1024;
 const INPUT_ORIGINS = ['request', 'assistant', 'clock', 'step', 'selector'];
 const MAX_NEXT_RUNS = 3;
-const MAX_BASE_REQUEST_CHARS = 16_000;
-const MAX_NOTES_CHARS = 4000;
 const CARD_INPUT_KEYS = ['member', 'origin', 'value', 'step', 'pointer', 'where', 'item'];
 
 function isCardInput(value, position) {
@@ -1570,13 +1453,6 @@ function isCardPermitted(value) {
   return valid && identities.every((item, index) => index === 0 || identities[index - 1] < item);
 }
 
-function isCardDecision(value) {
-  if (value === null) return true;
-  return exact(value, ['request', 'notes', 'model', 'allowance']) &&
-    value.request.length > 0 && decisionText(value.request, MAX_BASE_REQUEST_CHARS) &&
-    decisionText(value.notes, MAX_NOTES_CHARS) && isModel(value.model) && whole(value.allowance, 1, MAX_ALLOWANCE);
-}
-
 /**
  * The Routine card a recording turn's reply carries, admitted exactly as Team's closed form, or a thrown
  * `routine-response-invalid`. It is the one thing the person confirms.
@@ -1584,11 +1460,11 @@ function isCardDecision(value) {
 export function parseRoutineProposal(value) {
   const keys = [
     'proposal_id', 'expires_at', 'replaces', 'name', 'schedule', 'timezone', 'timezone_source', 'next_runs',
-    'daily_cap', 'output', 'steps', 'permitted', 'decision',
+    'daily_cap', 'output', 'steps', 'permitted',
   ];
   return view(value, keys, (item) => {
     const { steps, output, next_runs: runs } = item;
-    if (!Array.isArray(steps) || steps.length > MAX_ROUTINE_STEPS || !exact(output, ['mode', 'when'])) return false;
+    if (!Array.isArray(steps) || steps.length > MAX_ROUTINE_STEPS || !exact(output, ['mode'])) return false;
     const shown = SHOWN_MODES.includes(output.mode) ? steps.length : null;
     return (
       typeof item.proposal_id === 'string' && ID_RE.test(item.proposal_id) &&
@@ -1603,9 +1479,6 @@ export function parseRoutineProposal(value) {
       isDisposition({ ...output, step: shown }, steps.length) &&
       steps.every((step, index) => isCardStep(step, index + 1)) &&
       isCardPermitted(item.permitted) &&
-      (item.decision !== null) === (output.mode === 'decide') &&
-      isCardDecision(item.decision) &&
-      steps.length + (item.decision === null ? 0 : item.decision.allowance) <= MAX_ROUTINE_STEPS &&
       encodedBytes(item) <= MAX_PROPOSAL_BYTES
     );
   });
@@ -1719,7 +1592,6 @@ const REFUSAL_KEYS = {
   'routine-recording-empty': 'empty',
   'routine-recording-invalid': 'invalid',
   'routine-secret-literal': 'secret',
-  'routine-decide-action-invalid': 'decideAction',
   'routine-step-budget': 'stepBudget',
   'routine-proposal-too-large': 'tooLarge',
   'routine-record-again': 'recordAgain',

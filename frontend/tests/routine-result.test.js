@@ -5,7 +5,6 @@ import { attemptWords, conditionWords, inputWords } from '../src/lib/routine.js'
 import { routineMessages } from '../src/lib/routineMessages.js';
 import {
   attemptsByStep,
-  positionKey,
   durationWords,
   isScalar,
   MAX_RESULT_COLUMNS,
@@ -155,15 +154,12 @@ test('a list or a single value at the top is one unlabeled block', () => {
   assert.equal(top.blocks[0].label, '');
 });
 
-test('a recorded attempt joins the entry whose position it names, and one beyond the run is kept apart', () => {
+test('a recorded attempt joins the step whose position it names, and one beyond the run is kept apart', () => {
   const replay = (step, number) => ({ action: 'list-zones', position: { phase: 'replay', step }, attempt: number });
-  const call = (number) => ({ action: 'delete-dns-record', position: { phase: 'decision', call: number }, attempt: 1 });
-  // Three replay steps and two decision calls: replay step 2 and decision call 2 never share attempts.
-  const { byStep, apart } = attemptsByStep([replay(2, 1), replay(1, 1), replay(4, 1), replay(2, 2), call(2), call(3)], 3, 5);
-  assert.deepEqual([...byStep].map(([key, items]) => [key, items.map((item) => item.attempt)]), [
-    ['replay:2', [1, 2]], ['replay:1', [1]], ['decision:2', [1]],
-  ]);
-  assert.deepEqual(apart.map((item) => positionKey(item.position)), ['replay:4', 'decision:3']);
+  // Three replay steps: step 4's attempt names no step of this run.
+  const { byStep, apart } = attemptsByStep([replay(2, 1), replay(1, 1), replay(4, 1), replay(2, 2)], 3);
+  assert.deepEqual([...byStep].map(([key, items]) => [key, items.map((item) => item.attempt)]), [[2, [1, 2]], [1, [1]]]);
+  assert.deepEqual(apart.map((item) => item.position.step), [4]);
 });
 
 test("a step's duration reads in the viewer's locale", () => {
@@ -204,13 +200,9 @@ test('plan inputs and attempt conditions read in words', () => {
 
 test("an attempt's heading names its recorded position, so one Action's attempts at two positions read apart", () => {
   const attempt = (step) => ({ assistant_id: 'shimpz-cloudflare', action: 'list-dns-records', position: { phase: 'replay', step }, attempt: 1 });
-  const call = { ...attempt(2), position: { phase: 'decision', call: 2 } };
   for (const [locale, catalog] of Object.entries(routineMessages)) {
-    const templates = { step: catalog.details.attempt, call: catalog.details.attemptCall };
-    const [second, fifth, called] = [attempt(2), attempt(5), call].map((item) => attemptWords(item, templates));
+    const [second, fifth] = [attempt(2), attempt(5)].map((item) => attemptWords(item, catalog.details.attempt));
     assert.notEqual(second, fifth, locale);
-    assert.notEqual(second, called, locale);
-    assert.doesNotMatch(called, /\{\w+\}/u, locale);
     assert.doesNotMatch(second, /\{\w+\}/u, locale);
     assert.match(fifth, /5/u, locale);
   }

@@ -20,7 +20,7 @@ const ROUTINE = {
     actions: [['shimpz-cloudflare', 'list-zones', 1]],
     more: 0,
   },
-  output: { mode: 'show', step: 1, when: null },
+  output: { mode: 'show', step: 1 },
   schedule: { kind: 'weekly', weekday: 0, time: '09:00' },
   timezone: 'America/Sao_Paulo',
   timezone_source: 'browser',
@@ -30,9 +30,6 @@ const ROUTINE = {
   deleting: false,
   state: 'active',
   permitted: { total: 1, changes: 0 },
-  permissions_revision: 0,
-  model: null,
-  allowance: 0,
 };
 const OTHER = { ...ROUTINE, routine_id: 'c'.repeat(32), name: 'Weekly certificates' };
 const RUN = {

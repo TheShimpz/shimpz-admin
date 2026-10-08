@@ -68,7 +68,7 @@
         {#each diagnostics as item (`${item.operation_id}:${item.attempt}`)}
           <li>
             <p class="heading">
-              {attemptWords(item, { step: copy.attempt, call: copy.attemptCall })}
+              {attemptWords(item, copy.attempt)}
             </p>
             <p class="muted">{fillRoutineCopy(copy.recorded, { at: instantWords(item.recorded_at, $locale) })}</p>
             {#if item.failure}

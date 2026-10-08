@@ -3,7 +3,7 @@
 
 import { routineDeletionMessages } from './routineDeletionMessages.js';
 import { routineDetailsMessages } from './routineDetailsMessages.js';
-import { routineDecisionMessages, routineProposalMessages } from './routineProposalMessages.js';
+import { routineProposalMessages } from './routineProposalMessages.js';
 import { routinePanelMessages } from './routinePanelMessages.js';
 import { routineResultMessages } from './routineResultMessages.js';
 
@@ -55,7 +55,6 @@ export const routineMessages = {
       stopped: "Stopped",
       frozenHuman: "Waiting for your approval of {action} from {assistant}.",
       frozenIntegrations: "Waiting for you to connect {assistant} for {action}.",
-      frozenPermission: "Waiting for your permission for {action} from {assistant}.",
       review: "Review",
       dismiss: "Not now",
       continued: "The run continued: {outcome}",
@@ -66,7 +65,7 @@ export const routineMessages = {
       failedOutcome: "failed",
     },
     notice: {
-      status: { created: "created", done: "done", recovered: "done after recovery", failed: "failed", held: "stopped with an error", denied: "denied", stopped: "stopped", paused: "paused", frozenHuman: "awaiting approval", frozenIntegrations: "awaiting connection", userSkipped: "set aside", frozenPermission: "awaiting permission" },
+      status: { created: "created", done: "done", recovered: "done after recovery", failed: "failed", held: "stopped with an error", denied: "denied", stopped: "stopped", paused: "paused", frozenHuman: "awaiting approval", frozenIntegrations: "awaiting connection", userSkipped: "set aside" },
       rest: { one: "{count} more step", other: "{count} more steps" },
       protectionLost: "Some results are hidden to protect secret values.",
       output: { empty: "Nothing", more: { one: "{count} more", other: "{count} more" }, yes: "yes", no: "no", redacted: "hidden", truncated: "Showing part of the result." },
@@ -77,7 +76,6 @@ export const routineMessages = {
     card: {
       heldLead: "This run stopped with an error.",
       stoppedAt: "Stopped at step {n} of {total} · {step}",
-      stoppedAtCall: "Stopped at decision call {n} · {step}",
       choose: "What do you want to do?",
       errorTitle: "See the technical error",
       causeTitles: {
@@ -112,7 +110,6 @@ export const routineMessages = {
     result: routineResultMessages.en,
     deletion: routineDeletionMessages.en,
     proposal: routineProposalMessages.en,
-    decision: routineDecisionMessages.en,
     errors: {
       proposalExpired: "This card is no longer valid. Ask again in the chat.",
       generic: 'The Routine request failed. Try again.',
@@ -179,7 +176,6 @@ export const routineMessages = {
       stopped: "Interrompida",
       frozenHuman: "Aguardando sua aprovação de {action} de {assistant}.",
       frozenIntegrations: "Aguardando você conectar {assistant} para {action}.",
-      frozenPermission: "Aguardando sua permissão para {action} de {assistant}.",
       review: "Revisar",
       dismiss: "Agora não",
       continued: "A execução continuou: {outcome}",
@@ -190,7 +186,7 @@ export const routineMessages = {
       failedOutcome: "falhou",
     },
     notice: {
-      status: { created: "criada", done: "concluída", recovered: "concluída após recuperação", failed: "falhou", held: "parou com erro", denied: "negada", stopped: "interrompida", paused: "pausada", frozenHuman: "aguardando aprovação", frozenIntegrations: "aguardando conexão", userSkipped: "deixada de lado", frozenPermission: "aguardando permissão" },
+      status: { created: "criada", done: "concluída", recovered: "concluída após recuperação", failed: "falhou", held: "parou com erro", denied: "negada", stopped: "interrompida", paused: "pausada", frozenHuman: "aguardando aprovação", frozenIntegrations: "aguardando conexão", userSkipped: "deixada de lado" },
       rest: { one: "mais {count} etapa", other: "mais {count} etapas" },
       protectionLost: "Alguns resultados estão ocultos para proteger valores secretos.",
       output: { empty: "Nada", more: { one: "mais {count}", other: "mais {count}" }, yes: "sim", no: "não", redacted: "oculto", truncated: "Mostrando parte do resultado." },
@@ -201,7 +197,6 @@ export const routineMessages = {
     card: {
       heldLead: "Esta execução parou com um erro.",
       stoppedAt: "Parou na etapa {n} de {total} · {step}",
-      stoppedAtCall: "Parou na chamada de decisão {n} · {step}",
       choose: "O que você quer fazer?",
       errorTitle: "Ver o erro técnico",
       causeTitles: {
@@ -236,7 +231,6 @@ export const routineMessages = {
     result: routineResultMessages.pt,
     deletion: routineDeletionMessages.pt,
     proposal: routineProposalMessages.pt,
-    decision: routineDecisionMessages.pt,
     errors: {
       proposalExpired: "Este cartão não vale mais. Peça de novo na conversa.",
       generic: 'O pedido da rotina falhou. Tente de novo.',
@@ -303,7 +297,6 @@ export const routineMessages = {
       stopped: "Detenida",
       frozenHuman: "Esperando tu aprobación de {action} de {assistant}.",
       frozenIntegrations: "Esperando a que conectes {assistant} para {action}.",
-      frozenPermission: "Esperando tu permiso para {action} de {assistant}.",
       review: "Revisar",
       dismiss: "Ahora no",
       continued: "La ejecución continuó: {outcome}",
@@ -314,7 +307,7 @@ export const routineMessages = {
       failedOutcome: "falló",
     },
     notice: {
-      status: { created: "creada", done: "completada", recovered: "completada tras recuperación", failed: "falló", held: "detenida por un error", denied: "denegada", stopped: "detenida", paused: "en pausa", frozenHuman: "esperando aprobación", frozenIntegrations: "esperando conexión", userSkipped: "dejada de lado", frozenPermission: "esperando permiso" },
+      status: { created: "creada", done: "completada", recovered: "completada tras recuperación", failed: "falló", held: "detenida por un error", denied: "denegada", stopped: "detenida", paused: "en pausa", frozenHuman: "esperando aprobación", frozenIntegrations: "esperando conexión", userSkipped: "dejada de lado" },
       rest: { one: "{count} paso más", other: "{count} pasos más" },
       protectionLost: "Algunos resultados están ocultos para proteger valores secretos.",
       output: { empty: "Nada", more: { one: "{count} más", other: "{count} más" }, yes: "sí", no: "no", redacted: "oculto", truncated: "Se muestra parte del resultado." },
@@ -325,7 +318,6 @@ export const routineMessages = {
     card: {
       heldLead: "Esta ejecución se detuvo con un error.",
       stoppedAt: "Se detuvo en el paso {n} de {total} · {step}",
-      stoppedAtCall: "Se detuvo en la llamada de decisión {n} · {step}",
       choose: "¿Qué quieres hacer?",
       errorTitle: "Ver el error técnico",
       causeTitles: {
@@ -360,7 +352,6 @@ export const routineMessages = {
     result: routineResultMessages.es,
     deletion: routineDeletionMessages.es,
     proposal: routineProposalMessages.es,
-    decision: routineDecisionMessages.es,
     errors: {
       proposalExpired: "Esta tarjeta ya no es válida. Pídela de nuevo en el chat.",
       generic: 'La solicitud de la rutina falló. Inténtalo de nuevo.',
@@ -427,7 +418,6 @@ export const routineMessages = {
       stopped: "已停止",
       frozenHuman: "等待你批准 {assistant} 的 {action}。",
       frozenIntegrations: "等待你为 {action} 连接 {assistant}。",
-      frozenPermission: "正在等待你允许 {assistant} 的 {action}。",
       review: "查看",
       dismiss: "暂不",
       continued: "运行已继续：{outcome}",
@@ -438,7 +428,7 @@ export const routineMessages = {
       failedOutcome: "失败",
     },
     notice: {
-      status: { created: "已创建", done: "已完成", recovered: "恢复后已完成", failed: "失败", held: "因错误停止", denied: "已拒绝", stopped: "已停止", paused: "已暂停", frozenHuman: "等待批准", frozenIntegrations: "等待连接", userSkipped: "已搁置", frozenPermission: "等待许可" },
+      status: { created: "已创建", done: "已完成", recovered: "恢复后已完成", failed: "失败", held: "因错误停止", denied: "已拒绝", stopped: "已停止", paused: "已暂停", frozenHuman: "等待批准", frozenIntegrations: "等待连接", userSkipped: "已搁置" },
       rest: { one: "还有 {count} 步", other: "还有 {count} 步" },
       protectionLost: "为保护机密值，部分结果已隐藏。",
       output: { empty: "无", more: { one: "还有 {count} 项", other: "还有 {count} 项" }, yes: "是", no: "否", redacted: "已隐藏", truncated: "仅显示部分结果。" },
@@ -449,7 +439,6 @@ export const routineMessages = {
     card: {
       heldLead: "本次运行因错误而停止。",
       stoppedAt: "停在第 {n} 步，共 {total} 步 · {step}",
-      stoppedAtCall: "停在决定调用 {n} · {step}",
       choose: "你想怎么做？",
       errorTitle: "查看技术错误",
       causeTitles: {
@@ -484,7 +473,6 @@ export const routineMessages = {
     result: routineResultMessages.zh,
     deletion: routineDeletionMessages.zh,
     proposal: routineProposalMessages.zh,
-    decision: routineDecisionMessages.zh,
     errors: {
       proposalExpired: "此卡片已失效。请在对话中重新提出。",
       generic: '例行任务请求失败。请重试。',
@@ -551,7 +539,6 @@ export const routineMessages = {
       stopped: "Arrêtée",
       frozenHuman: "En attente de votre approbation de {action} de {assistant}.",
       frozenIntegrations: "En attente que vous connectiez {assistant} pour {action}.",
-      frozenPermission: "En attente de votre autorisation pour {action} de {assistant}.",
       review: "Examiner",
       dismiss: "Pas maintenant",
       continued: "L’exécution a continué : {outcome}",
@@ -562,7 +549,7 @@ export const routineMessages = {
       failedOutcome: "échec",
     },
     notice: {
-      status: { created: "créée", done: "terminée", recovered: "terminée après reprise", failed: "échec", held: "arrêtée sur une erreur", denied: "refusée", stopped: "arrêtée", paused: "en pause", frozenHuman: "en attente d’approbation", frozenIntegrations: "en attente de connexion", userSkipped: "mise de côté", frozenPermission: "en attente d’autorisation" },
+      status: { created: "créée", done: "terminée", recovered: "terminée après reprise", failed: "échec", held: "arrêtée sur une erreur", denied: "refusée", stopped: "arrêtée", paused: "en pause", frozenHuman: "en attente d’approbation", frozenIntegrations: "en attente de connexion", userSkipped: "mise de côté" },
       rest: { one: "{count} étape de plus", other: "{count} étapes de plus" },
       protectionLost: "Certains résultats sont masqués pour protéger des valeurs secrètes.",
       output: { empty: "Rien", more: { one: "{count} de plus", other: "{count} de plus" }, yes: "oui", no: "non", redacted: "masqué", truncated: "Affichage d’une partie du résultat." },
@@ -573,7 +560,6 @@ export const routineMessages = {
     card: {
       heldLead: "Cette exécution s’est arrêtée sur une erreur.",
       stoppedAt: "Arrêtée à l’étape {n} sur {total} · {step}",
-      stoppedAtCall: "Arrêtée à l’appel de décision {n} · {step}",
       choose: "Que voulez-vous faire ?",
       errorTitle: "Voir l’erreur technique",
       causeTitles: {
@@ -608,7 +594,6 @@ export const routineMessages = {
     result: routineResultMessages.fr,
     deletion: routineDeletionMessages.fr,
     proposal: routineProposalMessages.fr,
-    decision: routineDecisionMessages.fr,
     errors: {
       proposalExpired: "Cette carte n’est plus valable. Redemandez dans la conversation.",
       generic: 'La demande de routine a échoué. Réessayez.',
@@ -675,7 +660,6 @@ export const routineMessages = {
       stopped: "Gestoppt",
       frozenHuman: "Wartet auf Ihre Freigabe von {action} aus {assistant}.",
       frozenIntegrations: "Wartet darauf, dass Sie {assistant} für {action} verbinden.",
-      frozenPermission: "Wartet auf deine Erlaubnis für {action} von {assistant}.",
       review: "Prüfen",
       dismiss: "Nicht jetzt",
       continued: "Die Ausführung wurde fortgesetzt: {outcome}",
@@ -686,7 +670,7 @@ export const routineMessages = {
       failedOutcome: "fehlgeschlagen",
     },
     notice: {
-      status: { created: "erstellt", done: "fertig", recovered: "fertig nach Wiederherstellung", failed: "fehlgeschlagen", held: "durch Fehler angehalten", denied: "abgelehnt", stopped: "gestoppt", paused: "pausiert", frozenHuman: "wartet auf Freigabe", frozenIntegrations: "wartet auf Verbindung", userSkipped: "beiseitegelegt", frozenPermission: "wartet auf Erlaubnis" },
+      status: { created: "erstellt", done: "fertig", recovered: "fertig nach Wiederherstellung", failed: "fehlgeschlagen", held: "durch Fehler angehalten", denied: "abgelehnt", stopped: "gestoppt", paused: "pausiert", frozenHuman: "wartet auf Freigabe", frozenIntegrations: "wartet auf Verbindung", userSkipped: "beiseitegelegt" },
       rest: { one: "{count} weiterer Schritt", other: "{count} weitere Schritte" },
       protectionLost: "Einige Ergebnisse sind verborgen, um geheime Werte zu schützen.",
       output: { empty: "Nichts", more: { one: "{count} weiteres", other: "{count} weitere" }, yes: "ja", no: "nein", redacted: "verborgen", truncated: "Ein Teil des Ergebnisses wird angezeigt." },
@@ -697,7 +681,6 @@ export const routineMessages = {
     card: {
       heldLead: "Diese Ausführung wurde durch einen Fehler angehalten.",
       stoppedAt: "Angehalten bei Schritt {n} von {total} · {step}",
-      stoppedAtCall: "Angehalten bei Entscheidungsaufruf {n} · {step}",
       choose: "Was möchtest du tun?",
       errorTitle: "Technischen Fehler ansehen",
       causeTitles: {
@@ -732,7 +715,6 @@ export const routineMessages = {
     result: routineResultMessages.de,
     deletion: routineDeletionMessages.de,
     proposal: routineProposalMessages.de,
-    decision: routineDecisionMessages.de,
     errors: {
       proposalExpired: "Diese Karte gilt nicht mehr. Frag im Chat erneut.",
       generic: 'Die Routine-Anfrage ist fehlgeschlagen. Versuchen Sie es erneut.',
@@ -799,7 +781,6 @@ export const routineMessages = {
       stopped: "停止しました",
       frozenHuman: "{assistant} の {action} の承認を待っています。",
       frozenIntegrations: "{action} のために {assistant} の接続を待っています。",
-      frozenPermission: "{assistant} の {action} の許可を待っています。",
       review: "確認",
       dismiss: "今はしない",
       continued: "実行を続けました：{outcome}",
@@ -810,7 +791,7 @@ export const routineMessages = {
       failedOutcome: "失敗",
     },
     notice: {
-      status: { created: "作成済み", done: "完了", recovered: "復旧後に完了", failed: "失敗", held: "エラーで停止", denied: "拒否", stopped: "停止", paused: "一時停止中", frozenHuman: "承認待ち", frozenIntegrations: "接続待ち", userSkipped: "保留", frozenPermission: "許可待ち" },
+      status: { created: "作成済み", done: "完了", recovered: "復旧後に完了", failed: "失敗", held: "エラーで停止", denied: "拒否", stopped: "停止", paused: "一時停止中", frozenHuman: "承認待ち", frozenIntegrations: "接続待ち", userSkipped: "保留" },
       rest: { one: "ほか {count} ステップ", other: "ほか {count} ステップ" },
       protectionLost: "秘密の値を保護するため、一部の結果は非表示です。",
       output: { empty: "なし", more: { one: "ほか {count} 件", other: "ほか {count} 件" }, yes: "はい", no: "いいえ", redacted: "非表示", truncated: "結果の一部を表示しています。" },
@@ -821,7 +802,6 @@ export const routineMessages = {
     card: {
       heldLead: "この実行はエラーで停止しました。",
       stoppedAt: "ステップ {n}/{total} で停止 · {step}",
-      stoppedAtCall: "決定呼び出し {n} · {step} で停止",
       choose: "どうしますか？",
       errorTitle: "技術的なエラーを見る",
       causeTitles: {
@@ -856,7 +836,6 @@ export const routineMessages = {
     result: routineResultMessages.ja,
     deletion: routineDeletionMessages.ja,
     proposal: routineProposalMessages.ja,
-    decision: routineDecisionMessages.ja,
     errors: {
       proposalExpired: "このカードはもう有効ではありません。チャットでもう一度依頼してください。",
       generic: 'ルーティンのリクエストに失敗しました。もう一度お試しください。',
@@ -923,7 +902,6 @@ export const routineMessages = {
       stopped: "متوقف",
       frozenHuman: "بانتظار موافقتك على {action} من {assistant}.",
       frozenIntegrations: "بانتظار أن توصل {assistant} من أجل {action}.",
-      frozenPermission: "بانتظار إذنك لـ {action} من {assistant}.",
       review: "مراجعة",
       dismiss: "ليس الآن",
       continued: "استمر التشغيل: {outcome}",
@@ -934,7 +912,7 @@ export const routineMessages = {
       failedOutcome: "فشل",
     },
     notice: {
-      status: { created: "أُنشئ", done: "اكتمل", recovered: "اكتمل بعد الاسترداد", failed: "فشل", held: "توقّف بسبب خطأ", denied: "رُفض", stopped: "توقّف", paused: "متوقف مؤقتًا", frozenHuman: "بانتظار الموافقة", frozenIntegrations: "بانتظار الربط", userSkipped: "وُضع جانبًا", frozenPermission: "بانتظار الإذن" },
+      status: { created: "أُنشئ", done: "اكتمل", recovered: "اكتمل بعد الاسترداد", failed: "فشل", held: "توقّف بسبب خطأ", denied: "رُفض", stopped: "توقّف", paused: "متوقف مؤقتًا", frozenHuman: "بانتظار الموافقة", frozenIntegrations: "بانتظار الربط", userSkipped: "وُضع جانبًا" },
       rest: { one: "{count} خطوة أخرى", other: "{count} خطوات أخرى" },
       protectionLost: "بعض النتائج مخفية لحماية قيم سرية.",
       output: { empty: "لا شيء", more: { one: "{count} أخرى", other: "{count} أخرى" }, yes: "نعم", no: "لا", redacted: "مخفي", truncated: "يُعرض جزء من النتيجة." },
@@ -945,7 +923,6 @@ export const routineMessages = {
     card: {
       heldLead: "توقّف هذا التشغيل بسبب خطأ.",
       stoppedAt: "توقّف عند الخطوة {n} من {total} · {step}",
-      stoppedAtCall: "توقّف عند استدعاء القرار {n} · {step}",
       choose: "ماذا تريد أن تفعل؟",
       errorTitle: "عرض الخطأ التقني",
       causeTitles: {
@@ -980,7 +957,6 @@ export const routineMessages = {
     result: routineResultMessages.ar,
     deletion: routineDeletionMessages.ar,
     proposal: routineProposalMessages.ar,
-    decision: routineDecisionMessages.ar,
     errors: {
       proposalExpired: "لم تعد هذه البطاقة صالحة. اطلبها مجددًا في المحادثة.",
       generic: 'فشل طلب الروتين. حاول مرة أخرى.',

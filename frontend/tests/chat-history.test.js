@@ -317,7 +317,6 @@ function runRow(noticeId, routineId) {
     detail: {
       plan: { revision: 1, plan_digest: `sha256:${'d'.repeat(64)}`, steps: 1, actions: [['shimpz-cloudflare', 'list-zones', 1]], more: 0 },
       output: null,
-      decision: null,
     },
     version: 1,
     usage: { duration_ms: 812, models: [] },

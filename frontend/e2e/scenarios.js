@@ -49,7 +49,7 @@ export const ROUTINE_PLAN = [
 export const ROUTINE_VIEW = routineView({
   routine_id: 'a'.repeat(32),
   name: 'Daily DNS zones',
-  output: { mode: 'show', step: 1, when: null },
+  output: { mode: 'show', step: 1 },
   schedule: { kind: 'daily', time: '09:00' },
   next_run_at: '2026-10-01T12:00:00Z',
 }, ROUTINE_PLAN);

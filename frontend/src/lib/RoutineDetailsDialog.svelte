@@ -14,7 +14,6 @@
   import {
     ATTENTION_STATUSES,
     clockWords,
-    decisionWords,
     displayZone,
     fillParts,
     fillRoutineCopy,
@@ -45,7 +44,7 @@
   // nothing else: a held run's recovery choices or a frozen run's approval, with what it needs to decide. Once it is
   // answered the panel returns to its usual pages and actions. Otherwise it shows three pages
   // behind a tab menu: its summary (what was asked, when it runs, and why it stopped), its steps, and its history: each
-  // run, healthy rollup, and missed run with its outcome, usage, decision, and time. A run's outcome opens the run in
+  // run, healthy rollup, and missed run with its outcome, usage, and time. A run's outcome opens the run in
   // full (the result it shows and its step records), and its icon its execution details. The menu's far end keeps one icon
   // per action on every page: Pause or Resume, and Delete, which turns the whole panel into its confirmation: the
   // Supervisor's password and a second factor, and nothing else until it is deleted or canceled.
@@ -410,7 +409,6 @@
           {:else}
             {#each recent as entry (entry.id)}
               {@const usage = entry.usage ? taskUsageSummary(entry.usage) : null}
-              {@const decision = entry.detail.decision ? decisionWords(entry.detail.decision, copy) : ''}
               <li class="run">
                 <div class="run-line">
                   <RoutineIcon name={RUN_ICONS[entry.outcome]} />
@@ -431,7 +429,6 @@
                       onclick={() => (detailsRun = entry)}><RoutineIcon name="terminal" /></Button>
                   {/if}
                 </div>
-                {#if decision}<p class="run-note">{decision}</p>{/if}
                 {#if entry.protectionLost}<p class="run-note run-note--lost">{copy.notice.protectionLost}</p>{/if}
               </li>
             {/each}
@@ -523,7 +520,7 @@
   .sub { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.78rem; }
   .runs { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
   .runs li { display: flex; align-items: center; gap: 0.6rem; min-height: 2.25rem; padding-block: 0.25rem; font: 400 0.8rem/1.4 var(--shimpz-font-mono); }
-  /* A run's line wraps on a narrow screen rather than hiding its time; its decision and notes read below it. */
+  /* A run's line wraps on a narrow screen rather than hiding its time; its notes read below it. */
   .runs li.run { display: grid; gap: 0.15rem; }
   .run-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.6rem; min-width: 0; }
   .runs li :global(.routine-icon) { color: var(--shimpz-color-text-dim); width: 0.9rem; height: 0.9rem; }

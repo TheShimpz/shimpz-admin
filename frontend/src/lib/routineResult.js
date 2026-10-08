@@ -151,23 +151,17 @@ export function resultView(node) {
   return { summary, blocks, omitted: node.omitted };
 }
 
-/** The key of a recorded position: a replay step's or a decision call's, which never read alike. */
-export function positionKey(position) {
-  return position.phase === 'replay' ? `replay:${position.step}` : `decision:${position.call}`;
-}
-
 /**
- * A run's recorded failed attempts beside the entries they belong to: each attempt names its position, a replay step
- * or a decision call, and one that names a position beyond the run's `replay` steps or its `total` entries is kept
- * apart, never guessed.
+ * A run's recorded failed attempts beside the steps they belong to, keyed by step: each attempt names its replay step,
+ * and one that names a step beyond the run's `steps` is kept apart, never guessed.
  */
-export function attemptsByStep(diagnostics, replay, total) {
+export function attemptsByStep(diagnostics, steps) {
   const byStep = new Map();
   const apart = [];
   for (const item of diagnostics) {
-    const { phase, step, call } = item.position;
-    if (phase === 'replay' ? step > replay : replay + call > total) apart.push(item);
-    else byStep.set(positionKey(item.position), [...(byStep.get(positionKey(item.position)) ?? []), item]);
+    const { step } = item.position;
+    if (step > steps) apart.push(item);
+    else byStep.set(step, [...(byStep.get(step) ?? []), item]);
   }
   return { byStep, apart };
 }
