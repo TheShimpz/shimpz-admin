@@ -1746,6 +1746,7 @@ test('recalls sent prompts from an empty Chat composer with ArrowUp and ArrowDow
   await send.click();
   await expect.poll(() => chat.chatFrames().length).toBe(1);
   await expect(composer).toHaveValue('');
+  await expect(composer).toBeEnabled();
 
   await composer.press('ArrowUp');
   await expect(composer).toHaveValue('First prompt');
