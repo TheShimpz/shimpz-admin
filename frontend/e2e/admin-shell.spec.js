@@ -37,7 +37,7 @@ async function pressCardAction(card, action, testInfo) {
   await action.click();
 }
 
-test('completes mandatory authenticator enrollment before opening Admin', { tag: '@mobile' }, async ({ page }) => {
+test('completes mandatory authenticator enrollment before opening Admin', async ({ page }) => {
   let authenticationState = 'uninitialized';
   await page.route('**/api/**', (route) => route.fulfill({
     status: 503,
@@ -275,7 +275,7 @@ test('renders the terminal recovery action for an unsupported password record', 
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
 });
 
-test('shows the installed Admin version with the read-only Local release status', { tag: '@mobile' }, async ({ page }) => {
+test('shows the installed Admin version with the read-only Local release status', async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -543,7 +543,8 @@ test('never renders a matching publication while Local snapshots are settling', 
   await expect(catalog.locator('.assistant-catalog-loading')).toHaveCount(0);
 });
 
-test('renders Assistant identities immediately during in-app icon hydration', { tag: '@mobile' }, async ({ page }) => {
+test('renders Assistant identities immediately during in-app icon hydration', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
   const imageId = `sha256:${'b'.repeat(64)}`;
   const localIcon = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlN7eIAAAAASUVORK5CYII=',
@@ -991,7 +992,8 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await expect(page.getByText(/docker image rm/)).toHaveCount(0);
 });
 
-test('lets an explicit Local install replace the matching publication', { tag: '@mobile' }, async ({ page }, testInfo) => {
+test('lets an explicit Local install replace the matching publication', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
   const imageId = `sha256:${'b'.repeat(64)}`;
   const localIcon = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlN7eIAAAAASUVORK5CYII=',

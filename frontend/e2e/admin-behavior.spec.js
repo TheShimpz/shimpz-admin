@@ -931,7 +931,7 @@ test('the setup screen passes its accessibility scan and requires a 15-character
   await expect(page.locator('input[type="password"]').first()).toHaveAttribute('minlength', '15');
 });
 
-test('language menu implements keyboard navigation and RTL direction', { tag: '@mobile' }, async ({ page }) => {
+test('language menu implements keyboard navigation and RTL direction', async ({ page }) => {
   await routeSetup(page);
   await page.goto('/');
 
@@ -1060,7 +1060,7 @@ async function openFastRouting(page) {
   return { trigger, fast: page.getByRole('dialog', { name: 'Fast routing (Jev)' }) };
 }
 
-test('the Supervisor adds and removes the Jev key', { tag: '@mobile' }, async ({ page }) => {
+test('the Supervisor adds and removes the Jev key', async ({ page }) => {
   const chat = await routeReadyChat(page);
   await page.goto('/chat/');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
@@ -3846,7 +3846,8 @@ test('deletes a Team with its exact confirmation and reports the deletion', { ta
   await expect(toast).toContainText('Support and all of its data were securely deleted.');
 });
 
-test('a Team name of 80 emoji can be typed to rename and to confirm its deletion', { tag: '@mobile' }, async ({ page }) => {
+test('a Team name of 80 emoji can be typed to rename and to confirm its deletion', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
   // Team bounds names by Unicode code points; each emoji is two UTF-16 units, so 80 of them fill 160 units.
   const longest = '😀'.repeat(80);
   await routeReadyChat(page);
@@ -3900,7 +3901,8 @@ test('a Team name of 80 emoji can be typed to rename and to confirm its deletion
   expect(deletionBody).toEqual({ team_name: longest, password: 'private-password' });
 });
 
-test('reports an already-absent Store uninstall and keeps Chat usable', { tag: '@mobile' }, async ({ page }) => {
+test('reports an already-absent Store uninstall and keeps Chat usable', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
   await routeReadyChat(page);
   await routeAssistantStoreUninstall(page);
   await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare', (route) => route.fulfill({
@@ -4597,7 +4599,8 @@ test.describe('Team order', () => {
     await expect.poll(() => orders).toHaveLength(2);
   });
 
-  test('a refused save restores only the order and keeps the selected Team', { tag: '@mobile' }, async ({ page }) => {
+  test('a refused save restores only the order and keeps the selected Team', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     const { navigation, orders } = await openOrder(page, 'reorder-unavailable', 'neo');
     await expect(navigation.getByRole('link', { name: 'Neo', exact: true })).toHaveAttribute('aria-current', 'page');
     await navigation.getByRole('button', { name: 'Actions for Smith' }).click();
@@ -4615,7 +4618,8 @@ test.describe('Team order', () => {
     await expect.poll(() => teamNames(navigation)).toEqual(['Marketing', 'Trinity', 'Cypher', 'Morpheus', 'Smith', 'Neo']);
   });
 
-  test('a save refused because the Teams changed reloads the list', { tag: '@mobile' }, async ({ page }) => {
+  test('a save refused because the Teams changed reloads the list', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     const { navigation, orders } = await openOrder(page, 'reorder-conflict');
     await mouseDrag(page, navigation, 'Smith', 'Trinity');
     await expect(page.getByText('The Teams changed while you were reordering. The list was reloaded; try again.')).toBeVisible();
@@ -4654,7 +4658,8 @@ test.describe('Team order', () => {
     expect(orders).toEqual([]);
   });
 
-  test('Hosted offers no reordering', { tag: '@mobile' }, async ({ page }) => {
+  test('Hosted offers no reordering', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await routeReadyChat(page, { hostedSession: true });
     await page.route('**/api/teams', (route) => route.fulfill({
       json: { teams: [TEAMS[0], TEAMS[1]] },
@@ -4875,7 +4880,8 @@ test.describe('Team Routines', () => {
     await expect(item).toBeFocused();
   });
 
-  test('a Team whose Routines are all running needs no attention, and a Team without Routines has no Routines button', { tag: '@mobile' }, async ({ page }) => {
+  test('a Team whose Routines are all running needs no attention, and a Team without Routines has no Routines button', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await routeReadyChat(page);
     await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
       json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
@@ -4887,7 +4893,8 @@ test.describe('Team Routines', () => {
     await expect(navigation.getByRole('button', { name: /^Routines for (?!Marketing)/ })).toHaveCount(0);
   });
 
-  test("a Team whose Routines could not be loaded keeps its Routines button, whose list says so and reads them again", { tag: '@mobile' }, async ({ page }) => {
+  test("a Team whose Routines could not be loaded keeps its Routines button, whose list says so and reads them again", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await routeReadyChat(page);
     let available = false;
     await page.route('**/api/teams/marketing/routines', (route) => route.fulfill(available
@@ -5047,7 +5054,8 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('menuitem', { name: 'Routines' })).toHaveCount(0);
   });
 
-  test('a Routine whose run is still ending stays listed as being deleted', { tag: '@mobile' }, async ({ page }) => {
+  test('a Routine whose run is still ending stays listed as being deleted', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await routeReadyChat(page);
     const calls = await routeRoutines(page, { runEnding: true, held: false });
     await page.goto('/chat/?team=marketing');
@@ -5067,7 +5075,8 @@ test.describe('Team Routines', () => {
     await expect.poll(() => calls.deletes).toEqual([{ code: '123456' }]);
   });
 
-  test('a Routine deletion shows the shared sign-in lockout and deletes nothing', { tag: '@mobile' }, async ({ page }) => {
+  test('a Routine deletion shows the shared sign-in lockout and deletes nothing', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await routeReadyChat(page);
     const calls = await routeRoutines(page, { held: false, lockAfter: 2 });
     await page.goto('/chat/?team=marketing');
@@ -5146,7 +5155,8 @@ test.describe('Team Routines', () => {
     return { calls, panel: page.getByRole('dialog', { name: ROUTINE_VIEW.name }) };
   }
 
-  test('a Routine waiting for a recovery decision shows the step\'s error and returns to its pages once run', { tag: '@mobile' }, async ({ page }) => {
+  test('a Routine waiting for a recovery decision shows the step\'s error and returns to its pages once run', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const { calls, panel } = await openHeldPanel(page);
     // The whole panel is the decision: where the run stopped, the error the step returned and its likely cause, and
     // exactly the card's two choices, each saying what it does before it is chosen.
@@ -5170,7 +5180,8 @@ test.describe('Team Routines', () => {
     await expect.poll(() => calls.answers).toEqual([{ nonce: 'f'.repeat(32), choice: 'run' }]);
   });
 
-  test('Delete in a decision opens the deletion confirmation, Cancel returns to the decision, and confirming deletes', { tag: '@mobile' }, async ({ page }) => {
+  test('Delete in a decision opens the deletion confirmation, Cancel returns to the decision, and confirming deletes', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const { calls, panel } = await openHeldPanel(page);
     // Until it is answered, nothing else is offered: no pages and no Routine actions besides Back, Close, and the
     // card's own.
@@ -5198,7 +5209,8 @@ test.describe('Team Routines', () => {
     expect(calls.answers).toEqual([]);
   });
 
-  test('a Routine waiting for an approval is that decision in its panel, and a run held after approval asks again', { tag: '@mobile' }, async ({ page }) => {
+  test('a Routine waiting for an approval is that decision in its panel, and a run held after approval asks again', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await routeReadyChat(page);
     const run = 'd'.repeat(32);
     let runs = [{
@@ -5266,7 +5278,8 @@ test.describe('Team Routines', () => {
       .toEqual(['Run', 'Delete']);
   });
 
-  test('a held run listed before its incident keeps Retry in its panel until the card opens', { tag: '@mobile' }, async ({ page }) => {
+  test('a held run listed before its incident keeps Retry in its panel until the card opens', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await routeReadyChat(page);
     const run = 'd'.repeat(32);
     const runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', scheduled_at: '2026-10-01T12:00:00Z', request_kind: null, assistant_id: null, action: null, position: null, steps: null }];
@@ -5297,7 +5310,8 @@ test.describe('Team Routines', () => {
     expect(openings).toHaveLength(2);
   });
 
-  test('an answer that arrives after its Routine moved on never dismisses the newer decision', { tag: '@mobile' }, async ({ page }) => {
+  test('an answer that arrives after its Routine moved on never dismisses the newer decision', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
     await routeReadyChat(page);
     const run = 'd'.repeat(32);
@@ -5396,7 +5410,8 @@ test.describe('Team Routines', () => {
     expect(await accessibilityViolations(page)).toEqual([]);
   });
 
-  test("a Routine's runs never reach the chat, which shows its creation, and are listed in the Routine's history", { tag: '@mobile' }, async ({ page }) => {
+  test("a Routine's runs never reach the chat, which shows its creation, and are listed in the Routine's history", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const entry = (id, outcome, detail, runId = id, createdAt = '2026-10-01T12:01:07Z') => ({
       id: `${id}:routine`,
       kind: 'routine-run',
@@ -5640,7 +5655,8 @@ test.describe('Team Routines', () => {
     expect(dialogs).toEqual([]);
   });
 
-  test("a Routine plan whose step read failed resumes when the Routine list is read again", { tag: '@mobile' }, async ({ page }) => {
+  test("a Routine plan whose step read failed resumes when the Routine list is read again", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     const scenario = await routeScenario(page, 'routine-lifecycle');
     const [watch] = scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json.routines;
     let refusals = 1;
@@ -5666,7 +5682,8 @@ test.describe('Team Routines', () => {
     await expect(panel.getByText(messages.en.routine.plan.unavailable)).toHaveCount(0);
   });
 
-  test("a 120-step Routine's plan shows its summary at once and reads its steps page by page as they are revealed", { tag: ['@slow', '@mobile'] }, async ({ page }) => {
+  test("a 120-step Routine's plan shows its summary at once and reads its steps page by page as they are revealed", { tag: '@slow' }, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     // ADR-0092 amendment, 2026-10-05 (scale): the continuous watch repeats one Action for each of its zones.
     const scenario = await routeScenario(page, 'routine-lifecycle');
     const [watch] = scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json.routines;
@@ -5715,7 +5732,8 @@ test.describe('Team Routines', () => {
     await expect.poll(() => read).toEqual(['1/0', '1/64']);
   });
 
-  test('a Routine whose revision changed while its steps were read shows only the new revision', { tag: '@mobile' }, async ({ page }) => {
+  test('a Routine whose revision changed while its steps were read shows only the new revision', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     const scenario = await routeScenario(page, 'routine-lifecycle');
     const listed = scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json;
     const [watch] = listed.routines;
@@ -5761,7 +5779,8 @@ test.describe('Team Routines', () => {
     await expect(panel.getByRole('button', { name: /^Show \d+ more steps?$/u })).toHaveCount(0);
   });
 
-  test('a run view pages its own step records: a failed step, steps that never ran, and records read again once they changed', { tag: '@mobile' }, async ({ page }) => {
+  test('a run view pages its own step records: a failed step, steps that never ran, and records read again once they changed', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const run = 'b'.repeat(32);
     const total = 70;
     const plan = planSummary(Array.from({ length: total }, () => ({ assistant: 'shimpz-cloudflare', action: 'list-dns-records' })));
@@ -5858,7 +5877,8 @@ test.describe('Team Routines', () => {
     }
   });
 
-  test('every run opens its own step records: a failed run whose notice names no plan, and a completed run that shows no result', { tag: '@mobile' }, async ({ page }) => {
+  test('every run opens its own step records: a failed run whose notice names no plan, and a completed run that shows no result', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const scenario = await routeScenario(page, 'routine-lifecycle');
     const { routines } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json;
     const [watch, , daily] = routines;
@@ -5910,7 +5930,8 @@ test.describe('Team Routines', () => {
     await expect(records.nth(69)).toContainText(status.done);
   });
 
-  test('a Routine notice shows the name Team froze into it as literal text, never as a link, image, or element', { tag: '@mobile' }, async ({ page }) => {
+  test('a Routine notice shows the name Team froze into it as literal text, never as a link, image, or element', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     // A name's 80 characters still fit every kind of markup it could imitate.
     const name = '[x](https://e.test) ![i](https://e.test/a.png) <img src=x onerror=alert(1)>**b**';
     // Team lists the Routine under a newer name now; each notice keeps the name it was written with.
@@ -6032,7 +6053,8 @@ test.describe('Team Routines', () => {
       .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
   }
 
-  test('a held run is settled in its Routine\'s panel, through the card Team opened, with exact fresh nonces', { tag: ['@slow', '@mobile'] }, async ({ page }) => {
+  test('a held run is settled in its Routine\'s panel, through the card Team opened, with exact fresh nonces', { tag: '@slow' }, async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const held = 'b'.repeat(32);
     const paused = 'c'.repeat(32);
     const audit = { ...ROUTINE_VIEW, routine_id: 'e'.repeat(32), name: 'Weekly DNS audit' };
@@ -6115,7 +6137,8 @@ test.describe('Team Routines', () => {
     expect(answers.slice(1).map((answer) => answer.nonce)).toEqual(pausedNonces.slice(0, 2));
   });
 
-  test("a card's error is literal text, and a shortened one says it was shortened", { tag: '@mobile' }, async ({ page }) => {
+  test("a card's error is literal text, and a shortened one says it was shortened", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const held = 'b'.repeat(32);
     const message = '<img src=x onerror=alert(1)> Insufficient account credits';
     await routeReadyChat(page, {
@@ -6138,7 +6161,8 @@ test.describe('Team Routines', () => {
     await expect(panel).toContainText('shortened');
   });
 
-  test("a run's execution details are read for that run in its Routine's panel and shown only as text", { tag: '@mobile' }, async ({ page }) => {
+  test("a run's execution details are read for that run in its Routine's panel and shown only as text", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     const failed = 'c'.repeat(32);
     await routeReadyChat(page, {
       history: { entries: [routineRow(failed, 'failed', { code: 'assistant-rpc-failed', actions: [], position: null, steps: null })], before: null },
@@ -6204,7 +6228,8 @@ test.describe('Team Routines', () => {
     await expect(dialog).not.toContainText('httpx.HTTPStatusError');
   });
 
-  test("a repeated Action's failed attempts at three positions read apart in the panel's execution details", { tag: '@mobile' }, async ({ page }) => {
+  test("a repeated Action's failed attempts at three positions read apart in the panel's execution details", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     const failed = 'c'.repeat(32);
     await routeReadyChat(page, {
       history: { entries: [routineRow(failed, 'failed', { code: 'assistant-rpc-failed', actions: [], position: { phase: 'replay', step: 5 }, steps: 6 })], before: null },
@@ -6249,7 +6274,8 @@ test.describe('Team Routines', () => {
     expect(headings[2]).toContain('7');
   });
 
-  test("a Routine's panel reads its own history, never the chat's, however much the chat holds", { tag: '@mobile' }, async ({ page }) => {
+  test("a Routine's panel reads its own history, never the chat's, however much the chat holds", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const done = { plan: ROUTINE_VIEW.plan, output: null };
     const chat = Array.from({ length: 64 }, (_, index) => ({
       id: `${index.toString(16).padStart(32, '0')}:user`,
@@ -6290,7 +6316,8 @@ test.describe('Team Routines', () => {
     expect(chatHistory.historyRequests().every((before) => before === null)).toBe(true);
   });
 
-  test("a Routine's older runs are reached by continuing its history, and a run that ends joins them", { tag: '@mobile' }, async ({ page }) => {
+  test("a Routine's older runs are reached by continuing its history, and a run that ends joins them", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const done = { plan: ROUTINE_VIEW.plan, output: null };
     const run = (index) => routineRow((index + 1).toString(16).padStart(32, '0'), 'done', done);
     const searched = [];
@@ -6363,7 +6390,8 @@ test.describe('Team Routines', () => {
     expect(searched.slice(searches).filter((cursor) => cursor !== null)).toEqual([]);
   });
 
-  test("a Routine's panel that stays open lists every run that ends, and every older run stays reachable", { tag: '@mobile' }, async ({ page }) => {
+  test("a Routine's panel that stays open lists every run that ends, and every older run stays reachable", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const done = { plan: ROUTINE_VIEW.plan, output: null };
     const failed = { code: 'assistant-rpc-failed', actions: [], position: null, steps: null };
     // The Routine's stored history, oldest first; a row's position is its place in it, as Admin's cursor names it.
@@ -6437,7 +6465,8 @@ test.describe('Team Routines', () => {
     }
   });
 
-  test("an older search that a newer reading of the panel's history overtook never hides that reading", { tag: '@mobile' }, async ({ page }) => {
+  test("an older search that a newer reading of the panel's history overtook never hides that reading", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const done = { plan: ROUTINE_VIEW.plan, output: null };
     const stored = [];
     const write = (count) => {
@@ -6534,7 +6563,8 @@ test.describe('Team Routines', () => {
     await expect.poll(listed).toEqual(everyRun());
   });
 
-  test("a continuous Routine's healthy minutes are its runs, each with its count and no execution details", { tag: '@mobile' }, async ({ page }) => {
+  test("a continuous Routine's healthy minutes are its runs, each with its count and no execution details", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     const continuous = { ...ROUTINE_VIEW, schedule: { kind: 'continuous', gap: 5, cap: 17280 } };
     const rollup = (id, runs) => ({ ...routineRow(id, 'healthy', { runs }, { routine: continuous }), run_id: null });
     await routeReadyChat(page, { history: { entries: [rollup('c'.repeat(32), 12), rollup('d'.repeat(32), 1)], before: null } });
@@ -6605,7 +6635,8 @@ test.describe('Team Routines', () => {
     await expect(outcome).toBeFocused();
   });
 
-  test('a Routine paused after its failures resumes from its panel, never past a held run its own panel decides', { tag: '@mobile' }, async ({ page }) => {
+  test('a Routine paused after its failures resumes from its panel, never past a held run its own panel decides', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const failed = 'c'.repeat(32);
     const held = 'f'.repeat(32);
     const heldRoutine = { ...ROUTINE_VIEW, routine_id: 'e'.repeat(32), name: 'Weekly DNS audit', state: 'paused' };
@@ -6681,7 +6712,8 @@ test.describe('Team Routines', () => {
     }
   });
 
-  test('an expired recovery card is withdrawn and only a person opens a fresh one', { tag: '@mobile' }, async ({ page }) => {
+  test('an expired recovery card is withdrawn and only a person opens a fresh one', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const held = 'b'.repeat(32);
     await page.clock.install({ time: new Date('2026-10-01T12:05:00Z') });
     await routeReadyChat(page, {
@@ -6814,7 +6846,8 @@ test.describe('Team Routines', () => {
     expect(openings).toEqual(Array(5).fill({ locale: 'en' }));
   });
 
-  test("a run frozen at a Supervisor password is found from the Routines button and authorized in its panel", { tag: '@mobile' }, async ({ page }) => {
+  test("a run frozen at a Supervisor password is found from the Routines button and authorized in its panel", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const run = 'd'.repeat(32);
     await routeReadyChat(page, {
       history: {
