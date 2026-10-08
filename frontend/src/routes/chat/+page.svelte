@@ -22,6 +22,7 @@
   import FastRoutingMenu from '$lib/FastRoutingMenu.svelte';
   import ClarificationCard from '$lib/ClarificationCard.svelte';
   import { clarifiedRequest, matchClarificationAnswers } from '$lib/clarification.js';
+  import { promptHistoryStep } from '$lib/promptHistory.js';
   import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '$lib/taskUsage.js';
   import RoutineProposal from '$lib/RoutineProposal.svelte';
   import RoutineQuestion from '$lib/RoutineQuestion.svelte';
@@ -1977,37 +1978,10 @@
   }
 
   function navigatePromptHistory(event) {
-    if (
-      !['ArrowUp', 'ArrowDown'].includes(event.key) ||
-      event.ctrlKey ||
-      event.metaKey ||
-      event.shiftKey ||
-      event.altKey ||
-      event.isComposing
-    ) return false;
-    const prompts = sentPrompts();
-    if (prompts.length === 0) return false;
-    if (promptHistoryIndex < 0) {
-      if (event.key !== 'ArrowUp' || draft !== '') return false;
-      promptHistoryIndex = 0;
-    } else {
-      const current = prompts[prompts.length - 1 - promptHistoryIndex];
-      if (draft !== current) {
-        promptHistoryIndex = -1;
-        return false;
-      }
-      if (event.key === 'ArrowUp') {
-        promptHistoryIndex = Math.min(promptHistoryIndex + 1, prompts.length - 1);
-      } else if (promptHistoryIndex === 0) {
-        promptHistoryIndex = -1;
-        draft = '';
-        event.preventDefault();
-        return true;
-      } else {
-        promptHistoryIndex -= 1;
-      }
-    }
-    draft = prompts[prompts.length - 1 - promptHistoryIndex];
+    const step = promptHistoryStep(event, { prompts: sentPrompts(), index: promptHistoryIndex, draft });
+    promptHistoryIndex = step.index;
+    if (!step.handled) return false;
+    draft = step.draft;
     event.preventDefault();
     return true;
   }

@@ -1732,6 +1732,8 @@ test('rejects an out-of-order first chat progress frame', async ({ page }) => {
   await expect.poll(() => chat.chatFrames()).toHaveLength(1);
 });
 
+// Every transition of the recall is proved in tests/prompt-history.test.js; each engine proves the composer applies a
+// recall in place of the arrow key's own caret move and leaves a draft of the person's own alone.
 test('recalls sent prompts from an empty Chat composer with ArrowUp and ArrowDown @browser-sensitive', async ({ page }) => {
   const chat = await routeReadyChat(page);
   await page.goto('/chat/');
@@ -1743,31 +1745,16 @@ test('recalls sent prompts from an empty Chat composer with ArrowUp and ArrowDow
   await composer.fill('First prompt');
   await send.click();
   await expect.poll(() => chat.chatFrames().length).toBe(1);
-  await expect(composer).toBeEnabled();
-  await composer.fill('Second prompt');
-  await send.click();
-  await expect.poll(() => chat.chatFrames().length).toBe(2);
   await expect(composer).toHaveValue('');
 
   await composer.press('ArrowUp');
-  await expect(composer).toHaveValue('Second prompt');
-  await composer.press('ArrowUp');
   await expect(composer).toHaveValue('First prompt');
-  await composer.press('ArrowUp');
-  await expect(composer).toHaveValue('First prompt');
-  await composer.press('ArrowDown');
-  await expect(composer).toHaveValue('Second prompt');
-  await composer.press('ArrowDown');
-  await expect(composer).toHaveValue('');
   await composer.press('ArrowDown');
   await expect(composer).toHaveValue('');
 
   await composer.fill('Manual draft');
   await composer.press('ArrowUp');
   await expect(composer).toHaveValue('Manual draft');
-  await composer.fill('');
-  await composer.press('ArrowUp');
-  await expect(composer).toHaveValue('Second prompt');
 });
 
 test('restores durable Team history, terminal Assistant cards and older prompts after reload', async ({ page }) => {
