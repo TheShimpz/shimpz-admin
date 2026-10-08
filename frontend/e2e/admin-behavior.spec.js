@@ -5989,15 +5989,18 @@ test.describe('Team Routines', () => {
     await expect(panel.getByRole('tablist')).toHaveCount(0);
     await expect(panel).toContainText('step 2 of 3');
     expect(await accessibilityViolations(page)).toEqual([]);
-    // The step shown is the card's, with the error it returned as plain text.
+    // The step shown is the card's, with its likely cause, the error it returned as plain text, and what running it
+    // again may repeat, before the person chooses.
     await expect(panel).toContainText('Create DNS record');
+    await expect(panel).toContainText(messages.en.routine.card.causeTitles.credits);
+    await expect(panel).toContainText(messages.en.routine.card.runHint);
     await panel.getByText('See the technical error').click();
     await expect(panel.locator('.error-text')).toHaveText(CREDITS_MESSAGE);
     await panel.getByRole('button', { name: 'Run' }).click();
     await expect(panel.getByRole('status')).toContainText('Set aside. The Routine runs again now.');
     await expect(panel.getByRole('group', { name: 'Recovery choices' })).toHaveCount(0);
-    // Once settled, the panel returns to its pages.
-    await expect(panel.getByRole('tab', { name: 'Summary' })).toBeVisible();
+    // Once settled, the panel returns to its pages, on its Summary.
+    await expect(panel.getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true');
     await panel.getByRole('button', { name: 'Close' }).click();
     await expect(panel).toHaveCount(0);
 
