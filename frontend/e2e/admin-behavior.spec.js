@@ -3332,26 +3332,21 @@ test('cancels code-mode OAuth when the browser blocks its separate tab', async (
 
 // The exact value each kind submits; a passkey answers with its ceremony, not a typed value.
 const humanValues = {
-  approval: true,
-  'input:text': 'Reviewed value',
   'input:textarea': 'Reviewed value',
   'input:password': 'third-party-secret',
   'input:phone': '+1 415 555 0123',
   'input:select': 'safe',
-  'input:choice': 'safe',
   'input:choices': ['safe'],
   'auth:password': 'supervisor-password',
   'auth:totp': '123456',
 };
 
+// Approval and input:choice are completed in localized-requests.spec.js, input:text by the code-point bound test below.
 const humanPresentations = [
-  ['approval', 'Publish reviewed DNS changes?'],
-  ['input:text', 'Provide the missing Action context'],
   ['input:textarea', 'Provide the missing Action context'],
   ['input:password', 'Provide the missing Action context'],
   ['input:phone', 'Provide the missing Action context'],
   ['input:select', 'Provide the missing Action context'],
-  ['input:choice', 'Provide the missing Action context'],
   ['input:choices', 'Provide the missing Action context'],
   ['auth:password', 'Confirm with your Supervisor password'],
   ['auth:totp', 'Confirm with your TOTP code'],
@@ -3377,7 +3372,7 @@ for (const [kind, title] of humanPresentations) {
       await expect(dialog.getByLabel('Supervisor password')).toHaveAttribute('type', 'password');
     }
 
-    if (kind === 'input:text' || kind === 'input:textarea') {
+    if (kind === 'input:textarea') {
       await dialog.getByLabel(/Response/).fill('Reviewed value');
     } else if (kind === 'input:password') {
       await dialog.getByLabel(/Cloudflare API secret/).fill('third-party-secret');
@@ -3385,8 +3380,6 @@ for (const [kind, title] of humanPresentations) {
       await dialog.getByLabel(/Contact phone/).fill('+1 415 555 0123');
     } else if (kind === 'input:select') {
       await dialog.getByRole('combobox').selectOption('safe');
-    } else if (kind === 'input:choice') {
-      await dialog.getByRole('radio', { name: /Safe mode/ }).check();
     } else if (kind === 'input:choices') {
       await dialog.getByRole('checkbox', { name: /Safe mode/ }).check();
     } else if (kind === 'auth:password') {
@@ -3395,9 +3388,7 @@ for (const [kind, title] of humanPresentations) {
       await dialog.getByLabel('Verification code').fill('123456');
     }
     await dialog.getByRole('button', {
-      name: kind === 'approval'
-        ? 'Approve action'
-        : kind === 'auth:passkey'
+      name: kind === 'auth:passkey'
           ? 'Use passkey'
           : kind.startsWith('auth:') ? 'Confirm authorization' : 'Send',
     }).click();
@@ -3418,6 +3409,7 @@ test('bounds a human text response in Unicode code points like the Admin backend
   await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Continue with the reviewed Action');
   await page.getByRole('button', { name: 'Send' }).click();
   const dialog = page.getByRole('dialog', { name: 'Provide the missing Action context' });
+  await expect(dialog).toContainText('Shimpz Cloudflare · v0.4.1');
   const field = dialog.getByLabel(/Response/);
   const send = dialog.getByRole('button', { name: 'Send' });
   // The fixture bounds input:text to 64 code points; each emoji is two UTF-16 code units.
@@ -7208,19 +7200,6 @@ test('a Stored Input request without a key page or purpose names its Assistant a
   expect(contract.humanResponses()[0]).not.toHaveProperty('value');
 });
 
-test('any other request shows the Brain purpose beside its authorized scope and Assistant, never a key link', async ({ page }) => {
-  await routeReadyChat(page, { humanKind: 'approval', humanPurpose: TASK_PURPOSE });
-  await page.goto('/chat/');
-  await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Publish the reviewed DNS changes');
-  await page.getByRole('button', { name: 'Send' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
-  await expect(dialog).toContainText(TASK_PURPOSE);
-  // The purpose explains why; the Assistant's own description of what is authorized stays visible beside it.
-  await expect(dialog).toContainText('Shimpz Cloudflare paused before continuing this exact Action.');
-  await expect(dialog).toContainText('Shimpz Cloudflare · v0.4.1');
-  await expect(dialog.getByRole('link')).toHaveCount(0);
-});
-
 test('every chat frame carries the interface language selected when it is sent', async ({ page }) => {
   const chat = await routeReadyChat(page);
   await page.goto('/chat/');
@@ -7238,58 +7217,6 @@ test('every chat frame carries the interface language selected when it is sent',
   await expect.poll(() => chat.chatFrames().length).toBe(2);
   expect(chat.chatFrames().map((frame) => [frame.type, frame.locale])).toEqual([['chat', 'en'], ['chat', 'pt']]);
 });
-
-// ADR-0091: Team renders the Assistant's English catalog copy in the turn's interface language. The dialog shows only
-// that rendered copy, while the answer is always the canonical option value Team fingerprinted.
-for (const [language, shown] of [
-  ['en', {
-    send: 'Send', title: 'DNS changes to publish: 3. Zone: example.com.', submit: 'Send',
-    scope: 'Choose how Shimpz Cloudflare publishes the reviewed records for example.com.',
-    options: ['Proxied', 'DNS only'], hint: 'Route traffic through Cloudflare.',
-  }],
-  ['pt', {
-    send: 'Enviar', title: 'Alterações de DNS a publicar: 3. Zona: example.com.', submit: 'Enviar',
-    scope: 'Escolha como o Shimpz Cloudflare publica os registros revisados de example.com.',
-    options: ['Com proxy', 'Somente DNS'], hint: 'Encaminhar o tráfego pela Cloudflare.',
-  }],
-]) {
-  test(`an Action approval in ${language} shows its rendered copy and submits the canonical option value`, async ({ page }) => {
-    await page.addInitScript((lang) => localStorage.setItem('shimpz_lang', lang), language);
-    const scenario = await routeScenario(page, 'human-approval');
-    await page.goto('/chat/?team=marketing');
-    const composer = page.getByRole('textbox', { name: shown.send, exact: true });
-    const send = page.getByRole('button', { name: shown.send, exact: true });
-    await expect(async () => {
-      await composer.fill('Publish my DNS changes');
-      await expect(send).toBeEnabled({ timeout: 1_000 });
-    }).toPass({ timeout: 20_000 });
-    await send.click();
-
-    const dialog = page.getByRole('dialog', { name: shown.title });
-    await expect(dialog).toContainText(shown.scope);
-    await expect(dialog).toContainText('Shimpz Cloudflare · v0.4.1');
-    await expect(dialog.getByRole('radio', { name: shown.options[0] })).toBeVisible();
-    await expect(dialog).toContainText(shown.hint);
-    if (language !== 'en') {
-      // No Assistant-authored English reaches a localized dialog.
-      for (const english of ['DNS changes to publish', 'Proxied', 'DNS only', 'Route traffic through Cloudflare.']) {
-        await expect(dialog).not.toContainText(english);
-      }
-    }
-    await dialog.getByRole('radio', { name: shown.options[1] }).check();
-    await dialog.getByRole('button', { name: shown.submit, exact: true }).click();
-
-    await expect(page.getByText('Done — published with dns-only.')).toBeVisible();
-    const frames = scenario.chatFrames();
-    expect(frames.filter((frame) => frame.type === 'chat').map((frame) => frame.locale)).toEqual([language]);
-    expect(frames.filter((frame) => frame.type === 'human-response')).toEqual([{
-      type: 'human-response',
-      challenge_id: 'b'.repeat(32),
-      decision: 'submit',
-      value: 'dns-only',
-    }]);
-  });
-}
 
 test('a frozen Routine run opens in the interface language and answers with the canonical response', async ({ page }, testInfo) => {
   test.skip(testInfo.project.use.hasTouch, 'the phone opens the Team list from a drawer whose labels this test does not localize');

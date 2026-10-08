@@ -183,7 +183,10 @@ async function answer(dialog, kind, locale) {
   return OPTION_VALUES[1];
 }
 
-for (const { code } of LOCALES) {
+// English, one other left-to-right language, and Arabic, right to left, prove the browser journey: every language's
+// rendered copy, canonical values, and answer labels are proved without a browser (tests/human-presentation.test.js,
+// tests/i18n.test.js), and the later journeys here cover the other languages' reissue and restore paths.
+for (const code of ['en', 'pt', 'ar']) {
   test(`approval, authentication, and input requests in ${code} show their rendered copy and answer canonically`, async ({ page }) => {
     await page.addInitScript((lang) => localStorage.setItem('shimpz_lang', lang), code);
     const chat = await routeLocalizedTeam(page, { purpose: true });
@@ -194,9 +197,12 @@ for (const { code } of LOCALES) {
       await sendMessage(page, code, `Publish my DNS changes ${index + 1}`);
       const shown = renderedCopy(kind, code);
       const dialog = page.getByRole('dialog', { name: shown.title });
-      // The localized scope stays visible beside the purpose written in the same language.
+      // The localized scope stays visible beside the purpose written in the same language, with the reviewed
+      // Assistant and the exact version the request authorizes, and no key page link outside a Stored Input request.
       await expect(dialog).toContainText(shown.description);
       await expect(dialog).toContainText(`${LOCALES.find((entry) => entry.code === code).name} 0`);
+      await expect(dialog).toContainText('Shimpz Cloudflare · v0.4.1');
+      await expect(dialog.getByRole('link')).toHaveCount(0);
       if (kind === 'input:choice') {
         await expect(dialog).toContainText(shown.label);
         await expect(dialog.getByRole('radio', { name: shown.options[0].label })).toBeVisible();

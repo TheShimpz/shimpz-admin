@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { localizedChallenge, messageReference } from '../e2e/localizedRequest.js';
+import { humanRequestMessages } from '../src/lib/humanRequestMessages.js';
+import { LOCALES } from '../src/lib/locales.js';
 import {
   canonicalHelpUrl,
   canonicalPurpose,
@@ -179,6 +181,56 @@ test('a person reads only the rendered copy while the request keeps its canonica
   assert.equal(field.placeholder, null);
   assert.equal(field.stored_input, 'exa-api-key');
   assert.equal(Object.hasOwn(field, 'options'), false);
+});
+
+// The browser proves English, Portuguese, and Arabic requests end to end (e2e/localized-requests.spec.js); every
+// interface language reads only its own rendered copy, keeps the canonical request, and has the labels to answer it.
+test('every interface language shows only its rendered copy for every request kind and keeps the canonical request', () => {
+  const plain = {
+    approval: { kind: 'approval', title: 'Publish the reviewed DNS changes?' },
+    'auth:password': { kind: 'auth:password', title: 'Confirm the DNS publication' },
+    'input:choice': {
+      kind: 'input:choice',
+      title: 'Publishing mode for example.com',
+      label: 'Publishing mode',
+      required: true,
+      options: [
+        { value: 'proxied', label: 'Proxied', description: 'Route traffic through Cloudflare.' },
+        { value: 'dns-only', label: 'DNS only', description: null },
+      ],
+    },
+  };
+  for (const { code } of LOCALES) {
+    for (const request of Object.values(plain)) {
+      const mark = `${code} ${request.kind}`;
+      const shown = { title: `${mark} · 1`, description: `${mark} · 2` };
+      if (request.options) {
+        shown.label = `${mark} · 3`;
+        shown.options = [{ label: `${mark} · 4`, description: `${mark} · 5` }, { label: `${mark} · 6`, description: null }];
+      }
+      const challenge = portugueseChoice(localizedChallenge({
+        ordinal: 0,
+        description: 'Shimpz Cloudflare publishes 3 reviewed records to example.com.',
+        fingerprint: 'c'.repeat(64),
+        ...request,
+      }, { locale: code, shown }));
+      const parsed = parseChatEvent(challenge, 'team_1', 'Marketing');
+      assert.equal(parsed.locale, code);
+      assert.deepEqual(parsed.request.title, messageReference(request.title));
+      const view = displayedHumanRequest(parsed);
+      assert.equal(view.kind, request.kind);
+      assert.equal(view.title, shown.title);
+      assert.equal(view.description, shown.description);
+      if (request.options) {
+        assert.equal(view.label, shown.label);
+        assert.deepEqual(view.options, request.options.map((option, index) => ({ value: option.value, ...shown.options[index] })));
+      }
+    }
+    for (const label of ['approve', 'authorize', 'submit', 'passwordLabel']) {
+      assert.equal(typeof humanRequestMessages[code][label], 'string');
+      assert.notEqual(humanRequestMessages[code][label].trim(), '');
+    }
+  }
 });
 
 test('a parameterized reference admits only its closed shape and bounded parameter grammar', () => {
