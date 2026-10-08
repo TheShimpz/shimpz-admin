@@ -71,8 +71,13 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
             self.assertIn(mount, dependencies)
         self.assertIn("uv sync --frozen --no-install-project --no-dev --python 3.14", dependencies)
         self.assertTrue(dependencies.rstrip().endswith("find /opt -depth -exec touch -h -d @0 {} +"))
-        # The UI build keeps the commit-bound epoch that names its SvelteKit version.
+        # The UI build keeps the commit-bound epoch that names its SvelteKit version, declared only after the package
+        # install, so an unchanged lock reuses the installed packages at every commit.
         self.assertRegex(stages["ui"], r"(?m)^ARG SOURCE_DATE_EPOCH=0$")
+        # BuildKit stamps a WORKDIR with the epoch, so neither precedes the install.
+        install = stages["ui"].index("RUN cd /w && npm ci ")
+        self.assertNotRegex(stages["ui"][:install], r"(?m)^(ARG SOURCE_DATE_EPOCH|WORKDIR)\b")
+        self.assertLess(stages["ui"].index("ARG SOURCE_DATE_EPOCH=0"), stages["ui"].index("RUN npm run build"))
 
     def test_runtime_keeps_one_process_for_memory_bound_mfa_ceremonies(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")

@@ -9,16 +9,18 @@ FROM ghcr.io/astral-sh/uv:0.12.1@sha256:cf4eedcaa81655197f625739489effcbe71b61ce
 
 # ── stage 2: build the SvelteKit static UI ────────────────────────────────────────────────────
 FROM --platform=$BUILDPLATFORM node:24-bookworm@sha256:19cd848a0e073d34bd8cd5545a1b6b4d28489b3e3b607366621ced442bd5f6b4 AS ui
-ARG SOURCE_DATE_EPOCH=0
 # IPv6 egress is broken on the build host (see main Dockerfile) → prefer IPv4 so npm doesn't hang.
 RUN echo 'precedence ::ffff:0:0/96 100' >> /etc/gai.conf
+# The package install precedes every commit-bound input, so an unchanged lock reuses it at every commit: BuildKit
+# gives a WORKDIR the release epoch as its creation time, and every RUN after an ARG reads the ARG's value.
+COPY frontend/package.json frontend/package-lock.json /w/
+RUN cd /w && npm ci --no-audit --no-fund && rm -rf /root/.npm
 WORKDIR /w
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci --no-audit --no-fund && rm -rf /root/.npm
 COPY frontend/ ./
 # The frontend tests run in the deploy's test entry point, not here. adapter-static writes the SPA to /w/build.
 # Normalize the copied artifact tree explicitly: the release builder supplies the Git-derived epoch and the final
 # Python stage consumes only this tree.
+ARG SOURCE_DATE_EPOCH=0
 RUN npm run build && \
     find /w/build -depth -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} + && \
     rm -rf /root/.npm
