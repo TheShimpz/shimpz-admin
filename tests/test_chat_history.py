@@ -419,6 +419,17 @@ class ChatHistoryTests(ChatHistoryCase):
             history_http.page("marketing", before=history._cursor(2**63))
         self.assertEqual(rejected.exception.status_code, 400)
 
+    def test_history_route_rejects_a_malformed_routine_id_as_a_bad_request(self) -> None:
+        history.append_user("marketing", history.new_turn_id(), "Private")
+        for routine in ("A" * 32, "a" * 33, "../" + "a" * 29):
+            with (
+                self.subTest(routine=routine),
+                mock.patch.object(history_http.team, "resolve_team_name", return_value="Marketing"),
+                self.assertRaises(HTTPException) as rejected,
+            ):
+                history_http.page("marketing", routine=routine)
+            self.assertEqual(rejected.exception.status_code, 400)
+
     def test_rejects_invalid_cursor_and_wrong_schema_version(self) -> None:
         history.append_user("marketing", history.new_turn_id(), "Private")
         with self.assertRaises(ValueError):

@@ -28,8 +28,14 @@ const ROUTINES = '/api/teams/marketing/routines';
 
 // A fetch that answers from the scenario, as the preview installs it in the browser.
 function adapter(scenario) {
-  return async (path, init = {}) => {
-    const answer = scenario.respond({ method: init.method ?? 'GET', path, body: init.body ? JSON.parse(init.body) : null });
+  return async (target, init = {}) => {
+    const url = new URL(target, 'http://admin');
+    const answer = scenario.respond({
+      method: init.method ?? 'GET',
+      path: url.pathname,
+      query: url.searchParams,
+      body: init.body ? JSON.parse(init.body) : null,
+    });
     return { ok: answer.status < 300, status: answer.status, async json() { return answer.json; } };
   };
 }
@@ -305,8 +311,12 @@ test('the human-approval scenario renders its copy in the turn language and keep
 
 test('the Routine lifecycle preview holds only rows, views, cards, and details the real parsers admit', async () => {
   const scenario = createScenario('routine-lifecycle');
-  const { entries } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json;
+  const entries = routineLifecycleStart('en').history;
   const outcomes = entries.map((entry) => parseRoutineRunEntry(entry).outcome);
+  // The chat's view of them holds only each Routine's creation.
+  const chat = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json.entries;
+  assert.ok(chat.length > 0);
+  assert.ok(chat.every((entry) => parseRoutineRunEntry(entry).outcome === 'created'));
   for (const outcome of ['created', 'changed', 'done', 'healthy', 'recovered', 'user-skipped', 'failed', 'held', 'paused', 'deleted']) {
     assert.ok(outcomes.includes(outcome), outcome);
   }
@@ -329,7 +339,11 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
   // Rodar sets the weekly one's held run aside.
   assert.equal((await answerRoutineCard(adapter(scenario), 'marketing', held.incident_id, card, 'run')).status, 'requested');
   assert.equal((await listRoutines(adapter(scenario), 'marketing')).incidents.length, 1);
-  const rows = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json.entries;
+  const rows = scenario.respond({
+    method: 'GET',
+    path: '/api/teams/marketing/chat/history',
+    query: new URLSearchParams({ routine: held.routine_id }),
+  }).json.entries;
   const setAside = parseRoutineRunEntry(rows.find((entry) => entry.run_id === held.incident_id));
   assert.deepEqual([setAside.outcome, setAside.detail.choice], ['user-skipped', 'run']);
   const failed = entries.find((entry) => entry.outcome === 'failed');
@@ -382,8 +396,9 @@ test("every locale's Routine preview names its Routines and its card in that lan
     const scenario = createScenario('routine-lifecycle', locale);
     const { routines } = await listRoutines(adapter(scenario), 'marketing');
     assert.deepEqual(routines.map((routine) => routine.name), ROUTINE_TEXT[locale].names.slice(0, 4), locale);
-    const { entries } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json;
-    for (const entry of entries) assert.ok(ROUTINE_TEXT[locale].names.includes(parseRoutineRunEntry(entry).name), locale);
+    for (const entry of routineLifecycleStart(locale).history) {
+      assert.ok(ROUTINE_TEXT[locale].names.includes(parseRoutineRunEntry(entry).name), locale);
+    }
     const recording = createScenario('routine-card', locale);
     const [reply] = recording.chat.message({ type: 'chat', message: ROUTINE_TEXT[locale].request, files: [], assistant_ids: [] });
     assert.equal(parseChatEvent(reply, 'marketing', 'Marketing').routine_proposal.name, ROUTINE_TEXT[locale].card, locale);

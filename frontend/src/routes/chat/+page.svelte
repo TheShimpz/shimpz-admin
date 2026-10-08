@@ -582,10 +582,11 @@
 
   // Admin delivers Routine notices on its own schedule (ADR-0086), so while a Local Team's conversation is open and the
   // page is visible, that Team's Routine list and the history written since it was last read are re-read at a modest
-  // interval and when the page becomes visible again: pages newest first, back to the newest row already read. Only
-  // Routine rows merge into the transcript, by identity and version: a new row, or a newer version of a shown one,
-  // moves to the end as a reload would show it. The rest of the conversation, the draft, and the reader's place stay as
-  // they are; a reader already at the end follows the new row. When more was written than one refresh reads (a page
+  // interval and when the page becomes visible again: pages newest first, back to the newest row already read. The
+  // chat's view of the history holds, of the Routine notices, only each Routine's creation; its runs are its own
+  // history, which its panel reads. Only Routine rows merge into the transcript, by identity and version: a new row,
+  // or a newer version of a shown one, moves to the end as a reload would show it. The rest of the conversation, the
+  // draft, and the reader's place stay as they are; a reader already at the end follows the new row. When more was written than one refresh reads (a page
   // hidden for long), the transcript starts again from what it read, as a reload shows it, and earlier history
   // continues from where the refresh stopped, through every row written in between.
   const ROUTINE_REFRESH_MS = 15_000;
@@ -2286,9 +2287,6 @@
                     <RoutineRunEntry
                       entry={assistantTurn.routineRun}
                       copy={$t('routine')}
-                      usageCopy={copy.usage}
-                      teamId={selectedTeamId}
-                      teamName={assistantTurn.author}
                       joinAbove={!opensDay && !userTurn && Boolean(exchanges[index - 1]?.assistant?.routineRun)}
                       joinBelow={days[index + 1] === days[index] && !exchanges[index + 1]?.user &&
                         Boolean(exchanges[index + 1]?.assistant?.routineRun)}

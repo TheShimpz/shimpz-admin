@@ -47,13 +47,14 @@ def space_reset(action: Callable[[], team.TeamResponse]) -> team.TeamResponse:
         return cleanup(action(), store.clear_all)
 
 
-def page(team_id: str, before: str | None = None) -> JSONResponse:
+def page(team_id: str, before: str | None = None, routine: str | None = None) -> JSONResponse:
+    """One page of the chat's view of a Team's transcript, or with ``routine`` of that Routine's own history."""
     with team_http.refused_as_bad_request():
         resolved = team.resolve_team_name(team_id)
     if isinstance(resolved, team.TeamResponse):
         return team_http.response(lambda: resolved)
     try:
-        response = JSONResponse(store.page(team_id, before=before))
+        response = JSONResponse(store.page(team_id, before=before, routine=routine))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     except store.HistoryUnavailableError:

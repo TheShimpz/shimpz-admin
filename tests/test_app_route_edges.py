@@ -253,7 +253,14 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["Cache-Control"], "no-store")
         self.assertEqual(json.loads(response.body), page)
-        loaded.assert_called_once_with("marketing", before=None)
+        loaded.assert_called_once_with("marketing", before=None, routine=None)
+        # A Routine's own history is read through the same gate, for exactly that Routine.
+        with (
+            mock.patch.object(self.admin_app.team, "resolve_team_name", return_value="Marketing"),
+            mock.patch.object(self.admin_app.chat_history, "page", return_value=page) as loaded,
+        ):
+            self.assertEqual(self.admin_app.team_chat_history("marketing", None, "a" * 32).status_code, 200)
+        loaded.assert_called_once_with("marketing", before=None, routine="a" * 32)
 
         missing = self.admin_app.team.TeamResponse(404, {"detail": "Team not found"})
         with (

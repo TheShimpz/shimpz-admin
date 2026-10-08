@@ -4,6 +4,7 @@ import test from 'node:test';
 import { clockTime } from '../src/lib/chatDays.js';
 import { listChatHistory } from '../src/lib/chatHistory.js';
 import { parseChatEvent } from '../src/lib/localChat.js';
+import { LocalApiError } from '../src/lib/localApi.js';
 import {
   answerRoutineCard,
   failureCause,
@@ -860,24 +861,51 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     assert.throws(() => parseRoutineRunEntry(invalid), RoutineError);
   }
   const page = (entries) => async () => ({ ok: true, status: 200, async json() { return { entries, before: null }; } });
-  const history = await listChatHistory(page([RUN_ENTRY]), 'marketing');
+  const own = { routine: RUN_ENTRY.routine_id };
+  const history = await listChatHistory(page([RUN_ENTRY]), 'marketing', null, own);
   assert.equal(history.entries[0].kind, 'routine-run');
-  await assert.rejects(listChatHistory(page([{ ...RUN_ENTRY, outcome: 'run' }]), 'marketing'));
-  await assert.rejects(listChatHistory(page([{ ...RUN_ENTRY, id: `${'b'.repeat(32)}:reply` }]), 'marketing'));
+  await assert.rejects(listChatHistory(page([{ ...RUN_ENTRY, outcome: 'run' }]), 'marketing', null, own));
+  await assert.rejects(listChatHistory(page([{ ...RUN_ENTRY, id: `${'b'.repeat(32)}:reply` }]), 'marketing', null, own));
 });
 
-// A notice as the transcript's timeline shows it, in Portuguese.
+test("the chat's view admits only a Routine's creation, and a Routine's view only its own history", async () => {
+  const page = (entries) => async () => ({ ok: true, status: 200, async json() { return { entries, before: null }; } });
+  const created = { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: DEFINED };
+  const keyed = (letter) => ({ id: `${letter.repeat(32)}:routine`, notice_id: letter.repeat(32) });
+  const missed = { ...RUN_ENTRY, ...keyed('c'), outcome: 'skipped', run_id: null, usage: null, detail: { missed: 2 } };
+  const healthy = { ...RUN_ENTRY, ...keyed('d'), outcome: 'healthy', run_id: null, detail: { runs: 2 } };
+  const changed = { ...created, outcome: 'changed' };
+  assert.equal((await listChatHistory(page([created]), 'marketing')).entries[0].outcome, 'created');
+  for (const hidden of [RUN_ENTRY, missed, healthy, changed]) {
+    await assert.rejects(listChatHistory(page([hidden]), 'marketing'), LocalApiError, hidden.outcome);
+  }
+  const own = { routine: RUN_ENTRY.routine_id };
+  const runs = await listChatHistory(page([missed, healthy, RUN_ENTRY]), 'marketing', null, own);
+  assert.deepEqual(runs.entries.map((entry) => entry.outcome), ['skipped', 'healthy', 'done']);
+  for (const foreign of [created, changed, { ...RUN_ENTRY, routine_id: 'c'.repeat(32) }]) {
+    await assert.rejects(listChatHistory(page([foreign]), 'marketing', null, own), LocalApiError);
+  }
+  // The view travels as the Routine id, which must be one; nothing is requested otherwise.
+  const requested = [];
+  const fetcher = async (url) => { requested.push(url); return page([])(); };
+  await listChatHistory(fetcher, 'marketing', 'AAAAAAAAAMg', own);
+  assert.deepEqual(requested, [`/api/teams/marketing/chat/history?before=AAAAAAAAAMg&routine=${RUN_ENTRY.routine_id}`]);
+  for (const routine of ['A'.repeat(32), '../x', 7]) {
+    await assert.rejects(listChatHistory(fetcher, 'marketing', null, { routine }), LocalApiError);
+  }
+  assert.equal(requested.length, 1);
+});
+
+// A notice as the transcript (a creation) or a run opened in full shows it, in Portuguese.
 function noticeShown(entry) {
   return routineNotice(parseRoutineRunEntry(entry), { copy: routineMessages.pt, locale: 'pt' });
 }
 
-test('every Routine notice reads as one line: a status phrase colored by meaning and its time', () => {
+test('a creation and every run read as one line: a status phrase colored by meaning and its time', () => {
   const cases = [
     [{ outcome: 'done', detail: { plan: SUMMARY, output: SHOWN_OUTPUT, decision: null } }, ['healthy', 'concluída']],
     [{ outcome: 'recovered', detail: { plan: LONG, output: UNSHOWN, decision: null } }, ['healthy', 'concluída após recuperação']],
-    [{ outcome: 'deleted', run_id: null, usage: null, detail: {} }, ['danger', 'Removida']],
     [{ outcome: 'frozen', detail: { request_kind: 'permission', ...CALL } }, ['waiting', 'aguardando permissão']],
-    [{ outcome: 'healthy', run_id: null, detail: { runs: 9 } }, ['healthy', 'em execução']],
     [{ outcome: 'failed', detail: { code: 'plan-input-type', actions: [['shimpz-cloudflare', 'list-zones']], position: { phase: 'replay', step: 37 }, steps: 120 } },
       ['danger', 'falhou']],
     [{ outcome: 'denied', detail: { actions: [] } }, ['danger', 'negada']],
@@ -886,13 +914,10 @@ test('every Routine notice reads as one line: a status phrase colored by meaning
     [{ outcome: 'paused', detail: { ...STEP, reason: 'exhausted' } }, ['waiting', 'pausada']],
     [{ outcome: 'frozen', detail: { request_kind: 'human', ...STEP } }, ['waiting', 'aguardando aprovação']],
     [{ outcome: 'frozen', detail: { request_kind: 'integrations', ...STEP } }, ['waiting', 'aguardando conexão']],
-    [{ outcome: 'scope-changed', run_id: null, usage: null, detail: { assistants: ['shimpz-cloudflare'] } }, ['waiting', 'pausada']],
     [{ outcome: 'stopped', detail: { actions: [['shimpz-cloudflare', 'list-zones']] } }, ['neutral', 'interrompida']],
     [{ outcome: 'user-skipped', detail: { ...STEP, choice: 'delete' } }, ['neutral', 'deixada de lado']],
-    [{ outcome: 'skipped', run_id: null, usage: null, detail: { missed: 3 } }, ['neutral', 'execuções perdidas']],
     [{ outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, schedule: { kind: 'continuous', gap: 5, cap: 17280 }, plan: TWO } },
       ['neutral', 'criada']],
-    [{ outcome: 'changed', run_id: null, usage: null, detail: { ...DEFINED, output: { mode: 'none', step: null, when: null } } }, ['neutral', 'atualizada']],
   ];
   const time = clockTime(Date.parse(RUN_ENTRY.created_at), 'pt');
   // The notice keeps its seconds (created at 12:01:07 UTC).
@@ -900,9 +925,8 @@ test('every Routine notice reads as one line: a status phrase colored by meaning
   for (const [change, [tone, status]] of cases) {
     assert.deepEqual(noticeShown({ ...RUN_ENTRY, ...change }), { tone, status, time }, change.outcome);
   }
-  // Every outcome has its status words in every Admin language.
+  // Every shown outcome has its status words in every Admin language.
   for (const [locale, catalog] of Object.entries(routineMessages)) {
-    assert.equal(typeof catalog.notice.waiting, 'string', locale);
     for (const [change] of cases) {
       const shown = routineNotice(parseRoutineRunEntry({ ...RUN_ENTRY, ...change }), { copy: catalog, locale });
       assert.ok(shown.status && !/\{\w+\}/u.test(shown.status), `${locale} ${change.outcome}`);

@@ -1233,25 +1233,19 @@ export function runCountWords(forms, runs, locale) {
   return fill(plural(forms, runs, locale), { runs });
 }
 
-// Each outcome's tone in the transcript's activity timeline: healthy (done, recovered, running), danger (failed, held,
-// denied, removed), waiting (paused, frozen, scope changed), or neutral (created, updated, set aside,
-// stopped, missed runs).
+// Each notice's tone where it is shown: a Routine's creation in the transcript, or a run in full: healthy (done,
+// recovered), danger (failed, held, denied), waiting (paused, frozen), or neutral (created, set aside, stopped).
 const NOTICE_TONES = Object.freeze({
   done: 'healthy',
   recovered: 'healthy',
-  healthy: 'healthy',
   failed: 'danger',
   held: 'danger',
   denied: 'danger',
-  deleted: 'danger',
   paused: 'waiting',
   frozen: 'waiting',
-  'scope-changed': 'waiting',
   created: 'neutral',
-  changed: 'neutral',
   'user-skipped': 'neutral',
   stopped: 'neutral',
-  skipped: 'neutral',
 });
 
 /**
@@ -1274,8 +1268,8 @@ export function summaryChain(plan, assistantName, copy, locale) {
 }
 
 /**
- * One Routine notice of a Team's transcript (ADR-0086) as an activity-timeline entry, in plain text only: its tone, a
- * short status phrase, and the notice's time of day in the viewer's own clock.
+ * A Routine's creation in a Team's transcript (ADR-0086), or one of its runs opened in full, in plain text only: its
+ * tone, a short status phrase, and the notice's time of day in the viewer's own clock.
  */
 export function routineNotice(entry, { copy, locale }) {
   const notice = copy.notice;
@@ -1285,7 +1279,6 @@ export function routineNotice(entry, { copy, locale }) {
     permission: notice.status.frozenPermission,
   };
   const status = {
-    'scope-changed': notice.status.scopeChanged,
     'user-skipped': notice.status.userSkipped,
     frozen: frozen[entry.detail.request_kind],
   }[entry.outcome] ?? notice.status[entry.outcome];

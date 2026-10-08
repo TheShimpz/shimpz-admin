@@ -276,9 +276,9 @@ const SHOWN_RECORDS = Object.freeze({
   truncated: true,
 });
 
-// The transcript, oldest first: one row of every Routine notice the owner validates, ending with a deleted Routine's
-// last notice. Its rows span the day before the preview opened and that day itself, so the transcript shows a day
-// header for each and today's replacing yesterday's.
+// The stored history, oldest first: one row of every Routine notice, ending with a deleted Routine's last notice. The
+// chat shows only the creations among them and each Routine's panel its own runs. Its rows span the day before the
+// preview opened and that day itself, so the transcript shows a day header for each and today's replacing yesterday's.
 function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now, removedName) {
   const opened = Math.floor(now / 1000) * 1000;
   const at = (offset) => instant(opened + offset * 1000);

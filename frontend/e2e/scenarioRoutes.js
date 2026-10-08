@@ -27,7 +27,8 @@ export async function routeScenario(page, name = 'ready') {
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const body = await requestBody(request);
-    const answer = scenario.respond({ method: request.method(), path: new URL(request.url()).pathname, body });
+    const url = new URL(request.url());
+    const answer = scenario.respond({ method: request.method(), path: url.pathname, query: url.searchParams, body });
     return route.fulfill(answer
       ? { status: answer.status, contentType: 'application/json', body: JSON.stringify(answer.json) }
       : { status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'Not in this scenario.' }) });

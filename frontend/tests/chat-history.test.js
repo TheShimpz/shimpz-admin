@@ -8,10 +8,9 @@ import {
   historySince,
   listChatHistory,
   MAX_REFRESH_PAGES,
-  MAX_ROUTINE_RUN_PAGES,
   mergedRoutineRuns,
   RECENT_ROUTINE_RUNS,
-  recentRoutineRuns,
+  routineRuns,
 } from '../src/lib/chatHistory.js';
 import { LocalApiError } from '../src/lib/localApi.js';
 
@@ -330,74 +329,32 @@ function chatRow(index) {
   return { id: `${index.toString(16).padStart(32, '0')}:user`, created_at: AT, kind: 'message', role: 'user', text: 'Hi' };
 }
 
-test('a Routine\'s latest runs follow the history cursor past unrelated rows, newest first', async () => {
+test("a Routine's history is read from its own view, newest first, a page at a time with the cursor to older runs", async () => {
   const routine = '9'.repeat(32);
-  const other = '8'.repeat(32);
   const run = (digit) => runRow(digit.repeat(32), routine);
-  // Newest page first: 64 unrelated rows; then a page with two of its runs and another Routine's; then the rest.
   const pages = {
-    null: { entries: Array.from({ length: 64 }, (_, index) => chatRow(index)), before: 'AAAAAAAAAMg' },
-    AAAAAAAAAMg: { entries: [run('1'), runRow('2'.repeat(32), other), run('3')], before: 'AAAAAAAAAGQ' },
-    AAAAAAAAAGQ: { entries: [run('4'), run('5'), run('6'), run('7')], before: 'AAAAAAAAAAI' },
-    AAAAAAAAAAI: { entries: [run('0')], before: null },
+    null: { entries: [run('1'), run('2'), run('3')], before: 'AAAAAAAAAMg' },
+    AAAAAAAAAMg: { entries: [run('0')], before: null },
   };
   const requested = [];
   const fetcher = async (url) => {
-    const before = new URL(url, 'http://admin').searchParams.get('before');
-    requested.push(before);
-    return response(200, pages[before]);
+    const { searchParams } = new URL(url, 'http://admin');
+    requested.push([searchParams.get('before'), searchParams.get('routine')]);
+    return response(200, pages[searchParams.get('before')]);
   };
-  // The page where five are found gives all of its runs, and the search keeps the cursor past it: nothing on that page
-  // is skipped by continuing it.
-  const found = await recentRoutineRuns(fetcher, 'marketing', routine);
-  assert.deepEqual(found.runs.map((entry) => entry.runId[0]), ['3', '1', '7', '6', '5', '4']);
-  assert.equal(found.before, 'AAAAAAAAAAI');
-  assert.deepEqual(requested, [null, 'AAAAAAAAAMg', 'AAAAAAAAAGQ']);
-  requested.length = 0;
-  const rest = await recentRoutineRuns(fetcher, 'marketing', routine, { before: found.before });
-  assert.deepEqual(rest.runs.map((entry) => entry.runId[0]), ['0']);
-  assert.equal(rest.before, null);
-  assert.deepEqual(requested, ['AAAAAAAAAAI']);
-
-  // A history that ends first yields what it has, with nothing left to search.
-  requested.length = 0;
-  const ended = await recentRoutineRuns(fetcher, 'marketing', other);
-  assert.deepEqual(ended.runs.map((entry) => entry.runId), ['2'.repeat(32)]);
-  assert.equal(ended.before, null);
-  assert.deepEqual(requested, [null, 'AAAAAAAAAMg', 'AAAAAAAAAGQ', 'AAAAAAAAAAI']);
-  // A continued search starts at its cursor and stops once it found what was still wanted.
-  requested.length = 0;
-  const continued = await recentRoutineRuns(fetcher, 'marketing', routine, { before: 'AAAAAAAAAGQ', wanted: 2 });
-  assert.deepEqual(continued.runs.map((entry) => entry.runId[0]), ['7', '6', '5', '4']);
-  assert.equal(continued.before, 'AAAAAAAAAAI');
-  assert.deepEqual(requested, ['AAAAAAAAAGQ']);
-});
-
-test('more runs than one search wants within one page are all given, and the history past them stays reachable', async () => {
-  const routine = '9'.repeat(32);
-  const runs = ['1', '2', '3', '4', '5', '6', '7'].map((digit) => runRow(digit.repeat(32), routine));
-  const pages = {
-    null: { entries: runs, before: 'AAAAAAAAAMg' },
-    AAAAAAAAAMg: { entries: [runRow('0'.repeat(32), routine)], before: null },
-  };
-  const fetcher = async (url) => response(200, pages[new URL(url, 'http://admin').searchParams.get('before')]);
-  const found = await recentRoutineRuns(fetcher, 'marketing', routine);
-  assert.deepEqual(found.runs.map((entry) => entry.runId[0]), ['7', '6', '5', '4', '3', '2', '1']);
+  const seen = new Set();
+  const found = await routineRuns(fetcher, 'marketing', routine, { seen });
+  assert.deepEqual(found.runs.map((entry) => entry.runId[0]), ['3', '2', '1']);
   assert.equal(found.before, 'AAAAAAAAAMg');
-  const older = await recentRoutineRuns(fetcher, 'marketing', routine, { before: found.before });
+  // The newest page's marks, oldest first, are the boundary a refresh reads back to.
+  assert.deepEqual([...seen], ['1', '2', '3'].map((digit) => `${digit.repeat(32)}:routine@1`));
+  const older = await routineRuns(fetcher, 'marketing', routine, { before: found.before });
   assert.deepEqual(older.runs.map((entry) => entry.runId[0]), ['0']);
   assert.equal(older.before, null);
-});
-
-test('a search for runs stops at its page bound with the cursor to continue from', async () => {
-  const routine = '9'.repeat(32);
-  let reads = 0;
-  const endless = async () => {
-    reads += 1;
-    return response(200, { entries: [chatRow(reads)], before: 'AAAAAAAAAMg' });
-  };
-  assert.deepEqual(await recentRoutineRuns(endless, 'marketing', routine), { runs: [], before: 'AAAAAAAAAMg' });
-  assert.equal(reads, MAX_ROUTINE_RUN_PAGES);
+  assert.deepEqual(requested, [[null, routine], ['AAAAAAAAAMg', routine]]);
+  // Another Routine's row in this Routine's view is refused.
+  const foreign = async () => response(200, { entries: [runRow('4'.repeat(32), '8'.repeat(32))], before: null });
+  await assert.rejects(routineRuns(foreign, 'marketing', routine), LocalApiError);
 });
 
 test('a continuous Routine\'s healthy rollups and its missed runs count as its runs, with no run of their own', async () => {
@@ -410,7 +367,7 @@ test('a continuous Routine\'s healthy rollups and its missed runs count as its r
   });
   const missed = { ...runRow('c'.repeat(32), routine), run_id: null, usage: null, outcome: 'skipped', detail: { missed: 2 } };
   const page = { entries: [missed, rollup('1', 12), runRow('2'.repeat(32), routine), rollup('3', 4)], before: null };
-  const found = await recentRoutineRuns(async () => response(200, page), 'marketing', routine);
+  const found = await routineRuns(async () => response(200, page), 'marketing', routine);
   // The rollups, the run, and the runs it missed are its history, found newest first.
   assert.deepEqual(found.runs.map((entry) => [entry.outcome, entry.runId, entry.detail.runs ?? null]), [
     ['healthy', null, 4],
@@ -423,30 +380,31 @@ test('a continuous Routine\'s healthy rollups and its missed runs count as its r
 
 test('a refresh reads back only to the newest row it already read, and a newer version is a new row', async () => {
   const routine = '9'.repeat(32);
-  const known = runRow('1'.repeat(32), routine);
+  const run = (digit) => runRow(digit.repeat(32), routine);
+  const known = run('1');
   const pages = {
-    null: { entries: [chatRow(2), { ...known, version: 2 }, chatRow(3)], before: 'AAAAAAAAAMg' },
-    AAAAAAAAAMg: { entries: [chatRow(0), known, chatRow(1)], before: 'AAAAAAAAAGQ' },
+    null: { entries: [run('4'), { ...known, version: 2 }, run('5')], before: 'AAAAAAAAAMg' },
+    AAAAAAAAAMg: { entries: [run('2'), known, run('3')], before: 'AAAAAAAAAGQ' },
   };
   const requested = [];
   const fetcher = async (url) => {
-    const before = new URL(url, 'http://admin').searchParams.get('before');
-    requested.push(before);
-    return response(200, pages[before]);
+    const { searchParams } = new URL(url, 'http://admin');
+    requested.push([searchParams.get('before'), searchParams.get('routine')]);
+    return response(200, pages[searchParams.get('before')]);
   };
-  const seen = new Set([chatRow(0), known, chatRow(1)].map((entry) => historyMark(restored(entry))));
-  const since = await historySince(fetcher, 'marketing', seen);
+  const seen = new Set([run('2'), known, run('3')].map((entry) => historyMark(restored(entry))));
+  const since = await historySince(fetcher, 'marketing', seen, { routine });
   // The rewritten Routine row is new; reading stops at the page holding the newest row already read.
-  assert.deepEqual(since.entries.map((entry) => entry.id), [chatRow(2).id, known.id, chatRow(3).id]);
+  assert.deepEqual(since.entries.map((entry) => entry.id), [run('4').id, known.id, run('5').id]);
   assert.equal(since.entries[1].version, 2);
   assert.equal(since.before, null);
-  assert.deepEqual(requested, [null, 'AAAAAAAAAMg']);
+  assert.deepEqual(requested, [[null, routine], ['AAAAAAAAAMg', routine]]);
   // Nothing written since: one page, nothing new.
   for (const entry of since.entries) seen.add(historyMark(entry));
   requested.length = 0;
-  assert.deepEqual(await historySince(fetcher, 'marketing', seen), { entries: [], before: null });
-  assert.deepEqual(requested, [null]);
-  // A history that ends first yields all of it.
+  assert.deepEqual(await historySince(fetcher, 'marketing', seen, { routine }), { entries: [], before: null });
+  assert.deepEqual(requested, [[null, routine]]);
+  // The chat's view reads the same way, without a Routine; a history that ends first yields all of it.
   const ended = await historySince(async () => response(200, { entries: [chatRow(4)], before: null }), 'marketing', seen);
   assert.deepEqual(ended.entries.map((entry) => entry.id), [chatRow(4).id]);
 });
@@ -464,17 +422,6 @@ test('a refresh stops at its page bound with every row it read and the cursor to
     (_, index) => chatRow(MAX_REFRESH_PAGES - index).id,
   ));
   assert.equal(since.before, 'AAAAAAAAAMg');
-});
-
-test('a run search records only the newest page it read, the boundary a refresh reads back to', async () => {
-  const seen = new Set();
-  const pages = {
-    null: { entries: [chatRow(1), runRow('1'.repeat(32), '9'.repeat(32))], before: 'AAAAAAAAAMg' },
-    AAAAAAAAAMg: { entries: [chatRow(0)], before: null },
-  };
-  const fetcher = async (url) => response(200, pages[new URL(url, 'http://admin').searchParams.get('before')]);
-  await recentRoutineRuns(fetcher, 'marketing', '9'.repeat(32), { seen, wanted: 2 });
-  assert.deepEqual([...seen], [chatRow(1).id, `${'1'.repeat(32)}:routine@1`]);
 });
 
 test('the history boundary keeps only the marks of the newest rows read', () => {

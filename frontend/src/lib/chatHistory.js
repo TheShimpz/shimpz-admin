@@ -269,15 +269,35 @@ function historyCursor(value, status) {
   return value;
 }
 
-export async function listChatHistory(fetcher, teamId, before = null) {
+const ROUTINE_ID_RE = /^[0-9a-f]{32}$/;
+
+/**
+ * Whether an entry belongs to the view it was read in: the chat's view holds, of a Team's Routine notices, only each
+ * Routine's creation; a Routine's own view holds only that Routine's history.
+ */
+function inView(entry, routine) {
+  return routine === null
+    ? entry.kind !== 'routine-run' || entry.outcome === 'created'
+    : isRoutineRun(entry, routine);
+}
+
+/**
+ * One newest-first page of a Team's history: the chat's view of it, or with `routine` that Routine's own history (its
+ * runs, healthy rollups, and missed runs), which only its panel reads.
+ */
+export async function listChatHistory(fetcher, teamId, before = null, { routine = null } = {}) {
   if (
     typeof fetcher !== 'function' ||
     typeof teamId !== 'string' ||
     !TEAM_ID_RE.test(teamId) ||
-    (before !== null && (typeof before !== 'string' || !HISTORY_CURSOR_RE.test(before)))
+    (before !== null && (typeof before !== 'string' || !HISTORY_CURSOR_RE.test(before))) ||
+    (routine !== null && (typeof routine !== 'string' || !ROUTINE_ID_RE.test(routine)))
   ) throw new LocalApiError('Invalid Team chat history request.');
-  const query = before === null ? '' : `?before=${encodeURIComponent(before)}`;
-  const response = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/chat/history${query}`, {
+  const query = new URLSearchParams();
+  if (before !== null) query.set('before', before);
+  if (routine !== null) query.set('routine', routine);
+  const search = String(query);
+  const response = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/chat/history${search && `?${search}`}`, {
     cache: 'no-store',
     headers: { Accept: 'application/json' },
   });
@@ -294,7 +314,10 @@ export async function listChatHistory(fetcher, teamId, before = null) {
     body.entries.length > MAX_PAGE_ENTRIES
   ) throw invalidHistory(response.status);
   const entries = body.entries.map((entry) => historyEntry(entry, response.status));
-  if (new Set(entries.map((entry) => entry.id)).size !== entries.length) {
+  if (
+    new Set(entries.map((entry) => entry.id)).size !== entries.length ||
+    !entries.every((entry) => inView(entry, routine))
+  ) {
     throw invalidHistory(response.status);
   }
   return { entries, before: historyCursor(body.before, response.status) };
@@ -309,16 +332,16 @@ export function historyMark(entry) {
 }
 
 /**
- * The history written after the newest row `seen` marks, oldest first. Pages are read newest first until one holds a
- * marked row or the history ends, at most MAX_REFRESH_PAGES of them. A refresh that reaches its page bound first
- * returns every row it read and the cursor it stopped at as `before`, so what lies between stays reachable;
- * otherwise `before` is null.
+ * The history written after the newest row `seen` marks, oldest first, in the chat's view or with `routine` in that
+ * Routine's own. Pages are read newest first until one holds a marked row or the history ends, at most
+ * MAX_REFRESH_PAGES of them. A refresh that reaches its page bound first returns every row it read and the cursor it
+ * stopped at as `before`, so what lies between stays reachable; otherwise `before` is null.
  */
-export async function historySince(fetcher, teamId, seen) {
+export async function historySince(fetcher, teamId, seen, { routine = null } = {}) {
   const pages = [];
   let cursor = null;
   for (let read = 0; read < MAX_REFRESH_PAGES; read += 1) {
-    const { entries, before } = await listChatHistory(fetcher, teamId, cursor);
+    const { entries, before } = await listChatHistory(fetcher, teamId, cursor, { routine });
     const known = entries.findLastIndex((entry) => seen.has(historyMark(entry)));
     pages.unshift(entries.slice(known + 1));
     if (known !== -1 || before === null) return { entries: pages.flat(), before: null };
@@ -339,11 +362,10 @@ export function historyBoundary(marks, entries) {
   return new Set([...marks, ...entries.map(historyMark)].slice(-HISTORY_BOUNDARY_ROWS));
 }
 
-// The Runs page shows a Routine's latest few runs; one search reads at most this many history pages to find them. A
+// A Routine's panel that stays open keeps at least this many of its latest runs while new runs keep ending. A
 // continuous Routine's healthy runs arrive as one rollup per minute with no run of its own, and count as one entry, as
 // do the runs a Routine missed.
 export const RECENT_ROUTINE_RUNS = 5;
-export const MAX_ROUTINE_RUN_PAGES = 16;
 
 /**
  * Whether a history entry is one of this Routine's runs, a rollup of its healthy continuous runs, or the runs it
@@ -355,30 +377,14 @@ export function isRoutineRun(entry, routineId) {
 }
 
 /**
- * At least `wanted` of a Routine's latest runs when the history holds them, newest first, from `before` (null for the
- * newest history): pages are read newest first, following each page's cursor, until enough runs are found or the
- * history ends. The page where enough are found gives all of its runs, so continuing from its cursor skips none. While
- * older history remains, `before` is the cursor the search stopped at, so the person can continue it; otherwise null.
- * `seen`, when given, receives the marks of the newest page the search read, oldest first: the boundary a later
- * refresh reads back to.
+ * One page of a Routine's own history from `before` (null for the newest), newest first, with the cursor to its older
+ * runs, or null once there are none. `seen`, when given, receives the marks of the newest page, oldest first: the
+ * boundary a later refresh reads back to.
  */
-export async function recentRoutineRuns(
-  fetcher,
-  teamId,
-  routineId,
-  { before = null, wanted = RECENT_ROUTINE_RUNS, seen = null } = {},
-) {
-  const runs = [];
-  let cursor = before;
-  for (let page = 0; page < MAX_ROUTINE_RUN_PAGES; page += 1) {
-    const { entries, before: older } = await listChatHistory(fetcher, teamId, cursor);
-    if (page === 0) for (const entry of entries) seen?.add(historyMark(entry));
-    // A page lists its entries oldest first.
-    runs.push(...entries.filter((entry) => isRoutineRun(entry, routineId)).reverse());
-    if (older === null || runs.length >= wanted) return { runs, before: older };
-    cursor = older;
-  }
-  return { runs, before: cursor };
+export async function routineRuns(fetcher, teamId, routineId, { before = null, seen = null } = {}) {
+  const { entries, before: older } = await listChatHistory(fetcher, teamId, before, { routine: routineId });
+  for (const entry of entries) seen?.add(historyMark(entry));
+  return { runs: [...entries].reverse(), before: older };
 }
 
 /**

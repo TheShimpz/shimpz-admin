@@ -6,8 +6,7 @@
     historyBoundary,
     historySince,
     mergedRoutineRuns,
-    RECENT_ROUTINE_RUNS,
-    recentRoutineRuns,
+    routineRuns,
   } from '$lib/chatHistory.js';
   import { locale, t } from '$lib/i18n.js';
   import { assistantNames, loadAssistantNames } from '$lib/assistantNames.js';
@@ -61,7 +60,7 @@
   let deleteButton = $state();
   let recent = $state(null);
   let recentFailed = $state(false);
-  // Where a search for runs stopped at its page bound, so the person can continue it; null once history is exhausted.
+  // Where the Routine's history read so far ends, so the person can read older runs; null once it is exhausted.
   let olderRuns = $state(null);
   let searchingOlder = $state(false);
   let detailsRun = $state(null);
@@ -147,7 +146,7 @@
     const marks = new Set();
     seen = marks;
     void loadAssistantNames(fetch);
-    recentRoutineRuns(fetch, teamId, routineId, { seen: marks })
+    routineRuns(fetch, teamId, routineId, { seen: marks })
       .then((found) => {
         if (opened !== search) return;
         recent = found.runs;
@@ -165,7 +164,7 @@
     refreshing = true;
     const opened = search;
     try {
-      const since = await historySince(fetch, teamId, seen);
+      const since = await historySince(fetch, teamId, seen, { routine: routineId });
       if (opened !== search || searchingOlder) return;
       seen = historyBoundary(seen, since.entries);
       if (since.before === null) {
@@ -189,7 +188,7 @@
   async function searchOlderRuns() {
     searchingOlder = true;
     try {
-      const found = await recentRoutineRuns(fetch, teamId, routineId, { before: olderRuns, wanted: RECENT_ROUTINE_RUNS });
+      const found = await routineRuns(fetch, teamId, routineId, { before: olderRuns });
       recent = [...recent, ...found.runs];
       olderRuns = found.before;
     } catch {

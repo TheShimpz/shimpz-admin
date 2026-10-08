@@ -20,6 +20,7 @@ from history import context as conversation_context
 
 from chat import store_catalog
 from protocol.http.v1 import payload as team_contract
+from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import routine_notice as routine_notice_contract
 from protocol.http.v1 import routine_proposal as routine_proposal_contract
 from protocol.http.v1 import websocket as chat_ws_common
@@ -706,18 +707,36 @@ def _validate_stored_payload(payload: dict[str, object]) -> None:
     validators[payload["kind"]](payload)
 
 
-def _page_rows(database: sqlite3.Connection, team_id: str, position: int | None) -> sqlite3.Cursor:
+# A page reads one of two views of a Team's transcript. The chat shows the conversation and, of its Routines' notices,
+# only each Routine's creation; a Routine's own history is its runs, its healthy rollups, and the runs it missed, which
+# only its panel shows. Both filter the same rows, so a page's position cursor works alike in either. The view's first
+# parameter is the Routine id, or null for the chat; its second is that id again.
+_PAGE_SELECT = "SELECT position, event_key, payload, provenance, created_at FROM transcript WHERE team_id = ? "
+_PAGE_VIEW = (
+    "AND CASE WHEN ? IS NULL "
+    "THEN NOT (substr(event_key, -8) = ':routine' AND json_extract(payload, '$.outcome') IS NOT 'created') "
+    "ELSE substr(event_key, -8) = ':routine' AND json_extract(payload, '$.kind') = 'routine-run' "
+    "AND json_extract(payload, '$.routine_id') = ? AND (json_extract(payload, '$.run_id') IS NOT NULL "
+    "OR json_extract(payload, '$.outcome') IN ('healthy', 'skipped')) END "
+)
+_PAGE_NEWEST = _PAGE_SELECT + _PAGE_VIEW + "ORDER BY position DESC LIMIT ?"
+_PAGE_BEFORE = _PAGE_SELECT + _PAGE_VIEW + "AND position < ? ORDER BY position DESC LIMIT ?"
+
+
+def _page_rows(
+    database: sqlite3.Connection, team_id: str, position: int | None, routine_id: str | None
+) -> sqlite3.Cursor:
     if position is None:
-        return database.execute(
-            "SELECT position, event_key, payload, provenance, created_at FROM transcript WHERE team_id = ? "
-            "ORDER BY position DESC LIMIT ?",
-            (team_id, PAGE_ROWS + 1),
-        )
-    return database.execute(
-        "SELECT position, event_key, payload, provenance, created_at FROM transcript WHERE team_id = ? "
-        "AND position < ? ORDER BY position DESC LIMIT ?",
-        (team_id, position, PAGE_ROWS + 1),
-    )
+        return database.execute(_PAGE_NEWEST, (team_id, routine_id, routine_id, PAGE_ROWS + 1))
+    return database.execute(_PAGE_BEFORE, (team_id, routine_id, routine_id, position, PAGE_ROWS + 1))
+
+
+def _routine_id(value: object) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or routine_contract.ROUTINE_ID_RE.fullmatch(value) is None:
+        raise ValueError("chat history Routine id is invalid")
+    return value
 
 
 def _page_entry(event_key: str, raw: object, provenance: object, created_at: object) -> dict[str, object]:
@@ -732,18 +751,23 @@ def _page_entry(event_key: str, raw: object, provenance: object, created_at: obj
     return {"id": event_key, **payload, "created_at": instant}
 
 
-def page(team_id: object, *, before: object = None) -> dict[str, object]:
+def page(team_id: object, *, before: object = None, routine: object = None) -> dict[str, object]:
     """Return one newest-first page, fetching rows one at a time so the byte cap bounds the memory it holds.
 
-    Iteration stops at the first row that would exceed the row or byte bound; that one-row lookahead is what
-    proves an older entry exists and keeps the older-history cursor.
+    The page is the chat's view of the transcript, or with ``routine`` that Routine's own history. Iteration stops at
+    the first row that would exceed the row or byte bound; that one-row lookahead is what proves an older entry exists
+    and keeps the older-history cursor.
     """
     canonical_team = _team_id(team_id)
     position = _position(before)
+    routine_id = _routine_id(routine)
     selected: list[tuple[int, dict[str, object]]] = []
     size = 0
     has_older = False
-    with _database() as database, contextlib.closing(_page_rows(database, canonical_team, position)) as rows:
+    with (
+        _database() as database,
+        contextlib.closing(_page_rows(database, canonical_team, position, routine_id)) as rows,
+    ):
         for row_position, event_key, raw, provenance, created_at in rows:
             if len(selected) == PAGE_ROWS:
                 has_older = True

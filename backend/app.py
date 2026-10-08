@@ -677,8 +677,8 @@ async def team_chat_ws(websocket: WebSocket, team_id: str):
     )
 
 
-def team_chat_history(team_id: str, before: str | None = None):
-    return chat_history_http.page(team_id, before)
+def team_chat_history(team_id: str, before: str | None = None, routine: str | None = None):
+    return chat_history_http.page(team_id, before, routine)
 
 
 if ADMIN_PROFILE == "local":

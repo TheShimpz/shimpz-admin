@@ -131,8 +131,9 @@ const STARTS = {
     runs: [FROZEN_RUN],
     incidents: [HELD_INCIDENT],
   }),
-  // Every Routine notice in the transcript, a deleted Routine's last notice, runs' usage with and without a model, a
-  // held run's recovery card, a paused Routine, a minute rollup, and a run's execution details (ADR-0092, ADR-0101).
+  // Every Routine notice in the stored history (the chat shows the creations, each panel its Routine's runs), runs'
+  // usage with and without a model, a held run's recovery card, a paused Routine, a minute rollup, and a run's
+  // execution details (ADR-0092, ADR-0101).
   'routine-lifecycle': (locale) => ({ session: authenticatedLocalSession(), teams: [TEAM], ...routineLifecycleStart(locale) }),
   // Any message is a recording turn whose reply carries the owner's Cloudflare watch card: Criar rotina creates it,
   // Cancelar revokes it (ADR-0101).
@@ -515,7 +516,21 @@ function chatReply(state, frame) {
   };
 }
 
-/** A fresh scenario; `respond` returns `{ status, json }` or null for a request this scenario does not answer. */
+/**
+ * The rows of a Team's history in the view Admin reads: the chat's view holds, of the Routine notices, only each
+ * Routine's creation; a Routine's own view (`routine`, its id) holds only its runs, healthy rollups, and missed runs.
+ */
+export function historyView(entries, routine = null) {
+  return entries.filter((entry) => (routine === null
+    ? entry.kind !== 'routine-run' || entry.outcome === 'created'
+    : entry.kind === 'routine-run' && entry.routine_id === routine &&
+      (entry.run_id !== null || entry.outcome === 'healthy' || entry.outcome === 'skipped')));
+}
+
+/**
+ * A fresh scenario; `respond` returns `{ status, json }` or null for a request this scenario does not answer. `query`
+ * holds the request's search parameters.
+ */
 export function createScenario(name = 'ready', locale = 'en') {
   const start = STARTS[name];
   if (!start) throw new Error(`unknown scenario: ${name}`);
@@ -523,7 +538,7 @@ export function createScenario(name = 'ready', locale = 'en') {
   const state = { history: [], sequence: 0, locale, ...structuredClone(start(locale)) };
   return {
     name,
-    respond({ method = 'GET', path, body = null }) {
+    respond({ method = 'GET', path, query = new URLSearchParams(), body = null }) {
       if (path === '/api/session' && method === 'POST') return ok(state.session);
       if (!state.session.authenticated) return null;
       if (path === '/api/teams' && method === 'GET') return ok({ teams: state.teams });
@@ -555,7 +570,7 @@ export function createScenario(name = 'ready', locale = 'en') {
       if (path === '/api/teams/marketing/files' && method === 'GET') return ok({ files: [] });
       if (path === '/api/teams/marketing/files' && method === 'POST') return uploadFile(state, body);
       if (path === '/api/teams/marketing/chat/history' && method === 'GET') {
-        return ok({ entries: state.history, before: null });
+        return ok({ entries: historyView(state.history, query.get('routine')), before: null });
       }
       if (path === '/api/teams/marketing/inference' && method === 'GET') {
         return ok({ team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' });

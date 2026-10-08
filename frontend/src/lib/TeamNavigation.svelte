@@ -126,11 +126,13 @@
     return listed.routines.length > 0 || listed.failed;
   }
 
-  // A Team's Routines need the person when one is held for recovery, paused, or waiting to be asked again.
+  // A Team's Routines need the person when a run is held for recovery or waits for their approval, connection, or
+  // permission, or a Routine is paused or waiting to be asked again. The chat shows no run, so this is where a run that
+  // waits for the person is found.
   function routinesNeedAttention(teamId) {
     const listed = teamRoutines(teamId);
     return listed.incidents.length > 0 ||
-      listed.runs.some((run) => run.status === 'held') ||
+      listed.runs.some((run) => run.status === 'held' || run.status === 'frozen') ||
       listed.routines.some((routine) => routine.state === 'paused' || routine.needs_reconfirm);
   }
 
@@ -549,7 +551,7 @@
   .row :global(.team-actions > .shimpz-button[aria-expanded="true"]) { color: var(--shimpz-color-cyan); background: transparent; box-shadow: none; }
   .row :global(.row-action svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.6; }
   .routines-slot { position: relative; display: inline-flex; flex: none; }
-  /* A Routine held, paused, or waiting to be asked again: a small yellow dot; the button's name says it in words. */
+  /* A Routine that needs the person, or a list that failed to load: a small yellow dot; the button's name says which. */
   .attention { position: absolute; inset-block-start: 0.45rem; inset-inline-end: 0.4rem; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--shimpz-color-yellow); box-shadow: 0 0 0.35rem var(--shimpz-color-yellow); pointer-events: none; }
   @media (forced-colors: active) { .attention { background: Highlight; box-shadow: none; } }
   /* Reordering: a grip in the row actions, the lifted row following the pointer, and a cyan-to-magenta drop line with

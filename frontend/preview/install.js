@@ -85,7 +85,7 @@ window.fetch = async (input, init = {}) => {
   // An Admin API request anywhere but this origin never leaves the browser.
   if (url.origin !== location.origin) return jsonResponse(503, { detail: 'The preview refuses a cross-origin API.' });
   const body = await requestBody(request);
-  const answer = scenario.respond({ method: request.method, path: url.pathname, body });
+  const answer = scenario.respond({ method: request.method, path: url.pathname, query: url.searchParams, body });
   if (ORDER_KEY && answer?.status === 200 && url.pathname === '/api/teams/order') {
     try {
       sessionStorage.setItem(ORDER_KEY, JSON.stringify(body.team_ids));

@@ -8,8 +8,8 @@ import { accessibilityViolations } from './axe.js';
 import { localizedChallenge } from './localizedRequest.js';
 
 import { routeScenario } from './scenarioRoutes.js';
-import { planPage, planSummary, ROUTINE_TEXT, runStepsPage } from './routineScenarios.js';
-import { CLARIFICATION as SCENARIO_CLARIFICATION, ROUTINE_PLAN, ROUTINE_VIEW, TEAMS } from './scenarios.js';
+import { planPage, planSummary, ROUTINE_TEXT, routineLifecycleStart, runStepsPage } from './routineScenarios.js';
+import { historyView, CLARIFICATION as SCENARIO_CLARIFICATION, ROUTINE_PLAN, ROUTINE_VIEW, TEAMS } from './scenarios.js';
 
 // Every stored chat history row carries the UTC time Admin wrote it.
 const HISTORY_AT = '2026-10-01T12:00:00Z';
@@ -401,11 +401,13 @@ async function routeReadyChat(page, {
     const requestUrl = new URL(route.request().url());
     historyRequests.push(requestUrl.searchParams.get('before'));
     if (holdHistory) await historyHold;
+    // Each page answers in the view asked for: the chat's, or a Routine's own history.
+    const page = requestUrl.searchParams.has('before') ? olderHistory : history;
     return route.fulfill({
       status: historyStatus,
       contentType: 'application/json',
       body: JSON.stringify(historyStatus === 200
-        ? requestUrl.searchParams.has('before') ? olderHistory : history
+        ? page && { ...page, entries: historyView(page.entries, requestUrl.searchParams.get('routine')) }
         : { detail: 'Synthetic history failure.' }),
     });
   });
@@ -4312,11 +4314,19 @@ function recoveryCard(incidentId, { nonce = 'f'.repeat(32), action = 'replace-dn
 // Admin's deletion ceremony (ADR-0051): the Supervisor password first, then one six-digit code; `000000` is wrong.
 const SUPERVISOR_PASSWORD = 'correct supervisor passphrase';
 
-// Every run's transcript row opens its own step records; this names every other action a row may offer.
-// A Routine run's transcript row offers its own name, which opens the run, and exactly the other actions given.
-async function expectRowActions(row, ...actions) {
-  await expect(row.getByRole('button')).toHaveCount(1 + actions.length);
-  for (const action of actions) await expect(row.getByRole('button', { name: action, exact: true })).toHaveCount(1);
+// Opens a Routine's panel the way a person reaches it: the Team's Routines button, then the Routine in its list. The
+// chat shows only each Routine's creation, so this is the one way to a Routine's runs and decisions.
+async function openRoutinePanel(page, name = ROUTINE_VIEW.name, locale = 'en') {
+  const copy = messages[locale];
+  const button = copy.teamNavigation.routines.replace('{team}', 'Marketing');
+  // A phone keeps its Team drawer open behind a Routine panel it closed.
+  const drawer = page.getByRole('dialog', { name: 'Teams' });
+  const navigation = await drawer.isVisible() ? drawer : await openTeamNavigation(page);
+  await navigation.getByRole('button', { name: new RegExp(`^${RegExp.escape(button)}`) }).click();
+  await page.getByRole('dialog', { name: copy.routine.list.title.replace('{team}', 'Marketing') })
+    .getByRole('group', { name: copy.routine.list.open })
+    .getByRole('button', { name: new RegExp(`^${RegExp.escape(name)}`) }).click();
+  return page.getByRole('dialog', { name, exact: true });
 }
 
 async function routeRoutines(
@@ -4810,20 +4820,27 @@ test.describe('Team Routines', () => {
     }
   });
 
-  test("a deleted Routine's last notice names it as removed, also after a reload", async ({ page }) => {
+  test("the chat shows only each Routine's creation: its runs and later outcomes stay out of it, also after a reload", async ({ page }) => {
+    const requested = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname.endsWith('/chat/history')) requested.push(url.searchParams.get('routine'));
+    });
     await routeScenario(page, 'routine-lifecycle');
     await page.goto('/chat/?team=marketing');
-    const removed = ROUTINE_TEXT.en.names[4];
+    const created = routineLifecycleStart('en').history.filter((entry) => entry.outcome === 'created');
+    expect(created.length).toBeGreaterThan(0);
     for (const reload of [false, true]) {
       if (reload) await page.reload();
-      const last = page.locator('.routine-run').last();
-      await expect(last).toHaveAccessibleName(removed);
-      await expect(last).toContainText('Removed');
-      // Every notice is titled by its own frozen name, never by a request.
-      for (const notice of await page.locator('.routine-run').all()) {
-        expect(ROUTINE_TEXT.en.names).toContain(await notice.getAttribute('aria-label'));
-      }
+      const notices = page.locator('.routine-run');
+      await expect(notices).toHaveCount(created.length);
+      // Each is the creation Team froze its name into, and opens nothing: no run is reached from the chat.
+      for (const [index, entry] of created.entries()) await expect(notices.nth(index)).toHaveAccessibleName(entry.name);
+      await expect(notices.getByRole('button')).toHaveCount(0);
     }
+    // The chat reads its own view of the history, never a Routine's.
+    expect(requested.length).toBeGreaterThan(0);
+    expect(requested.every((routine) => routine === null)).toBe(true);
   });
 
   test('a Team\'s own Routines button opens its list in a modal from pointer or keyboard and says when one needs attention', { tag: '@mobile' }, async ({ page }) => {
@@ -5379,50 +5396,59 @@ test.describe('Team Routines', () => {
     expect(await accessibilityViolations(page)).toEqual([]);
   });
 
-  test('Routine outcomes appear in the transcript, apart from the conversation', async ({ page }) => {
-    const run = 'b'.repeat(32);
-    const entry = (id, outcome, detail, runId = id) => ({
+  test("a Routine's runs never reach the chat, which shows its creation, and are listed in the Routine's history", { tag: '@mobile' }, async ({ page }) => {
+    const entry = (id, outcome, detail, runId = id, createdAt = '2026-10-01T12:01:07Z') => ({
       id: `${id}:routine`,
       kind: 'routine-run',
       notice_id: id,
-      routine_id: 'a'.repeat(32),
+      routine_id: ROUTINE_VIEW.routine_id,
       name: ROUTINE_VIEW.name,
       run_id: runId,
       outcome,
-      created_at: '2026-10-01T12:01:07Z',
+      created_at: createdAt,
       detail,
       version: 1,
       ...noticeExtras(outcome),
     });
+    const defined = Object.fromEntries(['name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'state',
+      'permitted', 'model', 'allowance'].map((key) => [key, ROUTINE_VIEW[key]]));
     await routeReadyChat(page, {
       history: {
         entries: [
-          entry('f'.repeat(32), 'skipped', { missed: 2 }, null),
+          entry('a'.repeat(32), 'created', defined, null, '2026-10-01T11:00:00Z'),
+          entry('f'.repeat(32), 'skipped', { missed: 2 }, null, '2026-10-01T11:30:00Z'),
           entry('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']], position: null, steps: null }),
           entry('d'.repeat(32), 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 }),
-          entry(run, 'done', { plan: ROUTINE_VIEW.plan, output: null, decision: null }),
+          entry('b'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: null, decision: null }),
         ],
         before: null,
       },
     });
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
+    }));
     await page.goto('/chat/?team=marketing');
+    // The chat names the Routine once, where it was created, and offers nothing to open.
     const transcript = page.locator('.routine-run');
-    await expect(transcript).toHaveCount(4);
-    // Without a listed Routine, a row is still named by the name Team froze into it.
-    const quote = ROUTINE_VIEW.name;
-    for (const index of [0, 1, 2, 3]) await expect(transcript.nth(index)).toHaveAccessibleName(quote);
-    // A notice without a run opens nothing. A row whose Routine Team does not list offers no action but its run, which
-    // its name opens, not even its panel.
-    await expect(transcript.nth(0).getByRole('button')).toHaveCount(0);
-    for (const index of [1, 2, 3]) {
-      await expectRowActions(transcript.nth(index));
-      await expect(transcript.nth(index).getByRole('button', { name: quote })).toHaveAttribute('aria-haspopup', 'dialog');
-    }
+    await expect(transcript).toHaveCount(1);
+    await expect(transcript).toHaveAccessibleName(ROUTINE_VIEW.name);
+    await expect(transcript.getByRole('button')).toHaveCount(0);
+    expect(await accessibilityViolations(page)).toEqual([]);
+    // Its runs are its own history, newest first, each with what it did.
+    const panel = await openRoutinePanel(page);
+    await panel.getByRole('tab', { name: 'Runs' }).click();
+    const runs = panel.getByRole('list', { name: 'Runs' }).getByRole('listitem');
+    await expect(runs).toHaveCount(4);
+    await expect(runs.nth(0).getByRole('button', { name: 'Done', exact: true })).toBeVisible();
+    await expect(runs.nth(1)).toContainText(messages.en.routine.panel.waitingApproval);
+    await expect(runs.nth(2)).toContainText('assistant-rpc-failed');
+    await expect(runs.nth(3)).toContainText('2 runs missed');
+    await expect(runs.nth(3).getByRole('button')).toHaveCount(0);
   });
 
-  test('a Routine run that shows its result opens it in full: its own step records and the result as escaped data', async ({ page, context }) => {
+  test('a Routine run that shows its result opens it in full: its own step records and the result as escaped data', { tag: '@mobile' }, async ({ page, context }) => {
     // ADR-0092 amendment, 2026-10-05 (output): the run's zones with their nested account, a value Team redacted, and a
-    // hostile value as text, opened from the transcript by the Routine's name.
+    // hostile value as text, opened from the Routine's history by the run's outcome.
     const text = (value) => ({ kind: 'text', value, cut: false });
     const account = { kind: 'fields', fields: [['id', text('023e105f4ecef8ad9ca31a8372d0c353')], ['name', text('Main account')]], omitted: 0 };
     const zone = (id, name, paused) => ({
@@ -5529,13 +5555,18 @@ test.describe('Team Routines', () => {
       });
     });
     await page.goto('/chat/?team=marketing');
-    const transcript = page.locator('.routine-run');
-    await expect(transcript).toHaveCount(3);
-    // The transcript keeps the result out of the timeline: the Routine's name opens it.
-    await expect(transcript.nth(0).getByRole('table')).toHaveCount(0);
-    const link = transcript.nth(0).getByRole('button', { name: ROUTINE_VIEW.name });
+    // No run reaches the chat; each opens from its Routine's history, newest first.
+    await expect(page.locator('.routine-run')).toHaveCount(0);
+    const panel = await openRoutinePanel(page);
+    await panel.getByRole('tab', { name: 'Runs' }).click();
+    const runs = panel.getByRole('list', { name: 'Runs' }).getByRole('listitem');
+    await expect(runs).toHaveCount(3);
+    // The history keeps the result out of its list: the run's outcome opens it.
+    await expect(runs.nth(2).getByRole('table')).toHaveCount(0);
+    const link = runs.nth(2).getByRole('button', { name: 'Done', exact: true });
     await link.click();
-    const view = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const view = page.getByRole('dialog', { name: ROUTINE_VIEW.name })
+      .filter({ has: page.getByRole('region', { name: 'Steps' }) });
     await expect(view).toBeVisible();
     // The view opens as its diagnostics request leaves; the request reaches the route a moment later.
     await expect.poll(() => diagnostics).toEqual([run]);
@@ -5582,11 +5613,12 @@ test.describe('Team Routines', () => {
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('9a7806061c88ada191ed06f989cc3dac');
     expect(await accessibilityViolations(page)).toEqual([]);
 
-    // Escape closes the view and returns focus to the name that opened it.
+    // Escape closes the view and returns focus to the outcome that opened it, in the Routine's panel.
     await page.keyboard.press('Escape');
     await expect(view).toHaveCount(0);
     await expect(link).toBeFocused();
-    // The name opens the run from the keyboard as well.
+    await expect(panel).toBeVisible();
+    // The outcome opens the run from the keyboard as well.
     await page.keyboard.press('Enter');
     await expect(view).toBeVisible();
     await page.keyboard.press('Escape');
@@ -5594,13 +5626,13 @@ test.describe('Team Routines', () => {
     await expect(link).toBeFocused();
 
     // A run whose result did not change opens without one.
-    await transcript.nth(1).getByRole('button', { name: ROUTINE_VIEW.name }).click();
+    await runs.nth(1).getByRole('button', { name: 'Done', exact: true }).click();
     await expect(view.getByRole('region', { name: 'Steps' })).toBeVisible();
     await expect(view.getByRole('region', { name: 'Response' })).toHaveCount(0);
     await view.getByRole('button', { name: 'Close' }).click();
     await expect(view).toHaveCount(0);
     // Another run shows its own records, read for exactly that run.
-    await transcript.nth(2).getByRole('button', { name: ROUTINE_VIEW.name }).click();
+    await runs.nth(0).getByRole('button', { name: 'Done', exact: true }).click();
     await expect(view.getByRole('region', { name: 'Steps' }).locator('ol > li')).toHaveCount(2);
     await expect(view.getByRole('region', { name: 'Steps' }).locator('dd')).toHaveCount(0);
     await view.getByRole('button', { name: 'Close' }).click();
@@ -5729,7 +5761,7 @@ test.describe('Team Routines', () => {
     await expect(panel.getByRole('button', { name: /^Show \d+ more steps?$/u })).toHaveCount(0);
   });
 
-  test('a run view pages its own step records: a failed step, steps that never ran, and records read again once they changed', async ({ page }) => {
+  test('a run view pages its own step records: a failed step, steps that never ran, and records read again once they changed', { tag: '@mobile' }, async ({ page }) => {
     const run = 'b'.repeat(32);
     const total = 70;
     const plan = planSummary(Array.from({ length: total }, () => ({ assistant: 'shimpz-cloudflare', action: 'list-dns-records' })));
@@ -5793,9 +5825,10 @@ test.describe('Team Routines', () => {
       return route.fulfill({ json: runStepsPage(run, ROUTINE_VIEW.routine_id, plan, records, { snapshot: current, offset: Number(offset) }) });
     });
     await page.goto('/chat/?team=marketing');
-    await page.locator('.routine-run').getByRole('button', { name: ROUTINE_VIEW.name }).click();
-    const view = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
-    const steps = view.getByRole('region', { name: 'Steps' });
+    const panel = await openRoutinePanel(page);
+    await panel.getByRole('tab', { name: 'Runs' }).click();
+    await panel.getByRole('list', { name: 'Runs' }).getByRole('button', { name: 'Done', exact: true }).click();
+    const steps = page.getByRole('region', { name: 'Steps' });
     const items = steps.locator('ol > li');
     await expect(items).toHaveCount(10);
     await expect.poll(() => read).toEqual(['latest/0']);
@@ -5825,7 +5858,7 @@ test.describe('Team Routines', () => {
     }
   });
 
-  test('every run opens its own step records: a failed run whose notice names no plan, and a completed run that shows no result', async ({ page }) => {
+  test('every run opens its own step records: a failed run whose notice names no plan, and a completed run that shows no result', { tag: '@mobile' }, async ({ page }) => {
     const scenario = await routeScenario(page, 'routine-lifecycle');
     const { routines } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json;
     const [watch, , daily] = routines;
@@ -5836,13 +5869,14 @@ test.describe('Team Routines', () => {
       if (match) read.push(`${match[1][0]}:${match[2] === 'latest' ? 'latest' : 'snapshot'}/${match[3]}`);
     });
     await page.goto('/chat/?team=marketing');
-    const rows = page.locator('.routine-run');
-    // The failed run shows no result, so its name opens its steps: the step that failed and the one never run.
-    const failed = rows.filter({ hasText: daily.name }).filter({ hasText: messages.en.routine.notice.status.failed });
-    await expect(failed).toHaveCount(1);
-    const opener = failed.getByRole('button', { name: daily.name });
+    const panel = await openRoutinePanel(page, daily.name);
+    await panel.getByRole('tab', { name: 'Runs' }).click();
+    // The failed run shows no result, so its outcome opens its steps: the step that failed and the one never run.
+    const opener = panel.getByRole('list', { name: 'Runs' }).getByRole('button', { name: /^Failed/u });
+    await expect(opener).toHaveCount(1);
     await opener.click();
-    let view = page.getByRole('dialog', { name: daily.name });
+    const withSteps = { has: page.getByRole('region', { name: 'Steps' }) };
+    let view = page.getByRole('dialog', { name: daily.name }).filter(withSteps);
     const steps = view.getByRole('region', { name: 'Steps' }).locator('ol > li');
     await expect(steps).toHaveCount(2);
     await expect(steps.nth(0)).toContainText(status.failed);
@@ -5855,10 +5889,15 @@ test.describe('Team Routines', () => {
     await expect(opener).toBeFocused();
 
     // The continuous watch's completed run hands its result on: no result to show, and its 120 steps read by page.
-    const completed = rows.filter({ hasText: watch.name }).getByRole('button', { name: watch.name });
+    await page.keyboard.press('Escape');
+    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
+      .getByRole('group', { name: 'Routines' }).getByRole('button', { name: new RegExp(`^${RegExp.escape(watch.name)}`) }).click();
+    const watchPanel = page.getByRole('dialog', { name: watch.name, exact: true });
+    await watchPanel.getByRole('tab', { name: 'Runs' }).click();
+    const completed = watchPanel.getByRole('list', { name: 'Runs' }).getByRole('button', { name: 'Done', exact: true });
     await expect(completed).toHaveCount(1);
     await completed.click();
-    view = page.getByRole('dialog', { name: watch.name });
+    view = page.getByRole('dialog', { name: watch.name }).filter(withSteps);
     const records = view.getByRole('region', { name: 'Steps' }).locator('ol > li');
     await expect(records).toHaveCount(10);
     await expect(view.getByRole('region', { name: 'Response' })).toHaveCount(0);
@@ -5871,7 +5910,7 @@ test.describe('Team Routines', () => {
     await expect(records.nth(69)).toContainText(status.done);
   });
 
-  test('a Routine notice shows the name Team froze into it as literal text, never as a link, image, or element', async ({ page }) => {
+  test('a Routine notice shows the name Team froze into it as literal text, never as a link, image, or element', { tag: '@mobile' }, async ({ page }) => {
     // A name's 80 characters still fit every kind of markup it could imitate.
     const name = '[x](https://e.test) ![i](https://e.test/a.png) <img src=x onerror=alert(1)>**b**';
     // Team lists the Routine under a newer name now; each notice keeps the name it was written with.
@@ -5914,20 +5953,23 @@ test.describe('Team Routines', () => {
     const requests = [];
     page.on('request', (request) => requests.push(request.url()));
     await page.goto('/chat/?team=marketing');
-    const notices = page.locator('.routine-run');
-    await expect(notices).toHaveCount(3);
-    for (const index of [0, 1, 2]) {
-      const notice = notices.nth(index);
-      const shown = name;
-      await expect(notice).toContainText(shown);
-      await expect(notice).not.toContainText(listed.name);
-      await expect(notice.getByRole('link')).toHaveCount(0);
-      await expect(notice.getByRole('img')).toHaveCount(0);
-      await expect(notice.getByRole('heading')).toHaveCount(0);
-      await expect(notice.locator('a, img, script, iframe, em, strong')).toHaveCount(0);
-      // The name is the notice's own name, whatever markup it imitates.
-      await expect(notice).toHaveAccessibleName(shown);
-    }
+    // The chat shows the creation, under the name it was written with, whatever markup it imitates.
+    const notice = page.locator('.routine-run');
+    await expect(notice).toHaveCount(1);
+    await expect(notice).toContainText(name);
+    await expect(notice).not.toContainText(listed.name);
+    await expect(notice.getByRole('link')).toHaveCount(0);
+    await expect(notice.getByRole('img')).toHaveCount(0);
+    await expect(notice.getByRole('heading')).toHaveCount(0);
+    await expect(notice.locator('a, img, script, iframe, em, strong')).toHaveCount(0);
+    await expect(notice).toHaveAccessibleName(name);
+    // A run opened from its Routine's history, listed under its newer name, is titled by its own notice's name.
+    const panel = await openRoutinePanel(page, listed.name);
+    await panel.getByRole('tab', { name: 'Runs' }).click();
+    await panel.getByRole('list', { name: 'Runs' }).getByRole('button', { name: /^Failed/u }).click();
+    const view = page.getByRole('dialog', { name }).filter({ has: page.getByRole('region', { name: 'Steps' }) });
+    await expect(view.getByRole('heading', { level: 2 })).toHaveText(name);
+    await expect(view.getByRole('heading', { level: 2 }).locator('a, img, script, iframe, em, strong')).toHaveCount(0);
     expect(dialogs).toEqual([]);
     expect(requests.filter((url) => /e(?:vil)?\.test/u.test(url))).toEqual([]);
   });
@@ -5947,6 +5989,13 @@ test.describe('Team Routines', () => {
       version,
       ...noticeExtras(outcome),
     };
+  }
+
+  // A Routine's creation notice, the one Routine row the chat shows, naming what `routine` was created to do.
+  function createdRow(id, routine = ROUTINE_VIEW) {
+    const detail = Object.fromEntries(['name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'state',
+      'permitted', 'model', 'allowance'].map((key) => [key, routine[key]]));
+    return { ...routineRow(id, 'created', detail, { routine }), run_id: null };
   }
 
   // An unresolved incident that holds a run of `routine` for recovery (ADR-0092); it shares the run's id.
@@ -5983,7 +6032,7 @@ test.describe('Team Routines', () => {
       .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
   }
 
-  test('a held run is settled in the panel its transcript card opens, through the card Team opened, with exact fresh nonces', { tag: '@slow' }, async ({ page }) => {
+  test('a held run is settled in its Routine\'s panel, through the card Team opened, with exact fresh nonces', { tag: ['@slow', '@mobile'] }, async ({ page }) => {
     const held = 'b'.repeat(32);
     const paused = 'c'.repeat(32);
     const audit = { ...ROUTINE_VIEW, routine_id: 'e'.repeat(32), name: 'Weekly DNS audit' };
@@ -6026,23 +6075,12 @@ test.describe('Team Routines', () => {
       await route.fulfill({ json: { team_id: 'marketing', incident_id: incidentId, choice: answer.choice, status: 'requested' } });
     });
     await page.goto('/chat/?team=marketing');
-    const rows = page.locator('.routine-run');
-    await expect(rows).toHaveCount(2);
-    // A transcript card decides nothing: no recovery choice, Resume, or execution details, only its Routine's panel.
-    for (const index of [0, 1]) {
-      await expectRowActions(rows.nth(index), 'Open Routine');
-      await expect(rows.nth(index).getByRole('group', { name: 'Recovery choices' })).toHaveCount(0);
-    }
-    // Each waiting notice says so until its run is settled.
-    await expect(rows.nth(0)).toContainText('stopped with an error');
-    await expect(rows.nth(1)).toContainText('paused');
-    for (const index of [0, 1]) await expect(rows.nth(index)).toContainText('Waiting for you');
+    // The chat shows no run; the Team's Routines button says a Routine needs the person, and opening one is the card.
+    await expect(page.locator('.routine-run')).toHaveCount(0);
     expect(opened).toEqual([]);
-    expect(await accessibilityViolations(page)).toEqual([]);
-
-    const open = rows.nth(0).getByRole('button', { name: 'Open Routine' });
-    await open.click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const navigation = await openTeamNavigation(page);
+    await expect(navigation.getByRole('button', { name: 'Routines for Marketing: one needs your attention' })).toBeVisible();
+    const panel = await openRoutinePanel(page);
     // The panel shows exactly the card's two choices, one action each, in Team's order, before any answer.
     await expect.poll(() => choiceNames(panel)).toEqual(['Run', 'Delete']);
     expect(answers).toEqual([]);
@@ -6054,16 +6092,13 @@ test.describe('Team Routines', () => {
     await panel.getByRole('button', { name: 'Run' }).click();
     await expect(panel.getByRole('status')).toContainText('Set aside. The Routine runs again now.');
     await expect(panel.getByRole('group', { name: 'Recovery choices' })).toHaveCount(0);
-    // Closing the panel returns to the card, which no longer waits for anything.
+    // Once settled, the panel returns to its pages.
+    await expect(panel.getByRole('tab', { name: 'Summary' })).toBeVisible();
     await panel.getByRole('button', { name: 'Close' }).click();
     await expect(panel).toHaveCount(0);
-    await expectRowActions(rows.nth(0));
-    await expect(rows.nth(0)).toBeFocused();
-    await expect(rows.nth(0)).not.toContainText('Waiting for you');
 
     // A stale card says so and changes nothing; the next answer uses a freshly opened card.
-    await rows.nth(1).getByRole('button', { name: 'Open Routine' }).click();
-    const auditPanel = page.getByRole('dialog', { name: audit.name });
+    const auditPanel = await openRoutinePanel(page, audit.name);
     await expect.poll(() => choiceNames(auditPanel)).toEqual(['Run', 'Delete']);
     await auditPanel.getByRole('button', { name: 'Run' }).click();
     await expect(auditPanel.getByRole('status')).toHaveText(messages.en.routine.errors.stale);
@@ -6080,7 +6115,7 @@ test.describe('Team Routines', () => {
     expect(answers.slice(1).map((answer) => answer.nonce)).toEqual(pausedNonces.slice(0, 2));
   });
 
-  test("a card's error is literal text, and a shortened one says it was shortened", async ({ page }) => {
+  test("a card's error is literal text, and a shortened one says it was shortened", { tag: '@mobile' }, async ({ page }) => {
     const held = 'b'.repeat(32);
     const message = '<img src=x onerror=alert(1)> Insufficient account credits';
     await routeReadyChat(page, {
@@ -6096,57 +6131,11 @@ test.describe('Team Routines', () => {
       json: recoveryCard(held, { failure: { message, truncated: true } }),
     }));
     await page.goto('/chat/?team=marketing');
-    await page.locator('.routine-run').getByRole('button', { name: 'Open Routine' }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const panel = await openRoutinePanel(page);
     await panel.getByText('See the technical error').click();
     await expect(panel.locator('.error-text')).toHaveText(message);
     await expect(panel.locator('.error-text img')).toHaveCount(0);
     await expect(panel).toContainText('shortened');
-  });
-
-  test("a transcript card opens its Routine's panel, whose Delete asks for the deletion confirmation", async ({ page }) => {
-    const held = 'b'.repeat(32);
-    await routeReadyChat(page, {
-      history: {
-        entries: [routineRow(held, 'held', { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 }, { version: 2 })],
-        before: null,
-      },
-    });
-    const calls = await routeRoutines(page);
-    await page.goto('/chat/?team=marketing');
-    const row = page.locator('.routine-run');
-    const open = row.getByRole('button', { name: 'Open Routine' });
-    await expect(open).toHaveAttribute('aria-haspopup', 'dialog');
-    // Escape and Close each leave the panel with focus back on the card's button, and nothing was answered.
-    await open.click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
-    await expect.poll(() => choiceNames(panel)).toEqual(['Run', 'Delete']);
-    await page.keyboard.press('Escape');
-    await expect(panel).toHaveCount(0);
-    await expect(open).toBeFocused();
-    await page.keyboard.press('Enter');
-    await expect.poll(() => choiceNames(panel)).toEqual(['Run', 'Delete']);
-    await panel.getByRole('button', { name: 'Close' }).click();
-    await expect(panel).toHaveCount(0);
-    await expect(open).toBeFocused();
-
-    await open.click();
-    await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Delete' }).click();
-    const confirm = page.getByRole('dialog', { name: `Delete “${ROUTINE_VIEW.name}”?` });
-    await expect(confirm.getByLabel('Supervisor password')).toBeFocused();
-    expect(await accessibilityViolations(page)).toEqual([]);
-    // Cancel returns to that Routine's panel, which is the same decision.
-    await confirm.getByRole('button', { name: 'Cancel' }).click();
-    await expect(panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Delete' })).toBeFocused();
-    await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Delete' }).click();
-    await confirm.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
-    await confirm.getByLabel('Six-digit code').fill('123456');
-    await confirm.getByRole('button', { name: 'Delete' }).click();
-    await expect(confirm).toHaveCount(0);
-    await expect.poll(() => calls.deletes).toEqual([{ code: '123456' }]);
-    expect(calls.answers).toEqual([]);
-    // The deleted Routine is no longer listed, so its card offers nothing.
-    await expectRowActions(row);
   });
 
   test("a run's execution details are read for that run in its Routine's panel and shown only as text", { tag: '@mobile' }, async ({ page }) => {
@@ -6189,9 +6178,8 @@ test.describe('Team Routines', () => {
       await route.fulfill({ json: answer });
     });
     await page.goto('/chat/?team=marketing');
-    // A run that waits for nobody offers nothing in the transcript; its details are in its Routine's panel.
-    await expect(page.locator('.routine-run')).toContainText('Daily DNS zones failed');
-    await expectRowActions(page.locator('.routine-run'));
+    // The run never reaches the transcript; its details are in its Routine's panel.
+    await expect(page.locator('.routine-run')).toHaveCount(0);
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
     await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
@@ -6262,10 +6250,7 @@ test.describe('Team Routines', () => {
     expect(headings[2]).toContain('Decision call 2');
   });
 
-  test("a Routine's recent runs are found past a full page of newer unrelated chat", { tag: '@mobile' }, async ({ page }) => {
-    // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
-    // this test counts, however long a loaded host makes it run.
-    await freezeClock(page);
+  test("a Routine's panel reads its own history, never the chat's, however much the chat holds", { tag: '@mobile' }, async ({ page }) => {
     const done = { plan: ROUTINE_VIEW.plan, output: null, decision: null };
     const chat = Array.from({ length: 64 }, (_, index) => ({
       id: `${index.toString(16).padStart(32, '0')}:user`,
@@ -6275,58 +6260,56 @@ test.describe('Team Routines', () => {
       text: `Unrelated message ${index + 1}`,
     }));
     const chatHistory = await routeReadyChat(page, {
-      history: { entries: chat, before: 'AAAAAAAAAMg' },
-      olderHistory: {
+      history: {
         entries: [
           routineRow('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [], position: null, steps: null }),
           routineRow('d'.repeat(32), 'done', done),
+          ...chat,
         ],
         before: null,
       },
+    });
+    const views = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname.endsWith('/chat/history')) views.push(url.searchParams.get('routine'));
     });
     await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
       json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
     }));
     await page.goto('/chat/?team=marketing');
     await expect(page.getByText('Unrelated message 64', { exact: true })).toBeVisible();
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
-      .getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const panel = await openRoutinePanel(page);
     await panel.getByRole('tab', { name: 'Runs' }).click();
     const runs = panel.getByRole('list', { name: 'Runs' });
-    // Both runs sit behind the newest page; the panel follows the cursor to them, newest first.
+    // Both runs sit behind the newest chat; the panel's own view of the history holds just them, newest first.
     await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(2);
     await expect(runs.getByRole('listitem').first()).toContainText('Done');
-    await expect(runs).not.toContainText('No runs yet.');
     await expect(runs.getByRole('button', { name: 'Look for older runs' })).toHaveCount(0);
-    await expect.poll(() => chatHistory.historyRequests()).toContain('AAAAAAAAAMg');
+    await expect.poll(() => views).toContain(ROUTINE_VIEW.routine_id);
+    expect(views.every((routine) => routine === null || routine === ROUTINE_VIEW.routine_id)).toBe(true);
+    expect(chatHistory.historyRequests().every((before) => before === null)).toBe(true);
   });
 
-  test("a Routine's runs beyond one search's page bound are reached by continuing it, and a run that ends joins them", { tag: '@mobile' }, async ({ page }) => {
-    const pageOf = (start) => Array.from({ length: 64 }, (_, index) => ({
-      id: `${(start + index).toString(16).padStart(32, '0')}:user`,
-      created_at: '2026-10-02T09:00:00Z',
-      kind: 'message',
-      role: 'user',
-      text: `Unrelated message ${start + index + 1}`,
-    }));
-    const searched = [];
+  test("a Routine's older runs are reached by continuing its history, and a run that ends joins them", { tag: '@mobile' }, async ({ page }) => {
     const done = { plan: ROUTINE_VIEW.plan, output: null, decision: null };
-    // A run that ends while the panel is open is written after the newest unrelated message.
+    const run = (index) => routineRow((index + 1).toString(16).padStart(32, '0'), 'done', done);
+    const searched = [];
+    // A run that ends while the panel is open is written after the newest run.
     let delivered = null;
     await routeReadyChat(page);
-    // Seventeen pages of newer unrelated chat, then the Routine's one run.
+    // The Routine's own history: a full newest page of its runs, then its one older run.
     await page.route('**/api/teams/marketing/chat/history**', (route) => {
-      const before = new URL(route.request().url()).searchParams.get('before');
-      searched.push(before);
-      const index = before === null ? 0 : Number.parseInt(before.slice(-3, -1), 10);
-      const newest = delivered ? [...pageOf(0).slice(1), delivered] : pageOf(0);
-      const body = index < 17
-        ? { entries: index === 0 ? newest : pageOf(index * 64), before: `AAAAAAAA${String(index + 1).padStart(2, '0')}A` }
-        : { entries: [routineRow('d'.repeat(32), 'done', done)], before: null };
-      return route.fulfill({ json: body });
+      const params = new URL(route.request().url()).searchParams;
+      const routine = params.get('routine');
+      if (routine === null) return route.fulfill({ json: { entries: [], before: null } });
+      searched.push(params.get('before'));
+      const newest = Array.from({ length: 64 }, (_, index) => run(index + 1));
+      return route.fulfill({
+        json: params.get('before') === null
+          ? { entries: delivered ? [...newest.slice(1), delivered] : newest, before: 'AAAAAAAAAMg' }
+          : { entries: [run(0)], before: null },
+      });
     });
     let routineReads = 0;
     let running = [{
@@ -6346,17 +6329,13 @@ test.describe('Team Routines', () => {
     });
     await page.clock.install();
     await page.goto('/chat/?team=marketing');
-    await expect(page.getByText('Unrelated message 64', { exact: true })).toBeVisible();
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
-      .getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const panel = await openRoutinePanel(page);
     await panel.getByRole('tab', { name: 'Runs' }).click();
     const runs = panel.getByRole('list', { name: 'Runs' });
+    const details = runs.getByRole('button', { name: 'Execution details' });
     const older = runs.getByRole('button', { name: 'Look for older runs' });
+    await expect(details).toHaveCount(64);
     await expect(older).toBeVisible();
-    await expect(runs).not.toContainText('No runs yet.');
     await expect(runs).toContainText('Running now');
     // A run already going cannot be stopped: Pause holds only the next run.
     await expect(runs.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
@@ -6367,21 +6346,22 @@ test.describe('Team Routines', () => {
     running = [];
     await page.clock.runFor(16_000);
     await expect(runs).not.toContainText('Running now');
-    await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(1);
     await expect(runs.getByRole('listitem').first()).toContainText('Done');
+    await expect(runs.getByRole('listitem').first().getByRole('button', { name: 'Execution details' })).toBeVisible();
     await expect(older).toBeVisible();
     expect(searched.slice(before).filter((cursor) => cursor !== null)).toEqual([]);
+    const listed = await details.count();
     await older.click();
-    await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(2);
+    await expect(details).toHaveCount(listed + 1);
     await expect(older).toHaveCount(0);
     // The chat's periodic refresh replaces the Routine's details; the runs found so far stay.
     const reads = routineReads;
     const searches = searched.length;
     await page.clock.runFor(16_000);
     await expect.poll(() => routineReads).toBeGreaterThan(reads);
-    await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(2);
+    await expect(details).toHaveCount(listed + 1);
     await expect(older).toHaveCount(0);
-    expect(searched.slice(searches).filter((before) => before !== null)).toEqual([]);
+    expect(searched.slice(searches).filter((cursor) => cursor !== null)).toEqual([]);
   });
 
   test("a Routine's panel that stays open keeps its latest few runs while new runs keep ending", { tag: '@mobile' }, async ({ page }) => {
@@ -6391,7 +6371,7 @@ test.describe('Team Routines', () => {
     const history = [0, 1, 2, 3, 4].map((index) => routineRow(digits[index].repeat(32), 'done', done));
     await routeReadyChat(page);
     await page.route('**/api/teams/marketing/chat/history**', (route) => route.fulfill({
-      json: { entries: history, before: null },
+      json: { entries: historyView(history, new URL(route.request().url()).searchParams.get('routine')), before: null },
     }));
     let routineReads = 0;
     await page.route('**/api/teams/marketing/routines', (route) => {
@@ -6494,7 +6474,7 @@ test.describe('Team Routines', () => {
     await expect(outcome).toBeFocused();
   });
 
-  test('a Routine paused after its failures resumes from its panel, never past a held run its transcript card opens', { tag: '@mobile' }, async ({ page }) => {
+  test('a Routine paused after its failures resumes from its panel, never past a held run its own panel decides', { tag: '@mobile' }, async ({ page }) => {
     const failed = 'c'.repeat(32);
     const held = 'f'.repeat(32);
     const heldRoutine = { ...ROUTINE_VIEW, routine_id: 'e'.repeat(32), name: 'Weekly DNS audit', state: 'paused' };
@@ -6525,23 +6505,16 @@ test.describe('Team Routines', () => {
       json: recoveryCard(held, { nonce: '1'.repeat(32) }),
     }));
     await page.goto('/chat/?team=marketing');
-    const rows = page.locator('.routine-run');
-    // No card resumes a Routine: the failed run's offers nothing, and the held one only opens its Routine's panel.
-    await expectRowActions(rows.nth(1), 'Open Routine');
-    await expectRowActions(rows.nth(0));
+    // No run reaches the chat, so nothing there resumes a Routine.
+    await expect(page.locator('.routine-run')).toHaveCount(0);
     // A Routine an unresolved incident still holds offers no Resume: its panel is the recovery decision alone.
-    await rows.nth(1).getByRole('button', { name: 'Open Routine' }).click();
-    const heldPanel = page.getByRole('dialog', { name: heldRoutine.name });
+    const heldPanel = await openRoutinePanel(page, heldRoutine.name);
     await expect.poll(() => choiceNames(heldPanel)).toEqual(['Run', 'Delete']);
     await expect(heldPanel.getByRole('button', { name: 'Resume' })).toHaveCount(0);
     await heldPanel.getByRole('button', { name: 'Close' }).click();
     await expect(heldPanel).toHaveCount(0);
 
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
-      .getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const panel = await openRoutinePanel(page);
     await panel.getByRole('button', { name: 'Resume' }).click();
     await expect(panel.getByRole('button', { name: 'Pause' })).toBeVisible();
     expect(resumed).toEqual([ROUTINE_VIEW.routine_id]);
@@ -6559,7 +6532,6 @@ test.describe('Team Routines', () => {
     // A paused Routine with a held run: the Team's Routines button carries the attention dot.
     await routeRoutines(page);
     await page.goto('/chat/?team=marketing');
-    await expect(page.locator('.routine-run').getByRole('button', { name: 'Open Routine' })).toBeVisible();
     const routines = page.getByRole('button', { name: /^Routines for Marketing: one needs your attention$/ });
     await expect(routines).toBeVisible();
     // Each decoration's box is sampled through the whole glitch, which lasts 280ms after the pointer arrives.
@@ -6578,7 +6550,7 @@ test.describe('Team Routines', () => {
     }
   });
 
-  test('an expired recovery card is withdrawn and only a person opens a fresh one', async ({ page }) => {
+  test('an expired recovery card is withdrawn and only a person opens a fresh one', { tag: '@mobile' }, async ({ page }) => {
     const held = 'b'.repeat(32);
     await page.clock.install({ time: new Date('2026-10-01T12:05:00Z') });
     await routeReadyChat(page, {
@@ -6603,8 +6575,7 @@ test.describe('Team Routines', () => {
       });
     });
     await page.goto('/chat/?team=marketing');
-    await page.locator('.routine-run').getByRole('button', { name: 'Open Routine' }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const panel = await openRoutinePanel(page);
     const choices = panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
     await expect.poll(() => choiceNames(panel)).toEqual(['Run', 'Delete']);
     // Once Team's five minutes pass the card is withdrawn; nothing opens another until the person asks.
@@ -6621,7 +6592,7 @@ test.describe('Team Routines', () => {
     await expect.poll(() => answers).toEqual([{ nonce: '2'.repeat(32), choice: 'run' }]);
   });
 
-  test('a frozen run is approved in the panel its transcript card opens, with the chat approval dialog', async ({ page }) => {
+  test("a frozen run lights its Team's Routines button and is approved in its Routine's panel, with the chat approval dialog", { tag: '@mobile' }, async ({ page }) => {
     const run = 'd'.repeat(32);
     const waiting = 'e'.repeat(32);
     const audit = { ...ROUTINE_VIEW, routine_id: 'c'.repeat(32), name: 'Weekly DNS audit' };
@@ -6671,14 +6642,14 @@ test.describe('Team Routines', () => {
       await route.fulfill({ json: { team_id: 'marketing', run_id: waiting, status: 'frozen' } });
     });
     await page.goto('/chat/?team=marketing');
-    const rows = page.locator('.routine-run');
-    await expect(rows).toHaveCount(2);
-    // The card itself offers no Review: its one action opens the Routine's panel.
-    await expectRowActions(rows.nth(1), 'Open Routine');
+    // No run reaches the chat: a run waiting for the person's approval or connection is found from the Team's
+    // Routines button, which says a Routine needs them although no Routine is paused or held.
+    await expect(page.locator('.routine-run')).toHaveCount(0);
+    const navigation = await openTeamNavigation(page);
+    await expect(navigation.getByRole('button', { name: 'Routines for Marketing: one needs your attention' })).toBeVisible();
     expect(openings).toEqual([]);
 
-    await rows.nth(1).getByRole('button', { name: 'Open Routine' }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const panel = await openRoutinePanel(page);
     await panel.getByRole('button', { name: 'Review' }).click();
     const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
     await expect(dialog).toBeVisible();
@@ -6700,10 +6671,8 @@ test.describe('Team Routines', () => {
     await expect.poll(() => answers).toEqual([approval, approval]);
     await panel.getByRole('button', { name: 'Close' }).click();
     await expect(panel).toHaveCount(0);
-    await expectRowActions(rows.nth(1));
 
-    await rows.nth(0).getByRole('button', { name: 'Open Routine' }).click();
-    const auditPanel = page.getByRole('dialog', { name: audit.name });
+    const auditPanel = await openRoutinePanel(page, audit.name);
     await auditPanel.getByRole('button', { name: 'Review' }).click();
     await expect(auditPanel).toContainText('Connect Shimpz Cloudflare from the Team\'s Store, then continue the run.');
     expect(resumes).toEqual([]);
@@ -6714,16 +6683,19 @@ test.describe('Team Routines', () => {
     expect(openings).toEqual(Array(5).fill({ locale: 'en' }));
   });
 
-  test('a Routine notice delivered after the chat opened becomes reviewable without a reload', { tag: '@mobile' }, async ({ page }) => {
+  test("a Routine's creation delivered after the chat opened appears without a reload, and its runs never do", { tag: '@mobile' }, async ({ page }) => {
     await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
     const run = 'd'.repeat(32);
-    const earlier = routineRow('c'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: null, decision: null });
+    const earlier = createdRow('c'.repeat(32));
     const frozen = routineRow(run, 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 });
-    let history = { entries: [earlier], before: null };
+    let history = { entries: [], before: null };
     let runs = [];
     await routeReadyChat(page, { history });
-    // Admin's scheduler writes notices durably on its own; these routes serve whatever it has written so far.
-    await page.route('**/api/teams/marketing/chat/history**', (route) => route.fulfill({ json: history }));
+    // Admin's scheduler writes notices durably on its own; these routes serve whatever it has written so far, in the
+    // view each request asks for.
+    await page.route('**/api/teams/marketing/chat/history**', (route) => route.fulfill({
+      json: { ...history, entries: historyView(history.entries, new URL(route.request().url()).searchParams.get('routine')) },
+    }));
     await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
       json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents: [] },
     }));
@@ -6749,19 +6721,19 @@ test.describe('Team Routines', () => {
     });
     await page.goto('/chat/?team=marketing');
     const rows = page.locator('.routine-run');
-    await expect(rows).toHaveCount(1);
+    await expect(rows).toHaveCount(0);
     const composer = page.getByRole('textbox', { name: 'Send', exact: true });
     await fillWhenReady(page, composer, 'A draft that must survive');
 
-    // The scheduler delivers a frozen run while the conversation is open.
+    // The scheduler delivers the Routine's creation and then a frozen run while the conversation is open: the creation
+    // joins the transcript, the run stays out of it, and the draft is kept.
     history = { entries: [earlier, frozen], before: null };
     runs = [frozenRun(run, 'human')];
     await page.clock.fastForward(15_000);
-    await expect(rows).toHaveCount(2);
-    await expect(rows.nth(1)).toContainText('Daily DNS zones awaiting approval');
-    await expect(rows.nth(0)).toContainText(messages.en.routine.notice.status.done);
+    await expect(rows).toHaveCount(1);
+    await expect(rows).toHaveAccessibleName(ROUTINE_VIEW.name);
     await expect(composer).toHaveValue('A draft that must survive');
-    // The Team's Routines list shows the same run waiting.
+    // The Team's Routines list shows the run waiting.
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
     await page.getByRole('menuitem', { name: 'Routines' }).click();
@@ -6769,8 +6741,7 @@ test.describe('Team Routines', () => {
     await page.keyboard.press('Escape');
     if (page.viewportSize().width <= 820) await page.keyboard.press('Escape');
 
-    await rows.nth(1).getByRole('button', { name: 'Open Routine' }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const panel = await openRoutinePanel(page);
     await panel.getByRole('button', { name: 'Review' }).click();
     const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
     await dialog.getByRole('button', { name: 'Approve action' }).click();
@@ -6779,22 +6750,21 @@ test.describe('Team Routines', () => {
     await panel.getByRole('button', { name: 'Close' }).click();
     await expect(panel).toHaveCount(0);
 
-    // The run's newer version replaces its row instead of adding another; the draft is still there.
+    // The run's newer version is the Routine's history too; the transcript and the draft stay as they were.
     const published = { plan: planSummary([{ assistant: 'shimpz-cloudflare', action: 'replace-dns-record' }]), output: null, decision: null };
     history = { entries: [earlier, { ...frozen, outcome: 'done', detail: published, version: 2 }], before: null };
     runs = [];
     await page.clock.fastForward(15_000);
-    await expect(rows.nth(1)).toContainText(messages.en.routine.notice.status.done);
-    await expect(rows).toHaveCount(2);
+    await expect(rows).toHaveCount(1);
     await expect(composer).toHaveValue('A draft that must survive');
   });
 
-  test('Routine notices written behind more than one page of newer history while the chat was away still arrive', async ({ page }) => {
+  test('Routine creations written behind more than one page of newer history while the chat was away still arrive', async ({ page }) => {
     await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
-    const done = { plan: ROUTINE_VIEW.plan, output: null, decision: null };
-    const earlier = routineRow('c'.repeat(32), 'done', done);
-    const gap = routineRow('d'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [], position: null, steps: null });
-    const newest = routineRow('e'.repeat(32), 'done', done);
+    const named = (letter, name) => createdRow(letter.repeat(32), { ...ROUTINE_VIEW, routine_id: letter.repeat(32), name });
+    const earlier = named('c', 'Daily DNS zones');
+    const gap = named('d', 'Weekly DNS audit');
+    const newest = named('e', 'Certificate check');
     const unrelated = (start, count) => Array.from({ length: count }, (_, index) => ({
       id: `${(start + index).toString(16).padStart(32, '0')}:user`,
       created_at: '2026-10-01T12:00:00Z',
@@ -6828,8 +6798,8 @@ test.describe('Team Routines', () => {
     requested.length = 0;
     await page.clock.fastForward(15_000);
     await expect(rows).toHaveCount(3);
-    await expect(rows.nth(1)).toContainText(messages.en.routine.notice.status.failed);
-    await expect(rows.nth(2)).toContainText(messages.en.routine.notice.status.done);
+    await expect(rows.nth(1)).toHaveAccessibleName('Weekly DNS audit');
+    await expect(rows.nth(2)).toHaveAccessibleName('Certificate check');
     await expect.poll(() => requested).toEqual([null, 'AAAAAAAAAMg']);
     // The next refresh finds nothing new on the newest page and reads no further.
     requested.length = 0;
@@ -6839,7 +6809,7 @@ test.describe('Team Routines', () => {
 
     // More was written than one refresh reads: the transcript starts again from the newest rows, as a reload shows them,
     // and earlier history continues from where the refresh stopped, down to the notice written in between.
-    const behind = routineRow('f'.repeat(32), 'done', done);
+    const behind = named('f', 'Monthly report');
     const cursor = (index) => `AAAAAAAA${String(index).padStart(2, '0')}A`;
     pages = Object.fromEntries(Array.from({ length: 8 }, (_, index) => [
       index === 0 ? 'null' : cursor(index),
@@ -6871,17 +6841,16 @@ test.describe('Team Routines', () => {
           text: `Answer ${prefix}${index}\n\n${'Detail line. '.repeat(30).trim()}` },
       ];
     };
-    const done = { plan: ROUTINE_VIEW.plan, output: null, decision: null };
     const history = {
       entries: [
         ...exchange('a', 0, '2026-09-29T14:00:05Z'),
-        at(routineRow('b'.repeat(32), 'done', done), '2026-09-29T15:00:00Z'),
+        at(createdRow('b'.repeat(32)), '2026-09-29T15:00:00Z'),
         ...[0, 1, 2].flatMap((index) => exchange('c', index, `2026-09-29T2${index}:00:00Z`)),
         // Yesterday holds only stored messages: each row's own time gives it a day, with no Routine notice to borrow.
         ...[3, 4].flatMap((index) => exchange('c', index, `2026-09-30T1${index}:00:00Z`)),
         ...exchange('c', 5, '2026-10-01T02:30:00Z'),
         ...exchange('e', 0, '2026-10-01T13:00:00Z'),
-        at(routineRow('f'.repeat(32), 'done', done), '2026-10-01T14:00:00Z'),
+        at(createdRow('f'.repeat(32)), '2026-10-01T14:00:00Z'),
       ],
       before: null,
     };
@@ -7089,7 +7058,8 @@ for (const [language, shown] of [
   });
 }
 
-test('a frozen Routine run opens in the interface language and answers with the canonical response', async ({ page }) => {
+test('a frozen Routine run opens in the interface language and answers with the canonical response', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.use.hasTouch, 'the phone opens the Team list from a drawer whose labels this test does not localize');
   await page.addInitScript(() => localStorage.setItem('shimpz_lang', 'pt'));
   const run = 'd'.repeat(32);
   await routeReadyChat(page, {
@@ -7161,9 +7131,9 @@ test('a frozen Routine run opens in the interface language and answers with the 
     await route.fulfill({ json: { team_id: 'marketing', run_id: run, status: 'done' } });
   });
   await page.goto('/chat/?team=marketing');
-  // The card opens its Routine's panel in the interface language; the panel offers the review.
-  await page.locator('.routine-run').getByRole('button', { name: 'Abrir rotina' }).click();
-  await page.getByRole('dialog', { name: ROUTINE_VIEW.name }).getByRole('button', { name: 'Revisar' }).click();
+  // The Routine's panel opens in the interface language and offers the review.
+  const panel = await openRoutinePanel(page, ROUTINE_VIEW.name, 'pt');
+  await panel.getByRole('button', { name: 'Revisar' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Publicar as alterações de DNS revisadas?' });
   await expect(dialog).toContainText('O Shimpz Cloudflare pausou antes de continuar esta Ação exata.');

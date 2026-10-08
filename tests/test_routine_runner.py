@@ -170,7 +170,9 @@ class RoutineHistoryTests(ChatHistoryCase):
         self.assertTrue(history.append_routine_notice(frozen))
         conflicting = {**done["detail"], "plan": {**done["detail"]["plan"], "revision": 2}}
         self.assertFalse(history.append_routine_notice({**done, "detail": conflicting}))
-        entries = history.page("team_1")["entries"]
+        # The chat shows neither: they are the Routine's own history, which only its panel reads.
+        self.assertEqual(history.page("team_1")["entries"], [])
+        entries = history.page("team_1", routine=done["routine_id"])["entries"]
         self.assertEqual([entry["outcome"] for entry in entries], ["skipped", "done"])
         self.assertEqual(entries[-1]["id"], f"{done['notice_id']}:routine")
         # Each row keeps the name its own notice froze, its usage, and whether the run lost its protection.
@@ -187,7 +189,7 @@ class RoutineHistoryTests(ChatHistoryCase):
                 ("2000-01-01T00:00:00Z", f"{done['notice_id']}:routine"),
             )
         with self.assertRaises(history.HistoryUnavailableError):
-            history.page("team_1")
+            history.page("team_1", routine=done["routine_id"])
         with sqlite3.connect(self.path) as database:
             database.execute(
                 "UPDATE transcript SET created_at = ? WHERE event_key = ?",
@@ -207,7 +209,7 @@ class RoutineHistoryTests(ChatHistoryCase):
                 ),
             )
         with self.assertRaises(history.HistoryUnavailableError):
-            history.page("team_1")
+            history.page("team_1", routine=done["routine_id"])
         with sqlite3.connect(self.path) as database:
             stored = {"kind": "routine-run", **{name: done[name] for name in history._NOTICE_FIELDS}, "outcome": "run"}
             database.execute(
@@ -215,7 +217,77 @@ class RoutineHistoryTests(ChatHistoryCase):
                 (json.dumps(stored), f"{done['notice_id']}:routine"),
             )
         with self.assertRaises(history.HistoryUnavailableError):
-            history.page("team_1")
+            history.page("team_1", routine=done["routine_id"])
+
+
+# A Routine's other outcomes beside its missed runs: an Assistant scope change, a change, and its creation.
+DEFINED = {item["outcome"]: item for item in VECTORS["notice_batch"]["valid"][10]["notices"]}
+HEALTHY = next(item for item in BATCH["notices"] if item["outcome"] == "healthy")
+
+
+def _run(notice: dict[str, object], digit: str, **changes: object) -> dict[str, object]:
+    """Another run of a run notice, keyed by its own run id."""
+    return {**notice, "notice_id": digit * 32, "run_id": digit * 32, **changes}
+
+
+class RoutineHistoryViewTests(ChatHistoryCase):
+    def test_the_chat_shows_only_routine_creations_and_a_routine_its_own_history(self) -> None:
+        routine = DONE["routine_id"]
+        other = "c" * 32
+        turn = history.new_turn_id()
+        self.assertTrue(history.append_user("team_1", turn, "Watch shimpz.com"))
+        for notice in (
+            DEFINED["created"],
+            DEFINED["changed"],
+            DEFINED["scope-changed"],
+            SKIPPED,
+            DONE,
+            HEALTHY,
+            _run(DONE, "d", routine_id=other),
+            _run(DONE, "e", team_id="team_2"),
+            DELETED,
+        ):
+            self.assertTrue(history.append_routine_notice(notice))
+        # The chat: the conversation and each Routine's creation, nothing it did or became afterwards.
+        chat = history.page("team_1")["entries"]
+        self.assertEqual([entry.get("outcome", entry["kind"]) for entry in chat], ["message", "created"])
+        # A Routine's history: its runs, healthy rollups, and missed runs, never another Routine's or Team's.
+        own = history.page("team_1", routine=routine)["entries"]
+        self.assertEqual([entry["outcome"] for entry in own], ["skipped", "done", "healthy"])
+        self.assertEqual(
+            [entry["id"] for entry in history.page("team_1", routine=other)["entries"]], [f"{'d' * 32}:routine"]
+        )
+        self.assertEqual(
+            [entry["id"] for entry in history.page("team_2", routine=routine)["entries"]], [f"{'e' * 32}:routine"]
+        )
+        self.assertEqual(history.page("team_1", routine="f" * 32), {"entries": [], "before": None})
+        for malformed in ("A" * 32, "a" * 31, "../" + "a" * 29, 7):
+            with self.subTest(routine=malformed), self.assertRaises(ValueError):
+                history.page("team_1", routine=malformed)
+
+    def test_each_view_pages_its_own_rows_with_the_position_cursor(self) -> None:
+        routine = DONE["routine_id"]
+        for index in range(history.PAGE_ROWS + 6):
+            self.assertTrue(history.append_user("team_1", history.new_turn_id(), f"Message {index}"))
+            run = f"{index + 1:032x}"
+            self.assertTrue(history.append_routine_notice({**DONE, "notice_id": run, "run_id": run}))
+        # Each view fills its page with its own rows and continues past the other view's rows from its cursor.
+        for view, wanted in ((None, "message"), (routine, "routine-run")):
+            with self.subTest(view=view):
+                first = history.page("team_1", routine=view)
+                self.assertEqual(len(first["entries"]), history.PAGE_ROWS)
+                rest = history.page("team_1", before=first["before"], routine=view)
+                self.assertEqual(len(rest["entries"]), 6)
+                self.assertIsNone(rest["before"])
+                self.assertEqual({entry["kind"] for entry in first["entries"] + rest["entries"]}, {wanted})
+
+    def test_a_newer_run_version_moves_to_the_end_of_its_routine_history(self) -> None:
+        routine = FROZEN["routine_id"]
+        self.assertTrue(history.append_routine_notice(FROZEN))
+        self.assertTrue(history.append_routine_notice(SKIPPED))
+        self.assertTrue(history.append_routine_notice(DONE))
+        entries = history.page("team_1", routine=routine)["entries"]
+        self.assertEqual([(entry["outcome"], entry["version"]) for entry in entries], [("skipped", 1), ("done", 2)])
 
 
 class RoutineTeamCallTests(unittest.TestCase):
@@ -348,7 +420,8 @@ class RoutineRollupDeliveryTests(unittest.TestCase):
                 ):
                     # Each delivery goes through the real transcript write before its exact versions are acknowledged.
                     written = [delivery.deliver() for _batch in batches]
-                    entries = history.page("team_1")["entries"]
+                    routine = case["deliveries"][0][0]["routine_id"]
+                    entries = history.page("team_1", routine=routine)["entries"]
                 self.assertEqual(written, [len(batch) for batch in case["deliveries"]])
                 self.assertEqual(acknowledged, [item for batch in case["deliveries"] for item in batch])
                 rows = [
@@ -422,7 +495,7 @@ class RoutineLifecycleTests(ChatHistoryCase):
             worker.join(5)
             deliverer.join(5)
         self.assertEqual(delivered, [0])
-        self.assertEqual(history.page("team_1")["entries"], [])
+        self.assertEqual(history.page("team_1", routine=done["routine_id"])["entries"], [])
 
 
 class RoutineSchedulerTests(unittest.TestCase):
