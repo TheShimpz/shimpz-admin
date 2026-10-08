@@ -26,7 +26,18 @@ function authenticatedLocalSession(overrides = {}) {
   });
 }
 
-test('completes mandatory authenticator enrollment before opening Admin', async ({ page }) => {
+// A touch screen shows an Assistant card's actions without hover, and a person taps them; a pointer hovers the card
+// first. Each touch-project run therefore proves the actions reachable and working by touch alone.
+async function pressCardAction(card, action, testInfo) {
+  if (testInfo.project.use.hasTouch) {
+    await action.tap();
+    return;
+  }
+  await card.hover();
+  await action.click();
+}
+
+test('completes mandatory authenticator enrollment before opening Admin', { tag: '@mobile' }, async ({ page }) => {
   let authenticationState = 'uninitialized';
   await page.route('**/api/**', (route) => route.fulfill({
     status: 503,
@@ -264,7 +275,7 @@ test('renders the terminal recovery action for an unsupported password record', 
   await expect(page.locator('input[type="password"]')).toHaveCount(0);
 });
 
-test('shows the installed Admin version with the read-only Local release status', async ({ page }) => {
+test('shows the installed Admin version with the read-only Local release status', { tag: '@mobile' }, async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -350,7 +361,7 @@ test('reports a Local rollback as a localized warning', async ({ page }) => {
   await expect(release.getByText('Atualização revertida', { exact: true })).toBeVisible();
 });
 
-test('opens the Store for the Team its link names and refuses a missing Team', async ({ page }) => {
+test('opens the Store for the Team its link names and refuses a missing Team', { tag: '@mobile' }, async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -529,7 +540,7 @@ test('never renders a matching publication while Local snapshots are settling', 
   await expect(catalog.locator('.assistant-catalog-loading')).toHaveCount(0);
 });
 
-test('renders Assistant identities immediately during in-app icon hydration', async ({ page }) => {
+test('renders Assistant identities immediately during in-app icon hydration', { tag: '@mobile' }, async ({ page }) => {
   const imageId = `sha256:${'b'.repeat(64)}`;
   const localIcon = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlN7eIAAAAASUVORK5CYII=',
@@ -819,7 +830,7 @@ test('keeps public discovery available when Local snapshot enumeration fails', a
   await expect(catalog.getByText('Published Helper', { exact: true })).toBeVisible();
 });
 
-test('installs an exact unpublished Local Assistant snapshot into the selected Team', async ({ page }) => {
+test('installs an exact unpublished Local Assistant snapshot into the selected Team', { tag: '@mobile' }, async ({ page }, testInfo) => {
   const imageId = `sha256:${'b'.repeat(64)}`;
   const olderImageId = `sha256:${'a'.repeat(64)}`;
   const localIcon = Buffer.from(
@@ -943,8 +954,7 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await expect(card.locator('.shimpz-assistant-icon img')).toHaveAttribute('src', /^blob:/);
   await expect(card).not.toHaveClass(/is-installed/);
 
-  await card.hover();
-  await card.getByRole('button', { name: 'Install or replace' }).click();
+  await pressCardAction(card, card.getByRole('button', { name: 'Install or replace' }), testInfo);
 
   let installDialog = page.getByRole('dialog', { name: 'Install WhatsApp Automation?' });
   await installDialog.getByRole('button', { name: /v0\.1\.0/ }).click();
@@ -952,8 +962,7 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await installDialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(installDialog).toBeHidden();
 
-  await card.hover();
-  await card.getByRole('button', { name: 'Install or replace' }).click();
+  await pressCardAction(card, card.getByRole('button', { name: 'Install or replace' }), testInfo);
 
   installDialog = page.getByRole('dialog', { name: 'Install WhatsApp Automation?' });
   await expect(installDialog).toBeVisible();
@@ -967,10 +976,9 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await expect(page.getByText('whatsapp is ready in Marketing', { exact: false })).toBeVisible();
   await expect(card).toHaveClass(/is-installed/);
 
-  await card.hover();
   const uninstallAction = card.locator('button.assistant-action-button');
   await expect(uninstallAction).toHaveText('Uninstall Assistant');
-  await uninstallAction.click();
+  await pressCardAction(card, uninstallAction, testInfo);
   const uninstallDialog = page.getByRole('dialog', { name: 'Uninstall WhatsApp Automation?' });
   await expect(uninstallDialog).toBeVisible();
   await expect(uninstallDialog.getByText(/Local build, its snapshot remains staged on this machine/)).toBeVisible();
@@ -980,7 +988,7 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await expect(page.getByText(/docker image rm/)).toHaveCount(0);
 });
 
-test('lets an explicit Local install replace the matching publication', async ({ page }) => {
+test('lets an explicit Local install replace the matching publication', { tag: '@mobile' }, async ({ page }, testInfo) => {
   const imageId = `sha256:${'b'.repeat(64)}`;
   const localIcon = Buffer.from(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlN7eIAAAAASUVORK5CYII=',
@@ -1072,8 +1080,7 @@ test('lets an explicit Local install replace the matching publication', async ({
   const card = page.getByRole('article', { name: 'whatsapp — Local' });
   await expect(card).not.toHaveClass(/is-installed/);
   await expect(page.getByText('Published WhatsApp', { exact: true })).toHaveCount(0);
-  await card.hover();
-  await card.getByRole('button', { name: 'Install or replace' }).click();
+  await pressCardAction(card, card.getByRole('button', { name: 'Install or replace' }), testInfo);
   const dialog = page.getByRole('dialog', { name: 'Install WhatsApp Automation?' });
   await expect(dialog).toContainText('Local snapshots are not published, reviewed, signed, or scanned by Shimpz.');
   await dialog.getByRole('button', { name: 'Install or replace' }).click();

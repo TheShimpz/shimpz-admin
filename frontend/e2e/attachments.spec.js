@@ -350,7 +350,7 @@ async function selectTeam(page, name) {
   }
 }
 
-test('an upload that answers after a Team change never joins a later message', async ({ page }) => {
+test('an upload that answers after a Team change never joins a later message', { tag: '@mobile' }, async ({ page }) => {
   const { scenario, composer, attach, send } = await openChat(page, 'ready');
   const held = [];
   await page.route('**/api/teams/marketing/files', (route) => {

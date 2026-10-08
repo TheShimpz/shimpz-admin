@@ -34,10 +34,22 @@ export default defineConfig({
       use: { browserName: 'webkit', viewport: { width: 1440, height: 1000 } },
     },
     // Tests tagged @slow run several seconds each; their own projects come first, so none of them trails the run.
+    // The phone projects run only tests tagged @mobile: those whose path or behaviour differs at 390 px or by touch
+    // (the Team drawer, touch gestures, card actions without hover, menus placed within a phone viewport).
+    // tests/mobile-selection.test.js fails when a test with a viewport, touch, or drawer signal lacks the tag.
     { name: 'desktop-slow', grep: /@slow/, use: { viewport: { width: 1440, height: 1000 } } },
-    { name: 'mobile-slow', grep: /@slow/, use: { hasTouch: true, viewport: { width: 390, height: 844 } } },
+    {
+      name: 'mobile-slow',
+      grep: /(?=.*@slow)(?=.*@mobile)/,
+      use: { hasTouch: true, viewport: { width: 390, height: 844 } },
+    },
     { name: 'desktop', grepInvert: /@slow/, use: { viewport: { width: 1440, height: 1000 } } },
-    { name: 'mobile', grepInvert: /@slow/, use: { hasTouch: true, viewport: { width: 390, height: 844 } } },
+    {
+      name: 'mobile',
+      grep: /@mobile/,
+      grepInvert: /@slow/,
+      use: { hasTouch: true, viewport: { width: 390, height: 844 } },
+    },
   ],
   webServer: {
     // Serves build/ like Admin's backend; CI copies the shipping UI out of the Admin image into build/.
