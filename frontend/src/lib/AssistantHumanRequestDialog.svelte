@@ -90,15 +90,9 @@
         ? challenge?.assistant?.name ?? ''
         : request?.title,
   );
-  let fieldRequest = $derived(
-    isStoredInput
-      ? {
-          ...request,
-          label: $t('humanRequest.storedInputLabel', { assistant: challenge?.assistant?.name ?? '' }),
-          placeholder: copy.storedInputPlaceholder,
-        }
-      : request,
-  );
+  // A Stored Input field keeps the Action's own label, rendered in the interface language, so each of several keys
+  // one Assistant needs is named apart; Admin supplies only the placeholder.
+  let fieldRequest = $derived(isStoredInput ? { ...request, placeholder: copy.storedInputPlaceholder } : request);
   let rejectionMessage = $derived(
     rejected
       ? locked

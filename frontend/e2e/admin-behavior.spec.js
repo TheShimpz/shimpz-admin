@@ -2458,7 +2458,7 @@ test('installs a named Assistant, asks for its saved key just in time, and compl
   const dialog = page.getByRole('dialog', { name: 'Shimpz Cloudflare' });
   await expect(dialog).toBeVisible();
   await expect(composer).toBeDisabled();
-  await dialog.getByLabel('Shimpz Cloudflare API key').fill('saved-third-party-secret');
+  await dialog.getByLabel('Cloudflare API secret').fill('saved-third-party-secret');
   await dialog.getByRole('button', { name: 'Send' }).click();
 
   await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
@@ -2484,7 +2484,7 @@ test('recovers a just-in-time request from a just-installed Assistant after a sa
   await fillWhenReady(page, composer, 'install Cloudflare and WhatsApp and send the summary');
   await composer.press('Enter');
   const dialog = page.getByRole('dialog', { name: 'Shimpz Cloudflare' });
-  await dialog.getByLabel('Shimpz Cloudflare API key').fill('saved-third-party-secret');
+  await dialog.getByLabel('Cloudflare API secret').fill('saved-third-party-secret');
   await dialog.getByRole('button', { name: 'Send' }).click();
   await expect.poll(() => contract.humanResponses().length).toBe(1);
   await expect(dialog).toBeHidden();
@@ -2512,7 +2512,7 @@ test('admits a just-in-time request from an Assistant the refreshed Team invento
   const dialog = page.getByRole('dialog', { name: 'Shimpz Cloudflare' });
   await expect(dialog).toBeVisible();
   await expect(page.getByText('The secure chat response was invalid.')).toHaveCount(0);
-  await dialog.getByLabel('Shimpz Cloudflare API key').fill('saved-third-party-secret');
+  await dialog.getByLabel('Cloudflare API secret').fill('saved-third-party-secret');
   await dialog.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
   await expect.poll(() => chat.humanResponses()).toHaveLength(1);

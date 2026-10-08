@@ -2,7 +2,7 @@ export const humanRequestMessages = {
   en: {
     chooseOption: 'Choose an option', approve: 'Approve action', submit: 'Send', authorize: 'Confirm authorization', cancel: 'Cancel', usePasskey: 'Use passkey',
     keyHelp: 'Create your key here', keyHelpAfter: 'and paste it below.', storedInputNeed: '{assistant} needs this key to continue.',
-    storedInputLabel: '{assistant} API key', storedInputPlaceholder: 'Paste your key here', expiresIn: 'Expires in {time}',
+    storedInputPlaceholder: 'Paste your key here', expiresIn: 'Expires in {time}',
     validating: 'Confirming your Supervisor password…',
     passwordLabel: 'Supervisor password', totpLabel: 'Verification code', totpPlaceholder: 'Enter your one-time code',
     selectionHint: 'Choose from {minimum} to {maximum} options.', invalid: 'Review this response before continuing.',
@@ -17,7 +17,7 @@ export const humanRequestMessages = {
   pt: {
     chooseOption: 'Escolha uma opção', approve: 'Aprovar ação', submit: 'Enviar', authorize: 'Confirmar autorização', cancel: 'Cancelar', usePasskey: 'Usar passkey',
     keyHelp: 'Gere sua chave aqui', keyHelpAfter: 'e cole abaixo.', storedInputNeed: 'O {assistant} precisa desta chave para continuar.',
-    storedInputLabel: 'Chave de API do {assistant}', storedInputPlaceholder: 'Cole sua chave aqui', expiresIn: 'Expira em {time}',
+    storedInputPlaceholder: 'Cole sua chave aqui', expiresIn: 'Expira em {time}',
     validating: 'Confirmando a senha do Supervisor…',
     passwordLabel: 'Senha do Supervisor', totpLabel: 'Código de verificação', totpPlaceholder: 'Digite o código de uso único',
     selectionHint: 'Escolha entre {minimum} e {maximum} opções.', invalid: 'Revise esta resposta antes de continuar.',
@@ -32,7 +32,7 @@ export const humanRequestMessages = {
   es: {
     chooseOption: 'Elige una opción', approve: 'Aprobar acción', submit: 'Enviar', authorize: 'Confirmar autorización', cancel: 'Cancelar', usePasskey: 'Usar passkey',
     keyHelp: 'Crea tu clave aquí', keyHelpAfter: 'y pégala abajo.', storedInputNeed: '{assistant} necesita esta clave para continuar.',
-    storedInputLabel: 'Clave de API de {assistant}', storedInputPlaceholder: 'Pega tu clave aquí', expiresIn: 'Caduca en {time}',
+    storedInputPlaceholder: 'Pega tu clave aquí', expiresIn: 'Caduca en {time}',
     validating: 'Confirmando la contraseña del Supervisor…',
     passwordLabel: 'Contraseña del Supervisor', totpLabel: 'Código de verificación', totpPlaceholder: 'Introduce el código de un solo uso',
     selectionHint: 'Elige entre {minimum} y {maximum} opciones.', invalid: 'Revisa esta respuesta antes de continuar.',
@@ -47,7 +47,7 @@ export const humanRequestMessages = {
   zh: {
     chooseOption: '选择一个选项', approve: '批准操作', submit: '发送', authorize: '确认授权', cancel: '取消', usePasskey: '使用通行密钥',
     keyHelp: '在这里创建密钥', keyHelpAfter: '然后粘贴到下方。', storedInputNeed: '{assistant} 需要此密钥才能继续。',
-    storedInputLabel: '{assistant} API 密钥', storedInputPlaceholder: '在这里粘贴密钥', expiresIn: '{time} 后过期',
+    storedInputPlaceholder: '在这里粘贴密钥', expiresIn: '{time} 后过期',
     validating: '正在确认 Supervisor 密码…',
     passwordLabel: 'Supervisor 密码', totpLabel: '验证码', totpPlaceholder: '输入一次性验证码',
     selectionHint: '请选择 {minimum} 到 {maximum} 个选项。', invalid: '继续前请检查此回复。',
@@ -62,7 +62,7 @@ export const humanRequestMessages = {
   fr: {
     chooseOption: 'Choisissez une option', approve: 'Approuver l’action', submit: 'Envoyer', authorize: 'Confirmer l’autorisation', cancel: 'Annuler', usePasskey: 'Utiliser une passkey',
     keyHelp: 'Créez votre clé ici', keyHelpAfter: 'et collez-la ci-dessous.', storedInputNeed: '{assistant} a besoin de cette clé pour continuer.',
-    storedInputLabel: 'Clé d’API de {assistant}', storedInputPlaceholder: 'Collez votre clé ici', expiresIn: 'Expire dans {time}',
+    storedInputPlaceholder: 'Collez votre clé ici', expiresIn: 'Expire dans {time}',
     validating: 'Confirmation du mot de passe du Supervisor…',
     passwordLabel: 'Mot de passe du Supervisor', totpLabel: 'Code de vérification', totpPlaceholder: 'Saisissez le code à usage unique',
     selectionHint: 'Choisissez entre {minimum} et {maximum} options.', invalid: 'Vérifiez cette réponse avant de continuer.',
@@ -77,7 +77,7 @@ export const humanRequestMessages = {
   de: {
     chooseOption: 'Option auswählen', approve: 'Aktion freigeben', submit: 'Senden', authorize: 'Autorisierung bestätigen', cancel: 'Abbrechen', usePasskey: 'Passkey verwenden',
     keyHelp: 'Erstelle deinen Schlüssel hier', keyHelpAfter: 'und füge ihn unten ein.', storedInputNeed: '{assistant} braucht diesen Schlüssel, um fortzufahren.',
-    storedInputLabel: 'API-Schlüssel für {assistant}', storedInputPlaceholder: 'Füge deinen Schlüssel hier ein', expiresIn: 'Läuft ab in {time}',
+    storedInputPlaceholder: 'Füge deinen Schlüssel hier ein', expiresIn: 'Läuft ab in {time}',
     validating: 'Supervisor-Passwort wird bestätigt…',
     passwordLabel: 'Supervisor-Passwort', totpLabel: 'Bestätigungscode', totpPlaceholder: 'Einmalcode eingeben',
     selectionHint: 'Wähle zwischen {minimum} und {maximum} Optionen.', invalid: 'Prüfe diese Antwort, bevor du fortfährst.',
@@ -92,7 +92,7 @@ export const humanRequestMessages = {
   ja: {
     chooseOption: 'オプションを選択', approve: 'アクションを承認', submit: '送信', authorize: '認証を確認', cancel: 'キャンセル', usePasskey: 'パスキーを使用',
     keyHelp: 'こちらでキーを作成し', keyHelpAfter: '下に貼り付けてください。', storedInputNeed: '{assistant} を続けるにはこのキーが必要です。',
-    storedInputLabel: '{assistant} の API キー', storedInputPlaceholder: 'ここにキーを貼り付け', expiresIn: '残り {time}',
+    storedInputPlaceholder: 'ここにキーを貼り付け', expiresIn: '残り {time}',
     validating: 'Supervisor パスワードを確認しています…',
     passwordLabel: 'Supervisor パスワード', totpLabel: '確認コード', totpPlaceholder: 'ワンタイムコードを入力',
     selectionHint: '{minimum}〜{maximum} 個のオプションを選択してください。', invalid: '続行する前に回答を確認してください。',
@@ -107,7 +107,7 @@ export const humanRequestMessages = {
   ar: {
     chooseOption: 'اختر خيارًا', approve: 'الموافقة على الإجراء', submit: 'إرسال', authorize: 'تأكيد التفويض', cancel: 'إلغاء', usePasskey: 'استخدام مفتاح مرور',
     keyHelp: 'أنشئ مفتاحك من هنا', keyHelpAfter: 'ثم الصقه أدناه.', storedInputNeed: 'يحتاج {assistant} إلى هذا المفتاح للمتابعة.',
-    storedInputLabel: 'مفتاح API لـ {assistant}', storedInputPlaceholder: 'الصق مفتاحك هنا', expiresIn: 'تنتهي خلال {time}',
+    storedInputPlaceholder: 'الصق مفتاحك هنا', expiresIn: 'تنتهي خلال {time}',
     validating: 'جارٍ تأكيد كلمة مرور Supervisor…',
     passwordLabel: 'كلمة مرور Supervisor', totpLabel: 'رمز التحقق', totpPlaceholder: 'أدخل الرمز لمرة واحدة',
     selectionHint: 'اختر من {minimum} إلى {maximum} خيارات.', invalid: 'راجع هذا الرد قبل المتابعة.',
