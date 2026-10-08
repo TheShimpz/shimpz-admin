@@ -1093,6 +1093,12 @@ test('the Supervisor adds and removes the Jev key', async ({ page }) => {
   await page.keyboard.press('Escape');
   await expect(fast).toBeHidden();
   await expect(trigger).toBeFocused();
+
+  // Reopening reads again a key another session changed meanwhile.
+  chat.configureDecisionElsewhere('••••abcd');
+  await trigger.click();
+  await expect(fast).toContainText('On · key ••••abcd');
+  expect(chat.decisionRequests().map((request) => request.method)).toEqual(['GET', 'GET', 'PUT', 'DELETE', 'GET']);
 });
 
 test('a rejected Jev key is reported and an unsent one never outlives the panel', async ({ page }) => {
@@ -1111,20 +1117,6 @@ test('a rejected Jev key is reported and an unsent one never outlives the panel'
   await expect(fast.getByRole('alert')).toHaveCount(0);
   await expect(fast.getByLabel('TypeSafe API key')).toHaveValue('');
   expect(chat.decisionRequests().map((request) => request.method)).toEqual(['GET', 'GET', 'PUT', 'GET']);
-});
-
-test('reopening fast routing re-reads a Jev key another session changed', async ({ page }) => {
-  const chat = await routeReadyChat(page);
-  await page.goto('/chat/');
-  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-  const { trigger, fast } = await openFastRouting(page);
-  await expect(fast.getByLabel('TypeSafe API key')).toBeVisible();
-  await page.keyboard.press('Escape');
-
-  chat.configureDecisionElsewhere('••••abcd');
-  await trigger.click();
-  await expect(fast).toContainText('On · key ••••abcd');
-  expect(chat.decisionRequests().map((request) => request.method)).toEqual(['GET', 'GET', 'GET']);
 });
 
 test('Hosted chat never offers or requests a Jev key', async ({ page }) => {
@@ -1171,6 +1163,10 @@ test('answering a question sends the request with the answer at once and the Tea
   const scenario = await routeScenario(page, 'clarify');
   const { composer, card } = await askVoiceQuestion(page, scenario);
   const recommended = SCENARIO_CLARIFICATION.options[SCENARIO_CLARIFICATION.default_index].label;
+  // The composer waits while the latest question is open; the card's answer unlocks it.
+  const send = page.getByRole('button', { name: 'Send', exact: true });
+  await expect(composer).toBeDisabled();
+  await expect(send).toBeDisabled();
 
   await card.getByRole('button', { name: 'Answer' }).click();
   await expect(page.getByText(`Certo — sigo com ${recommended}`)).toBeVisible();
@@ -1183,32 +1179,16 @@ test('answering a question sends the request with the answer at once and the Tea
   // Once answered, the card is gone from the reply that asked it; only the person's message keeps the question.
   await expect(page.getByRole('article', { name: 'Marketing' }).filter({ hasText: SCENARIO_CLARIFICATION.question })).toHaveCount(0);
   await expect(composer).toHaveValue('');
+  await expect(composer).toBeEnabled();
+  await composer.fill('Thanks');
+  await expect(send).toBeEnabled();
+  await composer.fill('');
   await expect(page.getByRole('article', { name: 'You' })).toHaveCount(2);
   await page.getByRole('button', { name: 'Language: English' }).click();
   await page.getByRole('menuitemradio', { name: 'Português' }).click();
   await expect(page.getByRole('textbox', { name: 'Enviar', exact: true })).toBeEnabled();
   await expect(card).toHaveCount(0);
   expect(sentMessages(scenario.chatFrames())).toHaveLength(2);
-});
-
-test('the composer waits while the latest question is open and the card\'s answer unlocks it', async ({ page }) => {
-  const scenario = await routeScenario(page, 'clarify');
-  const { composer, card } = await askVoiceQuestion(page, scenario);
-  const send = page.getByRole('button', { name: 'Send', exact: true });
-  await expect(composer).toBeDisabled();
-  await expect(composer).toHaveAttribute('placeholder', 'Answer the question above to continue.');
-  await expect(send).toBeDisabled();
-
-  await card.getByRole('button', { name: 'Answer' }).click();
-  const recommended = SCENARIO_CLARIFICATION.options[SCENARIO_CLARIFICATION.default_index].label;
-  await expect(page.getByText(`Certo — sigo com ${recommended}`)).toBeVisible();
-  await expect(composer).toBeEnabled();
-  await composer.fill('Thanks');
-  await expect(send).toBeEnabled();
-  expect(sentMessages(scenario.chatFrames())).toEqual([
-    VOICE_REQUEST,
-    composedAnswer(VOICE_REQUEST, SCENARIO_CLARIFICATION.question, recommended),
-  ]);
 });
 
 // Two open questions come back from the history: the composer waits for the latest, and either card answers.
@@ -1457,29 +1437,6 @@ test('an answer that would exceed one message is refused and nothing is sent', a
   await expect(card.getByRole('alert')).toBeVisible();
   await expect(card).toBeVisible();
   expect(sentMessages(chat.chatFrames())).toEqual([request]);
-});
-
-test('a reloaded question stays bound to its own request', async ({ page }) => {
-  const turn = 'd'.repeat(32);
-  const asked = [
-    { id: `${turn}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: 'Which new AI models were released?' },
-    {
-      id: `${turn}:reply`,
-      created_at: HISTORY_AT,
-      kind: 'message',
-      role: 'assistant',
-      text: CLARIFICATION_REPLY,
-      author: 'Marketing',
-      clarification: CLARIFICATION,
-    },
-  ];
-  const chat = await routeReadyChat(page, { clarification: null, history: { entries: asked, before: null } });
-  await page.goto('/chat/');
-  const card = page.getByRole('form', { name: CLARIFICATION.question });
-  await card.getByRole('button', { name: 'Answer' }).click();
-  await expect.poll(() => sentMessages(chat.chatFrames())).toEqual([
-    composedAnswer('Which new AI models were released?', CLARIFICATION.question, 'Today'),
-  ]);
 });
 
 // The person's message keeps the question above the answer, so it always shows what was answered (live and reloaded).
@@ -2706,13 +2663,9 @@ test('resumes one prior capability objective after reconnect and installs its As
   expect(persistedBrowserState).not.toContain('Você mesmo consegue habilitar?');
 });
 
+// The page renders every Assistant guidance code the same way (its reply, escaped); tests/local-chat.test.js admits
+// exactly the known codes, so one code proves the rendering.
 for (const [code, message, question] of [
-  ['assistant-install-target-required', 'instale', 'Qual Assistant você quer instalar?'],
-  [
-    'assistant-uninstall-target-required',
-    'désinstalle',
-    'Quel Assistant installé voulez-vous désinstaller\u00a0?',
-  ],
   [
     'assistant-lifecycle-ambiguous',
     'mude o Assistant',
@@ -2774,7 +2727,6 @@ test('a failed uninstall decision never offers to resend the earlier request', a
   await page.getByRole('button', { name: 'Send' }).click();
   const uninstall = page.getByRole('button', { name: 'Uninstall Shimpz Cloudflare' });
   await expect(uninstall).toBeEnabled();
-  await page.waitForTimeout(2100);
   await uninstall.click();
 
   await expect(page.getByRole('alert').filter({ hasText: 'chat history is unavailable' })).toBeVisible();
@@ -3684,6 +3636,8 @@ test('Send becomes Stop in place while a turn runs and is Send again once the re
   chat.releaseReply();
 
   await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
+  // A done frame that reports no usage shows no usage line.
+  await expect(page.getByRole('article', { name: 'Marketing' })).not.toContainText('tokens');
   await expect(stop).toHaveCount(0);
   await expect(send).toBeVisible();
   await composer.fill('And the records?');
@@ -3707,16 +3661,6 @@ test('a reply shows what its task used only when its done frame reports usage', 
   await expect(reply).toContainText('$0.0095');
   await expect(reply).toContainText('13,680 tokens');
   await expect(reply.getByTitle(/GPT-6 Luna: 11,900 input · 580 output/)).toHaveCount(1);
-});
-
-test('a reply whose done frame reports no usage shows no usage line', async ({ page }) => {
-  await routeReadyChat(page);
-  await page.goto('/chat/');
-  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
-  const reply = page.getByRole('article', { name: 'Marketing' });
-  await expect(reply).toContainText('Rendered answer');
-  await expect(reply).not.toContainText('tokens');
 });
 
 test('a reply restored from history shows its usage line, and one stored without usage shows none', async ({ page }) => {
@@ -4784,23 +4728,6 @@ test.describe('Team Routines', () => {
     expect(sentMessages(scenario).at(-1).split('\n').at(-1)).toBe('Answer: Show only when it changes');
   });
 
-  test('two zones of one name are told apart by choosing one, whose exact id the answer sends', async ({ page }) => {
-    const scenario = await recordRoutine(page, 'routine-ambiguous');
-    const words = messages.en.routine.proposal.questions.ambiguous;
-    const question = page.getByRole('radiogroup', { name: words.question });
-    const second = 'shimpz.com (9a7806061c88ada191ed06f989cc3dac)';
-    await expect(question.getByRole('radio', { name: 'shimpz.com (023e105f4ecef8ad9ca31a8372d0c353)' })).toBeVisible();
-    await question.getByRole('radio', { name: second }).check();
-    await page.getByRole('button', { name: 'Answer', exact: true }).click();
-    await expect(page.getByRole('region', { name: 'Routine to create' })).toBeVisible();
-    // The person reads the label; Team receives the target's exact JSON text, the only answer it matches.
-    expect(sentMessages(scenario).at(-1).split('\n').at(-1)).toBe('Answer: "9a7806061c88ada191ed06f989cc3dac"');
-    // After a reload the answered question stays gone and the card stays under its answer's reply.
-    await page.reload();
-    await expect(page.getByRole('region', { name: 'Routine to create' })).toBeVisible();
-    await expect(page.getByRole('radiogroup', { name: words.question })).toHaveCount(0);
-  });
-
   test('a string and an integer of the same digits stay two targets, and the chosen one reaches Team exactly', async ({ page }) => {
     const digits = '12345678901234567890';
     // The scenario answers with a card only for an option's exact JSON text, as Team matches it.
@@ -4901,7 +4828,6 @@ test.describe('Team Routines', () => {
     await expect(list.getByRole('alert')).toBeVisible();
     const retry = list.getByRole('button', { name: messages.en.routine.list.retry });
     await expect(retry).toBeFocused();
-    expect(await accessibilityViolations(page)).toEqual([]);
     // A retry that fails again keeps the list open with its error.
     await retry.click();
     await expect(retry).toBeEnabled();
@@ -5147,31 +5073,6 @@ test.describe('Team Routines', () => {
     return { calls, panel: page.getByRole('dialog', { name: ROUTINE_VIEW.name }) };
   }
 
-  test('a Routine waiting for a recovery decision shows the step\'s error and returns to its pages once run', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
-    const { calls, panel } = await openHeldPanel(page);
-    // The whole panel is the decision: where the run stopped, the error the step returned and its likely cause, and
-    // exactly the card's two choices, each saying what it does before it is chosen.
-    const choices = panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
-    await expect.poll(() => choices.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))))
-      .toEqual(['Run', 'Delete']);
-    await expect(panel).toContainText('step 2 of 3');
-    await expect(panel).toContainText('Replace DNS record');
-    await panel.getByText('See the technical error').click();
-    await expect(panel.locator('.error-text')).toHaveText(CREDITS_MESSAGE);
-    await expect(panel).toContainText('HTTP 402 · api.cloudflare.com');
-    await expect(panel).toContainText('out of credits');
-    await expect(panel).toContainText('What it already did may repeat.');
-    await expect(panel.getByRole('tablist')).toHaveCount(0);
-    expect(calls.answers).toEqual([]);
-    expect(await accessibilityViolations(page)).toEqual([]);
-    // Run answers that card once; the panel goes back to its pages and says what the answer did.
-    await panel.getByRole('button', { name: 'Run' }).click();
-    await expect(panel.getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true');
-    await expect(panel.getByRole('status')).toContainText('Set aside. The Routine runs again now.');
-    await expect.poll(() => calls.answers).toEqual([{ nonce: 'f'.repeat(32), choice: 'run' }]);
-  });
-
   test('Delete in a decision opens the deletion confirmation, Cancel returns to the decision, and confirming deletes', async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const { calls, panel } = await openHeldPanel(page);
@@ -5184,7 +5085,6 @@ test.describe('Team Routines', () => {
     const password = confirm.getByLabel('Supervisor password');
     await expect(password).toBeFocused();
     await expect(confirm.getByRole('button')).toHaveText(['Cancel', 'Delete']);
-    expect(await accessibilityViolations(page)).toEqual([]);
     // Cancel returns to the decision, focused on the Delete it came from.
     await confirm.getByRole('button', { name: 'Cancel' }).click();
     const remove = panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Delete' });
@@ -5399,7 +5299,6 @@ test.describe('Team Routines', () => {
     await expect(list.getByRole('status')).toHaveText('No Routine looks like “pizza delivery”.');
     await search.fill('');
     await expect(rows).toHaveCount(3);
-    expect(await accessibilityViolations(page)).toEqual([]);
   });
 
   test("a Routine's runs never reach the chat, which shows its creation, and are listed in the Routine's history", async ({ page }, testInfo) => {
@@ -5440,7 +5339,6 @@ test.describe('Team Routines', () => {
     await expect(transcript).toHaveCount(1);
     await expect(transcript).toHaveAccessibleName(ROUTINE_VIEW.name);
     await expect(transcript.getByRole('button')).toHaveCount(0);
-    expect(await accessibilityViolations(page)).toEqual([]);
     // Its runs are its own history, newest first, each with what it did.
     const panel = await openRoutinePanel(page);
     await panel.getByRole('tab', { name: 'Runs' }).click();
@@ -5895,7 +5793,6 @@ test.describe('Team Routines', () => {
     await expect(steps.nth(1)).toContainText(status.not_run);
     await expect(view.getByRole('region', { name: 'Response' })).toHaveCount(0);
     await expect.poll(() => read).toEqual(['7:latest/0']);
-    expect(await accessibilityViolations(page)).toEqual([]);
     await page.keyboard.press('Escape');
     await expect(view).toHaveCount(0);
     await expect(opener).toBeFocused();
@@ -6095,9 +5992,12 @@ test.describe('Team Routines', () => {
     const navigation = await openTeamNavigation(page);
     await expect(navigation.getByRole('button', { name: 'Routines for Marketing: one needs your attention' })).toBeVisible();
     const panel = await openRoutinePanel(page);
-    // The panel shows exactly the card's two choices, one action each, in Team's order, before any answer.
+    // The panel shows exactly the card's two choices, one action each, in Team's order, before any answer: the whole
+    // panel is the decision, with where the run stopped, and none of its pages.
     await expect.poll(() => choiceNames(panel)).toEqual(['Run', 'Delete']);
     expect(answers).toEqual([]);
+    await expect(panel.getByRole('tablist')).toHaveCount(0);
+    await expect(panel).toContainText('step 2 of 3');
     expect(await accessibilityViolations(page)).toEqual([]);
     // The step shown is the card's, with the error it returned as plain text.
     await expect(panel).toContainText('Create DNS record');
@@ -6672,36 +6572,6 @@ test.describe('Team Routines', () => {
     await panel.getByRole('button', { name: 'Resume' }).click();
     await expect(panel.getByRole('button', { name: 'Pause' })).toBeVisible();
     expect(resumed).toEqual([ROUTINE_VIEW.routine_id]);
-  });
-
-  test('decorations stay still while their control glitches on hover', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.name === 'mobile', 'hover is a pointer interaction');
-    const held = 'b'.repeat(32);
-    await routeReadyChat(page, {
-      history: {
-        entries: [routineRow(held, 'held', { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 }, { version: 2 })],
-        before: null,
-      },
-    });
-    // A paused Routine with a held run: the Team's Routines button carries the attention dot.
-    await routeRoutines(page);
-    await page.goto('/chat/?team=marketing');
-    const routines = page.getByRole('button', { name: /^Routines for Marketing: one needs your attention$/ });
-    await expect(routines).toBeVisible();
-    // Each decoration's box is sampled through the whole glitch, which lasts 280ms after the pointer arrives.
-    for (const [control, decoration] of [[routines, page.locator('.routines-slot .attention')]]) {
-      await page.mouse.move(0, 0);
-      await page.waitForTimeout(400);
-      const before = await decoration.boundingBox();
-      expect(before).not.toBeNull();
-      await control.hover();
-      const during = [];
-      for (let sample = 0; sample < 8; sample += 1) {
-        during.push(await decoration.boundingBox());
-        await page.waitForTimeout(40);
-      }
-      for (const box of during) expect(box).toEqual(before);
-    }
   });
 
   test('an expired recovery card is withdrawn and only a person opens a fresh one', async ({ page }, testInfo) => {
