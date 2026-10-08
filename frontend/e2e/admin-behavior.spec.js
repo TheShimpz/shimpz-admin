@@ -6438,6 +6438,103 @@ test.describe('Team Routines', () => {
     }
   });
 
+  test("an older search that a newer reading of the panel's history overtook never hides that reading", { tag: '@mobile' }, async ({ page }) => {
+    const done = { plan: ROUTINE_VIEW.plan, output: null, decision: null };
+    const stored = [];
+    const write = (count) => {
+      for (let index = 0; index < count; index += 1) {
+        const position = stored.length + 1;
+        const row = routineRow(position.toString(16).padStart(32, '0'), 'done', done);
+        stored.push({ ...row, created_at: new Date(Date.UTC(2026, 9, 1, 12) + position * 1000).toISOString().replace('.000Z', 'Z') });
+      }
+    };
+    const everyRun = () => stored.map((row) => row.created_at).reverse();
+    const cursor = (position) => {
+      const raw = Buffer.alloc(8);
+      raw.writeBigUInt64BE(BigInt(position));
+      return raw.toString('base64url');
+    };
+    const position = (value) => Number(Buffer.from(value, 'base64url').readBigUInt64BE());
+    // The test holds the newest-page reading a refresh starts again from, and fails the person's older search, the one
+    // that continues from the cursor of the panel's own last newest-page reading, while holding it.
+    let holdNewest = null;
+    let newestReads = 0;
+    const newestCursors = [];
+    let holdOlder = null;
+    await routeReadyChat(page);
+    await page.route('**/api/teams/marketing/chat/history**', async (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      if (params.get('routine') === null) return route.fulfill({ json: { entries: [], before: null } });
+      const reading = params.get('before') === null ? ++newestReads : 0;
+      if (reading && holdNewest && reading === holdNewest.at) await holdNewest.released;
+      if (!reading && holdOlder && params.get('before') === holdOlder.cursor) {
+        await holdOlder.released;
+        return route.fulfill({ status: 503, json: { detail: 'Synthetic history failure.' } });
+      }
+      const below = reading ? stored.length + 1 : position(params.get('before'));
+      const start = Math.max(0, below - 1 - 64);
+      const before = start > 0 ? cursor(start + 1) : null;
+      if (reading) newestCursors[reading] = before;
+      return route.fulfill({ json: { entries: stored.slice(start, below - 1), before } });
+    });
+    let routineReads = 0;
+    await page.route('**/api/teams/marketing/routines', (route) => {
+      routineReads += 1;
+      return route.fulfill({ json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] } });
+    });
+    const gate = () => {
+      let release;
+      const released = new Promise((resolve) => { release = resolve; });
+      return { released, release };
+    };
+    write(70);
+    await page.clock.install();
+    await page.goto('/chat/?team=marketing');
+    const panel = await openRoutinePanel(page);
+    await panel.getByRole('tab', { name: 'Runs' }).click();
+    const runs = panel.getByRole('list', { name: 'Runs' });
+    const older = runs.getByRole('button', { name: 'Look for older runs' });
+    const listed = () => runs.locator('time').evaluateAll((times) => times.map((time) => time.getAttribute('datetime')));
+    await expect.poll(listed).toEqual(everyRun().slice(0, 64));
+    let panelReading = 1;
+    for (const order of ['newest first', 'older first']) {
+      // More runs end than the list takes, so the next refresh reads the newest page again; it is held, and meanwhile
+      // the person looks for older runs, which fails.
+      write(65);
+      const newest = gate();
+      const search = gate();
+      holdNewest = { at: newestReads + 2, released: newest.released };
+      holdOlder = { cursor: newestCursors[panelReading], released: search.released };
+      const reads = routineReads;
+      await page.clock.runFor(16_000);
+      await expect.poll(() => routineReads).toBeGreaterThan(reads);
+      await expect.poll(() => newestReads).toBe(holdNewest.at);
+      await older.click();
+      if (order === 'newest first') {
+        newest.release();
+        await expect.poll(listed).toEqual(everyRun().slice(0, 64));
+        search.release();
+      } else {
+        search.release();
+        await expect(runs).toContainText(messages.en.routine.panel.runsUnavailable);
+        newest.release();
+      }
+      // Either way the newer reading stands, and its cursor still reaches every older run.
+      await expect.poll(listed).toEqual(everyRun().slice(0, 64));
+      await expect(runs).not.toContainText(messages.en.routine.panel.runsUnavailable);
+      panelReading = holdNewest.at;
+      holdNewest = null;
+      holdOlder = null;
+      await expect(older).toBeEnabled();
+    }
+    while (await older.count()) {
+      const shown = (await listed()).length;
+      await older.click();
+      await expect.poll(async () => (await listed()).length).toBeGreaterThan(shown);
+    }
+    await expect.poll(listed).toEqual(everyRun());
+  });
+
   test("a continuous Routine's healthy minutes are its runs, each with its count and no execution details", { tag: '@mobile' }, async ({ page }) => {
     const continuous = { ...ROUTINE_VIEW, schedule: { kind: 'continuous', gap: 5, cap: 17280 } };
     const rollup = (id, runs) => ({ ...routineRow(id, 'healthy', { runs }, { routine: continuous }), run_id: null });

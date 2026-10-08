@@ -156,6 +156,7 @@
     recent = found.runs;
     olderRuns = found.before;
     arrived = 0;
+    recentFailed = false;
   }
 
   // Assistant names and this Routine's recent runs are read when the panel opens; neither is ever required.
@@ -209,7 +210,7 @@
       recent = [...recent, ...found.runs];
       olderRuns = found.before;
     } catch {
-      recentFailed = true;
+      if (from === reading) recentFailed = true;
     } finally {
       searchingOlder = false;
     }
