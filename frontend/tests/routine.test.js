@@ -323,8 +323,21 @@ test("a Routine's cap is its gap's whole day and UTC stands in when no timezone 
 test('a Routine card is admitted only whole, and its inputs say where each value comes from', () => {
   assert.deepEqual(parseRoutineProposal(structuredClone(PROPOSAL)), PROPOSAL);
   // A step that changes something reads like any other: the card names it, and nothing waits for a rehearsal.
-  const changing = { ...PROPOSAL, steps: [PROPOSAL.steps[0], { ...PROPOSAL.steps[1], read_only: false }] };
+  const changing = {
+    ...PROPOSAL,
+    steps: [PROPOSAL.steps[0], { ...PROPOSAL.steps[1], read_only: false }],
+    permitted: [{ ...PROPOSAL.permitted[0], read_only: false }, PROPOSAL.permitted[1]],
+  };
   assert.equal(parseRoutineProposal(changing).steps[1].read_only, false);
+  // The permitted Actions are exactly the steps' Actions with their effect: none extra, none missing, none other.
+  for (const permitted of [
+    [...PROPOSAL.permitted, { assistant: 'shimpz-cloudflare', action: 'purge-cache', read_only: false }],
+    PROPOSAL.permitted.slice(1),
+    [{ ...PROPOSAL.permitted[0], read_only: false }, PROPOSAL.permitted[1]],
+    [],
+  ]) {
+    assert.throws(() => parseRoutineProposal({ ...PROPOSAL, permitted }), RoutineError, JSON.stringify(permitted));
+  }
   // A decision is retired: its member, its mode, and a condition are refused, even when empty.
   const decision = {
     request: 'apague registros vencidos',
@@ -1543,6 +1556,14 @@ test("a run's execution details admit exactly Team's diagnostics view for that r
       readRunDiagnostics(fetcher([[200, { team_id: 'team_1', run_id: RUN_ID, diagnostics: [diagnostic] }]]).fetch, 'team_1', RUN_ID),
       (error) => error.code === 'routine-response-invalid',
       JSON.stringify(diagnostic).slice(0, 160),
+    );
+  }
+  // Each attempt is listed once, oldest first, as Team orders them.
+  const second = { ...ATTEMPT, attempt: 2 };
+  for (const diagnostics of [[ATTEMPT, ATTEMPT], [second, ATTEMPT], [{ ...ATTEMPT, recorded_at: '2026-10-05T13:00:00Z' }, second]]) {
+    await assert.rejects(
+      readRunDiagnostics(fetcher([[200, { team_id: 'team_1', run_id: RUN_ID, diagnostics }]]).fetch, 'team_1', RUN_ID),
+      (error) => error.code === 'routine-response-invalid',
     );
   }
   for (const body of [

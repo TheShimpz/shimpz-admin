@@ -1405,7 +1405,14 @@ export function conditionWords(condition, copy) {
   }[condition];
 }
 
-/** One run's execution details for exactly the Team and run asked for, oldest attempt first. */
+// Two diagnostics in Team's order: by instant, then operation, then attempt.
+function diagnosticOrder(left, right) {
+  if (left.recorded_at !== right.recorded_at) return left.recorded_at < right.recorded_at ? -1 : 1;
+  if (left.operation_id !== right.operation_id) return left.operation_id < right.operation_id ? -1 : 1;
+  return left.attempt - right.attempt;
+}
+
+/** One run's execution details for exactly the Team and run asked for, oldest attempt first, each attempt once. */
 export async function readRunDiagnostics(fetcher, teamId, runId) {
   const body = await request(fetcher, teamPath(teamId, `/runs/${opaque(runId)}/diagnostics`));
   return view(body, ['team_id', 'run_id', 'diagnostics'], (item) =>
@@ -1413,7 +1420,9 @@ export async function readRunDiagnostics(fetcher, teamId, runId) {
     item.run_id === runId &&
     Array.isArray(item.diagnostics) &&
     item.diagnostics.length <= MAX_RUN_DIAGNOSTICS &&
-    item.diagnostics.every(isDiagnostic)).diagnostics;
+    item.diagnostics.every(isDiagnostic) &&
+    new Set(item.diagnostics.map((entry) => `${entry.operation_id}:${entry.attempt}`)).size === item.diagnostics.length &&
+    item.diagnostics.every((entry, index) => index === 0 || diagnosticOrder(item.diagnostics[index - 1], entry) <= 0)).diagnostics;
 }
 
 // The confirmation card of a recorded Routine (ADR-0101 section 5.2), mirroring Team's `routine.canonical_proposal`:
@@ -1453,6 +1462,14 @@ function isCardPermitted(value) {
   return valid && identities.every((item, index) => index === 0 || identities[index - 1] < item);
 }
 
+// The permitted Actions are exactly the card's steps' Actions, each with the same reviewed effect as its steps.
+function permitsExactly(permitted, steps) {
+  const effects = new Map(permitted.map((item) => [`${item.assistant}\u0000${item.action}`, item.read_only]));
+  const used = new Set(steps.map((step) => `${step.assistant}\u0000${step.action}`));
+  return effects.size === used.size && [...used].every((key) => effects.has(key)) &&
+    steps.every((step) => effects.get(`${step.assistant}\u0000${step.action}`) === step.read_only);
+}
+
 /**
  * The Routine card a recording turn's reply carries, admitted exactly as Team's closed form, or a thrown
  * `routine-response-invalid`. It is the one thing the person confirms.
@@ -1479,6 +1496,7 @@ export function parseRoutineProposal(value) {
       isDisposition({ ...output, step: shown }, steps.length) &&
       steps.every((step, index) => isCardStep(step, index + 1)) &&
       isCardPermitted(item.permitted) &&
+      permitsExactly(item.permitted, steps) &&
       encodedBytes(item) <= MAX_PROPOSAL_BYTES
     );
   });
