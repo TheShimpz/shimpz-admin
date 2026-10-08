@@ -2539,7 +2539,7 @@ test('does not trust an install-only plan for a later request from an Assistant 
 });
 
 test('keeps reconnecting while Admin restarts for a release and recovers without a refresh', { tag: '@slow' }, async ({ page }) => {
-  // The browser spaces out repeated failed upgrades in real time, beyond the virtual clock.
+  // Each refused upgrade really fails in the browser; the app's own reconnect delays run on the virtual clock.
   test.slow();
   await page.clock.install();
   // More refused upgrades than the old five-attempt budget allowed, as a Local release swap causes.
@@ -2558,13 +2558,15 @@ test('keeps reconnecting while Admin restarts for a release and recovers without
   const reconnecting = page.getByText('The secure chat connection was interrupted. Reconnecting…');
   await expect(reconnecting).toBeVisible();
 
-  // Virtual time advances one second per probe, while the browser's own delay after a failed attempt runs in real time.
+  // Each probe advances virtual time one second through the app's growing reconnect delays (about 22 s over six
+  // refusals); probing every 100 ms of real time, instead of backing off to a second between probes, lets those
+  // virtual seconds pass in a few real ones.
   const advanced = (probe) => async () => {
     await page.clock.runFor(1_000);
     return probe();
   };
-  await expect.poll(advanced(() => chat.refusedConnections()), { timeout: 30_000 }).toBe(6);
-  await expect.poll(advanced(() => reconnecting.isVisible()), { timeout: 30_000 }).toBe(false);
+  await expect.poll(advanced(() => chat.refusedConnections()), { timeout: 30_000, intervals: [100] }).toBe(6);
+  await expect.poll(advanced(() => reconnecting.isVisible()), { timeout: 30_000, intervals: [100] }).toBe(false);
   await expect(page.getByText('The secure chat connection could not be established.', { exact: false })).toHaveCount(0);
 
   await fillWhenReady(page, composer, 'List my DNS zones');
