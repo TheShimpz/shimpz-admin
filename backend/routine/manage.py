@@ -201,9 +201,8 @@ def run_steps(team_id: object, run_id: object, snapshot: object, offset: object)
         not isinstance(snapshot, str) or routine_run_contract.SNAPSHOT_RE.fullmatch(snapshot) is None
     ):
         raise team.TeamRequestError("Routine run snapshot is invalid")
-    # A run's page lists its replay steps, then its decision calls.
-    bound = routine_contract.MAX_ROUTINE_STEPS + routine_contract.MAX_DECISION_CALLS
-    start = _count(offset, "Routine step offset", 0, bound)
+    # A run's page lists its replay steps.
+    start = _count(offset, "Routine step offset", 0, routine_contract.MAX_ROUTINE_STEPS)
     response = transport._call("GET", f"/v1/teams/{canonical}/routines/runs/{run}/steps/{snapshot}/{start}")
 
     bound = _bound(routine_run_contract.canonical_run_steps, team_id=canonical, run_id=run, offset=start)

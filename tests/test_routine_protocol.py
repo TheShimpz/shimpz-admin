@@ -40,7 +40,6 @@ FAMILIES = {
     "routine_schedule": routine_contract.canonical_schedule,
     "routine_timezone": routine_contract.canonical_timezone,
     "routine_run_usage": routine_contract.canonical_run_usage,
-    "routine_decision_record": routine_notice_contract.canonical_decision_record,
     "routine_proposal": routine_proposal_contract.canonical_proposal,
     "routine_refusal": routine_proposal_contract.canonical_refusal,
     "routine_question": routine_proposal_contract.canonical_question,
@@ -99,7 +98,12 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
         self.assertEqual(routine_contract.literal_preview({"a": "x\u202e"}), '{"a":"x\\u202e"}')
         self.assertEqual(len(routine_contract.literal_preview("y" * 300)), routine_contract.MAX_PREVIEW_CHARS)
         self.assertFalse(routine_contract._input({"member": "", "source": "literal", "value": "1"}, 1))
-        self.assertFalse(routine_notice_contract._decision([]))
+        # Every plan has a step, and the retired decision mode and condition are refused (ADR-0101, 2026-10-07).
+        self.assertEqual(
+            routine_contract.canonical_disposition({"mode": "none", "step": None}, 1), {"mode": "none", "step": None}
+        )
+        self.assertIsNone(routine_contract.canonical_disposition({"mode": "none", "step": None}, 0))
+        self.assertIsNone(routine_contract.canonical_disposition({"mode": "decide", "step": None, "when": "always"}, 1))
         literal = CARD["steps"][1]["inputs"][0]
         self.assertFalse(routine_proposal_contract._card_input([], 1))
         self.assertFalse(routine_proposal_contract._card_input({**literal, "origin": "guess"}, 2))

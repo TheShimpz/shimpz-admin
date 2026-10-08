@@ -175,7 +175,7 @@ class ChatHistoryConversationTests(ChatHistoryCase):
     def test_a_history_of_the_previous_schema_is_refused_not_upgraded(self) -> None:
         with sqlite3.connect(self.path) as database:
             database.execute("CREATE TABLE transcript (position INTEGER PRIMARY KEY)")
-            database.execute("PRAGMA user_version = 7")
+            database.execute("PRAGMA user_version = 8")
         self.path.chmod(0o600)
         with self.assertRaisesRegex(history.HistoryUnavailableError, "unsupported"):
             history.page("marketing")

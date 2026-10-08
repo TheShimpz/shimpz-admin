@@ -27,7 +27,8 @@ from protocol.http.v1 import turn as turn_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 STORE_PATH = Path(os.environ.get("SHIMPZ_CHAT_HISTORY_STORE") or "/data/chat-history.sqlite3")
-SCHEMA_VERSION = 8
+# Version 9 keeps Routine notices and cards without the retired decision members (ADR-0101 amendment, 2026-10-07).
+SCHEMA_VERSION = 9
 # A row's provenance is server-owned: `attached` marks every row of a turn whose message carried attachments, which
 # never enters a conversation projection (ADR-0093); every other row is `plain`. An attached user row keeps the
 # references of the files its message carried, exactly what the transcript shows of them and never their content.
@@ -150,7 +151,7 @@ def _initialize(database: sqlite3.Connection) -> None:
             team_id TEXT PRIMARY KEY,
             turn_id TEXT NOT NULL UNIQUE
         );
-        PRAGMA user_version = 8;
+        PRAGMA user_version = 9;
         """
     )
 

@@ -31,8 +31,8 @@ RUN = VECTORS["run"]["valid"][1]
 INCIDENT = VECTORS["incident"]["valid"][0]
 CARD = {**VECTORS["card"]["valid"][0], "incident_id": "c" * 32}
 ANSWERED = {**VECTORS["card_answer"]["valid"][0], "incident_id": "c" * 32}
-PAGE = VECTORS["page"]["valid"][3]
-RUN_STEPS = VECTORS["run_steps"]["valid"][3]
+PAGE = VECTORS["page"]["valid"][2]
+RUN_STEPS = VECTORS["run_steps"]["valid"][0]
 DIAGNOSTICS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["routine_diagnostics"]["valid"]
 TRACE = "a" * 32
 ID = "c" * 32
@@ -225,8 +225,8 @@ class RoutineManageTests(unittest.TestCase):
                 lambda: manage.run_steps("team_1", ID, "LATEST", "0"),
                 lambda: manage.run_steps("team_1", ID, None, "0"),
                 lambda: manage.run_steps("team_1", ID, "latest", "1e3"),
-                # A run's page lists its replay steps, then at most 64 decision calls.
-                lambda: manage.run_steps("team_1", ID, "latest", str(routine_contract.MAX_ROUTINE_STEPS + 64)),
+                # A run's page lists only its replay steps; no decision call follows them.
+                lambda: manage.run_steps("team_1", ID, "latest", str(routine_contract.MAX_ROUTINE_STEPS)),
                 lambda: manage.confirm_proposal("team_1", "x"),
                 lambda: manage.revoke_proposal("Team 1", ID),
                 lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "recreate"}),

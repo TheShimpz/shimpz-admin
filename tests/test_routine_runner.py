@@ -39,7 +39,9 @@ BATCH = VECTORS["notice_batch"]["valid"][0]
 # One run's waiting notice and the newer version that ends it; a missed-firings notice; a deleted Routine's notice.
 FROZEN = VECTORS["notice_batch"]["valid"][1]["notices"][0]
 DONE = VECTORS["notice_batch"]["valid"][2]["notices"][0]
-SKIPPED = next(item for item in VECTORS["notice_batch"]["valid"][10]["notices"] if item["outcome"] == "skipped")
+SKIPPED = next(
+    item for batch in VECTORS["notice_batch"]["valid"] for item in batch["notices"] if item["outcome"] == "skipped"
+)
 DELETED = next(item for item in BATCH["notices"] if item["outcome"] == "deleted")
 CLAIM = VECTORS["claim"]["valid"][1]["run"]
 CLAIMED = {"run": CLAIM, "next_due_at": None}
@@ -221,7 +223,10 @@ class RoutineHistoryTests(ChatHistoryCase):
 
 
 # A Routine's other outcomes beside its missed runs: an Assistant scope change, a change, and its creation.
-DEFINED = {item["outcome"]: item for item in VECTORS["notice_batch"]["valid"][10]["notices"]}
+DEFINED = {}
+for _batch in VECTORS["notice_batch"]["valid"]:
+    for _item in _batch["notices"]:
+        DEFINED.setdefault(_item["outcome"], _item)
 HEALTHY = next(item for item in BATCH["notices"] if item["outcome"] == "healthy")
 
 
