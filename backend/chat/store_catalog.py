@@ -192,7 +192,7 @@ def _assistant(value: object) -> CatalogAssistant:
     return CatalogAssistant(
         assistant_id=assistant_id,
         name=catalog_text(value["name"], 80),
-        summary=catalog_text(value["summary"], 160),
+        summary=catalog_text(value["summary"], 80),
         source_digest=value["source_digest"],
         icon_digest=value["icon_digest"],
         integrations=_integrations(value["integrations"]),

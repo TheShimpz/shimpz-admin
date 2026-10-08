@@ -1035,7 +1035,7 @@ function canonicalInstallPlanAssistant(value) {
   return {
     id: canonicalId(value.id),
     name: canonicalPublicText(value.name, 80),
-    summary: canonicalPublicText(value.summary, 160),
+    summary: canonicalPublicText(value.summary, 80),
     providers,
     provenance: value.provenance,
     status: value.status,

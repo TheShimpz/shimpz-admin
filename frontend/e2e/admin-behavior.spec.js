@@ -159,7 +159,7 @@ async function openTeamNavigation(page) {
 const INSTALLED_SUMMARIES = {
   'shimpz-cloudflare': {
     en: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
-    pt: 'Inspeciona zonas do Cloudflare e gerencia registros DNS comuns com segurança por OAuth.',
+    pt: 'Inspeciona zonas do Cloudflare e gerencia registros DNS comuns por OAuth.',
   },
   'shimpz-slack': { en: 'Send reviewed messages to Slack.' },
 };
@@ -7147,7 +7147,7 @@ test('a Stored Input request links its reviewed key page and sends the pasted ke
   await expect(link).toHaveAttribute('href', KEY_PAGE);
   await expect(link).toHaveAttribute('target', '_blank');
   await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-  const field = dialog.getByLabel('Shimpz Cloudflare API key');
+  const field = dialog.getByLabel('Cloudflare API secret');
   await expect(field).toHaveAttribute('type', 'password');
   await field.fill('exa-secret-key');
   await dialog.getByRole('button', { name: 'Send' }).click();

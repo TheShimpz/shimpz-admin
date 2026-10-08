@@ -7,7 +7,7 @@ const MAX_ICON_BYTES = 1024 * 1024;
 const MAX_BUSY_RETRIES = 2;
 const PUBLIC_BUSY_RETRY_MS = 50;
 const SHA256_RE = /^sha256:[0-9a-f]{64}$/;
-const MAX_SUMMARY_CHARS = 160;
+const MAX_SUMMARY_CHARS = 80;
 const ERROR_CODE_RE = /^[a-z0-9]+(?:-[a-z0-9]+){0,15}$/;
 // Team's refusal of a staged image's preview because that image fails current admission.
 const INADMISSIBLE_PREVIEW = 'local-assistant-preview-invalid';

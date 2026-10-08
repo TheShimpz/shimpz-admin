@@ -81,7 +81,7 @@ function installAssistant(value, status) {
   return {
     id: assistantId(value.id, status),
     name: publicText(value.name, 80, status),
-    summary: publicText(value.summary, 160, status),
+    summary: publicText(value.summary, 80, status),
     providers,
     provenance: value.provenance,
     status: value.status,

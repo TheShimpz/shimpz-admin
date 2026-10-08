@@ -173,6 +173,12 @@ test('refuses invalid summary requests and any answer outside the requested loca
   );
   assert.equal(calls, 0);
 
+  // A translated summary may use all 80 code points, including ones outside the Basic Multilingual Plane.
+  for (const summary of ['x'.repeat(80), `${'x'.repeat(79)}\u{1F44B}`]) {
+    const loaded = await loadLocalAssistantSummary(async () => summaryResponse({ locale: 'pt', summary }), IMAGE_ID, 'pt');
+    assert.equal(loaded, summary);
+  }
+
   for (const body of [
     { locale: 'en', summary: 'Summary.' },
     { locale: 'pt' },
@@ -180,7 +186,7 @@ test('refuses invalid summary requests and any answer outside the requested loca
     { locale: 'pt', summary: ' Resumo.' },
     { locale: 'pt', summary: 'Resumo\nlinha.' },
     { locale: 'pt', summary: 'Cafe\u0301.' },
-    { locale: 'pt', summary: 'x'.repeat(161) },
+    { locale: 'pt', summary: 'x'.repeat(81) },
     { locale: 'pt', summary: 'Resumo.', trace_id: 'a'.repeat(32) },
   ]) {
     await assert.rejects(

@@ -128,7 +128,7 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
                 raise ValueError("invalid Team integration status")
             # Team's Assistant summary is the binding's English catalog text, which the browser reads per interface
             # language instead, and its provider summary is English text the interface never shows.
-            chat_ws_common.public_text(item["assistant_summary"], 160, field="Assistant summary")
+            chat_ws_common.public_text(item["assistant_summary"], 80, field="Assistant summary")
             chat_ws_common.public_text(item["summary"], 160, field="integration summary")
             integrations.append(
                 {

@@ -85,7 +85,7 @@ def registry(response: object) -> dict[str, assistant_proposal.Capability]:
         capabilities[assistant_id] = assistant_proposal.Capability(
             assistant_id=assistant_id,
             name=store_catalog.catalog_text(item["title"], 80),
-            summary=store_catalog.catalog_text(item["summary"], 160),
+            summary=store_catalog.catalog_text(item["summary"], 80),
             actions=tuple(actions),
         )
     return capabilities

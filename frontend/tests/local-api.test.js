@@ -420,10 +420,11 @@ test('bounds Assistant catalog names and summaries by Unicode code points, as th
     assert.equal(registered.name, text(80));
     await assert.rejects(local(text(81)), invalid);
     for (const list of [published, snapshots]) {
-      const [entry] = await list(text(80), text(160));
-      assert.deepEqual([entry.name, entry.summary], [text(80), text(160)]);
+      // The summary is a short description of at most 80 code points.
+      const [entry] = await list(text(80), text(80));
+      assert.deepEqual([entry.name, entry.summary], [text(80), text(80)]);
       await assert.rejects(list(text(81), 'Summary'), invalid);
-      await assert.rejects(list('Name', text(161)), invalid);
+      await assert.rejects(list('Name', text(81)), invalid);
     }
   }
 });

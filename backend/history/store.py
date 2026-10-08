@@ -406,7 +406,7 @@ def _install_assistant(value: object) -> dict[str, object]:
     return {
         "id": assistant_id,
         "name": chat_ws_common.public_text(value["name"], 80, field="Assistant name"),
-        "summary": chat_ws_common.public_text(value["summary"], 160, field="Assistant summary"),
+        "summary": chat_ws_common.public_text(value["summary"], 80, field="Assistant summary"),
         "providers": canonical_providers,
         "provenance": value["provenance"],
         "status": value["status"],

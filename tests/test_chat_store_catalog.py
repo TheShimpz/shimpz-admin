@@ -111,6 +111,14 @@ class StoreCatalogTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "catalog size is invalid"):
             _validate(catalog(1001))
 
+    def test_the_summary_is_a_short_description_of_at_most_eighty_code_points(self) -> None:
+        for summary in ("s" * 80, "s" * 79 + "\U0001f44b"):
+            with self.subTest(summary=summary):
+                catalog = {"version": 1, "locale": "en", "assistants": [_assistant(summary=summary)]}
+                self.assertEqual(_validate(catalog)[0].summary, summary)
+        with self.assertRaises(ValueError):
+            _validate({"version": 1, "locale": "en", "assistants": [_assistant(summary="s" * 81)]})
+
     def test_admits_the_producer_action_count_and_no_more(self) -> None:
         # Developers' install protocol admits up to 128 Actions per Assistant.
         def catalog(count: int) -> dict[str, object]:

@@ -93,7 +93,7 @@ def _assistant(value: object) -> LocalAssistant:
     return LocalAssistant(
         assistant_id=assistant_id,
         name=store_catalog.catalog_text(value["name"], 80),
-        summary=store_catalog.catalog_text(value["summary"], 160),
+        summary=store_catalog.catalog_text(value["summary"], 80),
         image_id=image_id,
         integrations=tuple(store_catalog.CatalogIntegration(provider, ()) for provider in providers),
         actions=actions,
@@ -134,4 +134,4 @@ def localized_summary(assistant: LocalAssistant, locale: str) -> str:
     summary = team_contract.canonical_snapshot_summary(body)
     if summary is None or summary["locale"] != locale:
         raise ValueError("Local Assistant summary is invalid")
-    return store_catalog.catalog_text(summary["summary"], 160)
+    return store_catalog.catalog_text(summary["summary"], 80)
