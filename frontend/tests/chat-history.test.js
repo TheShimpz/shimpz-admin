@@ -7,9 +7,9 @@ import {
   historyMark,
   historySince,
   listChatHistory,
+  MAX_ARRIVED_RUNS,
   MAX_REFRESH_PAGES,
   mergedRoutineRuns,
-  RECENT_ROUTINE_RUNS,
   routineRuns,
 } from '../src/lib/chatHistory.js';
 import { LocalApiError } from '../src/lib/localApi.js';
@@ -461,22 +461,16 @@ test("rows written since join a Routine's runs at the top, a newer version movin
   assert.equal(mergedRoutineRuns(listed, [arrived[0]], routine), listed);
 });
 
-test("a Routine's merged runs keep their window: each new run pushes the oldest out", () => {
+test("a Routine's merged runs never drop a listed run, so its older runs stay reachable past them", () => {
   const routine = '9'.repeat(32);
   const digits = '0123456789abcdef';
   const run = (index) => restoredRun(digits[index], routine);
-  const recent = [4, 3, 2, 1, 0].map(run);
-  // A continuous Routine keeps adding runs while its panel stays open; the list stays at its latest few.
-  let listed = recent;
+  // A Routine keeps adding runs while its panel stays open; every listed run stays, newest first.
+  let listed = [4, 3, 2, 1, 0].map(run);
   for (let index = 5; index < 16; index += 1) listed = mergedRoutineRuns(listed, [run(index)], routine);
-  assert.equal(listed.length, RECENT_ROUTINE_RUNS);
-  assert.deepEqual(listed.map((entry) => entry.id[0]), ['f', 'e', 'd', 'c', 'b']);
-  // A shorter list fills up to the window; a longer one the person asked for keeps its length.
-  assert.deepEqual(mergedRoutineRuns([run(0)], [run(1), run(2)], routine).map((entry) => entry.id[0]), ['2', '1', '0']);
-  const searched = [6, 5, 4, 3, 2, 1, 0].map(run);
-  assert.deepEqual(mergedRoutineRuns(searched, [run(7), run(8)], routine).map((entry) => entry.id[0]), [
-    '8', '7', '6', '5', '4', '3', '2',
-  ]);
+  assert.deepEqual(listed.map((entry) => entry.id[0]), [...'fedcba9876543210']);
+  // How many the panel takes before it reads its newest page again is one history page.
+  assert.equal(MAX_ARRIVED_RUNS, 64);
 });
 
 function restoredRun(digit, routineId) {

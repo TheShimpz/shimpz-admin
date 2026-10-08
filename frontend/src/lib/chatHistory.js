@@ -362,10 +362,11 @@ export function historyBoundary(marks, entries) {
   return new Set([...marks, ...entries.map(historyMark)].slice(-HISTORY_BOUNDARY_ROWS));
 }
 
-// A Routine's panel that stays open keeps at least this many of its latest runs while new runs keep ending. A
-// continuous Routine's healthy runs arrive as one rollup per minute with no run of its own, and count as one entry, as
-// do the runs a Routine missed.
-export const RECENT_ROUTINE_RUNS = 5;
+// A Routine's panel that stays open adds at most this many runs that end while it is open to the list it read; past
+// that it reads its newest page again, so a Routine that keeps running cannot grow a panel without bound. A continuous
+// Routine's healthy runs arrive as one rollup per minute with no run of its own, and count as one entry, as do the
+// runs a Routine missed.
+export const MAX_ARRIVED_RUNS = MAX_PAGE_ENTRIES;
 
 /**
  * Whether a history entry is one of this Routine's runs, a rollup of its healthy continuous runs, or the runs it
@@ -389,9 +390,8 @@ export async function routineRuns(fetcher, teamId, routineId, { before = null, s
 
 /**
  * A Routine's listed runs, newest first, with the rows written since (`arrived`, oldest first) merged in: each new run,
- * or newer version of a listed one, moves to the top, where the newest history shows it. The list never grows past
- * RECENT_ROUTINE_RUNS or the runs already listed, whichever is more: each new run pushes the oldest out, so a Routine
- * that keeps running cannot grow a panel that stays open.
+ * or newer version of a listed one, moves to the top, where the newest history shows it. No listed run is dropped, so
+ * the cursor to older runs still reaches every run the list does not hold.
  */
 export function mergedRoutineRuns(runs, arrived, routineId) {
   const listed = new Map(runs.map((entry) => [entry.id, entry.version]));
@@ -400,6 +400,5 @@ export function mergedRoutineRuns(runs, arrived, routineId) {
     .reverse();
   if (fresh.length === 0) return runs;
   const moved = new Set(fresh.map((entry) => entry.id));
-  const bound = Math.max(RECENT_ROUTINE_RUNS, runs.length);
-  return [...fresh, ...runs.filter((entry) => !moved.has(entry.id))].slice(0, bound);
+  return [...fresh, ...runs.filter((entry) => !moved.has(entry.id))];
 }

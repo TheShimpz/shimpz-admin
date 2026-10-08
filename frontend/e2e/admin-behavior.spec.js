@@ -6364,39 +6364,77 @@ test.describe('Team Routines', () => {
     expect(searched.slice(searches).filter((cursor) => cursor !== null)).toEqual([]);
   });
 
-  test("a Routine's panel that stays open keeps its latest few runs while new runs keep ending", { tag: '@mobile' }, async ({ page }) => {
+  test("a Routine's panel that stays open lists every run that ends, and every older run stays reachable", { tag: '@mobile' }, async ({ page }) => {
     const done = { plan: ROUTINE_VIEW.plan, output: null, decision: null };
     const failed = { code: 'assistant-rpc-failed', actions: [], position: null, steps: null };
-    const digits = '0123456789abcdef';
-    const history = [0, 1, 2, 3, 4].map((index) => routineRow(digits[index].repeat(32), 'done', done));
+    // The Routine's stored history, oldest first; a row's position is its place in it, as Admin's cursor names it.
+    const stored = [];
+    // Each run ends a second after the one before, so a listed run is known by its time.
+    const write = (count, detail = done) => {
+      for (let index = 0; index < count; index += 1) {
+        const position = stored.length + 1;
+        const row = routineRow(position.toString(16).padStart(32, '0'), detail === done ? 'done' : 'failed', detail);
+        stored.push({ ...row, created_at: new Date(Date.UTC(2026, 9, 1, 12) + position * 1000).toISOString().replace('.000Z', 'Z') });
+      }
+    };
+    const everyRun = () => stored.map((row) => row.created_at).reverse();
+    const cursor = (position) => {
+      const raw = Buffer.alloc(8);
+      raw.writeBigUInt64BE(BigInt(position));
+      return raw.toString('base64url');
+    };
+    const position = (value) => Number(Buffer.from(value, 'base64url').readBigUInt64BE());
     await routeReadyChat(page);
-    await page.route('**/api/teams/marketing/chat/history**', (route) => route.fulfill({
-      json: { entries: historyView(history, new URL(route.request().url()).searchParams.get('routine')), before: null },
-    }));
+    // One newest-first page of at most 64 rows before the cursor, oldest first, as Admin pages the Routine's view.
+    await page.route('**/api/teams/marketing/chat/history**', (route) => {
+      const params = new URL(route.request().url()).searchParams;
+      if (params.get('routine') === null) return route.fulfill({ json: { entries: [], before: null } });
+      const below = params.get('before') === null ? stored.length + 1 : position(params.get('before'));
+      const start = Math.max(0, below - 1 - 64);
+      const entries = stored.slice(start, below - 1);
+      return route.fulfill({ json: { entries, before: start > 0 ? cursor(start + 1) : null } });
+    });
     let routineReads = 0;
     await page.route('**/api/teams/marketing/routines', (route) => {
       routineReads += 1;
       return route.fulfill({ json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] } });
     });
+    write(5);
     await page.clock.install();
     await page.goto('/chat/?team=marketing');
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
-      .getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const panel = await openRoutinePanel(page);
     await panel.getByRole('tab', { name: 'Runs' }).click();
     const runs = panel.getByRole('list', { name: 'Runs' });
-    await expect(runs.getByRole('listitem')).toHaveCount(5);
-    // Two runs end before each refresh; the newest, a failed one, lists first and the oldest leave the list.
-    for (let index = 5; index < 15; index += 2) {
-      history.push(routineRow(digits[index].repeat(32), 'done', done));
-      history.push(routineRow(digits[index + 1].repeat(32), 'failed', failed));
+    const older = runs.getByRole('button', { name: 'Look for older runs' });
+    const listed = () => runs.locator('time').evaluateAll((times) => times.map((time) => time.getAttribute('datetime')));
+    await expect.poll(listed).toEqual(everyRun());
+    const refresh = async () => {
       const reads = routineReads;
       await page.clock.runFor(16_000);
       await expect.poll(() => routineReads).toBeGreaterThan(reads);
+    };
+    // Every run that ends while the panel is open joins the top; none listed before is dropped.
+    for (let round = 0; round < 3; round += 1) {
+      write(1);
+      write(1, failed);
+      await refresh();
       await expect(runs.getByRole('listitem').first()).toContainText('assistant-rpc-failed');
-      await expect(runs.getByRole('listitem')).toHaveCount(5);
+      await expect.poll(listed).toEqual(everyRun());
+    }
+    // More end than the list takes, then more than one refresh reads: each time the list starts again from the newest
+    // page, and continuing it reaches every run, none skipped.
+    for (const count of [65, 520]) {
+      write(count);
+      await refresh();
+      await expect.poll(async () => (await listed()).length).toBe(64);
+      await expect.poll(listed).toEqual(everyRun().slice(0, 64));
+      await expect(older).toBeVisible();
+      while (await older.count()) {
+        const shown = (await listed()).length;
+        await older.click();
+        await expect.poll(async () => (await listed()).length).toBeGreaterThan(shown);
+      }
+      await expect.poll(listed).toEqual(everyRun());
     }
   });
 

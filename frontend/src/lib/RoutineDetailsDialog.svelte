@@ -5,6 +5,7 @@
   import {
     historyBoundary,
     historySince,
+    MAX_ARRIVED_RUNS,
     mergedRoutineRuns,
     routineRuns,
   } from '$lib/chatHistory.js';
@@ -140,25 +141,36 @@
   let search = 0;
   let refreshing = false;
 
+  // How many runs that ended while the panel was open joined the list since it last read its newest page, and which
+  // reading of the newest page the list comes from, so an older search begun before another reading is discarded.
+  let arrived = 0;
+  let reading = 0;
+
+  // The newest page of the Routine's own history starts the list again; its cursor reaches every older run.
+  async function readNewest(opened) {
+    const marks = new Set();
+    const found = await routineRuns(fetch, teamId, routineId, { seen: marks });
+    if (opened !== search) return;
+    reading += 1;
+    seen = marks;
+    recent = found.runs;
+    olderRuns = found.before;
+    arrived = 0;
+  }
+
   // Assistant names and this Routine's recent runs are read when the panel opens; neither is ever required.
   $effect(() => {
     const opened = ++search;
-    const marks = new Set();
-    seen = marks;
+    seen = new Set();
     void loadAssistantNames(fetch);
-    routineRuns(fetch, teamId, routineId, { seen: marks })
-      .then((found) => {
-        if (opened !== search) return;
-        recent = found.runs;
-        olderRuns = found.before;
-      })
-      .catch(() => { if (opened === search) recentFailed = true; });
+    readNewest(opened).catch(() => { if (opened === search) recentFailed = true; });
     return () => { search += 1; };
   });
 
   // Whenever the Routine's runs in progress are read again, a run may have ended: the runs written since the panel last
-  // read the history join its list at the top, and the search for older runs keeps its place. A refresh that reaches
-  // its page bound first starts the list again from what it read, and the older search continues past it.
+  // read the history join its list at the top, and the search for older runs keeps its place. When more ended than the
+  // list takes, or more was written than one refresh reads, the list starts again from the newest page instead, so no
+  // run is ever left between the list and the cursor to older runs.
   async function refreshRecent() {
     if (recent === null || recentFailed || refreshing || searchingOlder) return;
     refreshing = true;
@@ -166,12 +178,14 @@
     try {
       const since = await historySince(fetch, teamId, seen, { routine: routineId });
       if (opened !== search || searchingOlder) return;
-      seen = historyBoundary(seen, since.entries);
-      if (since.before === null) {
-        recent = mergedRoutineRuns(recent, since.entries, routineId);
+      const merged = mergedRoutineRuns(recent, since.entries, routineId);
+      const added = merged.length - recent.length;
+      if (since.before === null && arrived + added <= MAX_ARRIVED_RUNS) {
+        seen = historyBoundary(seen, since.entries);
+        recent = merged;
+        arrived += added;
       } else {
-        recent = mergedRoutineRuns([], since.entries, routineId);
-        olderRuns = since.before;
+        await readNewest(opened);
       }
     } catch {
       // The next refresh tries again; the runs already listed stay.
@@ -185,10 +199,13 @@
     untrack(() => void refreshRecent());
   });
 
+  // An older search that a new reading of the newest page overtook is discarded; that reading's cursor reaches its runs.
   async function searchOlderRuns() {
     searchingOlder = true;
+    const from = reading;
     try {
       const found = await routineRuns(fetch, teamId, routineId, { before: olderRuns });
+      if (from !== reading) return;
       recent = [...recent, ...found.runs];
       olderRuns = found.before;
     } catch {
