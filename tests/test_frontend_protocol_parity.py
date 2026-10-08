@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import re
 import sys
 import unittest
@@ -11,9 +12,35 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from protocol.http.v1 import payload as team_contract
+from protocol.http.v1 import turn as turn_contract
 
 LOCAL_CHAT = ROOT / "frontend" / "src" / "lib" / "localChat.js"
 VALIDATE = ROOT / "frontend" / "src" / "lib" / "validate.js"
+LIB = ROOT / "frontend" / "src" / "lib"
+# The browser's copies of Team chat-turn bounds, which it cannot import, each pinned to its one Team definition.
+TURN_BOUNDS = {
+    "localChat.js": {
+        "MAX_REPLY_CHARS": turn_contract.MAX_REPLY_CHARS,
+        "MAX_GUIDANCE_REPLY_CHARS": turn_contract.MAX_INTENT_ROUTE_REPLY_CHARS,
+        "MAX_TEAM_NAME_CHARS": team_contract.MAX_TEAM_NAME_CHARS,
+    },
+    "chatHistory.js": {
+        "MAX_MESSAGE_CHARS": team_contract.MAX_CHAT_MESSAGE_CHARS,
+        "MAX_REPLY_CHARS": turn_contract.MAX_REPLY_CHARS,
+        "MAX_GUIDANCE_REPLY_CHARS": turn_contract.MAX_INTENT_ROUTE_REPLY_CHARS,
+        "MAX_TEAM_NAME_CHARS": team_contract.MAX_TEAM_NAME_CHARS,
+    },
+    "attachments.js": {
+        "MAX_ATTACHMENTS": team_contract.MAX_CHAT_FILES,
+        "MAX_UPLOAD_BYTES": team_contract.MAX_FILE_UPLOAD_BYTES,
+        "MAX_MESSAGE_IMAGES": turn_contract.MAX_ATTACHMENT_IMAGES,
+        "MAX_MESSAGE_TEXT_CHARACTERS": turn_contract.MAX_ATTACHED_TEXT_CHARS,
+        "MAX_MESSAGE_TEXT_BYTES": turn_contract.MAX_ATTACHED_TEXT_BYTES,
+        "MAX_TEXT_CHARACTERS": turn_contract.MAX_ATTACHMENT_TEXT_CHARS,
+        "MAX_TEXT_BYTES": turn_contract.MAX_ATTACHMENT_TEXT_BYTES,
+    },
+}
+_UNITS = {"KIB": 1024, "MIB": 1024 * 1024}
 
 
 def _constant(source: str, name: str) -> str:
@@ -65,6 +92,44 @@ class FrontendProtocolParityTests(unittest.TestCase):
                 self.assertIsNotNone(literal)
                 pairs = dict(re.findall(r"(\w+): (\d+)", literal[1]))
                 self.assertEqual({field: int(value) for field, value in pairs.items()}, bounds)
+
+
+def _integer(expression: str) -> int:
+    """A browser constant's integer: a literal, or a product of literals and the KIB and MIB units."""
+    node = ast.parse(expression.replace("_", ""), mode="eval").body
+    factors: list[ast.expr] = []
+    while isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mult):
+        factors.append(node.right)
+        node = node.left
+    factors.append(node)
+    product = 1
+    for factor in factors:
+        if isinstance(factor, ast.Constant) and type(factor.value) is int:
+            product *= factor.value
+        elif isinstance(factor, ast.Name) and factor.id in _UNITS:
+            product *= _UNITS[factor.id]
+        else:
+            raise AssertionError(f"{expression} is not a literal browser bound")
+    return product
+
+
+class FrontendTurnBoundParityTests(unittest.TestCase):
+    def test_each_browser_turn_bound_is_the_team_definition(self) -> None:
+        for filename, bounds in TURN_BOUNDS.items():
+            source = (LIB / filename).read_text(encoding="utf-8")
+            for name, expected in bounds.items():
+                with self.subTest(file=filename, bound=name):
+                    found = re.findall(rf"^(?:export )?const {name} = (.+);$", source, re.MULTILINE)
+                    self.assertEqual(len(found), 1)
+                    self.assertEqual(_integer(found[0]), expected)
+
+    def test_a_browser_bound_outside_literals_and_units_is_refused(self) -> None:
+        self.assertEqual(_integer("512 * KIB"), 512 * 1024)
+        self.assertEqual(_integer("25 * MIB"), 25 * 1024 * 1024)
+        self.assertEqual(_integer("60_000"), 60_000)
+        for expression in ("LIMIT", "1 + 2", "2 * OTHER", "1.5"):
+            with self.subTest(expression=expression), self.assertRaises(AssertionError):
+                _integer(expression)
 
 
 class FrontendIdentifierParityTests(unittest.TestCase):
