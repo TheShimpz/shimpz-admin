@@ -6721,6 +6721,75 @@ test.describe('Team Routines', () => {
     expect(openings).toEqual(Array(5).fill({ locale: 'en' }));
   });
 
+  test("a run frozen at a Supervisor password is found from the Routines button and authorized in its panel", { tag: '@mobile' }, async ({ page }) => {
+    const run = 'd'.repeat(32);
+    await routeReadyChat(page, {
+      history: {
+        entries: [routineRow(run, 'frozen', {
+          request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3,
+        })],
+        before: null,
+      },
+    });
+    let runs = [frozenRun(run, 'human')];
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents: [] },
+    }));
+    await page.route('**/api/teams/marketing/routines/runs/*/challenge', (route) => route.fulfill({
+      json: {
+        team_id: 'marketing',
+        run_id: run,
+        status: 'human-required',
+        challenge: {
+          type: 'human-required',
+          challenge_id: 'b'.repeat(32),
+          expires_in: 300,
+          assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+          action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
+          ...localizedChallenge(humanRequest('auth:password')),
+        },
+      },
+    }));
+    // The first password is refused and keeps the challenge open; the second authorizes the run, which completes.
+    const answered = [];
+    await page.route('**/api/teams/marketing/routines/runs/*/human', async (route) => {
+      answered.push([new URL(route.request().url()).pathname.split('/').at(-2), route.request().postDataJSON()]);
+      if (answered.length === 1) {
+        const rejection = { type: 'human-response-rejected', challenge_id: 'b'.repeat(32), reason: 'authentication-denied', attempts_remaining: 2, retry_after: 0 };
+        await route.fulfill({ status: 409, json: { code: 'authentication-denied', ...rejection } });
+        return;
+      }
+      runs = [];
+      await route.fulfill({ json: { team_id: 'marketing', run_id: run, status: 'done' } });
+    });
+    await page.goto('/chat/?team=marketing');
+    // The chat shows no run; the Routines button says one needs the person.
+    await expect(page.locator('.routine-run')).toHaveCount(0);
+    const navigation = await openTeamNavigation(page);
+    await expect(navigation.getByRole('button', { name: 'Routines for Marketing: one needs your attention' })).toBeVisible();
+    const panel = await openRoutinePanel(page);
+    await panel.getByRole('button', { name: 'Review' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
+    const password = dialog.getByLabel('Supervisor password');
+    await expect(password).toHaveAttribute('type', 'password');
+    expect(await accessibilityViolations(page)).toEqual([]);
+    // A wrong password settles nothing: the run still waits, and the person tries again in the same request.
+    await password.fill('wrong-password');
+    await dialog.getByRole('button', { name: 'Confirm authorization' }).click();
+    await expect.poll(() => answered.length).toBe(1);
+    const validation = page.getByRole('dialog', { name: 'Supervisor password not confirmed' });
+    await validation.getByRole('button', { name: 'Try again' }).click();
+    await expect(panel.getByRole('status')).toHaveCount(0);
+    await password.fill('supervisor-password');
+    await dialog.getByRole('button', { name: 'Confirm authorization' }).click();
+    await expect(panel.getByRole('status')).toContainText('The run continued: Done');
+    // Both answers went to exactly this run, each with the one challenge it opened.
+    expect(answered.map(([runId, frame]) => [runId, frame.challenge_id, frame.decision])).toEqual([
+      [run, 'b'.repeat(32), 'submit'],
+      [run, 'b'.repeat(32), 'submit'],
+    ]);
+  });
+
   test("a Routine's creation delivered after the chat opened appears without a reload, and its runs never do", { tag: '@mobile' }, async ({ page }) => {
     await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
     const run = 'd'.repeat(32);
