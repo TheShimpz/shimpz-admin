@@ -71,6 +71,11 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
             self.assertIn(mount, dependencies)
         self.assertIn("uv sync --frozen --no-install-project --no-dev --python 3.14", dependencies)
         self.assertTrue(dependencies.rstrip().endswith("find /opt -depth -exec touch -h -d @0 {} +"))
+        # The base ships no bytecode; the standard library and environment are compiled once, content-addressed.
+        self.assertIn(
+            "compileall -q -f --invalidation-mode checked-hash /usr/local/lib/python3.14 /opt/venv", dependencies
+        )
+        self.assertIn("compileall -q -f --invalidation-mode checked-hash /app/backend", stages["runtime"])
         # The UI build keeps the commit-bound epoch that names its SvelteKit version, declared only after the package
         # install, so an unchanged lock reuses the installed packages at every commit.
         self.assertRegex(stages["ui"], r"(?m)^ARG SOURCE_DATE_EPOCH=0$")

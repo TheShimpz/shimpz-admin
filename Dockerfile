@@ -30,7 +30,9 @@ RUN npm run build && \
 # base and a pure function of the pinned base, uv, and the lock (Shimpz ADR-0098): no ARG SOURCE_DATE_EPOCH, WORKDIR,
 # COPY, or ADD here, uv and the lock arrive as read-only mounts on a discarded tmpfs, the uv cache is removed, and
 # every /opt timestamp is fixed. An unchanged lock therefore yields the same layer bytes at every commit, with or
-# without a build cache.
+# without a build cache. The base ships no bytecode and the read-only runtime cannot write any, so the standard library
+# and the environment are compiled here, hash-checked, with fixed timestamps: without it every Admin start, health
+# probe, and helper recompiles each imported module (start to healthy about 3 s instead of 1 s).
 FROM python:3.14-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6 AS dependencies
 RUN --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,from=uv,source=/uv,target=/tmp/uv \
@@ -40,6 +42,8 @@ RUN --mount=type=tmpfs,target=/tmp \
     UV_PROJECT_ENVIRONMENT=/opt/venv UV_CACHE_DIR=/opt/uv-cache UV_LINK_MODE=copy \
         /tmp/uv sync --frozen --no-install-project --no-dev --python 3.14 && \
     rm -rf /opt/uv-cache && \
+    PYTHONDONTWRITEBYTECODE=1 /opt/venv/bin/python -m compileall -q -f --invalidation-mode checked-hash /usr/local/lib/python3.14 /opt/venv && \
+    find /usr/local/lib/python3.14 \( -type d -o -name '*.pyc' \) -exec touch -h -d @0 {} + && \
     find /opt -depth -exec touch -h -d @0 {} +
 
 # ── stage 4: minimal Python runtime ─────────────────────────────────────────────────────────────
@@ -104,8 +108,9 @@ ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONUNBUFFERED=1 \
     SHIMPZ_ADMIN_STORE=/data/admin.json
 # Fail during the image build, rather than after publication smoke startup, if the explicit runtime
-# copy surface omits a module imported by the Admin application.
-RUN SHIMPZ_ADMIN_PROFILE=local python -c "import app"
+# copy surface omits a module imported by the Admin application, then compile the application like its environment.
+RUN SHIMPZ_ADMIN_PROFILE=local python -c "import app" && \
+    python -m compileall -q -f --invalidation-mode checked-hash /app/backend
 USER admin
 EXPOSE 4600
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "4600", "--workers", "1", "--log-level", "warning"]
