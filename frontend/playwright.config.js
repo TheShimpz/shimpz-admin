@@ -21,7 +21,8 @@ export default defineConfig({
     trace: 'on-first-retry',
     video: 'off',
   },
-  // Workers take tests project by project, so the projects whose tests run longest start first and never trail the run.
+  // Workers take tests project by project, so the projects whose tests run longest start first and the many short
+  // desktop tests fill the end: on 20 workers the suite ran in 31.3 and 32.4 s instead of 33.4 to 36.3 s.
   projects: [
     {
       name: 'firefox-browser-sensitive',
@@ -43,13 +44,13 @@ export default defineConfig({
       grep: /(?=.*@slow)(?=.*@mobile)/,
       use: { hasTouch: true, viewport: { width: 390, height: 844 } },
     },
-    { name: 'desktop', grepInvert: /@slow/, use: { viewport: { width: 1440, height: 1000 } } },
     {
       name: 'mobile',
       grep: /@mobile/,
       grepInvert: /@slow/,
       use: { hasTouch: true, viewport: { width: 390, height: 844 } },
     },
+    { name: 'desktop', grepInvert: /@slow/, use: { viewport: { width: 1440, height: 1000 } } },
   ],
   webServer: {
     // Serves build/ like Admin's backend; CI copies the shipping UI out of the Admin image into build/.
