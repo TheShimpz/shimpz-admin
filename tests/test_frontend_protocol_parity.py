@@ -20,6 +20,8 @@ LIB = ROOT / "frontend" / "src" / "lib"
 # The browser's copies of Team chat-turn bounds, which it cannot import, each pinned to its one Team definition.
 TURN_BOUNDS = {
     "localChat.js": {
+        "MAX_MESSAGE_CHARS": team_contract.MAX_CHAT_MESSAGE_CHARS,
+        "MAX_FILES": team_contract.MAX_CHAT_FILES,
         "MAX_REPLY_CHARS": turn_contract.MAX_REPLY_CHARS,
         "MAX_GUIDANCE_REPLY_CHARS": turn_contract.MAX_INTENT_ROUTE_REPLY_CHARS,
         "MAX_TEAM_NAME_CHARS": team_contract.MAX_TEAM_NAME_CHARS,
@@ -33,6 +35,8 @@ TURN_BOUNDS = {
     "attachments.js": {
         "MAX_ATTACHMENTS": team_contract.MAX_CHAT_FILES,
         "MAX_UPLOAD_BYTES": team_contract.MAX_FILE_UPLOAD_BYTES,
+        "MAX_FILENAME_BYTES": team_contract.MAX_FILENAME_BYTES,
+        "MAX_MEDIA_TYPE_CHARS": team_contract.MAX_MEDIA_TYPE_CHARS,
         "MAX_MESSAGE_IMAGES": turn_contract.MAX_ATTACHMENT_IMAGES,
         "MAX_MESSAGE_TEXT_CHARACTERS": turn_contract.MAX_ATTACHED_TEXT_CHARS,
         "MAX_MESSAGE_TEXT_BYTES": turn_contract.MAX_ATTACHED_TEXT_BYTES,
@@ -40,7 +44,6 @@ TURN_BOUNDS = {
         "MAX_TEXT_BYTES": turn_contract.MAX_ATTACHMENT_TEXT_BYTES,
     },
 }
-_UNITS = {"KIB": 1024, "MIB": 1024 * 1024}
 
 
 def _constant(source: str, name: str) -> str:
@@ -94,8 +97,14 @@ class FrontendProtocolParityTests(unittest.TestCase):
                 self.assertEqual({field: int(value) for field, value in pairs.items()}, bounds)
 
 
-def _integer(expression: str) -> int:
-    """A browser constant's integer: a literal, or a product of literals and the KIB and MIB units."""
+def _definitions(source: str, name: str) -> list[str]:
+    return re.findall(rf"^(?:export )?const {name} = (.+);$", source, re.MULTILINE)
+
+
+def _integer(source: str, expression: str, depth: int = 0) -> int:
+    """A browser constant's integer: a product of integer literals and constants the same file defines that way."""
+    if depth > 4:
+        raise AssertionError(f"{expression} nests too deeply")
     node = ast.parse(expression.replace("_", ""), mode="eval").body
     factors: list[ast.expr] = []
     while isinstance(node, ast.BinOp) and isinstance(node.op, ast.Mult):
@@ -106,8 +115,8 @@ def _integer(expression: str) -> int:
     for factor in factors:
         if isinstance(factor, ast.Constant) and type(factor.value) is int:
             product *= factor.value
-        elif isinstance(factor, ast.Name) and factor.id in _UNITS:
-            product *= _UNITS[factor.id]
+        elif isinstance(factor, ast.Name) and len(defined := _definitions(source, factor.id)) == 1:
+            product *= _integer(source, defined[0], depth + 1)
         else:
             raise AssertionError(f"{expression} is not a literal browser bound")
     return product
@@ -119,17 +128,20 @@ class FrontendTurnBoundParityTests(unittest.TestCase):
             source = (LIB / filename).read_text(encoding="utf-8")
             for name, expected in bounds.items():
                 with self.subTest(file=filename, bound=name):
-                    found = re.findall(rf"^(?:export )?const {name} = (.+);$", source, re.MULTILINE)
+                    found = _definitions(source, name)
                     self.assertEqual(len(found), 1)
-                    self.assertEqual(_integer(found[0]), expected)
+                    self.assertEqual(_integer(source, found[0]), expected)
 
-    def test_a_browser_bound_outside_literals_and_units_is_refused(self) -> None:
-        self.assertEqual(_integer("512 * KIB"), 512 * 1024)
-        self.assertEqual(_integer("25 * MIB"), 25 * 1024 * 1024)
-        self.assertEqual(_integer("60_000"), 60_000)
-        for expression in ("LIMIT", "1 + 2", "2 * OTHER", "1.5"):
+    def test_a_browser_bound_reads_its_own_units_and_refuses_anything_else(self) -> None:
+        units = "const KIB = 1024;\nconst MIB = 1024 * KIB;\n"
+        self.assertEqual(_integer(units, "512 * KIB"), 512 * 1024)
+        self.assertEqual(_integer(units, "25 * MIB"), 25 * 1024 * 1024)
+        self.assertEqual(_integer(units, "60_000"), 60_000)
+        # A unit the browser redefines changes the bound it reads.
+        self.assertEqual(_integer("const KIB = 1000;\n", "512 * KIB"), 512_000)
+        for expression in ("LIMIT", "1 + 2", "2 * OTHER", "1.5", "2 * LOOP"):
             with self.subTest(expression=expression), self.assertRaises(AssertionError):
-                _integer(expression)
+                _integer(units + "const LOOP = 2 * LOOP;\n", expression)
 
 
 class FrontendIdentifierParityTests(unittest.TestCase):
