@@ -14,8 +14,11 @@ from team import bridge as team
 
 from chat import assistant_install, assistant_inventory, assistant_proposal, local, local_catalog, store_catalog
 from protocol.http.v1 import payload as team_contract
+from protocol.http.v1 import turn as turn_contract
 
-MAX_PLAN_ASSISTANTS = 4
+# A capability plan selects at most Team's bound of Assistants, and an install route at most its own.
+MAX_PLAN_ASSISTANTS = turn_contract.MAX_CAPABILITY_SELECTED
+MAX_INSTALL_ASSISTANTS = turn_contract.MAX_INTENT_ROUTE_SELECTED
 MAX_CHAT_ASSISTANTS = team_contract.MAX_CHAT_ASSISTANTS
 
 
@@ -323,7 +326,7 @@ def prepare_install(
     is dispatched once after installation or after confirming the selection is already running. Either way each
     summary is shown in the turn's interface language.
     """
-    if not selected_ids or len(selected_ids) > MAX_PLAN_ASSISTANTS:
+    if not selected_ids or len(selected_ids) > MAX_INSTALL_ASSISTANTS:
         return Preparation(error_status=422)
     identities = {assistant.assistant_id: assistant for assistant in available}
     if any(assistant_id not in identities for assistant_id in selected_ids):

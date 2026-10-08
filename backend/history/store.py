@@ -23,6 +23,7 @@ from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import routine_notice as routine_notice_contract
 from protocol.http.v1 import routine_proposal as routine_proposal_contract
+from protocol.http.v1 import turn as turn_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 STORE_PATH = Path(os.environ.get("SHIMPZ_CHAT_HISTORY_STORE") or "/data/chat-history.sqlite3")
@@ -35,8 +36,8 @@ FILE_REFERENCE_KEYS = ("id", "name", "media_type", "size")
 PAGE_ROWS = 64
 MAX_PAGE_BYTES = 512 * 1024
 MAX_ENTRY_BYTES = 256 * 1024
-MAX_REPLY_CHARS = 60_000
-MAX_GUIDANCE_REPLY_CHARS = 240
+MAX_REPLY_CHARS = turn_contract.MAX_REPLY_CHARS
+MAX_GUIDANCE_REPLY_CHARS = turn_contract.MAX_INTENT_ROUTE_REPLY_CHARS
 _MAX_POSITION = 2**63 - 1
 _TURN_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")

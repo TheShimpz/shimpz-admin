@@ -526,7 +526,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
             assistant_plan.prepare_install(
                 "team_1",
                 payload,
-                tuple(f"assistant-{index}" for index in range(assistant_plan.MAX_PLAN_ASSISTANTS + 1)),
+                tuple(f"assistant-{index}" for index in range(assistant_plan.MAX_INSTALL_ASSISTANTS + 1)),
                 {},
                 (CLOUDFLARE,),
                 ENGLISH_ONLY,

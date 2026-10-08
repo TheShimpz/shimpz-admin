@@ -11,9 +11,12 @@ from typing import Literal
 
 from chat import local_catalog, store_catalog
 from protocol.http.v1 import payload as team_contract
+from protocol.http.v1 import turn as turn_contract
 
 UNINSTALL_PROPOSAL_TTL_SECONDS = 120
-MAX_CAPABILITY_SHORTLIST = 8
+# The candidates a capability plan and an intent route each admit, Team's own bounds.
+MAX_CAPABILITY_SHORTLIST = turn_contract.MAX_CAPABILITY_CANDIDATES
+MAX_ROUTE_SHORTLIST = turn_contract.MAX_INTENT_ROUTE_CANDIDATES
 _TERMINAL_PUNCTUATION = re.compile(r"[\s.!?,;:]+$")
 _SPACELESS_RUN = re.compile(
     "[\u0e00-\u0eff\u1000-\u109f\u1780-\u17ff\u3005-\u3007\u3040-\u30ff\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff"
@@ -273,6 +276,7 @@ def _capability_score(message: str, tokens: frozenset[str], capability: Capabili
 
 def _bounded_pool[AssistantT](
     ranked: list[tuple[int, str, AssistantT]],
+    limit: int,
 ) -> tuple[AssistantT, ...]:
     """Keep the model-facing selection pool within the planner bound, preferring stronger lexical signals.
 
@@ -280,11 +284,9 @@ def _bounded_pool[AssistantT](
     is returned in the Assistant id order that the Team selection directory contract requires; scores only decide
     which candidates fit the bound.
     """
-    if len(ranked) > MAX_CAPABILITY_SHORTLIST and (
-        ranked[MAX_CAPABILITY_SHORTLIST - 1][0] == ranked[MAX_CAPABILITY_SHORTLIST][0]
-    ):
+    if len(ranked) > limit and ranked[limit - 1][0] == ranked[limit][0]:
         return ()
-    return tuple(item[2] for item in sorted(ranked[:MAX_CAPABILITY_SHORTLIST], key=lambda item: item[1]))
+    return tuple(item[2] for item in sorted(ranked[:limit], key=lambda item: item[1]))
 
 
 def capability_candidates(
@@ -313,7 +315,7 @@ def capability_candidates(
         ),
         key=lambda item: (-item[0], item[1]),
     )
-    kept_installable = _bounded_pool(installable)
+    kept_installable = _bounded_pool(installable, MAX_CAPABILITY_SHORTLIST)
     if not kept_installable:
         return (), ()
     context = sorted(
@@ -361,7 +363,7 @@ def install_shortlist(
         ),
         key=lambda item: (-item[0], item[1]),
     )
-    return _bounded_pool(ranked)
+    return _bounded_pool(ranked, MAX_ROUTE_SHORTLIST)
 
 
 def uninstall_shortlist(
@@ -382,7 +384,7 @@ def uninstall_shortlist(
         ((score(candidate), candidate.assistant.assistant_id, candidate) for candidate in candidates),
         key=lambda item: (-item[0], item[1]),
     )
-    return _bounded_pool(ranked)
+    return _bounded_pool(ranked, MAX_ROUTE_SHORTLIST)
 
 
 def _proposal_id(team_id: str, now: float, proposal_id_factory: Callable[[], str]) -> str:

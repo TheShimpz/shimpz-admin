@@ -29,10 +29,11 @@ from chat import assistant_proposal, human
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import routine_proposal as routine_proposal_contract
+from protocol.http.v1 import turn as turn_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 _MISSING_RUNTIME_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.METHOD_NOT_ALLOWED, HTTPStatus.NOT_IMPLEMENTED})
-MAX_REPLY_CHARS = 60_000
+MAX_REPLY_CHARS = turn_contract.MAX_REPLY_CHARS
 _ERROR_CODE_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 _REPLY_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification", "trace_id"})
@@ -108,13 +109,13 @@ _CHAT_ERROR_FALLBACKS = {
 ADMIN_PROGRESS_PHASES = frozenset({"admin-preparation", "reply-validation"})
 PUBLIC_PROGRESS_PHASES = progress_contract.PHASES | ADMIN_PROGRESS_PHASES
 MAX_PUBLIC_PROGRESS_EVENTS = progress_contract.MAX_EVENTS + 4
-MAX_CAPABILITY_PLAN_IDS = 4
-MAX_INTENT_ROUTE_IDS = 4
-MAX_INTENT_ROUTE_CANDIDATES = 8
-MAX_INTENT_ROUTE_QUERY_CHARS = 160
-MAX_INTENT_ROUTE_NAME_CHARS = 80
-MAX_INTENT_ROUTE_SUMMARY_CHARS = 160
-MAX_INTENT_ROUTE_REPLY_CHARS = 240
+MAX_CAPABILITY_PLAN_IDS = turn_contract.MAX_CAPABILITY_SELECTED
+MAX_INTENT_ROUTE_IDS = turn_contract.MAX_INTENT_ROUTE_SELECTED
+MAX_INTENT_ROUTE_CANDIDATES = turn_contract.MAX_INTENT_ROUTE_CANDIDATES
+MAX_INTENT_ROUTE_QUERY_CHARS = turn_contract.MAX_INTENT_ROUTE_QUERY_CHARS
+MAX_INTENT_ROUTE_NAME_CHARS = turn_contract.MAX_INTENT_ROUTE_NAME_CHARS
+MAX_INTENT_ROUTE_SUMMARY_CHARS = turn_contract.MAX_INTENT_ROUTE_SUMMARY_CHARS
+MAX_INTENT_ROUTE_REPLY_CHARS = turn_contract.MAX_INTENT_ROUTE_REPLY_CHARS
 
 
 @dataclass(frozen=True, slots=True)

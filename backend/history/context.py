@@ -6,9 +6,12 @@ import unicodedata
 from dataclasses import dataclass
 from typing import Literal
 
-MAX_ENTRIES = 8
-MAX_TEXT_CHARS = 512
-MAX_TOTAL_CHARS = 4_096
+from protocol.http.v1 import payload as team_contract
+
+# The conversation window a turn carries is bounded by Team's own protocol.
+MAX_ENTRIES = team_contract.MAX_CONVERSATION_ENTRIES
+MAX_TEXT_CHARS = team_contract.MAX_CONVERSATION_TEXT_CHARS
+MAX_TOTAL_CHARS = team_contract.MAX_CONVERSATION_CHARS
 TRUNCATION_MARKER = "…"
 _LAYOUT_CONTROLS = frozenset({"\n", "\r", "\t"})
 

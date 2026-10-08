@@ -19,11 +19,12 @@ from chat import (
     local,
     store_catalog,
 )
+from protocol.http.v1 import turn as turn_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 Intent = Literal["ordinary-task", "assistant-install", "assistant-uninstall", "unresolved"]
 LifecycleIntent = Literal["assistant-install", "assistant-uninstall"]
-MAX_GUIDANCE_REPLY_CHARS = 240
+MAX_GUIDANCE_REPLY_CHARS = turn_contract.MAX_INTENT_ROUTE_REPLY_CHARS
 # Capability planning runs beside classification so an ordinary turn waits for the slower call, not both.
 _CAPABILITY_PLANNING = BoundedThreadPoolExecutor(
     max_workers=4,
