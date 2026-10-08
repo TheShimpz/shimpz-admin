@@ -39,18 +39,38 @@ function stringValue(node) {
   return undefined;
 }
 
-// The phone-skip conditions this guard recognizes, each for the phone project that would run the test: mobile-slow
-// for a test tagged @slow, mobile otherwise. A phone viewport or a touch screen excludes both.
-function excludesPhones(condition, slow) {
-  if (condition?.type === 'MemberExpression' && memberName(condition) === 'hasTouch') return true;
+// Whether a node is exactly the member chain `root.first.second...` of the identifier `root`.
+function chain(node, root, ...members) {
+  let current = node;
+  for (const member of members.reverse()) {
+    if (memberName(current) !== member) return false;
+    current = current.object;
+  }
+  return current?.type === 'Identifier' && current.name === root;
+}
+
+// The phone-skip conditions this guard recognizes, read from the test's own fixtures, each for the phone project
+// that would run the test: mobile-slow for a test tagged @slow, mobile otherwise. Touch and a phone viewport exclude
+// both.
+function excludesPhones(condition, slow, { info, page }) {
+  if (info && chain(condition, info, 'project', 'use', 'hasTouch')) return true;
   if (condition?.type !== 'BinaryExpression') return false;
   const { left, operator, right } = condition;
-  if (isProjectName(left) && right.type === 'Literal') {
+  if (info && chain(left, info, 'project', 'name') && right.type === 'Literal') {
     return (operator === '===' && right.value === (slow ? 'mobile-slow' : 'mobile'))
       || (operator === '!==' && right.value === (slow ? 'desktop-slow' : 'desktop'));
   }
-  return operator === '<=' && memberName(left) === 'width' && left.object.type === 'CallExpression'
-    && memberName(left.object.callee) === 'viewportSize' && right.type === 'Literal' && right.value >= 390;
+  return Boolean(page) && operator === '<=' && memberName(left) === 'width' && left.object.type === 'CallExpression'
+    && chain(left.object.callee, page, 'viewportSize') && right.type === 'Literal' && right.value >= 390;
+}
+
+// The names a test function gives its page fixture and its test information.
+function fixtures(test) {
+  const [first, second] = test.params ?? [];
+  const page = first?.type === 'ObjectPattern'
+    ? first.properties.find((property) => property.key?.name === 'page' && property.value.type === 'Identifier')
+    : undefined;
+  return { page: page?.value.name, info: second?.type === 'Identifier' ? second.name : undefined };
 }
 
 function isSkip(node) {
@@ -58,13 +78,16 @@ function isSkip(node) {
     && node.callee.object.type === 'Identifier' && node.callee.object.name === 'test';
 }
 
-// The statements a test runs first and unconditionally that skip it on its phone project: only those exempt it.
+// The skips a test runs before anything else that keep it off its phone project: only those exempt it. Its leading
+// skip statements are read in order; the first other statement ends them.
 function exemptions(test, slow) {
   const block = test.type === 'BlockStatement' ? test : test.body;
-  return (block?.type === 'BlockStatement' ? block.body : []).filter((statement) => (
-    statement.type === 'ExpressionStatement' && isSkip(statement.expression)
-    && excludesPhones(statement.expression.arguments[0], slow)
-  ));
+  const leading = [];
+  for (const statement of block?.type === 'BlockStatement' ? block.body : []) {
+    if (statement.type !== 'ExpressionStatement' || !isSkip(statement.expression)) break;
+    leading.push(statement);
+  }
+  return leading.filter((statement) => excludesPhones(statement.expression.arguments[0], slow, fixtures(test)));
 }
 
 // What in a function body signals a phone-specific path, apart from the statements given.
@@ -224,7 +247,20 @@ test('static selection: a phone signal is found through local helpers and only a
     });
     test('skips on touch', async ({ page }, testInfo) => {
       test.skip(testInfo.project.use.hasTouch, 'pointer only');
-      await page.mouse.move(1, 1);
+      await openList(page);
+    });
+    test('skips after its work', async ({ page }, testInfo) => {
+      await openList(page);
+      test.skip(testInfo.project.name === 'mobile', 'too late');
+    });
+    test('skips after returning', async ({ page }, testInfo) => {
+      return;
+      test.skip(testInfo.project.name === 'mobile', 'never reached');
+    });
+    test('skips on a touch flag of its own', async ({ page }) => {
+      const pointer = { project: { use: { hasTouch: false } } };
+      test.skip(pointer.project.use.hasTouch, 'not a fixture');
+      await openList(page);
     });
     test('plain', async ({ page }) => { await page.click('a'); });
   `, { ecmaVersion: 'latest', sourceType: 'module', locations: true });
@@ -245,6 +281,9 @@ test('static selection: a phone signal is found through local helpers and only a
     'skips only in a branch': false,
     'skips only in an uncalled function': false,
     'skips on touch': true,
+    'skips after its work': false,
+    'skips after returning': false,
+    'skips on a touch flag of its own': false,
     plain: true,
   });
 });
