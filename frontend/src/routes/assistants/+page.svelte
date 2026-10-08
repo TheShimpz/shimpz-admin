@@ -784,4 +784,12 @@
   @media (max-width: 540px) {
     .assistant-grid { grid-template-columns: 1fr; }
   }
+  /* The summary is a short description of at most 80 characters in every language (ADR-0091), shown whole under
+     the Assistant's name instead of clamped to two lines. */
+  .assistant-grid :global(.assistant-card p.assistant-summary) {
+    display: block;
+    overflow: visible;
+    -webkit-line-clamp: unset;
+    line-clamp: unset;
+  }
 </style>
