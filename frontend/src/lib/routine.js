@@ -1228,8 +1228,8 @@ function plural(forms, count, locale) {
   return new Intl.PluralRules(locale).select(count) === 'one' ? forms.one : forms.other;
 }
 
-/** How many healthy runs one rollup of a continuous Routine counts, in words. */
-export function healthyRunsWords(forms, runs, locale) {
+/** How many runs one rollup counts, in words: the healthy runs of a continuous Routine, or the runs one missed. */
+export function runCountWords(forms, runs, locale) {
   return fill(plural(forms, runs, locale), { runs });
 }
 

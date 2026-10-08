@@ -9,19 +9,21 @@
     RECENT_ROUTINE_RUNS,
     recentRoutineRuns,
   } from '$lib/chatHistory.js';
-  import { locale } from '$lib/i18n.js';
+  import { locale, t } from '$lib/i18n.js';
   import { assistantNames, loadAssistantNames } from '$lib/assistantNames.js';
   import {
     ATTENTION_STATUSES,
     clockWords,
+    decisionWords,
     displayZone,
     fillParts,
     fillRoutineCopy,
-    healthyRunsWords,
+    runCountWords,
     instantWords,
     pauseRoutine,
     resumeRoutine,
     routineErrorMessage,
+    routineNotice,
     routineStatus,
     scheduleWords,
     STATUS_TAGS,
@@ -33,15 +35,18 @@
   import RoutineDeletion from '$lib/RoutineDeletion.svelte';
   import RoutinePlan from '$lib/RoutinePlan.svelte';
   import RoutineRunDetails from '$lib/RoutineRunDetails.svelte';
+  import RoutineRunView from '$lib/RoutineRunView.svelte';
   import RoutineIcon from '$lib/RoutineIcon.svelte';
   import RoutineModal from '$lib/RoutineModal.svelte';
   import RoutineTag from '$lib/RoutineTag.svelte';
+  import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '$lib/taskUsage.js';
 
   // One Routine in full (ADR-0086, ADR-0092). While a run waits for the person, the whole panel is that decision and
   // nothing else: a held run's recovery choices or a frozen run's approval, with what it needs to decide. Once it is
   // answered the panel returns to its usual pages and actions. Otherwise it shows three pages
-  // behind a tab menu: its summary (what was asked, when it
-  // runs, and why it stopped), its steps, and its runs with their execution details. The menu's far end keeps one icon
+  // behind a tab menu: its summary (what was asked, when it runs, and why it stopped), its steps, and its history: each
+  // run, healthy rollup, and missed run with its outcome, usage, decision, and time. A run's outcome opens the run in
+  // full (the result it shows and its step records), and its icon its execution details. The menu's far end keeps one icon
   // per action on every page: Pause or Resume, and Delete, which turns the whole panel into its confirmation: the
   // Supervisor's password and a second factor, and nothing else until it is deleted or canceled.
   // `onback` adds a Back control that returns to the list the panel was opened from; Escape then goes back as well.
@@ -60,6 +65,9 @@
   let olderRuns = $state(null);
   let searchingOlder = $state(false);
   let detailsRun = $state(null);
+  // The run open in full, and the outcome that opened it, which takes focus back when it closes.
+  let viewedRun = $state(null);
+  let viewOpener = null;
   let page = $state('summary');
   // The summary says the time now in the Routine's timezone, kept to the second while the panel is open.
   let now = $state(Date.now());
@@ -181,10 +189,7 @@
   async function searchOlderRuns() {
     searchingOlder = true;
     try {
-      const found = await recentRoutineRuns(fetch, teamId, routineId, {
-        before: olderRuns,
-        wanted: Math.max(1, RECENT_ROUTINE_RUNS - recent.length),
-      });
+      const found = await recentRoutineRuns(fetch, teamId, routineId, { before: olderRuns, wanted: RECENT_ROUTINE_RUNS });
       recent = [...recent, ...found.runs];
       olderRuns = found.before;
     } catch {
@@ -196,8 +201,20 @@
 
   const RUN_ICONS = {
     done: 'check', recovered: 'check', healthy: 'check', failed: 'failed', denied: 'stop', stopped: 'stop', 'user-skipped': 'skip',
-    held: 'warning', paused: 'pause', frozen: 'approval',
+    held: 'warning', paused: 'pause', frozen: 'approval', skipped: 'skip',
   };
+  let usageCopy = $derived($t('chatPage.usage'));
+
+  function viewRun(entry, opener) {
+    viewOpener = opener;
+    viewedRun = entry;
+  }
+
+  async function closeRun() {
+    viewedRun = null;
+    await tick();
+    viewOpener?.focus();
+  }
 
   function outcomeWords(entry) {
     const run = copy.run;
@@ -211,8 +228,9 @@
       held: copy.status.failed,
       paused: copy.status.paused,
       frozen: copy.panel.waitingApproval,
-      healthy: healthyRunsWords(copy.panel.healthyRuns, entry.detail.runs, $locale),
-    }[entry.outcome] ?? entry.outcome;
+      healthy: runCountWords(copy.panel.healthyRuns, entry.detail.runs, $locale),
+      skipped: runCountWords(copy.panel.missedRuns, entry.detail.missed, $locale),
+    }[entry.outcome];
   }
 
   async function act(action) {
@@ -374,15 +392,30 @@
             <li class="sub">{copy.panel.noRuns}</li>
           {:else}
             {#each recent as entry (entry.id)}
-              <li>
-                <RoutineIcon name={RUN_ICONS[entry.outcome] ?? 'clock'} />
-                <span class="run-what">{outcomeWords(entry)}</span>
-                <span class="when">{instantWords(entry.createdAt, $locale, displayZone(routine))}</span>
-                <!-- A rollup of a continuous Routine's healthy runs is no run of its own, so it has no execution details. -->
-                {#if entry.runId}
-                  <Button class="run-details" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.details.open} title={copy.details.open}
-                    onclick={() => (detailsRun = entry)}><RoutineIcon name="terminal" /></Button>
-                {/if}
+              {@const usage = entry.usage ? taskUsageSummary(entry.usage) : null}
+              {@const decision = entry.detail.decision ? decisionWords(entry.detail.decision, copy) : ''}
+              <li class="run">
+                <div class="run-line">
+                  <RoutineIcon name={RUN_ICONS[entry.outcome]} />
+                  <!-- A rollup of healthy runs or of missed runs is no run of its own, so it opens nothing. -->
+                  {#if entry.runId}
+                    <Button class="run-what run-open" variant="ghost" size="sm" type="button" aria-haspopup="dialog"
+                      onclick={(event) => viewRun(entry, event.currentTarget)}>{outcomeWords(entry)}</Button>
+                  {:else}
+                    <span class="run-what">{outcomeWords(entry)}</span>
+                  {/if}
+                  {#if usage}
+                    <span class="usage" title={usage.detail.length ? formatTaskUsageDetail(usage, $locale, usageCopy) : undefined}
+                      >{formatTaskUsage(usage, $locale, usageCopy)}</span>
+                  {/if}
+                  <time class="when" datetime={entry.createdAt}>{instantWords(entry.createdAt, $locale, displayZone(routine))}</time>
+                  {#if entry.runId}
+                    <Button class="run-details" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.details.open} title={copy.details.open}
+                      onclick={() => (detailsRun = entry)}><RoutineIcon name="terminal" /></Button>
+                  {/if}
+                </div>
+                {#if decision}<p class="run-note">{decision}</p>{/if}
+                {#if entry.protectionLost}<p class="run-note run-note--lost">{copy.notice.protectionLost}</p>{/if}
               </li>
             {/each}
             {#if olderRuns !== null}
@@ -400,6 +433,12 @@
     </div>
     {/if}
 </RoutineModal>
+
+{#if viewedRun}
+  {@const shown = routineNotice(viewedRun, { copy, locale: $locale })}
+  <RoutineRunView {teamId} entry={viewedRun} {routine} name={viewedRun.name} status={shown.status} tone={shown.tone} {copy}
+    onclose={closeRun} />
+{/if}
 
 {#if detailsRun}
   <RoutineRunDetails {teamId} entry={detailsRun} {copy} names={$assistantNames} onclose={() => (detailsRun = null)} />
@@ -467,13 +506,18 @@
   .sub { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.78rem; }
   .runs { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
   .runs li { display: flex; align-items: center; gap: 0.6rem; min-height: 2.25rem; padding-block: 0.25rem; font: 400 0.8rem/1.4 var(--shimpz-font-mono); }
+  /* A run's line wraps on a narrow screen rather than hiding its time; its decision and notes read below it. */
+  .runs li.run { display: grid; gap: 0.15rem; }
+  .run-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.6rem; min-width: 0; }
   .runs li :global(.routine-icon) { color: var(--shimpz-color-text-dim); width: 0.9rem; height: 0.9rem; }
   .runs li :global(.routine-icon--failed) { color: var(--shimpz-color-danger); }
   .runs li :global(.routine-icon--warning) { color: var(--shimpz-color-yellow); }
   .run-what { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
-  .when { flex: none; color: var(--shimpz-color-text-dim); font-size: 0.72rem; }
+  .runs :global(.run-open.run-open) { --button-border: transparent; justify-content: flex-start; height: auto; min-height: 0; padding-inline: 0; font: inherit; text-align: start; clip-path: none; }
+  .usage, .when { flex: none; color: var(--shimpz-color-text-dim); font-size: 0.72rem; }
+  .run-note { margin: 0; padding-inline-start: 1.5rem; color: var(--shimpz-color-text-muted); font: 400 0.78rem/1.45 var(--shimpz-font-sans); overflow-wrap: anywhere; white-space: pre-wrap; }
+  .run-note--lost { color: var(--shimpz-color-yellow); }
   .runs :global(.run-details) { --button-color: var(--shimpz-color-text-dim); --button-border: transparent; flex: none; }
-  @media (max-width: 600px) { .when { display: none; } }
   @media (forced-colors: active) { .bar { border-color: CanvasText; } }
   @media (forced-colors: active) {
     .note { border-color: CanvasText; }

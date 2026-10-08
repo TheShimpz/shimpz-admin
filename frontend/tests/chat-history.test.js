@@ -347,10 +347,17 @@ test('a Routine\'s latest runs follow the history cursor past unrelated rows, ne
     requested.push(before);
     return response(200, pages[before]);
   };
+  // The page where five are found gives all of its runs, and the search keeps the cursor past it: nothing on that page
+  // is skipped by continuing it.
   const found = await recentRoutineRuns(fetcher, 'marketing', routine);
-  assert.deepEqual(found.runs.map((entry) => entry.runId[0]), ['3', '1', '7', '6', '5']);
-  assert.equal(found.before, null);
+  assert.deepEqual(found.runs.map((entry) => entry.runId[0]), ['3', '1', '7', '6', '5', '4']);
+  assert.equal(found.before, 'AAAAAAAAAAI');
   assert.deepEqual(requested, [null, 'AAAAAAAAAMg', 'AAAAAAAAAGQ']);
+  requested.length = 0;
+  const rest = await recentRoutineRuns(fetcher, 'marketing', routine, { before: found.before });
+  assert.deepEqual(rest.runs.map((entry) => entry.runId[0]), ['0']);
+  assert.equal(rest.before, null);
+  assert.deepEqual(requested, ['AAAAAAAAAAI']);
 
   // A history that ends first yields what it has, with nothing left to search.
   requested.length = 0;
@@ -361,8 +368,25 @@ test('a Routine\'s latest runs follow the history cursor past unrelated rows, ne
   // A continued search starts at its cursor and stops once it found what was still wanted.
   requested.length = 0;
   const continued = await recentRoutineRuns(fetcher, 'marketing', routine, { before: 'AAAAAAAAAGQ', wanted: 2 });
-  assert.deepEqual(continued.runs.map((entry) => entry.runId[0]), ['7', '6']);
+  assert.deepEqual(continued.runs.map((entry) => entry.runId[0]), ['7', '6', '5', '4']);
+  assert.equal(continued.before, 'AAAAAAAAAAI');
   assert.deepEqual(requested, ['AAAAAAAAAGQ']);
+});
+
+test('more runs than one search wants within one page are all given, and the history past them stays reachable', async () => {
+  const routine = '9'.repeat(32);
+  const runs = ['1', '2', '3', '4', '5', '6', '7'].map((digit) => runRow(digit.repeat(32), routine));
+  const pages = {
+    null: { entries: runs, before: 'AAAAAAAAAMg' },
+    AAAAAAAAAMg: { entries: [runRow('0'.repeat(32), routine)], before: null },
+  };
+  const fetcher = async (url) => response(200, pages[new URL(url, 'http://admin').searchParams.get('before')]);
+  const found = await recentRoutineRuns(fetcher, 'marketing', routine);
+  assert.deepEqual(found.runs.map((entry) => entry.runId[0]), ['7', '6', '5', '4', '3', '2', '1']);
+  assert.equal(found.before, 'AAAAAAAAAMg');
+  const older = await recentRoutineRuns(fetcher, 'marketing', routine, { before: found.before });
+  assert.deepEqual(older.runs.map((entry) => entry.runId[0]), ['0']);
+  assert.equal(older.before, null);
 });
 
 test('a search for runs stops at its page bound with the cursor to continue from', async () => {
@@ -376,7 +400,7 @@ test('a search for runs stops at its page bound with the cursor to continue from
   assert.equal(reads, MAX_ROUTINE_RUN_PAGES);
 });
 
-test('a continuous Routine\'s healthy rollups count as its runs, with no run of their own', async () => {
+test('a continuous Routine\'s healthy rollups and its missed runs count as its runs, with no run of their own', async () => {
   const routine = '9'.repeat(32);
   const rollup = (digit, runs) => ({
     ...runRow(digit.repeat(32), routine),
@@ -387,11 +411,12 @@ test('a continuous Routine\'s healthy rollups count as its runs, with no run of 
   const missed = { ...runRow('c'.repeat(32), routine), run_id: null, usage: null, outcome: 'skipped', detail: { missed: 2 } };
   const page = { entries: [missed, rollup('1', 12), runRow('2'.repeat(32), routine), rollup('3', 4)], before: null };
   const found = await recentRoutineRuns(async () => response(200, page), 'marketing', routine);
-  // The rollups and the run are found newest first; a notice of missed runs is no run.
+  // The rollups, the run, and the runs it missed are its history, found newest first.
   assert.deepEqual(found.runs.map((entry) => [entry.outcome, entry.runId, entry.detail.runs ?? null]), [
     ['healthy', null, 4],
     ['done', '2'.repeat(32), null],
     ['healthy', null, 12],
+    ['skipped', null, null],
   ]);
   assert.equal(found.before, null);
 });

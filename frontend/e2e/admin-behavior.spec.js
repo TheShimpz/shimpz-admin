@@ -6442,6 +6442,58 @@ test.describe('Team Routines', () => {
     await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(0);
   });
 
+  test("a Routine's history gives each run its outcome, usage, decision, and time, and opens the result it showed", { tag: '@mobile' }, async ({ page }) => {
+    const text = (value) => ({ kind: 'text', value, cut: false });
+    const shown = { step: 1, state: 'shown', value: { kind: 'fields', fields: [['zone', text('example.com')]], omitted: 0 }, truncated: false };
+    const decided = { state: 'decided', code: null, message: 'Deleted 12 stale <b>records</b>.' };
+    const at = (row, createdAt) => ({ ...row, created_at: createdAt });
+    const missed = { ...at(routineRow('a'.repeat(32), 'skipped', { missed: 2 }), '2026-10-01T11:00:00Z'), run_id: null };
+    const lost = {
+      ...at(routineRow('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [], position: null, steps: null }), '2026-10-01T11:30:00Z'),
+      protection_lost: true,
+    };
+    const done = {
+      ...at(routineRow('d'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: shown, decision: decided }), '2026-10-01T12:01:07Z'),
+      usage: { duration_ms: 7400, models: [] },
+    };
+    await routeReadyChat(page, { history: { entries: [missed, lost, done], before: null } });
+    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
+      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
+    }));
+    await page.goto('/chat/?team=marketing');
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
+      .getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('tab', { name: 'Runs' }).click();
+    const rows = panel.getByRole('list', { name: 'Runs' }).getByRole('listitem');
+    await expect(rows).toHaveCount(3);
+    // Newest first, each with its own time, also on a phone.
+    for (const [index, row] of [done, lost, missed].entries()) {
+      await expect(rows.nth(index).locator(`time[datetime="${row.created_at}"]`)).toBeVisible();
+    }
+    // The completed run: its outcome opens it, with its usage and its decision in Team's escaped words.
+    await expect(rows.nth(0)).toContainText('7.4 s');
+    await expect(rows.nth(0)).toContainText(decided.message);
+    await expect(rows.nth(0).locator('b')).toHaveCount(0);
+    // The failed run says its results are hidden to protect secret values; the missed runs say how many and open nothing.
+    await expect(rows.nth(1)).toContainText(messages.en.routine.notice.protectionLost);
+    await expect(rows.nth(2)).toContainText('2 runs missed');
+    await expect(rows.nth(2).getByRole('button')).toHaveCount(0);
+    expect(await accessibilityViolations(page)).toEqual([]);
+
+    const outcome = rows.nth(0).getByRole('button', { name: 'Done', exact: true });
+    await expect(outcome).toHaveAttribute('aria-haspopup', 'dialog');
+    await outcome.click();
+    const view = page.getByRole('dialog', { name: ROUTINE_VIEW.name }).last();
+    await expect(view.getByRole('heading', { name: messages.en.routine.result.response })).toBeVisible();
+    await expect(view).toContainText('example.com');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('heading', { name: messages.en.routine.result.response })).toHaveCount(0);
+    await expect(outcome).toBeFocused();
+  });
+
   test('a Routine paused after its failures resumes from its panel, never past a held run its transcript card opens', { tag: '@mobile' }, async ({ page }) => {
     const failed = 'c'.repeat(32);
     const held = 'f'.repeat(32);

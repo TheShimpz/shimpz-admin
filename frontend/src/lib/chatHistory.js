@@ -340,20 +340,25 @@ export function historyBoundary(marks, entries) {
 }
 
 // The Runs page shows a Routine's latest few runs; one search reads at most this many history pages to find them. A
-// continuous Routine's healthy runs arrive as one rollup per minute with no run of its own, and count as one entry.
+// continuous Routine's healthy runs arrive as one rollup per minute with no run of its own, and count as one entry, as
+// do the runs a Routine missed.
 export const RECENT_ROUTINE_RUNS = 5;
 export const MAX_ROUTINE_RUN_PAGES = 16;
 
-/** Whether a history entry is one of this Routine's runs, or a rollup of its healthy continuous runs. */
+/**
+ * Whether a history entry is one of this Routine's runs, a rollup of its healthy continuous runs, or the runs it
+ * missed: the Routine's own history, which only its panel shows (the chat shows only its creation).
+ */
 export function isRoutineRun(entry, routineId) {
   return entry.kind === 'routine-run' && entry.routineId === routineId &&
-    (entry.runId !== null || entry.outcome === 'healthy');
+    (entry.runId !== null || entry.outcome === 'healthy' || entry.outcome === 'skipped');
 }
 
 /**
- * Up to `wanted` of a Routine's latest runs, newest first, from `before` (null for the newest history): pages are read
- * newest first, following each page's cursor, until enough runs are found or the history ends. A search that reaches
- * its page bound first returns the cursor it stopped at, so the person can continue it; otherwise `before` is null.
+ * At least `wanted` of a Routine's latest runs when the history holds them, newest first, from `before` (null for the
+ * newest history): pages are read newest first, following each page's cursor, until enough runs are found or the
+ * history ends. The page where enough are found gives all of its runs, so continuing from its cursor skips none. While
+ * older history remains, `before` is the cursor the search stopped at, so the person can continue it; otherwise null.
  * `seen`, when given, receives the marks of the newest page the search read, oldest first: the boundary a later
  * refresh reads back to.
  */
@@ -369,12 +374,8 @@ export async function recentRoutineRuns(
     const { entries, before: older } = await listChatHistory(fetcher, teamId, cursor);
     if (page === 0) for (const entry of entries) seen?.add(historyMark(entry));
     // A page lists its entries oldest first.
-    for (const entry of [...entries].reverse()) {
-      if (!isRoutineRun(entry, routineId)) continue;
-      runs.push(entry);
-      if (runs.length === wanted) return { runs, before: null };
-    }
-    if (older === null) return { runs, before: null };
+    runs.push(...entries.filter((entry) => isRoutineRun(entry, routineId)).reverse());
+    if (older === null || runs.length >= wanted) return { runs, before: older };
     cursor = older;
   }
   return { runs, before: cursor };
