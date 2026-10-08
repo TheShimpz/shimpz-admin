@@ -26,7 +26,7 @@ function walk(node, visit) {
 }
 
 function memberName(node) {
-  return node.type === 'MemberExpression' && !node.computed ? node.property.name : undefined;
+  return node?.type === 'MemberExpression' && !node.computed ? node.property.name : undefined;
 }
 
 function isProjectName(node) {
@@ -53,6 +53,8 @@ function chain(node, root, ...members) {
 // that would run the test: mobile-slow for a test tagged @slow, mobile otherwise. Touch and a phone viewport exclude
 // both.
 function excludesPhones(condition, slow, { info, page }) {
+  // test.skip() without a condition skips the test on every project.
+  if (condition === undefined) return true;
   if (info && chain(condition, info, 'project', 'use', 'hasTouch')) return true;
   if (condition?.type !== 'BinaryExpression') return false;
   const { left, operator, right } = condition;
@@ -249,6 +251,10 @@ test('static selection: a phone signal is found through local helpers and only a
       test.skip(testInfo.project.use.hasTouch, 'pointer only');
       await openList(page);
     });
+    test('skips everywhere', async ({ page }, testInfo) => {
+      test.skip();
+      await openList(page);
+    });
     test('skips after its work', async ({ page }, testInfo) => {
       await openList(page);
       test.skip(testInfo.project.name === 'mobile', 'too late');
@@ -281,6 +287,7 @@ test('static selection: a phone signal is found through local helpers and only a
     'skips only in a branch': false,
     'skips only in an uncalled function': false,
     'skips on touch': true,
+    'skips everywhere': true,
     'skips after its work': false,
     'skips after returning': false,
     'skips on a touch flag of its own': false,
