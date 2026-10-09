@@ -8,9 +8,9 @@ the provider flow through Team, then publish one short-lived bearer handoff
 containing only the already-validated redirect URL and a callback binding. The
 automatic start route consumes it exactly once and sets a separate short-lived
 callback cookie. A custom HTTPS origin instead keeps the handoff bound to its
-Admin session while the fixed hosted callback displays a one-use completion code.
+Admin session while the fixed platform callback displays a one-use completion code.
 
-No Admin or Account session, OAuth token, authorization code, PKCE verifier,
+No Admin session, OAuth token, authorization code, PKCE verifier,
 or provider client material is stored here.
 """
 
@@ -29,8 +29,8 @@ from protocol.http.v1 import websocket as chat_ws_common
 
 HANDOFF_TTL_SECONDS = 600
 HANDOFF_CAPACITY = 256
-CALLBACK_MODES = frozenset({"loopback", "hosted", "out-of-band"})
-AUTOMATIC_CALLBACK_MODES = frozenset({"loopback", "hosted"})
+CALLBACK_MODES = frozenset({"loopback", "local-domain", "out-of-band"})
+AUTOMATIC_CALLBACK_MODES = frozenset({"loopback", "local-domain"})
 
 _HANDOFF_RE = re.compile(r"^[0-9a-f]{64}$")
 _COMPLETION_RE = re.compile(r"^c1\.([A-Za-z0-9_-]{43})\.([0-9a-f]{64})$")

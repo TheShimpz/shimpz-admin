@@ -81,7 +81,7 @@ _OAUTH_CHAT_REDIRECT = partial(
 _ADMIN_SETUP_LOCK = asyncio.Lock()
 OAUTH_ORIGINS = {
     "loopback": "http://127.0.0.1:7777",
-    "hosted": "https://local.shimpz.com",
+    "local-domain": "https://local.shimpz.com",
 }
 MAX_TEAM_DELETE_BODY_BYTES = 8 * 1024
 MAX_PASSWORD_CHARS = auth.MAX_PASSWORD_CHARS
@@ -169,8 +169,8 @@ def _local_oauth_authorization_mode(request: Request) -> str:
         raise HTTPException(status_code=403, detail="OAuth authorization origin is not admitted")
     if origin == OAUTH_ORIGINS["loopback"]:
         return "loopback"
-    if origin == OAUTH_ORIGINS["hosted"]:
-        return "hosted"
+    if origin == OAUTH_ORIGINS["local-domain"]:
+        return "local-domain"
     if origin.startswith("https://") and origin == state.browser_origin():
         return "out-of-band"
     raise HTTPException(status_code=409, detail="OAuth authorization is unavailable for this Admin address")
@@ -182,9 +182,9 @@ def _oauth_request_mode(request: Request) -> str | None:
     if (
         request.url.hostname == "local.shimpz.com"
         and request.url.port is None
-        and state.browser_origin() == OAUTH_ORIGINS["hosted"]
+        and state.browser_origin() == OAUTH_ORIGINS["local-domain"]
     ):
-        return "hosted"
+        return "local-domain"
     return None
 
 
@@ -708,14 +708,14 @@ async def oauth_cloudflare_start(request: Request, handoff: str = ""):
     except handoff_store.OAuthHandoffError:
         return _OAUTH_CHAT_REDIRECT("start-failed")
     response = RedirectResponse(pending.authorization_url, status_code=303)
-    hosted_callback = pending.callback_mode == "hosted"
+    domain_callback = pending.callback_mode == "local-domain"
     response.set_cookie(
         OAUTH_COOKIE,
         pending.session_binding,
         max_age=OAUTH_COOKIE_TTL,
         httponly=True,
-        samesite="none" if hosted_callback else "lax",
-        secure=hosted_callback,
+        samesite="none" if domain_callback else "lax",
+        secure=domain_callback,
         path=OAUTH_COOKIE_PATH,
     )
     response.headers["Cache-Control"] = "no-store"

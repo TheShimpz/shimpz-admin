@@ -19,7 +19,7 @@ def _authorization_url(**overrides: str) -> str:
         "scope": "dns.read dns.write offline_access zone.read",
         "state": "a" * 43,
         "code_challenge": "b" * 43,
-        "callback": "hosted",
+        "callback": "local-domain",
     }
     fields.update(overrides)
     return "https://shimpz.com/api/oauth/cloudflare/start?" + urlencode(fields)
@@ -154,7 +154,7 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
                 "scope": "dns.read offline_access zone.read",
                 "state": "a" * 43,
                 "code_challenge": "b" * 43,
-                "wrong": "hosted",
+                "wrong": "local-domain",
             }
         )
         invalid = (
@@ -169,13 +169,13 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
         )
         for value in invalid:
             with self.subTest(value=value), self.assertRaises(ValueError):
-                cloudflare.authorization_state(value, "hosted")
+                cloudflare.authorization_state(value, "local-domain")
 
         read_only = _authorization_url(scope="dns.read offline_access zone.read", state="c" * 43)
-        self.assertEqual(cloudflare.authorization_state(read_only, "hosted"), "c" * 43)
+        self.assertEqual(cloudflare.authorization_state(read_only, "local-domain"), "c" * 43)
 
         upstream_error = assistants.TeamResponse(503, {"detail": "offline"})
-        self.assertEqual(assistants._project_authorization_response(upstream_error, "hosted"), upstream_error)
+        self.assertEqual(assistants._project_authorization_response(upstream_error, "local-domain"), upstream_error)
 
     def test_cancellation_disconnect_and_callback_reject_upstream_contract_drift(self) -> None:
         upstream_error = assistants.TeamResponse(503, {"detail": "offline"})

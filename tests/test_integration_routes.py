@@ -174,11 +174,11 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(replay.status_code, 303)
         self.assertEqual(replay.headers["location"], "/chat?oauth=start-failed")
 
-    def test_hosted_handoff_start_and_callback_use_only_the_named_https_origin(self) -> None:
+    def test_local_domain_handoff_start_and_callback_use_only_the_named_https_origin(self) -> None:
         authorize_request = self._authorize_request("https://local.shimpz.com")
         provider = self.admin_app.team.TeamResponse(
             200,
-            {"authorization_url": self._cloudflare_authorization_url("hosted")},
+            {"authorization_url": self._cloudflare_authorization_url("local-domain")},
         )
         with (
             self._origins("https://local.shimpz.com"),
@@ -214,7 +214,7 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(started.status_code, 303)
         self.assertEqual(
             started.headers["location"],
-            self._cloudflare_authorization_url("hosted"),
+            self._cloudflare_authorization_url("local-domain"),
         )
         self.assertTrue(binding["secure"])
         self.assertEqual(binding["samesite"].lower(), "none")
@@ -251,11 +251,11 @@ class OAuthRoutesTest(unittest.TestCase):
             team_id="team_1",
             challenge_id="a" * 32,
             admin_session=self.session,
-            callback_mode="hosted",
+            callback_mode="local-domain",
         )
         self.admin_app.OAUTH_HANDOFFS.authorize(
             preparation.token,
-            self._cloudflare_authorization_url("hosted"),
+            self._cloudflare_authorization_url("local-domain"),
         )
         request = _request(
             "GET",

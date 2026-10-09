@@ -87,7 +87,7 @@ class TeamOAuthBridgeTest(unittest.TestCase):
             "scope": "dns.read dns.write offline_access zone.read",
             "state": "a" * 43,
             "code_challenge": "b" * 43,
-            "callback": "hosted",
+            "callback": "local-domain",
         }
         fields.update(overrides)
         return "https://shimpz.com/api/oauth/cloudflare/start?" + urlencode(fields)
@@ -105,7 +105,7 @@ class TeamOAuthBridgeTest(unittest.TestCase):
             "shimpz-cloudflare",
             "cloudflare",
             "d" * 43,
-            "hosted",
+            "local-domain",
         )
 
         self.assertEqual(response, team.TeamResponse(200, {"authorization_url": authorization_url}))
@@ -119,7 +119,7 @@ class TeamOAuthBridgeTest(unittest.TestCase):
             {
                 "assistant_id": "shimpz-cloudflare",
                 "integration_id": "cloudflare",
-                "callback_mode": "hosted",
+                "callback_mode": "local-domain",
                 "session_binding": "d" * 43,
             },
         )
@@ -136,7 +136,7 @@ class TeamOAuthBridgeTest(unittest.TestCase):
             "shimpz-cloudflare",
             "cloudflare",
             "d" * 43,
-            "hosted",
+            "local-domain",
         )
         self.assertEqual(read_only, team.TeamResponse(200, {"authorization_url": read_only_url}))
 
@@ -185,7 +185,7 @@ class TeamOAuthBridgeTest(unittest.TestCase):
                 separators=(",", ":"),
             ).encode()
             invalid = integrations.start_local_assistant_integration_authorization(
-                "team_1", "c" * 32, "shimpz-cloudflare", "cloudflare", "d" * 43, "hosted"
+                "team_1", "c" * 32, "shimpz-cloudflare", "cloudflare", "d" * 43, "local-domain"
             )
             self.assertEqual(
                 invalid,
@@ -209,7 +209,7 @@ class TeamOAuthBridgeTest(unittest.TestCase):
         ):
             _TeamHandler.response_body = json.dumps(invalid_envelope, separators=(",", ":")).encode()
             invalid = integrations.start_local_assistant_integration_authorization(
-                "team_1", "c" * 32, "shimpz-cloudflare", "cloudflare", "d" * 43, "hosted"
+                "team_1", "c" * 32, "shimpz-cloudflare", "cloudflare", "d" * 43, "local-domain"
             )
             self.assertEqual(
                 invalid,

@@ -954,7 +954,7 @@ test('trusts an OAuth handoff only when it matches the exact Local page mode', a
   try {
     const handoff = 'a'.repeat(64);
     const loopbackUrl = `http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff=${handoff}`;
-    const hostedUrl = `https://local.shimpz.com/api/oauth/cloudflare/start?handoff=${handoff}`;
+    const domainUrl = `https://local.shimpz.com/api/oauth/cloudflare/start?handoff=${handoff}`;
     globalThis.location = {
       origin: 'http://127.0.0.1:7777', protocol: 'http:', hostname: '127.0.0.1', port: '7777',
     };
@@ -970,7 +970,7 @@ test('trusts an OAuth handoff only when it matches the exact Local page mode', a
     );
     await assert.rejects(
       authorizeAssistantIntegration(
-        async () => response(200, { authorization_url: hostedUrl, completion_mode: 'automatic' }),
+        async () => response(200, { authorization_url: domainUrl, completion_mode: 'automatic' }),
         'team_1',
         CHALLENGE_ID,
         ASSISTANT_ID,
@@ -984,13 +984,13 @@ test('trusts an OAuth handoff only when it matches the exact Local page mode', a
     };
     assert.deepEqual(
       await authorizeAssistantIntegration(
-        async () => response(200, { authorization_url: hostedUrl, completion_mode: 'automatic' }),
+        async () => response(200, { authorization_url: domainUrl, completion_mode: 'automatic' }),
         'team_1',
         CHALLENGE_ID,
         ASSISTANT_ID,
         INTEGRATION_ID,
       ),
-      { authorization_url: hostedUrl, completion_mode: 'automatic' },
+      { authorization_url: domainUrl, completion_mode: 'automatic' },
     );
     for (const authorizationUrl of [loopbackUrl, `http://127.0.0.1:49123/api/oauth/cloudflare/start?handoff=${handoff}`]) {
       await assert.rejects(

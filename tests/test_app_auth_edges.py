@@ -133,7 +133,7 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
     def test_oauth_completion_mode_projects_only_the_admin_origin_decision(self) -> None:
         for callback_mode, completion_mode in (
             ("loopback", "automatic"),
-            ("hosted", "automatic"),
+            ("local-domain", "automatic"),
             ("out-of-band", "code"),
         ):
             with mock.patch.object(

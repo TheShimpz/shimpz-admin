@@ -95,28 +95,28 @@ class OAuthHandoffStoreTest(unittest.TestCase):
         first = self._issue()
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "already pending"):
             self._issue()
-        second = self._issue(team_id="sales", challenge_id="b" * 32, callback_mode="hosted")
+        second = self._issue(team_id="sales", challenge_id="b" * 32, callback_mode="local-domain")
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "capacity"):
             self._issue(team_id="support", challenge_id="c" * 32)
         self.store.authorize(first.token, self.authorization_url)
-        hosted_url = self._authorization_url("hosted")
-        self.store.authorize(second.token, hosted_url)
+        domain_url = self._authorization_url("local-domain")
+        self.store.authorize(second.token, domain_url)
         self.assertEqual(self.store.consume(first.token, "loopback").authorization_url, self.authorization_url)
-        self.assertEqual(self.store.consume(second.token, "hosted").authorization_url, hosted_url)
+        self.assertEqual(self.store.consume(second.token, "local-domain").authorization_url, domain_url)
 
     def test_logout_cancels_only_its_own_unconsumed_handoffs(self) -> None:
         other_session = "v1:9999999999:fedcba9876543210:" + "b" * 64
         first = self._issue()
         second = self._issue(
-            team_id="sales", challenge_id="b" * 32, callback_mode="hosted", admin_session=other_session
+            team_id="sales", challenge_id="b" * 32, callback_mode="local-domain", admin_session=other_session
         )
 
-        hosted_url = self._authorization_url("hosted")
-        self.store.authorize(second.token, hosted_url)
+        domain_url = self._authorization_url("local-domain")
+        self.store.authorize(second.token, domain_url)
         self.assertEqual(self.store.cancel_session(self.session), 1)
         with self.assertRaises(handoff_store.OAuthHandoffError):
             self.store.consume(first.token, "loopback")
-        self.assertEqual(self.store.consume(second.token, "hosted").authorization_url, hosted_url)
+        self.assertEqual(self.store.consume(second.token, "local-domain").authorization_url, domain_url)
 
     def test_unprepared_invalid_and_duplicate_authorization_fail_closed(self) -> None:
         preparation = self._issue()
@@ -140,12 +140,12 @@ class OAuthHandoffStoreTest(unittest.TestCase):
             self.store.authorize(second.token, self.authorization_url)
 
     def test_callback_mode_mismatch_consumes_the_handoff(self) -> None:
-        preparation = self._issue(callback_mode="hosted")
-        self.store.authorize(preparation.token, self._authorization_url("hosted"))
+        preparation = self._issue(callback_mode="local-domain")
+        self.store.authorize(preparation.token, self._authorization_url("local-domain"))
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
             self.store.consume(preparation.token, "loopback")
         with self.assertRaisesRegex(handoff_store.OAuthHandoffError, "unavailable"):
-            self.store.consume(preparation.token, "hosted")
+            self.store.consume(preparation.token, "local-domain")
 
     def test_out_of_band_completion_is_session_state_bound_and_one_use(self) -> None:
         preparation = self._issue(callback_mode="out-of-band")
@@ -196,6 +196,8 @@ class OAuthHandoffStoreTest(unittest.TestCase):
         for operation in (
             lambda: self._issue(admin_session="short"),
             lambda: self._issue(callback_mode="invalid"),
+            # The retired name of the local-domain mode stays refused.
+            lambda: self._issue(callback_mode="hosted"),
             lambda: self.store.consume("bad", "loopback"),
             lambda: handoff_store._completion_code(None),
             lambda: handoff_store._completion_code("bad"),
@@ -207,7 +209,7 @@ class OAuthHandoffStoreTest(unittest.TestCase):
         invalid = (
             "https://shimpz.com:bad/api/oauth/cloudflare/start?x=1",
             self._authorization_url(state="bad"),
-            self._authorization_url(callback="hosted"),
+            self._authorization_url(callback="local-domain"),
             self._authorization_url(scope="dns.write dns.read"),
             self._authorization_url(scope="dns.read dns.read"),
             self._authorization_url(scope="account.write"),

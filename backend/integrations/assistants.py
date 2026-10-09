@@ -185,7 +185,7 @@ def start_local_assistant_integration_authorization(
     assistant = payloads.canonical_assistant_id(assistant_id)
     integration = payloads.canonical_identifier(integration_id)
     binding = canonical_oauth_binding(session_binding)
-    if callback_mode not in {"loopback", "hosted", "out-of-band"}:
+    if callback_mode not in {"loopback", "local-domain", "out-of-band"}:
         raise TeamRequestError("OAuth callback mode is invalid.")
     response = transport._call(
         "POST",
