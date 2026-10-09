@@ -239,7 +239,7 @@ function humanChallenge(kind, extra = {}) {
 }
 
 test('a chat authorization request keeps the file it discloses; any other request with one fails closed', () => {
-  for (const kind of ['approval', 'auth:password', 'auth:totp', 'auth:passkey']) {
+  for (const kind of ['approval', 'auth:password']) {
     assert.deepEqual(parseChatEvent(humanChallenge(kind, { file: DISCLOSED }), 'team_1', 'Marketing').file, DISCLOSED);
   }
   assert.equal(Object.hasOwn(parseChatEvent(humanChallenge('approval'), 'team_1', 'Marketing'), 'file'), false);

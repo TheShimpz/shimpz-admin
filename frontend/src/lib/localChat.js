@@ -82,9 +82,8 @@ export const HUMAN_REQUEST_KINDS = Object.freeze([
   'input:select',
   'input:choice',
   'input:choices',
+  // Local Team stops an Action asking for auth:totp or auth:passkey before any challenge reaches Admin.
   'auth:password',
-  'auth:totp',
-  'auth:passkey',
 ]);
 const HUMAN_AUTH_KINDS = new Set(HUMAN_REQUEST_KINDS.filter((kind) => kind.startsWith('auth:')));
 const HUMAN_LENGTH_LIMITS = new Map([

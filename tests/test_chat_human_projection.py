@@ -94,6 +94,9 @@ def _response(request: dict[str, object], **overrides: object) -> dict[str, obje
 REQUEST = {"issued_at": 1_700_000_000, "nonce": "0" * 32}
 
 
+# Local Team stops an Action asking for these before any challenge reaches Admin.
+TEAM_REFUSED_AUTH_KINDS = frozenset({"auth:totp", "auth:passkey"})
+
 class HumanChallengeProjectionTests(unittest.TestCase):
     def test_local_password_authentication_is_bounded_and_maps_authority_failure(self) -> None:
         self.assertEqual(
@@ -173,6 +176,12 @@ class HumanChallengeProjectionTests(unittest.TestCase):
                 self.assertEqual(projected.status, 428)
                 self.assertEqual(projected.body["status"], "human-required")
                 self.assertEqual(projected.body["request"]["kind"], kind)
+        for kind in sorted(TEAM_REFUSED_AUTH_KINDS):
+            with self.subTest(kind=kind):
+                self.assertEqual(
+                    local._project_pending_challenge(team.TeamResponse(428, _response(_request(kind))), "team_1"),
+                    team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+                )
                 self.assertNotIn("trace_id", projected.body)
                 self.assertEqual(
                     projected.websocket_event("team_1")["type"],
@@ -262,7 +271,7 @@ class HumanChallengeProjectionTests(unittest.TestCase):
             "size": 482113,
             "sha256": "a" * 64,
         }
-        for kind in ("approval", "auth:totp"):
+        for kind in ("approval", "auth:password"):
             projected = local._project_pending_challenge(
                 team.TeamResponse(428, _response(_request(kind), file=disclosed)), "team_1"
             )

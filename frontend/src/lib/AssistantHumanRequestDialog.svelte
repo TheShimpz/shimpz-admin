@@ -103,7 +103,7 @@
       : '',
   );
   let primaryLabel = $derived(
-    kind === 'approval' ? copy.approve : isAuth ? (kind === 'auth:passkey' ? copy.usePasskey : copy.authorize) : copy.submit,
+    kind === 'approval' ? copy.approve : isAuth ? copy.authorize : copy.submit,
   );
   let displayedSeconds = $derived(
     challenge?.challenge_id === countdownChallengeId
@@ -118,8 +118,6 @@
       maximum: String(request?.max_selections ?? 0),
     }),
     passwordLabel: copy.passwordLabel,
-    totpLabel: copy.totpLabel,
-    totpPlaceholder: copy.totpPlaceholder,
   });
 
   $effect(() => {

@@ -99,8 +99,6 @@ function humanRequest(kind) {
     title: {
       approval: 'Publish reviewed DNS changes?',
       'auth:password': 'Confirm with your Supervisor password',
-      'auth:totp': 'Confirm with your TOTP code',
-      'auth:passkey': 'Confirm with your passkey',
     }[kind] ?? 'Provide the missing Action context',
     description: 'Shimpz Cloudflare paused before continuing this exact Action.',
     fingerprint: 'c'.repeat(64),
@@ -3264,14 +3262,13 @@ test('cancels code-mode OAuth when the browser blocks its separate tab', async (
   await expect(dialog).toContainText('The secure authorization could not start.');
 });
 
-// The exact value each kind submits; a passkey answers with its ceremony, not a typed value.
+// The exact value each kind submits.
 const humanValues = {
   'input:textarea': 'Reviewed value',
   'input:phone': '+1 415 555 0123',
   'input:select': 'safe',
   'input:choices': ['safe'],
   'auth:password': 'supervisor-password',
-  'auth:totp': '123456',
 };
 
 // Approval and input:choice are completed in localized-requests.spec.js, input:text by the code-point bound test below,
@@ -3282,8 +3279,6 @@ const humanPresentations = [
   ['input:select', 'Provide the missing Action context'],
   ['input:choices', 'Provide the missing Action context'],
   ['auth:password', 'Confirm with your Supervisor password'],
-  ['auth:totp', 'Confirm with your TOTP code'],
-  ['auth:passkey', 'Confirm with your passkey'],
 ];
 
 for (const [kind, title] of humanPresentations) {
@@ -3313,14 +3308,8 @@ for (const [kind, title] of humanPresentations) {
       await dialog.getByRole('checkbox', { name: /Safe mode/ }).check();
     } else if (kind === 'auth:password') {
       await dialog.getByLabel('Supervisor password').fill('supervisor-password');
-    } else if (kind === 'auth:totp') {
-      await dialog.getByLabel('Verification code').fill('123456');
     }
-    await dialog.getByRole('button', {
-      name: kind === 'auth:passkey'
-          ? 'Use passkey'
-          : kind.startsWith('auth:') ? 'Confirm authorization' : 'Send',
-    }).click();
+    await dialog.getByRole('button', { name: kind.startsWith('auth:') ? 'Confirm authorization' : 'Send' }).click();
     await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();
     await expect.poll(() => contract.humanResponses()).toHaveLength(1);
     expect(contract.humanResponses()[0]).toMatchObject({

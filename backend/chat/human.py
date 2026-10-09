@@ -30,13 +30,9 @@ LENGTH_KINDS = {
     "input:phone": 64,
 }
 CHOICE_KINDS = frozenset({"input:select", "input:choice"})
-AUTH_KINDS = frozenset(
-    {
-        "auth:password",
-        "auth:totp",
-        "auth:passkey",
-    }
-)
+# Local Team asks only for the Supervisor password; it stops an Action that asks for auth:totp or auth:passkey as
+# authentication-unavailable before any challenge reaches Admin, so Admin never projects either.
+AUTH_KINDS = frozenset({"auth:password"})
 RESPONSE_FIELDS = frozenset(
     {
         "team_id",

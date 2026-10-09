@@ -275,8 +275,6 @@ test('chat accepts every exact bounded public human request presentation', () =>
     'input:choice',
     'input:choices',
     'auth:password',
-    'auth:totp',
-    'auth:passkey',
   ]) {
     // Every password request names its Stored Input, so Team sends its help text and help link beside it.
     const challenge = kind === 'input:password'
