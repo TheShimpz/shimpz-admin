@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 
+import { assistantDetails, PAGE_COPY, publicAssistant } from './assistantPages.js';
 import { accessibilityViolations } from './axe.js';
 
 function localSession(overrides = {}) {
@@ -26,15 +27,10 @@ function authenticatedLocalSession(overrides = {}) {
   });
 }
 
-// A touch screen shows an Assistant card's actions without hover, and a person taps them; a pointer hovers the card
-// first. Each touch-project run therefore proves the actions reachable and working by touch alone.
-async function pressCardAction(card, action, testInfo) {
-  if (testInfo.project.use.hasTouch) {
-    await action.tap();
-    return;
-  }
-  await card.hover();
-  await action.click();
+// A person taps on a touch screen and clicks with a pointer; each touch-project run proves the control works by touch.
+async function press(control, testInfo) {
+  if (testInfo.project.use.hasTouch) await control.tap();
+  else await control.click();
 }
 
 test('completes mandatory authenticator enrollment before opening Admin', async ({ page }) => {
@@ -393,6 +389,7 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
         name: 'Shimpz Cloudflare',
         source_digest: `sha256:${'f'.repeat(64)}`,
         summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
+        ...structuredClone(PAGE_COPY),
       }],
     }),
   }));
@@ -412,6 +409,9 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
   await page.goto('/assistants/?team=marketing');
   const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
   await expect(catalog).toBeVisible();
+  // Each row opens its Assistant's page for the Team this catalog acts for.
+  await expect(catalog.getByRole('link', { name: /^Shimpz Cloudflare/ }))
+    .toHaveAttribute('href', '/assistants/shimpz-cloudflare?team=marketing');
   // The Assistants screen's one accessibility scan.
   expect(await accessibilityViolations(page)).toEqual([]);
   if (page.viewportSize().width <= 820) await page.getByRole('button', { name: 'Open the Team list' }).click();
@@ -424,8 +424,8 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
     'The Team in this link is not available. Choose a Team from the Team list.',
     { exact: true },
   )).toBeVisible();
-  const install = catalog.getByRole('button', { name: /install/i }).first();
-  if (await install.count()) await expect(install).toBeDisabled();
+  // The catalog itself installs nothing.
+  await expect(catalog.getByRole('button', { name: /install/i })).toHaveCount(0);
 });
 test('never renders a matching publication while Local snapshots are settling', async ({ page }) => {
   const imageId = `sha256:${'b'.repeat(64)}`;
@@ -470,6 +470,7 @@ test('never renders a matching publication while Local snapshots are settling', 
           name: 'Published Helper',
           source_digest: `sha256:${'c'.repeat(64)}`,
           summary: 'A publication without a staged Local counterpart.',
+          ...structuredClone(PAGE_COPY),
         },
         {
           assistant_id: 'shimpz-cloudflare',
@@ -479,6 +480,7 @@ test('never renders a matching publication while Local snapshots are settling', 
           name: 'Published Cloudflare',
           source_digest: `sha256:${'f'.repeat(64)}`,
           summary: 'This publication must never render while Local inventory is pending.',
+          ...structuredClone(PAGE_COPY),
         },
       ],
     }),
@@ -531,7 +533,7 @@ test('never renders a matching publication while Local snapshots are settling', 
 
   releaseLocalInventory();
 
-  const localCard = page.getByRole('article', { name: 'shimpz-cloudflare — Local' });
+  const localCard = catalog.getByRole('link', { name: /^Shimpz Cloudflare/ });
   // The catalog presents once a frame is painted: the page is stepped one frame at a time until the boot screen leaves.
   await expect.poll(async () => {
     await page.clock.runFor(16);
@@ -607,7 +609,7 @@ test('renders Assistant identities immediately during in-app icon hydration', as
   await page.getByRole('link', { name: /^Open the Store for / }).first().click();
   await iconRequested;
 
-  const card = page.getByRole('article', { name: 'shimpz-cloudflare — Local' });
+  const card = page.getByRole('link', { name: /^Shimpz Cloudflare/ });
   try {
     await expect(card).toBeVisible();
     await expect(card.locator('.shimpz-assistant-icon img')).toHaveCount(0);
@@ -643,6 +645,7 @@ test('shows the first Assistants view before a public icon finishes loading', as
         assistant_id: 'hello-pulse', assistant_version: '1.0.0', creators: ['@creator'],
         icon_digest: `sha256:${'b'.repeat(64)}`, name: 'Hello Pulse',
         source_digest: `sha256:${'a'.repeat(64)}`, summary: 'A measured public Assistant.',
+        ...structuredClone(PAGE_COPY),
       }] },
       '/api/local-assistants': { assistants: [], trace_id: 'c'.repeat(32) },
     }[path];
@@ -667,7 +670,7 @@ test('shows the first Assistants view before a public icon finishes loading', as
   });
   await page.goto('/assistants/');
   await iconRequested;
-  const card = page.getByRole('article', { name: 'hello-pulse' });
+  const card = page.getByRole('link', { name: /^Hello Pulse/ });
   const iconBox = card.locator('.shimpz-assistant-icon');
   try {
     await expect(page.locator('[data-slot="boot-screen"]')).toHaveCount(0);
@@ -699,6 +702,7 @@ test('shows an over-budget public icon as unavailable instead of loading forever
         assistant_id: 'hello-pulse', assistant_version: '1.0.0', creators: ['@creator'],
         icon_digest: `sha256:${'b'.repeat(64)}`, name: 'Hello Pulse',
         source_digest: `sha256:${'a'.repeat(64)}`, summary: 'A measured public Assistant.',
+        ...structuredClone(PAGE_COPY),
       }] },
       '/api/local-assistants': { assistants: [], trace_id: 'c'.repeat(32) },
     }[path];
@@ -723,7 +727,7 @@ test('shows an over-budget public icon as unavailable instead of loading forever
   await page.clock.install({ time: start });
   await page.clock.pauseAt(new Date(start.getTime() + 60_000));
   await page.goto('/assistants/');
-  const iconBox = page.getByRole('article', { name: 'hello-pulse' }).locator('.shimpz-assistant-icon');
+  const iconBox = page.getByRole('link', { name: /^Hello Pulse/ }).locator('.shimpz-assistant-icon');
   await expect.poll(async () => {
     await page.clock.runFor(16);
     return page.evaluate(() => window.iconRequestedAt !== undefined);
@@ -761,6 +765,7 @@ test('renders public Assistants directly in Hosted without Local enumeration', a
       name: 'Published Helper',
       source_digest: `sha256:${'f'.repeat(64)}`,
       summary: 'A published Assistant available to Hosted.',
+      ...structuredClone(PAGE_COPY),
     }] }),
   }));
   await page.route('**/api/local-assistants', (route) => {
@@ -800,6 +805,7 @@ test('keeps public discovery available when Local snapshot enumeration fails', a
       name: 'Published Helper',
       source_digest: `sha256:${'f'.repeat(64)}`,
       summary: 'Public discovery remains available after an explicit Local inventory failure.',
+      ...structuredClone(PAGE_COPY),
     }] }),
   }));
   await page.route('**/api/local-assistants', (route) => route.fulfill({
@@ -830,7 +836,8 @@ test('keeps public discovery available when Local snapshot enumeration fails', a
   await expect(catalog).toBeVisible();
   await expect(catalog.getByText('Local Assistant snapshots are unavailable', { exact: true })).toBeVisible();
   await expect(catalog.getByRole('button', { name: 'Reload snapshots' })).toBeEnabled();
-  await expect(catalog.locator('.local-assistant-card')).toHaveCount(0);
+  // Only the publication is listed: no staged snapshot row appears without its inventory.
+  await expect(catalog.getByRole('link')).toHaveCount(1);
   await expect(catalog.getByText('Published Helper', { exact: true })).toBeVisible();
 });
 
@@ -869,6 +876,7 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
         name: 'Published WhatsApp',
         source_digest: `sha256:${'f'.repeat(64)}`,
         summary: 'This publication must be shadowed by the staged Local build.',
+        ...structuredClone(PAGE_COPY),
       }],
     }),
   }));
@@ -948,17 +956,44 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
     });
   });
 
-  await page.goto('/assistants/');
+  const whatsappPage = (locale, provenanceVersion) => assistantDetails({
+    locale,
+    assistant_id: 'whatsapp',
+    assistant_version: provenanceVersion,
+    name: 'WhatsApp Automation',
+    summary: 'Send and manage WhatsApp messages from your Team.',
+    description: 'Sends one reviewed WhatsApp message from your official business account after your approval.',
+    links: {},
+    actions: [{ id: 'send-message', effect: 'mutating', description: 'Send one WhatsApp message.' }],
+    integrations: [],
+    stored_inputs: [{ id: 'whatsapp-token', label: 'WhatsApp token' }],
+  });
+  const stagedPages = [];
+  await page.route(/\/api\/local-assistants\/[0-9a-f]{64}\/details\?locale=en$/, (route) => {
+    stagedPages.push(new URL(route.request().url()).pathname);
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify(whatsappPage('en', '0.2.1')) });
+  });
+  await page.route(/\/api\/teams\/marketing\/assistants\/whatsapp\/details\?locale=en$/, (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(whatsappPage('en', '0.2.1')),
+  }));
+
+  await page.goto('/assistants/?team=marketing');
 
   const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
-  const card = page.getByRole('article', { name: 'whatsapp — Local' });
-  await expect(catalog.locator('.local-assistant-card')).toHaveCount(1);
+  const row = catalog.getByRole('link', { name: /^WhatsApp Automation/ });
+  await expect(row).toHaveCount(1);
   await expect(catalog.getByText('Published WhatsApp', { exact: true })).toHaveCount(0);
-  await expect(card).toContainText('WhatsApp Automation');
-  await expect(card.locator('.shimpz-assistant-icon img')).toHaveAttribute('src', /^blob:/);
-  await expect(card).not.toHaveClass(/is-installed/);
+  await expect(row.locator('.shimpz-assistant-icon img')).toHaveAttribute('src', /^blob:/);
+  await press(row, testInfo);
 
-  await pressCardAction(card, card.getByRole('button', { name: 'Install or replace' }), testInfo);
+  // The page shows the newest staged build, which shadows the publication of the same Assistant.
+  await expect(page).toHaveURL(/\/assistants\/whatsapp\?team=marketing$/);
+  const sheet = page.getByRole('article');
+  await expect(sheet.getByRole('heading', { level: 1 })).toHaveText('WhatsApp Automation');
+  await expect.poll(() => stagedPages).toEqual([`/api/local-assistants/${'b'.repeat(64)}/details`]);
+  const install = sheet.getByRole('button', { name: 'Install', exact: true });
+  await press(install, testInfo);
 
   let installDialog = page.getByRole('dialog', { name: 'Install WhatsApp Automation?' });
   await installDialog.getByRole('button', { name: /v0\.1\.0/ }).click();
@@ -966,11 +1001,9 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await installDialog.getByRole('button', { name: 'Cancel' }).click();
   await expect(installDialog).toBeHidden();
 
-  await pressCardAction(card, card.getByRole('button', { name: 'Install or replace' }), testInfo);
-
+  await press(install, testInfo);
   installDialog = page.getByRole('dialog', { name: 'Install WhatsApp Automation?' });
   await expect(installDialog).toBeVisible();
-  await expect(installDialog).toContainText('Local snapshots are not published, reviewed, signed, or scanned by Shimpz.');
   await expect(installDialog).toContainText(imageId);
   await expect(installDialog).toContainText('Marketing');
   await installDialog.getByRole('button', { name: 'Install or replace' }).click();
@@ -978,18 +1011,15 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await expect(installDialog).toBeHidden();
   await expect(page.getByText('Local Assistant installed', { exact: true })).toBeVisible();
   await expect(page.getByText('whatsapp is ready in Marketing', { exact: false })).toBeVisible();
-  await expect(card).toHaveClass(/is-installed/);
 
-  const uninstallAction = card.locator('button.assistant-action-button');
-  await expect(uninstallAction).toHaveText('Uninstall Assistant');
-  await pressCardAction(card, uninstallAction, testInfo);
+  // Installed, the page shows the exact binding and offers its removal.
+  const uninstall = sheet.getByRole('button', { name: 'Uninstall', exact: true });
+  await press(uninstall, testInfo);
   const uninstallDialog = page.getByRole('dialog', { name: 'Uninstall WhatsApp Automation?' });
   await expect(uninstallDialog).toBeVisible();
-  await expect(uninstallDialog.getByText(/Local build, its snapshot remains staged on this machine/)).toBeVisible();
-  await expect(uninstallDialog.getByText(/shimpz assistant unstage/)).toBeVisible();
   await uninstallDialog.getByRole('button', { name: 'Uninstall Assistant' }).click();
   await expect(page.getByText('Assistant uninstalled', { exact: true })).toBeVisible();
-  await expect(page.getByText(/docker image rm/)).toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: 'Install', exact: true })).toBeVisible();
 });
 
 test('lets an explicit Local install replace the matching publication', async ({ page }, testInfo) => {
@@ -1027,6 +1057,7 @@ test('lets an explicit Local install replace the matching publication', async ({
         name: 'Published WhatsApp',
         source_digest: `sha256:${'f'.repeat(64)}`,
         summary: 'This publication must be shadowed by the staged Local build.',
+        ...structuredClone(PAGE_COPY),
       }],
     }),
   }));
@@ -1080,16 +1111,29 @@ test('lets an explicit Local install replace the matching publication', async ({
     });
   });
 
-  await page.goto('/assistants/');
+  for (const pattern of [
+    /\/api\/local-assistants\/[0-9a-f]{64}\/details\?locale=en$/,
+    /\/api\/teams\/marketing\/assistants\/whatsapp\/details\?locale=en$/,
+  ]) {
+    await page.route(pattern, (route) => route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify(assistantDetails({
+        assistant_id: 'whatsapp', assistant_version: '0.2.1', name: 'WhatsApp Automation',
+        summary: 'Send and manage WhatsApp messages from your Team.',
+      })),
+    }));
+  }
 
-  const card = page.getByRole('article', { name: 'whatsapp — Local' });
-  await expect(card).not.toHaveClass(/is-installed/);
+  // The publication of this Assistant is installed, and this machine stages its own build: the staged build is what
+  // the page offers, and installing it replaces the publication.
+  await page.goto('/assistants/whatsapp?team=marketing');
+  const sheet = page.getByRole('article');
   await expect(page.getByText('Published WhatsApp', { exact: true })).toHaveCount(0);
-  await pressCardAction(card, card.getByRole('button', { name: 'Install or replace' }), testInfo);
+  await sheet.getByRole('button', { name: 'Install', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Install WhatsApp Automation?' });
-  await expect(dialog).toContainText('Local snapshots are not published, reviewed, signed, or scanned by Shimpz.');
+  await expect(dialog).toContainText(imageId);
   await dialog.getByRole('button', { name: 'Install or replace' }).click();
-  await expect(card).toHaveClass(/is-installed/);
+  await expect(sheet.getByRole('button', { name: 'Uninstall', exact: true })).toBeVisible();
 });
 
 test('asks for the first Team from the Store when no Team exists', async ({ page }) => {

@@ -1,46 +1,26 @@
 <script>
   import { page } from '$app/state';
   import { getContext, onMount, tick, untrack } from 'svelte';
-  import { AssistantCard, Button, Notice, Skeleton, Toolbar } from '@shimpz/frontend';
-  import { showAdminNotice } from '$lib/adminNotice.js';
-  import AssistantActionDialog from '$lib/AssistantActionDialog.svelte';
+  import { Button, Notice, Skeleton, Toolbar } from '@shimpz/frontend';
+  import AssistantRow from '$lib/AssistantRow.svelte';
   import { INITIAL_VIEW_READINESS } from '$lib/initialView.js';
-  import LocalAssistantInstallDialog from '$lib/LocalAssistantInstallDialog.svelte';
-  import {
-    installAssistant,
-    installLocalAssistant,
-    listLocalAssistantSnapshots,
-    listPublicAssistantCatalog,
-    safeApiError,
-    uninstallAssistant,
-  } from '$lib/localApi.js';
+  import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from '$lib/localApi.js';
   import { locale, t } from '$lib/i18n.js';
   import {
-    isInadmissibleLocalPreview,
     loadLocalAssistantIcon,
     loadLocalAssistantSummary,
     loadPublicAssistantIcon,
   } from '$lib/localAssistantIcons.js';
   import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '$lib/localSnapshots.js';
   import { sessionContext } from '$lib/sessionContext.js';
-  import { refreshTeamInventory, teamContext } from '$lib/teamContext.js';
+  import { teamContext } from '$lib/teamContext.js';
   import { TEAM_ID_RE } from '$lib/validate.js';
-  import { jsonObject } from '$lib/validate.js';
 
   const ICON_PRESENTATION_BUDGET_MS = 1500;
   // How long an icon request may stay open after its presentation budget: a slow host still delivers it, a request that
   // never answers does not hold its connection forever.
   const ICON_REQUEST_LIMIT_MS = 30_000;
 
-  let dialogError = $state('');
-  let busy = $state(false);
-  let selectedTeam = $state('');
-  let pendingAssistant = $state('');
-  let pendingSourceDigest = $state('');
-  let dialogOpen = $state(false);
-  let dialogAction = $state('install');
-  let dialogMode = $state('install');
-  let dialogAttempt = 0;
   let publicAssistants = $state([]);
   // The interface language the presented public catalog was read in; its summaries show only while it is selected.
   let publicCatalogLocale = $state('');
@@ -50,18 +30,11 @@
   let localSnapshotPhase = $state('idle');
   let localSnapshotSettled = $state(false);
   let localSnapshotError = $state('');
-  let localInstallImageId = $state('');
-  let localInstallDialogOpen = $state(false);
-  let localInstallDialogError = $state('');
-  let pendingLocalSnapshot = $state(null);
-  let pendingLocalSnapshots = $state([]);
   // A staged snapshot's summary per interface language, read by Team from the snapshot's own pack (ADR-0091).
   let localSummaries = $state({});
   let catalogIconUrls = $state({});
   // Keys whose icon could not be presented in this load; their cards stop showing a loading face.
   let catalogIconFailures = $state({});
-  // Exact staged images whose preview Team refused in this load; each load validates every image again.
-  let localPreviewRefusals = $state({});
   let catalogPresentationSettled = $state(false);
   let catalogRefreshing = $state(false);
   let catalogPresentationRequest = 0;
@@ -69,6 +42,7 @@
   const initialViewReadiness = getContext(INITIAL_VIEW_READINESS);
   let copy = $derived($t('assistantStore'));
   let localCopy = $derived($t('store'));
+  let pageCopy = $derived($t('assistantPage'));
   let runningTeams = $derived($teamContext.teams.filter((team) => team.status === 'running'));
   let localProfile = $derived($sessionContext.profile === 'local');
   let localSnapshotGroups = $derived(groupLocalAssistantSnapshots(localSnapshots));
@@ -82,13 +56,7 @@
   let catalogPresentationPending = $derived(
     !catalogPresentationSettled,
   );
-  let catalogBusy = $derived(
-    catalogPresentationPending || catalogRefreshing || Boolean(localInstallImageId),
-  );
-  let pendingAssistantAvailable = $derived(
-    /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(pendingAssistant) &&
-      (dialogAction === 'uninstall' || /^sha256:[0-9a-f]{64}$/.test(pendingSourceDigest)),
-  );
+  let catalogBusy = $derived(catalogPresentationPending || catalogRefreshing);
   let requestedTeamId = $derived.by(() => {
     const candidate = page.url.searchParams.get('team') ?? '';
     return TEAM_ID_RE.test(candidate) ? candidate : '';
@@ -105,247 +73,19 @@
       ? null
       : runningTeams.find((team) => team.id === $teamContext.selectedTeamId) ?? null,
   );
-  let pendingLocalTeamId = $state('');
-  let selectedTeamRecord = $derived(runningTeams.find((team) => team.id === selectedTeam) ?? null);
-  let pendingAssistantName = $derived(
-    localSnapshotGroups.find((entry) => entry.assistant_id === pendingAssistant)?.primary.name ??
-      publicAssistants.find((entry) => entry.assistant_id === pendingAssistant)?.name ??
-      $teamContext.catalog.find((entry) => entry.id === pendingAssistant)?.name ??
-      pendingAssistant,
-  );
-  let dialogTitle = $derived(
-    dialogAction === 'uninstall'
-      ? dialogMode === 'error'
-        ? $t('store.assistantUninstallFailureTitle')
-        : $t('store.assistantUninstallTitle', { assistant: pendingAssistantName })
-      : ({
-          checking: copy.checkingTitle,
-          install: copy.confirmTitle,
-          installed: copy.alreadyTitle,
-          'no-team': copy.noTeamTitle,
-          unavailable: copy.unavailableTitle,
-          error: copy.failureTitle,
-        }[dialogMode] ?? copy.confirmTitle),
-  );
-  let dialogLead = $derived(
-    dialogAction === 'uninstall'
-      ? dialogMode === 'error'
-        ? $t('store.assistantUninstallFailureLead')
-        : $t('store.assistantUninstallLead', {
-            assistant: pendingAssistantName,
-            team: selectedTeamRecord?.name ?? '',
-          })
-      : ({
-          checking: copy.checkingLead,
-          install: copy.confirmLead,
-          installed: copy.alreadyLead,
-          'no-team': copy.noTeamLead,
-          unavailable: copy.unavailableLead,
-          error: copy.failureLead,
-        }[dialogMode] ?? copy.confirmLead),
-  );
-  let dialogPrimaryVisible = $derived(
-    dialogAction === 'uninstall'
-      ? ['uninstall', 'error'].includes(dialogMode)
-      : ['install', 'error'].includes(dialogMode),
-  );
-  let dialogPrimaryLabel = $derived(
-    busy
-      ? dialogAction === 'uninstall'
-        ? $t('store.assistantUninstalling')
-        : copy.working
-      : dialogMode === 'error'
-        ? dialogAction === 'uninstall'
-          ? $t('store.assistantActionRetry')
-          : copy.retryAction
-        : dialogAction === 'uninstall'
-          ? $t('store.assistantUninstallConfirm')
-          : copy.confirm,
-  );
-  let dialogSecondaryLabel = $derived(
-    ['install', 'uninstall'].includes(dialogMode)
-      ? dialogAction === 'uninstall'
-        ? $t('store.assistantActionCancel')
-        : copy.cancel
-      : $t('integration.close'),
+  // The selected Team's installed Assistants: a row marks one installed in the Team its page acts for.
+  let installedIds = $derived(new Set(
+    activeTeamRecord ? $teamContext.installedAssistants.map((entry) => entry.assistant) : [],
+  ));
+  let installedCount = $derived(
+    [...localSnapshotGroups, ...visiblePublicAssistants].filter((entry) => installedIds.has(entry.assistant_id)).length,
   );
 
-  function waitForTeamContext() {
-    if (!['idle', 'loading'].includes($teamContext.phase)) return Promise.resolve();
-    return new Promise((resolve) => {
-      let settled = false;
-      let unsubscribe = () => {};
-      unsubscribe = teamContext.subscribe((context) => {
-        if (settled || ['idle', 'loading'].includes(context.phase)) return;
-        settled = true;
-        queueMicrotask(() => unsubscribe());
-        resolve();
-      });
-    });
+  // Each row opens its Assistant's page for the Team this catalog acts for.
+  function assistantHref(assistantId) {
+    const team = activeTeamRecord?.id;
+    return `/assistants/${assistantId}${team ? `?team=${encodeURIComponent(team)}` : ''}`;
   }
-
-  async function refreshInstalled(teamId) {
-    if (!teamId || $teamContext.selectedTeamId !== teamId) {
-      return $teamContext.phase === 'ready';
-    }
-    try {
-      await refreshTeamInventory(fetch);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  function showAssistantDialog() {
-    dialogOpen = true;
-  }
-
-  async function beginInstall(assistantId, sourceDigest) {
-    const attempt = ++dialogAttempt;
-    dialogAction = 'install';
-    pendingAssistant = assistantId;
-    pendingSourceDigest = sourceDigest;
-    selectedTeam = activeTeamRecord?.id ?? '';
-    dialogError = '';
-    dialogMode = 'checking';
-    showAssistantDialog();
-
-    if (!pendingAssistantAvailable) {
-      dialogMode = 'unavailable';
-      return;
-    }
-    await waitForTeamContext();
-    if (attempt !== dialogAttempt) return;
-
-    const team = activeTeamRecord;
-    selectedTeam = team?.id ?? '';
-    if ($teamContext.phase === 'error') {
-      dialogMode = 'unavailable';
-      return;
-    }
-    if (!team) {
-      dialogMode = 'no-team';
-      return;
-    }
-    dialogMode = $teamContext.installedAssistants.some(
-      (entry) => entry.assistant === assistantId,
-    )
-      ? 'installed'
-      : 'install';
-  }
-
-  async function confirmInstall() {
-    if (
-      busy ||
-      !pendingAssistantAvailable ||
-      !['install', 'error'].includes(dialogMode)
-    ) return;
-    const team = runningTeams.find((item) => item.id === selectedTeam);
-    if (!team) return;
-    if (team.id !== activeTeamRecord?.id) {
-      dialogError = localCopy.teamUnavailable;
-      dialogMode = 'error';
-      return;
-    }
-
-    busy = true;
-    dialogError = '';
-    try {
-      await installAssistant(fetch, team.id, pendingAssistant, pendingSourceDigest);
-      await refreshInstalled(team.id);
-      const assistantName = pendingAssistantName;
-      finishAssistantDialog();
-      showAdminNotice({
-        tone: 'success',
-        label: $t('store.assistantInstalledLabel'),
-        message: $t('store.assistantInstalledMessage', {
-          assistant: assistantName,
-          team: team.name,
-        }),
-      });
-    } catch (error) {
-      const failure = error instanceof Error ? error.message : copy.genericFailure;
-      await refreshInstalled(team.id);
-      dialogError = failure;
-      dialogMode = 'error';
-    } finally {
-      busy = false;
-    }
-  }
-
-  function finishAssistantDialog() {
-    dialogAttempt += 1;
-    dialogOpen = false;
-  }
-
-  function closeAssistantDialog() {
-    if (busy) return;
-    finishAssistantDialog();
-  }
-
-  function cancelAssistantDialog() {
-    closeAssistantDialog();
-  }
-
-  async function confirmUninstall() {
-    if (busy || !selectedTeamRecord || dialogAction !== 'uninstall') return;
-    const team = selectedTeamRecord;
-    if (team.id !== activeTeamRecord?.id) {
-      dialogError = localCopy.teamUnavailable;
-      dialogMode = 'error';
-      return;
-    }
-    const assistantId = pendingAssistant;
-    const assistantName = pendingAssistantName;
-    busy = true;
-    dialogError = '';
-    try {
-      await uninstallAssistant(fetch, team.id, assistantId);
-      const refreshed = await refreshInstalled(team.id);
-      finishAssistantDialog();
-      showAdminNotice({
-        tone: refreshed ? 'success' : 'info',
-        label: $t(refreshed
-          ? 'store.assistantUninstalledLabel'
-          : 'store.assistantUninstallRefreshLabel'),
-        message: $t(refreshed
-          ? 'store.assistantUninstalledMessage'
-          : 'store.assistantUninstallRefreshMessage', {
-          assistant: assistantName,
-          team: team.name,
-        }),
-      });
-    } catch (error) {
-      const failure = error instanceof Error ? error.message : copy.genericFailure;
-      await refreshInstalled(team.id);
-      dialogError = failure;
-      dialogMode = 'error';
-    } finally {
-      busy = false;
-    }
-  }
-
-  function confirmAssistantAction() {
-    if (dialogAction === 'uninstall') {
-      void confirmUninstall();
-      return;
-    }
-    void confirmInstall();
-  }
-
-  function beginAssistantUninstall(assistantId) {
-    const installed = $teamContext.phase === 'ready'
-      ? $teamContext.installedAssistants.find((entry) => entry.assistant === assistantId)
-      : null;
-    if (!activeTeamRecord || !installed || busy) return;
-    dialogAction = 'uninstall';
-    pendingAssistant = installed.assistant;
-    selectedTeam = activeTeamRecord.id;
-    dialogError = '';
-    dialogMode = 'uninstall';
-    showAssistantDialog();
-  }
-
   function localSummaryKey(language, snapshot) {
     return `${language}:${snapshot.image_id}`;
   }
@@ -363,15 +103,10 @@
       try {
         const summary = await loadLocalAssistantSummary(fetch, snapshot.image_id, language, { signal });
         if (request === catalogPresentationRequest) localSummaries[key] = summary;
-      } catch (error) {
+      } catch {
         // An unavailable translation leaves the summary empty rather than showing another language.
-        if (request === catalogPresentationRequest) refuseInadmissibleSnapshot(snapshot.image_id, error);
       }
     }));
-  }
-
-  function refuseInadmissibleSnapshot(imageId, error) {
-    if (imageId && isInadmissibleLocalPreview(error)) localPreviewRefusals[imageId] = true;
   }
 
   function localIconKey(snapshot) {
@@ -477,7 +212,6 @@
       const entries = [
         ...groups.map((group) => ({
           key: localIconKey(group.primary),
-          imageId: group.primary.image_id,
           load: () => loadLocalAssistantIcon(fetch, group.primary.image_id, {
             signal: iconController.signal,
           }),
@@ -507,7 +241,6 @@
       }
       catalogIconUrls = nextUrls;
       catalogIconFailures = {};
-      localPreviewRefusals = {};
       catalogPresentationSettled = true;
       catalogRefreshing = false;
       await tick();
@@ -523,8 +256,7 @@
         controller.signal,
       );
       // Past the presentation budget an icon still on its way is shown as unavailable, never as a substitute mark, and
-      // never as loading forever. Its request still completes: a refusal of the staged image it answers for applies
-      // whenever it arrives, and an icon that arrives late replaces the unavailable mark.
+      // never as loading forever. Its request still completes, and an icon that arrives late replaces that mark.
       const iconBudget = globalThis.setTimeout(() => {
         if (request !== catalogPresentationRequest) return;
         for (const entry of entries) {
@@ -542,11 +274,8 @@
           }
           catalogIconUrls[entry.key] = url;
           delete catalogIconFailures[entry.key];
-        } catch (error) {
-          if (request === catalogPresentationRequest) {
-            catalogIconFailures[entry.key] = true;
-            refuseInadmissibleSnapshot(entry.imageId, error);
-          }
+        } catch {
+          if (request === catalogPresentationRequest) catalogIconFailures[entry.key] = true;
         }
       }));
       globalThis.clearTimeout(iconBudget);
@@ -555,69 +284,6 @@
       await summaries;
     } finally {
       if (request === catalogPresentationRequest) catalogRefreshing = false;
-    }
-  }
-
-  function beginLocalSnapshotInstall(group) {
-    const team = activeTeamRecord;
-    if (!team || busy || dialogOpen || localInstallDialogOpen || localInstallImageId) return;
-    if (localPreviewRefusals[group.primary.image_id]) return;
-    pendingLocalTeamId = team.id;
-    pendingLocalSnapshot = group.primary;
-    pendingLocalSnapshots = [group.primary, ...group.alternatives];
-    localInstallDialogError = '';
-    localInstallDialogOpen = true;
-  }
-
-  function selectLocalSnapshot(snapshot) {
-    if (!localInstallImageId && pendingLocalSnapshots.some((entry) => entry.image_id === snapshot.image_id)) {
-      pendingLocalSnapshot = snapshot;
-    }
-  }
-
-  function closeLocalSnapshotInstall() {
-    if (localInstallImageId) return;
-    localInstallDialogOpen = false;
-    pendingLocalTeamId = '';
-    pendingLocalSnapshot = null;
-    pendingLocalSnapshots = [];
-    localInstallDialogError = '';
-  }
-
-  async function installLocalSnapshot() {
-    const team = activeTeamRecord;
-    const snapshot = pendingLocalSnapshot;
-    if (!team || !snapshot || busy || localInstallImageId) return;
-    if (team.id !== pendingLocalTeamId) {
-      localInstallDialogError = localCopy.teamUnavailable;
-      return;
-    }
-    if (localPreviewRefusals[snapshot.image_id]) {
-      localInstallDialogError = localCopy.localRestage;
-      return;
-    }
-    localInstallImageId = snapshot.image_id;
-    localInstallDialogError = '';
-    try {
-      const installed = await installLocalAssistant(fetch, team.id, snapshot.image_id);
-      await refreshInstalled(team.id);
-      localInstallDialogOpen = false;
-      pendingLocalTeamId = '';
-      pendingLocalSnapshot = null;
-      pendingLocalSnapshots = [];
-      showAdminNotice({
-        tone: 'success',
-        label: localCopy.localInstalledLabel,
-        message: $t('store.localInstalledMessage', {
-          assistant: installed.assistant,
-          team: team.name,
-        }),
-      });
-      void loadCatalogPresentation();
-    } catch (error) {
-      localInstallDialogError = error instanceof Error ? error.message : localCopy.localFailure;
-    } finally {
-      localInstallImageId = '';
     }
   }
 
@@ -656,69 +322,50 @@
   {#if localSnapshotError}<Notice variant="error">{localSnapshotError}</Notice>{/if}
   {#if publicCatalogError}<Notice variant="error">{publicCatalogError}</Notice>{/if}
 
+  {#if !catalogPresentationPending && localSnapshotGroups.length + visiblePublicAssistants.length > 0}
+    <header class="catalog-header">
+      <div class="catalog-team">
+        <span class="team-label">{pageCopy.team}</span>
+        <span class="team-name">{activeTeamRecord?.name ?? ''}</span>
+      </div>
+      <p class="catalog-count">
+        <span class="count">{localSnapshotGroups.length + visiblePublicAssistants.length}</span> {pageCopy.assistants}
+        <span class="sep" aria-hidden="true">//</span>
+        <span class="count on">{installedCount}</span> {pageCopy.installed}
+      </p>
+    </header>
+  {/if}
   <div class="assistant-grid">
     {#if catalogPresentationPending}
       <Skeleton class="assistant-catalog-loading" height="18rem" />
     {:else}
       {#each localSnapshotGroups as group (group.assistant_id)}
-      {@const installed = $teamContext.installedAssistants.find((entry) => entry.assistant === group.assistant_id)}
-      {@const localInstalled = installed?.provenance === 'local'}
-      {@const installing = [group.primary, ...group.alternatives].some(
-        (snapshot) => snapshot.image_id === localInstallImageId,
-      )}
-      {@const restage = !localInstalled && Boolean(localPreviewRefusals[group.primary.image_id])}
-      <AssistantCard
-        id={`assistant-${group.assistant_id}`}
-        class="assistant-card local-assistant-card"
-        name={group.primary.name}
-        meta={group.primary.declared_creators.join(', ')}
-        summary={localSnapshotSummary(group.primary)}
-        iconSrc={catalogIconUrls[localIconKey(group.primary)]}
-        iconStatus={catalogIconFailures[localIconKey(group.primary)] ? 'failed' : 'loading'}
-        iconLoading="eager"
-        badge={localCopy.localBadge}
-        badgeTone="local"
-        installed={localInstalled}
-        actionLabel={localInstalled ? localCopy.assistantUninstallConfirm : localCopy.localInstall}
-        actionDisabled={!activeTeamRecord || busy || dialogOpen || Boolean(localInstallImageId) || restage}
-        actionTone={localInstalled ? 'danger' : 'install'}
-        actionIcon={localInstalled ? 'uninstall' : 'add'}
-        actionPersistent={installing || restage}
-        actionStatus={installing ? localCopy.localInstalling : restage ? localCopy.localRestage : undefined}
-        onaction={() => localInstalled
-          ? beginAssistantUninstall(group.assistant_id)
-          : beginLocalSnapshotInstall(group)}
-        aria-label={`${group.assistant_id} — ${localCopy.localBadge}`}
-        aria-busy={installing}
-      />
+        <AssistantRow
+          id={`assistant-${group.assistant_id}`}
+          href={assistantHref(group.assistant_id)}
+          name={group.primary.name}
+          summary={localSnapshotSummary(group.primary)}
+          iconSrc={catalogIconUrls[localIconKey(group.primary)]}
+          iconStatus={catalogIconFailures[localIconKey(group.primary)] ? 'failed' : 'loading'}
+          badge={localCopy.localBadge}
+          badgeTone="local"
+          installed={installedIds.has(group.assistant_id)}
+          installedLabel={pageCopy.installedState}
+        />
       {/each}
 
       {#each visiblePublicAssistants as assistant (assistant.assistant_id)}
-      {@const installed = $teamContext.installedAssistants.find((entry) => entry.assistant === assistant.assistant_id)}
-      {@const publicationInstalled = installed?.provenance === 'published'}
-      {@const localBindingWithoutSnapshot = installed?.provenance === 'local'}
-      <AssistantCard
-        id={`assistant-${assistant.assistant_id}`}
-        class="assistant-card"
-        name={assistant.name}
-        meta={assistant.creators.join(', ')}
-        summary={publicCatalogLocale === $locale ? assistant.summary : ''}
-        iconSrc={catalogIconUrls[publicIconKey(assistant)]}
-        iconStatus={catalogIconFailures[publicIconKey(assistant)] ? 'failed' : 'loading'}
-        iconLoading="eager"
-        badge={localCopy.publicBadge}
-        installed={publicationInstalled}
-        actionLabel={publicationInstalled ? localCopy.assistantUninstallConfirm : localCopy.localInstall}
-        actionDisabled={!activeTeamRecord || busy || dialogOpen || Boolean(localInstallImageId) || localBindingWithoutSnapshot}
-        actionTone={publicationInstalled ? 'danger' : 'install'}
-        actionIcon={publicationInstalled ? 'uninstall' : 'add'}
-        actionPersistent={localBindingWithoutSnapshot}
-        actionStatus={localBindingWithoutSnapshot ? localCopy.localInstalledLabel : undefined}
-        onaction={() => publicationInstalled
-          ? beginAssistantUninstall(assistant.assistant_id)
-          : beginInstall(assistant.assistant_id, assistant.source_digest)}
-        aria-label={assistant.assistant_id}
-      />
+        <AssistantRow
+          id={`assistant-${assistant.assistant_id}`}
+          href={assistantHref(assistant.assistant_id)}
+          name={assistant.name}
+          summary={publicCatalogLocale === $locale ? assistant.summary : ''}
+          iconSrc={catalogIconUrls[publicIconKey(assistant)]}
+          iconStatus={catalogIconFailures[publicIconKey(assistant)] ? 'failed' : 'loading'}
+          badge={localCopy.publicBadge}
+          installed={installedIds.has(assistant.assistant_id)}
+          installedLabel={pageCopy.installedState}
+        />
       {/each}
     {/if}
   </div>
@@ -726,9 +373,7 @@
   {#if localSnapshotPhase === 'error' || publicCatalogPhase === 'error'}
     <Toolbar class="catalog-actions">
       {#if localSnapshotPhase === 'error'}
-        <Button variant="secondary" type="button" onclick={loadCatalogPresentation} disabled={Boolean(localInstallImageId)}>
-          {localCopy.localRetry}
-        </Button>
+        <Button variant="secondary" type="button" onclick={loadCatalogPresentation}>{localCopy.localRetry}</Button>
       {/if}
       {#if publicCatalogPhase === 'error'}
         <Button variant="secondary" type="button" onclick={loadCatalogPresentation}>{copy.retryStore}</Button>
@@ -737,59 +382,31 @@
   {/if}
 </section>
 
-<AssistantActionDialog
-  bind:open={dialogOpen}
-  title={dialogTitle}
-  lead={dialogLead}
-  targetLabel={dialogAction === 'uninstall' ? $t('store.assistantDestinationTeam') : copy.teamLabel}
-  targetName={selectedTeamRecord?.name ?? ''}
-  targetId={selectedTeamRecord?.id ?? ''}
-  progress={dialogMode === 'checking' ? copy.preparing : ''}
-  hint={dialogMode === 'no-team' ? copy.createFromSidebar : ''}
-  error={dialogError}
-  primaryLabel={dialogPrimaryLabel}
-  secondaryLabel={dialogSecondaryLabel}
-  primaryVisible={dialogPrimaryVisible}
-  primaryDisabled={!selectedTeamRecord || !pendingAssistantAvailable}
-  {busy}
-  destructive={dialogAction === 'uninstall'}
-  onconfirm={confirmAssistantAction}
-  oncancel={cancelAssistantDialog} />
-
-<LocalAssistantInstallDialog
-  bind:open={localInstallDialogOpen}
-  snapshot={pendingLocalSnapshot}
-  snapshots={pendingLocalSnapshots}
-  team={runningTeams.find((team) => team.id === pendingLocalTeamId) ?? null}
-  busy={Boolean(localInstallImageId)}
-  error={localInstallDialogError}
-  onconfirm={installLocalSnapshot}
-  oncancel={closeLocalSnapshotInstall}
-  onselect={selectLocalSnapshot}
-/>
-
 <style>
   .assistant-catalog {
     display: grid;
-    gap: var(--shimpz-space-3);
+    gap: var(--gap-item);
   }
+  /* Two per row, edge to edge across the content column. */
   .assistant-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 23rem));
-    gap: 1rem;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100cqw;
+    margin-inline: calc((100% - 100cqw) / 2);
   }
-  @media (max-width: 720px) {
-    .assistant-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .catalog-header { display: grid; gap: var(--gap-item); }
+  .catalog-team { display: grid; gap: var(--gap-inside); }
+  .team-label { color: var(--shimpz-color-text-dim); font: 600 0.62rem/1 var(--shimpz-font-mono); letter-spacing: 0.14em; text-transform: uppercase; }
+  .team-name { color: var(--shimpz-color-text); font: 700 1.6rem/1.1 var(--shimpz-font-mono); letter-spacing: -0.03em; }
+  /* With the catalog's item gap, the grid starts one panel step (24px) below the header it belongs to. */
+  .catalog-count {
+    margin: 0 0 var(--gap-group);
+    color: var(--shimpz-color-text-dim);
+    font: 600 0.66rem/1.4 var(--shimpz-font-mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
   }
-  @media (max-width: 540px) {
-    .assistant-grid { grid-template-columns: 1fr; }
-  }
-  /* The summary is a short description of at most 80 characters in every language (ADR-0091), shown whole under
-     the Assistant's name instead of clamped to two lines. */
-  .assistant-grid :global(.assistant-card p.assistant-summary) {
-    display: block;
-    overflow: visible;
-    -webkit-line-clamp: unset;
-    line-clamp: unset;
-  }
+  .catalog-count .count { color: var(--shimpz-color-cyan); }
+  .catalog-count .on { color: var(--shimpz-color-green); }
+  .catalog-count .sep { margin: 0 var(--gap-item); color: var(--shimpz-color-border); }
 </style>

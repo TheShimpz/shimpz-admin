@@ -24,6 +24,32 @@ function response(status, body) {
   };
 }
 
+
+// The page copy every public catalog entry carries beside its identity (Assistant Spec v1 display copy).
+const PAGE_COPY = {
+  description: 'Reads your zones and records and changes one only after your approval.',
+  links: { github: 'https://github.com/shimpz', site: 'https://shimpz.com/' },
+  actions: [
+    { id: 'delete-dns-record', effect: 'mutating', description: 'Delete one DNS record.' },
+    { id: 'list-zones', effect: 'read_only', description: 'List your zones.' },
+  ],
+  integrations: [{ id: 'cloudflare', provider: 'cloudflare' }],
+  stored_inputs: [],
+};
+
+function projectedPage(copy = PAGE_COPY) {
+  return {
+    description: copy.description,
+    links: Object.entries(copy.links)
+      .sort(([left], [right]) => ['site', 'github', 'x', 'youtube', 'linkedin', 'instagram'].indexOf(left)
+        - ['site', 'github', 'x', 'youtube', 'linkedin', 'instagram'].indexOf(right))
+      .map(([kind, url]) => ({ kind, url })),
+    actions: copy.actions,
+    integrations: copy.integrations,
+    storedInputs: copy.stored_inputs,
+  };
+}
+
 test('install is passive and never invokes an Assistant Action', async () => {
   const calls = [];
   const fetcher = async (url, options) => {
@@ -352,10 +378,13 @@ test('projects the strict public Assistant catalog used by native cards', async 
       headers: { Accept: 'application/json' },
       signal: controller.signal,
     });
-    return response(200, { version: 1, locale: 'pt', assistants: [assistant] });
+    return response(200, { version: 1, locale: 'pt', assistants: [{ ...assistant, ...PAGE_COPY }] });
   };
 
-  assert.deepEqual(await listPublicAssistantCatalog(fetcher, 'pt', controller.signal), [assistant]);
+  assert.deepEqual(
+    await listPublicAssistantCatalog(fetcher, 'pt', controller.signal),
+    [{ ...assistant, page: projectedPage() }],
+  );
 });
 
 test('reads the public Assistant catalog only in exactly the requested interface language', async () => {
@@ -398,6 +427,7 @@ test('bounds Assistant catalog names and summaries by Unicode code points, as th
         name,
         source_digest: SOURCE_DIGEST,
         summary,
+        ...PAGE_COPY,
       }],
     }), 'en');
     const snapshots = (name, summary) => listLocalAssistantSnapshots(async () => response(200, {
@@ -439,6 +469,7 @@ test('admits the producer public catalog size and no more', async () => {
     name: `Assistant ${index}`,
     source_digest: SOURCE_DIGEST,
     summary: 'A reviewed Assistant.',
+    ...PAGE_COPY,
   }));
   const catalog = (count) => async () => response(200, { version: 1, locale: 'en', assistants: entries(count) });
   assert.equal((await listPublicAssistantCatalog(catalog(1000), 'en')).length, 1000);
@@ -457,7 +488,9 @@ test('rejects malformed public Assistant catalog projections', async () => {
     name: 'Shimpz Cloudflare',
     source_digest: SOURCE_DIGEST,
     summary: 'Manage Cloudflare DNS.',
+    ...PAGE_COPY,
   };
+  const action = PAGE_COPY.actions[1];
   for (const body of [
     { version: 2, locale: 'en', assistants: [] },
     { version: 1, assistants: [] },
@@ -465,6 +498,24 @@ test('rejects malformed public Assistant catalog projections', async () => {
     { version: 1, locale: 'en', assistants: [{ ...valid, creators: [] }] },
     { version: 1, locale: 'en', assistants: [{ ...valid, source_digest: 'sha256:bad' }] },
     { version: 1, locale: 'en', assistants: [valid, valid] },
+    // The page copy follows its contract: bounded localized text, closed link kinds on their own hosts, sorted
+    // unique declarations, and only the two effects.
+    { version: 1, locale: 'en', assistants: [{ ...valid, description: 'd'.repeat(501) }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, description: ' Untrimmed.' }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, description: 'Bidi\u202eoverride.' }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, links: { facebook: 'https://facebook.com/shimpz' } }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, links: { github: 'https://gitlab.com/shimpz' } }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, links: { youtube: 'https://youtube.com.example.org/x' } }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, links: { site: 'http://shimpz.com/' } }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, links: { site: `https://shimpz.com/${'a'.repeat(238)}` } }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, links: [] }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, actions: [] }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, actions: [...PAGE_COPY.actions].reverse() }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, actions: [{ ...action, effect: 'deleting' }] }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, actions: [{ ...action, description: 'x'.repeat(121) }] }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, actions: [{ ...action, schema: {} }] }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, integrations: [{ id: 'cloudflare' }] }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, stored_inputs: [{ id: 'token', label: 'l'.repeat(121) }] }] },
   ]) {
     await assert.rejects(
       listPublicAssistantCatalog(async () => response(200, body), 'en'),

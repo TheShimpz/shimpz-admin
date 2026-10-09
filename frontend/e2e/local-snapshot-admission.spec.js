@@ -1,9 +1,10 @@
 import { expect, test } from '@playwright/test';
 import { LOCALES } from '../src/lib/locales.js';
 import { messages } from '../src/lib/messages.js';
+import { assistantDetails } from './assistantPages.js';
 
-// Team admits a staged snapshot's preview from the image's own files. A refused preview (409) keeps that card
-// uninstallable and names the next action; a transient failure stays installable, and every load validates each
+// Team admits a staged snapshot's preview from the image's own files. A refused preview (409) keeps that Assistant's
+// page uninstallable and names the next action; a transient failure stays installable, and every load validates each
 // staged image again.
 const REFUSED = `sha256:${'a'.repeat(64)}`;
 const ADMITTED = `sha256:${'b'.repeat(64)}`;
@@ -27,18 +28,26 @@ function refusal(code, status) {
   return { status, json: { detail: 'Local Assistant preview failed admission', code } };
 }
 
-// `preview(imageId)` answers one image's icon and summary: a route.fulfill options object, or a promise of one.
-async function routeStore(page, { snapshots, preview, installed = () => [], installs = [] }) {
+// `preview(imageId)` answers one image's icon, summary, and page: a route.fulfill options object, or a promise of one.
+// `bindings(assistantId)` answers an installed Assistant's page the same way.
+async function routeStore(page, { snapshots, preview, installed = () => [], installs = [], bindings = () => ({}) }) {
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
-    const previewPath = /^\/api\/local-assistants\/([0-9a-f]{64})\/(icon|summary)$/.exec(url.pathname);
+    const locale = url.searchParams.get('locale');
+    const previewPath = /^\/api\/local-assistants\/([0-9a-f]{64})\/(icon|summary|details)$/.exec(url.pathname);
     if (previewPath) {
-      const answer = await preview(`sha256:${previewPath[1]}`);
+      const imageId = `sha256:${previewPath[1]}`;
+      const answer = await preview(imageId);
       if (answer.status) return route.fulfill(answer);
       if (previewPath[2] === 'icon') return route.fulfill({ contentType: 'image/png', body: ICON });
-      const locale = url.searchParams.get('locale');
+      if (previewPath[2] === 'details') {
+        const staged = snapshots().find((entry) => entry.image_id === imageId);
+        return route.fulfill({ json: stagedDetails(staged, locale) });
+      }
       return route.fulfill({ json: { locale, summary: 'Exercises Local snapshot admission.' } });
     }
+    const bindingPath = /^\/api\/teams\/marketing\/assistants\/([a-z-]+)\/details$/.exec(url.pathname);
+    if (bindingPath) return route.fulfill(bindings(bindingPath[1]));
     if (url.pathname === '/api/teams/marketing/assistants/local') {
       installs.push(route.request().postDataJSON());
       return route.fulfill({ status: 409, json: { detail: 'Local Assistant snapshot failed admission' } });
@@ -59,8 +68,19 @@ async function routeStore(page, { snapshots, preview, installed = () => [], inst
   });
 }
 
-function card(page, assistantId) {
-  return page.getByRole('article', { name: `${assistantId} — Local` });
+function stagedDetails(staged, locale) {
+  return assistantDetails({
+    locale,
+    assistant_id: staged.assistant_id,
+    assistant_version: staged.assistant_version,
+    name: staged.name,
+    summary: staged.summary,
+  });
+}
+
+async function openPage(page, assistantId) {
+  await page.goto(`/assistants/${assistantId}?team=marketing`);
+  return page.getByRole('article');
 }
 
 test('keeps a refused staged snapshot uninstallable while transient failures stay installable', async ({ page }) => {
@@ -76,18 +96,22 @@ test('keeps a refused staged snapshot uninstallable while transient failures sta
     })[imageId] ?? {},
   });
 
-  await page.goto('/assistants/');
+  let sheet = await openPage(page, 'refused');
+  await expect(sheet.getByText(NEXT_ACTION)).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Install', exact: true })).toBeDisabled();
 
-  const refused = card(page, 'refused');
-  await expect(refused.getByRole('button', { name: 'Install or replace' })).toBeDisabled();
-  await expect(refused.getByRole('status')).toHaveText(NEXT_ACTION);
-  await expect(card(page, 'admitted').locator('.shimpz-assistant-icon img')).toHaveAttribute('src', /^blob:/);
-  await expect(card(page, 'admitted').getByRole('button', { name: 'Install or replace' })).toBeEnabled();
-  await expect(card(page, 'unavailable').getByRole('button', { name: 'Install or replace' })).toBeEnabled();
-  await expect(card(page, 'unavailable').getByRole('status')).toHaveCount(0);
+  sheet = await openPage(page, 'admitted');
+  await expect(sheet.locator('.icon-frame img')).toHaveAttribute('src', /^blob:/);
+  await expect(sheet.getByRole('button', { name: 'Install', exact: true })).toBeEnabled();
+  await expect(sheet.getByText(NEXT_ACTION)).toHaveCount(0);
+
+  sheet = await openPage(page, 'unavailable');
+  await expect(sheet.getByText('The details of this Assistant could not be read.')).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Install', exact: true })).toBeEnabled();
+  await expect(sheet.getByText(NEXT_ACTION)).toHaveCount(0);
 });
 
-test('refuses to submit an install when the refusal arrives after the dialog opened', async ({ page }) => {
+test('offers no install while a staged preview is still being admitted, and none once it is refused', async ({ page }) => {
   let releasePreview;
   const previewHeld = new Promise((resolve) => { releasePreview = resolve; });
   const installs = [];
@@ -100,32 +124,33 @@ test('refuses to submit an install when the refusal arrives after the dialog ope
     installs,
   });
 
-  await page.goto('/assistants/');
-  await card(page, 'refused').getByRole('button', { name: 'Install or replace' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Install Staged refused?' });
-  await expect(dialog).toBeVisible();
+  const sheet = await openPage(page, 'refused');
+  const install = sheet.getByRole('button', { name: 'Install', exact: true });
+  await expect(install).toBeDisabled();
   releasePreview();
-  await expect(card(page, 'refused').getByRole('status')).toHaveText(NEXT_ACTION);
-
-  await dialog.getByRole('button', { name: 'Install or replace' }).click();
-  await expect(dialog.getByText(NEXT_ACTION)).toBeVisible();
+  await expect(sheet.getByText(NEXT_ACTION)).toBeVisible();
+  await expect(install).toBeDisabled();
+  await install.click({ force: true });
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   expect(installs).toEqual([]);
 });
 
-test('keeps Uninstall for an installed Local Assistant whose staged preview is refused', async ({ page }) => {
+test('keeps Uninstall for an installed Local Assistant whose binding no longer reads', async ({ page }) => {
   await routeStore(page, {
     snapshots: () => [snapshot('refused', REFUSED)],
     preview: () => refusal('local-assistant-preview-invalid', 409),
-    installed: () => [{ assistant: 'refused', assistant_version: '0.1.0', status: 'running', provenance: 'local' }],
+    installed: () => [{ assistant: 'refused', assistant_version: '0.1.0', status: 'invalid', provenance: 'local' }],
+    bindings: () => refusal('assistant-manifest-invalid', 409),
   });
 
-  await page.goto('/assistants/');
-
-  const refused = card(page, 'refused');
-  await expect(refused.locator('.shimpz-assistant-icon')).toHaveAttribute('data-state', 'failed');
-  await expect(refused.getByRole('status')).toHaveCount(0);
-  await refused.getByRole('button', { name: 'Uninstall Assistant' }).click();
-  await expect(page.getByRole('dialog', { name: 'Uninstall Staged refused?' })).toBeVisible();
+  const sheet = await openPage(page, 'refused');
+  // The installed binding, not the staged image, is what this page shows: its details are unavailable, it names no
+  // staged-image action, and it can still be removed.
+  await expect(sheet.getByText('The details of this Assistant could not be read.')).toBeVisible();
+  await expect(sheet.getByText(NEXT_ACTION)).toHaveCount(0);
+  await expect(sheet.getByRole('heading', { level: 1 })).toHaveText('refused');
+  await sheet.getByRole('button', { name: 'Uninstall', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: 'Uninstall refused?' })).toBeVisible();
 });
 
 async function reloadInPortuguese(page) {
@@ -143,14 +168,13 @@ test('a refusal is validated again on the next load for the same image', async (
     preview: () => (admitted ? {} : refusal('local-assistant-preview-invalid', 409)),
   });
 
-  await page.goto('/assistants/');
-  await expect(card(page, 'restaged').getByRole('button', { name: 'Install or replace' })).toBeDisabled();
+  const sheet = await openPage(page, 'restaged');
+  await expect(sheet.getByRole('button', { name: 'Install', exact: true })).toBeDisabled();
 
   admitted = true;
   await reloadInPortuguese(page);
 
-  const restaged = card(page, 'restaged');
-  await expect(restaged.locator('.shimpz-assistant-icon img')).toHaveAttribute('src', /^blob:/);
-  await expect(restaged.getByRole('button', { name: messages.pt.store.localInstall })).toBeEnabled();
-  await expect(restaged.getByRole('status')).toHaveCount(0);
+  await expect(sheet.locator('.icon-frame img')).toHaveAttribute('src', /^blob:/);
+  await expect(sheet.getByRole('button', { name: messages.pt.assistantPage.install, exact: true })).toBeEnabled();
+  await expect(sheet.getByText(NEXT_ACTION)).toHaveCount(0);
 });

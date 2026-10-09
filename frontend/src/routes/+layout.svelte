@@ -49,7 +49,8 @@
         : '',
   );
   let sessionSettled = $derived(phase !== 'checking' || error !== '');
-  let exactAssistantsRoute = $derived(/^\/assistants\/?$/.test(page.url.pathname));
+  // The Assistants catalog and each Assistant's own page settle the first view when their content is presentable.
+  let exactAssistantsRoute = $derived(/^\/assistants(?:\/[a-z][a-z0-9-]*)?\/?$/.test(page.url.pathname));
   let initialStateSettled = $derived.by(() => {
     if (phase !== 'ready') return sessionSettled;
     if (!['ready', 'error'].includes($teamContext.phase)) return false;

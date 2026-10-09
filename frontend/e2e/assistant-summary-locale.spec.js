@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { LOCALES } from '../src/lib/locales.js';
 import { messages } from '../src/lib/messages.js';
+import { assistantDetails, PAGE_COPY } from './assistantPages.js';
 
 // ADR-0091: published and staged Assistant summaries follow the interface language. Published summaries come from
 // the locale-keyed public catalog; a staged snapshot's comes from its own language pack through Team. English is the
@@ -20,10 +21,25 @@ const STAGED = {
   pt: 'Inspeciona zonas Cloudflare preparadas.',
   es: 'Inspecciona zonas de Cloudflare preparadas.',
 };
+// Each page's description and Action description in the interface language (ADR-0091 display copy).
+const DESCRIPTION = {
+  en: 'Publishes one reviewed DNS change after your approval.',
+  pt: 'Publica uma alteração de DNS revisada depois da sua aprovação.',
+  es: 'Publica un cambio de DNS revisado después de tu aprobación.',
+};
+const ACTION = { en: 'List your domains.', pt: 'Ver seus domínios.', es: 'Ver tus dominios.' };
+
+function localizedCopy(locale) {
+  return {
+    ...structuredClone(PAGE_COPY),
+    description: DESCRIPTION[locale] ?? DESCRIPTION.en,
+    actions: [{ id: 'list-zones', effect: 'read_only', description: ACTION[locale] ?? ACTION.en }],
+  };
+}
 
 // Answers each catalog read only once `catalogGate(locale)` settles, so a test can hold one language's reply.
 async function routeAssistants(page, { catalogLocale = (locale) => locale, catalogGate = async () => {} } = {}) {
-  const requests = { catalog: [], summaries: [] };
+  const requests = { catalog: [], summaries: [], details: [] };
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
     const locale = url.searchParams.get('locale');
@@ -34,7 +50,15 @@ async function routeAssistants(page, { catalogLocale = (locale) => locale, catal
         assistant_id: 'dns-publisher', assistant_version: '1.0.0', creators: ['@creator'],
         icon_digest: `sha256:${'d'.repeat(64)}`, name: 'DNS Publisher',
         source_digest: `sha256:${'c'.repeat(64)}`, summary: PUBLISHED[locale] ?? PUBLISHED.en,
+        ...localizedCopy(locale),
       }] } });
+    }
+    if (url.pathname === `/api/local-assistants/${IMAGE_ID.slice(7)}/details`) {
+      requests.details.push(locale);
+      return route.fulfill({ json: assistantDetails({
+        locale, assistant_id: 'zone-inspector', assistant_version: '0.1.0', name: 'Zone Inspector',
+        summary: STAGED[locale] ?? STAGED.en, ...localizedCopy(locale),
+      }) });
     }
     if (url.pathname === `/api/local-assistants/${IMAGE_ID.slice(7)}/summary`) {
       requests.summaries.push(locale);
@@ -82,8 +106,8 @@ async function switchLanguage(page, from, to) {
 test('shows published and staged summaries in the interface language and reloads them on a language change', async ({ page }) => {
   const requests = await routeAssistants(page);
   await page.goto('/assistants/');
-  const published = page.getByRole('article', { name: 'dns-publisher' });
-  const staged = page.getByRole('article', { name: /^zone-inspector/ });
+  const published = page.getByRole('link', { name: /^DNS Publisher/ });
+  const staged = page.getByRole('link', { name: /^Zone Inspector/ });
   await expect(published).toContainText(PUBLISHED.en);
   await expect(staged).toContainText(STAGED.en);
   expect(requests.summaries).toEqual([]);
@@ -103,8 +127,8 @@ test('a staged summary opens directly in the stored interface language', async (
   await page.addInitScript(() => localStorage.setItem('shimpz_lang', 'pt'));
   const requests = await routeAssistants(page);
   await page.goto('/assistants/');
-  await expect(page.getByRole('article', { name: /^zone-inspector/ })).toContainText(STAGED.pt);
-  await expect(page.getByRole('article', { name: 'dns-publisher' })).toContainText(PUBLISHED.pt);
+  await expect(page.getByRole('link', { name: /^Zone Inspector/ })).toContainText(STAGED.pt);
+  await expect(page.getByRole('link', { name: /^DNS Publisher/ })).toContainText(PUBLISHED.pt);
   await expect.poll(() => requests.catalog).toEqual(['pt']);
   await expect.poll(() => requests.summaries).toEqual(['pt']);
 });
@@ -113,15 +137,15 @@ test('a public catalog answered in another language is refused instead of shown'
   await page.addInitScript(() => localStorage.setItem('shimpz_lang', 'pt'));
   await routeAssistants(page, { catalogLocale: () => 'en' });
   await page.goto('/assistants/');
-  await expect(page.getByRole('article', { name: /^zone-inspector/ })).toBeVisible();
-  await expect(page.getByRole('article', { name: 'dns-publisher' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: /^Zone Inspector/ })).toBeVisible();
+  await expect(page.getByRole('link', { name: /^DNS Publisher/ })).toHaveCount(0);
 });
 
 test("rapid language switches present only the selected language's published summary", async ({ page }) => {
   const gates = { pt: held(), es: held() };
   const requests = await routeAssistants(page, { catalogGate: (locale) => gates[locale]?.promise });
   await page.goto('/assistants/');
-  const published = page.getByRole('article', { name: 'dns-publisher' });
+  const published = page.getByRole('link', { name: /^DNS Publisher/ });
   await expect(published).toContainText(PUBLISHED.en);
 
   await switchLanguage(page, 'en', 'pt');
@@ -140,7 +164,7 @@ test("rapid language switches present only the selected language's published sum
   gates.es.release();
   await expect(published).toContainText(PUBLISHED.es);
   // The staged Local summary is shown in the selected language once its catalog is presented.
-  await expect(page.getByRole('article', { name: /^zone-inspector/ })).toContainText(STAGED.es);
+  await expect(page.getByRole('link', { name: /^Zone Inspector/ })).toContainText(STAGED.es);
 
   // Returning to English hides the Spanish summary until the English catalog is presented again.
   const en = held();
@@ -152,3 +176,25 @@ test("rapid language switches present only the selected language's published sum
   await expect(published).toContainText(PUBLISHED.en);
   await expect(published).not.toContainText(PUBLISHED.es);
 });
+
+test("an Assistant's page shows its copy in the interface language and reloads it on a language change", async ({ page }) => {
+  const requests = await routeAssistants(page);
+  for (const [path, summaries] of [['dns-publisher', PUBLISHED], ['zone-inspector', STAGED]]) {
+    await page.goto(`/assistants/${path}?team=marketing`);
+    const sheet = page.getByRole('article');
+    await expect(sheet.getByRole('heading', { level: 2 })).toHaveText(summaries.en);
+    await expect(sheet.getByText(DESCRIPTION.en, { exact: true })).toBeVisible();
+    await sheet.getByRole('group').getByText(messages.en.assistantPage.readActions).click();
+    await expect(sheet.getByText(/list your domains/)).toBeVisible();
+
+    await switchLanguage(page, 'en', 'pt');
+    await expect(sheet.getByRole('heading', { level: 2 })).toHaveText(summaries.pt);
+    await expect(sheet.getByText(DESCRIPTION.pt, { exact: true })).toBeVisible();
+    await expect(sheet.getByText(DESCRIPTION.en, { exact: true })).toHaveCount(0);
+    await switchLanguage(page, 'pt', 'en');
+  }
+  // English is the staged image's catalog itself, but its page also carries Action and credential copy, so every
+  // language reads it from Team.
+  await expect.poll(() => requests.details).toEqual(['en', 'pt', 'en']);
+});
+

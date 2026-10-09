@@ -1,3 +1,4 @@
+import { assistantPageMessages } from './assistantPageMessages.js';
 import { attachmentMessages } from './attachmentMessages.js';
 import { humanRequestMessages } from './humanRequestMessages.js';
 import { routineMessages } from './routineMessages.js';
@@ -472,6 +473,7 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.en,
     routine: routineMessages.en,
+    assistantPage: assistantPageMessages.en,
     attachments: attachmentMessages.en,
     teamNavigation: {
       label: "Teams",
@@ -881,6 +883,7 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.pt,
     routine: routineMessages.pt,
+    assistantPage: assistantPageMessages.pt,
     attachments: attachmentMessages.pt,
     teamNavigation: {
       label: "Times",
@@ -1290,6 +1293,7 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.es,
     routine: routineMessages.es,
+    assistantPage: assistantPageMessages.es,
     attachments: attachmentMessages.es,
     teamNavigation: {
       label: "Equipos",
@@ -1699,6 +1703,7 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.zh,
     routine: routineMessages.zh,
+    assistantPage: assistantPageMessages.zh,
     attachments: attachmentMessages.zh,
     teamNavigation: {
       label: "团队",
@@ -2108,6 +2113,7 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.fr,
     routine: routineMessages.fr,
+    assistantPage: assistantPageMessages.fr,
     attachments: attachmentMessages.fr,
     teamNavigation: {
       label: "Équipes",
@@ -2517,6 +2523,7 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.de,
     routine: routineMessages.de,
+    assistantPage: assistantPageMessages.de,
     attachments: attachmentMessages.de,
     teamNavigation: {
       label: "Teams",
@@ -2926,6 +2933,7 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.ja,
     routine: routineMessages.ja,
+    assistantPage: assistantPageMessages.ja,
     attachments: attachmentMessages.ja,
     teamNavigation: {
       label: "チーム",
@@ -3335,6 +3343,7 @@ export const messages = {
     },
     humanRequest: humanRequestMessages.ar,
     routine: routineMessages.ar,
+    assistantPage: assistantPageMessages.ar,
     attachments: attachmentMessages.ar,
     teamNavigation: {
       label: "الفرق",

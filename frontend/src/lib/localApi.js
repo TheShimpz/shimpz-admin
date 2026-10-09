@@ -9,6 +9,7 @@ import {
   TEAM_ID_RE,
   TRACE_ID_RE,
 } from './validate.js';
+import { AssistantPageError, canonicalPageCopy } from './assistantPage.js';
 import { isLocale } from './locales.js';
 
 const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
@@ -76,8 +77,9 @@ export async function listAssistantCatalog(fetcher) {
 }
 
 /**
- * Read the exact bounded public Store projection used by the native Admin catalog in one interface language. Only
- * each summary is localized, from the publication's own language pack; a catalog in any other language is refused.
+ * Read the exact bounded public Store projection used by the native Admin catalog and Assistant pages in one interface
+ * language. Only the display copy (summary, description, Action descriptions, and Stored Input labels) is localized,
+ * from the publication's own language pack; a catalog in any other language is refused.
  */
 export async function listPublicAssistantCatalog(fetcher, locale, signal) {
   if (typeof fetcher !== 'function' || !isLocale(locale)) {
@@ -106,12 +108,17 @@ export async function listPublicAssistantCatalog(fetcher, locale, signal) {
   return body.assistants.map((entry) => {
     if (
       !exactKeys(entry, [
+        'actions',
         'assistant_id',
         'assistant_version',
         'creators',
+        'description',
         'icon_digest',
+        'integrations',
+        'links',
         'name',
         'source_digest',
+        'stored_inputs',
         'summary',
       ]) ||
       typeof entry.assistant_id !== 'string' ||
@@ -141,7 +148,23 @@ export async function listPublicAssistantCatalog(fetcher, locale, signal) {
       throw new LocalApiError('The Assistant catalog is invalid.', response.status);
     }
     seen.add(entry.assistant_id);
-    return { ...entry, creators: [...entry.creators] };
+    let page;
+    try {
+      page = canonicalPageCopy(entry);
+    } catch (error) {
+      if (error instanceof AssistantPageError) throw new LocalApiError('The Assistant catalog is invalid.', response.status);
+      throw error;
+    }
+    return {
+      assistant_id: entry.assistant_id,
+      assistant_version: entry.assistant_version,
+      creators: [...entry.creators],
+      icon_digest: entry.icon_digest,
+      name: entry.name,
+      source_digest: entry.source_digest,
+      summary: entry.summary,
+      page,
+    };
   });
 }
 

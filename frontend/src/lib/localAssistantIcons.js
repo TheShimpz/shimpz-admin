@@ -1,6 +1,14 @@
+import { AssistantPageError, canonicalPageCopy, isDisplayText, SUMMARY_CHARS } from './assistantPage.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import { isLocale } from './locales.js';
-import { ASSISTANT_ID_RE, codePointLength, CONTROL_RE, exactKeys, jsonObject, TEAM_ID_RE } from './validate.js';
+import {
+  ASSISTANT_ID_RE,
+  codePointLength,
+  CONTROL_RE,
+  exactKeys,
+  jsonObject,
+  TEAM_ID_RE,
+} from './validate.js';
 
 const MAX_CONCURRENT_ICONS = 2;
 const MAX_ICON_BYTES = 1024 * 1024;
@@ -8,6 +16,21 @@ const MAX_BUSY_RETRIES = 2;
 const PUBLIC_BUSY_RETRY_MS = 50;
 const SHA256_RE = /^sha256:[0-9a-f]{64}$/;
 const MAX_SUMMARY_CHARS = 80;
+const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
+const PUBLIC_CREATOR_RE = /^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+const DETAILS_KEYS = [
+  'actions',
+  'assistant_id',
+  'assistant_version',
+  'creators',
+  'description',
+  'integrations',
+  'links',
+  'locale',
+  'name',
+  'stored_inputs',
+  'summary',
+];
 const ERROR_CODE_RE = /^[a-z0-9]+(?:-[a-z0-9]+){0,15}$/;
 // Team's refusal of a staged image's preview because that image fails current admission.
 const INADMISSIBLE_PREVIEW = 'local-assistant-preview-invalid';
@@ -181,6 +204,60 @@ async function fetchLocalSummary(fetcher, imageId, locale, delay, signal) {
   }
 }
 
+/**
+ * Admit one Assistant page answer from Team (ADR-0091): the exact identity and interface language asked for, its name,
+ * declared Creators, summary, and page copy. A staged snapshot declares at most four Creators.
+ */
+function acceptedDetails(body, expected, status) {
+  const invalid = () => new LocalApiError('The Assistant details are invalid.', status);
+  if (
+    !exactKeys(body, DETAILS_KEYS) ||
+    body.locale !== expected.locale ||
+    body.assistant_id !== expected.assistantId ||
+    typeof body.assistant_version !== 'string' ||
+    !SEMANTIC_VERSION_RE.test(body.assistant_version) ||
+    !isDisplayText(body.name, 80) ||
+    !isDisplayText(body.summary, SUMMARY_CHARS) ||
+    !Array.isArray(body.creators) ||
+    body.creators.length < 1 ||
+    body.creators.length > expected.maxCreators ||
+    body.creators.some((creator) => typeof creator !== 'string' || !PUBLIC_CREATOR_RE.test(creator)) ||
+    new Set(body.creators).size !== body.creators.length
+  ) {
+    throw invalid();
+  }
+  try {
+    return {
+      assistant_id: body.assistant_id,
+      assistant_version: body.assistant_version,
+      name: body.name,
+      creators: [...body.creators],
+      summary: body.summary,
+      page: canonicalPageCopy(body),
+    };
+  } catch (error) {
+    if (error instanceof AssistantPageError) throw invalid();
+    throw error;
+  }
+}
+
+async function fetchLocalDetails(fetcher, imageId, expected, delay, signal) {
+  const imageHash = imageId.slice('sha256:'.length);
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetcher(`/api/local-assistants/${imageHash}/details?locale=${expected.locale}`, {
+      cache: 'no-store',
+      headers: { Accept: 'application/json' },
+      signal,
+    });
+    if (response.ok) return acceptedDetails(await jsonObject(response), expected, response.status);
+    const retryAfter = await localBusyRetry(response);
+    if (retryAfter === null || attempt >= MAX_BUSY_RETRIES) {
+      throw await responseError(response, 'The Local Assistant details are unavailable.');
+    }
+    await delay(retryAfter, signal);
+  }
+}
+
 async function fetchPublicIcon(fetcher, assistantId, delay, signal) {
   for (let attempt = 0; attempt <= MAX_BUSY_RETRIES; attempt += 1) {
     const response = await fetcher(`/api/assistants/${encodeURIComponent(assistantId)}/catalog-icon`, {
@@ -272,4 +349,52 @@ export async function loadAssistantSummary(fetcher, teamId, assistantId, locale,
   });
   if (!response.ok) throw await responseError(response, 'The Assistant summary is unavailable.');
   return acceptedSummary(await jsonObject(response), locale, response.status, 'The Assistant summary is invalid.');
+}
+
+/**
+ * Fetch one staged snapshot's page in one interface language: Team reads it from the exact image's manifest, contract,
+ * and own language pack (ADR-0091), through the same two-slot queue as its icon because both share Team's preview.
+ */
+export function loadLocalAssistantDetails(fetcher, imageId, assistantId, locale, options = {}) {
+  const { delay = sleep, signal } = options;
+  if (
+    typeof fetcher !== 'function' ||
+    !SHA256_RE.test(imageId) ||
+    typeof assistantId !== 'string' ||
+    !ASSISTANT_ID_RE.test(assistantId) ||
+    !isLocale(locale) ||
+    typeof delay !== 'function' ||
+    (signal !== undefined && !(signal instanceof AbortSignal))
+  ) {
+    return Promise.reject(new LocalApiError('Invalid Local Assistant details request.'));
+  }
+  const expected = { assistantId, locale, maxCreators: 4 };
+  return schedule(localQueue, () => fetchLocalDetails(fetcher, imageId, expected, delay, signal), signal);
+}
+
+/**
+ * Fetch one installed Assistant's page in one interface language, read by Team from the exact binding it runs and that
+ * binding's own language pack (ADR-0091). There is no English fallback and no substitute from discovery.
+ */
+export async function loadAssistantDetails(fetcher, teamId, assistantId, locale, options = {}) {
+  const { signal } = options;
+  if (
+    typeof fetcher !== 'function' ||
+    typeof teamId !== 'string' ||
+    !TEAM_ID_RE.test(teamId) ||
+    typeof assistantId !== 'string' ||
+    !ASSISTANT_ID_RE.test(assistantId) ||
+    !isLocale(locale) ||
+    (signal !== undefined && !(signal instanceof AbortSignal))
+  ) {
+    throw new LocalApiError('Invalid Assistant details request.');
+  }
+  const path = `/api/teams/${encodeURIComponent(teamId)}/assistants/${encodeURIComponent(assistantId)}/details`;
+  const response = await fetcher(`${path}?locale=${locale}`, {
+    cache: 'no-store',
+    headers: { Accept: 'application/json' },
+    signal,
+  });
+  if (!response.ok) throw await responseError(response, 'The Assistant details are unavailable.');
+  return acceptedDetails(await jsonObject(response), { assistantId, locale, maxCreators: 16 }, response.status);
 }

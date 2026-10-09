@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 
 import { expect, test } from '@playwright/test';
+import { assistantDetails, PAGE_COPY } from './assistantPages.js';
 
 import { messages } from '../src/lib/messages.js';
 import { accessibilityViolations } from './axe.js';
@@ -77,12 +78,17 @@ async function routeAssistantStoreUninstall(page) {
         name: 'Shimpz Cloudflare',
         source_digest: `sha256:${'f'.repeat(64)}`,
         summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
+        ...structuredClone(PAGE_COPY),
       }],
     }),
   }));
   await page.route('**/api/local-assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [], trace_id: 'c'.repeat(32) }),
+  }));
+  await page.route(/\/api\/teams\/marketing\/assistants\/shimpz-cloudflare\/details\?locale=en$/, (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(assistantDetails({ assistant_version: '0.4.1' })),
   }));
 }
 
@@ -134,17 +140,6 @@ async function freezeClock(page, time = new Date()) {
 async function fillWhenReady(page, composer, message) {
   await composer.fill(message);
   await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
-}
-
-// A touch screen shows an Assistant card's actions without hover, and a person taps them; a pointer hovers the card
-// first. Each touch-project run therefore proves the actions reachable and working by touch alone.
-async function pressCardAction(card, action, testInfo) {
-  if (testInfo.project.use.hasTouch) {
-    await action.tap();
-    return;
-  }
-  await card.hover();
-  await action.click();
 }
 
 async function openTeamNavigation(page) {
@@ -3839,8 +3834,8 @@ test('reports an already-absent Store uninstall and keeps Chat usable', async ({
     body: JSON.stringify({ assistant: 'shimpz-cloudflare', uninstalled: false }),
   }));
 
-  await page.goto('/assistants/');
-  await page.getByRole('button', { name: 'Uninstall' }).click();
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  await page.getByRole('button', { name: 'Uninstall', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Uninstall Shimpz Cloudflare?' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Uninstall Assistant' }).click();
@@ -3871,8 +3866,8 @@ test('reports a committed uninstall when the Team inventory cannot refresh', asy
     });
   });
 
-  await page.goto('/assistants/');
-  await page.getByRole('button', { name: 'Uninstall' }).click();
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  await page.getByRole('button', { name: 'Uninstall', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Uninstall Shimpz Cloudflare?' });
   await dialog.getByRole('button', { name: 'Uninstall Assistant' }).click();
 
@@ -3961,6 +3956,7 @@ test('keeps a first Store install ready while local display metadata catches up'
         name: 'Shimpz Cloudflare',
         source_digest: `sha256:${'4'.repeat(64)}`,
         summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
+        ...structuredClone(PAGE_COPY),
       }],
     }),
   }));
@@ -3976,9 +3972,16 @@ test('keeps a first Store install ready while local display metadata catches up'
     ),
   }));
 
+  await page.route(/\/api\/teams\/marketing\/assistants\/shimpz-cloudflare\/details\?locale=en$/, (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(assistantDetails({ assistant_version: '0.1.0' })),
+  }));
+
   await page.goto('/assistants/');
-  const install = page.getByRole('button', { name: 'Install or replace' });
-  await pressCardAction(page.getByRole('article').filter({ has: install }), install, testInfo);
+  await page.getByRole('link', { name: /^Shimpz Cloudflare/ }).click();
+  const install = page.getByRole('button', { name: 'Install', exact: true });
+  if (testInfo.project.use.hasTouch) await install.tap();
+  else await install.click();
   const dialog = page.getByRole('dialog', { name: 'Install this Assistant?' });
   await expect(dialog).toBeVisible();
   await dialog.getByRole('button', { name: 'Confirm install' }).click();
@@ -3987,7 +3990,7 @@ test('keeps a first Store install ready while local display metadata catches up'
     'Shimpz Cloudflare is ready in Marketing.',
   );
   await expect(page.getByText('The installed Assistant inventory is invalid.', { exact: true })).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Uninstall' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Uninstall', exact: true })).toBeVisible();
   expect(catalogReads).toBeGreaterThanOrEqual(2);
 });
 
