@@ -21,6 +21,8 @@ import {
   runBinding,
 } from '../src/lib/routine.js';
 import { routineMessages } from '../src/lib/routineMessages.js';
+import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from '../src/lib/localApi.js';
+import { loadAssistantDetails, loadLocalAssistantDetails, loadLocalAssistantSummary } from '../src/lib/localAssistantIcons.js';
 import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
 import { ROUTINE_TEXT, routineLifecycleStart } from '../e2e/routineScenarios.js';
 
@@ -468,3 +470,25 @@ test('the preview confirms a Routine deletion with a password and a code, and re
   assert.equal(scenario.respond({ method: 'DELETE', path: routine, body: { code: '123456' } }).json.deleted, true);
   assert.equal(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines.length, 1);
 });
+
+test("the catalog scenario's Assistants and pages pass Admin's own admission in each language", async () => {
+  const scenario = createScenario('catalog');
+  const fetcher = adapter(scenario);
+  const snapshots = await listLocalAssistantSnapshots(fetcher);
+  assert.equal(snapshots.length, 4);
+  assert.deepEqual(await listPublicAssistantCatalog(fetcher, 'pt'), []);
+  for (const locale of ['en', 'pt', 'ja']) {
+    for (const snapshot of snapshots) {
+      const page = await loadLocalAssistantDetails(fetcher, snapshot.image_id, snapshot.assistant_id, locale);
+      assert.equal(page.summary, await loadLocalAssistantSummary(fetcher, snapshot.image_id, locale));
+    }
+    for (const assistant of ['shimpz-cloudflare', 'shimpz-exa']) {
+      const page = await loadAssistantDetails(fetcher, 'marketing', assistant, locale);
+      assert.equal(page.assistant_id, assistant);
+    }
+  }
+  const unstaged = scenario.respond({ path: `/api/local-assistants/${'f'.repeat(64)}/details`, query: new URLSearchParams('locale=en') });
+  assert.equal(unstaged, null);
+  assert.equal(scenario.respond({ path: '/api/teams/marketing/assistants/meta-ads/details' }), null);
+});
+

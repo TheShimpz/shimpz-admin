@@ -3,6 +3,7 @@
 // closed. Nothing here reaches a real Admin, Team, Brain, or provider.
 import modelCatalog from '../src/lib/modelCatalog.json' with { type: 'json' };
 import { attachmentReply, fileApprovalChallenge, recordAttachedTurn, uploadFile } from './attachmentScenarios.js';
+import { catalogBindingAnswer, catalogImageAnswer, catalogInventory, catalogSnapshots } from './catalogScenario.js';
 import { localizedChallenge } from './localizedRequest.js';
 import {
   recordDeletion,
@@ -107,6 +108,8 @@ const ok = (json) => ({ status: 200, json: structuredClone(json) });
 // Each scenario names its starting state; `ready` is the Local chat with its Team list and no Routines.
 const STARTS = {
   ready: () => ({ session: authenticatedLocalSession(), teams: [...TEAMS], routines: [], runs: [] }),
+  // The owner's Assistants catalog: four staged Assistants, two installed in Marketing, each with its own page.
+  catalog: () => ({ session: authenticatedLocalSession(), teams: [...TEAMS], routines: [], runs: [], catalog: true }),
   // The next Team order save finds the membership changed: a Team created elsewhere appears, and Admin answers 409.
   'reorder-conflict': () => ({
     session: authenticatedLocalSession(),
@@ -527,6 +530,16 @@ export function historyView(entries, routine = null) {
       (entry.run_id !== null || entry.outcome === 'healthy' || entry.outcome === 'skipped')));
 }
 
+// The catalog scenario's Assistants: the staged snapshots and their pages, Marketing's installed bindings, and an
+// empty public catalog in the requested interface language.
+function catalogRoutes(path, locale) {
+  if (path === '/api/local-assistants') return ok({ assistants: catalogSnapshots(), trace_id: 'c'.repeat(32) });
+  if (path === '/api/assistant-catalog') return ok({ version: 1, locale, assistants: [] });
+  if (path === '/api/teams/marketing/assistants') return ok({ assistants: catalogInventory() });
+  const answer = catalogImageAnswer(path, locale) ?? catalogBindingAnswer(path, locale);
+  return answer ? ok(answer) : null;
+}
+
 /**
  * A fresh scenario; `respond` returns `{ status, json }` or null for a request this scenario does not answer. `query`
  * holds the request's search parameters.
@@ -555,6 +568,10 @@ export function createScenario(name = 'ready', locale = 'en') {
         return ok({ team_id: 'marketing', team_name: name });
       }
       if (!state.teams.length) return null;
+      if (state.catalog && method === 'GET') {
+        const answer = catalogRoutes(path, query.get('locale'));
+        if (answer) return answer;
+      }
       if (!path.startsWith('/api/teams/marketing/')) return otherTeamRoutes(state, method, path);
       if (path === '/api/teams/marketing/assistants' && method === 'GET') {
         return ok({
