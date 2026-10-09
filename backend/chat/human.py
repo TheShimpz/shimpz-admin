@@ -340,8 +340,9 @@ def _kind(request: dict[str, object], kind: str) -> bool:
         return fields == base
     if kind in LENGTH_KINDS:
         expected = base | {"label", "required", "placeholder", "min_length", "max_length"}
-        if kind == "input:password" and "stored_input" in fields:
-            if not _stored_input(request["stored_input"]):
+        if kind == "input:password":
+            # A password always names the Stored Input Team keeps it as (ADR-0106).
+            if not _stored_input(request.get("stored_input")):
                 return False
             expected |= {"stored_input"}
         return fields == expected and _length(request, LENGTH_KINDS[kind])
@@ -358,7 +359,7 @@ def _kind(request: dict[str, object], kind: str) -> bool:
     return False
 
 
-# Team names a persistent password Stored Input with its exact identifier grammar (ADR-0059).
+# Team names a persistent password Stored Input with its exact identifier grammar (ADR-0059, ADR-0106).
 def _stored_input(value: object) -> bool:
     return team_contract.canonical_identifier(value) is not None
 

@@ -50,6 +50,8 @@ def _request(kind: str) -> dict[str, object]:
             min_length=1,
             max_length=human.LENGTH_KINDS[kind],
         )
+        if kind == "input:password":
+            base["stored_input"] = "exa-api-key"
     elif kind in human.CHOICE_KINDS or kind == "input:choices":
         base.update(
             label="Options",
@@ -189,6 +191,7 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         for invalid in (
             _fingerprinted({**request, "stored_input": "Exa_Key"}),
             _fingerprinted({**request, "stored_input": None}),
+            _fingerprinted({key: value for key, value in request.items() if key != "stored_input"}),
             _fingerprinted({**text, "stored_input": "exa-api-key"}),
         ):
             with self.subTest(request=invalid):
@@ -226,7 +229,6 @@ class HumanChallengeProjectionTests(unittest.TestCase):
             _response(stored, help_url="http://dashboard.exa.ai/api-keys"),
             _response(stored, help_url="https://dashboard.exa.ai"),
             _response(stored, help_url="https://dashboard.exa.ai/api-keys\n"),
-            _response(_request("input:password"), help_url=help_url),
             _response(_request("input:text"), help_url=help_url),
             _response(_request("approval"), help_url=help_url),
             _response(stored, language_exemplar="oi"),

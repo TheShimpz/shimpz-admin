@@ -211,6 +211,7 @@ def human_challenge(kind: str, status: int = 428) -> object:
             placeholder="Enter the secret",
             min_length=1,
             max_length=1024,
+            stored_input="exa-api-key",
         )
     request, rendered = localized_request.localize(plain)
     return local_module.PublicResponse(
