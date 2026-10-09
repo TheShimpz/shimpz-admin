@@ -238,9 +238,6 @@ test('a Routine question is admitted only in its closed form and reads as facts 
   for (const invalid of [
     null,
     { code: 'routine-other', options: [], value: null },
-    { code: 'routine-no-room', options: [], value: null },
-    { code: 'routine-timezone-unstated', options: [], value: null },
-    { code: 'routine-timezone-ambiguous', options: [], value: null },
     { code: 'routine-schedule-unstated', options: [target(quoted('a'))], value: null },
     { code: 'routine-schedule-unstated', options: [], value: 9 },
     { code: 'routine-interval-over-budget', options: [], value: 4 },

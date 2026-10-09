@@ -255,7 +255,7 @@ class HumanChallengeProjectionTests(unittest.TestCase):
             _response(stored, help=" Untrimmed help."),
             _response(stored, help="x" * 501),
             _response(stored, help=None),
-            _response(stored, language_exemplar="oi"),
+            _response(stored, unexpected="oi"),
         )
         for body in invalid:
             with self.subTest(body=body):

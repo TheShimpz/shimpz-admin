@@ -107,8 +107,7 @@ class TeamCapabilityPlanBridgeTests(unittest.TestCase):
         invalid = (
             {"objective": "hello", "expected_intent": None},
             {**without_locale, "locale": "pt", "extra": True},
-            {**without_locale, "locale": "pt", "pending_intent": "assistant-uninstall"},
-            {**without_locale, "language_exemplar": "hello"},
+            without_locale,
             [],
         )
         for payload in invalid:

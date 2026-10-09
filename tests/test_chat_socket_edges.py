@@ -204,7 +204,6 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
                 {key: value for key, value in valid.items() if key != "locale"},
                 {**valid, "locale": None},
                 {**valid, "locale": "pt-BR"},
-                {**valid, "language_exemplar": "Lista minhas zonas"},
                 {key: value for key, value in valid.items() if key != "request"},
                 {**valid, "request": {"nonce": "x", "resend": False}},
             )

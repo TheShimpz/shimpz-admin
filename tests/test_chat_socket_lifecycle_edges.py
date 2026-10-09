@@ -236,7 +236,6 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
                 {"type": "chat", "message": "oi", "files": [], "assistant_ids": []},
                 chat_socket_fixtures.chat_frame("oi", locale=None),
                 chat_socket_fixtures.chat_frame("oi", locale="pt-BR"),
-                {"type": "chat", "message": "oi", "files": [], "assistant_ids": [], "language_exemplar": "oi"},
                 {
                     "type": "chat",
                     "message": "oi",
@@ -245,7 +244,7 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
                     "locale": "pt",
                     "timezone": None,
                     "request": None,
-                    "language_exemplar": "oi",
+                    "unexpected": "oi",
                 },
             )
             for frame in frames:

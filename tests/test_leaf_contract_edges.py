@@ -183,7 +183,7 @@ class PayloadEdgeTests(unittest.TestCase):
                 )
         with self.assertRaises(transport.TeamRequestError):
             payloads.canonical_chat_payload(
-                {"message": "ok", "files": [], "assistant_ids": [], "locale": "en", "language_exemplar": "ok"}
+                {"message": "ok", "files": [], "assistant_ids": [], "locale": "en", "unexpected": "ok"}
             )
         with mock.patch.object(bridge, "chat") as chat, self.assertRaises(transport.TeamRequestError):
             local.turn("team_1", ["not", "a", "payload"], (), REQUEST)
