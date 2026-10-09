@@ -98,7 +98,14 @@
       id: item.id,
       text: $t('assistantPage.integrationAccount', { provider: item.provider }),
     })),
-    ...details.page.storedInputs.map((item) => ({ key: `stored-input:${item.id}`, id: item.id, text: item.label })),
+    // A Stored Input is a secret the person enters, so its row also says how to get it and links where (ADR-0090).
+    ...details.page.storedInputs.map((item) => ({
+      key: `stored-input:${item.id}`,
+      id: item.id,
+      text: item.label,
+      help: item.help,
+      helpUrl: item.helpUrl,
+    })),
   ] : []);
   let links = $derived(pageCopyReady ? details.page.links : []);
   // Without its page copy, an installed Assistant is named only by its inventory identity.
@@ -575,7 +582,15 @@
                 {#snippet summary()}{@render bar(pageCopy.credentials)}{/snippet}
                 <ul class="rows">
                   {#each credentials as item (item.key)}
-                    <li class="secret"><span class="tip"><code class="slug" dir="ltr">{item.id}</code><span class="desc">{continuingText(item.text, $locale)}</span></span></li>
+                    <li class="secret">
+                      <span class="tip"><code class="slug" dir="ltr">{item.id}</code><span class="desc">{continuingText(item.text, $locale)}</span></span>
+                      {#if item.helpUrl}
+                        <p class="help">
+                          {item.help}
+                          <TextLink href={item.helpUrl} target="_blank" rel="noopener noreferrer">{pageCopy.credentialHelp} ↗</TextLink>
+                        </p>
+                      {/if}
+                    </li>
                   {/each}
                 </ul>
               </Disclosure>
@@ -841,6 +856,17 @@
   .slug { flex: none; margin-inline-end: var(--gap-item); color: var(--shimpz-color-cyan); font: inherit; }
   .slug::after { content: ':'; }
   .desc { min-width: 0; }
+  /* A secret's help sits under its readout line in plain prose, ending in the one link to where it is made. */
+  .help {
+    grid-column: 2;
+    max-width: 64ch;
+    margin: var(--gap-inside) 0 0;
+    padding-inline-start: var(--gap-item);
+    color: var(--shimpz-color-text-muted);
+    font-size: 0.84rem;
+    line-height: 1.55;
+    text-wrap: pretty;
+  }
 
   /* Neutral ink: cut corners and faint scanlines, no border. */
   .tip {

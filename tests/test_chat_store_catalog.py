@@ -17,6 +17,8 @@ from chat import store_catalog
 
 DIGEST = "sha256:" + ("a" * 64)
 ICON_DIGEST = "sha256:" + ("b" * 64)
+HELP = "Crie um token de API no painel da Cloudflare e copie-o."
+HELP_URL = "https://dash.cloudflare.com/profile/api-tokens"
 ICON_BYTES = b"\x89PNG\r\n\x1a\nverified-icon"
 VERIFIED_ICON_DIGEST = "sha256:" + hashlib.sha256(ICON_BYTES).hexdigest()
 
@@ -36,7 +38,9 @@ def _assistant(**changes) -> dict[str, object]:
         "platforms": ["linux/amd64", "linux/arm64"],
         "allowed_hosts": ["api.cloudflare.com"],
         "integrations": [{"id": "cloudflare", "provider": "cloudflare", "scopes": ["zone.read"]}],
-        "stored_inputs": [{"id": "cloudflare-token", "label": "Cloudflare token"}],
+        "stored_inputs": [
+            {"id": "cloudflare-token", "label": "Cloudflare token", "description": HELP, "help_url": HELP_URL}
+        ],
         "actions": [
             {
                 "id": "list-zones",
@@ -108,7 +112,9 @@ class StoreCatalogTests(unittest.TestCase):
                         description="Reads your zones and records and changes one only after your approval.",
                         links=(("site", "https://shimpz.com/"), ("github", "https://github.com/shimpz")),
                         actions=(store_catalog.CatalogAction("list-zones", "read_only", "List your zones."),),
-                        stored_inputs=(("cloudflare-token", "Cloudflare token"),),
+                        stored_inputs=(
+                            store_catalog.CatalogStoredInput("cloudflare-token", "Cloudflare token", HELP, HELP_URL),
+                        ),
                     ),
                 ),
             ),
@@ -177,7 +183,7 @@ class StoreCatalogTests(unittest.TestCase):
             description="d" * 499 + "\U0001f44b",
             links=links,
             actions=actions,
-            stored_inputs=[{"id": "token", "label": "l" * 120}],
+            stored_inputs=[{"id": "token", "label": "l" * 120, "description": "h" * 500, "help_url": HELP_URL}],
         )
         (assistant,) = _validate({"version": 1, "locale": "en", "assistants": [value]})
         self.assertEqual(len(assistant.page.description), 500)
@@ -202,9 +208,28 @@ class StoreCatalogTests(unittest.TestCase):
             {"links": {"site": "https://example.org/" + "a" * 237}},
             {"links": {"site": "https://user@example.org/"}},
             {"links": []},
-            {"stored_inputs": [{"id": "token", "label": "l" * 121}]},
-            {"stored_inputs": [{"id": "token", "label": "Token", "description": "English."}]},
-            {"stored_inputs": [{"id": "token", "label": "Token"}, {"id": "token", "label": "Token"}]},
+            {"stored_inputs": [{"id": "token", "label": "l" * 121, "description": HELP, "help_url": HELP_URL}]},
+            {"stored_inputs": [{"id": "token", "label": "Token"}]},
+            {"stored_inputs": [{"id": "token", "label": "Token", "description": HELP}]},
+            {"stored_inputs": [{"id": "token", "label": "Token", "help_url": HELP_URL}]},
+            {"stored_inputs": [{"id": "token", "label": "Token", "description": "h" * 501, "help_url": HELP_URL}]},
+            {"stored_inputs": [{"id": "token", "label": "Token", "description": "Line\nbreak.", "help_url": HELP_URL}]},
+            {
+                "stored_inputs": [
+                    {"id": "token", "label": "Token", "description": HELP, "help_url": "http://example.org/k"}
+                ]
+            },
+            {
+                "stored_inputs": [
+                    {"id": "token", "label": "Token", "description": HELP, "help_url": HELP_URL, "kind": "password"}
+                ]
+            },
+            {
+                "stored_inputs": [
+                    {"id": "token", "label": "Token", "description": HELP, "help_url": HELP_URL},
+                    {"id": "token", "label": "Token", "description": HELP, "help_url": HELP_URL},
+                ]
+            },
             {
                 "actions": [
                     {

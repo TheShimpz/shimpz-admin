@@ -70,7 +70,14 @@ PAGE = {
     "links": {},
     "actions": [{"id": "list-zones", "effect": "read_only", "description": "ゾーンを一覧表示します。"}],
     "integrations": [],
-    "stored_inputs": [{"id": "api-token", "label": "API トークン"}],
+    "stored_inputs": [
+        {
+            "id": "api-token",
+            "label": "API トークン",
+            "description": "Cloudflare のダッシュボードで API トークンを作成してコピーします。",
+            "help_url": "https://dash.cloudflare.com/profile/api-tokens",
+        }
+    ],
 }
 
 

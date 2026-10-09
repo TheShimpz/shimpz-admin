@@ -21,8 +21,14 @@ const COPY = {
     { id: 'list-zones', effect: 'read_only', description: 'List your zones.' },
   ],
   integrations: [{ id: 'cloudflare', provider: 'cloudflare' }],
-  stored_inputs: [{ id: 'api-token', label: 'API token' }],
+  stored_inputs: [{
+    id: 'api-token',
+    label: 'API token',
+    description: 'Create an API token in the Cloudflare dashboard and copy it.',
+    help_url: 'https://dash.cloudflare.com/profile/api-tokens',
+  }],
 };
+const TOKEN = COPY.stored_inputs[0];
 const DETAILS = {
   locale: 'pt',
   assistant_id: 'shimpz-cloudflare',
@@ -40,9 +46,20 @@ function json(status, body) {
 test('admits the page copy and lists the Creator links in their display order', () => {
   const copy = canonicalPageCopy(COPY);
   assert.deepEqual(copy.links.map((link) => link.kind), ['site', 'github', 'x']);
-  assert.equal(copy.storedInputs[0].label, 'API token');
+  assert.deepEqual(copy.storedInputs[0], {
+    id: 'api-token',
+    label: 'API token',
+    help: TOKEN.description,
+    helpUrl: TOKEN.help_url,
+  });
   assert.deepEqual(actionGroups(copy.actions).read.map((action) => action.id), ['list-zones']);
   assert.deepEqual(actionGroups(copy.actions).write.map((action) => action.id), ['delete-record']);
+});
+
+test('admits a credential help text and help link up to their bounds', () => {
+  const longest = { ...TOKEN, description: 'h'.repeat(500), help_url: `https://dash.cloudflare.com/${'a'.repeat(2020)}` };
+  assert.equal(longest.help_url.length, 2048);
+  assert.equal(canonicalPageCopy({ ...COPY, stored_inputs: [longest] }).storedInputs[0].helpUrl, longest.help_url);
 });
 
 test('refuses a link outside its kind, its host, its grammar, or its bound', () => {
@@ -80,8 +97,15 @@ test('refuses page copy outside its bounds, order, and closed shapes', () => {
     { actions: [{ ...COPY.actions[0], effect: 'deleting' }] },
     { actions: [{ ...COPY.actions[0], description: 'x'.repeat(121) }] },
     { integrations: [{ id: 'cloudflare' }] },
-    { stored_inputs: [{ id: 'api-token', label: 'l'.repeat(121) }] },
-    { stored_inputs: [{ id: 'b', label: 'B' }, { id: 'a', label: 'A' }] },
+    { stored_inputs: [{ ...TOKEN, label: 'l'.repeat(121) }] },
+    { stored_inputs: [{ ...TOKEN, id: 'b' }, { ...TOKEN, id: 'a' }] },
+    { stored_inputs: [{ id: 'api-token', label: 'API token' }] },
+    { stored_inputs: [{ ...TOKEN, description: 'h'.repeat(501) }] },
+    { stored_inputs: [{ ...TOKEN, description: 'Line\nbreak.' }] },
+    { stored_inputs: [{ ...TOKEN, help_url: 'http://dash.cloudflare.com/profile/api-tokens' }] },
+    { stored_inputs: [{ ...TOKEN, help_url: 'https://dash.cloudflare.com/profile/api-tokens#new' }] },
+    { stored_inputs: [{ ...TOKEN, help_url: `https://dash.cloudflare.com/${'a'.repeat(2025)}` }] },
+    { stored_inputs: [{ ...TOKEN, help_url: 42 }] },
   ]) {
     assert.throws(() => canonicalPageCopy({ ...COPY, ...changes }), AssistantPageError, JSON.stringify(changes));
   }

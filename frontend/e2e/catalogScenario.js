@@ -32,8 +32,26 @@ const ASSISTANTS = [
       youtube: 'https://www.youtube.com/@shimpz',
     },
     storedInputs: [
-      ['meta-access-token', 'Meta access token', 'Token de acesso da Meta'],
-      ['meta-app-secret', 'Meta app secret', 'Chave secreta do app Meta'],
+      [
+        'meta-access-token',
+        'Meta access token',
+        'Token de acesso da Meta',
+        {
+          en: "A key that lets this Assistant read and manage your ads. In Meta Business settings, open Users > System users, add a system user, and assign it your app, ad accounts, and Pages. Then choose Generate new token, pick your app, tick ads_management, ads_read, and pages_show_list, and copy the token.",
+          pt: "Uma chave que permite a este Assistente ler e gerenciar seus anúncios. Nas configurações do Meta Business, abra Usuários > Usuários do sistema, adicione um usuário do sistema e atribua a ele seu app, suas contas de anúncio e suas Páginas. Depois escolha Gerar novo token, selecione seu app, marque ads_management, ads_read e pages_show_list e copie o token.",
+        },
+        'https://developers.facebook.com/docs/business-management-apis/system-users/install-apps-and-generate-tokens',
+      ],
+      [
+        'meta-app-secret',
+        'Meta app secret',
+        'Chave secreta do app Meta',
+        {
+          en: "The secret code of the same Meta app your access token was made for. Open the app in Meta for Developers, go to App settings > Basic, choose Show next to App secret, and copy it.",
+          pt: "O código secreto do mesmo app da Meta para o qual seu token de acesso foi criado. Abra o app no Meta for Developers, vá em Configurações do app > Básico, escolha Mostrar ao lado de Chave secreta do app e copie-a.",
+        },
+        'https://developers.facebook.com/apps/',
+      ],
     ],
     integrations: [],
     actions: actions([
@@ -83,7 +101,16 @@ const ASSISTANTS = [
       pt: 'Pesquisar, abrir site por site e conferir se dá para confiar toma tempo. Peça as notícias do seu setor, uma comparação de preços ou o resumo de um artigo: ele busca, lê as páginas mais relevantes e responde citando de onde veio cada dado. Ele só lê; nunca publica nada.',
     },
     links: { site: 'https://shimpz.com/', linkedin: 'https://www.linkedin.com/company/shimpz' },
-    storedInputs: [['exa-api-key', 'Exa API key', 'Chave da Exa']],
+    storedInputs: [[
+        'exa-api-key',
+        'Exa API key',
+        'Chave da Exa',
+        {
+          en: "A key that lets this Assistant search the web with Exa. Sign in to the Exa dashboard, create a new API key, and copy it.",
+          pt: "Uma chave que permite a este Assistente pesquisar na internet com a Exa. Entre no painel da Exa, crie uma nova chave de API e copie-a.",
+        },
+        'https://dashboard.exa.ai/api-keys',
+      ]],
     integrations: [],
     actions: actions([
       ['search-web', READ, 'Search the web', 'Pesquisar na internet'],
@@ -104,7 +131,16 @@ const ASSISTANTS = [
       pt: 'Confirmar pedido, lembrar consulta e mandar aviso tomam o dia. Peça a mensagem, revise o texto e aprove: ele envia pela sua conta oficial do WhatsApp Business. Nenhuma mensagem sai sem a sua senha.',
     },
     links: { site: 'https://shimpz.com/', instagram: 'https://www.instagram.com/shimpz' },
-    storedInputs: [['whatsapp-token', 'WhatsApp Business token', 'Token do WhatsApp Business']],
+    storedInputs: [[
+        'whatsapp-token',
+        'WhatsApp Business token',
+        'Token do WhatsApp Business',
+        {
+          en: "A key that lets this Assistant send WhatsApp messages for your business. In Meta Business settings, open Users > System users, add a system user, and assign it your app and your WhatsApp account. Then choose Generate token, pick your app, tick whatsapp_business_messaging and whatsapp_business_management, and copy the token.",
+          pt: "Uma chave que permite a este Assistente enviar mensagens de WhatsApp pela sua empresa. Nas configurações do Meta Business, abra Usuários > Usuários do sistema, adicione um usuário do sistema e atribua a ele seu app e sua conta do WhatsApp. Depois escolha Gerar token, selecione seu app, marque whatsapp_business_messaging e whatsapp_business_management e copie o token.",
+        },
+        'https://developers.facebook.com/documentation/business-messaging/whatsapp/access-tokens',
+      ]],
     integrations: [],
     actions: actions([['send-message', WRITE, 'Send a message', 'Enviar uma mensagem']]),
   },
@@ -160,7 +196,12 @@ function details(assistant, locale) {
     })),
     integrations: assistant.integrations.map((id) => ({ id, provider: id })),
     stored_inputs: assistant.storedInputs
-      .map(([id, en, pt]) => ({ id, label: text({ en, pt }, locale) }))
+      .map(([id, en, pt, help, url]) => ({
+        id,
+        label: text({ en, pt }, locale),
+        description: text(help, locale),
+        help_url: url,
+      }))
       .sort((left, right) => (left.id < right.id ? -1 : 1)),
   };
 }

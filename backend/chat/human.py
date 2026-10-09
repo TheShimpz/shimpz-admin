@@ -55,7 +55,7 @@ RESPONSE_FIELDS = frozenset(
 )
 # Optional presentation beside the Assistant-authored request; never part of its fingerprint (ADR-0090). `file` is
 # the platform-controlled disclosure of the one file an authorization of a file-taking Action delivers (ADR-0093).
-PRESENTATION_FIELDS = frozenset({"purpose", "help_url", "file"})
+PRESENTATION_FIELDS = frozenset({"purpose", "help", "help_url", "file"})
 AUTHORIZATION_KINDS = frozenset({"approval", *AUTH_KINDS})
 _BASE_FIELDS = frozenset({"kind", "ordinal", "title", "description", "fingerprint"})
 # A copy field is a catalog reference (Assistant Spec v1, ADR-0091). Admin never holds the reviewed catalog, so it
@@ -264,18 +264,23 @@ def _localization(body: dict[str, object], request: dict[str, object]) -> dict[s
 
 
 def _presentation(body: dict[str, object], request: dict[str, object]) -> dict[str, object]:
-    """The optional Brain-written purpose, a Stored Input request's key page, and an authorization's file disclosure."""
+    """The optional Brain-written purpose, a Stored Input request's help, and an authorization's file disclosure."""
     presentation: dict[str, object] = {}
     if "purpose" in body:
         purpose = team_contract.canonical_purpose(body["purpose"])
         if purpose is None:
             raise HumanChallengeError("invalid human challenge purpose")
         presentation["purpose"] = purpose
-    if "help_url" in body:
-        help_url = team_contract.canonical_help_url(body["help_url"])
-        if help_url is None or request["kind"] != "input:password" or "stored_input" not in request:
-            raise HumanChallengeError("invalid human challenge help URL")
-        presentation["help_url"] = help_url
+    # A Stored Input request always carries its help text and help link; any other request carries neither.
+    stored = request["kind"] == "input:password" and "stored_input" in request
+    if stored:
+        help_text = team_contract.canonical_stored_input_help(body.get("help"))
+        help_url = team_contract.canonical_help_url(body.get("help_url"))
+        if help_text is None or help_url is None:
+            raise HumanChallengeError("invalid human challenge help")
+        presentation.update(help=help_text, help_url=help_url)
+    elif "help" in body or "help_url" in body:
+        raise HumanChallengeError("invalid human challenge help")
     if "file" in body:
         # The consent names exactly the file whose original bytes the approval delivers; the filename is literal data.
         disclosed = team_contract.canonical_file_disclosure(body["file"])

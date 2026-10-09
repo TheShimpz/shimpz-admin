@@ -66,7 +66,13 @@ def _request(kind: str) -> dict[str, object]:
     return localize(base)[0]
 
 
+HELP = "Crie uma chave de API no painel do Exa e copie-a."
+HELP_URL = "https://dashboard.exa.ai/api-keys"
+ABSENT = object()
+
+
 def _response(request: dict[str, object], **overrides: object) -> dict[str, object]:
+    """A challenge; a Stored Input request carries its required help unless an override sets a field ABSENT."""
     value: dict[str, object] = {
         "team_id": "team_1",
         "status": "human-required",
@@ -79,8 +85,10 @@ def _response(request: dict[str, object], **overrides: object) -> dict[str, obje
         **localization(rendered_for(request)),
         "trace_id": TRACE_ID,
     }
+    if isinstance(request, dict) and request.get("kind") == "input:password" and "stored_input" in request:
+        value.update(help=HELP, help_url=HELP_URL)
     value.update(overrides)
-    return value
+    return {key: item for key, item in value.items() if item is not ABSENT}
 
 
 REQUEST = {"issued_at": 1_700_000_000, "nonce": "0" * 32}
@@ -179,6 +187,7 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         projected = local._project_pending_challenge(team.TeamResponse(428, _response(stored)), "team_1")
         self.assertEqual(projected.status, 428)
         self.assertEqual(projected.body["request"]["stored_input"], "exa-api-key")
+        self.assertEqual((projected.body["help"], projected.body["help_url"]), (HELP, HELP_URL))
         self.assertEqual(projected.websocket_event("team_1")["type"], "human-required")
         rejected = local._project_pending_challenge(
             team.TeamResponse(428, _response({**stored, "stored_input": "Exa_Key"})), "team_1"
@@ -200,22 +209,23 @@ class HumanChallengeProjectionTests(unittest.TestCase):
                     team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
                 )
 
-    def test_purpose_and_a_stored_input_key_page_project_beside_the_fingerprinted_request(self) -> None:
+    def test_purpose_and_a_stored_input_help_project_beside_the_fingerprinted_request(self) -> None:
         request = _canonical(_request("input:password"))
         stored = _fingerprinted({**request, "stored_input": "exa-api-key"})
         purpose = "Para trazer as notícias de IA de hoje, preciso pesquisar na web com o Exa."
-        help_url = "https://dashboard.exa.ai/api-keys"
+        help_url = HELP_URL
         projected = local._project_pending_challenge(
-            team.TeamResponse(428, _response(stored, purpose=purpose, help_url=help_url)),
+            team.TeamResponse(428, _response(stored, purpose=purpose)),
             "team_1",
         )
         self.assertEqual(projected.status, 428)
         event = projected.websocket_event("team_1")
-        self.assertEqual((event["purpose"], event["help_url"]), (purpose, help_url))
+        self.assertEqual((event["purpose"], event["help"], event["help_url"]), (purpose, HELP, help_url))
         self.assertEqual(event["request"], stored)
         plain = local._project_pending_challenge(team.TeamResponse(428, _response(_request("approval"))), "team_1")
         self.assertNotIn("purpose", plain.body)
         self.assertNotIn("help_url", plain.body)
+        self.assertNotIn("help", plain.body)
         approval = local._project_pending_challenge(
             team.TeamResponse(428, _response(_request("approval"), purpose=purpose)), "team_1"
         )
@@ -231,6 +241,12 @@ class HumanChallengeProjectionTests(unittest.TestCase):
             _response(stored, help_url="https://dashboard.exa.ai/api-keys\n"),
             _response(_request("input:text"), help_url=help_url),
             _response(_request("approval"), help_url=help_url),
+            _response(_request("approval"), help=HELP),
+            _response(stored, help=ABSENT),
+            _response(stored, help_url=ABSENT),
+            _response(stored, help=" Untrimmed help."),
+            _response(stored, help="x" * 501),
+            _response(stored, help=None),
             _response(stored, language_exemplar="oi"),
         )
         for body in invalid:

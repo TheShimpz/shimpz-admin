@@ -284,7 +284,11 @@ test('chat accepts every exact bounded public human request presentation', () =>
     assert.notEqual(parsed.request, challenge.request);
   }
 
-  const storedInput = humanChallenge('input:password', { ...humanRequest('input:password'), stored_input: 'whatsapp-token' });
+  const storedInput = {
+    ...humanChallenge('input:password', { ...humanRequest('input:password'), stored_input: 'whatsapp-token' }),
+    help: 'Create a WhatsApp access token and copy it.',
+    help_url: 'https://developers.facebook.com/documentation/business-messaging/whatsapp/access-tokens',
+  };
   assert.deepEqual(
     parseChatEvent(storedInput, 'team_1', 'Marketing').request.stored_input,
     'whatsapp-token',

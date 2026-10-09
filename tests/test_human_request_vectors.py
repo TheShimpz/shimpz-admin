@@ -27,7 +27,13 @@ def _fingerprint(request: dict[str, object]) -> str:
 
 
 def _challenge(request: dict[str, object]) -> dict[str, object]:
+    """Team's challenge for one request; a Stored Input request carries the help Team always adds to it."""
+    stored = request.get("kind") == "input:password" and "stored_input" in request
+    help_fields = (
+        {"help": "Create a key and copy it.", "help_url": "https://dashboard.exa.ai/api-keys"} if stored else {}
+    )
     return {
+        **help_fields,
         "team_id": "team_1",
         "status": "human-required",
         "turn_id": "b" * 32,

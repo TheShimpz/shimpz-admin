@@ -966,7 +966,12 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
     links: {},
     actions: [{ id: 'send-message', effect: 'mutating', description: 'Send one WhatsApp message.' }],
     integrations: [],
-    stored_inputs: [{ id: 'whatsapp-token', label: 'WhatsApp token' }],
+    stored_inputs: [{
+      id: 'whatsapp-token',
+      label: 'WhatsApp token',
+      description: 'Create a WhatsApp access token for your business and copy it.',
+      help_url: 'https://developers.facebook.com/documentation/business-messaging/whatsapp/access-tokens',
+    }],
   });
   const stagedPages = [];
   await page.route(/\/api\/local-assistants\/[0-9a-f]{64}\/details\?locale=en$/, (route) => {

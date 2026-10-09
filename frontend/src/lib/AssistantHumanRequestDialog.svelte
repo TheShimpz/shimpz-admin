@@ -68,8 +68,10 @@
         })
       : '',
   );
-  // Team sends a key page only for a Stored Input request, copied from its reviewed Assistant's declaration.
-  let helpUrl = $derived(isStoredInput ? challenge?.help_url ?? '' : '');
+  // A Stored Input request always carries what the secret is and how to get it, rendered in the interface language, and
+  // the official page to get it from, both copied by Team from its reviewed Assistant's declaration (ADR-0090).
+  let helpText = $derived(isStoredInput && !rejected ? challenge?.help ?? '' : '');
+  let helpUrl = $derived(helpText ? challenge?.help_url ?? '' : '');
   let copy = $derived($t('humanRequest'));
   let locked = $derived(rejection?.reason === 'authentication-locked');
   let validating = $derived(working && kind === 'auth:password' && !rejected);
@@ -236,18 +238,17 @@
     bind:open
     {kicker}
     {title}
-    lead={helpUrl && !rejected ? undefined : lead}
+    {lead}
     titleId="human-request-title"
     size="md"
     oncancel={cancel}
     onsubmit={submit}
   >
-    {#if helpUrl && !rejected}
-      <!-- With a key page, the explanation ends in its link, so the next step reads as one sentence. -->
-      <p class="request-lead">
-        {lead}
-        <TextLink href={helpUrl} title={helpUrl} target="_blank" rel="noopener noreferrer">{copy.keyHelp} ↗</TextLink>
-        {copy.keyHelpAfter}
+    {#if helpText && helpUrl}
+      <!-- The help text ends in its one link, so the next step reads as one paragraph; only the link is clickable. -->
+      <p class="request-help">
+        {helpText}
+        <TextLink href={helpUrl} target="_blank" rel="noopener noreferrer">{copy.keyHelp} ↗</TextLink>
       </p>
     {/if}
 
@@ -322,7 +323,7 @@
     color: var(--shimpz-color-text-dim);
     font: 400 0.76rem/1.45 var(--shimpz-font-sans);
   }
-  .request-lead { max-width: 58ch; margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.84rem; line-height: 1.55; }
+  .request-help { max-width: 58ch; margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.84rem; line-height: 1.55; }
   .request-scope { max-width: 58ch; margin: 0; color: var(--shimpz-color-text); font-size: 0.84rem; line-height: 1.55; }
   .clock { margin-inline-start: auto; color: var(--shimpz-color-text-muted); font: 500 0.7rem/1.45 var(--shimpz-font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
   .request-file { display: grid; gap: var(--gap-item); max-width: 58ch; }

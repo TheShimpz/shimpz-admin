@@ -99,7 +99,7 @@ class RoutineAnswerTests(unittest.TestCase):
         self.assertEqual((again.status, again.body["code"]), (409, "human-request-expired"))
         stream.assert_not_called()
 
-    def test_an_opened_challenge_forwards_its_localized_copy_purpose_and_key_page(self) -> None:
+    def test_an_opened_challenge_forwards_its_localized_copy_purpose_and_help(self) -> None:
         request = {key: value for key, value in _request("input:password").items() if key != "fingerprint"}
         stored = _fingerprinted({**request, "stored_input": "exa-api-key"})
         rendered = {
@@ -110,15 +110,18 @@ class RoutineAnswerTests(unittest.TestCase):
         }
         purpose = "Para trazer as notícias de IA de hoje, preciso pesquisar na web com o Exa."
         help_url = "https://dashboard.exa.ai/api-keys"
+        help_text = "Crie uma chave de API no painel do Exa e copie-a."
         body = {
-            **_response(stored, purpose=purpose, help_url=help_url, **localization(rendered, "pt")),
+            **_response(stored, purpose=purpose, help=help_text, help_url=help_url, **localization(rendered, "pt")),
             "run_id": RUN,
         }
         with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, body)) as call:
             response = answer.open_challenge("team_1", RUN, {"locale": "pt"})
         self.assertEqual(call.call_args.args[2], {"locale": "pt"})
         challenge = response.body["challenge"]
-        self.assertEqual((challenge["purpose"], challenge["help_url"]), (purpose, help_url))
+        self.assertEqual(
+            (challenge["purpose"], challenge["help"], challenge["help_url"]), (purpose, help_text, help_url)
+        )
         self.assertEqual(challenge["request"], stored)
         self.assertEqual((challenge["rendered"], challenge["locale"]), (rendered, "pt"))
         self.assertEqual(challenge["pack_digest"], body["pack_digest"])

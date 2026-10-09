@@ -117,13 +117,23 @@ class CatalogAction:
 
 
 @dataclass(frozen=True, slots=True)
+class CatalogStoredInput:
+    """One declared Stored Input as a page shows it: its localized label and help text, and its help link."""
+
+    id: str
+    label: str
+    description: str
+    help_url: str
+
+
+@dataclass(frozen=True, slots=True)
 class CatalogPage:
     """The localized page copy and declarations of one publication; planning never reads it."""
 
     description: str
     links: tuple[tuple[str, str], ...]
     actions: tuple[CatalogAction, ...]
-    stored_inputs: tuple[tuple[str, str], ...]
+    stored_inputs: tuple[CatalogStoredInput, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -175,19 +185,27 @@ def creator_links(value: object) -> tuple[tuple[str, str], ...]:
     return tuple((kind, value[kind]) for kind in LINK_PREFIXES if kind in value)
 
 
-def _stored_inputs(value: object) -> tuple[tuple[str, str], ...]:
+def _stored_inputs(value: object) -> tuple[CatalogStoredInput, ...]:
     if not isinstance(value, list) or len(value) > 8:
         raise ValueError("catalog Stored Inputs are invalid")
-    output: list[tuple[str, str]] = []
+    output: list[CatalogStoredInput] = []
     for item in value:
         if (
             not isinstance(item, dict)
-            or set(item) != {"id", "label"}
+            or set(item) != {"id", "label", "description", "help_url"}
             or team_contract.canonical_identifier(item["id"]) is None
+            or team_contract.canonical_help_url(item["help_url"]) is None
         ):
             raise ValueError("catalog Stored Input is invalid")
-        output.append((item["id"], display_text(item["label"], LINE_CHARS)))
-    if len({identifier for identifier, _ in output}) != len(output):
+        output.append(
+            CatalogStoredInput(
+                item["id"],
+                display_text(item["label"], LINE_CHARS),
+                display_text(item["description"], DESCRIPTION_CHARS),
+                item["help_url"],
+            )
+        )
+    if len({item.id for item in output}) != len(output):
         raise ValueError("catalog Stored Inputs are duplicated")
     return tuple(output)
 

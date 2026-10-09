@@ -395,6 +395,9 @@ export const HELP_URL_PATTERN = [
 ].join('');
 const HELP_URL_RE = new RegExp(HELP_URL_PATTERN, 'u');
 const MAX_HELP_URL_CHARS = 2048;
+// A Stored Input's help text, rendered in the challenge language from its binding's pack (Team HTTP
+// payload.canonical_stored_input_help).
+const MAX_STORED_INPUT_HELP_CHARS = 500;
 const MAX_PURPOSE_CHARS = 280;
 const PURPOSE_FORBIDDEN_RE = /[\p{C}\p{Zl}\p{Zp}]|(?!-)\p{Pd}| -|- |:\/\//u;
 
@@ -1433,11 +1436,11 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     };
   }
   if (value.type === 'human-required') {
-    // Optional presentation beside the fingerprinted request (ADR-0090): the Brain's task-bound purpose and, only for
-    // a Stored Input request, the key page its reviewed Assistant declared. The rendered copy, its concrete locale,
-    // and the language pack's digest are required beside the canonical request (ADR-0091).
+    // Presentation beside the fingerprinted request (ADR-0090): the Brain's optional task-bound purpose and, always and
+    // only for a Stored Input request, the help text and help link its reviewed Assistant declared. The rendered copy,
+    // its concrete locale, and the language pack's digest are required beside the canonical request (ADR-0091).
     // An authorization request may also disclose the one original file its approved Action receives (ADR-0093).
-    const optional = ['purpose', 'help_url', 'file'].filter((key) => Object.hasOwn(value, key));
+    const optional = ['purpose', 'help', 'help_url', 'file'].filter((key) => Object.hasOwn(value, key));
     if (
       !exactKeys(value, [
         'type', 'challenge_id', 'expires_in', 'assistant', 'action', 'request', 'rendered', 'locale', 'pack_digest',
@@ -1453,7 +1456,8 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       !PACK_DIGEST_RE.test(value.pack_digest)
     ) throw new LocalApiError('The local chat response is invalid.');
     const request = canonicalHumanRequest(value.request);
-    if (optional.includes('help_url') && (request.kind !== 'input:password' || request.stored_input === undefined)) {
+    const storedInput = request.kind === 'input:password' && request.stored_input !== undefined;
+    if (['help', 'help_url'].some((key) => optional.includes(key) !== storedInput)) {
       throw new LocalApiError('The local chat response is invalid.');
     }
     if (optional.includes('file') && request.kind !== 'approval' && !HUMAN_AUTH_KINDS.has(request.kind)) {
@@ -1470,7 +1474,12 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       locale: value.locale,
       pack_digest: value.pack_digest,
       ...(optional.includes('purpose') ? { purpose: canonicalPurpose(value.purpose) } : {}),
-      ...(optional.includes('help_url') ? { help_url: canonicalHelpUrl(value.help_url) } : {}),
+      ...(storedInput
+        ? {
+          help: renderedText(value.help, '', MAX_STORED_INPUT_HELP_CHARS),
+          help_url: canonicalHelpUrl(value.help_url),
+        }
+        : {}),
       ...(optional.includes('file') ? { file: parseFileDisclosure(value.file) } : {}),
     };
   }

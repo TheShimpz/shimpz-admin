@@ -516,6 +516,7 @@ test('rejects malformed public Assistant catalog projections', async () => {
     { version: 1, locale: 'en', assistants: [{ ...valid, actions: [{ ...action, schema: {} }] }] },
     { version: 1, locale: 'en', assistants: [{ ...valid, integrations: [{ id: 'cloudflare' }] }] },
     { version: 1, locale: 'en', assistants: [{ ...valid, stored_inputs: [{ id: 'token', label: 'l'.repeat(121) }] }] },
+    { version: 1, locale: 'en', assistants: [{ ...valid, stored_inputs: [{ id: 'token', label: 'Token' }] }] },
   ]) {
     await assert.rejects(
       listPublicAssistantCatalog(async () => response(200, body), 'en'),

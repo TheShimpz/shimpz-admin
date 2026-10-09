@@ -192,7 +192,9 @@ async function routeReadyChat(page, {
   humanAssistantId = 'shimpz-cloudflare',
   humanStoredInput = '',
   humanPurpose = '',
-  humanHelpUrl = '',
+  // Team always sends a Stored Input request's help text and help link (ADR-0090); other requests carry neither.
+  humanHelp = 'Create an API key in the Exa dashboard and copy it.',
+  humanHelpUrl = 'https://dashboard.exa.ai/api-keys',
   humanExpiresIn = 300,
   // Team renders a request in the turn's interface language (ADR-0091); this fixture keeps its English copy.
   humanLocale = 'en',
@@ -549,10 +551,10 @@ async function routeReadyChat(page, {
     const connection = chatConnections;
     chatConnections += 1;
 
-    // The optional Brain-written purpose and reviewed key page travel beside the fingerprinted request (ADR-0090).
+    // The optional Brain-written purpose and a Stored Input's help travel beside the fingerprinted request (ADR-0090).
     const humanPresentation = {
       ...(humanPurpose ? { purpose: humanPurpose } : {}),
-      ...(humanHelpUrl ? { help_url: humanHelpUrl } : {}),
+      ...(storedInputAfterPlan || humanStoredInput ? { help: humanHelp, help_url: humanHelpUrl } : {}),
     };
     const sendHumanChallenge = (expiresIn = humanExpiresIn) => socket.send(JSON.stringify({
       type: 'human-required',
@@ -7016,7 +7018,8 @@ test.describe('Team Routines', () => {
   });
 });
 
-const KEY_PAGE = 'https://dashboard.exa.ai/api-keys';
+const KEY_PAGE = 'https://docs.exa.ai/keys';
+const KEY_HELP = 'An Exa key lets this Assistant search the web. Sign in to Exa, create a key, and copy it.';
 const TASK_PURPOSE = 'To bring today’s AI news I need to search the web with Shimpz Cloudflare.';
 
 async function openHumanRequest(page, options) {
@@ -7027,16 +7030,20 @@ async function openHumanRequest(page, options) {
   return contract;
 }
 
-test('a Stored Input request links its reviewed key page and sends the pasted key once', async ({ page }) => {
+test('a Stored Input request shows how to get the key, links its reviewed page, and sends the pasted key once', async ({ page }) => {
   const contract = await openHumanRequest(page, {
     humanStoredInput: 'exa-api-key',
     humanPurpose: TASK_PURPOSE,
+    humanHelp: KEY_HELP,
     humanHelpUrl: KEY_PAGE,
   });
   const dialog = page.getByRole('dialog', { name: 'Shimpz Cloudflare' });
   await expect(dialog).toContainText(TASK_PURPOSE);
+  // The help Team copied from the reviewed declaration reaches the person, and only its link is clickable.
+  await expect(dialog).toContainText(KEY_HELP);
   const link = dialog.getByRole('link');
   await expect(link).toHaveCount(1);
+  await expect(link).toHaveAccessibleName(/How to get it/);
   await expect(link).toHaveAttribute('href', KEY_PAGE);
   await expect(link).toHaveAttribute('target', '_blank');
   await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
@@ -7056,11 +7063,12 @@ test('a Stored Input request links its reviewed key page and sends the pasted ke
   expect(stored).not.toContain('exa-secret-key');
 });
 
-test('a Stored Input request without a key page or purpose names its Assistant and offers no link', async ({ page }) => {
+test('a Stored Input request without a purpose names its Assistant and still shows how to get the key', async ({ page }) => {
   const contract = await openHumanRequest(page, { humanStoredInput: 'exa-api-key' });
   const dialog = page.getByRole('dialog', { name: 'Shimpz Cloudflare' });
   await expect(dialog).toContainText('Shimpz Cloudflare needs this key');
-  await expect(dialog.getByRole('link')).toHaveCount(0);
+  await expect(dialog).toContainText('Create an API key in the Exa dashboard and copy it.');
+  await expect(dialog.getByRole('link')).toHaveAttribute('href', 'https://dashboard.exa.ai/api-keys');
   await dialog.getByRole('button', { name: 'Cancel' }).click();
 
   await expect(page.getByText('The reviewed human response was accepted.')).toBeVisible();

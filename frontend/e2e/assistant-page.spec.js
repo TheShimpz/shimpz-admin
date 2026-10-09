@@ -15,6 +15,9 @@ const SESSION = {
   authentication_method: 'webauthn', origin_admitted: true, oauth_completion_mode: 'automatic',
   passkey_enrollment_available: true, passkey_registered: true,
 };
+// A credential's help: what the secret is and how to get it, and the official page to get it from (ADR-0090).
+const TOKEN_HELP = 'A key that lets this Assistant change your DNS. Open My Profile > API Tokens, create a token, and copy it.';
+const TOKEN_PAGE = 'https://dash.cloudflare.com/profile/api-tokens';
 const STAGED_PAGE = assistantDetails({
   assistant_version: '0.5.2',
   name: 'Cloudflare',
@@ -28,7 +31,7 @@ const STAGED_PAGE = assistantDetails({
     { id: 'list-zones', effect: 'read_only', description: 'See your domains.' },
   ],
   integrations: [{ id: 'cloudflare', provider: 'cloudflare' }],
-  stored_inputs: [{ id: 'api-token', label: 'Cloudflare API token' }],
+  stored_inputs: [{ id: 'api-token', label: 'Cloudflare API token', description: TOKEN_HELP, help_url: TOKEN_PAGE }],
 });
 
 // `inventory()` is the Team's installed Assistants at each read (null fails that read); `deletes` records every
@@ -107,6 +110,13 @@ test('shows what an Assistant is for, every Action, its credentials, and its Cre
   await page.keyboard.press('Enter');
   await expect(sheet.getByText('cloudflare account', { exact: true })).toBeVisible();
   await expect(sheet.getByText('cloudflare API token', { exact: true })).toBeVisible();
+  // A secret the person enters says what it is and how to get it, with one link to the page where it is made.
+  await expect(sheet.getByText(TOKEN_HELP)).toBeVisible();
+  const help = sheet.getByRole('link', { name: 'How to get it ↗' });
+  await expect(help).toHaveCount(1);
+  await expect(help).toHaveAttribute('href', TOKEN_PAGE);
+  await expect(help).toHaveAttribute('target', '_blank');
+  await expect(help).toHaveAttribute('rel', 'noopener noreferrer');
   await sheet.locator('summary').filter({ hasText: 'Read Actions' }).focus();
   await page.keyboard.press('Space');
   await expect(sheet.getByText('get-zone', { exact: true })).toBeVisible();
@@ -230,7 +240,7 @@ test('offers no install when this machine could not list its staged Assistants',
 
 test('lists an Integration and a Stored Input that share one id as two credentials', async ({ page }) => {
   await routePage(page, {
-    stagedPage: { ...STAGED_PAGE, stored_inputs: [{ id: 'cloudflare', label: 'Cloudflare API token' }] },
+    stagedPage: { ...STAGED_PAGE, stored_inputs: [{ ...STAGED_PAGE.stored_inputs[0], id: 'cloudflare' }] },
   });
   await page.goto('/assistants/shimpz-cloudflare?team=marketing');
   const sheet = page.getByRole('article');
@@ -256,6 +266,8 @@ test('reports a failed uninstall in the interface language', async ({ page }) =>
 
 test('never shows a page read for the previous language once the language changed', async ({ page }) => {
   const portuguese = "Configure o DNS dos seus domínios sem abrir um painel.";
+  const portugueseHelp = 'Uma chave que permite a este Assistente alterar seu DNS. Abra Meu perfil > Tokens de API e crie um token.';
+  const portugueseToken = { ...STAGED_PAGE.stored_inputs[0], label: 'Token da API da Cloudflare', description: portugueseHelp };
   let releaseEnglish;
   const englishHeld = new Promise((resolve) => { releaseEnglish = resolve; });
   let releaseListing;
@@ -263,7 +275,9 @@ test('never shows a page read for the previous language once the language change
   let listings = 0;
   await routePage(page, {
     // Only the English reply names the second Creator, so its copy is recognizable wherever it would appear.
-    stagedPage: (locale) => (locale === 'pt' ? { ...STAGED_PAGE, creators: ['@shimpz'], summary: portuguese } : STAGED_PAGE),
+    stagedPage: (locale) => (locale === 'pt'
+      ? { ...STAGED_PAGE, creators: ['@shimpz'], summary: portuguese, stored_inputs: [portugueseToken] }
+      : STAGED_PAGE),
     detailsGate: (locale) => (locale === 'en' ? englishHeld : undefined),
     stagedGate: () => ((listings += 1) === 2 ? listingHeld : undefined),
   });
@@ -291,6 +305,11 @@ test('never shows a page read for the previous language once the language change
   releaseListing();
   await expect(sheet.getByRole('heading', { level: 2 })).toHaveText(portuguese);
   await expect(sheet.getByText('@roxygens', { exact: true })).toHaveCount(0);
+  // A credential's help follows the interface language too, and keeps its one help link.
+  await sheet.locator('summary').filter({ hasText: 'Credenciais' }).click();
+  await expect(sheet.getByText(portugueseHelp)).toBeVisible();
+  await expect(sheet.getByText(TOKEN_HELP)).toHaveCount(0);
+  await expect(sheet.getByRole('link', { name: 'Como obter ↗' })).toHaveAttribute('href', TOKEN_PAGE);
 });
 
 test('reads an installed Assistant page again when its reply arrived during an inventory read', async ({ page }) => {

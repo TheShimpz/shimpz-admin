@@ -95,27 +95,41 @@ function storedInputChallenge(extra = {}) {
       max_length: 128,
       stored_input: 'exa-api-key',
     }),
+    help: HELP,
+    help_url: HELP_URL,
     ...extra,
   };
 }
 
-test('a human request carries the purpose and key page beside its fingerprinted request', () => {
-  const presented = storedInputChallenge({
-    purpose: 'To bring today’s AI news I need to search the web with Exa.',
-    help_url: 'https://dashboard.exa.ai/api-keys',
-  });
+const HELP = 'Uma chave que permite a este Assistente pesquisar na internet com a Exa.';
+const HELP_URL = 'https://dashboard.exa.ai/api-keys';
+
+test('a Stored Input request always carries its help text and help link beside its fingerprinted request', () => {
+  const presented = storedInputChallenge({ purpose: 'To bring today’s AI news I need to search the web with Exa.' });
   assert.deepEqual(parseChatEvent(presented, 'team_1', 'Marketing'), presented);
   assert.deepEqual(parseChatEvent(storedInputChallenge(), 'team_1', 'Marketing'), storedInputChallenge());
 
-  // The key page belongs only to a Stored Input request and never rides inside the Assistant's request.
-  const withoutStoredInput = structuredClone(storedInputChallenge({ help_url: 'https://dashboard.exa.ai/api-keys' }));
+  // The help belongs only to a Stored Input request, always with both parts, and never rides inside its request.
+  const withoutStoredInput = structuredClone(storedInputChallenge());
   delete withoutStoredInput.request.stored_input;
   const nested = structuredClone(storedInputChallenge());
-  nested.request.help_url = 'https://dashboard.exa.ai/api-keys';
+  nested.request.help_url = HELP_URL;
+  const withoutHelp = storedInputChallenge();
+  delete withoutHelp.help;
+  const withoutHelpUrl = storedInputChallenge();
+  delete withoutHelpUrl.help_url;
   for (const event of [
     withoutStoredInput,
     nested,
+    withoutHelp,
+    withoutHelpUrl,
+    storedInputChallenge({ help: '' }),
+    storedInputChallenge({ help: ' Untrimmed.' }),
+    storedInputChallenge({ help: 'h'.repeat(501) }),
+    storedInputChallenge({ help: 'Line one.\nLine two.' }),
+    storedInputChallenge({ help: 42 }),
     storedInputChallenge({ help_url: 'http://dashboard.exa.ai/api-keys' }),
+    storedInputChallenge({ help_url: 'https://dashboard.exa.ai/api-keys#new' }),
     storedInputChallenge({ purpose: 'Open https://example.com' }),
     storedInputChallenge({ purpose: null }),
     storedInputChallenge({ unexpected: true }),

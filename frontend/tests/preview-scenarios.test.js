@@ -179,6 +179,7 @@ test('the human-request scenario pauses with a challenge the chat parser admits 
     assert.equal(parsed.locale, 'pt');
     assert.ok(parsed.purpose);
     assert.equal(parsed.help_url, 'https://dashboard.exa.ai/api-keys');
+    assert.match(parsed.help, /^Uma chave que permite/);
     assert.equal(parsed.request.stored_input, 'exa-api-key');
     const [done] = scenario.chat.message({
       type: 'human-response',

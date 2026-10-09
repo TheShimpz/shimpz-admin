@@ -417,6 +417,9 @@ function storedInputChallenge(locale) {
     assistant: { id: 'shimpz-exa', name: 'Exa', version: '0.1.1' },
     action: { id: 'search-web', summary: 'Search the web with Exa.' },
     ...(locale === 'pt' ? { purpose: 'Para trazer as notícias de IA de hoje, preciso pesquisar na web com o Exa.' } : {}),
+    help: locale === 'pt'
+      ? 'Uma chave que permite a este Assistente pesquisar na internet com a Exa. Entre no painel da Exa, crie uma nova chave de API e copie-a.'
+      : 'A key that lets this Assistant search the web with Exa. Sign in to the Exa dashboard, create a new API key, and copy it.',
     help_url: 'https://dashboard.exa.ai/api-keys',
     ...localizedChallenge(STORED_INPUT_REQUEST, { locale }),
   };

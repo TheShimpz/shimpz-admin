@@ -168,6 +168,7 @@ def _open(canonical: str, run: str, opening: dict[str, str]) -> team.TeamRespons
                 "locale",
                 "pack_digest",
                 "purpose",
+                "help",
                 "help_url",
             )
             if name in projected

@@ -39,7 +39,11 @@ class ChatAssetTests(unittest.TestCase):
                 description="Lê seus domínios.",
                 links=(("github", "https://github.com/shimpz"),),
                 actions=(store_catalog.CatalogAction("list-zones", "read_only", "Ver seus domínios."),),
-                stored_inputs=(("token", "Chave"),),
+                stored_inputs=(
+                    store_catalog.CatalogStoredInput(
+                        "token", "Chave", "Crie uma chave no painel e copie-a.", "https://dashboard.exa.ai/api-keys"
+                    ),
+                ),
             ),
         )
         with mock.patch.object(assets, "submit_in_context", return_value=_future(result=(assistant,))) as submit:
@@ -65,7 +69,14 @@ class ChatAssetTests(unittest.TestCase):
                         "icon_digest": "sha256:" + "b" * 64,
                         "actions": [{"id": "list-zones", "effect": "read_only", "description": "Ver seus domínios."}],
                         "integrations": [{"id": "cloudflare", "provider": "cloudflare"}],
-                        "stored_inputs": [{"id": "token", "label": "Chave"}],
+                        "stored_inputs": [
+                            {
+                                "id": "token",
+                                "label": "Chave",
+                                "description": "Crie uma chave no painel e copie-a.",
+                                "help_url": "https://dashboard.exa.ai/api-keys",
+                            }
+                        ],
                     }
                 ],
             },

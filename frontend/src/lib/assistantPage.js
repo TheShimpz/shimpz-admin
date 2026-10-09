@@ -15,6 +15,8 @@ const LINK_ORIGINS = {
   instagram: ['https://instagram.com/', 'https://www.instagram.com/'],
 };
 const MAX_LINK_CHARS = 256;
+// A Stored Input's help link: the same canonical public https grammar at the Developers manifest bound.
+const MAX_HELP_URL_CHARS = 2048;
 // Built on first use: this module and the chat module that owns the key-page grammar import one another indirectly.
 let linkPattern = null;
 export const SUMMARY_CHARS = 80;
@@ -46,6 +48,16 @@ export function isDisplayText(value, maximum) {
   );
 }
 
+// One canonical public https page that the browser serializes unchanged, so a link opens exactly what was admitted.
+function isHelpUrl(url, maximum) {
+  return (
+    typeof url === 'string' &&
+    url.length <= maximum &&
+    (linkPattern ??= new RegExp(HELP_URL_PATTERN, 'u')).test(url) &&
+    new URL(url).href === url
+  );
+}
+
 /**
  * The Creator's declared links in display order. Each is one canonical public https page on its kind's own host
  * that the browser serializes unchanged, so a link opens exactly what its producer admitted.
@@ -56,13 +68,7 @@ export function canonicalLinks(value) {
   if (kinds.some((kind) => !LINK_KINDS.includes(kind))) throw invalid();
   return LINK_KINDS.filter((kind) => kinds.includes(kind)).map((kind) => {
     const url = value[kind];
-    if (
-      typeof url !== 'string' ||
-      url.length > MAX_LINK_CHARS ||
-      !(linkPattern ??= new RegExp(HELP_URL_PATTERN, 'u')).test(url) ||
-      !LINK_ORIGINS[kind].some((origin) => url.startsWith(origin)) ||
-      new URL(url).href !== url
-    ) {
+    if (!isHelpUrl(url, MAX_LINK_CHARS) || !LINK_ORIGINS[kind].some((origin) => url.startsWith(origin))) {
       throw invalid();
     }
     return { kind, url };
@@ -104,12 +110,19 @@ function canonicalIntegrations(value) {
   });
 }
 
+// Each credential the Assistant keeps: its label, the help text that says how to get it, and the page to get it from.
 function canonicalStoredInputs(value) {
   return sortedUnique(value, MAX_STORED_INPUTS).map((input) => {
-    if (!exactKeys(input, ['id', 'label']) || !isIdentifier(input.id) || !isDisplayText(input.label, LINE_CHARS)) {
+    if (
+      !exactKeys(input, ['description', 'help_url', 'id', 'label']) ||
+      !isIdentifier(input.id) ||
+      !isDisplayText(input.label, LINE_CHARS) ||
+      !isDisplayText(input.description, DESCRIPTION_CHARS) ||
+      !isHelpUrl(input.help_url, MAX_HELP_URL_CHARS)
+    ) {
       throw invalid();
     }
-    return { id: input.id, label: input.label };
+    return { id: input.id, label: input.label, help: input.description, helpUrl: input.help_url };
   });
 }
 
