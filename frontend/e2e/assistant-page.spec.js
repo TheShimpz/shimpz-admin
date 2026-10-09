@@ -30,8 +30,16 @@ const STAGED_PAGE = assistantDetails({
   stored_inputs: [{ id: 'api-token', label: 'Cloudflare API token' }],
 });
 
-// `inventory()` is the Team's installed Assistants at each read; `deletes` records every uninstall request.
-async function routePage(page, { inventory = () => [], staged = [stagedSnapshot({ name: 'Cloudflare' })], published = [], deletes = [] } = {}) {
+// `inventory()` is the Team's installed Assistants at each read (null fails that read); `deletes` records every
+// uninstall request; `stagedStatus` fails the Local snapshot enumeration when it is not 200.
+async function routePage(page, {
+  inventory = () => [],
+  staged = [stagedSnapshot({ name: 'Cloudflare' })],
+  stagedStatus = 200,
+  published = [],
+  deletes = [],
+  stagedPage = STAGED_PAGE,
+} = {}) {
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -40,7 +48,7 @@ async function routePage(page, { inventory = () => [], staged = [stagedSnapshot(
       return route.fulfill({ contentType: 'image/png', body: ICON });
     }
     if (/^\/api\/local-assistants\/[0-9a-f]{64}\/details$/.test(url.pathname)) {
-      return route.fulfill({ json: { ...STAGED_PAGE, locale } });
+      return route.fulfill({ json: { ...stagedPage, locale } });
     }
     if (url.pathname === '/api/teams/marketing/assistants/shimpz-cloudflare/details') {
       const installed = inventory().find((entry) => entry.assistant === 'shimpz-cloudflare');
@@ -49,6 +57,12 @@ async function routePage(page, { inventory = () => [], staged = [stagedSnapshot(
     if (url.pathname === '/api/teams/marketing/assistants/shimpz-cloudflare' && request.method() === 'DELETE') {
       deletes.push(url.pathname);
       return route.fulfill({ json: { assistant: 'shimpz-cloudflare', uninstalled: true } });
+    }
+    if (url.pathname === '/api/teams/marketing/assistants' && inventory() === null) {
+      return route.fulfill({ status: 503, json: { detail: 'Team is unavailable' } });
+    }
+    if (url.pathname === '/api/local-assistants' && stagedStatus !== 200) {
+      return route.fulfill({ status: stagedStatus, json: { error: 'unavailable', code: 'local-assistant-snapshots-unavailable' } });
     }
     const body = {
       '/api/session': SESSION,
@@ -155,3 +169,60 @@ test('names no action for an Assistant this Team cannot see and for a Team the l
   await expect(page.getByText('The Team in this link is not available. Choose a Team from the Team list.')).toBeVisible();
   await expect(page.getByRole('article').getByRole('button', { name: 'Install', exact: true })).toHaveCount(0);
 });
+
+test('refuses a change when the Team inventory cannot be read right before it', async ({ page }) => {
+  let readable = true;
+  const deletes = [];
+  await routePage(page, {
+    inventory: () => (readable
+      ? [{ assistant: 'shimpz-cloudflare', assistant_version: '0.5.2', status: 'running', provenance: 'local' }]
+      : null),
+    deletes,
+  });
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  await page.getByRole('article').getByRole('button', { name: 'Uninstall', exact: true }).click();
+  readable = false;
+  await page.getByRole('dialog', { name: 'Uninstall Cloudflare?' }).getByRole('button', { name: 'Uninstall Assistant' }).click();
+  await expect(page.getByRole('dialog').getByRole('alert'))
+    .toHaveText('The Assistants installed in this Team could not be read. Try again.');
+  expect(deletes).toEqual([]);
+});
+
+test('reports an Assistant another actor already removed as uninstalled without removing it again', async ({ page }) => {
+  let installed = true;
+  const deletes = [];
+  await routePage(page, {
+    inventory: () => (installed
+      ? [{ assistant: 'shimpz-cloudflare', assistant_version: '0.5.2', status: 'running', provenance: 'local' }]
+      : []),
+    deletes,
+  });
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  await page.getByRole('article').getByRole('button', { name: 'Uninstall', exact: true }).click();
+  installed = false;
+  await page.getByRole('dialog', { name: 'Uninstall Cloudflare?' }).getByRole('button', { name: 'Uninstall Assistant' }).click();
+  await expect(page.getByText('Assistant uninstalled', { exact: true })).toBeVisible();
+  expect(deletes).toEqual([]);
+});
+
+test('offers no install when this machine could not list its staged Assistants', async ({ page }) => {
+  await routePage(page, { stagedStatus: 503, published: [publicAssistant()] });
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  const sheet = page.getByRole('article');
+  await expect(sheet.getByText('The Assistants of this machine could not be read, so none is offered for installation.'))
+    .toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Install', exact: true })).toHaveCount(0);
+});
+
+test('lists an Integration and a Stored Input that share one id as two credentials', async ({ page }) => {
+  await routePage(page, {
+    stagedPage: { ...STAGED_PAGE, stored_inputs: [{ id: 'cloudflare', label: 'Cloudflare API token' }] },
+  });
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  const sheet = page.getByRole('article');
+  await sheet.locator('summary').filter({ hasText: 'Credentials' }).click();
+  await expect(sheet.getByText('cloudflare account', { exact: true })).toBeVisible();
+  await expect(sheet.getByText('cloudflare API token', { exact: true })).toBeVisible();
+  await expect(sheet.getByText('cloudflare', { exact: true })).toHaveCount(2);
+});
+

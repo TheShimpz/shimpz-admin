@@ -1,8 +1,8 @@
 <script>
   // One Assistant's own page for the Team its link names: what it is for, the credentials it keeps, every Action with
   // the permission it asks for, its Creator's links, and the one action that installs it in or removes it from that
-  // Team. An installed Assistant shows its exact binding; otherwise the staged snapshot or the publication it would
-  // install.
+  // Team. An installed Assistant always shows its exact binding; otherwise the staged snapshot or the publication it
+  // would install, once every source that could name it has been read.
   import { page } from '$app/state';
   import { getContext, onMount, untrack } from 'svelte';
   import { ActionLink, AssistantIcon, Button, Disclosure, Notice, Skeleton, TextLink } from '@shimpz/frontend';
@@ -39,6 +39,8 @@
   let sourcesLocale = $state('');
   let localGroup = $state(null);
   let publication = $state(null);
+  let localKnown = $state(true);
+  let publicKnown = $state(true);
   // The page copy of the current target, read for the interface language it was asked in.
   let details = $state(null);
   let detailsKey = $state('');
@@ -86,20 +88,21 @@
   let installed = $derived(
     activeTeam ? $teamContext.installedAssistants.find((entry) => entry.assistant === assistantId) ?? null : null,
   );
-  let target = $derived(pageTarget({ installed, localGroup, publication }));
+  let target = $derived(pageTarget({ installed, localGroup, publication, localKnown, publicKnown }));
   let pageCopyReady = $derived(detailsPhase === 'ready' && details !== null);
   let groups = $derived(pageCopyReady ? actionGroups(details.page.actions) : { read: [], write: [] });
+  // An Integration and a Stored Input may share an id, so each row is keyed by its kind as well.
   let credentials = $derived(pageCopyReady ? [
     ...details.page.integrations.map((item) => ({
+      key: `integration:${item.id}`,
       id: item.id,
       text: $t('assistantPage.integrationAccount', { provider: item.provider }),
     })),
-    ...details.page.storedInputs.map((item) => ({ id: item.id, text: item.label })),
+    ...details.page.storedInputs.map((item) => ({ key: `stored-input:${item.id}`, id: item.id, text: item.label })),
   ] : []);
   let links = $derived(pageCopyReady ? details.page.links : []);
-  let shownName = $derived(
-    details?.name ?? $teamContext.catalog.find((entry) => entry.id === assistantId)?.name ?? assistantId,
-  );
+  // Without its page copy, an installed Assistant is named only by its inventory identity.
+  let shownName = $derived(details?.name ?? assistantId);
   let shownVersion = $derived(details?.assistant_version ?? installed?.assistant_version ?? '');
   let isLocal = $derived(target.mode === 'local' || (target.mode === 'installed' && installed?.provenance === 'local'));
   let refused = $derived(target.mode === 'local' && detailsPhase === 'refused');
@@ -109,7 +112,7 @@
     dialogAction === 'uninstall'
       ? dialogMode === 'error'
         ? storeCopy.assistantUninstallFailureTitle
-        : $t('store.assistantUninstallTitle', { assistant: shownName })
+        : $t('store.assistantUninstallTitle', { assistant: dialogTarget?.name ?? shownName })
       : ({
           install: actionCopy.confirmTitle,
           installed: actionCopy.alreadyTitle,
@@ -120,7 +123,7 @@
     dialogAction === 'uninstall'
       ? dialogMode === 'error'
         ? storeCopy.assistantUninstallFailureLead
-        : $t('store.assistantUninstallLead', { assistant: shownName, team: dialogTarget?.team.name ?? '' })
+        : $t('store.assistantUninstallLead', { assistant: dialogTarget?.name ?? shownName, team: dialogTarget?.team.name ?? '' })
       : ({
           install: actionCopy.confirmLead,
           installed: actionCopy.alreadyLead,
@@ -158,8 +161,15 @@
     publication = publicResult.status === 'fulfilled'
       ? publicResult.value.find((entry) => entry.assistant_id === assistantId) ?? null
       : null;
+    localKnown = localResult.status === 'fulfilled';
+    publicKnown = publicResult.status === 'fulfilled';
     sourcesLocale = language;
-    sourcesPhase = publicResult.status === 'rejected' && localResult.status === 'rejected' ? 'error' : 'ready';
+    sourcesPhase = 'ready';
+  }
+
+  function reloadSources() {
+    sourcesPhase = 'loading';
+    void loadSources();
   }
 
   function releaseIcon() {
@@ -167,11 +177,15 @@
     blobIcon = '';
   }
 
+  // The full identity of what the page reads, so another Assistant, Team, binding, build, or language never reuses it.
   function targetKey(current, team, language) {
-    if (current.mode === 'installed') return `installed:${team?.id}:${current.installed.assistant_version}:${language}`;
-    if (current.mode === 'local') return `local:${current.group.primary.image_id}:${language}`;
-    if (current.mode === 'public') return `public:${current.publication.source_digest}:${language}`;
-    return `missing:${language}`;
+    const subject = `${team?.id ?? ''}:${assistantId}:${language}`;
+    if (current.mode === 'installed') {
+      return `installed:${subject}:${current.installed.provenance}:${current.installed.assistant_version}`;
+    }
+    if (current.mode === 'local') return `local:${subject}:${current.group.primary.image_id}`;
+    if (current.mode === 'public') return `public:${subject}:${current.publication.source_digest}`;
+    return `${current.mode}:${subject}`;
   }
 
   // Read the page copy of exactly the shown target: the installed binding, the staged image, or the publication.
@@ -182,11 +196,12 @@
     detailsController = controller;
     detailsKey = targetKey(current, team, language);
     details = null;
-    detailsPhase = current.mode === 'missing' ? 'idle' : 'loading';
+    const reads = ['installed', 'local', 'public'].includes(current.mode);
+    detailsPhase = reads ? 'loading' : 'idle';
     iconFailed = false;
     releaseIcon();
     iconSrc = '';
-    if (current.mode === 'missing') {
+    if (!reads) {
       settleInitialView();
       return;
     }
@@ -196,6 +211,8 @@
         iconSrc = `/api/teams/${encodeURIComponent(team.id)}/assistants/${encodeURIComponent(assistantId)}/icon`;
         const loaded = await loadAssistantDetails(fetch, team.id, assistantId, language, { signal: controller.signal });
         if (stale()) return;
+        // Team answers for the binding it runs now; a page for another version is not this entry's page.
+        if (loaded.assistant_version !== current.installed.assistant_version) throw new Error('stale binding');
         details = loaded;
       } else if (current.mode === 'local') {
         const imageId = current.group.primary.image_id;
@@ -266,27 +283,34 @@
     releaseIcon();
   });
 
-  async function refreshInventory(team) {
-    if ($teamContext.selectedTeamId !== team.id) return false;
+  // The Team's installed Assistants read again from Team, or null when that exact Team's inventory could not be read.
+  async function readInventory(team) {
+    if ($teamContext.selectedTeamId !== team.id) return null;
     try {
-      await refreshTeamInventory(fetch);
-      return true;
+      return (await refreshTeamInventory(fetch)).installedAssistants;
     } catch {
-      return false;
+      return null;
     }
   }
 
-  // The Team and Assistant entry the page showed must still be the ones current right before a change.
-  function sameInstalled(frozen) {
-    const current = $teamContext.installedAssistants.find((entry) => entry.assistant === assistantId) ?? null;
-    if (!frozen || !current) return frozen === current;
-    return current.assistant_version === frozen.assistant_version && current.provenance === frozen.provenance;
+  async function refreshInventory(team) {
+    return (await readInventory(team)) !== null;
+  }
+
+  // What a dialog opens for, frozen: the Team, the Assistant and its shown name, and its installed entry then.
+  function frozenTarget(extra) {
+    return { team: activeTeam, assistantId, name: shownName, installed, ...extra };
+  }
+
+  function sameEntry(left, right) {
+    if (!left || !right) return left === right;
+    return left.assistant_version === right.assistant_version && left.provenance === right.provenance;
   }
 
   function beginInstall() {
     if (!activeTeam || busy || target.mode !== 'public') return;
     dialogAction = 'install';
-    dialogTarget = { team: activeTeam, installed, publication: target.publication };
+    dialogTarget = frozenTarget({ publication: target.publication });
     dialogError = '';
     dialogMode = installed ? 'installed' : 'install';
     dialogOpen = true;
@@ -295,7 +319,7 @@
   function beginUninstall() {
     if (!activeTeam || busy || target.mode !== 'installed') return;
     dialogAction = 'uninstall';
-    dialogTarget = { team: activeTeam, installed };
+    dialogTarget = frozenTarget({});
     dialogError = '';
     dialogMode = 'uninstall';
     dialogOpen = true;
@@ -303,16 +327,21 @@
 
   function beginLocalInstall() {
     if (!activeTeam || busy || target.mode !== 'local' || refused) return;
-    localDialogTarget = { team: activeTeam, installed, group: target.group };
+    localDialogTarget = frozenTarget({ group: target.group });
     localSnapshot = target.group.primary;
     localDialogError = '';
     localDialogOpen = true;
   }
 
-  async function checkedTarget(frozen) {
-    if (frozen.team.id !== activeTeam?.id) return storeCopy.teamUnavailable;
-    await refreshInventory(frozen.team);
-    return sameInstalled(frozen.installed) ? '' : pageCopy.targetChanged;
+  // Right before a change, the Team's inventory is read again: the change proceeds only for the same Team, page, and
+  // installed entry the dialog opened for. `current` is the entry that inventory names now.
+  async function verifiedTarget(frozen) {
+    const sameTeam = () => frozen.team.id === activeTeam?.id && frozen.assistantId === assistantId;
+    if (!sameTeam()) return { refusal: storeCopy.teamUnavailable };
+    const inventory = await readInventory(frozen.team);
+    if (inventory === null) return { refusal: pageCopy.inventoryUnavailable };
+    if (!sameTeam()) return { refusal: storeCopy.teamUnavailable };
+    return { current: inventory.find((entry) => entry.assistant === frozen.assistantId) ?? null };
   }
 
   async function confirmInstall() {
@@ -321,19 +350,19 @@
     busy = true;
     dialogError = '';
     try {
-      const refusal = await checkedTarget(frozen);
-      if (refusal) {
-        dialogError = refusal;
+      const { refusal, current } = await verifiedTarget(frozen);
+      if (refusal || !sameEntry(current, frozen.installed)) {
+        dialogError = refusal ?? pageCopy.targetChanged;
         dialogMode = 'error';
         return;
       }
-      await installAssistant(fetch, frozen.team.id, assistantId, frozen.publication.source_digest);
+      await installAssistant(fetch, frozen.team.id, frozen.assistantId, frozen.publication.source_digest);
       await refreshInventory(frozen.team);
       dialogOpen = false;
       showAdminNotice({
         tone: 'success',
         label: storeCopy.assistantInstalledLabel,
-        message: $t('store.assistantInstalledMessage', { assistant: shownName, team: frozen.team.name }),
+        message: $t('store.assistantInstalledMessage', { assistant: frozen.name, team: frozen.team.name }),
       });
     } catch (error) {
       await refreshInventory(frozen.team);
@@ -350,20 +379,24 @@
     busy = true;
     dialogError = '';
     try {
-      const refusal = await checkedTarget(frozen);
-      if (refusal) {
-        dialogError = refusal;
+      const { refusal, current } = await verifiedTarget(frozen);
+      if (refusal || (current && !sameEntry(current, frozen.installed))) {
+        dialogError = refusal ?? pageCopy.targetChanged;
         dialogMode = 'error';
         return;
       }
-      await uninstallAssistant(fetch, frozen.team.id, assistantId);
-      const refreshed = await refreshInventory(frozen.team);
+      // Already absent from the Team is the outcome this uninstall asks for, so nothing is removed again.
+      let refreshed = true;
+      if (current) {
+        await uninstallAssistant(fetch, frozen.team.id, frozen.assistantId);
+        refreshed = await refreshInventory(frozen.team);
+      }
       dialogOpen = false;
       showAdminNotice({
         tone: refreshed ? 'success' : 'info',
         label: refreshed ? storeCopy.assistantUninstalledLabel : storeCopy.assistantUninstallRefreshLabel,
         message: $t(refreshed ? 'store.assistantUninstalledMessage' : 'store.assistantUninstallRefreshMessage', {
-          assistant: shownName,
+          assistant: frozen.name,
           team: frozen.team.name,
         }),
       });
@@ -403,9 +436,9 @@
     installingImage = snapshot.image_id;
     localDialogError = '';
     try {
-      const refusal = await checkedTarget(frozen);
-      if (refusal) {
-        localDialogError = refusal;
+      const { refusal, current } = await verifiedTarget(frozen);
+      if (refusal || !sameEntry(current, frozen.installed)) {
+        localDialogError = refusal ?? pageCopy.targetChanged;
         return;
       }
       const result = await installLocalAssistant(fetch, frozen.team.id, snapshot.image_id);
@@ -428,6 +461,17 @@
     detailsKey = '';
     void loadDetails(target, activeTeam, $locale);
   }
+
+  // A dialog belongs to the page it opened on: leaving that Assistant's page closes it unless a change is running,
+  // and a running change still acts only on its frozen target.
+  $effect(() => {
+    const current = assistantId;
+    untrack(() => {
+      if (busy) return;
+      if (dialogTarget && dialogTarget.assistantId !== current) dialogOpen = false;
+      if (localDialogTarget && localDialogTarget.assistantId !== current) localDialogOpen = false;
+    });
+  });
 </script>
 
 <svelte:head><title>{shownName} — Shimpz Admin</title></svelte:head>
@@ -450,7 +494,7 @@
           {#if target.mode === 'installed'}<span class="on"><i aria-hidden="true"></i>{pageCopy.installedHere}</span>{/if}
         </p>
       </div>
-      {#if activeTeam && !loading && target.mode !== 'missing'}
+      {#if activeTeam && !loading && ['installed', 'local', 'public'].includes(target.mode)}
         <div class="cta">
           <span class="target"><span class="team-label">{pageCopy.team}</span><span class="team-name">{activeTeam.name}</span></span>
           {#if target.mode === 'installed'}
@@ -483,6 +527,9 @@
     <Skeleton class="assistant-page-loading" height="14rem" />
   {:else if !validAssistant || target.mode === 'missing'}
     <p class="missing">{pageCopy.notFound}</p>
+  {:else if target.mode === 'unverified'}
+    <Notice variant="error">{pageCopy.sourcesUnavailable}</Notice>
+    <div><Button variant="secondary" onclick={reloadSources}>{pageCopy.retry}</Button></div>
   {:else}
     {#if refused}
       <Notice variant="warning">{storeCopy.localRestage}</Notice>
@@ -508,7 +555,7 @@
               <Disclosure class="group">
                 {#snippet summary()}{@render bar(pageCopy.credentials)}{/snippet}
                 <ul class="rows">
-                  {#each credentials as item (item.id)}
+                  {#each credentials as item (item.key)}
                     <li class="secret"><span class="tip"><code class="slug" dir="ltr">{item.id}</code><span class="desc">{continuingText(item.text, $locale)}</span></span></li>
                   {/each}
                 </ul>

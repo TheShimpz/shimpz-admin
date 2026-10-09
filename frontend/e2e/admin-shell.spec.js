@@ -1022,7 +1022,7 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await expect(sheet.getByRole('button', { name: 'Install', exact: true })).toBeVisible();
 });
 
-test('lets an explicit Local install replace the matching publication', async ({ page }, testInfo) => {
+test('removes an installed publication before its staged build is installed', async ({ page }, testInfo) => {
   test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
   const imageId = `sha256:${'b'.repeat(64)}`;
   const localIcon = Buffer.from(
@@ -1088,12 +1088,12 @@ test('lets an explicit Local install replace the matching publication', async ({
   await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
-      assistants: [{
+      assistants: provenance ? [{
         assistant: 'whatsapp',
         assistant_version: '0.2.1',
         status: 'running',
         provenance,
-      }],
+      }] : [],
     }),
   }));
   await page.route('**/api/teams/marketing/assistants/local', async (route) => {
@@ -1124,11 +1124,24 @@ test('lets an explicit Local install replace the matching publication', async ({
     }));
   }
 
-  // The publication of this Assistant is installed, and this machine stages its own build: the staged build is what
-  // the page offers, and installing it replaces the publication.
+  await page.route('**/api/teams/marketing/assistants/whatsapp', async (route) => {
+    expect(route.request().method()).toBe('DELETE');
+    provenance = null;
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ assistant: 'whatsapp', uninstalled: true }),
+    });
+  });
+
+  // The publication of this Assistant is installed while this machine stages its own build: the installed binding is
+  // what the page shows, and the staged build is offered only once that binding is removed.
   await page.goto('/assistants/whatsapp?team=marketing');
   const sheet = page.getByRole('article');
   await expect(page.getByText('Published WhatsApp', { exact: true })).toHaveCount(0);
+  await expect(sheet.getByRole('button', { name: 'Install', exact: true })).toHaveCount(0);
+  await sheet.getByRole('button', { name: 'Uninstall', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Uninstall WhatsApp Automation?' })
+    .getByRole('button', { name: 'Uninstall Assistant' }).click();
   await sheet.getByRole('button', { name: 'Install', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Install WhatsApp Automation?' });
   await expect(dialog).toContainText(imageId);

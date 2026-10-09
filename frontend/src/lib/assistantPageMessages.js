@@ -21,6 +21,8 @@ export const assistantPageMessages = {
     notFound: 'This Assistant is not in the Assistants of this Team.',
     targetChanged: 'This Assistant changed in this Team. Review its page again.',
     retry: 'Load again',
+    inventoryUnavailable: 'The Assistants installed in this Team could not be read. Try again.',
+    sourcesUnavailable: 'The Assistants of this machine could not be read, so none is offered for installation.',
   },
   pt: {
     team: 'Time',
@@ -41,6 +43,8 @@ export const assistantPageMessages = {
     notFound: 'Este Assistant não está entre os Assistants deste Time.',
     targetChanged: 'Este Assistant mudou neste Time. Revise a página dele de novo.',
     retry: 'Carregar de novo',
+    inventoryUnavailable: 'Não foi possível ler os Assistants instalados neste Time. Tente de novo.',
+    sourcesUnavailable: 'Não foi possível ler os Assistants desta máquina, então nenhum é oferecido para instalação.',
   },
   es: {
     team: 'Equipo',
@@ -61,6 +65,8 @@ export const assistantPageMessages = {
     notFound: 'Este Assistant no está entre los Assistants de este Equipo.',
     targetChanged: 'Este Assistant cambió en este Equipo. Revisa su página de nuevo.',
     retry: 'Cargar de nuevo',
+    inventoryUnavailable: 'No se pudieron leer los Assistants instalados en este Equipo. Inténtalo de nuevo.',
+    sourcesUnavailable: 'No se pudieron leer los Assistants de esta máquina, así que no se ofrece ninguno para instalar.',
   },
   zh: {
     team: '团队',
@@ -81,6 +87,8 @@ export const assistantPageMessages = {
     notFound: '此 Assistant 不在此团队的 Assistants 中。',
     targetChanged: '此 Assistant 在此团队中已更改。请重新查看它的页面。',
     retry: '重新加载',
+    inventoryUnavailable: '无法读取此团队中已安装的 Assistants。请重试。',
+    sourcesUnavailable: '无法读取此计算机上的 Assistants，因此不提供任何可安装的 Assistant。',
   },
   fr: {
     team: 'Équipe',
@@ -101,6 +109,8 @@ export const assistantPageMessages = {
     notFound: 'Cet Assistant ne fait pas partie des Assistants de cette Équipe.',
     targetChanged: 'Cet Assistant a changé dans cette Équipe. Consultez à nouveau sa page.',
     retry: 'Charger à nouveau',
+    inventoryUnavailable: 'Les Assistants installés dans cette Équipe n’ont pas pu être lus. Réessayez.',
+    sourcesUnavailable: 'Les Assistants de cette machine n’ont pas pu être lus ; aucun n’est donc proposé à l’installation.',
   },
   de: {
     team: 'Team',
@@ -121,6 +131,8 @@ export const assistantPageMessages = {
     notFound: 'Dieser Assistant gehört nicht zu den Assistants dieses Teams.',
     targetChanged: 'Dieser Assistant hat sich in diesem Team geändert. Sieh dir seine Seite erneut an.',
     retry: 'Erneut laden',
+    inventoryUnavailable: 'Die in diesem Team installierten Assistants konnten nicht gelesen werden. Versuche es erneut.',
+    sourcesUnavailable: 'Die Assistants dieses Rechners konnten nicht gelesen werden, daher wird keiner zur Installation angeboten.',
   },
   ja: {
     team: 'チーム',
@@ -141,6 +153,8 @@ export const assistantPageMessages = {
     notFound: 'この Assistant はこのチームの Assistants にありません。',
     targetChanged: 'この Assistant はこのチームで変更されました。ページをもう一度確認してください。',
     retry: 'もう一度読み込む',
+    inventoryUnavailable: 'このチームにインストールされている Assistants を読み込めませんでした。もう一度お試しください。',
+    sourcesUnavailable: 'このマシンの Assistants を読み込めなかったため、インストールできる Assistant はありません。',
   },
   ar: {
     team: 'الفريق',
@@ -161,5 +175,7 @@ export const assistantPageMessages = {
     notFound: 'هذا الـ Assistant ليس ضمن Assistants هذا الفريق.',
     targetChanged: 'تغيّر هذا الـ Assistant في هذا الفريق. راجع صفحته مرة أخرى.',
     retry: 'التحميل مرة أخرى',
+    inventoryUnavailable: 'تعذّرت قراءة الـ Assistants المثبتة في هذا الفريق. حاول مرة أخرى.',
+    sourcesUnavailable: 'تعذّرت قراءة Assistants هذا الجهاز، لذلك لا يُعرض أي منها للتثبيت.',
   },
 };

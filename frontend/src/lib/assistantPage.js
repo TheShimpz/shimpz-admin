@@ -2,7 +2,7 @@
 // links, every Action with its effect and localized description, and the credentials it keeps. One validator admits
 // them from Team's details (a staged snapshot or an installed binding) and from the public catalog entry alike.
 import { HELP_URL_PATTERN } from './localChat.js';
-import { codePointLength, CONTROL_RE, exactKeys, isIdentifier } from './validate.js';
+import { codePointLength, exactKeys, isIdentifier } from './validate.js';
 
 // The Creator's link kinds in their display order.
 export const LINK_KINDS = ['site', 'github', 'x', 'youtube', 'linkedin', 'instagram'];
@@ -24,8 +24,9 @@ const MAX_ACTIONS = 128;
 const MAX_INTEGRATIONS = 16;
 const MAX_STORED_INPUTS = 8;
 const EFFECTS = ['read_only', 'mutating'];
-// Unicode format characters (bidi controls, zero-width marks) never reach displayed copy.
-const FORMAT_RE = /\p{Cf}/u;
+// Displayed copy is printable as Team admits it: no control, format (bidi, zero-width), surrogate, private-use, or
+// unassigned character, and no separator other than the ASCII space.
+const NON_PRINTABLE_RE = /[\p{C}\p{Zl}\p{Zp}]|(?! )\p{Zs}/u;
 
 export class AssistantPageError extends Error {}
 
@@ -41,9 +42,7 @@ export function isDisplayText(value, maximum) {
     value === value.trim() &&
     value === value.normalize('NFC') &&
     codePointLength(value) <= maximum &&
-    !CONTROL_RE.test(value) &&
-    !/[\u0080-\u009f]/u.test(value) &&
-    !FORMAT_RE.test(value)
+    !NON_PRINTABLE_RE.test(value)
   );
 }
 
@@ -151,14 +150,16 @@ export function continuingText(text, locale) {
 }
 
 /**
- * What the page shows for one Assistant in one Team. An Assistant installed in the Team shows its installed binding
- * and offers Uninstall, except when this machine stages a Local snapshot of an Assistant installed from its
- * publication: that snapshot is then the candidate, and Install replaces the publication. Otherwise a staged snapshot
- * (which shadows its publication) or the publication is the candidate; with neither, the Assistant is missing.
+ * What the page shows for one Assistant in one Team. An Assistant installed in the Team always shows its installed
+ * binding and offers Uninstall. Otherwise the staged snapshot (which shadows its publication) or the publication is
+ * the candidate, but only once every source that could name it has been read: a staged snapshot this machine could not
+ * enumerate, or a publication the catalog could not list, leaves the candidate unverified rather than another one.
  */
-export function pageTarget({ installed, localGroup, publication }) {
-  if (installed && !(localGroup && installed.provenance === 'published')) return { mode: 'installed', installed };
+export function pageTarget({ installed, localGroup, publication, localKnown = true, publicKnown = true }) {
+  if (installed) return { mode: 'installed', installed };
+  if (!localKnown) return { mode: 'unverified' };
   if (localGroup) return { mode: 'local', group: localGroup };
   if (publication) return { mode: 'public', publication };
+  if (!publicKnown) return { mode: 'unverified' };
   return { mode: 'missing' };
 }

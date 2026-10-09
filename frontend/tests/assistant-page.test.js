@@ -72,6 +72,9 @@ test('refuses page copy outside its bounds, order, and closed shapes', () => {
     { description: 'd'.repeat(501) },
     { description: 'Bidi‮override.' },
     { description: 'Line\nbreak.' },
+    { description: 'Line\u2028separator.' },
+    { description: 'No-break\u00a0space.' },
+    { description: 'Decomposed e\u0301.' },
     { actions: [] },
     { actions: [...COPY.actions].reverse() },
     { actions: [{ ...COPY.actions[0], effect: 'deleting' }] },
@@ -93,17 +96,21 @@ test('a row description continues its slug in lowercase only where that keeps it
   assert.equal(continuingText('ゾーンを一覧表示します。', 'ja'), 'ゾーンを一覧表示します。');
 });
 
-test('an installed Assistant shows its binding unless a staged build would replace its publication', () => {
+test('an installed Assistant always shows its binding; a candidate needs every source that could name it', () => {
   const group = { assistant_id: 'whatsapp', primary: {}, alternatives: [] };
   const publication = { assistant_id: 'whatsapp' };
   const local = { assistant: 'whatsapp', provenance: 'local' };
   const published = { assistant: 'whatsapp', provenance: 'published' };
   assert.equal(pageTarget({ installed: local, localGroup: group, publication }).mode, 'installed');
-  assert.equal(pageTarget({ installed: published, localGroup: null, publication }).mode, 'installed');
-  assert.equal(pageTarget({ installed: published, localGroup: group, publication }).mode, 'local');
+  assert.equal(pageTarget({ installed: published, localGroup: group, publication }).mode, 'installed');
+  assert.equal(pageTarget({ installed: published, localGroup: null, publication, localKnown: false }).mode, 'installed');
   assert.equal(pageTarget({ installed: null, localGroup: group, publication }).mode, 'local');
   assert.equal(pageTarget({ installed: null, localGroup: null, publication }).mode, 'public');
   assert.equal(pageTarget({ installed: null, localGroup: null, publication: null }).mode, 'missing');
+  // A staged snapshot this machine could not enumerate may shadow the publication, so neither is offered.
+  assert.equal(pageTarget({ installed: null, localGroup: null, publication, localKnown: false }).mode, 'unverified');
+  assert.equal(pageTarget({ installed: null, localGroup: group, publication: null, publicKnown: false }).mode, 'local');
+  assert.equal(pageTarget({ installed: null, localGroup: null, publication: null, publicKnown: false }).mode, 'unverified');
 });
 
 test('reads a staged page through the busy-retrying preview queue in exactly the asked language', async () => {
