@@ -71,18 +71,12 @@ class AuthHTTPTests(unittest.TestCase):
                 self.assertEqual(payload, {"detail": "too many login attempts"})
                 self.assertEqual(headers["retry-after"], "60")
 
-    def test_retired_password_record_is_health_visible_but_grants_no_authority(self) -> None:
+    def test_a_malformed_password_record_is_health_visible_but_grants_no_authority(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             store = root / "admin.json"
             store.write_text(
-                json.dumps(
-                    {
-                        "salt": "00" * 32,
-                        "password_hash": "11" * 32,
-                        "session_secret": "22" * 32,
-                    }
-                ),
+                json.dumps({"password_verifier": "malformed", "session_secret": "22" * 32}),
                 encoding="utf-8",
             )
             with AdminHTTPServer(root) as server:
@@ -144,8 +138,6 @@ class AuthHTTPTests(unittest.TestCase):
         record = json.loads(disk)
         self.assertTrue(record["password_verifier"].startswith("scrypt-v1$ln=14,r=8,p=5,dk=32$"))
         self.assertEqual(record["totp"]["status"], "pending")
-        self.assertNotIn("password_hash", record)
-        self.assertNotIn("salt", record)
         self.assertTrue(record["session_secret"])
 
         session = self._confirm_setup(port, payload["enrollment"], ticket)

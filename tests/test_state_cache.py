@@ -148,14 +148,7 @@ class AdminStoreCacheTests(unittest.TestCase):
         self.assertRegex(first.private_key_hex, r"^[0-9a-f]{64}$")
         self.assertEqual(state.local_supervisor(), first)
 
-    def test_browser_origin_binding_preserves_a_retired_verifier_for_release_rollback(self) -> None:
-        retired = {
-            "salt": "00" * 32,
-            "password_hash": "11" * 32,
-            "session_secret": "session",
-        }
-        state._write(retired)
-
+    def test_browser_origin_binding_learns_keeps_and_replaces_only_a_local_origin(self) -> None:
         with mock.patch.object(state, "_write", wraps=state._write) as write:
             self.assertEqual(state.bind_browser_origin("https://dev.example.test"), "learned")
             self.assertEqual(state.browser_origin(), "https://dev.example.test")
@@ -164,12 +157,6 @@ class AdminStoreCacheTests(unittest.TestCase):
 
         self.assertEqual(write.call_count, 2)
         self.assertEqual(state.browser_origin(), "https://next.example.test:8443")
-        self.assertEqual(
-            {name: state.get()[name] for name in retired},
-            retired,
-        )
-        with self.assertRaises(state.auth.PasswordRecordError):
-            state.is_initialized()
         with self.assertRaises(ValueError):
             state.bind_browser_origin("http://public.example.test")
 

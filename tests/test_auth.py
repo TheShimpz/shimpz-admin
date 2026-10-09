@@ -28,11 +28,9 @@ class PasswordVerifierTests(unittest.TestCase):
         self.assertTrue(auth.verify_password(GOOD_PASSWORD, record))
         self.assertFalse(auth.verify_password("violet otter lantern quartz 93", record))
 
-    def test_retired_mixed_and_malformed_records_fail_closed(self) -> None:
+    def test_malformed_records_fail_closed(self) -> None:
         verifier = auth.new_password_verifier(GOOD_PASSWORD)
         invalid = (
-            {"salt": "00" * 32, "password_hash": "11" * 32},
-            {"password_verifier": verifier, "password_hash": "11" * 32},
             {"password_verifier": verifier.replace("p=5", "p=1")},
             {"password_verifier": "malformed"},
         )
@@ -66,7 +64,7 @@ class PasswordVerifierTests(unittest.TestCase):
 
         self.assertEqual(evidence.method, "totp")
         self.assertIsNone(auth.verify_session(secret, token.replace("pwd+totp", "pwd+webauthn")))
-        self.assertIsNone(auth.verify_session(secret, "v1:9999999999:nonce:" + "0" * 64))
+        self.assertIsNone(auth.verify_session(secret, "unknown:9999999999:nonce:pwd+totp:" + "0" * 64))
         with self.assertRaises(ValueError):
             auth.issue_session(secret, "password")
 

@@ -25,7 +25,6 @@ _N, _R, _P, _DKLEN = 2**14, 8, 5, 32
 _MAXMEM = 128 * _N * _R * 4  # scrypt uses about 16 MiB; retain explicit OpenSSL headroom.
 _PARAMETERS = "ln=14,r=8,p=5,dk=32"
 _VERIFIER = re.compile(rf"^{_SCHEME}\${re.escape(_PARAMETERS)}\$([0-9a-f]{{64}})\$([0-9a-f]{{64}})$")
-_RETIRED_PASSWORD_FIELDS = frozenset({"salt", "password_hash"})
 _BLOCKLIST = frozenset(
     {
         "123456789012345",
@@ -205,11 +204,10 @@ def _password_material(record: object) -> tuple[bytes, bytes] | None:
     if not isinstance(record, Mapping):
         raise PasswordRecordError("Local Supervisor password record is invalid")
     verifier = record.get("password_verifier")
-    retired = _RETIRED_PASSWORD_FIELDS & set(record)
-    if verifier is None and not retired:
+    if verifier is None:
         return None
     match = _VERIFIER.fullmatch(verifier) if isinstance(verifier, str) else None
-    if retired or match is None:
+    if match is None:
         raise PasswordRecordError("Local Supervisor password record requires bounded recovery")
     return bytes.fromhex(match.group(1)), bytes.fromhex(match.group(2))
 

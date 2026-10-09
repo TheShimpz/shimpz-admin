@@ -31,7 +31,6 @@ class AuthRouteTests(unittest.TestCase):
             root,
             extra={
                 "SHIMPZ_ADMIN_ALLOWED_ORIGINS": "http://localhost:7777,http://127.0.0.1:7777",
-                "SHIMPZ_SETUP_TOKEN": "retired-token-must-be-inert",
             },
         )
         app_import.replace_for_class(cls, cls.admin_app.state, "STORE_PATH", root / "admin.json")
@@ -143,29 +142,28 @@ class AuthRouteTests(unittest.TestCase):
         )
         return setup, confirmed
 
-    def test_retired_query_token_grants_no_session_or_api_access(self) -> None:
-        async def serve_static(_request):
-            return PlainTextResponse("spa")
+    def test_a_valid_session_in_the_query_grants_no_api_access(self) -> None:
+        _setup, confirmed = self._configure("violet otter lantern quartz 92")
+        session = self._cookie(confirmed, "shimpz_admin")
 
-        response = asyncio.run(self.admin_app._gate(self._request("/?token=retired-token-must-be-inert"), serve_static))
+        async def allowed(_request):
+            return PlainTextResponse("allowed")
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.body, b"spa")
-        self.assertNotIn("set-cookie", response.headers)
+        with_cookie = asyncio.run(self.admin_app._gate(self._request("/api/model-providers", cookie=session), allowed))
+        self.assertEqual(with_cookie.status_code, 200)
 
         async def should_not_run(_request):
-            self.fail("a query token reached a session-gated endpoint")
+            self.fail("a session in the query reached a session-gated endpoint")
 
-        guarded = asyncio.run(
-            self.admin_app._gate(
-                self._request("/api/model-providers?token=retired-token-must-be-inert"),
-                should_not_run,
-            )
-        )
-        self.assertEqual(guarded.status_code, 401)
-        self.assertFalse(self.admin_app.state.is_initialized())
+        for query in (f"shimpz_admin={session}", f"token={session}"):
+            with self.subTest(query=query.partition("=")[0]):
+                guarded = asyncio.run(
+                    self.admin_app._gate(self._request(f"/api/model-providers?{query}"), should_not_run)
+                )
+                self.assertEqual(guarded.status_code, 401)
+                self.assertNotIn("set-cookie", guarded.headers)
 
-    def test_retired_environment_does_not_change_password_setup(self) -> None:
+    def test_password_setup_runs_off_the_event_loop(self) -> None:
         password = "violet otter lantern quartz 92"
         with mock.patch.object(self.admin_app.asyncio, "to_thread", wraps=asyncio.to_thread) as to_thread:
             response = asyncio.run(
