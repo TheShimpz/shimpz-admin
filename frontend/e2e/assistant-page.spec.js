@@ -33,7 +33,8 @@ const STAGED_PAGE = assistantDetails({
 
 // `inventory()` is the Team's installed Assistants at each read (null fails that read); `deletes` records every
 // uninstall request and `deleteStatus` answers it; `stagedStatus` fails the Local snapshot enumeration when it is not
-// 200. `stagedGate()` and `detailsGate(locale)` may return a promise that holds that reply until it settles.
+// 200. `stagedGate()`, `inventoryGate()`, and `detailsGate(locale)` (either page) may return a promise that holds that
+// reply until it settles.
 async function routePage(page, {
   inventory = () => [],
   staged = [stagedSnapshot({ name: 'Cloudflare' })],
@@ -44,6 +45,7 @@ async function routePage(page, {
   deleteStatus = 200,
   stagedPage = STAGED_PAGE,
   detailsGate = () => undefined,
+  inventoryGate = () => undefined,
 } = {}) {
   await page.route('**/api/**', async (route) => {
     const request = route.request();
@@ -59,6 +61,7 @@ async function routePage(page, {
       return route.fulfill({ json: { ...copy, locale } }).catch(() => {});
     }
     if (url.pathname === '/api/teams/marketing/assistants/shimpz-cloudflare/details') {
+      await detailsGate(locale);
       const installed = inventory().find((entry) => entry.assistant === 'shimpz-cloudflare');
       return route.fulfill({ json: { ...STAGED_PAGE, locale, assistant_version: installed.assistant_version } });
     }
@@ -71,6 +74,7 @@ async function routePage(page, {
       return route.fulfill({ status: 503, json: { detail: 'Team is unavailable' } });
     }
     if (url.pathname === '/api/local-assistants') await stagedGate();
+    if (url.pathname === '/api/teams/marketing/assistants') await inventoryGate();
     if (url.pathname === '/api/local-assistants' && stagedStatus !== 200) {
       return route.fulfill({ status: stagedStatus, json: { error: 'unavailable', code: 'local-assistant-snapshots-unavailable' } });
     }
@@ -285,4 +289,44 @@ test('never shows a page read for the previous language once the language change
   releaseListing();
   await expect(sheet.getByRole('heading', { level: 2 })).toHaveText(portuguese);
   await expect(sheet.getByText('@roxygens', { exact: true })).toHaveCount(0);
+});
+
+test('reads an installed Assistant page again when its reply arrived during an inventory read', async ({ page }) => {
+  let releaseDetails;
+  const detailsHeld = new Promise((resolve) => { releaseDetails = resolve; });
+  let holdDetails = true;
+  let inventoryHeld;
+  let releaseInventory;
+  const deletes = [];
+  await routePage(page, {
+    inventory: () => [{ assistant: 'shimpz-cloudflare', assistant_version: '0.5.2', status: 'running', provenance: 'local' }],
+    deletes,
+    deleteStatus: 500,
+    detailsGate: () => (holdDetails ? detailsHeld : undefined),
+    inventoryGate: () => inventoryHeld,
+  });
+  const installedPage = (url) => url.includes('/api/teams/marketing/assistants/shimpz-cloudflare/details');
+  const detailsRequested = page.waitForRequest((request) => installedPage(request.url()));
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  await detailsRequested;
+  const sheet = page.getByRole('article');
+  await sheet.getByRole('button', { name: 'Uninstall', exact: true }).click();
+
+  // The Team inventory is read again right before the uninstall; the page's reply lands during that read.
+  inventoryHeld = new Promise((resolve) => { releaseInventory = resolve; });
+  const inventoryRequested = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/teams/marketing/assistants');
+  await page.getByRole('dialog').getByRole('button', { name: 'Uninstall Assistant' }).click();
+  await inventoryRequested;
+  holdDetails = false;
+  const detailsServed = page.waitForResponse((response) => installedPage(response.url()));
+  releaseDetails();
+  await detailsServed;
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  inventoryHeld = undefined;
+  releaseInventory();
+
+  // Team refuses the uninstall and keeps the binding: the page shows its copy instead of loading forever.
+  await expect(page.getByRole('dialog').getByRole('alert')).toHaveText('Team did not confirm the removal.');
+  expect(deletes).toHaveLength(1);
+  await expect(sheet.getByRole('heading', { level: 2 })).toHaveText(STAGED_PAGE.summary);
 });

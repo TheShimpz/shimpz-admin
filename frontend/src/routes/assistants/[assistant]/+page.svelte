@@ -214,10 +214,16 @@
       settleInitialView();
       return;
     }
-    // A reply counts only for the request, Assistant, Team, and language it was read for.
+    // A reply counts only for the request, Assistant, Team, and language it was read for. A reply for the current
+    // request that arrives while that scope is unsettled (an inventory refresh) is dropped and its key forgotten, so the
+    // page reads again once the scope settles.
     const subject = assistantId;
-    const stale = () => request !== detailsRequest || subject !== assistantId || team?.id !== activeTeam?.id
-      || language !== $locale;
+    const stale = () => {
+      if (request !== detailsRequest) return true;
+      if (subject === assistantId && team?.id === activeTeam?.id && language === $locale) return false;
+      detailsKey = '';
+      return true;
+    };
     try {
       if (current.mode === 'installed') {
         iconSrc = `/api/teams/${encodeURIComponent(team.id)}/assistants/${encodeURIComponent(assistantId)}/icon`;
