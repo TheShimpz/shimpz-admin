@@ -104,7 +104,7 @@ class TeamNameBoundaryTests(unittest.TestCase):
 
 
 class TeamNameInProcessTests(unittest.TestCase):
-    """The same routes in process: the rename endpoint, Local creation, and Hosted creation left unchanged."""
+    """The same routes in process: the rename endpoint and Team creation."""
 
     def rename_endpoint(self):
         app = FastAPI()

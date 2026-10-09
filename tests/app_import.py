@@ -24,7 +24,6 @@ def environment(root: Path, extra: dict[str, str] | None = None) -> dict[str, st
     return {
         "SHIMPZ_REPO": str(root),
         "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
-        "SHIMPZ_ADMIN_PROFILE": "local",
         **(extra or {}),
     }
 

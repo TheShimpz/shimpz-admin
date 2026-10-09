@@ -21,7 +21,6 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
         self.admin_app._AUTHENTICATE_ACTION_REQUEST = self.admin_app.chat_human.LocalPasswordAuthority(
             partial(
                 self.admin_app.chat_human.authenticate_local,
-                profile="local",
                 record_get=self.admin_app.state.get,
             ),
             clock=lambda: self.auth_clock[0],

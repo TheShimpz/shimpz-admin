@@ -1,6 +1,5 @@
 """One structured preparation path for every fresh Local chat objective."""
 
-import profile as admin_profile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Literal
@@ -209,14 +208,13 @@ def _uninstall_candidate(candidate: assistant_proposal.UninstallCandidate) -> di
 def _catalog_state(
     team_id: str,
     catalog: store_catalog.StoreCatalog,
-    include_local: bool,
 ) -> tuple[
     dict[str, assistant_inventory.InstalledAssistant],
     tuple[assistant_proposal.DirectoryAssistant, ...],
 ]:
     with ThreadPoolExecutor(max_workers=2, thread_name_prefix="assistant-route-directory") as executor:
         inventory_future = submit_in_context(executor, assistant_plan.installed_inventory, team_id)
-        catalog_future = submit_in_context(executor, assistant_plan.planning_catalog, catalog, include_local)
+        catalog_future = submit_in_context(executor, assistant_plan.planning_catalog, catalog)
         installed = inventory_future.result()
         available = catalog_future.result()
     return installed, available
@@ -227,11 +225,10 @@ def _prepare_install(
     payload: dict[str, object],
     query: str,
     catalog: store_catalog.StoreCatalog,
-    include_local: bool,
     locale: str,
     task_follows: bool = False,
 ) -> Result:
-    installed, available = _catalog_state(team_id, catalog, include_local)
+    installed, available = _catalog_state(team_id, catalog)
     shortlist = assistant_proposal.install_shortlist(query, available)
     selection = _route(
         team_id,
@@ -281,7 +278,6 @@ def _classified_install(
     payload: dict[str, object],
     classification: Route,
     catalog: store_catalog.StoreCatalog,
-    include_local: bool,
     locale: str,
 ) -> Result:
     if not classification.query:
@@ -294,7 +290,6 @@ def _classified_install(
         payload,
         classification.query,
         catalog,
-        include_local,
         locale,
         classification.task_follows,
     )
@@ -333,7 +328,6 @@ def _lifecycle_result(
     classification: Route,
     route_context: Context,
     catalog: store_catalog.StoreCatalog,
-    include_local: bool,
     *,
     allow_uninstall: bool,
 ) -> Result:
@@ -348,7 +342,6 @@ def _lifecycle_result(
             payload,
             classification,
             catalog,
-            include_local,
             locale,
         )
     return _classified_uninstall(
@@ -364,14 +357,12 @@ def _prepare(
     team_id: str,
     payload: dict[str, object],
     catalog: store_catalog.StoreCatalog,
-    include_local: bool | None = None,
     context: Context | None = None,
     *,
     allow_uninstall: bool,
 ) -> Result:
     """Classify once while speculatively planning capabilities, then keep only the result the route needs."""
     route_context = context or Context()
-    local_enabled = admin_profile.require() == "local" if include_local is None else include_local
     try:
         capability = submit_in_context(
             _CAPABILITY_PLANNING,
@@ -379,7 +370,6 @@ def _prepare(
             team_id,
             payload,
             catalog,
-            local_enabled,
         )
     except ExecutorSaturatedError:
         capability = None
@@ -403,7 +393,7 @@ def _prepare(
         preparation = (
             capability.result()
             if capability is not None
-            else assistant_plan.prepare_capability(team_id, payload, catalog, local_enabled)
+            else assistant_plan.prepare_capability(team_id, payload, catalog)
         )
         if payload["files"] and preparation.plan is not None:
             # A message with attachments never installs a capability; it is explained instead (ADR-0093).
@@ -418,7 +408,6 @@ def _prepare(
         classification,
         route_context,
         catalog,
-        local_enabled,
         allow_uninstall=allow_uninstall,
     )
 
@@ -427,18 +416,16 @@ def prepare(
     team_id: str,
     payload: dict[str, object],
     catalog: store_catalog.StoreCatalog,
-    include_local: bool | None = None,
     context: Context | None = None,
 ) -> Result:
     """Classify a fresh chat turn and open only its required bounded directory."""
-    return _prepare(team_id, payload, catalog, include_local, context, allow_uninstall=True)
+    return _prepare(team_id, payload, catalog, context, allow_uninstall=True)
 
 
 def prepare_resume(
     team_id: str,
     payload: dict[str, object],
     catalog: store_catalog.StoreCatalog,
-    include_local: bool | None = None,
 ) -> Result:
     """Reclassify a reconnect objective without admitting destructive lifecycle work."""
-    return _prepare(team_id, payload, catalog, include_local, None, allow_uninstall=False)
+    return _prepare(team_id, payload, catalog, None, allow_uninstall=False)

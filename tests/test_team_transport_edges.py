@@ -79,29 +79,9 @@ class TeamTransportEdgeTests(unittest.TestCase):
         with transport._token_cache_lock:
             transport._token_cache = None
 
-    def test_supervisor_context_rejects_mixed_or_missing_local_authority(self) -> None:
+    def test_local_assertion_refuses_an_incomplete_file_binding(self) -> None:
         identity = supervisor.new_identity()
-        with (
-            self.assertRaisesRegex(transport.TeamRequestError, "cannot carry"),
-            transport.supervisor_session("session", account=True, local_identity=identity),
-        ):
-            pass
-
-        reset = transport._SUPERVISOR_SESSION.set(transport._SupervisorSession("session", False, None, "session"))
-        try:
-            with self.assertRaises(supervisor.SupervisorAuthorityError):
-                transport._local_assertion(
-                    "GET",
-                    "/v1/teams",
-                    None,
-                    content_type=None,
-                    filename=None,
-                    bindings=transport._RequestBindings(),
-                )
-        finally:
-            transport._SUPERVISOR_SESSION.reset(reset)
-
-        with transport.supervisor_session("session", account=False, local_identity=identity):
+        with transport.supervisor_session("session", local_identity=identity):
             with self.assertRaisesRegex(supervisor.SupervisorAuthorityError, "file binding"):
                 transport._local_assertion(
                     "POST",

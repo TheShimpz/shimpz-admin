@@ -204,11 +204,10 @@ async def authenticate_local(
     kind: str,
     secret: str,
     *,
-    profile: str,
     record_get: Callable[[], dict[str, object]],
 ) -> str:
     """Return one bounded Local assurance outcome without exposing factor material."""
-    if profile != "local" or kind != "auth:password" or not 1 <= len(secret) <= MAX_AUTH_SECRET_CHARS:
+    if kind != "auth:password" or not 1 <= len(secret) <= MAX_AUTH_SECRET_CHARS:
         return "unavailable"
     try:
         record = record_get()

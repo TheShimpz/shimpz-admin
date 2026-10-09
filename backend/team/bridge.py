@@ -203,17 +203,6 @@ def resolve_team_name(team_id: object) -> TeamResponse | str:
     return _authoritative_team_name(list_teams(), canonical_id)
 
 
-def destroy(team_id: object, expected_team_name: object) -> TeamResponse:
-    canonical_id = canonical_team_id(team_id)
-    expected_name = canonical_team_name(expected_team_name)
-    authoritative = resolve_team_name(canonical_id)
-    if isinstance(authoritative, TeamResponse):
-        return authoritative
-    if authoritative != expected_name:
-        raise TeamRequestError("Team name confirmation does not match")
-    return _call("DELETE", f"/v1/teams/{canonical_id}")
-
-
 def destroy_confirmed(team_id: object, expected_team_name: object) -> TeamResponse:
     """Delete a Local Team; Team confirms its current name before any side effect (ADR-0088)."""
     canonical_id = canonical_team_id(team_id)

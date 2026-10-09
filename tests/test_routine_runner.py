@@ -130,7 +130,7 @@ class RoutineIdentityTests(unittest.TestCase):
         )
         with (
             mock.patch.object(transport, "_team_token", return_value="machine-bearer"),
-            transport.supervisor_session(session, account=False, local_identity=identity),
+            transport.supervisor_session(session, local_identity=identity),
         ):
             headers = transport._request_headers(
                 "POST",

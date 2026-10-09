@@ -361,9 +361,6 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
     def test_history_delivery_admission_and_terminal_edges_fail_closed(self) -> None:
         async def scenario() -> None:
             delivery = socket.history_delivery
-            with self.assertRaises(ValueError):
-                delivery.configure("unknown")
-            delivery.configure("local")
             with (
                 mock.patch.object(socket.history, "append_user", return_value=False),
                 self.assertRaises(socket.history.HistoryUnavailableError),
@@ -405,16 +402,6 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
     def test_history_delivery_resume_edges_fail_closed(self) -> None:
         async def scenario() -> None:
             delivery = socket.history_delivery
-            delivery.configure("hosted")
-            self.assertIsNone(await delivery.admit("team_1", "Hello"))
-            self.assertIsNone(await delivery.resume("team_1"))
-            self.assertIsNone(await delivery.observe("team_1"))
-            self.assertIsNone(await delivery.resume_exact("team_1", "a" * 32))
-            await delivery.resumed_terminal("a" * 32, {"type": "error"})
-            await delivery.abandon("a" * 32)
-
-            delivery.configure("local")
-
             with mock.patch.object(socket.history, "resumable_turn", return_value=None):
                 with self.assertRaises(socket.history.HistoryUnavailableError):
                     await delivery.resume("team_1")
@@ -439,7 +426,6 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
     def test_history_delivery_resumed_terminal_and_guidance_edges_fail_closed(self) -> None:
         async def scenario() -> None:
             delivery = socket.history_delivery
-            delivery.configure("local")
             with self.assertRaises(socket.history.HistoryUnavailableError):
                 await delivery.resumed_terminal(None, {"type": "done"})
             with (

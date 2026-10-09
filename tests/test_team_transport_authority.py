@@ -87,50 +87,36 @@ class TeamTransportAuthorityTest(unittest.TestCase):
             self.addCleanup(patch.stop)
         self.local_identity = supervisor.new_identity()
 
-    def test_account_session_is_request_scoped_and_never_sent_by_local(self) -> None:
-        account_session = "a1:" + ("a" * 32) + ":2209600:" + ("b" * 64) + ":" + ("c" * 64)
-        with transport.supervisor_session(account_session, account=True):
-            transport._call("GET", "/v1/teams")
+    def test_session_is_request_scoped_and_never_sends_the_retired_account_header(self) -> None:
+        session = "v1:9999999999:0123456789abcdef:" + "a" * 64
         transport._call("GET", "/v1/teams")
-        with transport.supervisor_session(
-            account_session,
-            account=False,
-            local_identity=self.local_identity,
-        ):
+        with transport.supervisor_session(session, local_identity=self.local_identity):
             transport._call("GET", "/v1/teams")
 
-        self.assertEqual(_Connection.requests[0]["headers"]["X-Shimpz-Account"], account_session)
-        self.assertNotIn("X-Shimpz-Account", _Connection.requests[1]["headers"])
-        self.assertNotIn("X-Shimpz-Account", _Connection.requests[2]["headers"])
-        self.assertIn(contract.ASSERTION_HEADER, _Connection.requests[2]["headers"])
-        self.assertEqual(transport._account_session(), "")
+        self.assertNotIn(contract.ASSERTION_HEADER, _Connection.requests[0]["headers"])
+        self.assertIn(contract.ASSERTION_HEADER, _Connection.requests[1]["headers"])
+        for request in _Connection.requests:
+            self.assertNotIn("X-Shimpz-Account", request["headers"])
 
-    def test_invalid_session_and_authority_kind_fail_before_transport(self) -> None:
-        account_session = "a1:" + ("a" * 32) + ":2209600:" + ("b" * 64) + ":" + ("c" * 64)
+    def test_invalid_session_identity_and_authority_kind_fail_before_transport(self) -> None:
+        session = "v1:9999999999:0123456789abcdef:" + "a" * 64
         for invalid in ("", "x\ninjected", None, "a" * 2049):
             with (
                 self.subTest(invalid=invalid),
                 self.assertRaises(transport.TeamRequestError),
-                transport.supervisor_session(invalid, account=True),
+                transport.supervisor_session(invalid, local_identity=self.local_identity),
             ):
                 pass
         with (
             self.assertRaises(transport.TeamRequestError),
-            transport.supervisor_session(account_session, account=None),
+            transport.supervisor_session(session, local_identity=None),
         ):
             pass
         with (
             self.assertRaises(transport.TeamRequestError),
-            transport.supervisor_session(account_session, account=False),
+            transport.supervisor_session(session, local_identity=self.local_identity, authority_kind="invalid"),
         ):
             pass
-        for authority_kind in ("invalid", "host-reset"):
-            with (
-                self.subTest(authority_kind=authority_kind),
-                self.assertRaises(transport.TeamRequestError),
-                transport.supervisor_session(account_session, account=True, authority_kind=authority_kind),
-            ):
-                pass
         self.assertEqual(_Connection.requests, [])
 
     def test_local_assertion_binds_json_model_and_session_without_disclosing_the_key(self) -> None:
@@ -138,7 +124,6 @@ class TeamTransportAuthorityTest(unittest.TestCase):
         api_key = "sk-test-0123456789"
         with transport.supervisor_session(
             session,
-            account=False,
             local_identity=self.local_identity,
         ):
             transport._call(
@@ -180,7 +165,6 @@ class TeamTransportAuthorityTest(unittest.TestCase):
         }
         with transport.supervisor_session(
             session,
-            account=False,
             local_identity=self.local_identity,
         ):
             encoded = transport._local_assertion(
@@ -204,7 +188,6 @@ class TeamTransportAuthorityTest(unittest.TestCase):
         capability_binding = "host-reset-v1:" + "d" * 64
         with transport.supervisor_session(
             capability_binding,
-            account=False,
             local_identity=self.local_identity,
             authority_kind="host-reset",
         ):
@@ -222,7 +205,6 @@ class TeamTransportAuthorityTest(unittest.TestCase):
         session = "v1:9999999999:0123456789abcdef:" + "a" * 64
         with transport.supervisor_session(
             session,
-            account=False,
             local_identity=self.local_identity,
         ):
             transport._call_raw(

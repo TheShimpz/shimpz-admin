@@ -16,7 +16,6 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1] / "backend/protocol"
-ACCOUNT = ROOT / "account/admin-session/v1"
 HTTP = ROOT / "http/v1"
 
 
@@ -90,55 +89,6 @@ def _rehash(root: Path, filename: str) -> None:
         "\n".join(f"{digest}  {filename}" if row.endswith(f"  {filename}") else row for row in rows) + "\n",
         encoding="ascii",
     )
-
-
-class AccountAdminSessionVerifierEdgeTests(unittest.TestCase):
-    def test_accepts_the_current_pinned_authority(self) -> None:
-        self.assertIn("verified", _execute(ACCOUNT / "verify.py"))
-
-    def test_rejects_inventory_digest_schema_and_envelope_drift(self) -> None:
-        mutations = (
-            lambda root: (root / "contract-files.sha256").write_text("", encoding="ascii"),
-            lambda root: (root / "README.md").write_text("drift", encoding="utf-8"),
-            lambda root: _rewrite_json(
-                root,
-                "introspection-request.schema.json",
-                lambda value: value.update({"$schema": "draft"}),
-            ),
-            lambda root: _rewrite_json(
-                root,
-                "introspection-response.schema.json",
-                lambda value: value.update({"$id": "invalid"}),
-            ),
-            lambda root: _rewrite_json(root, "vectors.json", lambda value: value.update({"version": 2})),
-        )
-        for mutate in mutations:
-            with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
-                _execute(ACCOUNT / "verify.py", mutate)
-
-    def test_rejects_each_closed_request_and_response_vector_violation(self) -> None:
-        def request_shape(value: dict[str, object]) -> None:
-            value["vectors"][0]["request"]["extra"] = True
-
-        def request_value(value: dict[str, object]) -> None:
-            value["vectors"][0]["request"]["version"] = True
-
-        def response_value(value: dict[str, object]) -> None:
-            value["vectors"][0]["response"]["active"] = "yes"
-
-        def response_shape(value: dict[str, object]) -> None:
-            value["vectors"][0]["response"]["extra"] = True
-
-        def active_identity(value: dict[str, object]) -> None:
-            active = next(vector for vector in value["vectors"] if vector["response"]["active"])
-            active["response"]["account_id"] = "bad"
-
-        for mutate in (request_shape, request_value, response_value, response_shape, active_identity):
-            with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
-                _execute(
-                    ACCOUNT / "verify.py",
-                    lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
-                )
 
 
 class TeamHttpVerifierEdgeTests(unittest.TestCase):

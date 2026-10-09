@@ -235,12 +235,9 @@ class RoutineManageTests(unittest.TestCase):
 
 
 class RoutineRouteTests(unittest.TestCase):
-    def test_routes_exist_only_on_local_and_are_never_cached(self) -> None:
-        hosted = FastAPI()
-        routine_http.register(hosted, "hosted", mock.AsyncMock(), local_auth.Context())
-        self.assertEqual([route.path for route in hosted.routes if "routines" in route.path], [])
+    def test_routes_are_registered_and_never_cached(self) -> None:
         local = FastAPI()
-        routine_http.register(local, "local", mock.AsyncMock(), local_auth.Context())
+        routine_http.register(local, mock.AsyncMock(), local_auth.Context())
         # A recorded Routine is created by its card's one confirmation, or revoked (ADR-0101). Deleting one is the
         # Supervisor's password route then the second-factor DELETE (ADR-0051).
         self.assertEqual(sum("routines" in route.path for route in local.routes), 15)

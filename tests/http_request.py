@@ -19,7 +19,7 @@ LOOPBACK = Peer("http", ("127.0.0.1", 1234), ("testserver", 80))
 
 
 def remote(client_host: str) -> Peer:
-    """A remote browser of the Hosted origin at one documentation-range address."""
+    """A remote browser of an external HTTPS origin at one documentation-range address."""
     return Peer("https", (client_host, 1234), ("admin.example.test", 443))
 
 

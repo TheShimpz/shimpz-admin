@@ -23,7 +23,7 @@ def _response(action) -> Response:
 
 
 def register(app: FastAPI) -> None:
-    """An installed Assistant's icon is read in both profiles."""
+    """Register the route that reads an installed Assistant's icon."""
     app.add_api_route("/api/teams/{team_id}/assistants/{assistant_id}/icon", assistant_icon, methods=["GET"])
 
 

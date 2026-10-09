@@ -1,6 +1,5 @@
 """Durable, Team-isolated Admin chat presentation history."""
 
-import asyncio
 import contextlib
 import sqlite3
 import sys
@@ -14,7 +13,6 @@ from fastapi import HTTPException
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from history import delivery
 from history import http as history_http
 from history import store as history
 from team import bridge as team
@@ -287,14 +285,6 @@ class ChatHistoryTests(ChatHistoryCase):
         self.assertNotIn(team_marker.encode(), self.path.read_bytes())
         self.assertEqual(history.clear_all(), 1)
         self.assertNotIn(space_marker.encode(), self.path.read_bytes())
-
-    def test_hosted_delivery_never_opens_the_local_history_store(self) -> None:
-        delivery.configure("hosted")
-        self.addCleanup(delivery.configure, "local")
-
-        with mock.patch.object(history, "append_user") as append:
-            self.assertIsNone(asyncio.run(delivery.admit("marketing", "Hello")))
-        append.assert_not_called()
 
     def test_store_and_directory_are_private(self) -> None:
         history.append_user("marketing", history.new_turn_id(), "Private")

@@ -69,7 +69,7 @@ WORKDIR /app/backend
 COPY --link backend/app.py backend/auth.py backend/authentication_state.py backend/browser.py backend/decision.py \
     backend/local_auth.py backend/models.py \
     backend/model_catalog.json \
-    backend/profile.py backend/state.py backend/supervisor.py ./
+    backend/state.py backend/supervisor.py ./
 COPY --link backend/mfa/passkeys.py backend/mfa/tickets.py backend/mfa/totp.py ./mfa/
 COPY --link backend/action/stored_input.py ./action/
 COPY --link backend/chat/assets.py backend/chat/assistant_install.py backend/chat/assistant_inventory.py \
@@ -87,8 +87,8 @@ COPY --link backend/chat/delivery/challenge.py backend/chat/delivery/plan.py \
     backend/chat/delivery/uninstall.py ./chat/delivery/
 COPY --link backend/history/context.py backend/history/delivery.py backend/history/http.py backend/history/store.py \
     ./history/
-COPY --link backend/integrations/account.py backend/integrations/assistants.py backend/integrations/cloudflare.py \
-    backend/integrations/handoff.py ./integrations/
+COPY --link backend/integrations/assistants.py backend/integrations/cloudflare.py backend/integrations/handoff.py \
+    ./integrations/
 COPY --link backend/space/host_reset.py backend/space/release.py backend/space/reset.py ./space/
 COPY --link backend/routine/answer.py backend/routine/delivery.py backend/routine/http.py backend/routine/manage.py backend/routine/scheduler.py \
     backend/routine/team.py ./routine/
@@ -109,7 +109,7 @@ ENV PATH="/opt/venv/bin:$PATH" \
     SHIMPZ_ADMIN_STORE=/data/admin.json
 # Fail during the image build, rather than after publication smoke startup, if the explicit runtime
 # copy surface omits a module imported by the Admin application, then compile the application like its environment.
-RUN SHIMPZ_ADMIN_PROFILE=local python -c "import app" && \
+RUN python -c "import app" && \
     python -m compileall -q -f --invalidation-mode checked-hash /app/backend
 USER admin
 EXPOSE 4600

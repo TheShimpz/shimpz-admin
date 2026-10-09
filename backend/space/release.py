@@ -84,6 +84,5 @@ def status_response() -> dict[str, object]:
     return {**document, "checked_at": checked_at}
 
 
-def register(application: FastAPI, profile: str) -> None:
-    if profile == "local":
-        application.add_api_route("/api/platform-release", status_response, methods=["GET"])
+def register(application: FastAPI) -> None:
+    application.add_api_route("/api/platform-release", status_response, methods=["GET"])

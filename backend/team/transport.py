@@ -17,7 +17,6 @@ from urllib.parse import quote, urlparse
 import models
 import supervisor as local_supervisor
 
-from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import supervisor as supervisor_contract
 from protocol.http.v1 import websocket as team_http
@@ -37,8 +36,7 @@ FILE_NAME_HEADER = "X-Shimpz-Filename"
 @dataclass(frozen=True, slots=True)
 class _SupervisorSession:
     value: str
-    account: bool
-    local_identity: local_supervisor.LocalIdentity | None
+    local_identity: local_supervisor.LocalIdentity
     authority_kind: str
 
 
@@ -123,8 +121,7 @@ _token_cache: _TokenCache | None = None
 def supervisor_session(
     value: object,
     *,
-    account: bool,
-    local_identity: local_supervisor.LocalIdentity | None = None,
+    local_identity: local_supervisor.LocalIdentity | None,
     authority_kind: str = "session",
 ):
     """Bind one already-validated human session to downstream Team calls in this request."""
@@ -135,34 +132,22 @@ def supervisor_session(
         or any(not 0x20 <= ord(character) <= 0x7E for character in value)
     ):
         raise TeamRequestError("Supervisor session is unavailable")
-    if type(account) is not bool:
-        raise TeamRequestError("Supervisor session kind is invalid")
     if authority_kind not in {"session", "host-reset"}:
         raise TeamRequestError("Supervisor authority kind is invalid")
-    if account:
-        if local_identity is not None or authority_kind != "session":
-            raise TeamRequestError("Hosted Supervisor session cannot carry a Local identity")
-    else:
-        try:
-            validated = local_supervisor.identity_from_record(
-                {
-                    "supervisor_id": local_identity.supervisor_id,
-                    "supervisor_signing_key": local_identity.private_key_hex,
-                }
-            )
-        except (AttributeError, local_supervisor.SupervisorAuthorityError) as exc:
-            raise TeamRequestError("Local Supervisor identity is unavailable") from exc
-        local_identity = validated
-    reset = _SUPERVISOR_SESSION.set(_SupervisorSession(value, account, local_identity, authority_kind))
+    try:
+        validated = local_supervisor.identity_from_record(
+            {
+                "supervisor_id": local_identity.supervisor_id,
+                "supervisor_signing_key": local_identity.private_key_hex,
+            }
+        )
+    except (AttributeError, local_supervisor.SupervisorAuthorityError) as exc:
+        raise TeamRequestError("Local Supervisor identity is unavailable") from exc
+    reset = _SUPERVISOR_SESSION.set(_SupervisorSession(value, validated, authority_kind))
     try:
         yield
     finally:
         _SUPERVISOR_SESSION.reset(reset)
-
-
-def _account_session() -> str:
-    binding = _SUPERVISOR_SESSION.get()
-    return binding.value if binding is not None and binding.account else ""
 
 
 def _local_assertion(
@@ -175,10 +160,8 @@ def _local_assertion(
     bindings: _RequestBindings,
 ) -> str:
     binding = _SUPERVISOR_SESSION.get()
-    if binding is None or binding.account:
+    if binding is None:
         return ""
-    if binding.local_identity is None:
-        raise local_supervisor.SupervisorAuthorityError("Local Supervisor identity is unavailable")
     return local_supervisor.sign_request(
         binding.local_identity,
         binding.value,
@@ -327,9 +310,6 @@ def _request_headers(
     bindings: _RequestBindings,
 ) -> dict[str, str]:
     headers = {"Accept": accept, "Authorization": f"Bearer {_team_token()}"}
-    account_session = _account_session()
-    if account_session:
-        headers[team_contract.ACCOUNT_SESSION_HEADER] = account_session
     if content_type is not None:
         headers["Content-Type"] = content_type
     if filename is not None:

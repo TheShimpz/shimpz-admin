@@ -1,7 +1,4 @@
-"""Local Team names (ADR-0088): create under a free id, and rename a Team without changing its id.
-
-Only the Local profile registers these: a Hosted Team keeps its immutable name.
-"""
+"""Local Team names (ADR-0088): create under a free id, and rename a Team without changing its id."""
 
 import logging
 import unicodedata

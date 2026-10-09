@@ -220,8 +220,6 @@ def run() -> None:
             "/run/shimpz-local-supervisor:rw,nosuid,nodev,noexec,size=1m,mode=2770,uid=0,gid=10021",
             "--volume",
             f"{volume}:/data",
-            "--env",
-            "SHIMPZ_ADMIN_PROFILE=local",
         ]
         cpuset = os.environ.get("SHIMPZ_PERF_ADMIN_CPUSET")
         if cpuset:

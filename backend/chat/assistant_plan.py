@@ -221,16 +221,11 @@ def _prepared_plan(
 
 def planning_catalog(
     catalog: store_catalog.StoreCatalog,
-    include_local: bool,
 ) -> tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...]:
-    if include_local:
-        with ThreadPoolExecutor(max_workers=1, thread_name_prefix="assistant-catalog") as executor:
-            local_future = submit_in_context(executor, team.list_local_assistants)
-            public = catalog.get(store_catalog.PLANNING_LOCALE)
-            local_assistants = local_catalog.primary(local_future.result())
-    else:
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="assistant-catalog") as executor:
+        local_future = submit_in_context(executor, team.list_local_assistants)
         public = catalog.get(store_catalog.PLANNING_LOCALE)
-        local_assistants = ()
+        local_assistants = local_catalog.primary(local_future.result())
     local_ids = {assistant.assistant_id for assistant in local_assistants}
     combined = (*local_assistants, *(assistant for assistant in public if assistant.assistant_id not in local_ids))
     return tuple(sorted(combined, key=lambda assistant: assistant.assistant_id))
@@ -289,7 +284,6 @@ def prepare_capability(
     team_id: str,
     payload: dict[str, object],
     catalog: store_catalog.StoreCatalog,
-    include_local: bool = False,
 ) -> Preparation:
     """Resolve exact current state, then apply the deterministic missing-capability gate."""
     enabled_ids = tuple(payload["assistant_ids"])
@@ -302,7 +296,7 @@ def prepare_capability(
     if enabled is None:
         return Preparation()
     try:
-        available = planning_catalog(catalog, include_local)
+        available = planning_catalog(catalog)
     except OSError, ValueError, team.TeamRequestError:
         return Preparation()
     return _prepare_gap(team_id, payload["message"], available, installed, enabled, catalog, payload["locale"])

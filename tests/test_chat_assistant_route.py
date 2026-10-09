@@ -125,7 +125,7 @@ class AssistantRouteTests(unittest.TestCase):
                 mock.patch.object(assistant_route.local, "intent_route", return_value=routed),
                 self.assertRaises(assistant_route.RouteError),
             ):
-                assistant_route.prepare("team_1", payload("hello"), mock.sentinel.catalog, False)
+                assistant_route.prepare("team_1", payload("hello"), mock.sentinel.catalog)
 
         def with_continuation(routed: local.PublicResponse, value: object) -> local.PublicResponse:
             return local.PublicResponse(routed.status, {**routed.body, "task_follows": value})
@@ -158,7 +158,7 @@ class AssistantRouteTests(unittest.TestCase):
             both_started.wait(timeout=5)
             return installed
 
-        def directory(_catalog, _include_local):
+        def directory(_catalog):
             both_started.wait(timeout=5)
             return available
 
@@ -167,7 +167,7 @@ class AssistantRouteTests(unittest.TestCase):
             mock.patch.object(assistant_route.assistant_plan, "planning_catalog", side_effect=directory),
         ):
             self.assertEqual(
-                assistant_route._catalog_state("team_1", mock.sentinel.catalog, True),
+                assistant_route._catalog_state("team_1", mock.sentinel.catalog),
                 (installed, available),
             )
 
@@ -182,8 +182,13 @@ class AssistantRouteTests(unittest.TestCase):
                 return_value=assistant_plan.team.TeamResponse(200, {"assistants": []}),
             ) as installed,
             mock.patch.object(assistant_plan.team, "list_assistants") as registry,
+            mock.patch.object(
+                assistant_plan.team,
+                "list_local_assistants",
+                return_value=assistant_plan.team.TeamResponse(200, {"assistants": []}),
+            ),
         ):
-            result = assistant_route._catalog_state("team_1", catalog, False)
+            result = assistant_route._catalog_state("team_1", catalog)
 
         self.assertEqual(result, ({}, (assistant,)))
         installed.assert_called_once_with("team_1")
@@ -195,7 +200,7 @@ class AssistantRouteTests(unittest.TestCase):
             mock.patch.object(assistant_route.local, "intent_route", return_value=response("ordinary-task")) as route,
             mock.patch.object(assistant_route.assistant_plan, "prepare_capability", return_value=prepared) as gate,
         ):
-            result = assistant_route.prepare("team_1", payload("liste minhas zonas"), mock.sentinel.catalog, False)
+            result = assistant_route.prepare("team_1", payload("liste minhas zonas"), mock.sentinel.catalog)
 
         self.assertEqual(result, assistant_route.Result("ordinary-task", preparation=prepared))
         route.assert_called_once_with(
@@ -205,7 +210,7 @@ class AssistantRouteTests(unittest.TestCase):
             [],
             local.IntentRouteContext(locale="en"),
         )
-        gate.assert_called_once_with("team_1", payload("liste minhas zonas"), mock.sentinel.catalog, False)
+        gate.assert_called_once_with("team_1", payload("liste minhas zonas"), mock.sentinel.catalog)
 
     def test_capability_planning_overlaps_classification(self) -> None:
         planning_started = threading.Event()
@@ -223,7 +228,7 @@ class AssistantRouteTests(unittest.TestCase):
             mock.patch.object(assistant_route.local, "intent_route", side_effect=classify),
             mock.patch.object(assistant_route.assistant_plan, "prepare_capability", side_effect=plan),
         ):
-            result = assistant_route.prepare("team_1", payload("pesquise na web"), mock.sentinel.catalog, True)
+            result = assistant_route.prepare("team_1", payload("pesquise na web"), mock.sentinel.catalog)
 
         self.assertEqual(result, assistant_route.Result("ordinary-task", preparation=prepared))
 
@@ -233,7 +238,7 @@ class AssistantRouteTests(unittest.TestCase):
             mock.patch.object(assistant_route.local, "intent_route", return_value=response("unresolved")),
             mock.patch.object(assistant_route.assistant_plan, "prepare_capability", return_value=speculative),
         ):
-            result = assistant_route.prepare("team_1", payload("faça isso"), mock.sentinel.catalog, False)
+            result = assistant_route.prepare("team_1", payload("faça isso"), mock.sentinel.catalog)
 
         self.assertEqual(result.intent, "unresolved")
         self.assertIsNone(result.preparation)
@@ -249,10 +254,10 @@ class AssistantRouteTests(unittest.TestCase):
             mock.patch.object(assistant_route.local, "intent_route", return_value=response("ordinary-task")),
             mock.patch.object(assistant_route.assistant_plan, "prepare_capability", return_value=prepared) as gate,
         ):
-            result = assistant_route.prepare("team_1", payload("liste minhas zonas"), mock.sentinel.catalog, False)
+            result = assistant_route.prepare("team_1", payload("liste minhas zonas"), mock.sentinel.catalog)
 
         self.assertEqual(result, assistant_route.Result("ordinary-task", preparation=prepared))
-        gate.assert_called_once_with("team_1", payload("liste minhas zonas"), mock.sentinel.catalog, False)
+        gate.assert_called_once_with("team_1", payload("liste minhas zonas"), mock.sentinel.catalog)
 
     def test_saturated_planning_is_skipped_for_lifecycle_or_failed_routes(self) -> None:
         saturated = mock.patch.object(
@@ -265,7 +270,7 @@ class AssistantRouteTests(unittest.TestCase):
             mock.patch.object(assistant_route.local, "intent_route", return_value=response("unresolved")),
             mock.patch.object(assistant_route.assistant_plan, "prepare_capability") as gate,
         ):
-            result = assistant_route.prepare("team_1", payload("faça isso"), mock.sentinel.catalog, False)
+            result = assistant_route.prepare("team_1", payload("faça isso"), mock.sentinel.catalog)
         self.assertEqual(result.intent, "unresolved")
         gate.assert_not_called()
 
@@ -279,7 +284,7 @@ class AssistantRouteTests(unittest.TestCase):
             mock.patch.object(assistant_route.assistant_plan, "prepare_capability") as gate,
             self.assertRaises(assistant_route.RouteError),
         ):
-            assistant_route.prepare("team_1", payload("hello"), mock.sentinel.catalog, False)
+            assistant_route.prepare("team_1", payload("hello"), mock.sentinel.catalog)
         gate.assert_not_called()
 
     def test_install_opens_only_the_catalog_directory_and_is_terminal(self) -> None:
@@ -298,7 +303,6 @@ class AssistantRouteTests(unittest.TestCase):
                 "team_1",
                 payload("instale o cloudflare"),
                 mock.sentinel.catalog,
-                False,
                 assistant_route.Context(reference=reference),
             )
 
@@ -333,7 +337,7 @@ class AssistantRouteTests(unittest.TestCase):
             _selected_route("assistant-install", assistant.assistant_id),
             mock.patch.object(assistant_route, "_catalog_state", return_value=(installed, (assistant,))),
         ):
-            result = assistant_route.prepare("team_1", payload("instale o cloudflare"), mock.sentinel.catalog, False)
+            result = assistant_route.prepare("team_1", payload("instale o cloudflare"), mock.sentinel.catalog)
 
         self.assertIsNone(result.preparation.plan)
         self.assertEqual(result.preparation.already_installed.assistants[0]["status"], "installed")
@@ -351,7 +355,6 @@ class AssistantRouteTests(unittest.TestCase):
                 "team_1",
                 payload("instale um Assistant"),
                 mock.sentinel.catalog,
-                False,
             )
 
         self.assertEqual(
@@ -386,7 +389,6 @@ class AssistantRouteTests(unittest.TestCase):
                     "team_1",
                     payload(f"instale {query}"),
                     mock.sentinel.catalog,
-                    False,
                 )
             self.assertEqual(result.guidance.code, "assistant-install-target-required")
 
@@ -404,7 +406,7 @@ class AssistantRouteTests(unittest.TestCase):
             _selected_route("assistant-uninstall", candidate.assistant.assistant_id) as route,
             mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=(candidate,)),
         ):
-            result = assistant_route.prepare("team_1", payload("retire o cloudflare"), mock.sentinel.catalog, False)
+            result = assistant_route.prepare("team_1", payload("retire o cloudflare"), mock.sentinel.catalog)
 
         self.assertEqual(result.uninstall, candidate)
         self.assertEqual(route.call_args_list[1].args[1], "cloudflare")
@@ -432,7 +434,6 @@ class AssistantRouteTests(unittest.TestCase):
                 "team_1",
                 payload("desinstala esse então"),
                 mock.sentinel.catalog,
-                False,
                 context,
             )
 
@@ -474,7 +475,6 @@ class AssistantRouteTests(unittest.TestCase):
                     "team_1",
                     payload("desinstale"),
                     mock.sentinel.catalog,
-                    False,
                 )
             self.assertEqual(result.guidance.code, "assistant-uninstall-target-required")
 
@@ -488,7 +488,7 @@ class AssistantRouteTests(unittest.TestCase):
             mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=(candidate,)),
             self.assertRaises(assistant_route.RouteError),
         ):
-            assistant_route.prepare("team_1", payload("desinstale cloudflare"), mock.sentinel.catalog, False)
+            assistant_route.prepare("team_1", payload("desinstale cloudflare"), mock.sentinel.catalog)
 
     def test_lifecycle_request_with_files_gets_localized_guidance_before_directories_open(self) -> None:
         attached = {**payload("instale o cloudflare"), "files": ["a" * 32], "locale": "pt"}
@@ -497,7 +497,7 @@ class AssistantRouteTests(unittest.TestCase):
             "intent_route",
             return_value=response("assistant-install", "cloudflare"),
         ):
-            result = assistant_route.prepare("team_1", attached, mock.sentinel.catalog, False)
+            result = assistant_route.prepare("team_1", attached, mock.sentinel.catalog)
         self.assertEqual(
             result,
             assistant_route.Result(
@@ -516,14 +516,14 @@ class AssistantRouteTests(unittest.TestCase):
             mock.patch.object(assistant_route.local, "intent_route", return_value=response("ordinary-task")),
             mock.patch.object(assistant_route.assistant_plan, "prepare_capability", return_value=plan),
         ):
-            result = assistant_route.prepare("team_1", attached, mock.sentinel.catalog, False)
+            result = assistant_route.prepare("team_1", attached, mock.sentinel.catalog)
         self.assertEqual(result.guidance.code, "assistant-capability-attachments")
         self.assertIsNone(result.preparation)
         with (
             mock.patch.object(assistant_route.local, "intent_route", return_value=response("ordinary-task")),
             mock.patch.object(assistant_route.assistant_plan, "prepare_capability", return_value=plan),
         ):
-            plain = assistant_route.prepare("team_1", payload("publique o relatório"), mock.sentinel.catalog, False)
+            plain = assistant_route.prepare("team_1", payload("publique o relatório"), mock.sentinel.catalog)
         self.assertIs(plain.preparation, plan)
 
     def test_every_attachment_guidance_is_public_text_in_every_interface_language(self) -> None:
@@ -541,7 +541,7 @@ class AssistantRouteTests(unittest.TestCase):
             "intent_route",
             return_value=response("unresolved"),
         ):
-            result = assistant_route.prepare("team_1", payload("faça isso"), mock.sentinel.catalog, False)
+            result = assistant_route.prepare("team_1", payload("faça isso"), mock.sentinel.catalog)
         self.assertEqual(
             result,
             assistant_route.Result(
@@ -561,7 +561,7 @@ class AssistantRouteTests(unittest.TestCase):
             ),
             self.assertRaisesRegex(assistant_route.RouteError, "structured Assistant routing failed"),
         ):
-            assistant_route.prepare("team_1", payload("hello"), mock.sentinel.catalog, False)
+            assistant_route.prepare("team_1", payload("hello"), mock.sentinel.catalog)
 
     def test_resume_rejects_uninstall_and_preserves_install_language(self) -> None:
         with (
@@ -576,7 +576,6 @@ class AssistantRouteTests(unittest.TestCase):
                 "team_1",
                 payload("desinstale o cloudflare"),
                 mock.sentinel.catalog,
-                False,
             )
 
         self.assertEqual(result, assistant_route.Result("unresolved", error_status=422))
@@ -598,7 +597,6 @@ class AssistantRouteTests(unittest.TestCase):
                 "team_1",
                 payload(long_install_message),
                 mock.sentinel.catalog,
-                False,
             )
 
         self.assertEqual(result.guidance.code, "assistant-install-target-required")

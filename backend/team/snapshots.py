@@ -1,4 +1,4 @@
-"""Local-only same-origin projection of staged Assistant snapshots: inventory, icon, localized summary, and page."""
+"""The same-origin projection of staged Assistant snapshots: inventory, icon, localized summary, and page."""
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -8,10 +8,7 @@ from team import http as team_http
 from team import summary as team_summary
 
 
-def register(app: FastAPI, profile: str) -> None:
-    """Staged snapshots exist only in the Local profile; Hosted never exposes these routes."""
-    if profile != "local":
-        return
+def register(app: FastAPI) -> None:
     app.add_api_route("/api/local-assistants", local_assistants_list, methods=["GET"])
     app.add_api_route("/api/local-assistants/{image_hash}/icon", team_assets.local_assistant_icon, methods=["GET"])
     app.add_api_route("/api/local-assistants/{image_hash}/summary", local_assistant_summary, methods=["GET"])

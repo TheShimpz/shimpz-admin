@@ -1,4 +1,4 @@
-"""Admin routes for a Local Team's Routines (ADR-0086); Hosted has no Routines yet."""
+"""Admin routes for a Team's Routines (ADR-0086)."""
 
 import local_auth
 from fastapi import FastAPI, HTTPException, Request
@@ -13,12 +13,9 @@ from routine import answer, manage
 
 def register(
     application: FastAPI,
-    profile: str,
     authenticate: answer.Authenticate,
     confirmations: local_auth.Context,
 ) -> None:
-    if profile != "local":
-        return
     base = "/api/teams/{team_id}/routines"
     application.add_api_route(base, routines_list, methods=["GET"])
     application.add_api_route(base + "/{routine_id}/deletion", deletion_route(confirmations), methods=["POST"])

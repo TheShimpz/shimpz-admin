@@ -13,7 +13,7 @@ from protocol.http.v1 import payload as team_contract
 
 
 def register(app: FastAPI) -> None:
-    """The interface registry and an installed Assistant's summary are read in both profiles."""
+    """Register the interface registry and an installed Assistant's summary."""
     app.add_api_route("/api/assistants", assistants_list, methods=["GET"])
     app.add_api_route("/api/teams/{team_id}/assistants/{assistant_id}/summary", assistant_summary, methods=["GET"])
     app.add_api_route("/api/teams/{team_id}/assistants/{assistant_id}/details", assistant_details, methods=["GET"])

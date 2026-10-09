@@ -101,7 +101,6 @@ class HumanChallengeProjectionTests(unittest.TestCase):
                 human.authenticate_local(
                     "auth:totp",
                     "secret",
-                    profile="local",
                     record_get=dict,
                 )
             ),
@@ -150,7 +149,6 @@ class HumanChallengeProjectionTests(unittest.TestCase):
                 human.authenticate_local(
                     "auth:password",
                     "secret",
-                    profile="local",
                     record_get=lambda: (_ for _ in ()).throw(OSError("offline")),
                 )
             ),

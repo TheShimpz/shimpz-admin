@@ -1,8 +1,7 @@
-"""Profile, session, and Supervisor failure edges for the Admin application boundary."""
+"""Session and Supervisor failure edges for the Admin application boundary."""
 
 import asyncio
 import json
-import os
 import sys
 import unittest
 from contextlib import nullcontext
@@ -49,26 +48,11 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
         self.store.unlink(missing_ok=True)
         self.admin_app._LOCAL_AUTH_CONTEXT = self.admin_app.local_auth.Context()
 
-    def test_profile_and_lifespan_reject_drift_and_materialize_initialized_local_authority(self) -> None:
-        with (
-            mock.patch.dict(os.environ, {"SHIMPZ_ADMIN_PROFILE": "invalid"}),
-            self.assertRaisesRegex(RuntimeError, "exactly local or hosted"),
-        ):
-            self.admin_app.profile.require()
-
-        async def mismatch() -> None:
-            with (
-                mock.patch.object(self.admin_app.profile, "require", return_value="hosted"),
-                self.assertRaisesRegex(RuntimeError, "changed after route registration"),
-            ):
-                async with self.admin_app._lifespan(self.admin_app.app):
-                    self.fail("profile drift reached the application lifespan")
-
+    def test_lifespan_materializes_initialized_local_authority(self) -> None:
         scheduler = mock.patch.object(self.admin_app.routine_scheduler, "RoutineScheduler")
 
         async def initialized() -> None:
             with (
-                mock.patch.object(self.admin_app.profile, "require", return_value="local"),
                 mock.patch.object(self.admin_app.state, "is_initialized", return_value=True),
                 mock.patch.object(self.admin_app.asyncio, "to_thread", new=mock.AsyncMock()) as to_thread,
                 scheduler as routines,
@@ -80,19 +64,8 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
             to_thread.assert_awaited_once_with(self.admin_app._materialize_local_supervisor)
             routines.return_value.close.assert_called_once_with()
 
-        async def hosted() -> None:
-            with (
-                mock.patch.object(self.admin_app, "ADMIN_PROFILE", "hosted"),
-                mock.patch.object(self.admin_app.profile, "require", return_value="hosted"),
-                scheduler as routines,
-            ):
-                async with self.admin_app._lifespan(self.admin_app.app):
-                    pass
-            routines.assert_not_called()
-
         async def uninitialized() -> None:
             with (
-                mock.patch.object(self.admin_app.profile, "require", return_value="local"),
                 mock.patch.object(self.admin_app.state, "is_initialized", return_value=False),
                 mock.patch.object(self.admin_app.asyncio, "to_thread", new=mock.AsyncMock()) as to_thread,
                 scheduler,
@@ -104,7 +77,6 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
         async def recovery_required() -> None:
             error = self.admin_app.auth.PasswordRecordError("corrupt")
             with (
-                mock.patch.object(self.admin_app.profile, "require", return_value="local"),
                 mock.patch.object(self.admin_app.state, "is_initialized", side_effect=error),
                 self.assertLogs("shimpz-admin", level="ERROR") as captured,
                 scheduler,
@@ -113,9 +85,7 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
                     pass
             self.assertIn("requires bounded recovery", "\n".join(captured.output))
 
-        asyncio.run(mismatch())
         asyncio.run(initialized())
-        asyncio.run(hosted())
         asyncio.run(uninitialized())
         asyncio.run(recovery_required())
 
@@ -133,9 +103,6 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
                 _request("/authorize", {}, origin="https://unadmitted.example.test")
             )
         self.assertEqual(denied.exception.status_code, 403)
-
-        with mock.patch.object(self.admin_app, "ADMIN_PROFILE", "hosted"):
-            self.assertIsNone(self.admin_app._oauth_request_mode(_request("/oauth")))
 
         with self.assertRaises(self.admin_app.HTTPException) as inexact:
             self.admin_app.local_auth._request_origin(_request("/login", origin="https://EXAMPLE.test"))
@@ -210,30 +177,14 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
             )
         self.assertEqual(caught.exception.status_code, 403)
 
-    def test_session_evidence_maps_corrupt_local_authority_and_hosted_denials(self) -> None:
+    def test_session_evidence_maps_corrupt_local_authority(self) -> None:
         authority_error = self.admin_app.supervisor.SupervisorAuthorityError("invalid")
         with (
             mock.patch.object(self.admin_app.state, "authentication_state", return_value="configured"),
             mock.patch.object(self.admin_app.supervisor, "local_session_evidence", side_effect=authority_error),
             self.assertRaises(self.admin_app.SessionEvidenceUnavailableError),
         ):
-            self.admin_app._local_session_evidence({})
-
-        unauthorized = self.admin_app.account_identity.AccountResponse(401, {"error": "invalid"})
-        inactive = self.admin_app.account_identity.AccountResponse(
-            200,
-            {"version": 1, "active": False, "account_id": "a" * 32, "supervisor": True},
-        )
-        with (
-            mock.patch.object(self.admin_app, "ADMIN_PROFILE", "hosted"),
-            mock.patch.object(
-                self.admin_app.account_identity,
-                "run_bounded",
-                new=mock.AsyncMock(side_effect=[unauthorized, inactive]),
-            ),
-        ):
-            self.assertIsNone(asyncio.run(self.admin_app._session_evidence({"shimpz_admin": "token"})))
-            self.assertIsNone(asyncio.run(self.admin_app._session_evidence({"shimpz_admin": "token"})))
+            self.admin_app._session_evidence({})
 
     def test_gate_fails_closed_when_the_team_authority_cannot_be_entered(self) -> None:
         async def should_not_run(_request):
@@ -241,7 +192,7 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
 
         evidence = {"subject": "supervisor"}
         with (
-            mock.patch.object(self.admin_app, "_session_evidence", new=mock.AsyncMock(return_value=evidence)),
+            mock.patch.object(self.admin_app, "_session_evidence", return_value=evidence),
             mock.patch.object(
                 self.admin_app,
                 "_team_session_scope",
@@ -250,6 +201,30 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
         ):
             response = asyncio.run(self.admin_app._gate(_request("/api/teams"), should_not_run))
         self.assertEqual(response.status_code, 503)
+
+    def test_gate_runs_an_authenticated_route_inside_the_supervisor_scope(self) -> None:
+        async def route(_request):
+            return self.admin_app.JSONResponse({"ok": True})
+
+        evidence = {"subject": "supervisor"}
+        with (
+            mock.patch.object(self.admin_app, "_session_evidence", return_value=evidence),
+            mock.patch.object(self.admin_app, "_team_session_scope", return_value=nullcontext()) as scope,
+        ):
+            response = asyncio.run(self.admin_app._gate(_request("/api/teams", cookie="token"), route))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("Content-Security-Policy", response.headers)
+        scope.assert_called_once()
+
+        unavailable = asyncio.run(
+            self.admin_app._session_evidence_unavailable(
+                _request("/api/session"), self.admin_app.SessionEvidenceUnavailableError()
+            )
+        )
+        self.assertEqual(unavailable.status_code, 503)
+
+    def test_unknown_api_paths_fail_honestly_instead_of_serving_the_shell(self) -> None:
+        self.assert_status(404, self.admin_app.unknown_api("retired"))
 
     def test_password_recovery_is_consistent_across_handler_gate_and_session(self) -> None:
         error = self.admin_app.auth.PasswordRecordError("corrupt")
@@ -260,7 +235,7 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
         async def should_not_run(_request):
             self.fail("corrupt Local authentication reached a protected route")
 
-        with mock.patch.object(self.admin_app, "_session_evidence", new=mock.AsyncMock(side_effect=error)):
+        with mock.patch.object(self.admin_app, "_session_evidence", side_effect=error):
             gated = asyncio.run(self.admin_app._gate(_request("/api/teams"), should_not_run))
         self.assertEqual(gated.status_code, 503)
         self.assertEqual(json.loads(gated.body)["code"], "password-recovery-required")
@@ -327,42 +302,7 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
         self.assert_status(409, self.admin_app.login(_request("/api/login", {"password": "valid-shape"})))
         self.assert_status(400, self.admin_app.admin_setup(_request("/api/admin/setup", {"password": 1})))
 
-    def test_hosted_login_maps_every_upstream_authentication_failure(self) -> None:
-        request = _request("/api/login")
-        self.assert_status(400, self.admin_app._hosted_login(request, {"username": "only"}))
-        self.assert_status(400, self.admin_app._hosted_login(request, {"username": "", "password": "secret"}))
-
-        login = self.admin_app.account_identity.AccountResponse(
-            200,
-            {"account_id": "a" * 32, "username": "user", "token": "token"},
-        )
-        cases = (
-            ([self.admin_app.account_identity.AccountResponse(401, {"error": "invalid"})], 401),
-            ([self.admin_app.account_identity.AccountResponse(503, {"error": "offline"})], 503),
-            (
-                [
-                    login,
-                    self.admin_app.account_identity.AccountResponse(503, {"error": "offline"}),
-                    self.admin_app.account_identity.AccountResponse(200, {"ok": True}),
-                ],
-                503,
-            ),
-        )
-        for responses, expected in cases:
-            with (
-                self.subTest(expected=expected, calls=len(responses)),
-                mock.patch.object(
-                    self.admin_app.account_identity,
-                    "run_bounded",
-                    new=mock.AsyncMock(side_effect=responses),
-                ),
-            ):
-                self.assert_status(
-                    expected,
-                    self.admin_app._hosted_login(request, {"username": "user", "password": "secret"}),
-                )
-
-    def test_logout_covers_empty_local_session_and_failed_hosted_revocation(self) -> None:
+    def test_logout_covers_empty_local_session_and_failed_revocation(self) -> None:
         local_response = asyncio.run(self.admin_app.logout(_request("/api/logout")))
         self.assertEqual(local_response.status_code, 200)
 
@@ -384,19 +324,14 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
         self.assertEqual(unavailable.status_code, 503)
         self.assertNotIn("set-cookie", unavailable.headers)
 
-        revoked = self.admin_app.account_identity.AccountResponse(503, {"error": "offline"})
         with (
-            mock.patch.object(self.admin_app, "ADMIN_PROFILE", "hosted"),
-            mock.patch.object(
-                self.admin_app.account_identity,
-                "run_bounded",
-                new=mock.AsyncMock(return_value=revoked),
-            ),
-            mock.patch.object(self.admin_app.OAUTH_HANDOFFS, "cancel_session"),
+            mock.patch.object(self.admin_app.state, "revoke_sessions_for_logout") as revoked,
+            mock.patch.object(self.admin_app.OAUTH_HANDOFFS, "cancel_session") as cancelled,
         ):
             response = asyncio.run(self.admin_app.logout(_request("/api/logout", cookie="token")))
-        self.assertEqual(response.status_code, 503)
-        self.assertIn(b"revocation is unavailable", response.body)
+        self.assertEqual(response.status_code, 200)
+        revoked.assert_called_once_with("token")
+        cancelled.assert_called_once_with("token")
 
     def test_setup_and_reset_reject_invalid_inputs_and_corrupt_password_state(self) -> None:
         self.assert_status(400, self.admin_app.admin_setup(_request("/setup", {"password": 1})))

@@ -164,7 +164,6 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 "team_1",
                 _payload(message, assistant_ids),
                 store,
-                local_inventory is not None,
             )
         return result, plan
 
@@ -285,7 +284,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 return_value=_install_required("cloudflare"),
             ),
         ):
-            result = assistant_plan.prepare_capability("team_1", _payload("Configure Cloudflare"), store, True)
+            result = assistant_plan.prepare_capability("team_1", _payload("Configure Cloudflare"), store)
 
         self.assertIsNotNone(result.plan)
         assert result.plan is not None
@@ -307,7 +306,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
             mock.patch.object(assistant_plan.team, "list_local_assistants") as local_snapshots,
             self.assertRaises(ValueError),
         ):
-            assistant_plan.prepare_capability("team_1", _payload("Configure Cloudflare"), store, True)
+            assistant_plan.prepare_capability("team_1", _payload("Configure Cloudflare"), store)
 
         installed.assert_called_once_with("team_1")
         registry.assert_not_called()
@@ -354,7 +353,6 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 "team_1",
                 _payload("Configure Cloudflare", ("enabled",)),
                 store,
-                True,
             )
 
         self.assertEqual(result, assistant_plan.Preparation())
@@ -408,7 +406,6 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                         "team_1",
                         _payload("Configure Cloudflare", (assistant_id,)),
                         store,
-                        True,
                     )
                 self.assertEqual(result, assistant_plan.Preparation())
                 installed_call.assert_called_once_with("team_1")
@@ -443,7 +440,6 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 "team_1",
                 _payload("Envie uma mensagem no WhatsApp", ("enabled",)),
                 store,
-                True,
             )
         self.assertIsNotNone(result.plan)
         assert result.plan is not None
@@ -558,7 +554,6 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         with (
             assistant_plan.team.supervisor_session(
                 session,
-                account=False,
                 local_identity=identity,
             ),
             mock.patch.object(
@@ -607,6 +602,11 @@ class LocalizedPlanSummaryTests(unittest.TestCase):
         planned = _install_required("cloudflare")
         with (
             mock.patch.object(assistant_plan.team, "list_installed_assistants", return_value=_installed()),
+            mock.patch.object(
+                assistant_plan.team,
+                "list_local_assistants",
+                return_value=assistant_plan.team.TeamResponse(200, {"assistants": []}),
+            ),
             mock.patch.object(assistant_plan.local, "capability_plan", return_value=planned) as planner,
         ):
             gap = assistant_plan.prepare_capability("team_1", _payload("Configure Cloudflare", locale="pt"), store)

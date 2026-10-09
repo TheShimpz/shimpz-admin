@@ -35,9 +35,9 @@ def _routes(app: FastAPI) -> set[str]:
 
 
 class SnapshotRouteTests(unittest.TestCase):
-    def test_registers_snapshot_routes_only_for_the_local_profile(self) -> None:
+    def test_registers_the_snapshot_routes(self) -> None:
         local = FastAPI()
-        snapshots.register(local, "local")
+        snapshots.register(local)
         self.assertTrue(
             {
                 "/api/local-assistants",
@@ -46,9 +46,6 @@ class SnapshotRouteTests(unittest.TestCase):
                 "/api/local-assistants/{image_hash}/details",
             }.issubset(_routes(local))
         )
-        hosted = FastAPI()
-        snapshots.register(hosted, "hosted")
-        self.assertFalse({path for path in _routes(hosted) if path.startswith("/api/local-assistants")})
 
     def test_lists_snapshots_through_the_team_response(self) -> None:
         with mock.patch.object(

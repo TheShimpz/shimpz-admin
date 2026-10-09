@@ -344,10 +344,6 @@ class ChatHistoryConversationTests(ChatHistoryCase):
         ):
             history.conversation("marketing", turn_id)
 
-        delivery.configure("hosted")
-        self.addCleanup(delivery.configure, "local")
-        self.assertEqual(asyncio.run(delivery.conversation("marketing", None)), ())
-        delivery.configure("local")
         with self.assertRaises(history.HistoryUnavailableError):
             asyncio.run(delivery.conversation("marketing", None))
 

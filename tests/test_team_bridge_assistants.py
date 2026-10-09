@@ -119,7 +119,6 @@ class _LiveTeamCase(unittest.TestCase):
                 "PYTHONPATH": str(ROOT / "backend"),
                 "SHIMPZ_REPO": str(self.root),
                 "SHIMPZ_ADMIN_STORE": str(self.root / "admin.json"),
-                "SHIMPZ_ADMIN_PROFILE": "local",
                 "SHIMPZ_TEAM_URL": self.team_url,
                 "SHIMPZ_TEAM_TOKEN_FILE": str(self.token_file),
             }
@@ -335,71 +334,24 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             team.TeamAssetResponse(502, None, {"detail": "team unavailable"}),
         )
 
-    def test_destroy_requires_the_authoritative_name_and_forwards_no_confirmation_secret(self):
-        _TeamHandler.response_by_route = {
-            (
-                "GET",
-                "/v1/teams",
-            ): (
-                200,
-                json.dumps(
-                    {
-                        "teams": [{"team_id": "team_1", "team_name": "Marketing", "status": "running"}],
-                        "trace_id": "a" * 32,
-                    },
-                    separators=(",", ":"),
-                ).encode(),
-            ),
-            (
-                "DELETE",
-                "/v1/teams/team_1",
-            ): (
-                200,
-                json.dumps(
-                    {
-                        "team_id": "team_1",
-                        "destroyed": True,
-                        "assistants_removed": 1,
-                        "residue_absent": LOCAL_TEAM_RESIDUES,
-                        "storage_removed": True,
-                    },
-                    separators=(",", ":"),
-                ).encode(),
-            ),
-        }
-
-        with self.assertRaisesRegex(team.TeamRequestError, "Team name confirmation does not match"):
-            team.destroy("team_1", "Not Marketing")
-        response = team.destroy("team_1", "Marketing")
-
-        self.assertEqual(response.status, 200)
-        self.assertEqual(
-            [(request["method"], request["path"]) for request in _TeamHandler.requests],
-            [
-                ("GET", "/v1/teams"),
-                ("GET", "/v1/teams"),
-                ("DELETE", "/v1/teams/team_1"),
-            ],
-        )
-        deleted = _TeamHandler.requests[-1]
-        self.assertEqual(deleted["body"], b"")
-        self.assertNotIn("content-type", deleted["headers"])
-
-    def test_destroy_rejects_an_ambiguous_inventory_before_delete(self):
+    def test_resolves_a_current_team_name_only_from_the_strict_inventory(self):
         _TeamHandler.response_body = json.dumps(
-            {
-                "teams": [{"team_id": "team_1", "team_name": "Marketing", "status": "running", "extra": True}],
-            },
+            {"teams": [{"team_id": "team_1", "team_name": "Marketing", "status": "running"}], "trace_id": "a" * 32},
             separators=(",", ":"),
         ).encode()
 
-        response = team.destroy("team_1", "Marketing")
+        self.assertEqual(team.resolve_team_name("team_1"), "Marketing")
+        self.assertEqual(team.resolve_team_name("team_2"), team.TeamResponse(404, {"detail": "Team not found"}))
 
-        self.assertEqual(response, team.TeamResponse(502, {"detail": "Team inventory response is invalid."}))
+        _TeamHandler.response_body = json.dumps(
+            {"teams": [{"team_id": "team_1", "team_name": "Marketing", "status": "running", "extra": True}]},
+            separators=(",", ":"),
+        ).encode()
         self.assertEqual(
-            [(request["method"], request["path"]) for request in _TeamHandler.requests],
-            [("GET", "/v1/teams")],
+            team.resolve_team_name("team_1"),
+            team.TeamResponse(502, {"detail": "Team inventory response is invalid."}),
         )
+        self.assertEqual([request["path"] for request in _TeamHandler.requests], ["/v1/teams"] * 3)
 
     def test_storage_bridge_forwards_only_opaque_metadata_and_fixed_routes(self):
         content = b"Team private data"

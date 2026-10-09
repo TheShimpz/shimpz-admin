@@ -712,19 +712,12 @@ class LifecycleCleanupTests(OrderCase):
         # The reset ran after the save, so no saved order survives it.
         self.assertFalse(self.path.exists())
 
-    def test_the_local_list_route_projects_and_the_hosted_one_passes_through(self) -> None:
+    def test_the_list_route_projects_the_saved_order(self) -> None:
         self.saved("a")
         with mock.patch.object(team, "list_teams", return_value=_inventory("b", "a")):
             response = self.admin_app.teams_list()
         self.assertEqual(json.loads(response.body)["teams"], _teams("b", "a"))
         self.assertEqual(response.headers["Cache-Control"], "no-store")
-        passthrough = team.TeamResponse(200, {"teams": [], "owner": "account"})
-        with (
-            mock.patch.object(self.admin_app, "ADMIN_PROFILE", "hosted"),
-            mock.patch.object(team, "list_teams", return_value=passthrough),
-        ):
-            response = self.admin_app.teams_list()
-        self.assertEqual(json.loads(response.body), passthrough.body)
 
 
 def _team(method: str, path: str, _body: bytes) -> tuple[int, bytes]:

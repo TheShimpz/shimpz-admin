@@ -7,7 +7,7 @@ A missing file is the newest-first order, and a file that cannot be read or vali
 sanitized diagnostic; a failed Supervisor, inventory, or ownership check is never bypassed.
 
 One lock serializes a reorder with Admin's Team creation, deletion, and Space reset, so a saved position never
-outlives its Team into a later Team that reuses the id. Only the Local profile registers these.
+outlives its Team into a later Team that reuses the id.
 """
 
 import json

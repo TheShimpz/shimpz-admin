@@ -1,4 +1,4 @@
-"""Local-only commit boundary for chat presentation events."""
+"""The commit boundary for chat presentation events."""
 
 import asyncio
 import logging
@@ -9,17 +9,9 @@ from history import context, store
 from team import bridge as team
 
 log = logging.getLogger("shimpz-admin")
-_enabled = False
 # Admission holds the lifecycle lock across a synchronous Team lookup, so it runs on its own small lane: a slow Team
 # response saturates only this lane, never the shared default executor that authentication also depends on.
 _ADMISSION = BoundedThreadPoolExecutor(max_workers=1, max_outstanding=4, thread_name_prefix="shimpz-history-admit")
-
-
-def configure(profile: str) -> None:
-    global _enabled
-    if profile not in {"local", "hosted"}:
-        raise ValueError("Admin history profile is invalid")
-    _enabled = profile == "local"
 
 
 class SelectedFileUnavailableError(RuntimeError):
@@ -51,8 +43,6 @@ def _append_live_user(team_id: str, turn_id: str, message: object, file_ids: lis
 
 async def admit(team_id: str, message: object, *, files: list[str] | tuple[str, ...] = ()) -> str | None:
     """Admit one user message with references to the files it selected (ADR-0093)."""
-    if not _enabled:
-        return None
     turn_id = store.new_turn_id()
     # A saturated lane raises ExecutorSaturatedError here, before any durable write.
     future = submit_in_context(_ADMISSION, _append_live_user, team_id, turn_id, message, list(files))
@@ -63,8 +53,6 @@ async def admit(team_id: str, message: object, *, files: list[str] | tuple[str, 
 
 
 async def conversation(team_id: str, turn_id: str | None) -> tuple[context.Entry, ...]:
-    if not _enabled:
-        return ()
     if turn_id is None:
         raise store.HistoryUnavailableError("chat history conversation anchor is unavailable")
     return await asyncio.to_thread(store.conversation, team_id, turn_id)
@@ -97,8 +85,6 @@ async def challenge(team_id: str, turn_id: str | None) -> None:
 
 
 async def resume(team_id: str) -> str | None:
-    if not _enabled:
-        return None
     turn_id = await asyncio.to_thread(store.resumable_turn, team_id)
     if turn_id is None:
         raise store.HistoryUnavailableError("chat history resumable turn is unavailable")
@@ -106,27 +92,21 @@ async def resume(team_id: str) -> str | None:
 
 
 async def observe(team_id: str) -> str | None:
-    if not _enabled:
-        return None
     return await asyncio.to_thread(store.resumable_turn, team_id)
 
 
 async def resume_exact(team_id: str, turn_id: str | None) -> str | None:
-    if not _enabled:
-        return None
     if turn_id is None or await asyncio.to_thread(store.resumable_turn, team_id) != turn_id:
         raise store.HistoryUnavailableError("chat history resumable turn is unavailable")
     return turn_id
 
 
 async def abandon(turn_id: str | None) -> None:
-    if _enabled and turn_id is not None:
+    if turn_id is not None:
         await asyncio.to_thread(store.finish_resumable_turn, turn_id)
 
 
 async def resumed_terminal(turn_id: str | None, event: Mapping[str, object]) -> None:
-    if not _enabled:
-        return
     if turn_id is None:
         raise store.HistoryUnavailableError("chat history resumable turn is unavailable")
     if event.get("type") == "done":
