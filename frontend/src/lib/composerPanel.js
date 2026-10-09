@@ -12,3 +12,28 @@ export function placePanel(trigger, panel) {
   panel.style.setProperty('--panel-left', `${left}px`);
   panel.style.setProperty('--panel-top', `${Math.max(8, top)}px`);
 }
+
+// Each composer panel is a manual popover. It opens beside its trigger and, once shown, focuses what `focusTarget`
+// returns; Escape closes it and returns focus to the trigger, and a press outside its root closes it.
+export function openPanel(trigger, panel, focusTarget) {
+  queueMicrotask(() => {
+    panel?.showPopover();
+    placePanel(trigger, panel);
+    focusTarget()?.focus();
+  });
+}
+
+export function hidePanel(panel) {
+  if (panel?.matches(':popover-open')) panel.hidePopover();
+}
+
+export function dismissOnEscape(event, open, close) {
+  if (open && event.key === 'Escape') {
+    event.preventDefault();
+    close(true);
+  }
+}
+
+export function dismissOutside(event, open, root, close) {
+  if (open && event.target instanceof Node && !root?.contains(event.target)) close();
+}

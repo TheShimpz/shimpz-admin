@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { Button, StatusBadge, TextField, TextLink } from '@shimpz/frontend';
 
-  import { placePanel } from '$lib/composerPanel.js';
+  import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '$lib/composerPanel.js';
   import { loadDecisionProvider, removeDecisionKey, saveDecisionKey } from '$lib/decisionProvider.js';
   import { t } from '$lib/i18n.js';
 
@@ -37,7 +37,7 @@
   });
 
   function close(restore = false) {
-    if (panel?.matches(':popover-open')) panel.hidePopover();
+    hidePanel(panel);
     open = false;
     // A typed key never outlives the open panel.
     fastKey = '';
@@ -52,11 +52,7 @@
     }
     if (disabled) return;
     open = true;
-    queueMicrotask(() => {
-      panel?.showPopover();
-      placePanel(trigger, panel);
-      panel?.querySelector('input, .fast-remove')?.focus();
-    });
+    openPanel(trigger, panel, () => panel?.querySelector('input, .fast-remove'));
     // The key is Space-wide, so every opening re-reads it in case another session changed it.
     if (!saving) void loadFast();
   }
@@ -109,21 +105,13 @@
       await settle({ phase: 'ready', error: copy.removeFailed });
     }
   }
-
-  function keydown(event) {
-    if (open && event.key === 'Escape') {
-      event.preventDefault();
-      close(true);
-    }
-  }
-
-  function outsidePointerdown(event) {
-    if (open && event.target instanceof Node && !root?.contains(event.target)) close();
-  }
 </script>
 
-<svelte:window onkeydown={keydown} onresize={() => { if (open) placePanel(trigger, panel); }} />
-<svelte:document onpointerdown={outsidePointerdown} />
+<svelte:window
+  onkeydown={(event) => dismissOnEscape(event, open, close)}
+  onresize={() => { if (open) placePanel(trigger, panel); }}
+/>
+<svelte:document onpointerdown={(event) => dismissOutside(event, open, root, close)} />
 
 <div bind:this={root} class="fast-menu">
   <Button

@@ -2,7 +2,7 @@
   import { Button, ChoiceItem } from '@shimpz/frontend';
 
   import { showAdminNotice } from '$lib/adminNotice.js';
-  import { placePanel } from '$lib/composerPanel.js';
+  import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '$lib/composerPanel.js';
   import { t } from '$lib/i18n.js';
   import { modelContext, selectTeamBrain } from '$lib/modelContext.js';
   import { teamContext } from '$lib/teamContext.js';
@@ -56,7 +56,7 @@
   });
 
   function close(restore = false) {
-    if (panel?.matches(':popover-open')) panel.hidePopover();
+    hidePanel(panel);
     open = false;
     restoreFocus = restore;
   }
@@ -69,11 +69,7 @@
     if (unavailable) return;
     restoreFocus = false;
     open = true;
-    queueMicrotask(() => {
-      panel?.showPopover();
-      placePanel(trigger, panel);
-      panel?.querySelector('.models [aria-pressed="true"]')?.focus();
-    });
+    openPanel(trigger, panel, () => panel?.querySelector('.models [aria-pressed="true"]'));
   }
 
   function failed() {
@@ -92,21 +88,13 @@
     // A model whose provider has no key asks for it in the composer, which this panel would cover.
     if (!$modelContext.ready) close();
   }
-
-  function keydown(event) {
-    if (open && event.key === 'Escape') {
-      event.preventDefault();
-      close(true);
-    }
-  }
-
-  function outsidePointerdown(event) {
-    if (open && event.target instanceof Node && !root?.contains(event.target)) close();
-  }
 </script>
 
-<svelte:window onkeydown={keydown} onresize={() => { if (open) placePanel(trigger, panel); }} />
-<svelte:document onpointerdown={outsidePointerdown} />
+<svelte:window
+  onkeydown={(event) => dismissOnEscape(event, open, close)}
+  onresize={() => { if (open) placePanel(trigger, panel); }}
+/>
+<svelte:document onpointerdown={(event) => dismissOutside(event, open, root, close)} />
 
 <div bind:this={root} class="brain-menu">
   <Button
