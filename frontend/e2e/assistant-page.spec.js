@@ -271,15 +271,17 @@ test('never shows a page read for the previous language once the language change
   await page.goto('/assistants/shimpz-cloudflare?team=marketing');
   await englishRequested;
 
-  // The language changes while the English page is still being read and before the sources are read again.
-  await page.getByRole('button', { name: 'Language: English' }).click();
-  await page.getByRole('menuitemradio', { name: /Português/ }).click();
-  await expect.poll(() => listings).toBe(2);
+  // The English read ends either answered or abandoned by the page; both are awaited before the change can cause either.
   const english = (request) => request.url().includes('/details?locale=en');
   const englishSettled = Promise.race([
     page.waitForResponse((response) => english(response.request())),
     page.waitForEvent('requestfailed', english),
   ]);
+
+  // The language changes while the English page is still being read and before the sources are read again.
+  await page.getByRole('button', { name: 'Language: English' }).click();
+  await page.getByRole('menuitemradio', { name: /Português/ }).click();
+  await expect.poll(() => listings).toBe(2);
   releaseEnglish();
   await englishSettled;
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
