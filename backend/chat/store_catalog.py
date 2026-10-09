@@ -12,6 +12,7 @@ import json
 import re
 import threading
 import time
+import unicodedata
 from collections import OrderedDict
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -152,9 +153,9 @@ def catalog_text(value: object, maximum: int) -> str:
 
 
 def display_text(value: object, maximum: int) -> str:
-    """One localized display text: bounded, trimmed, and free of C0, DEL, and C1 controls."""
+    """One localized display text as Team admits it: bounded, trimmed, printable, and NFC."""
     text = catalog_text(value, maximum)
-    if any(0x80 <= ord(character) <= 0x9F for character in text):
+    if not text.isprintable() or not unicodedata.is_normalized("NFC", text):
         raise ValueError("catalog display text is invalid")
     return text
 
