@@ -2,7 +2,7 @@
 
 ## Authority
 
-- This repository owns the Supervisor console and private Admin API used by Local and Hosted Space profiles.
+- This repository owns the Supervisor console and private Admin API of a Local Space.
 - It does not own Team lifecycle, Account identity, Assistant publication, Brain execution, or provider tokens held
   by their custodians. Admin is a client of those authorities.
 - Read the canonical [Shimpz architecture](https://github.com/TheShimpz/shimpz/blob/main/.context/ARCHITECTURE.md)
