@@ -1,7 +1,6 @@
 """Immutable challenge documents shared by Admin WebSocket contract suites."""
 
 import asyncio
-import concurrent.futures
 import importlib
 import json
 import threading
@@ -56,18 +55,6 @@ def resume_frame(
 def human_response(value: object, *, challenge_id: str = CHALLENGE_ID) -> dict[str, object]:
     """Return one submitted human-response frame, as the Admin client sends it."""
     return {"type": "human-response", "challenge_id": challenge_id, "decision": "submit", "value": value}
-
-
-def ordinary_route(chat_socket) -> concurrent.futures.Future[object]:
-    """Return the closed structured route used by tests that exercise later socket stages."""
-    future: concurrent.futures.Future[object] = concurrent.futures.Future()
-    future.set_result(
-        chat_socket.lifecycle.assistant_route.Result(
-            "ordinary-task",
-            preparation=chat_socket.lifecycle.assistant_plan.Preparation(),
-        )
-    )
-    return future
 
 
 class Socket:

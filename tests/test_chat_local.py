@@ -19,32 +19,6 @@ TRACE_ID = "a" * 32
 CHALLENGE_ID = "b" * 32
 
 
-def secret_requirement() -> dict[str, object]:
-    return {
-        "assistant_id": "shimpz-cloudflare",
-        "assistant_name": "Shimpz Cloudflare",
-        "action_ids": ["identity-me", "create-post"],
-        "secrets": [
-            {"id": "x-api-key", "name": "X API Key", "summary": "Identifies the X application."},
-            {"id": "x-api-secret", "name": "X API Secret", "summary": "Authenticates the X application."},
-        ],
-    }
-
-
-def approval_requirements() -> list[dict[str, object]]:
-    return [
-        {
-            "assistant_id": "shimpz-cloudflare",
-            "assistant_name": "Shimpz Cloudflare",
-            "action_id": "create-post",
-            "title": "Publish post",
-            "summary": "Publish this exact post on X.",
-            "docs": "https://docs.example.com/publish",
-            "approval": "once",
-        },
-    ]
-
-
 def integration_requirement() -> dict[str, object]:
     return {
         "assistant_id": "shimpz-cloudflare",
@@ -65,16 +39,6 @@ def browser_integration_requirement() -> dict[str, object]:
     """The requirement the browser receives: without Team's or the Creator's English text."""
     requirement = {key: value for key, value in integration_requirement().items() if key != "summary"}
     return {**requirement, "actions": [{"id": action["id"]} for action in integration_requirement()["actions"]]}
-
-
-def input_request(request_type: str, options: list[str] | None = None) -> dict[str, object]:
-    return {
-        "type": request_type,
-        "title": "Choose",
-        "summary": "Provide one value.",
-        "docs": "https://docs.example.com",
-        "options": options or [],
-    }
 
 
 REQUEST = {"issued_at": 1_700_000_000, "nonce": "0" * 32}
