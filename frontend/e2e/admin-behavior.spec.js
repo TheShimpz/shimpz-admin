@@ -554,7 +554,9 @@ async function routeReadyChat(page, {
     // The optional Brain-written purpose and a Stored Input's help travel beside the fingerprinted request (ADR-0090).
     const humanPresentation = {
       ...(humanPurpose ? { purpose: humanPurpose } : {}),
-      ...(storedInputAfterPlan || humanStoredInput ? { help: humanHelp, help_url: humanHelpUrl } : {}),
+      ...(storedInputAfterPlan || humanStoredInput || humanKind === 'input:password'
+        ? { help: humanHelp, help_url: humanHelpUrl }
+        : {}),
     };
     const sendHumanChallenge = (expiresIn = humanExpiresIn) => socket.send(JSON.stringify({
       type: 'human-required',

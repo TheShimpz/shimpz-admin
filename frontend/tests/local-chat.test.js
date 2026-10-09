@@ -278,7 +278,10 @@ test('chat accepts every exact bounded public human request presentation', () =>
     'auth:totp',
     'auth:passkey',
   ]) {
-    const challenge = humanChallenge(kind);
+    // Every password request names its Stored Input, so Team sends its help text and help link beside it.
+    const challenge = kind === 'input:password'
+      ? { ...humanChallenge(kind), help: 'Create the key and copy it.', help_url: 'https://dashboard.exa.ai/api-keys' }
+      : humanChallenge(kind);
     const parsed = parseChatEvent(challenge, 'team_1', 'Marketing');
     assert.deepEqual(parsed, challenge);
     assert.notEqual(parsed.request, challenge.request);
