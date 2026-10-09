@@ -31,10 +31,10 @@
 <style>
   .restricted-actions {
     display: grid;
-    gap: 0.3rem;
+    gap: var(--gap-item);
     max-width: 62ch;
-    margin-block-start: 0.6rem;
-    padding: 0.55rem 0.7rem;
+    margin-block-start: var(--gap-item);
+    padding: var(--gap-item) var(--gap-group);
     border-inline-start: 2px solid var(--shimpz-color-border);
     color: var(--shimpz-color-text-muted);
     font-size: 0.8rem;
@@ -45,9 +45,9 @@
 
   ul {
     display: grid;
-    gap: 0.1rem;
+    gap: var(--gap-inside);
     margin: 0;
-    padding-inline-start: 1.1rem;
+    padding-inline-start: var(--gap-panel);
     color: var(--shimpz-color-text);
   }
 </style>

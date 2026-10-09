@@ -318,14 +318,14 @@
     display: flex;
     align-items: baseline;
     justify-content: space-between;
-    gap: var(--shimpz-space-3);
+    gap: var(--gap-item);
     color: var(--shimpz-color-text-dim);
     font: 400 0.76rem/1.45 var(--shimpz-font-sans);
   }
   .request-lead { max-width: 58ch; margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.84rem; line-height: 1.55; }
   .request-scope { max-width: 58ch; margin: 0; color: var(--shimpz-color-text); font-size: 0.84rem; line-height: 1.55; }
   .clock { margin-inline-start: auto; color: var(--shimpz-color-text-muted); font: 500 0.7rem/1.45 var(--shimpz-font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .request-file { display: grid; gap: 0.4rem; max-width: 58ch; }
+  .request-file { display: grid; gap: var(--gap-item); max-width: 58ch; }
   .request-file ul { margin: 0; padding: 0; list-style: none; }
   .request-file p { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.8rem; line-height: 1.55; }
   .request-state:focus-visible { outline: 2px solid var(--shimpz-color-yellow); outline-offset: 3px; }

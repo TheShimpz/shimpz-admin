@@ -55,14 +55,14 @@
 <style>
   .composer-attachments {
     display: grid;
-    gap: 0.4rem;
-    padding: 0.6rem 0.7rem 0;
+    gap: var(--gap-item);
+    padding: var(--gap-item) var(--gap-group) 0;
   }
 
   .attachment-list {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
-    gap: 0.35rem;
+    gap: var(--gap-item);
     margin: 0;
     padding: 0;
     list-style: none;
@@ -73,7 +73,7 @@
     flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 0.25rem 0.6rem;
+    gap: var(--gap-inside) var(--gap-item);
     color: var(--shimpz-color-text-muted);
     font: 400 0.72rem/1.4 var(--shimpz-font-mono);
   }

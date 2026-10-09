@@ -245,37 +245,37 @@
 </Drawer>
 
 <style>
-  :global([data-slot="drawer"]#assistant-integrations-drawer) { min-height: 0; grid-template-rows: auto auto minmax(0, 1fr); gap: 0.75rem; overflow: hidden; }
+  :global([data-slot="drawer"]#assistant-integrations-drawer) { min-height: 0; grid-template-rows: auto auto minmax(0, 1fr); gap: var(--gap-group); overflow: hidden; }
   :global([data-slot="drawer"]#assistant-integrations-drawer:not([hidden])) { display: grid; }
-  :global([data-slot="drawer"]#assistant-integrations-drawer) > header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 0.75rem; }
-  :global([data-slot="drawer"]#assistant-integrations-drawer) > header p { margin: 0 0 0.25rem; color: var(--accent); font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.12em; text-transform: uppercase; }
+  :global([data-slot="drawer"]#assistant-integrations-drawer) > header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--gap-group); }
+  :global([data-slot="drawer"]#assistant-integrations-drawer) > header p { margin: 0 0 var(--gap-inside); color: var(--accent); font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.12em; text-transform: uppercase; }
   :global([data-slot="drawer"]#assistant-integrations-drawer) > header h2 { margin: 0; font-size: 1rem; }
   .drawer-lead { margin: 0; color: var(--text-faint); font-size: 0.68rem; line-height: 1.5; }
-  :global(.integration-content) { min-height: 0; padding-inline-end: 0.25rem; }
-  :global(.pending) { display: grid; gap: 0.45rem; margin-bottom: 0.9rem; }
+  :global(.integration-content) { min-height: 0; padding-inline-end: var(--gap-inside); }
+  :global(.pending) { display: grid; gap: var(--gap-item); margin-bottom: var(--gap-group); }
   :global(.pending strong) { color: var(--warn); font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase; }
   :global(.pending p) { margin: 0; color: var(--text-dim); font-size: 0.68rem; line-height: 1.5; }
-  .pending-requirement { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.6rem; border-top: 1px solid var(--border); padding-top: 0.55rem; }
-  .assistant-groups { display: grid; gap: 0.8rem; }
+  .pending-requirement { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--gap-item); border-top: 1px solid var(--border); padding-top: var(--gap-item); }
+  .assistant-groups { display: grid; gap: var(--gap-group); }
   :global(.assistant-group > [data-slot="card-header"]) { position: relative; border-bottom: 1px solid var(--border); background: var(--surface-2); }
   /* The heading is presentation under the full-row toggle, so a click on the icon or name still reaches the toggle. */
-  .assistant-heading { display: flex; min-width: 0; align-items: center; gap: 0.7rem; pointer-events: none; }
-  .assistant-heading > div { display: grid; min-width: 0; gap: 0.2rem; }
+  .assistant-heading { display: flex; min-width: 0; align-items: center; gap: var(--gap-item); pointer-events: none; }
+  .assistant-heading > div { display: grid; min-width: 0; gap: var(--gap-inside); }
   :global(.assistant-group) h3[data-slot="card-title"] { margin: 0; font: 700 0.82rem/1.3 var(--shimpz-font-mono); letter-spacing: -0.015em; overflow-wrap: anywhere; }
   :global(.assistant-group) p[data-slot="card-description"] { margin: 0; }
   :global(.assistant-group [data-slot="card-description"]) { color: var(--accent); font-family: var(--font-mono); font-size: 0.56rem; overflow-wrap: anywhere; }
   :global(.assistant-group [data-slot="card-action"]) { width: var(--shimpz-control-height-md); }
   :global(.assistant-group > [data-slot="card-content"]) { padding: 0; }
-  :global(.assistant-toggle.shimpz-button) { position: absolute; inset: 0; width: 100%; min-height: 100%; justify-content: flex-end; padding-inline: 0.75rem; color: var(--accent); background: transparent; border-color: transparent; clip-path: none; }
+  :global(.assistant-toggle.shimpz-button) { position: absolute; inset: 0; width: 100%; min-height: 100%; justify-content: flex-end; padding-inline: var(--gap-group); color: var(--accent); background: transparent; border-color: transparent; clip-path: none; }
   :global(.assistant-toggle.shimpz-button:hover:not(:disabled)) { color: var(--accent); background: transparent; border-color: transparent; box-shadow: none; }
   :global(.assistant-toggle svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-linecap: square; stroke-linejoin: miter; stroke-width: 1.75; transition: transform var(--duration-fast) var(--ease); }
   :global(.assistant-toggle[aria-expanded="true"] svg) { transform: rotate(180deg); }
   .assistant-details[hidden] { display: none; }
-  .assistant-details p { margin: 0; padding: 0.75rem; color: var(--text-dim); font-size: 0.66rem; line-height: 1.5; }
-  .stored-inputs { display: grid; gap: 0.55rem; margin-top: 1rem; }
+  .assistant-details p { margin: 0; padding: var(--gap-item) var(--gap-group); color: var(--text-dim); font-size: 0.66rem; line-height: 1.5; }
+  .stored-inputs { display: grid; gap: var(--gap-item); margin-top: var(--gap-group); }
   .stored-inputs h3 { margin: 0; color: var(--text-faint); font-family: var(--font-mono); font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase; }
-  .stored-input-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.6rem; border: 1px solid var(--border); padding: 0.7rem; background: var(--surface-1); }
-  .stored-input-row > div { display: grid; min-width: 0; gap: 0.18rem; }
+  .stored-input-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: var(--gap-item); border: 1px solid var(--border); padding: var(--gap-item) var(--gap-group); background: var(--surface-1); }
+  .stored-input-row > div { display: grid; min-width: 0; gap: var(--gap-inside); }
   .stored-input-row strong { color: var(--text); font-size: 0.7rem; }
   .stored-input-row code { color: var(--accent); font-family: var(--font-mono); font-size: 0.58rem; overflow-wrap: anywhere; }
   .stored-input-row span { color: var(--text-faint); font-size: 0.62rem; }

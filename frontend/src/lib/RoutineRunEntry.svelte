@@ -41,9 +41,9 @@
     position: relative;
     display: grid;
     justify-items: start;
-    gap: 0.125rem;
+    gap: var(--gap-inside);
     min-width: 0;
-    padding-inline-start: calc(var(--time-column) + var(--shimpz-space-3));
+    padding-inline-start: calc(var(--time-column) + var(--gap-item));
     outline-offset: 4px;
   }
 
@@ -69,8 +69,8 @@
 
   /* Up to the previous notice, across the exchange gap; down to this entry's own bottom edge. */
   .join-above::before {
-    inset-block-start: calc(-1 * var(--routine-rail-gap, 1.1rem));
-    height: calc(var(--routine-rail-gap, 1.1rem) + var(--rail-clearance));
+    inset-block-start: calc(-1 * var(--routine-rail-gap, var(--gap-group)));
+    height: calc(var(--routine-rail-gap, var(--gap-group)) + var(--rail-clearance));
   }
 
   .join-below::after {

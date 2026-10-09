@@ -71,7 +71,7 @@
   /* A yes, a no, or a status word: one small outlined badge in mono capitals; a yes reads brighter than a no. */
   .badge {
     display: inline-block;
-    padding: 0.05rem 0.4rem;
+    padding: 0.05rem var(--gap-item); /* the block padding is the badge's own height, not rhythm */
     color: var(--shimpz-color-text-muted);
     border: 1px solid var(--shimpz-color-border);
     font: 600 0.62rem/1.5 var(--shimpz-font-mono);

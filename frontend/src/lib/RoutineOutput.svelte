@@ -62,12 +62,12 @@
   /* Plain data in quiet type: a compact table, label and value rows, or a list, wrapping long values. */
   .table { max-width: 100%; overflow-x: auto; }
   table { border-collapse: collapse; font-size: 0.8rem; }
-  th, td { padding: 0.2rem 0.75rem 0.2rem 0; text-align: start; vertical-align: top; overflow-wrap: anywhere; }
+  th, td { padding: var(--gap-inside) var(--gap-group) var(--gap-inside) 0; text-align: start; vertical-align: top; overflow-wrap: anywhere; }
   th { color: var(--shimpz-color-text-dim); font-weight: 500; white-space: nowrap; }
   td { color: var(--shimpz-color-text); }
-  .items { margin: 0; padding-inline-start: 1.1rem; }
-  .fields { display: grid; gap: 0.1rem; margin: 0; }
-  .fields > div { display: flex; flex-wrap: wrap; gap: 0 0.4rem; min-width: 0; }
+  .items { margin: 0; padding-inline-start: var(--gap-panel); }
+  .fields { display: grid; gap: var(--gap-inside); margin: 0; }
+  .fields > div { display: flex; flex-wrap: wrap; gap: 0 var(--gap-inside); min-width: 0; }
   dt { color: var(--shimpz-color-text-dim); }
   dt::after { content: ":"; }
   dd { margin: 0; min-width: 0; color: var(--shimpz-color-text); overflow-wrap: anywhere; }

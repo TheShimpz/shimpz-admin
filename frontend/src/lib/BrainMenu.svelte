@@ -153,24 +153,27 @@
     --brain-hover-bg: color-mix(in srgb, var(--shimpz-color-cyan) 7%, var(--shimpz-color-bg));
     --brain-scanlines: repeating-linear-gradient(0deg, rgb(0 240 255 / 5%) 0 1px, transparent 1px 3px);
     position: fixed; z-index: 80; top: var(--panel-top); left: var(--panel-left); display: grid; width: min(19rem, calc(100vw - 1rem));
-    max-height: calc(100dvh - 1rem); overflow-y: auto; gap: var(--shimpz-space-2); margin: 0; padding: var(--shimpz-space-3) var(--shimpz-space-2);
+    /* A menu's padding is one item step; its rows carry their own inline padding. The 1rem keeps clear of the viewport
+       edge, not rhythm. */
+    max-height: calc(100dvh - 1rem); overflow-y: auto; gap: var(--gap-item); margin: 0; padding: var(--gap-item);
     color: var(--shimpz-color-text); background: var(--shimpz-color-bg);
     border: 1px solid color-mix(in srgb, var(--shimpz-color-cyan) 22%, var(--shimpz-color-border));
     clip-path: polygon(0 0, calc(100% - 0.9rem) 0, 100% 0.9rem, 100% 100%, 0.9rem 100%, 0 calc(100% - 0.9rem));
     box-shadow: 0 1.25rem 3rem rgb(0 0 0 / 70%);
   }
   .panel:not(:popover-open) { display: none; }
-  .section-label { margin: 0; padding-inline: var(--shimpz-space-2); color: var(--shimpz-color-text-dim); font: 700 0.6rem/1 var(--shimpz-font-mono); letter-spacing: 0.16em; text-transform: uppercase; }
-  .models { display: grid; gap: 1px; }
-  .provider { display: flex; align-items: center; gap: var(--shimpz-space-2); margin: var(--shimpz-space-2) 0 0.2rem; padding-inline: var(--shimpz-space-2); color: var(--shimpz-color-cyan); font: 600 0.58rem/1 var(--shimpz-font-mono); letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.7; }
+  .section-label { margin: 0; padding-inline: var(--gap-item); color: var(--shimpz-color-text-dim); font: 700 0.6rem/1 var(--shimpz-font-mono); letter-spacing: 0.16em; text-transform: uppercase; }
+  .models { display: grid; gap: 1px; } /* a hairline seam between the rows' own tints, not rhythm */
+  .provider { display: flex; align-items: center; gap: var(--gap-item); margin: var(--gap-item) 0 var(--gap-inside); padding-inline: var(--gap-item); color: var(--shimpz-color-cyan); font: 600 0.58rem/1 var(--shimpz-font-mono); letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.7; }
   .provider::after { flex: 1; height: 1px; background: var(--shimpz-color-border); content: ""; }
-  .models :global(.model) { position: relative; isolation: isolate; min-height: 2.35rem; gap: var(--shimpz-space-2); padding: 0.4rem var(--shimpz-space-2); color: var(--shimpz-color-text-muted); background: transparent; border: 0; clip-path: none; box-shadow: none; }
+  .models :global(.model) { position: relative; isolation: isolate; min-height: 2.35rem; gap: var(--gap-inside); padding: var(--gap-inside) var(--gap-item); color: var(--shimpz-color-text-muted); background: transparent; border: 0; clip-path: none; box-shadow: none; }
   .models :global(.model::before) { position: absolute; z-index: -1; inset: 0; clip-path: var(--shimpz-control-shape); content: ""; pointer-events: none; }
   .models :global(.model:hover:not(:disabled)), .models :global(.model.is-selected) { color: var(--shimpz-color-text); background: transparent; border: 0; box-shadow: none; }
   .models :global(.model:hover:not(:disabled)::before), .models :global(.model.is-selected::before) { background: var(--brain-scanlines), var(--brain-hover-bg); }
   .models :global(.model strong) { font: 500 0.84rem/1.2 var(--shimpz-font-sans); letter-spacing: 0; text-transform: none; }
   /* The provider is spoken with each model but shown once, in its group rule. */
   .models :global(.model small) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  /* The margin makes room for the rotated diamond's corners: geometry, not rhythm. */
   .models :global(.model .marker) { width: 0.5rem; height: 0.5rem; margin-inline: 0.2rem; background: transparent; border: 1px solid var(--shimpz-color-text-dim); box-shadow: none; transform: rotate(45deg); }
   .models :global(.model.is-selected .marker) { background: var(--shimpz-color-cyan); border-color: var(--shimpz-color-cyan); box-shadow: 0 0 0.6rem var(--shimpz-color-cyan); }
   .models :global(.model:hover:not(:disabled) strong) { text-shadow: var(--glitch-split-text); animation: admin-glitch-text 280ms steps(1, end); }

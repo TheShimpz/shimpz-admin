@@ -131,12 +131,12 @@
 
 <style>
   .deletion { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; margin: 0; }
-  .content { display: grid; align-content: start; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
+  .content { display: grid; align-content: start; gap: var(--gap-group); min-width: 0; padding: var(--gap-panel); overflow: auto; }
   .lead { max-width: 62ch; margin: 0; color: var(--shimpz-color-text); font-size: 0.9rem; line-height: 1.6; }
-  .method { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--shimpz-space-2); min-width: 0; margin: 0; padding: 0; border: 0; }
-  .method legend { margin-block-end: 0.4rem; padding: 0; color: var(--shimpz-color-text); font: 600 0.7rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.07em; }
+  .method { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--gap-group); min-width: 0; margin: 0; padding: 0; border: 0; }
+  .method legend { margin-block-end: var(--gap-item); padding: 0; color: var(--shimpz-color-text); font: 600 0.7rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.07em; }
   .hint { margin: 0; color: var(--shimpz-color-text-dim); font-size: 0.8rem; line-height: 1.45; }
-  .foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--shimpz-space-2); padding: var(--shimpz-space-3) var(--shimpz-space-4); border-block-start: 1px solid var(--shimpz-color-border); }
+  .foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--gap-group); padding: var(--gap-group) var(--gap-panel); border-block-start: 1px solid var(--shimpz-color-border); }
   .foot > :global(:first-child) { margin-inline-end: auto; }
   @media (forced-colors: active) { .foot { border-color: CanvasText; } }
 </style>

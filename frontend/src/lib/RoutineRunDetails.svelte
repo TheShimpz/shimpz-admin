@@ -97,15 +97,15 @@
 </Modal>
 
 <style>
-  .records { display: grid; gap: var(--shimpz-space-2); margin-block-end: var(--shimpz-space-3); }
+  .records { display: grid; gap: var(--gap-item); margin-block-end: var(--gap-group); }
   h3 { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.8rem; font-weight: 600; }
-  .attempts { display: grid; gap: var(--shimpz-space-3); margin: 0; padding: 0; list-style: none; }
-  .attempts li { display: grid; gap: var(--shimpz-space-1); padding-block-end: var(--shimpz-space-2); border-block-end: 1px solid var(--shimpz-color-border-subtle); }
+  .attempts { display: grid; gap: var(--gap-item); margin: 0; padding: 0; list-style: none; }
+  .attempts li { display: grid; gap: var(--gap-inside); padding-block-end: var(--gap-item); border-block-end: 1px solid var(--shimpz-color-border-subtle); }
   .attempts li:last-child { border-block-end: 0; }
   .heading { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
   .muted { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.8rem; }
   p { margin: 0; }
-  dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 2px var(--shimpz-space-3); margin: 0; font-size: 0.8rem; }
+  dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--gap-inside) var(--gap-item); margin: 0; font-size: 0.8rem; }
   dt { color: var(--shimpz-color-text-muted); }
   dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
   .text { white-space: pre-wrap; }

@@ -139,23 +139,23 @@
 
 <style>
   /* Steps as plain rows without rules: a mono number, the Action with its Assistant beside it, and one quiet line of what it uses. */
-  .overview { margin: 0 0 0.5rem; color: var(--shimpz-color-text-muted); font-size: 0.78rem; overflow-wrap: anywhere; }
+  .overview { margin: 0 0 var(--gap-item); color: var(--shimpz-color-text-muted); font-size: 0.78rem; overflow-wrap: anywhere; }
   .plan { display: grid; margin: 0; padding: 0; list-style: none; font-size: 0.82rem; line-height: 1.45; }
-  li { display: grid; grid-template-columns: 1.75rem minmax(0, 1fr); gap: var(--shimpz-space-2); padding-block: 0.5rem; outline-offset: 2px; }
+  li { display: grid; grid-template-columns: 1.75rem minmax(0, 1fr); gap: var(--gap-item); padding-block: var(--gap-item); outline-offset: 2px; }
   li:first-child { padding-block-start: 0; }
   .number { color: var(--shimpz-color-cyan); font: 600 0.72rem/1.6 var(--shimpz-font-mono); }
-  .step { display: grid; gap: 0.25rem; min-width: 0; }
-  .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.1rem 0.6rem; margin: 0; }
+  .step { display: grid; gap: var(--gap-inside); min-width: 0; }
+  .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--gap-inside) var(--gap-item); margin: 0; }
   .action { color: var(--shimpz-color-text); font-weight: 600; overflow-wrap: anywhere; }
   .assistant { color: var(--shimpz-color-text-dim); font-size: 0.74rem; }
-  .meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 1rem; color: var(--shimpz-color-text-muted); font-size: 0.76rem; }
+  .meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--gap-inside) var(--gap-group); color: var(--shimpz-color-text-muted); font-size: 0.76rem; }
   .inputs { display: contents; }
-  .inputs > div { display: flex; flex-wrap: wrap; gap: 0 0.4rem; min-width: 0; }
+  .inputs > div { display: flex; flex-wrap: wrap; gap: 0 var(--gap-inside); min-width: 0; }
   dt::after { content: ":"; }
   dd { margin: 0; min-width: 0; color: var(--shimpz-color-text); font-family: var(--shimpz-font-mono); font-size: 0.74rem; overflow-wrap: anywhere; }
-  .stored { display: inline-flex; align-items: center; gap: 0.3rem; margin: 0; font-family: var(--shimpz-font-mono); font-size: 0.74rem; }
+  .stored { display: inline-flex; align-items: center; gap: var(--gap-inside); margin: 0; font-family: var(--shimpz-font-mono); font-size: 0.74rem; }
   .stored :global(.routine-icon) { width: 0.75rem; height: 0.75rem; }
-  .note { margin: 0.25rem 0 0; color: var(--shimpz-color-text-dim); font-size: 0.75rem; }
-  .disposition { margin: 0.25rem 0 0; color: var(--shimpz-color-text-muted); font-size: 0.78rem; }
+  .note { margin: var(--gap-inside) 0 0; color: var(--shimpz-color-text-dim); font-size: 0.75rem; }
+  .disposition { margin: var(--gap-inside) 0 0; color: var(--shimpz-color-text-muted); font-size: 0.78rem; }
   :global(.shimpz-button.more) { justify-self: start; }
 </style>

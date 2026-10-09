@@ -61,10 +61,11 @@
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
-    gap: 0.5rem;
+    gap: var(--gap-item);
     min-width: 0;
     max-width: 100%;
-    padding: 0.35rem 0.4rem 0.35rem 0.55rem;
+    /* The remove button brings its own hit area, so the end side needs less. */
+    padding: var(--gap-inside) var(--gap-inside) var(--gap-inside) var(--gap-item);
     border: 1px solid var(--shimpz-color-border);
     background: color-mix(in srgb, var(--shimpz-color-text) 3%, transparent);
   }
@@ -81,7 +82,7 @@
     stroke-width: 1.4;
   }
 
-  .attachment-text { display: grid; min-width: 0; gap: 0.05rem; }
+  .attachment-text { display: grid; min-width: 0; gap: var(--gap-inside); }
 
   .attachment-name {
     overflow: hidden;

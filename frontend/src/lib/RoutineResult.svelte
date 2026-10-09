@@ -74,13 +74,13 @@
   .summary {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--shimpz-space-3) var(--shimpz-space-6);
-    padding: var(--shimpz-space-3) var(--shimpz-space-4);
+    gap: var(--gap-group) var(--gap-panel);
+    padding: var(--gap-item) var(--gap-group);
     border: 1px solid var(--shimpz-color-border-subtle);
     background: rgb(255 255 255 / 0.015);
   }
-  .group { display: grid; gap: 0.35rem; min-width: 0; }
-  .group + .group { padding-inline-start: var(--shimpz-space-6); border-inline-start: 1px solid var(--shimpz-color-border-subtle); }
+  .group { display: grid; gap: var(--gap-item); min-width: 0; }
+  .group + .group { padding-inline-start: var(--gap-panel); border-inline-start: 1px solid var(--shimpz-color-border-subtle); }
   .group-label, dt, .block-label {
     margin: 0;
     color: var(--shimpz-color-text-dim);
@@ -89,14 +89,14 @@
     text-transform: uppercase;
   }
   .group-label { color: var(--shimpz-color-text-muted); }
-  dl { display: flex; flex-wrap: wrap; gap: 0.5rem var(--shimpz-space-5); margin: 0; }
-  .stat { display: grid; gap: 0.15rem; min-width: 0; }
+  dl { display: flex; flex-wrap: wrap; gap: var(--gap-item) var(--gap-group); margin: 0; }
+  .stat { display: grid; gap: var(--gap-inside); min-width: 0; }
   dd { margin: 0; color: var(--shimpz-color-text); font-size: 0.9rem; }
-  .block { display: grid; gap: var(--shimpz-space-2); min-width: 0; }
-  .block-label { display: flex; align-items: baseline; gap: 0.6rem; color: var(--shimpz-color-text-muted); font-size: 0.68rem; }
+  .block { display: grid; gap: var(--gap-item); min-width: 0; }
+  .block-label { display: flex; align-items: baseline; gap: var(--gap-item); color: var(--shimpz-color-text-muted); font-size: 0.68rem; }
   .count { color: var(--shimpz-color-text-dim); font-weight: 400; letter-spacing: 0.04em; text-transform: none; }
-  .values { display: flex; flex-wrap: wrap; gap: 0.25rem 0.75rem; margin: 0; font-size: 0.85rem; }
-  .nested { display: grid; gap: var(--shimpz-space-3); padding-inline-start: var(--shimpz-space-4); border-inline-start: 1px solid var(--shimpz-color-border-subtle); }
+  .values { display: flex; flex-wrap: wrap; gap: var(--gap-inside) var(--gap-item); margin: 0; font-size: 0.85rem; }
+  .nested { display: grid; gap: var(--gap-group); padding-inline-start: var(--gap-group); border-inline-start: 1px solid var(--shimpz-color-border-subtle); }
   .single { margin: 0; font-size: 0.9rem; }
   .plain { font-size: 0.82rem; line-height: 1.45; }
   .dim { margin: 0; color: var(--shimpz-color-text-dim); font-size: 0.75rem; }

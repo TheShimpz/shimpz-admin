@@ -72,9 +72,9 @@
     width: 100%;
     min-width: 0;
     box-sizing: border-box;
-    gap: 0.9rem;
+    gap: var(--gap-group);
     margin-inline: auto;
-    padding: 1rem 0;
+    padding: var(--gap-group) 0;
     color: var(--text-dim);
     font-family: var(--font-mono);
   }
@@ -84,7 +84,7 @@
     min-width: 0;
     align-items: center;
     grid-template-columns: 2.7rem minmax(0, 1fr) auto;
-    gap: 0.8rem;
+    gap: var(--gap-item);
   }
 
   .signal {
@@ -92,7 +92,7 @@
     height: 2rem;
     align-items: center;
     justify-content: center;
-    gap: 0.16rem;
+    gap: 0.16rem; /* the signal bars' own geometry, not rhythm */
     border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
     background: color-mix(in srgb, var(--accent) 5%, transparent);
     clip-path: polygon(0.4rem 0, 100% 0, 100% calc(100% - 0.4rem), calc(100% - 0.4rem) 100%, 0 100%, 0 0.4rem);
@@ -113,7 +113,7 @@
   .copy {
     display: grid;
     min-width: 0;
-    gap: 0.2rem;
+    gap: var(--gap-inside);
   }
 
   .copy strong {
@@ -156,7 +156,7 @@
   :global(.ledger-details.shimpz-disclosure) {
     min-width: 0;
     border-block-start: 0;
-    padding-block-start: 0.65rem;
+    padding-block-start: var(--gap-item);
   }
 
   :global(.ledger-details [data-slot="disclosure-trigger"]) {
@@ -176,9 +176,9 @@
   .ledger {
     display: grid;
     min-width: 0;
-    margin: 0.7rem 0 0;
+    margin: var(--gap-item) 0 0;
     padding: 0;
-    gap: 0.45rem;
+    gap: var(--gap-item);
     list-style: none;
   }
 
@@ -187,7 +187,7 @@
     min-width: 0;
     grid-template-columns: 0.55rem minmax(0, 1fr) minmax(4rem, 20%);
     align-items: center;
-    gap: 0.65rem;
+    gap: var(--gap-item);
     color: var(--text-faint);
   }
 

@@ -373,18 +373,18 @@
 <style>
   /* One plain message and one choice list: cyan marks only the hovered choice, and state color lives on small
      icons. */
-  .decision { container-type: inline-size; display: flex; flex: 1 1 auto; flex-direction: column; gap: 0.4rem; min-width: 0; }
+  .decision { container-type: inline-size; display: flex; flex: 1 1 auto; flex-direction: column; gap: var(--gap-item); min-width: 0; }
   /* Terminal lines flow as text, so a narrow card wraps words, never whole pieces of the line. */
   .line { margin: 0; font: 400 0.78rem/1.55 var(--shimpz-font-mono); overflow-wrap: break-word; }
-  .line > * + * { margin-inline-start: 0.5em; }
-  .line :global(.routine-icon) { width: 0.85rem; height: 0.85rem; margin-inline-end: 0.5em; vertical-align: -0.15em; }
+  .line > * + * { margin-inline-start: var(--gap-inside); }
+  .line :global(.routine-icon) { width: 0.85rem; height: 0.85rem; margin-inline-end: var(--gap-inside); vertical-align: -0.15em; }
   .line.muted { color: var(--shimpz-color-text-muted); }
   .line.muted :global(.routine-icon--warning) { color: var(--shimpz-color-yellow); }
   .prompt { color: var(--shimpz-color-cyan); }
   .value { color: var(--shimpz-color-text); }
   /* What happened: a warning badge beside the headline and where it stopped; the likely cause and the technical error
      sit under the headline's own edge. */
-  .alert { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr); align-items: center; gap: var(--shimpz-space-3); }
+  .alert { display: grid; grid-template-columns: 2.75rem minmax(0, 1fr); align-items: center; gap: var(--gap-item); }
   .badge {
     --badge-color: var(--shimpz-color-danger);
     display: grid;
@@ -403,10 +403,11 @@
   .badge > span { display: grid; place-items: center; }
   .badge :global(.routine-icon) { width: 1.25rem; height: 1.25rem; filter: drop-shadow(0 0 0.35rem color-mix(in srgb, var(--badge-color) 55%, transparent)); }
   @media (forced-colors: active) { .badge { border-color: CanvasText; box-shadow: none; } }
-  .alert-text { display: grid; gap: 0.2rem; min-width: 0; }
+  .alert-text { display: grid; gap: var(--gap-inside); min-width: 0; }
   .title { margin: 0; color: var(--shimpz-color-text); font: 600 1.12rem/1.3 var(--shimpz-font-sans); text-wrap: balance; overflow-wrap: anywhere; }
   .where { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.84rem; line-height: 1.45; overflow-wrap: anywhere; }
-  .body { display: grid; gap: var(--shimpz-space-2); margin-block-start: var(--shimpz-space-2); padding-inline-start: calc(2.75rem + var(--shimpz-space-3)); }
+  /* Under the headline's own edge: the badge's width plus the alert's gap. */
+  .body { display: grid; gap: var(--gap-item); margin-block-start: var(--gap-item); padding-inline-start: calc(2.75rem + var(--gap-item)); }
   .cause { margin: 0; max-width: 64ch; color: var(--shimpz-color-text-muted); font-size: 0.92rem; line-height: 1.5; text-wrap: pretty; }
   :global([dir="rtl"]) .technical-summary :global(.routine-icon) { transform: scaleX(-1); }
   /* The literal error, quiet and one click away. */
@@ -414,11 +415,11 @@
   .decision :global(.technical summary) { list-style: none; color: var(--shimpz-color-text-dim); font: 500 0.78rem/1.4 var(--shimpz-font-sans); letter-spacing: normal; text-transform: none; }
   .decision :global(.technical summary:hover) { color: var(--shimpz-color-text); }
   .decision :global(.technical summary::-webkit-details-marker) { display: none; }
-  .technical-summary { display: inline-flex; align-items: center; gap: 0.35rem; }
+  .technical-summary { display: inline-flex; align-items: center; gap: var(--gap-inside); }
   .technical-summary :global(.routine-icon) { width: 0.8rem; height: 0.8rem; transition: transform var(--shimpz-duration-fast) var(--shimpz-ease); }
   .decision :global(.technical[open] .technical-summary .routine-icon) { transform: rotate(90deg); }
-  .technical-error { display: grid; gap: 0.3rem; min-width: 0; }
-  .error-text { margin: 0; padding: var(--shimpz-space-2) var(--shimpz-space-3); background: var(--shimpz-color-surface-high); border: 1px solid var(--shimpz-color-border-subtle); color: var(--shimpz-color-text); font: 400 0.76rem/1.5 var(--shimpz-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+  .technical-error { display: grid; gap: var(--gap-item); min-width: 0; }
+  .error-text { margin: 0; padding: var(--gap-item) var(--gap-group); background: var(--shimpz-color-surface-high); border: 1px solid var(--shimpz-color-border-subtle); color: var(--shimpz-color-text); font: 400 0.76rem/1.5 var(--shimpz-font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
   .technical-error .meta { margin: 0; color: var(--shimpz-color-text-muted); font: 400 0.72rem/1.4 var(--shimpz-font-mono); overflow-wrap: anywhere; }
   .result { margin: 0; color: var(--shimpz-color-text); font-size: 0.85rem; line-height: 1.45; }
 
@@ -428,11 +429,11 @@
     display: grid;
     flex: 1 0 auto;
     align-content: start;
-    gap: 0.4rem;
+    gap: var(--gap-item);
     margin-inline: calc(-1 * var(--decision-message-bleed, 0px));
-    padding: var(--decision-message-top, 0px) var(--decision-message-bleed, 0px) var(--shimpz-space-3);
+    padding: var(--decision-message-top, 0px) var(--decision-message-bleed, 0px) var(--gap-group);
     box-shadow: var(--decision-message-sides, none);
     border-block-end: var(--decision-message-rule, 0);
   }
-  .actions { display: flex; flex-wrap: wrap; gap: var(--shimpz-space-2); padding-block-start: var(--shimpz-space-1); }
+  .actions { display: flex; flex-wrap: wrap; gap: var(--gap-group); padding-block-start: var(--gap-inside); }
 </style>

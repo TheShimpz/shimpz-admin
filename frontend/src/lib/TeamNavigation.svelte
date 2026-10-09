@@ -495,12 +495,20 @@
 
 <style>
   /* Team rows are full bleed across the sidebar; only the header keeps the sidebar's inset. */
-  .team-navigation { display: grid; min-width: 0; gap: var(--shimpz-space-2); padding-block: var(--shimpz-space-4); }
+  .team-navigation {
+    --team-hover-bg: color-mix(in srgb, var(--shimpz-color-cyan) 7%, var(--shimpz-color-bg));
+    --team-scanlines: repeating-linear-gradient(0deg, transparent 0 2px, color-mix(in srgb, var(--shimpz-color-cyan) 6%, transparent) 2px 3px);
+    display: grid;
+    min-width: 0;
+    gap: var(--gap-item);
+    padding-block: var(--gap-group);
+  }
   /* The header is a faint cyberpunk plate: a cyan glow behind the mark, soft scanlines, and a base hairline that fades
      from cyan through magenta. It runs edge to edge, up to the top of the sidebar. */
   .head {
     position: relative; display: flex; min-height: 2.45rem; align-items: center; justify-content: space-between;
-    margin-block-start: calc(-1 * var(--shimpz-space-4)); padding: var(--shimpz-space-4) var(--shimpz-space-3) var(--shimpz-space-3);
+    /* The mark lines up with the Team rows' monograms; the new-Team button with their row actions. */
+    margin-block-start: calc(-1 * var(--gap-group)); padding: var(--gap-group) var(--gap-item) var(--gap-group) var(--gap-group);
     background:
       repeating-linear-gradient(0deg, rgb(0 240 255 / 3%) 0 1px, transparent 1px 3px),
       radial-gradient(120% 160% at 0% 0%, rgb(0 240 255 / 11%), transparent 62%),
@@ -521,12 +529,8 @@
   .head :global(.new-team:hover:not(:disabled)), .head :global(.new-team:focus-visible) { color: var(--shimpz-color-cyan); background: transparent; border: 0; box-shadow: none; }
   .head :global(.new-team:hover:not(:disabled)::before), .head :global(.new-team:focus-visible::before) { background: var(--team-scanlines), var(--team-hover-bg); }
   .head svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
-  .team-navigation {
-    --team-hover-bg: color-mix(in srgb, var(--shimpz-color-cyan) 7%, var(--shimpz-color-bg));
-    --team-scanlines: repeating-linear-gradient(0deg, transparent 0 2px, color-mix(in srgb, var(--shimpz-color-cyan) 6%, transparent) 2px 3px);
-  }
   ul { display: grid; margin: 0; padding: 0; list-style: none; }
-  .teams { gap: 2px; }
+  .teams { gap: 2px; } /* a seam between the rows' own backgrounds, not rhythm */
   .row { --row-bg: var(--shimpz-color-bg); position: relative; isolation: isolate; display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
   .row::before { background-color: var(--row-bg); transition: background-color var(--shimpz-duration-fast) var(--shimpz-ease); }
   /* The selected Team keeps the hover treatment: the same tint and scanlines. */
@@ -534,14 +538,14 @@
   .row:hover::before, .row:focus-within::before, .is-selected > .row::before { background-image: var(--team-scanlines); }
   .row:hover .monogram { animation: admin-glitch-icon 280ms steps(1, end); }
   /* Row actions always stay visible beside the name, so a Team's Routines and actions are found without hovering. */
-  .row-actions { display: flex; align-items: center; padding-inline-end: var(--shimpz-space-2); }
-  .row :global(.team-link) { min-width: 0; height: auto; min-height: 2.75rem; justify-content: flex-start; padding: 0.4rem var(--shimpz-space-3); border: 0; background: transparent; clip-path: none; color: var(--shimpz-color-text-muted); }
-  .team-rename { display: flex; min-width: 0; overflow: hidden; min-height: 2.75rem; align-items: center; gap: 0.7rem; padding: 0.4rem var(--shimpz-space-3); }
+  .row-actions { display: flex; align-items: center; padding-inline-end: var(--gap-item); }
+  .row :global(.team-link) { min-width: 0; height: auto; min-height: 2.75rem; justify-content: flex-start; padding: var(--gap-inside) var(--gap-group); border: 0; background: transparent; clip-path: none; color: var(--shimpz-color-text-muted); }
+  .team-rename { display: flex; min-width: 0; overflow: hidden; min-height: 2.75rem; align-items: center; gap: var(--gap-item); padding: var(--gap-inside) var(--gap-group); }
   .team-rename :global(.rename-field) { display: block; flex: 1 1 0; width: auto; min-width: 0; }
-  .team-rename :global(.rename-field input) { width: 100%; min-width: 0; height: 1.9rem; min-height: 0; padding: 0 0.35rem; color: var(--shimpz-color-text); font: 500 0.95rem/1 var(--shimpz-font-sans); background: color-mix(in srgb, var(--shimpz-color-cyan) 6%, var(--shimpz-color-bg)); border: 0; border-block-end: 1px solid var(--shimpz-color-cyan); clip-path: none; box-shadow: none; }
+  .team-rename :global(.rename-field input) { width: 100%; min-width: 0; height: 1.9rem; min-height: 0; padding: 0 var(--gap-inside); color: var(--shimpz-color-text); font: 500 0.95rem/1 var(--shimpz-font-sans); background: color-mix(in srgb, var(--shimpz-color-cyan) 6%, var(--shimpz-color-bg)); border: 0; border-block-end: 1px solid var(--shimpz-color-cyan); clip-path: none; box-shadow: none; }
   .team-rename :global(.rename-field input:focus) { outline: none; box-shadow: 0 1px 0 0 var(--shimpz-color-cyan); }
   .row.is-renaming .row-actions { display: none; }
-  .row :global(.team-link .action-link-content) { display: flex; min-width: 0; align-items: center; gap: 0.7rem; }
+  .row :global(.team-link .action-link-content) { display: flex; min-width: 0; align-items: center; gap: var(--gap-item); }
   .row :global(.team-link:hover), .is-selected > .row :global(.team-link) { color: var(--shimpz-color-text); }
   .monogram { display: grid; flex: 0 0 auto; width: 1.9rem; height: 1.9rem; place-items: center; color: var(--shimpz-color-text-dim); background: var(--shimpz-color-bg); border: 1px solid var(--shimpz-color-border); font: 700 0.64rem/1 var(--shimpz-font-mono); letter-spacing: 0.04em; }
   .is-selected .monogram { color: var(--shimpz-color-cyan); border-color: var(--shimpz-color-cyan); box-shadow: var(--shimpz-glow-cyan); }
@@ -552,6 +556,7 @@
   .row :global(.row-action svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.6; }
   .routines-slot { position: relative; display: inline-flex; flex: none; }
   /* A Routine that needs the person, or a list that failed to load: a small yellow dot; the button's name says which. */
+  /* The dot's offsets place it on the Routines icon's corner: geometry, not rhythm. */
   .attention { position: absolute; inset-block-start: 0.45rem; inset-inline-end: 0.4rem; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--shimpz-color-yellow); box-shadow: 0 0 0.35rem var(--shimpz-color-yellow); pointer-events: none; }
   @media (forced-colors: active) { .attention { background: Highlight; box-shadow: none; } }
   /* Reordering: a grip in the row actions, the lifted row following the pointer, and a cyan-to-magenta drop line with
@@ -574,6 +579,7 @@
     filter: drop-shadow(0 0 4px rgb(0 240 255 / 75%));
   }
   :global([dir="rtl"]) .drop-before::before, :global([dir="rtl"]) .drop-after::after { background-position: 100% 50%, 0 50%; }
+  /* Centre the 6px drop line on the 2px seam between rows. */
   .drop-before::before { inset-block-start: -4px; }
   .drop-after::after { inset-block-end: -4px; }
   @media (pointer: coarse) {
@@ -587,8 +593,6 @@
   }
   @media (forced-colors: active) {
     .drop-before::before, .drop-after::after { background: Highlight; filter: none; }
-  }
-  @media (forced-colors: active) {
     .is-selected > .row { outline: 1px solid Highlight; }
   }
 </style>

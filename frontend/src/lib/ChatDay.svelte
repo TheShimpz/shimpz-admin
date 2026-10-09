@@ -18,10 +18,10 @@
     inset-block-start: var(--chat-day-inset, 0);
     display: flex;
     align-items: center;
-    gap: var(--shimpz-space-3);
+    gap: var(--gap-item);
     min-width: 0;
-    margin: 1.4rem 0 0.35rem;
-    padding-block: 0.45rem;
+    margin: var(--gap-panel) 0 var(--gap-inside);
+    padding-block: var(--gap-item);
     background: var(--surface-1);
     color: var(--shimpz-color-text-dim);
     font: 500 0.66rem/1.2 var(--shimpz-font-mono);

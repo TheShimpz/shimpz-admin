@@ -153,16 +153,16 @@
   /* One bordered sheet under the reply: mono labels, plain values, and two equal buttons at its foot. */
   .routine-proposal {
     display: grid;
-    gap: var(--shimpz-space-3);
+    gap: var(--gap-group);
     max-width: 68ch;
-    margin-block-start: var(--shimpz-space-3);
-    padding: var(--shimpz-space-4);
+    margin-block-start: var(--gap-group);
+    padding: var(--gap-panel);
     border: 1px solid var(--shimpz-color-border);
     border-radius: var(--shimpz-radius-md, 6px);
     color: var(--shimpz-color-text);
     font-size: 0.85rem;
   }
-  header { display: grid; gap: 0.2rem; }
+  header { display: grid; gap: var(--gap-inside); }
   p, h3, h4, ul, ol, dl { margin: 0; }
   .kicker, h4, dt {
     color: var(--shimpz-color-text-dim);
@@ -171,22 +171,22 @@
     text-transform: uppercase;
   }
   .name { font-size: 1rem; font-weight: 600; overflow-wrap: anywhere; }
-  .facts { display: grid; gap: var(--shimpz-space-2); }
-  .facts > div { display: grid; gap: 0.15rem; }
+  .facts { display: grid; gap: var(--gap-item); }
+  .facts > div { display: grid; gap: var(--gap-inside); }
   dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
-  .runs, .steps, .permitted, .statements { display: grid; gap: 0.35rem; padding: 0; list-style: none; }
-  .steps > li { display: grid; gap: 0.3rem; }
+  .runs, .steps, .permitted, .statements { display: grid; gap: var(--gap-item); padding: 0; list-style: none; }
+  .steps > li { display: grid; gap: var(--gap-inside); }
   .step { font-weight: 600; overflow-wrap: anywhere; }
-  .effect { margin-inline-start: 0.5rem; color: var(--shimpz-color-text-dim); font-weight: 400; font-size: 0.75rem; }
+  .effect { margin-inline-start: var(--gap-item); color: var(--shimpz-color-text-dim); font-weight: 400; font-size: 0.75rem; }
   .effect--changes { color: var(--shimpz-color-yellow); }
-  .inputs { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.2rem 0.75rem; padding-inline-start: var(--shimpz-space-3); }
+  .inputs { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--gap-inside) var(--gap-item); padding-inline-start: var(--gap-group); }
   .inputs > div { display: contents; }
   .inputs dt { font: 0.78rem/1.4 var(--shimpz-font-sans); letter-spacing: 0; text-transform: none; }
-  .inputs dd { display: grid; gap: 0.1rem; }
+  .inputs dd { display: grid; gap: var(--gap-inside); }
   .value { font: 0.76rem/1.4 var(--shimpz-font-mono); }
   .origin, .dim { color: var(--shimpz-color-text-dim); font-size: 0.75rem; }
   .statements { color: var(--shimpz-color-text-muted); }
-  .actions { display: flex; flex-wrap: wrap; gap: var(--shimpz-space-2); }
+  .actions { display: flex; flex-wrap: wrap; gap: var(--gap-group); }
   .routine-result { color: var(--shimpz-color-text-muted); }
   .error { color: var(--shimpz-color-danger); }
 </style>

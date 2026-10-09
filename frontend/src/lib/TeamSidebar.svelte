@@ -78,8 +78,8 @@
   :global(.context-error) {
     display: grid;
     min-width: 0;
-    gap: 0.6rem;
-    padding: 0.75rem 1.15rem;
+    gap: var(--gap-item);
+    padding: var(--gap-item) var(--gap-group);
   }
 
   :global(.context-error) p {

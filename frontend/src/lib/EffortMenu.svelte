@@ -173,7 +173,7 @@
   .needle { transition: transform 220ms var(--shimpz-ease); }
   .panel {
     position: fixed; z-index: 80; top: var(--panel-top); left: var(--panel-left); display: grid; width: min(16rem, calc(100vw - 1rem));
-    gap: var(--shimpz-space-2); margin: 0; padding: var(--shimpz-space-3); color: var(--shimpz-color-text); background: var(--shimpz-color-bg);
+    gap: var(--gap-item); margin: 0; padding: var(--gap-panel); color: var(--shimpz-color-text); background: var(--shimpz-color-bg);
     border: 1px solid color-mix(in srgb, var(--shimpz-color-cyan) 22%, var(--shimpz-color-border));
     clip-path: polygon(0 0, calc(100% - 0.9rem) 0, 100% 0.9rem, 100% 100%, 0.9rem 100%, 0 calc(100% - 0.9rem));
     box-shadow: 0 1.25rem 3rem rgb(0 0 0 / 70%);
@@ -182,7 +182,8 @@
   .title { margin: 0; color: var(--shimpz-color-text-dim); font: 700 0.6rem/1 var(--shimpz-font-mono); letter-spacing: 0.16em; text-transform: uppercase; }
   /* A slider: a hairline track through three notched stops, lit up to a glowing diamond thumb that slides to the
      current level. Each stop stays a radio, so keyboard and assistive use are unchanged. */
-  .effort { --stop-center: calc(100% / 6); position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-block-start: 0.2rem; }
+  .effort { --stop-center: calc(100% / 6); position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-block-start: var(--gap-inside); }
+  /* The track, thumb, notches, and the stops' padding are the slider's own geometry, not rhythm. */
   .track { position: absolute; top: 0.95rem; inset-inline: var(--stop-center); height: 2px; background: var(--shimpz-color-border); pointer-events: none; }
   .fill { position: absolute; inset-block: 0; inset-inline-start: 0; width: calc(var(--effort-fill) * 100%); background: linear-gradient(90deg, color-mix(in srgb, var(--shimpz-color-cyan) 35%, transparent), var(--shimpz-color-cyan)); box-shadow: 0 0 0.5rem rgb(0 240 255 / 45%); transition: width 220ms var(--shimpz-ease); }
   .thumb { position: absolute; z-index: 1; top: calc(0.95rem + 1px); left: calc(var(--stop-center) + var(--effort-fill) * (100% - 2 * var(--stop-center))); width: 0.8rem; height: 0.8rem; background: var(--shimpz-color-cyan); box-shadow: 0 0 0.8rem var(--shimpz-color-cyan), 0 0 0 3px var(--shimpz-color-bg); transform: translate(-50%, -50%) rotate(45deg); transition: left 220ms var(--shimpz-ease); pointer-events: none; }

@@ -94,7 +94,7 @@
 
 <style>
   form { margin: 0; }
-  :global(.local-install-target > [data-slot="card-content"]) { display: grid; gap: 0.25rem; }
+  :global(.local-install-target > [data-slot="card-content"]) { display: grid; gap: var(--gap-inside); }
   :global(.local-install-target span) {
     color: var(--text-faint);
     font-family: var(--font-mono);
@@ -104,7 +104,7 @@
   }
   :global(.local-install-target strong) { font-size: 0.85rem; }
   :global(.local-install-target code) { overflow-wrap: anywhere; color: var(--accent); font-size: 0.65rem; }
-  .local-build-selector { display: grid; gap: var(--shimpz-space-2); }
+  .local-build-selector { display: grid; gap: var(--gap-item); }
   .local-build-selector > span {
     color: var(--text-faint);
     font-family: var(--font-mono);
@@ -112,5 +112,5 @@
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
-  .local-build-selector ul { display: grid; gap: var(--shimpz-space-2); margin: 0; padding: 0; list-style: none; }
+  .local-build-selector ul { display: grid; gap: var(--gap-item); margin: 0; padding: 0; list-style: none; }
 </style>

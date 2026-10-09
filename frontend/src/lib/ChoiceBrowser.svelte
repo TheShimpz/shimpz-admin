@@ -81,9 +81,9 @@
 <style>
   /* Search above, the list in between, and the page controls below, all on the host's inline padding. */
   .browser { display: grid; min-width: 0; }
-  .search { padding-block: var(--shimpz-space-3); }
-  .empty { margin: 0; padding: var(--shimpz-space-4) 0; color: var(--shimpz-color-text-muted); font-size: 0.88rem; text-align: center; }
-  .pager { display: flex; align-items: center; justify-content: space-between; gap: var(--shimpz-space-2); padding-block-start: var(--shimpz-space-3); }
+  .search { padding-block: var(--gap-group); }
+  .empty { margin: 0; padding: var(--gap-group) 0; color: var(--shimpz-color-text-muted); font-size: 0.88rem; text-align: center; }
+  .pager { display: flex; align-items: center; justify-content: space-between; gap: var(--gap-group); padding-block-start: var(--gap-group); }
   .pager :global(.shimpz-button) { --button-color: var(--shimpz-color-text-muted); --button-border: transparent; }
   .pager :global(.routine-icon) { width: 0.85rem; height: 0.85rem; }
   .flip { display: inline-flex; transform: scaleX(-1); }

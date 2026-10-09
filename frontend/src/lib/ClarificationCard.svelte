@@ -105,10 +105,10 @@
 {/if}
 
 <style>
-  .clarification { display: grid; gap: var(--shimpz-space-2); margin-block-start: var(--shimpz-space-1); }
+  .clarification { display: grid; gap: var(--gap-item); margin-block-start: var(--gap-inside); }
   .question { margin: 0; color: var(--shimpz-color-text); font-weight: 600; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .options { display: grid; gap: 2px; }
-  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--shimpz-space-2); }
+  .options { display: grid; gap: 2px; } /* a seam between the bordered option tiles, not rhythm */
+  .actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-group); }
   /* "Other" is one card: its option, then its answer field aligned under the description. */
   .other {
     background: var(--shimpz-color-surface-raised);
@@ -126,6 +126,8 @@
   /* Once chosen, the field sits exactly on the description's line, so the card never changes height. */
   .other { position: relative; }
   .other.chosen :global(.shimpz-radio-field small) { visibility: hidden; }
+  /* Not rhythm: these offsets mirror the shared radio field's own padding and mark, so the field lands on its
+     description line. */
   .other-entry {
     position: absolute;
     inset-inline: calc(1.125rem + 2 * var(--shimpz-space-3) + 1px) calc(var(--shimpz-space-3) + 1px);
@@ -150,7 +152,7 @@
     color: var(--shimpz-color-text-dim);
     font: 500 0.7rem/1.4 var(--shimpz-font-sans);
   }
-  .actions :global(.answer) { display: inline-flex; align-items: center; gap: 0.45rem; }
+  .actions :global(.answer) { display: inline-flex; align-items: center; gap: var(--gap-inside); }
   .actions :global(.answer svg) {
     width: 0.95rem;
     height: 0.95rem;

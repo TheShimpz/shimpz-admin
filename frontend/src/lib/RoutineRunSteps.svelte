@@ -199,10 +199,11 @@
     position: relative;
     display: grid;
     grid-template-columns: 2rem minmax(0, 1fr);
-    gap: var(--shimpz-space-3);
-    padding-block: 0 var(--shimpz-space-4);
+    gap: var(--gap-item);
+    padding-block: 0 var(--gap-group);
     outline-offset: 2px;
   }
+  /* The rail's offsets follow the number column's geometry, not the spacing rhythm. */
   .step:not(:last-child)::before {
     position: absolute;
     inset-block: 1.6rem 0.4rem;
@@ -212,11 +213,11 @@
     content: '';
   }
   .number { color: var(--shimpz-color-cyan); font: 600 0.75rem/1.6 var(--shimpz-font-mono); }
-  .body { display: grid; gap: 0.35rem; min-width: 0; }
-  .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.1rem 0.6rem; }
+  .body { display: grid; gap: var(--gap-item); min-width: 0; }
+  .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--gap-inside) var(--gap-item); }
   .action { color: var(--shimpz-color-text); font-weight: 600; overflow-wrap: anywhere; }
   .assistant { color: var(--shimpz-color-text-dim); font-size: 0.75rem; }
-  .status { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.6rem; color: var(--shimpz-color-text-muted); font: 600 0.62rem/1.4 var(--shimpz-font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
+  .status { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--gap-inside) var(--gap-item); color: var(--shimpz-color-text-muted); font: 600 0.62rem/1.4 var(--shimpz-font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
   .status .word { display: inline-flex; align-items: center; }
   .status .when { color: var(--shimpz-color-text-dim); font-weight: 400; letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
   .status :global(.routine-icon) { width: 0.8rem; height: 0.8rem; color: var(--shimpz-color-cyan); }
@@ -225,17 +226,17 @@
   .step--waiting .status :global(.routine-icon) { color: var(--shimpz-color-yellow); }
   .step--not_run .status :global(.routine-icon),
   .step--unavailable .status :global(.routine-icon) { color: var(--shimpz-color-text-dim); }
-  .inputs { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0.2rem 0.75rem; margin: 0.15rem 0 0; font-size: 0.78rem; }
+  .inputs { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--gap-inside) var(--gap-item); margin: 0; font-size: 0.78rem; }
   .inputs > div { display: contents; }
   dt { color: var(--shimpz-color-text-dim); }
   dd { margin: 0; min-width: 0; color: var(--shimpz-color-text); font-family: var(--shimpz-font-mono); font-size: 0.76rem; overflow-wrap: anywhere; }
   .dim { color: var(--shimpz-color-text-dim); font-size: 0.75rem; }
-  .attempts { display: grid; gap: 0.35rem; margin-block-start: 0.25rem; padding: 0.5rem 0.65rem; border-inline-start: 2px solid var(--shimpz-color-border); background: rgb(255 255 255 / 0.015); }
-  .attempts.apart { margin-block-start: var(--shimpz-space-2); }
+  .attempts { display: grid; gap: var(--gap-item); margin-block-start: var(--gap-inside); padding: var(--gap-item) var(--gap-group); border-inline-start: 2px solid var(--shimpz-color-border); background: rgb(255 255 255 / 0.015); }
+  .attempts.apart { margin-block-start: var(--gap-item); }
   .attempts-title { color: var(--shimpz-color-text-muted); font-size: 0.75rem; }
-  .attempts ul { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
-  .attempt { display: grid; gap: 0.15rem; font-size: 0.75rem; }
-  .attempt-head { display: flex; flex-wrap: wrap; gap: 0.1rem 0.6rem; color: var(--shimpz-color-text-muted); }
+  .attempts ul { display: grid; gap: var(--gap-item); margin: 0; padding: 0; list-style: none; }
+  .attempt { display: grid; gap: var(--gap-inside); font-size: 0.75rem; }
+  .attempt-head { display: flex; flex-wrap: wrap; gap: var(--gap-inside) var(--gap-item); color: var(--shimpz-color-text-muted); }
   .mono, code { font: 0.72rem/1.5 var(--shimpz-font-mono); }
   code { color: var(--shimpz-color-text-dim); }
   .message { color: var(--shimpz-color-text-muted); white-space: pre-wrap; overflow-wrap: anywhere; }

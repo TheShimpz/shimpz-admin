@@ -26,6 +26,14 @@
   --ring: var(--shimpz-focus-ring);
   --admin-divider: var(--shimpz-color-border);
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Spacing rhythm: every gap, margin, and padding is one of six steps, chosen by how closely two things belong
+     together. Closer relation, smaller step; nothing between steps. */
+  --gap-inside: var(--shimpz-space-1); /* 4px: within one element (glyph and its text, stacked meta lines) */
+  --gap-item: var(--shimpz-space-2); /* 8px: parts of one item, rows of one list, a heading and its body */
+  --gap-group: var(--shimpz-space-4); /* 16px: items of one group, controls in a row */
+  --gap-panel: var(--shimpz-space-6); /* 24px: a panel's inner padding, groups within a section */
+  --gap-section: var(--shimpz-space-8); /* 32px: sections of one column */
+  --gap-region: var(--shimpz-space-12); /* 48px: page regions (header band, main column, side rail) */
   /* The cyberpunk hover language shared by Admin controls: a chromatic split and a short stepped glitch on entry. */
   --glitch-split-text: -1px 0 color-mix(in srgb, var(--shimpz-color-magenta) 70%, transparent), 1px 0 color-mix(in srgb, var(--shimpz-color-cyan) 70%, transparent);
   --glitch-split-icon: drop-shadow(-1px 0 var(--shimpz-color-magenta)) drop-shadow(1px 0 var(--shimpz-color-cyan));

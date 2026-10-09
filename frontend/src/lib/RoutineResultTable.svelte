@@ -60,7 +60,7 @@
   .table-scroll:focus-visible { outline: 2px solid var(--shimpz-color-cyan); outline-offset: 2px; }
   table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.82rem; line-height: 1.45; }
   th, td {
-    padding: 0.5rem 0.75rem;
+    padding: var(--gap-item) var(--gap-group);
     text-align: start;
     vertical-align: top;
     border-inline-end: 1px solid var(--shimpz-color-border-subtle);
@@ -84,9 +84,9 @@
   tbody tr:hover { background: color-mix(in srgb, var(--shimpz-color-cyan) 4%, transparent); }
   .kind-number { text-align: end; }
   td.kind-bool, td.kind-status, td.kind-number { min-width: 0; white-space: nowrap; }
-  .inline { display: inline-flex; flex-wrap: wrap; gap: 0.2rem 0.6rem; }
+  .inline { display: inline-flex; flex-wrap: wrap; gap: var(--gap-inside) var(--gap-item); }
   .blank, .more { color: var(--shimpz-color-text-dim); }
-  .more { margin: 0.4rem 0 0; font-size: 0.75rem; }
+  .more { margin: var(--gap-item) 0 0; font-size: 0.75rem; }
   .nested { font-size: 0.78rem; }
   @media (forced-colors: active) { .table-scroll { border-color: CanvasText; } }
 </style>

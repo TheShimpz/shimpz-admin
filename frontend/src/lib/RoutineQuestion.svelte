@@ -87,9 +87,9 @@
 {/if}
 
 <style>
-  .routine-question { display: grid; gap: var(--shimpz-space-2); margin-block-start: var(--shimpz-space-2); }
+  .routine-question { display: grid; gap: var(--gap-item); margin-block-start: var(--gap-item); }
   .question { margin: 0; color: var(--shimpz-color-text); font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
-  .options { display: grid; gap: 2px; }
-  .actions { display: flex; align-items: center; gap: var(--shimpz-space-2); }
+  .options { display: grid; gap: 2px; } /* a seam between the bordered option tiles, not rhythm */
+  .actions { display: flex; align-items: center; gap: var(--gap-group); }
   .error { margin: 0; color: var(--shimpz-color-danger); }
 </style>

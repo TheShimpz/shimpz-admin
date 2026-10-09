@@ -53,9 +53,9 @@
   /* The question is the list's title, and each row below answers it: a heading-sized line over a short cyan rule. */
   .ask {
     display: grid;
-    gap: 0.45rem;
+    gap: var(--gap-item);
     margin: 0;
-    padding: var(--shimpz-space-4) var(--choice-inline, var(--shimpz-space-3)) var(--shimpz-space-3);
+    padding: var(--gap-group) var(--choice-inline, var(--gap-group));
     color: var(--shimpz-color-text);
     font: 650 1.12rem/1.3 var(--shimpz-font-sans);
     letter-spacing: -0.01em;
@@ -85,7 +85,7 @@
     isolation: isolate;
     width: 100%;
     min-height: 0;
-    padding: var(--shimpz-space-3) var(--choice-inline, var(--shimpz-space-3));
+    padding: var(--gap-item) var(--choice-inline, var(--gap-group));
     text-align: start;
     text-transform: none;
     letter-spacing: normal;
@@ -106,7 +106,7 @@
     transition: opacity var(--shimpz-duration-fast) var(--shimpz-ease);
   }
   .segment :global(.choice::after) {
-    inset-block: 0.45rem;
+    inset-block: 0.45rem; /* the hover edge's own length, not rhythm */
     inset-inline-start: 0;
     width: 2px;
     background: var(--shimpz-color-cyan);
@@ -130,7 +130,7 @@
     grid-template-columns: auto minmax(0, 1fr) auto;
     align-items: center;
     justify-items: start;
-    gap: 0.2rem 0.85rem;
+    gap: var(--gap-inside) var(--gap-item);
     width: 100%;
   }
   /* The shared Button glitches its whole content on hover; here only the label and the icon do, so the line stays
@@ -176,7 +176,6 @@
   /* What a row is or does, in plain words: never glitched, never truncated. */
   .line { grid-area: line; min-width: 0; max-width: 68ch; color: var(--shimpz-color-text-muted); font: 400 0.82rem/1.5 var(--shimpz-font-sans); text-shadow: none; text-wrap: pretty; white-space: normal; overflow-wrap: anywhere; }
   .choices--item .line { color: var(--shimpz-color-text-dim); font: 400 0.76rem/1.45 var(--shimpz-font-mono); }
-  .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
   @media (prefers-reduced-motion: reduce) {
     .segment :global(.choice::before), .segment :global(.choice::after), .tile, .go { transition: none; }
     .segment :global(.choice:is(:hover, :focus-visible):not(:disabled) .label) { animation: none; }

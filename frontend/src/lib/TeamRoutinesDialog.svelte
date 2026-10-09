@@ -105,14 +105,14 @@
   /* The search, the list, and its pages sit under the header that asks the question; the list reaches the frame's
      edges and scrolls inside the modal when it is long. */
   .body {
-    --choice-inline: var(--shimpz-space-4);
+    --choice-inline: var(--gap-panel);
     --choice-ask-align: center;
     --choice-rule: 0;
     --choice-list-border: 1px solid var(--shimpz-color-border);
     min-height: 0;
     padding-inline: var(--choice-inline);
-    padding-block: 0 var(--shimpz-space-4);
+    padding-block: 0 var(--gap-panel);
     overflow: auto;
   }
-  .failed { display: grid; justify-items: start; gap: var(--shimpz-space-2); padding-block: var(--shimpz-space-2); }
+  .failed { display: grid; justify-items: start; gap: var(--gap-item); padding-block: var(--gap-item); }
 </style>

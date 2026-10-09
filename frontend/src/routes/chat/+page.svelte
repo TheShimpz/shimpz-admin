@@ -2708,7 +2708,7 @@
   }
 
   .conversation {
-    --chat-rail-gutter: 0.8rem;
+    --chat-rail-gutter: var(--gap-group);
     --chat-rail-width: 48rem;
     position: relative;
     display: grid;
@@ -2731,9 +2731,10 @@
     overflow-y: auto;
     overscroll-behavior: contain;
     /* A day header sticks flush with the top edge, over this padding; an exchange scrolled to the top stays below it. */
-    --chat-day-inset: -1rem;
+    --chat-day-inset: calc(-1 * var(--gap-group));
+    /* Not rhythm: clears the sticky day header's own height. */
     scroll-padding-block-start: 2rem;
-    padding-block: 1rem;
+    padding-block: var(--gap-group);
     padding-inline: max(
       var(--chat-rail-gutter),
       calc((100% - var(--chat-rail-width)) / 2)
@@ -2774,11 +2775,11 @@
 
   .exchange {
     /* A Routine notice's timeline rail reaches back across this gap to the notice before it. */
-    --routine-rail-gap: 1.1rem;
+    --routine-rail-gap: var(--gap-group);
     display: grid;
     min-width: 0;
     align-content: start;
-    gap: 0.65rem;
+    gap: var(--gap-item);
     margin-block-start: var(--routine-rail-gap);
   }
 
@@ -2802,14 +2803,14 @@
   }
 
   .task-usage {
-    margin: 0.35rem 0 0;
+    margin: var(--gap-inside) 0 0;
     color: var(--shimpz-color-text-dim);
     font: 500 0.68rem/1.4 var(--shimpz-font-mono);
     letter-spacing: 0.02em;
     font-variant-numeric: tabular-nums;
   }
   .routine-refusal {
-    margin: 0.6rem 0 0;
+    margin: var(--gap-item) 0 0;
     color: var(--shimpz-color-text-muted);
     font-size: 0.85rem;
   }
@@ -2830,8 +2831,8 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
-  .clarification-reply { display: grid; gap: 0.55rem; margin: 0; }
-  .clarification-reply p { display: grid; gap: 2px; margin: 0; }
+  .clarification-reply { display: grid; gap: var(--gap-item); margin: 0; }
+  .clarification-reply p { display: grid; gap: var(--gap-inside); margin: 0; }
   .clarification-question { color: var(--shimpz-color-text-muted); }
   .reply-label {
     color: var(--shimpz-color-text-muted);
@@ -2842,9 +2843,9 @@
   }
   .resumed-task {
     display: grid;
-    gap: 0.2rem;
-    margin-bottom: 0.7rem;
-    padding-left: 0.7rem;
+    gap: var(--gap-inside);
+    margin-bottom: var(--gap-item);
+    padding-left: var(--gap-group);
     border-left: 2px solid currentColor;
     color: var(--text-faint);
     line-height: 1.45;
@@ -2859,10 +2860,10 @@
   }
 
   :global(.assistant-lifecycle-task) {
-    margin-top: 0.8rem;
+    margin-block-start: var(--gap-group);
   }
-  .assistant-install-plan { display: grid; gap: 0.55rem; margin-top: 0.75rem; }
-  .assistant-lifecycle-outcome { padding-top: 0.9rem; }
+  .assistant-install-plan { display: grid; gap: var(--gap-item); margin-block-start: var(--gap-group); }
+  .assistant-lifecycle-outcome { padding-block-start: var(--gap-group); }
 
   :global(.assistant-lifecycle-task .assistant-lifecycle-detail-copy) {
     display: block;
@@ -2870,7 +2871,7 @@
 
   :global(.assistant-lifecycle-task .assistant-lifecycle-provenance) {
     display: inline-block;
-    padding: 0.18rem 0.42rem;
+    padding: var(--gap-inside) var(--gap-item);
     color: var(--shimpz-color-yellow);
     font-weight: 700;
     letter-spacing: 0.08em;
@@ -2884,21 +2885,21 @@
 
   :global(.assistant-lifecycle-task .assistant-lifecycle-details) {
     display: grid;
-    gap: 0.55rem;
+    gap: var(--gap-item);
   }
 
   :global(.assistant-lifecycle-task .assistant-lifecycle-actions) {
     display: flex;
     flex-wrap: wrap;
     justify-content: flex-end;
-    gap: 0.55rem;
-    margin-top: 0.7rem;
+    gap: var(--gap-group);
+    margin-block-start: var(--gap-group);
   }
 
   :global(.error),
   :global(.empty-error) {
     display: grid;
-    gap: 0.35rem;
+    gap: var(--gap-item);
     font-size: 0.72rem;
   }
 
@@ -2917,7 +2918,7 @@
   :global(.brain-error) {
     display: grid;
     justify-items: start;
-    gap: 0.35rem;
+    gap: var(--gap-item);
     font-size: 0.72rem;
   }
 
@@ -2946,8 +2947,8 @@
     grid-row: 3;
     align-items: end;
     justify-self: center;
-    gap: 0.45rem;
-    padding: 0.6rem 0;
+    gap: var(--gap-item);
+    padding: var(--gap-item) 0;
     background: var(--surface-1);
   }
 
@@ -2996,7 +2997,7 @@
 
   .composer-drop {
     margin: 0;
-    padding: 0.5rem 1rem 0;
+    padding: var(--gap-item) var(--gap-group) 0;
     color: var(--shimpz-color-text-muted);
     font: 400 0.75rem/1.4 var(--shimpz-font-mono);
   }
@@ -3004,8 +3005,8 @@
   .message-attachments {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
-    gap: 0.35rem;
-    margin: 0.5rem 0 0;
+    gap: var(--gap-item);
+    margin: var(--gap-item) 0 0;
     padding: 0;
     list-style: none;
   }
@@ -3020,7 +3021,7 @@
     max-height: 12rem;
     field-sizing: content;
     resize: none;
-    padding: 0.85rem 1rem 0.25rem;
+    padding: var(--gap-group) var(--gap-group) var(--gap-inside);
     color: var(--shimpz-color-text);
     font: 400 0.95rem/1.5 var(--shimpz-font-sans);
     background: transparent;
@@ -3048,8 +3049,8 @@
   :global(.composer-actions) {
     display: flex;
     align-items: center;
-    gap: 0.15rem;
-    padding: 0.2rem 0.45rem 0.45rem;
+    gap: var(--gap-inside);
+    padding: var(--gap-inside) var(--gap-item) var(--gap-item);
   }
 
   :global(.composer-actions .composer-integrations) {
@@ -3162,9 +3163,6 @@
 
   @media (max-width: 640px) {
     :global(.turns .shimpz-message--user) { max-width: 92%; }
-    .conversation { --chat-rail-gutter: 0.6rem; }
-    .composer { gap: 0.45rem; padding: 0.6rem 0; }
-    :global(.composer-actions) { gap: 0.3rem; }
-    .composer :global(.shimpz-button) { padding-inline: 0.65rem; }
+    .composer :global(.shimpz-button) { padding-inline: var(--gap-item); }
   }
 </style>

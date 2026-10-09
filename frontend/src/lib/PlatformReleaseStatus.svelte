@@ -40,7 +40,7 @@
 </div>
 
 <style>
-  .platform-release { display: flex; align-items: center; gap: var(--shimpz-space-2); min-height: 2.75rem; padding: var(--shimpz-space-2) var(--shimpz-space-4); border-block-start: 1px solid var(--shimpz-color-border); color: var(--shimpz-color-text-muted); font: 600 0.72rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.04em; text-transform: uppercase; }
+  .platform-release { display: flex; align-items: center; gap: var(--gap-inside); min-height: 2.75rem; padding: var(--gap-item) var(--gap-group); border-block-start: 1px solid var(--shimpz-color-border); color: var(--shimpz-color-text-muted); font: 600 0.72rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.04em; text-transform: uppercase; }
   .indicator { width: 0.5rem; height: 0.5rem; flex: 0 0 auto; border-radius: 50%; background: var(--shimpz-color-success, #35d07f); box-shadow: 0 0 0 3px color-mix(in srgb, var(--shimpz-color-success, #35d07f) 18%, transparent); }
   .unknown .indicator { background: currentColor; box-shadow: none; opacity: 0.55; }
   .rollback { color: var(--shimpz-color-danger, #ff5c7c); }

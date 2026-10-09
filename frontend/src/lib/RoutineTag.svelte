@@ -16,8 +16,8 @@
     display: inline-flex;
     flex: none;
     align-items: center;
-    gap: 0.35rem;
-    padding: 0.2rem 0.45rem;
+    gap: var(--gap-inside);
+    padding: var(--gap-inside) var(--gap-item);
     color: var(--tag-color);
     border: 1px solid var(--tag-border);
     font: 600 0.62rem/1.2 var(--shimpz-font-mono);
@@ -25,7 +25,8 @@
     text-transform: uppercase;
     white-space: nowrap;
   }
-  .tag--xs { padding: 0.05rem 0.3rem; font-size: 0.56rem; line-height: 1.4; }
+  /* The block padding is the extra-small tag's own height, not rhythm. */
+  .tag--xs { padding: 0.05rem var(--gap-inside); font-size: 0.56rem; line-height: 1.4; }
   .tag :global(.routine-icon) { width: 0.8rem; height: 0.8rem; }
   .tag--danger { --tag-color: var(--shimpz-color-danger); --tag-border: var(--shimpz-color-danger); }
   .tag--warning { --tag-color: var(--shimpz-color-yellow); --tag-border: var(--shimpz-color-yellow); }

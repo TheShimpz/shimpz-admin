@@ -230,14 +230,14 @@
 <style>
   .context { max-width: 74ch; margin: 0; color: var(--text-dim); font-size: 0.84rem; line-height: 1.55; }
   .dynamic { color: var(--shimpz-color-cyan); font-weight: 700; }
-  .requirements { display: grid; gap: 0.65rem; }
-  .requirements article { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.75rem; border: 1px solid var(--border); padding: 0.75rem; }
-  .requirement-copy { display: grid; gap: 0.28rem; min-width: 0; }
+  .requirements { display: grid; gap: var(--gap-item); }
+  .requirements article { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--gap-item); border: 1px solid var(--border); padding: var(--gap-item) var(--gap-group); }
+  .requirement-copy { display: grid; gap: var(--gap-inside); min-width: 0; }
   .requirement-name { color: var(--text); font-size: 0.78rem; }
   .requirement-copy > span { color: var(--text-faint); font-family: var(--font-mono); font-size: 0.58rem; }
   .requirement-copy p { margin: 0; color: var(--text-dim); font-size: 0.68rem; line-height: 1.45; }
-  .chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
-  .chips strong { border: 1px solid var(--border-strong); padding: 0.28rem 0.5rem; color: var(--shimpz-color-cyan); font-family: var(--font-mono); font-size: 0.62rem; font-weight: 700; }
+  .chips { display: flex; flex-wrap: wrap; gap: var(--gap-item); }
+  .chips strong { border: 1px solid var(--border-strong); padding: var(--gap-inside) var(--gap-item); color: var(--shimpz-color-cyan); font-family: var(--font-mono); font-size: 0.62rem; font-weight: 700; }
   @media (max-width: 560px) {
     .requirements article { grid-template-columns: 1fr; }
     .requirements :global(.shimpz-button) { width: 100%; }

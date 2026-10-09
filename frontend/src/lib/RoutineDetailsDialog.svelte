@@ -465,9 +465,9 @@
   .note :global(.routine-icon) { color: var(--shimpz-color-yellow); }
   /* The page menu: mono labels on one rule, the selected page underlined in the panel's one accent. */
   /* The page menu starts at the panel's edge; the Routine's actions sit at its far end. */
-  .bar { display: flex; align-items: center; gap: var(--shimpz-space-2); padding-inline-end: var(--shimpz-space-2); border-block-end: 1px solid var(--shimpz-color-border); }
-  .tabs { display: flex; flex: 1 1 auto; min-width: 0; padding-block-start: 0.3rem; overflow-x: auto; }
-  .actions { display: flex; flex: none; gap: 0.15rem; margin-inline-start: auto; }
+  .bar { display: flex; align-items: center; gap: var(--gap-item); min-height: 2.5rem; padding-inline-end: var(--gap-item); border-block-end: 1px solid var(--shimpz-color-border); }
+  .tabs { display: flex; flex: 1 1 auto; min-width: 0; padding-block-start: var(--gap-inside); overflow-x: auto; }
+  .actions { display: flex; flex: none; gap: var(--gap-inside); margin-inline-start: auto; }
   .actions :global(.act.act) { --button-border: transparent; --button-color: var(--shimpz-color-cyan); --button-hover-color: var(--shimpz-color-cyan); }
   .actions :global(.act.act--delete) { --button-color: var(--shimpz-color-danger); --button-hover-color: var(--shimpz-color-danger); }
   .actions :global(.act.act--delete:hover:not(:disabled)) { box-shadow: none; }
@@ -482,15 +482,14 @@
   .tabs :global(.tab[aria-selected="true"]) { --button-color: var(--shimpz-color-cyan); box-shadow: inset 0 -2px 0 var(--shimpz-color-cyan); }
   .tabs :global(.tab[aria-selected="true"]:hover) { color: var(--shimpz-color-cyan); box-shadow: inset 0 -2px 0 var(--shimpz-color-cyan); }
   .tabs :global(.tab:focus-visible) { outline: 2px solid var(--shimpz-color-cyan); outline-offset: -2px; }
-  .bar { min-height: 2.5rem; }
   /* A decision fills the panel, and its choice group closes the panel's frame along its bottom edge. */
   .content.decide {
-    --choice-inline: var(--shimpz-space-4);
+    --choice-inline: var(--gap-panel);
     --choice-ask-align: center;
     --choice-list-border: 1px solid var(--shimpz-color-border);
     /* The panel's side lines run only beside the header and the message; the answers below are open. */
-    --decision-message-bleed: var(--shimpz-space-4);
-    --decision-message-top: var(--shimpz-space-4);
+    --decision-message-bleed: var(--gap-panel);
+    --decision-message-top: var(--gap-panel);
     --decision-message-sides: inset 1px 0 0 var(--shimpz-color-border), inset -1px 0 0 var(--shimpz-color-border);
     --decision-message-rule: 1px solid var(--shimpz-color-border);
     --choice-rule: 0;
@@ -502,7 +501,7 @@
   /* A decision narrows the panel to about 80%, and its answers span that same width below the message. */
   :global(dialog.shimpz-modal.routine-panel:has(.frame--deciding)) { --modal-max-width: calc(var(--shimpz-dialog-lg) * 0.805); }
   /* Every page keeps one height so switching tabs does not resize the panel. */
-  .content { flex: 1 1 auto; align-content: start; min-height: min(17rem, 50dvh); display: grid; gap: var(--shimpz-space-4); min-width: 0; padding: var(--shimpz-space-4); overflow: auto; }
+  .content { flex: 1 1 auto; align-content: start; min-height: min(17rem, 50dvh); display: grid; gap: var(--gap-group); min-width: 0; padding: var(--gap-panel); overflow: auto; }
   /* A decision kept mounted under its deletion confirmation takes no room and is not shown. */
   .content.decide[hidden] { display: none; }
   /* One paragraph in the person's own words; the timezone and the time now stand out in bold. */
@@ -510,30 +509,31 @@
   .part { font-weight: 700; }
   .part--schedule { font-weight: inherit; }
   /* The next run: a mono label over the instant, then how far off it is. */
-  .next { display: grid; justify-items: start; gap: 0.3rem; margin: 0; font: 400 0.8rem/1.4 var(--shimpz-font-mono); }
+  .next { display: grid; justify-items: start; gap: var(--gap-inside); margin: 0; font: 400 0.8rem/1.4 var(--shimpz-font-mono); }
   .next-label { color: var(--shimpz-color-text-dim); font-size: 0.62rem; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; }
   .next time { color: var(--shimpz-color-cyan); }
   .until { color: var(--shimpz-color-text-dim); }
-  .note { display: flex; align-items: flex-start; gap: 0.5rem; margin: 0; padding: 0.55rem 0.7rem; color: var(--shimpz-color-text-muted); border: 1px solid var(--shimpz-color-border); font-size: 0.8rem; line-height: 1.45; }
-  .note :global(.routine-icon) { margin-block-start: 0.15rem; }
+  .note { display: flex; align-items: flex-start; gap: var(--gap-inside); margin: 0; padding: var(--gap-item) var(--gap-group); color: var(--shimpz-color-text-muted); border: 1px solid var(--shimpz-color-border); font-size: 0.8rem; line-height: 1.45; }
+  .note :global(.routine-icon) { margin-block-start: 0.15rem; } /* optical: centres the icon on the first text line */
   .note :global(.routine-icon--check) { color: var(--shimpz-color-cyan); }
   .sub { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.78rem; }
-  .runs { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; }
-  .runs li { display: flex; align-items: center; gap: 0.6rem; min-height: 2.25rem; padding-block: 0.25rem; font: 400 0.8rem/1.4 var(--shimpz-font-mono); }
+  .runs { display: grid; gap: 1px; margin: 0; padding: 0; list-style: none; } /* a hairline seam, not rhythm */
+  .runs li { display: flex; align-items: center; gap: var(--gap-item); min-height: 2.25rem; padding-block: var(--gap-inside); font: 400 0.8rem/1.4 var(--shimpz-font-mono); }
   /* A run's line wraps on a narrow screen rather than hiding its time; its notes read below it. */
-  .runs li.run { display: grid; gap: 0.15rem; }
-  .run-line { display: flex; flex-wrap: wrap; align-items: center; gap: 0.2rem 0.6rem; min-width: 0; }
+  .runs li.run { display: grid; gap: var(--gap-inside); }
+  .run-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-inside) var(--gap-item); min-width: 0; }
   .runs li :global(.routine-icon) { color: var(--shimpz-color-text-dim); width: 0.9rem; height: 0.9rem; }
   .runs li :global(.routine-icon--failed) { color: var(--shimpz-color-danger); }
   .runs li :global(.routine-icon--warning) { color: var(--shimpz-color-yellow); }
   .run-what { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
   .runs :global(.run-open.run-open) { --button-border: transparent; justify-content: flex-start; height: auto; min-height: 0; padding-inline: 0; font: inherit; text-align: start; clip-path: none; }
   .usage, .when { flex: none; color: var(--shimpz-color-text-dim); font-size: 0.72rem; }
-  .run-note { margin: 0; padding-inline-start: 1.5rem; color: var(--shimpz-color-text-muted); font: 400 0.78rem/1.45 var(--shimpz-font-sans); overflow-wrap: anywhere; white-space: pre-wrap; }
+  /* Under the run's text: past its 0.9rem icon and the line's gap. */
+  .run-note { margin: 0; padding-inline-start: calc(0.9rem + var(--gap-item)); color: var(--shimpz-color-text-muted); font: 400 0.78rem/1.45 var(--shimpz-font-sans); overflow-wrap: anywhere; white-space: pre-wrap; }
   .run-note--lost { color: var(--shimpz-color-yellow); }
   .runs :global(.run-details) { --button-color: var(--shimpz-color-text-dim); --button-border: transparent; flex: none; }
-  @media (forced-colors: active) { .bar { border-color: CanvasText; } }
   @media (forced-colors: active) {
+    .bar { border-color: CanvasText; }
     .note { border-color: CanvasText; }
     .tabs :global(.tab[aria-selected="true"]) { border-block-end: 2px solid Highlight; }
   }

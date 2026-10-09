@@ -33,7 +33,7 @@
 
     display: grid;
     justify-items: center;
-    gap: 0.175rem;
+    gap: var(--gap-inside);
     direction: ltr;
   }
 
@@ -51,6 +51,7 @@
     display: grid;
     grid-auto-flow: column;
     padding-block: var(--swing);
+    /* Optical: balances the trailing letter-spacing so the wordmark centres under the mark. */
     padding-inline-start: 0.15em;
     color: #fff;
     font-family: var(--shimpz-font-mono);

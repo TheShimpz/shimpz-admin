@@ -65,7 +65,7 @@
   .frame {
     display: flex;
     flex-direction: column;
-    max-height: calc(100dvh - 2rem);
+    max-height: calc(100dvh - 2rem); /* the browser's own dialog margin, not rhythm */
     min-width: 0;
     color: var(--shimpz-color-text);
     background: var(--shimpz-color-surface);
@@ -80,16 +80,17 @@
     display: flex;
     flex: none;
     align-items: center;
-    gap: var(--shimpz-space-2);
+    gap: var(--gap-item);
     min-height: 3rem;
-    padding: 0.4rem var(--shimpz-space-2) 0.4rem var(--shimpz-space-4);
+    /* The title starts on the content's inline padding; the close button brings its own hit area at the end. */
+    padding: var(--gap-inside) var(--gap-item) var(--gap-inside) var(--gap-panel);
     color: var(--shimpz-color-text-dim);
     background: repeating-linear-gradient(0deg, transparent 0 2px, color-mix(in srgb, var(--shimpz-color-cyan) 4%, transparent) 2px 3px);
     border-block-end: 1px solid var(--shimpz-color-border);
   }
-  .head:has(:global(.back)) { padding-inline-start: var(--shimpz-space-2); }
+  .head:has(:global(.back)) { padding-inline-start: var(--gap-item); }
   /* Long titles wrap. */
-  .title { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: var(--shimpz-space-2); }
+  .title { display: flex; flex: 1 1 auto; min-width: 0; align-items: center; gap: var(--gap-item); }
   h2 { flex: 1 1 auto; min-width: 0; margin: 0; color: var(--shimpz-color-text); font: 600 1rem/1.3 var(--shimpz-font-sans); overflow-wrap: anywhere; }
   .head :global(.close), .head :global(.back) { --button-color: var(--shimpz-color-text-dim); --button-border: transparent; flex: none; }
   :global([dir="rtl"]) .head :global(.back .routine-icon) { transform: scaleX(-1); }
@@ -100,7 +101,7 @@
   /* On a phone every Routine modal is a full-screen sheet, and a status tag sits under the title. */
   @media (max-width: 600px) {
     .head { align-items: flex-start; }
-    .title { flex-wrap: wrap; align-self: center; row-gap: 0.35rem; }
+    .title { flex-wrap: wrap; align-self: center; row-gap: var(--gap-inside); }
     h2 { flex-basis: 100%; }
     :global(dialog.shimpz-modal.routine-modal) { width: 100dvw; max-width: none; height: 100dvh; max-height: none; margin: 0; }
     .frame { height: 100dvh; max-height: 100dvh; clip-path: none; }
