@@ -10,8 +10,6 @@ One lock serializes a reorder with Admin's Team creation, deletion, and Space re
 outlives its Team into a later Team that reuses the id. Only the Local profile registers these.
 """
 
-from __future__ import annotations
-
 import json
 import logging
 import os

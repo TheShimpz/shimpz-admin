@@ -1,7 +1,5 @@
 """Socket-scoped automatic install plans and confirmed destructive lifecycle work."""
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import contextlib

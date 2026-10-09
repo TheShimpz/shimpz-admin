@@ -6,8 +6,6 @@ Only synthetic rows in a temporary SQLite file are read. Output contains timings
 counts, never transcript text. This does not measure a complete chat turn.
 """
 
-from __future__ import annotations
-
 import json
 import math
 import sqlite3

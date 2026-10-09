@@ -1,7 +1,5 @@
 """Admin's mirror of Team's Routine phrase reader and Brain-facing forms reads exactly Team's rules (ADR-0101)."""
 
-from __future__ import annotations
-
 import json
 import sys
 import unittest

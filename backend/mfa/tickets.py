@@ -1,7 +1,5 @@
 """Bounded one-use password tickets and WebAuthn challenges."""
 
-from __future__ import annotations
-
 import secrets
 import threading
 import time

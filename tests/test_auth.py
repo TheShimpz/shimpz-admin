@@ -1,7 +1,5 @@
 """Pure contracts for Local Supervisor password security."""
 
-from __future__ import annotations
-
 import asyncio
 import hashlib
 import hmac

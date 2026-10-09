@@ -1,7 +1,5 @@
 """Bounded multipart parsing and upload cleanup contracts for the Admin application."""
 
-from __future__ import annotations
-
 import asyncio
 import io
 import sys

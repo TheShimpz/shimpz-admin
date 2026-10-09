@@ -1,7 +1,5 @@
 """Admin routes for a Local Team's Routines (ADR-0086); Hosted has no Routines yet."""
 
-from __future__ import annotations
-
 import local_auth
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool

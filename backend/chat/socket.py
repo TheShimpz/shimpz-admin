@@ -5,8 +5,6 @@ The browser speaks only ``shimpz.chat.v7``. Provider and Assistant secrets stay 
 own bounded worker lane, and projects controller state onto small, exact public schemas.
 """
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import contextlib

@@ -1,7 +1,5 @@
 """Coordinate Local Space reset across Supervisor and Team authority."""
 
-from __future__ import annotations
-
 import asyncio
 import logging
 

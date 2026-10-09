@@ -14,8 +14,6 @@ cache; catalog-delay results describe a per-miss sensitivity probe, not a
 session with one miss followed by warm hits.
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import math

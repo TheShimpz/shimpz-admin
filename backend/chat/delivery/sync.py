@@ -1,7 +1,5 @@
 """Restore one durable Team chat continuation onto an Admin socket."""
 
-from __future__ import annotations
-
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from typing import Protocol

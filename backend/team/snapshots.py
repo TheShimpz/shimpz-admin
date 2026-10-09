@@ -1,7 +1,5 @@
 """Local-only same-origin projection of staged Assistant snapshots: inventory, icon, and localized summary."""
 
-from __future__ import annotations
-
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from team import assets as team_assets

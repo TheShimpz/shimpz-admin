@@ -5,8 +5,6 @@ undeclared message, a message wider than its field, or parameters that differ fr
 refuse; every other published refusal is Admin's too (ADR-0091).
 """
 
-from __future__ import annotations
-
 import hashlib
 import json
 import sys

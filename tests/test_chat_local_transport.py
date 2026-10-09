@@ -1,7 +1,5 @@
 """Real-HTTP contracts for the private local model-key hand-off."""
 
-from __future__ import annotations
-
 import contextlib
 import copy
 import json

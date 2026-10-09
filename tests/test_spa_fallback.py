@@ -1,7 +1,5 @@
 """Security contracts for the Admin SPA file boundary."""
 
-from __future__ import annotations
-
 import asyncio
 import sys
 import unittest

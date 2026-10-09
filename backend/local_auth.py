@@ -1,7 +1,5 @@
 """Local Supervisor setup, MFA login, passkey-management, and operation-confirmation ceremonies."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import logging

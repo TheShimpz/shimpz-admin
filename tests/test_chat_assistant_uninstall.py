@@ -1,7 +1,5 @@
 """Strict contracts for the installed Assistant directory and uninstall execution."""
 
-from __future__ import annotations
-
 import sys
 import unittest
 from pathlib import Path

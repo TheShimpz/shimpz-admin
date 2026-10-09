@@ -1,7 +1,5 @@
 """Bounded same-origin projection of public Assistant icons used by chat."""
 
-from __future__ import annotations
-
 import asyncio
 
 from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context

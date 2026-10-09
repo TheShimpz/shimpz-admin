@@ -1,7 +1,5 @@
 """Persistence-before-projection edges for Local Admin chat history."""
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import contextvars

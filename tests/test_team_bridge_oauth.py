@@ -1,7 +1,5 @@
 """Live contracts for the Admin-to-Team OAuth bridge."""
 
-from __future__ import annotations
-
 import json
 import sys
 import tempfile

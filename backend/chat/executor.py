@@ -1,7 +1,5 @@
 """Bounded context-preserving worker admission for Admin responsibilities."""
 
-from __future__ import annotations
-
 import concurrent.futures
 import contextvars
 import threading

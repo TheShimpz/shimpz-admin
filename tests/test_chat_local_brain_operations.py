@@ -1,7 +1,5 @@
 """Brain helper operations via Local Team resolve one request-scoped model credential and strip trace ids."""
 
-from __future__ import annotations
-
 import sys
 import unittest
 from pathlib import Path

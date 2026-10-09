@@ -1,7 +1,5 @@
 """Authenticated WebSocket lifecycle for Action human requests."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import json

@@ -1,7 +1,5 @@
 """An installed Assistant's summary reaches the browser only in the requested interface language (ADR-0091)."""
 
-from __future__ import annotations
-
 import json
 import sys
 import unittest

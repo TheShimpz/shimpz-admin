@@ -1,7 +1,5 @@
 """Bounded JSON and thin Team route edges for the Admin HTTP application."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 import sys

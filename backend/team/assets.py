@@ -1,7 +1,5 @@
 """Same-origin projection of verified binary assets held by Team."""
 
-from __future__ import annotations
-
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse, Response
 from team import bridge

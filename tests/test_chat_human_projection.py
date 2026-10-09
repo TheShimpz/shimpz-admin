@@ -1,7 +1,5 @@
 """Fail-closed public projections for every Action human request kind."""
 
-from __future__ import annotations
-
 import asyncio
 import hashlib
 import json

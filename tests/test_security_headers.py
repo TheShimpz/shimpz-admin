@@ -1,7 +1,5 @@
 """Browser security-header contracts for every Admin response class."""
 
-from __future__ import annotations
-
 import asyncio
 import sys
 import unittest

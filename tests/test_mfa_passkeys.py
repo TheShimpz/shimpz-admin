@@ -1,7 +1,5 @@
 """Security contracts for Local Supervisor passkey state and challenges."""
 
-from __future__ import annotations
-
 import copy
 import sys
 import unittest

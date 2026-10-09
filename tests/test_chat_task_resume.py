@@ -1,7 +1,5 @@
 """End-to-end backend delivery for one reconnect task resumption."""
 
-from __future__ import annotations
-
 import asyncio
 from unittest import mock
 

@@ -1,7 +1,5 @@
 """Metadata-only Admin bridge for Team-owned persistent Action inputs."""
 
-from __future__ import annotations
-
 import logging
 
 from team import transport

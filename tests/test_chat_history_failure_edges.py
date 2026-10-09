@@ -1,7 +1,5 @@
 """Fail-closed history edges at chat lifecycle boundaries."""
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import sys

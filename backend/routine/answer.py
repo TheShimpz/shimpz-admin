@@ -5,8 +5,6 @@ answer is checked against it and an authentication request is verified here, as 
 the Supervisor's session with the Team's model key.
 """
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import itertools

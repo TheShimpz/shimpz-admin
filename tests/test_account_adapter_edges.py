@@ -1,7 +1,5 @@
 """Closed failure and concurrency boundaries for the Hosted Account adapter."""
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import sys

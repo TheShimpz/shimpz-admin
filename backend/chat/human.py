@@ -1,7 +1,5 @@
 """Fail-closed browser projection for Team-owned Action human challenges."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import hashlib

@@ -1,7 +1,5 @@
 """Pure public-event projection contracts for Admin chat WebSockets."""
 
-from __future__ import annotations
-
 import importlib
 import sys
 import unittest

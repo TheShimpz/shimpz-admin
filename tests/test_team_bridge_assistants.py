@@ -1,7 +1,5 @@
 """Live functional and security contracts for the local Assistant control plane."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 import os

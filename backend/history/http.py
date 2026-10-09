@@ -1,7 +1,5 @@
 """Authenticated HTTP projection and lifecycle cleanup for Local chat history."""
 
-from __future__ import annotations
-
 import logging
 from collections.abc import Callable
 

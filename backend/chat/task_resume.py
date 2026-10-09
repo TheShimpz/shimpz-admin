@@ -1,7 +1,5 @@
 """One-use Admin task resumption after a chat transport reconnect."""
 
-from __future__ import annotations
-
 import asyncio
 import threading
 from dataclasses import dataclass

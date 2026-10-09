@@ -1,7 +1,5 @@
 """Route-level security contracts for local model API keys."""
 
-from __future__ import annotations
-
 import asyncio
 import sys
 import unittest

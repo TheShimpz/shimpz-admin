@@ -1,7 +1,5 @@
 """Static origin and frame admission primitives for the Admin chat socket."""
 
-from __future__ import annotations
-
 import contextlib
 import os
 from collections.abc import Awaitable, Callable, Mapping

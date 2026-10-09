@@ -1,7 +1,5 @@
 """Route contracts for the Admin-owned local OAuth browser bridge."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 import sys

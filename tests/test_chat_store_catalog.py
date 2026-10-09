@@ -1,7 +1,5 @@
 """Strict public Store catalog discovery contracts for Local chat."""
 
-from __future__ import annotations
-
 import concurrent.futures
 import copy
 import hashlib

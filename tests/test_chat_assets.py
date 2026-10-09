@@ -1,7 +1,5 @@
 """Bounded same-origin chat asset projection contracts."""
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import sys

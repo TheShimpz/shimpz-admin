@@ -1,7 +1,5 @@
 """Strict bounded planning projection for locally staged Assistant snapshots."""
 
-from __future__ import annotations
-
 import re
 from dataclasses import dataclass
 from datetime import datetime

@@ -1,7 +1,5 @@
 """Build Team's catalog-reference human requests and their rendered copy from plain test copy (ADR-0091)."""
 
-from __future__ import annotations
-
 import hashlib
 import json
 

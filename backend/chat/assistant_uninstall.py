@@ -1,7 +1,5 @@
 """Strict Team projections and execution for conversational Assistant uninstall."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 from team import bridge as team

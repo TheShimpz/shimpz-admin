@@ -1,7 +1,5 @@
 """Bounded same-origin HTTP adaptation for Team controller responses."""
 
-from __future__ import annotations
-
 import json
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager

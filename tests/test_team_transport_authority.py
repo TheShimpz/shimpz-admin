@@ -1,7 +1,5 @@
 """Request-scoped human authority contracts for the Admin-to-Team transport."""
 
-from __future__ import annotations
-
 import base64
 import hashlib
 import json

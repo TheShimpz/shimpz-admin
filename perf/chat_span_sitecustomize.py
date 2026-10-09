@@ -1,7 +1,5 @@
 """Emit content-free spans only in the disposable Admin benchmark process."""
 
-from __future__ import annotations
-
 import functools
 import json
 import os

@@ -1,7 +1,5 @@
 """Ordered worker-to-WebSocket progress delivery for Admin chat."""
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import contextlib

@@ -1,7 +1,5 @@
 """A fresh Admin ``app`` import over a private temporary Local Space, for suites that call routes directly."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import importlib

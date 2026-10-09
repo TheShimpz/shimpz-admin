@@ -3,8 +3,6 @@
 Only the Local profile registers these: a Hosted Team keeps its immutable name.
 """
 
-from __future__ import annotations
-
 import logging
 import unicodedata
 from collections.abc import Callable

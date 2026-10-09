@@ -1,7 +1,5 @@
 """Bounded untrusted conversation evidence projected from Local chat history."""
 
-from __future__ import annotations
-
 import unicodedata
 from dataclasses import dataclass
 from typing import Literal

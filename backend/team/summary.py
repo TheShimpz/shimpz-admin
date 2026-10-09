@@ -1,7 +1,5 @@
 """Same-origin projection of one Assistant summary in one interface language, read by Team from a pack (ADR-0091)."""
 
-from __future__ import annotations
-
 from collections.abc import Callable
 
 from fastapi import FastAPI, HTTPException

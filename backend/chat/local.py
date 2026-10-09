@@ -9,8 +9,6 @@ authenticated control network. Successful and failed controller responses are re
 buggy controller can never echo that key or internal execution details back to the browser.
 """
 
-from __future__ import annotations
-
 import contextlib
 import copy
 import json

@@ -1,7 +1,5 @@
 """Bounded authenticated HTTP transport from Admin to team."""
 
-from __future__ import annotations
-
 import contextlib
 import http.client
 import json

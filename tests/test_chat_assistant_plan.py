@@ -1,7 +1,5 @@
 """Automatic composed Assistant planning and lifecycle tests."""
 
-from __future__ import annotations
-
 import sys
 import threading
 import unittest

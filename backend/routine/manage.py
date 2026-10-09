@@ -4,8 +4,6 @@ Each call runs under the Supervisor's session assertion. Admin admits Team's ans
 view; any other body becomes one safe error, so the browser never renders an unchecked Routine.
 """
 
-from __future__ import annotations
-
 import re
 from collections.abc import Callable
 from http import HTTPStatus

@@ -1,7 +1,5 @@
 """Shared authenticated Admin chat WebSocket test authority."""
 
-from __future__ import annotations
-
 import concurrent.futures
 import importlib
 import os

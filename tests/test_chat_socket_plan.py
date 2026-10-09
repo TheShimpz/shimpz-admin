@@ -1,7 +1,5 @@
 """Capability-plan contracts of the local Admin chat WebSocket: install, continue, stop, and capacity."""
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import json

@@ -1,7 +1,5 @@
 """Focused WebSocket projection for conversational Assistant uninstall."""
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import importlib

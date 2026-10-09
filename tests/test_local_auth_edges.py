@@ -1,7 +1,5 @@
 """In-process rejection and orchestration contracts for Local Admin authentication."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 import sys

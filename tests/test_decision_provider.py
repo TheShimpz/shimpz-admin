@@ -1,7 +1,5 @@
 """The Supervisor's TypeSafe key: custody, validation, routes, and its intent-classification-only hand-off."""
 
-from __future__ import annotations
-
 import asyncio
 import hashlib
 import importlib

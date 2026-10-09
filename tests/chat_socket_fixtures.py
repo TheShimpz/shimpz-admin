@@ -1,7 +1,5 @@
 """Immutable challenge documents shared by Admin WebSocket contract suites."""
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import importlib

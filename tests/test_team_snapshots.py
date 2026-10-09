@@ -1,7 +1,5 @@
 """Local-only projection of staged Assistant snapshots and their localized summary (ADR-0091)."""
 
-from __future__ import annotations
-
 import json
 import sys
 import unittest

@@ -1,7 +1,5 @@
 """Security contracts for bounded Local Supervisor password tickets."""
 
-from __future__ import annotations
-
 import sys
 import unittest
 from pathlib import Path

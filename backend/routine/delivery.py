@@ -4,8 +4,6 @@ A notice is written before its exact version is acknowledged, so a crash between
 transcript write is idempotent per version.
 """
 
-from __future__ import annotations
-
 from history import store as history
 
 from routine import team

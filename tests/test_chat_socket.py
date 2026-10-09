@@ -1,7 +1,5 @@
 """Focused security and lifecycle contracts for the local Admin chat WebSocket."""
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import threading

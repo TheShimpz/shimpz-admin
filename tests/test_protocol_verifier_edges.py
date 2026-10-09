@@ -1,7 +1,5 @@
 """Executable conformance coverage for Admin's vendored protocol verifiers."""
 
-from __future__ import annotations
-
 import contextlib
 import hashlib
 import importlib

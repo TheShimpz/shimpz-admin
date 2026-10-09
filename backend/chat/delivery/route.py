@@ -1,7 +1,5 @@
 """Delivery for one structured Assistant intent preparation turn."""
 
-from __future__ import annotations
-
 import asyncio
 from dataclasses import dataclass
 

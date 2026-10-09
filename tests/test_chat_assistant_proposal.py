@@ -1,7 +1,5 @@
 """Pure matching and authority tests for conversational Assistant installation."""
 
-from __future__ import annotations
-
 import sys
 import unittest
 from pathlib import Path

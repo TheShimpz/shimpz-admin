@@ -1,7 +1,5 @@
 """Closed Cloudflare OAuth scope and start-URL projection shared by Admin boundaries."""
 
-from __future__ import annotations
-
 import re
 from urllib.parse import parse_qsl, urlsplit
 

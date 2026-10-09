@@ -1,7 +1,5 @@
 """Socket-scoped automatic preparation and destructive lifecycle edges."""
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import sys

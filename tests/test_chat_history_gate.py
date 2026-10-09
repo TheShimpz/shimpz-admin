@@ -1,7 +1,5 @@
 """Durable history ownership across paused Team chat gates."""
 
-from __future__ import annotations
-
 import asyncio
 from unittest import mock
 

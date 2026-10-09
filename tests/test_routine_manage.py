@@ -1,7 +1,5 @@
 """A Local Supervisor's Routine management admits Team's answers only in their closed protocol views (ADR-0086)."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 import sys

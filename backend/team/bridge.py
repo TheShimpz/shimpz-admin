@@ -6,8 +6,6 @@ HTTP routes with the existing bearer file.  Team JSON and HTTP status codes are 
 safe 400/404/409 is not flattened into an ambiguous gateway error.
 """
 
-from __future__ import annotations
-
 import logging
 import re
 import unicodedata

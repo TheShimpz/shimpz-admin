@@ -1,7 +1,5 @@
 """Lifecycle guidance and bounded context edges for the Admin chat WebSocket."""
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import sys

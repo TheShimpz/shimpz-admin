@@ -1,7 +1,5 @@
 """Private Admin-to-Team stateless capability planner bridge."""
 
-from __future__ import annotations
-
 import sys
 import unittest
 from pathlib import Path

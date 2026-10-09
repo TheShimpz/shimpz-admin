@@ -1,7 +1,5 @@
 """Delivery contracts for the minimal Admin production image."""
 
-from __future__ import annotations
-
 import re
 import unittest
 from pathlib import Path

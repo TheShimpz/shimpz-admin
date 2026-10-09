@@ -1,7 +1,5 @@
 """Strict RFC 6238 enrollment and verification for the Local Supervisor."""
 
-from __future__ import annotations
-
 import base64
 import hashlib
 import hmac

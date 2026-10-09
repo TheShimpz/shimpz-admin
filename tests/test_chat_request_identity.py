@@ -1,7 +1,5 @@
 """Each logical send gets one sealed identity, which only its own resend can reuse while Team admits it (ADR-0092)."""
 
-from __future__ import annotations
-
 import sys
 import unittest
 from pathlib import Path

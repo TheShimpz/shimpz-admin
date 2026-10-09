@@ -1,7 +1,5 @@
 """Bounded one-shot authentication-state projection contracts."""
 
-from __future__ import annotations
-
 import contextlib
 import io
 import runpy

@@ -1,7 +1,5 @@
 """Shared real-HTTP harness for Admin integration contracts."""
 
-from __future__ import annotations
-
 import grp
 import http.client
 import json

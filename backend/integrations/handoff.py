@@ -14,8 +14,6 @@ No Admin or Account session, OAuth token, authorization code, PKCE verifier,
 or provider client material is stored here.
 """
 
-from __future__ import annotations
-
 import hashlib
 import hmac
 import re

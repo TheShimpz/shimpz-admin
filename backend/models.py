@@ -5,8 +5,6 @@ internal hand-off point for the local chat control plane; it must never be regis
 placed in Team inference metadata, or sent through the Assistant Store iframe.
 """
 
-from __future__ import annotations
-
 import http.client
 import json
 import ssl

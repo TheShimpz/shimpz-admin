@@ -1,7 +1,5 @@
 """One in-memory ASGI HTTP request for Admin tests that call route handlers and gates directly."""
 
-from __future__ import annotations
-
 from typing import NamedTuple
 from urllib.parse import unquote
 

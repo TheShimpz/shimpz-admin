@@ -1,7 +1,5 @@
 """Fast contracts for the private local model-key hand-off and browser-safe chat projection."""
 
-from __future__ import annotations
-
 import contextlib
 import json
 import sys

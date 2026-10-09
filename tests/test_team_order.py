@@ -1,7 +1,5 @@
 """Local Team list order: the private order file, its projection, reorder, and lifecycle serialization."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 import os

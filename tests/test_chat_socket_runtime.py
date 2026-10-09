@@ -1,7 +1,5 @@
 """Real-network and bounded-worker contracts for Admin chat WebSockets."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 import socket

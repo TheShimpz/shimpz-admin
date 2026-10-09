@@ -1,7 +1,5 @@
 """Pin and execute the Account-owned Admin-session protocol mirror."""
 
-from __future__ import annotations
-
 import hashlib
 import json
 import subprocess

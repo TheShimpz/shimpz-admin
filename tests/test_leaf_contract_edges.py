@@ -1,7 +1,5 @@
 """Closed edge contracts for small Admin-owned helpers."""
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import hashlib

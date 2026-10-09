@@ -1,7 +1,5 @@
 """Durable, Team-isolated Admin chat presentation history."""
 
-from __future__ import annotations
-
 import asyncio
 import contextlib
 import sqlite3

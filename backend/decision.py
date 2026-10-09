@@ -5,8 +5,6 @@ masked metadata leaves this module over HTTP; ``resolve`` is the internal hand-o
 never be registered as a route.
 """
 
-from __future__ import annotations
-
 import asyncio
 
 import models

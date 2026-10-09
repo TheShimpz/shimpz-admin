@@ -1,7 +1,5 @@
 """Closed Admin projection of Team-owned Assistant Stored Input metadata."""
 
-from __future__ import annotations
-
 import json
 import sys
 import unittest

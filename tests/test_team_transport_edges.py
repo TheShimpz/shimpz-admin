@@ -1,7 +1,5 @@
 """Fail-closed edge coverage for the Admin-to-Team HTTP transport."""
 
-from __future__ import annotations
-
 import contextlib
 import sys
 import tempfile

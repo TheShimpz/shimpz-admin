@@ -1,7 +1,5 @@
 """Authoritative current-state contracts for Assistant installation chat turns."""
 
-from __future__ import annotations
-
 import asyncio
 from datetime import UTC, datetime
 from unittest import mock

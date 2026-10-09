@@ -1,7 +1,5 @@
 """Fail-closed Hosted Admin adapter for Account identity sessions."""
 
-from __future__ import annotations
-
 import asyncio
 import http.client
 import json

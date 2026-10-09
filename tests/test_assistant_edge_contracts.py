@@ -1,7 +1,5 @@
 """Fail-closed edge coverage for composed Assistant Admin projections."""
 
-from __future__ import annotations
-
 import sys
 import unittest
 from pathlib import Path

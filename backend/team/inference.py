@@ -1,7 +1,5 @@
 """Admin routes for a Team's inference settings: the model selection and its chat reasoning effort."""
 
-from __future__ import annotations
-
 from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool
 from team import bridge as team

@@ -1,7 +1,5 @@
 """Exact public event projections for the Admin chat socket."""
 
-from __future__ import annotations
-
 from chat import local
 from protocol.http.v1 import websocket as chat_ws_common
 

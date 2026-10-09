@@ -1,7 +1,5 @@
 """Fail-closed canonicalizers for Admin chat request payloads."""
 
-from __future__ import annotations
-
 import re
 
 from team.transport import TeamRequestError

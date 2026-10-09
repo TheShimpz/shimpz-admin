@@ -4,8 +4,6 @@ Only each summary is localized, from the publication's own pack (ADR-0091); ever
 planning reads the canonical English catalog while the Assistants page reads the Supervisor's interface language.
 """
 
-from __future__ import annotations
-
 import contextlib
 import hashlib
 import http.client

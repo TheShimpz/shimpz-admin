@@ -3,8 +3,6 @@
 Usage, clarification, and Routine proposals reach the browser only in their closed shapes, free of the model key.
 """
 
-from __future__ import annotations
-
 import json
 import sys
 import unittest

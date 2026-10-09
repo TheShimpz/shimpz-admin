@@ -1,7 +1,5 @@
 """One structured preparation path for every fresh Local chat objective."""
 
-from __future__ import annotations
-
 import profile as admin_profile
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass

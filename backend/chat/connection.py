@@ -1,7 +1,5 @@
 """In-memory state for one admitted Admin chat connection."""
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import hashlib
@@ -14,9 +12,9 @@ import time
 from dataclasses import dataclass, field
 
 from chat.assistant_proposal import AssistantReference, UninstallProposal
+from chat.lifecycle import Operation
 from history import context as history_context
 
-from chat import lifecycle
 from protocol.http.v1 import payload as team_contract
 
 # Admin's key for the sealed identity of each logical send. It lives only as long as this process: after a restart
@@ -53,7 +51,7 @@ class Connection:
     sync_task: asyncio.Task | None = None
     sync_terminal_sent: bool = False
     lifecycle_proposal: UninstallProposal | None = None
-    lifecycle: lifecycle.Operation | None = None
+    lifecycle: Operation | None = None
     assistant_reference: AssistantReference | None = None
     ignore_idle_stop_once: bool = False
     closed: bool = False

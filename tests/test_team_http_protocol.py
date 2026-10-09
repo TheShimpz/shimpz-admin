@@ -1,7 +1,5 @@
 """Pin and execute the generated Team HTTP protocol mirror."""
 
-from __future__ import annotations
-
 import contextlib
 import hashlib
 import io

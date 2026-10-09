@@ -1,7 +1,5 @@
 """Local Team names (ADR-0088): rename and create through the real ASGI stack, and the bridge's own checks."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 import sys

@@ -1,7 +1,5 @@
 """Admin runs Team Routines as its own machine identity and delivers their outcomes (ADR-0086)."""
 
-from __future__ import annotations
-
 import base64
 import contextlib
 import json

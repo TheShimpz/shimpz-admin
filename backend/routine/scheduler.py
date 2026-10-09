@@ -9,8 +9,6 @@ every interval; Team's next-due hint and a finished run wake it sooner (ADR-0092
 the next reconciliation.
 """
 
-from __future__ import annotations
-
 import logging
 import secrets
 import threading

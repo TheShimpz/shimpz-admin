@@ -1,7 +1,5 @@
 """Reply payloads that Admin chat history keeps for reload: clarifications, Routine proposals, and task usage."""
 
-from __future__ import annotations
-
 import copy
 import json
 import sqlite3

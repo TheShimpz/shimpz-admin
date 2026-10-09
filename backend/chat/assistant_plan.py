@@ -1,7 +1,5 @@
 """Stateless gap planning and sequential fresh Assistant installation for one socket task."""
 
-from __future__ import annotations
-
 import secrets
 import threading
 from collections.abc import Callable

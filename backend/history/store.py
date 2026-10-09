@@ -1,7 +1,5 @@
 """Durable Local Admin chat history and its bounded conversation projection."""
 
-from __future__ import annotations
-
 import base64
 import contextlib
 import datetime

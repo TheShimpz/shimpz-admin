@@ -1,7 +1,5 @@
 """Static manifest contract for the installed Admin semantic version."""
 
-from __future__ import annotations
-
 import json
 import re
 import tomllib

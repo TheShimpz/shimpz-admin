@@ -1,7 +1,5 @@
 """Identity-only lifecycle reference contracts at the Admin-to-Team boundary."""
 
-from __future__ import annotations
-
 import sys
 import unittest
 from pathlib import Path

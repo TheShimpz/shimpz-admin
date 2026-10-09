@@ -1,7 +1,5 @@
 """Password-plus-host-capability authority for destructive Local Space reset."""
 
-from __future__ import annotations
-
 import hashlib
 import hmac
 import json

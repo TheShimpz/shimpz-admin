@@ -1,7 +1,5 @@
 """Structured fresh-turn routing without semantic fallbacks."""
 
-from __future__ import annotations
-
 import sys
 import threading
 import unittest

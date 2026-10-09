@@ -1,7 +1,5 @@
 """Deterministic delivery for one admitted Assistant uninstall discovery turn."""
 
-from __future__ import annotations
-
 from chat.connection import Connection, Turn
 from chat.delivery import terminal as terminal_delivery
 from chat.projection import error_terminal

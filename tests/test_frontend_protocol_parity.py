@@ -1,7 +1,5 @@
 """The browser's copies of Team HTTP presentation rules stay identical to the pinned Team protocol (ADR-0090)."""
 
-from __future__ import annotations
-
 import ast
 import re
 import sys

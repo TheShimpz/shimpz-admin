@@ -1,7 +1,5 @@
 """Deleting a Routine needs the Supervisor password and a second factor bound to that exact Routine (ADR-0051)."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 import sys

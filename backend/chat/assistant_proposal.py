@@ -1,7 +1,5 @@
 """Pure matching and textual decision rules for Local chat Assistant lifecycle proposals."""
 
-from __future__ import annotations
-
 import re
 import secrets
 import unicodedata

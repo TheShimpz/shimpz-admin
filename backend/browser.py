@@ -1,7 +1,5 @@
 """Browser response policy for the compiled Admin SPA and its same-origin API."""
 
-from __future__ import annotations
-
 import base64
 import hashlib
 from collections.abc import Callable

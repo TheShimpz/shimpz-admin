@@ -1,7 +1,5 @@
 """OAuth route rejection and backend-only UI fallback edges for the Admin application."""
 
-from __future__ import annotations
-
 import asyncio
 import importlib
 import importlib.util

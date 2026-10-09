@@ -1,7 +1,5 @@
 """Shared isolated store and recorded-event fixtures for the Admin chat history suites."""
 
-from __future__ import annotations
-
 import sys
 import tempfile
 import unittest

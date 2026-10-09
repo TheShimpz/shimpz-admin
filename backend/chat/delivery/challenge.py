@@ -1,7 +1,5 @@
 """Commit and project one Team-owned chat challenge."""
 
-from __future__ import annotations
-
 import logging
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass

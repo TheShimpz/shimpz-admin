@@ -1,7 +1,5 @@
 """Socket delivery for one admitted composed Assistant installation plan."""
 
-from __future__ import annotations
-
 import asyncio
 import concurrent.futures
 import contextlib

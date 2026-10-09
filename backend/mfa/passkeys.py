@@ -1,7 +1,5 @@
 """Exact-origin UV WebAuthn ceremonies for the Local Supervisor."""
 
-from __future__ import annotations
-
 import hashlib
 import ipaddress
 import json

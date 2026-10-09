@@ -1,7 +1,5 @@
 """Fast contracts for the local Admin-owned model credential boundary."""
 
-from __future__ import annotations
-
 import json
 import stat
 import sys

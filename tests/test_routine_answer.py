@@ -1,7 +1,5 @@
 """A frozen Routine run is answered exactly as a paused chat turn is (ADR-0086)."""
 
-from __future__ import annotations
-
 import asyncio
 import json
 import sys

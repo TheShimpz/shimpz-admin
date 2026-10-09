@@ -1,7 +1,5 @@
 """HTTP lifecycle contract for the local Admin authentication boundary."""
 
-from __future__ import annotations
-
 import json
 import sys
 import tempfile

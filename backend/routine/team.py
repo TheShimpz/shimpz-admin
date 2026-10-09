@@ -4,8 +4,6 @@ Claims and notices use only the Team bearer; a run segment is signed by Admin's 
 lease. Every answer is admitted only in its canonical protocol view.
 """
 
-from __future__ import annotations
-
 import json
 
 import models
