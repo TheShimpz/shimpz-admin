@@ -71,6 +71,7 @@ CATALOG_BOUND_REFUSALS = frozenset(
 # Local Team stops an Action asking for these before any challenge reaches Admin.
 TEAM_REFUSED_AUTH_KINDS = frozenset({"auth:totp", "auth:passkey"})
 
+
 class HumanRequestVectorTests(unittest.TestCase):
     def test_projection_admits_exactly_the_published_request_cases(self) -> None:
         for case in VECTORS["request_cases"]:

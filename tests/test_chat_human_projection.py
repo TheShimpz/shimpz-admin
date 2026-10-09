@@ -97,6 +97,7 @@ REQUEST = {"issued_at": 1_700_000_000, "nonce": "0" * 32}
 # Local Team stops an Action asking for these before any challenge reaches Admin.
 TEAM_REFUSED_AUTH_KINDS = frozenset({"auth:totp", "auth:passkey"})
 
+
 class HumanChallengeProjectionTests(unittest.TestCase):
     def test_local_password_authentication_is_bounded_and_maps_authority_failure(self) -> None:
         self.assertEqual(
