@@ -127,10 +127,10 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         )
         for payload, expected in invalid:
             with self.subTest(payload=payload):
-                self.assert_sync_status(expected, lambda payload=payload: self.admin_app.teams_create(payload))
+                self.assert_sync_status(expected, lambda payload=payload: self.admin_app.team_names.create(payload))
 
         with mock.patch.object(self.admin_app.team, "to_team_id", return_value=""):
-            self.assert_sync_status(400, lambda: self.admin_app.teams_create({"team_name": "!!!"}))
+            self.assert_sync_status(400, lambda: self.admin_app.team_names.create({"team_name": "!!!"}))
 
         with (
             mock.patch.object(
@@ -140,7 +140,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             ),
             mock.patch.object(self.admin_app.log, "info") as logged,
         ):
-            response = self.admin_app.teams_create({"team_name": " Marketing "})
+            response = self.admin_app.team_names.create({"team_name": " Marketing "})
         self.assertEqual(response.status_code, 201)
         logged.assert_called_once_with("team created: %s", "marketing")
 
@@ -149,7 +149,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             "create",
             return_value=self.admin_app.team.TeamResponse(409, {"error": "exists"}),
         ):
-            self.assertEqual(self.admin_app.teams_create({"team_name": "Marketing"}).status_code, 409)
+            self.assertEqual(self.admin_app.team_names.create({"team_name": "Marketing"}).status_code, 409)
 
     def test_new_local_team_clears_only_stale_history_for_its_id(self) -> None:
         created = self.admin_app.team.TeamResponse(
@@ -164,8 +164,8 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             mock.patch.object(self.admin_app.team, "create", side_effect=(created, existing)),
             mock.patch.object(self.admin_app.chat_history, "clear_team", return_value=2) as cleared,
         ):
-            self.assertEqual(self.admin_app.teams_create({"team_name": "Marketing"}).status_code, 201)
-            self.assertEqual(self.admin_app.teams_create({"team_name": "Marketing"}).status_code, 200)
+            self.assertEqual(self.admin_app.team_names.create({"team_name": "Marketing"}).status_code, 201)
+            self.assertEqual(self.admin_app.team_names.create({"team_name": "Marketing"}).status_code, 200)
         cleared.assert_called_once_with("marketing")
 
     def test_local_team_deletion_validates_confirmation_and_authority_failures(self) -> None:

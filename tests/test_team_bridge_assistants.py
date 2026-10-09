@@ -563,6 +563,7 @@ class TeamAssistantRouteTest(_LiveTeamCase):
             document["non_string"],
             {"status": 400, "body": {"detail": "team name must be a string"}},
         )
+        self.assertEqual(document["oversized"], {"status": 413, "body": {"detail": "request body too large"}})
         self.assertEqual(len(_TeamHandler.requests), 1)
         request = _TeamHandler.requests[0]
         self.assertEqual((request["method"], request["path"]), ("POST", "/v1/teams/marketing/create"))
@@ -827,6 +828,7 @@ def _run_asgi_probe(scenario: str) -> None:
                 (
                     ("unsupported_field", {"name": "Marketing"}),
                     ("non_string", {"team_name": 123}),
+                    ("oversized", {"team_name": "Marketing", "padding": "x" * 2048}),
                     ("valid", {"team_name": "Marketing"}),
                 ),
             )

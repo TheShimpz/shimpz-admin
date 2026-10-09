@@ -11,7 +11,7 @@ from team import bridge
 from team import http as team_http
 from team import order as team_order
 
-MAX_TEAM_RENAME_BODY_BYTES = 1024
+MAX_TEAM_NAME_BODY_BYTES = 1024
 # A recreated name whose id a renamed Team still holds gets the next free suffix: marketing, marketing_2 ... _9.
 MAX_ID_SUFFIX = 9
 ID_SUFFIX_BASE_CHARS = 38
@@ -59,12 +59,21 @@ def create(payload: dict) -> JSONResponse:
 
 
 def register(app: FastAPI) -> None:
+    async def created(request: Request) -> JSONResponse:
+        payload = await team_http.bounded_json_object(request, MAX_TEAM_NAME_BODY_BYTES)
+        return await run_in_threadpool(create, payload)
+
+    async def team_create(request: Request) -> JSONResponse:
+        """Create a Team under a free id; every answer, including a refusal, is no-store."""
+        return await team_http.no_store(lambda: created(request))
+
     async def rename(team_id: str, request: Request) -> JSONResponse:
-        team_name = _team_name(await team_http.bounded_json_object(request, MAX_TEAM_RENAME_BODY_BYTES))
+        team_name = _team_name(await team_http.bounded_json_object(request, MAX_TEAM_NAME_BODY_BYTES))
         return await run_in_threadpool(team_http.response, lambda: bridge.rename(team_id, team_name))
 
     async def team_rename(team_id: str, request: Request) -> JSONResponse:
         """Rename a Team; every answer, including a refusal, is no-store."""
         return await team_http.no_store(lambda: rename(team_id, request))
 
+    app.add_api_route("/api/teams", team_create, methods=["POST"])
     app.add_api_route("/api/teams/{team_id}", team_rename, methods=["PATCH"])

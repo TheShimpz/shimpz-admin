@@ -479,11 +479,6 @@ team_names.register(app)
 team_order.register(app)
 
 
-@app.post("/api/teams")
-def teams_create(payload: dict):
-    return team_names.create(payload)
-
-
 @app.delete("/api/teams/{team_id}")
 async def teams_destroy(team_id: str, request: Request):
     payload = await _bounded_json_object(request, MAX_TEAM_DELETE_BODY_BYTES)

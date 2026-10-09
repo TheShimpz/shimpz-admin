@@ -105,10 +105,33 @@ class TeamNameInProcessTests(unittest.TestCase):
     """The same routes in process: the rename endpoint and Team creation."""
 
     def rename_endpoint(self):
+        return self.endpoint("PATCH")
+
+    @staticmethod
+    def endpoint(method: str):
         app = FastAPI()
         team_names.register(app)
-        (route,) = [route for route in app.routes if getattr(route, "methods", None) == {"PATCH"}]
+        (route,) = [route for route in app.routes if getattr(route, "methods", None) == {method}]
         return route.endpoint
+
+    def test_creation_reads_a_bounded_body_and_answers_without_caching(self) -> None:
+        endpoint = self.endpoint("POST")
+        headers = [(b"content-type", b"application/json")]
+        oversized = json.dumps({"team_name": "Growth", "padding": "x" * team_names.MAX_TEAM_NAME_BODY_BYTES}).encode()
+        with mock.patch.object(team_names.bridge, "create") as create:
+            for sent in ([*headers, (b"content-length", str(len(oversized)).encode())], headers):
+                with self.subTest(declared=len(sent) > 1), self.assertRaises(HTTPException) as refused:
+                    asyncio.run(endpoint(_request(body=oversized, headers=sent)))
+                self.assertEqual(refused.exception.status_code, 413)
+                self.assertEqual(refused.exception.headers, {"Cache-Control": "no-store"})
+        create.assert_not_called()
+        created = team.TeamResponse(200, {"team_id": "growth", "team_name": "Growth", "created": True})
+        with (
+            mock.patch.object(team_names.bridge, "create", return_value=created),
+            mock.patch.object(team_names.chat_history_http, "team_created", side_effect=lambda _id, result: result),
+        ):
+            response = asyncio.run(endpoint(_request(body=b'{"team_name":"Growth"}', headers=headers)))
+        self.assertEqual((response.status_code, response.headers["Cache-Control"]), (200, "no-store"))
 
     def test_the_rename_endpoint_answers_without_caching_and_passes_team_refusals_through(self) -> None:
         endpoint = self.rename_endpoint()
