@@ -115,7 +115,6 @@ def submit_route(
         team_id,
         payload,
         _STORE_CATALOG,
-        None,
         context,
     )
 

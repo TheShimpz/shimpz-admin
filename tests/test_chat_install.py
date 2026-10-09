@@ -83,22 +83,14 @@ class ChatLifecycleTests(unittest.TestCase):
                 )
 
     def test_route_submission_captures_one_immutable_reference(self) -> None:
-        sentinel = mock.sentinel.future
         reference = assistant_proposal.AssistantReference("shimpz-cloudflare", "Shimpz Cloudflare")
         context = lifecycle.assistant_route.Context(reference=reference)
         payload = {"message": "instale ele de novo", "assistant_ids": []}
-        with mock.patch.object(lifecycle, "submit_in_context", return_value=sentinel) as submit:
-            self.assertIs(lifecycle.submit_route("team_1", payload, context), sentinel)
+        # The real preparation entrypoint runs, so the submitted arguments must bind to its signature.
+        with mock.patch.object(lifecycle.assistant_route, "_prepare", return_value=mock.sentinel.result) as prepare:
+            self.assertIs(lifecycle.submit_route("team_1", payload, context).result(timeout=5), mock.sentinel.result)
 
-        submit.assert_called_once_with(
-            lifecycle._PLAN_EXECUTOR,
-            lifecycle.assistant_route.prepare,
-            "team_1",
-            payload,
-            lifecycle._STORE_CATALOG,
-            None,
-            context,
-        )
+        prepare.assert_called_once_with("team_1", payload, lifecycle._STORE_CATALOG, context, allow_uninstall=True)
 
     def test_uninstall_events_expose_only_bounded_team_identity(self) -> None:
         proposal = _proposal()
