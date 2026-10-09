@@ -9,7 +9,6 @@ from fastapi.responses import JSONResponse
 from team import bridge
 
 from protocol.http.v1 import strict_json
-from protocol.http.v1 import websocket as chat_ws_common
 
 
 @contextmanager
@@ -54,14 +53,6 @@ async def bounded_json_object(
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="request body must be a JSON object")
     return payload
-
-
-def require_admitted_origin(request: Request, allowed_origins: Callable[[], frozenset[str]]) -> None:
-    """Admit only an exactly canonical browser Origin: a header that merely normalizes into one grants nothing."""
-    raw_origin = request.headers.get("origin")
-    origin = chat_ws_common.canonical_origin(raw_origin)
-    if origin is None or origin != raw_origin or origin not in allowed_origins():
-        raise HTTPException(status_code=403, detail="browser origin is not admitted")
 
 
 async def no_store(handler: Callable[[], Awaitable[JSONResponse]]) -> JSONResponse:

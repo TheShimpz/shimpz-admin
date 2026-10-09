@@ -2,7 +2,6 @@
 
 import logging
 import unicodedata
-from collections.abc import Callable
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -59,9 +58,8 @@ def create(payload: dict) -> JSONResponse:
     return response
 
 
-def register(app: FastAPI, allowed_origins: Callable[[], frozenset[str]]) -> None:
+def register(app: FastAPI) -> None:
     async def rename(team_id: str, request: Request) -> JSONResponse:
-        team_http.require_admitted_origin(request, allowed_origins)
         team_name = _team_name(await team_http.bounded_json_object(request, MAX_TEAM_RENAME_BODY_BYTES))
         return await run_in_threadpool(team_http.response, lambda: bridge.rename(team_id, team_name))
 

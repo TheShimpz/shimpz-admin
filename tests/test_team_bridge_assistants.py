@@ -682,14 +682,17 @@ async def _asgi_request(
     *,
     token: str = "",
     content_length: int | None = None,
-    headers: dict[str, str] | None = None,
+    headers: dict[str, str | None] | None = None,
 ):
-    """Drive the real FastAPI ASGI stack without an in-process route substitute."""
+    """Drive the real FastAPI ASGI stack without an in-process route substitute; a `None` header is not sent."""
     declared_length = len(body) if content_length is None else content_length
-    extra = {"content-type": "application/json"} if body else {}
+    # The Admin page's own fetch: the browser marks every request it sends to its own origin.
+    extra = {"sec-fetch-site": "same-origin"}
+    if body:
+        extra["content-type"] = "application/json"
     extra.update(headers or {})
     headers = [(b"accept", b"application/json"), (b"content-length", str(declared_length).encode())]
-    headers.extend((name.encode(), value.encode()) for name, value in extra.items())
+    headers.extend((name.encode(), value.encode()) for name, value in extra.items() if value is not None)
     if token:
         headers.append((b"cookie", f"{admin_app.COOKIE}={token}".encode()))
     scope = {

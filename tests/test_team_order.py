@@ -23,8 +23,6 @@ from team import order as team_order
 from test_app_route_edges import _request
 from test_team_bridge_assistants import _LiveTeamCase, _probe_session, _TeamHandler
 
-ORIGIN = "https://admin.example.test"
-
 
 def _teams(*team_ids: str) -> list[dict[str, str]]:
     return [{"team_id": team_id, "team_name": team_id.title(), "status": "running"} for team_id in team_ids]
@@ -347,28 +345,20 @@ class ReorderTests(OrderCase):
 class ReorderRouteTests(OrderCase):
     def endpoint(self):
         app = FastAPI()
-        team_order.register(app, lambda: frozenset({ORIGIN}))
+        team_order.register(app)
         (route,) = [route for route in app.routes if getattr(route, "methods", None) == {"PUT"}]
         self.assertEqual(route.path, "/api/teams/order")
         return route.endpoint
 
-    def send(self, body: bytes, origin: bytes | None = ORIGIN.encode()):
-        headers = [(b"content-type", b"application/json")] + ([] if origin is None else [(b"origin", origin)])
+    def send(self, body: bytes):
+        headers = [(b"content-type", b"application/json")]
         return asyncio.run(self.endpoint()(_request("/api/teams/order", body=body, headers=headers)))
 
-    def refused(self, body: bytes, origin: bytes | None = ORIGIN.encode()) -> int:
+    def refused(self, body: bytes) -> int:
         with self.assertRaises(HTTPException) as caught:
-            self.send(body, origin)
+            self.send(body)
         self.assertEqual(caught.exception.headers, {"Cache-Control": "no-store"})
         return caught.exception.status_code
-
-    def test_only_an_exact_admitted_origin_may_reorder(self) -> None:
-        with mock.patch.object(team, "list_teams") as listed:
-            for origin in (None, b"HTTPS://ADMIN.EXAMPLE.TEST", b" https://admin.example.test", b"https://other.test"):
-                with self.subTest(origin=origin):
-                    self.assertEqual(self.refused(b'{"team_ids":[]}', origin), 403)
-        listed.assert_not_called()
-        self.assertFalse(self.path.exists())
 
     def test_only_exactly_one_bounded_list_of_canonical_ids_is_admitted(self) -> None:
         too_many = json.dumps({"team_ids": [f"t{index}" for index in range(129)]}).encode()

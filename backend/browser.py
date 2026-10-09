@@ -9,7 +9,10 @@ from pathlib import Path
 from fastapi import HTTPException, Request
 from fastapi.responses import RedirectResponse
 
+from protocol.http.v1.websocket import canonical_origin
+
 PERMISSIONS_POLICY = "camera=(), display-capture=(), geolocation=(), microphone=(), payment=(), usb=()"
+UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 
 
 class _InlineScriptCollector(HTMLParser):
@@ -73,6 +76,27 @@ def security_headers(ui_dir: Path) -> dict[str, str]:
         "Referrer-Policy": "no-referrer",
         "X-Content-Type-Options": "nosniff",
     }
+
+
+def admits_unsafe_request(request: Request, admitted_origins: Callable[[], frozenset[str]]) -> bool:
+    """Admit a state-changing request only from Admin's own page at an origin Admin admits (CSRF).
+
+    SameSite is site-scoped, so another loopback port or a sibling host still sends the session cookie. Fetch
+    Metadata must say `same-origin` and an Origin must be one exact admitted origin; whichever header the client
+    sends must pass, and a request carrying neither is refused.
+    """
+    if request.method not in UNSAFE_METHODS:
+        return True
+    fetch_sites = request.headers.getlist("sec-fetch-site")
+    origins = request.headers.getlist("origin")
+    if len(fetch_sites) > 1 or len(origins) > 1 or not (fetch_sites or origins):
+        return False
+    if fetch_sites and fetch_sites[0] != "same-origin":
+        return False
+    if origins:
+        origin = canonical_origin(origins[0])
+        return origin == origins[0] and origin in admitted_origins()
+    return True
 
 
 def oauth_completion_mode(request: Request, select_mode: Callable[[Request], str]) -> str | None:

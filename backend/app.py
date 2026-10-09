@@ -248,6 +248,22 @@ def _refused(response: Response) -> Response:
     return _secure_response(response)
 
 
+def _supervisor_refusal(request: Request) -> Response | None:
+    """Admit the current Supervisor's request from Admin's own page, or return the refusal that answers it."""
+    try:
+        evidence = _session_evidence(request.cookies)
+    except SessionEvidenceUnavailableError:
+        return JSONResponse({"detail": "Supervisor authority is unavailable"}, status_code=503)
+    except auth.PasswordRecordError:
+        return _password_recovery_response()
+    if evidence is None:
+        return JSONResponse({"detail": "unauthenticated"}, status_code=401)
+    if not browser.admits_unsafe_request(request, _allowed_browser_origins):
+        return JSONResponse({"detail": "browser origin is not admitted"}, status_code=403)
+    request.state.supervisor = evidence
+    return None
+
+
 @app.middleware("http")
 async def _gate(request: Request, call_next):
     """Keep static/auth routes open and validate the current Supervisor on every API call."""
@@ -261,18 +277,9 @@ async def _gate(request: Request, call_next):
         if path == "/api/session":
             response.headers["Vary"] = "Origin"
         return _secure_response(response)
-    # Everything else under /api/ requires a valid session.
-    try:
-        evidence = _session_evidence(request.cookies)
-    except SessionEvidenceUnavailableError:
-        response = JSONResponse({"detail": "Supervisor authority is unavailable"}, status_code=503)
-        return _refused(response)
-    except auth.PasswordRecordError:
-        return _refused(_password_recovery_response())
-    if evidence is None:
-        response = JSONResponse({"detail": "unauthenticated"}, status_code=401)
-        return _refused(response)
-    request.state.supervisor = evidence
+    # Everything else under /api/ requires a valid session and, to change state, Admin's own page.
+    if (refusal := _supervisor_refusal(request)) is not None:
+        return _refused(refusal)
     try:
         with _team_session_scope(request.cookies):
             response = await call_next(request)
@@ -468,8 +475,8 @@ def teams_list():
     return team_order.listing()
 
 
-team_names.register(app, _allowed_browser_origins)
-team_order.register(app, _allowed_browser_origins)
+team_names.register(app)
+team_order.register(app)
 
 
 @app.post("/api/teams")

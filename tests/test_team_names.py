@@ -43,10 +43,8 @@ class TeamNameRouteTests(_LiveTeamCase):
     def probe(self, scenario: str) -> dict[str, object]:
         return self._run_asgi_probe(scenario, Path(__file__).resolve())
 
-    def test_rename_needs_an_admitted_origin_and_sends_exactly_one_nfc_name(self) -> None:
+    def test_rename_sends_exactly_one_nfc_name(self) -> None:
         document = self.probe("team-rename")
-        refused = {"status": 403, "body": {"detail": "browser origin is not admitted"}}
-        self.assertEqual((document["no_origin"], document["foreign_origin"]), (refused, refused))
         self.assertEqual(document["malformed"]["status"], 400)
         self.assertEqual(document["decomposed"], {"status": 200, "body": {"team_id": "team_1", "team_name": "Équipe"}})
         self.assertEqual(document["valid"], {"status": 200, "body": {"team_id": "team_1", "team_name": "Growth"}})
@@ -108,24 +106,18 @@ class TeamNameInProcessTests(unittest.TestCase):
 
     def rename_endpoint(self):
         app = FastAPI()
-        team_names.register(app, lambda: frozenset({"https://admin.example.test"}))
+        team_names.register(app)
         (route,) = [route for route in app.routes if getattr(route, "methods", None) == {"PATCH"}]
         return route.endpoint
 
     def test_the_rename_endpoint_answers_without_caching_and_passes_team_refusals_through(self) -> None:
         endpoint = self.rename_endpoint()
-        headers = [(b"origin", b"https://admin.example.test"), (b"content-type", b"application/json")]
+        headers = [(b"content-type", b"application/json")]
         taken = team.TeamResponse(409, {"detail": "another Team already has this name", "code": "team-name-taken"})
         with mock.patch.object(team, "_call", return_value=taken) as call:
             response = asyncio.run(endpoint("team_1", _request(body=b'{"team_name":"Growth"}', headers=headers)))
         call.assert_called_once_with("PATCH", "/v1/teams/team_1", {"team_name": "Growth"})
         self.assertEqual((response.status_code, response.headers["Cache-Control"]), (409, "no-store"))
-        for origin in (None, b"HTTPS://ADMIN.EXAMPLE.TEST", b" https://admin.example.test", b"https://other.test"):
-            sent = [(b"content-type", b"application/json")] + ([] if origin is None else [(b"origin", origin)])
-            with self.subTest(origin=origin), self.assertRaises(HTTPException) as refused:
-                asyncio.run(endpoint("team_1", _request(body=b'{"team_name":"Growth"}', headers=sent)))
-            self.assertEqual(refused.exception.status_code, 403)
-            self.assertEqual(refused.exception.headers, {"Cache-Control": "no-store"})
         for body in (b'{"team_name":1}', b'{"team_name":""}'):
             with self.subTest(body=body), self.assertRaises(HTTPException) as invalid:
                 asyncio.run(endpoint("team_1", _request(body=body, headers=headers)))
@@ -157,8 +149,6 @@ def _run_asgi_probe(scenario: str) -> None:
 
     async def renames() -> dict[str, object]:
         cases = (
-            ("no_origin", {"team_name": "Growth"}, None),
-            ("foreign_origin", {"team_name": "Growth"}, "https://attacker.example"),
             ("malformed", {"team_name": "Growth", "extra": 1}, origin),
             ("decomposed", {"team_name": " Équipe "}, origin),
             ("valid", {"team_name": "Growth"}, origin),

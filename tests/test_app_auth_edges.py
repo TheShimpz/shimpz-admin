@@ -26,6 +26,8 @@ def _request(
 ) -> Request:
     body = json.dumps(payload).encode() if payload is not None else b""
     headers = json_headers(body) if payload is not None else []
+    # The Admin page's own fetch: the browser marks every request it sends to its own origin.
+    headers.append((b"sec-fetch-site", b"same-origin"))
     if origin is not None:
         headers.append((b"origin", origin.encode()))
     if cookie:

@@ -314,9 +314,8 @@ def listing() -> JSONResponse:
     return response
 
 
-def register(app: FastAPI, allowed_origins: Callable[[], frozenset[str]]) -> None:
+def register(app: FastAPI) -> None:
     async def save(request: Request) -> JSONResponse:
-        team_http.require_admitted_origin(request, allowed_origins)
         team_ids = _requested_ids(await team_http.bounded_json_object(request, MAX_ORDER_BODY_BYTES))
         return await run_in_threadpool(team_http.response, lambda: reorder(team_ids))
 
