@@ -364,9 +364,9 @@
         label: storeCopy.assistantInstalledLabel,
         message: $t('store.assistantInstalledMessage', { assistant: frozen.name, team: frozen.team.name }),
       });
-    } catch (error) {
+    } catch {
       await refreshInventory(frozen.team);
-      dialogError = error instanceof Error ? error.message : actionCopy.genericFailure;
+      dialogError = pageCopy.installFailed;
       dialogMode = 'error';
     } finally {
       busy = false;
@@ -400,9 +400,9 @@
           team: frozen.team.name,
         }),
       });
-    } catch (error) {
+    } catch {
       await refreshInventory(frozen.team);
-      dialogError = error instanceof Error ? error.message : actionCopy.genericFailure;
+      dialogError = pageCopy.uninstallFailed;
       dialogMode = 'error';
     } finally {
       busy = false;
@@ -449,8 +449,8 @@
         label: storeCopy.localInstalledLabel,
         message: $t('store.localInstalledMessage', { assistant: result.assistant, team: frozen.team.name }),
       });
-    } catch (error) {
-      localDialogError = error instanceof Error ? error.message : storeCopy.localFailure;
+    } catch {
+      localDialogError = storeCopy.localFailure;
     } finally {
       busy = false;
       installingImage = '';

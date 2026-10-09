@@ -22,6 +22,8 @@ export const assistantPageMessages = {
     targetChanged: 'This Assistant changed in this Team. Review its page again.',
     retry: 'Load again',
     inventoryUnavailable: 'The Assistants installed in this Team could not be read. Try again.',
+    installFailed: 'Team did not confirm the installation.',
+    uninstallFailed: 'Team did not confirm the removal.',
     sourcesUnavailable: 'The Assistants of this machine could not be read, so none is offered for installation.',
   },
   pt: {
@@ -44,6 +46,8 @@ export const assistantPageMessages = {
     targetChanged: 'Este Assistant mudou neste Time. Revise a página dele de novo.',
     retry: 'Carregar de novo',
     inventoryUnavailable: 'Não foi possível ler os Assistants instalados neste Time. Tente de novo.',
+    installFailed: 'O Time não confirmou a instalação.',
+    uninstallFailed: 'O Time não confirmou a remoção.',
     sourcesUnavailable: 'Não foi possível ler os Assistants desta máquina, então nenhum é oferecido para instalação.',
   },
   es: {
@@ -66,6 +70,8 @@ export const assistantPageMessages = {
     targetChanged: 'Este Assistant cambió en este Equipo. Revisa su página de nuevo.',
     retry: 'Cargar de nuevo',
     inventoryUnavailable: 'No se pudieron leer los Assistants instalados en este Equipo. Inténtalo de nuevo.',
+    installFailed: 'El Equipo no confirmó la instalación.',
+    uninstallFailed: 'El Equipo no confirmó la eliminación.',
     sourcesUnavailable: 'No se pudieron leer los Assistants de esta máquina, así que no se ofrece ninguno para instalar.',
   },
   zh: {
@@ -88,6 +94,8 @@ export const assistantPageMessages = {
     targetChanged: '此 Assistant 在此团队中已更改。请重新查看它的页面。',
     retry: '重新加载',
     inventoryUnavailable: '无法读取此团队中已安装的 Assistants。请重试。',
+    installFailed: '团队未确认安装。',
+    uninstallFailed: '团队未确认移除。',
     sourcesUnavailable: '无法读取此计算机上的 Assistants，因此不提供任何可安装的 Assistant。',
   },
   fr: {
@@ -110,6 +118,8 @@ export const assistantPageMessages = {
     targetChanged: 'Cet Assistant a changé dans cette Équipe. Consultez à nouveau sa page.',
     retry: 'Charger à nouveau',
     inventoryUnavailable: 'Les Assistants installés dans cette Équipe n’ont pas pu être lus. Réessayez.',
+    installFailed: 'L’Équipe n’a pas confirmé l’installation.',
+    uninstallFailed: 'L’Équipe n’a pas confirmé la suppression.',
     sourcesUnavailable: 'Les Assistants de cette machine n’ont pas pu être lus ; aucun n’est donc proposé à l’installation.',
   },
   de: {
@@ -132,6 +142,8 @@ export const assistantPageMessages = {
     targetChanged: 'Dieser Assistant hat sich in diesem Team geändert. Sieh dir seine Seite erneut an.',
     retry: 'Erneut laden',
     inventoryUnavailable: 'Die in diesem Team installierten Assistants konnten nicht gelesen werden. Versuche es erneut.',
+    installFailed: 'Das Team hat die Installation nicht bestätigt.',
+    uninstallFailed: 'Das Team hat das Entfernen nicht bestätigt.',
     sourcesUnavailable: 'Die Assistants dieses Rechners konnten nicht gelesen werden, daher wird keiner zur Installation angeboten.',
   },
   ja: {
@@ -154,6 +166,8 @@ export const assistantPageMessages = {
     targetChanged: 'この Assistant はこのチームで変更されました。ページをもう一度確認してください。',
     retry: 'もう一度読み込む',
     inventoryUnavailable: 'このチームにインストールされている Assistants を読み込めませんでした。もう一度お試しください。',
+    installFailed: 'チームがインストールを確認しませんでした。',
+    uninstallFailed: 'チームが削除を確認しませんでした。',
     sourcesUnavailable: 'このマシンの Assistants を読み込めなかったため、インストールできる Assistant はありません。',
   },
   ar: {
@@ -176,6 +190,8 @@ export const assistantPageMessages = {
     targetChanged: 'تغيّر هذا الـ Assistant في هذا الفريق. راجع صفحته مرة أخرى.',
     retry: 'التحميل مرة أخرى',
     inventoryUnavailable: 'تعذّرت قراءة الـ Assistants المثبتة في هذا الفريق. حاول مرة أخرى.',
+    installFailed: 'لم يؤكد الفريق التثبيت.',
+    uninstallFailed: 'لم يؤكد الفريق الإزالة.',
     sourcesUnavailable: 'تعذّرت قراءة Assistants هذا الجهاز، لذلك لا يُعرض أي منها للتثبيت.',
   },
 };

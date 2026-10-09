@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import { assistantDetails, publicAssistant, stagedSnapshot } from './assistantPages.js';
 import { accessibilityViolations } from './axe.js';
+import { messages } from '../src/lib/messages.js';
 
 // One Assistant's own page (ADR-0087 functional coverage): it reads the exact target for the Team its link names,
 // shows its copy, Actions, credentials, and Creator links, and installs or removes it only for that Team.
@@ -31,13 +32,15 @@ const STAGED_PAGE = assistantDetails({
 });
 
 // `inventory()` is the Team's installed Assistants at each read (null fails that read); `deletes` records every
-// uninstall request; `stagedStatus` fails the Local snapshot enumeration when it is not 200.
+// uninstall request and `deleteStatus` answers it; `stagedStatus` fails the Local snapshot enumeration when it is not
+// 200.
 async function routePage(page, {
   inventory = () => [],
   staged = [stagedSnapshot({ name: 'Cloudflare' })],
   stagedStatus = 200,
   published = [],
   deletes = [],
+  deleteStatus = 200,
   stagedPage = STAGED_PAGE,
 } = {}) {
   await page.route('**/api/**', async (route) => {
@@ -56,6 +59,7 @@ async function routePage(page, {
     }
     if (url.pathname === '/api/teams/marketing/assistants/shimpz-cloudflare' && request.method() === 'DELETE') {
       deletes.push(url.pathname);
+      if (deleteStatus !== 200) return route.fulfill({ status: deleteStatus, json: { detail: 'Team refused the request' } });
       return route.fulfill({ json: { assistant: 'shimpz-cloudflare', uninstalled: true } });
     }
     if (url.pathname === '/api/teams/marketing/assistants' && inventory() === null) {
@@ -226,3 +230,16 @@ test('lists an Integration and a Stored Input that share one id as two credentia
   await expect(sheet.getByText('cloudflare', { exact: true })).toHaveCount(2);
 });
 
+
+test('reports a failed uninstall in the interface language', async ({ page }) => {
+  const copy = messages.pt;
+  await page.addInitScript(() => localStorage.setItem('shimpz_lang', 'pt'));
+  await routePage(page, {
+    inventory: () => [{ assistant: 'shimpz-cloudflare', assistant_version: '0.5.2', status: 'running', provenance: 'local' }],
+    deleteStatus: 500,
+  });
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  await page.getByRole('article').getByRole('button', { name: copy.assistantPage.uninstall, exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: copy.store.assistantUninstallConfirm }).click();
+  await expect(page.getByRole('dialog').getByRole('alert')).toHaveText(copy.assistantPage.uninstallFailed);
+});
