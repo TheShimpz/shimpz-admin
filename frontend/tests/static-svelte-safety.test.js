@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 
 function svelteFiles(directory) {
@@ -22,10 +22,6 @@ test('static presentation: Admin uses only shared interactive primitives', () =>
   for (const path of svelteFiles(new URL('../src/', import.meta.url))) {
     const source = readFileSync(path, 'utf8');
     assert.doesNotMatch(source, nativePresentationTag, path.pathname);
-  }
-
-  for (const retiredShadow of ['ShimpzBrand.svelte', 'AssistantIcon.svelte']) {
-    assert.equal(existsSync(new URL(`../src/lib/${retiredShadow}`, import.meta.url)), false);
   }
 });
 

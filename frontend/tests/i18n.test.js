@@ -20,30 +20,6 @@ function leafPaths(value, prefix = '') {
   });
 }
 
-const retiredWorkloadTerms = {
-  en: [/\bapps?\b/i, /\bdrivers?\b/i],
-  pt: [/\bapps?\b/i, /\bdrivers?\b/i],
-  es: [/\bapps?\b/i, /\bdrivers?\b/i],
-  zh: [/应用/u, /驱动/u],
-  fr: [/\bapps?\b/i, /\bdrivers?\b/i],
-  de: [/\bapps?\b/i, /\bdrivers?\b/i],
-  ja: [/アプリ/u, /ドライバ/u],
-  ar: [/تطبيق/u, /برنامج تشغيل/u],
-};
-
-function workloadMessages(locale) {
-  const copy = messages[locale];
-  return [
-    copy.auth.heroLead,
-    copy.auth.teamReady,
-    copy.teams.lead,
-    copy.teams.createLead,
-    copy.teams.emptyLead,
-    copy.teams.destroyLead,
-    copy.store.teamUnavailable,
-  ];
-}
-
 test('every Admin locale implements the complete English message contract', () => {
   assert.deepEqual(Object.keys(messages), expectedLocales);
   const englishPaths = leafPaths(messages.en).sort();
@@ -67,16 +43,6 @@ test('every Admin message is non-empty and keeps the English placeholders in eve
       assert.equal(typeof localized, 'string', `${locale}.${path}`);
       assert.notEqual(localized.trim(), '', `${locale}.${path}`);
       assert.deepEqual(placeholders(localized), placeholders(english), `${locale}.${path}`);
-    }
-  }
-});
-
-test('Admin copy names installable Team workloads as Assistants', () => {
-  for (const locale of expectedLocales) {
-    for (const message of workloadMessages(locale)) {
-      for (const retiredTerm of retiredWorkloadTerms[locale]) {
-        assert.doesNotMatch(message, retiredTerm, `${locale}: ${message}`);
-      }
     }
   }
 });

@@ -22,7 +22,7 @@ test('admits only Admin-projected OAuth completion modes', () => {
     );
   }
 
-  for (const profile of [undefined, '', 'hosted', 'developer']) {
+  for (const profile of [undefined, '', 'developer']) {
     assert.throws(
       () => setSessionContext({ oauth_completion_mode: null, profile }),
       /invalid Admin profile/,

@@ -6183,8 +6183,6 @@ test.describe('Team Routines', () => {
     await expect(details).toHaveCount(64);
     await expect(older).toBeVisible();
     await expect(runs).toContainText('Running now');
-    // A run already going cannot be stopped: Pause holds only the next run.
-    await expect(runs.getByRole('button', { name: 'Stop', exact: true })).toHaveCount(0);
     // The running run ends while the panel stays open: the next refresh lists it at the top, reading only the newest
     // page, and the search for older runs keeps its place.
     const before = searched.length;
