@@ -12,7 +12,6 @@
     loadPublicAssistantIcon,
   } from '$lib/localAssistantIcons.js';
   import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '$lib/localSnapshots.js';
-  import { sessionContext } from '$lib/sessionContext.js';
   import { teamContext } from '$lib/teamContext.js';
   import { TEAM_ID_RE } from '$lib/validate.js';
 
@@ -44,13 +43,12 @@
   let localCopy = $derived($t('store'));
   let pageCopy = $derived($t('assistantPage'));
   let runningTeams = $derived($teamContext.teams.filter((team) => team.status === 'running'));
-  let localProfile = $derived($sessionContext.profile === 'local');
   let localSnapshotGroups = $derived(groupLocalAssistantSnapshots(localSnapshots));
   let visiblePublicAssistants = $derived(
     projectPublishedAssistants(
       publicAssistants,
       localSnapshotGroups,
-      !localProfile || localSnapshotSettled,
+      localSnapshotSettled,
     ),
   );
   let catalogPresentationPending = $derived(
@@ -178,17 +176,13 @@
     catalogRefreshing = true;
     publicCatalogError = '';
     if (!catalogPresentationSettled) publicCatalogPhase = 'loading';
-    if (localProfile) {
-      localSnapshotError = '';
-      if (!catalogPresentationSettled) localSnapshotPhase = 'loading';
-    }
+    localSnapshotError = '';
+    if (!catalogPresentationSettled) localSnapshotPhase = 'loading';
 
     try {
       const [publicResult, localResult] = await Promise.allSettled([
         listPublicAssistantCatalog(fetch, language, controller.signal),
-        localProfile
-          ? listLocalAssistantSnapshots(fetch, controller.signal)
-          : Promise.resolve(localSnapshots),
+        listLocalAssistantSnapshots(fetch, controller.signal),
       ]);
       if (request !== catalogPresentationRequest) return;
 
@@ -233,12 +227,10 @@
       publicCatalogLocale = language;
       publicCatalogPhase = nextPublicPhase;
       publicCatalogError = nextPublicError;
-      if (localProfile) {
-        localSnapshots = nextLocalSnapshots;
-        localSnapshotPhase = nextLocalPhase;
-        localSnapshotError = nextLocalError;
-        localSnapshotSettled = true;
-      }
+      localSnapshots = nextLocalSnapshots;
+      localSnapshotPhase = nextLocalPhase;
+      localSnapshotError = nextLocalError;
+      localSnapshotSettled = true;
       catalogIconUrls = nextUrls;
       catalogIconFailures = {};
       catalogPresentationSettled = true;

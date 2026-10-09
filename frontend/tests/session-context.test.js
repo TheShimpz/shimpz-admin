@@ -13,7 +13,6 @@ test('admits only Admin-projected OAuth completion modes', () => {
   for (const mode of ['automatic', 'code', null]) {
     setSessionContext({ oauth_completion_mode: mode, profile: 'local' });
     assert.equal(get(sessionContext).oauthCompletionMode, mode);
-    assert.equal(get(sessionContext).profile, 'local');
   }
 
   for (const mode of [undefined, '', 'popup', 1]) {
@@ -23,7 +22,7 @@ test('admits only Admin-projected OAuth completion modes', () => {
     );
   }
 
-  for (const profile of [undefined, '', 'developer']) {
+  for (const profile of [undefined, '', 'hosted', 'developer']) {
     assert.throws(
       () => setSessionContext({ oauth_completion_mode: null, profile }),
       /invalid Admin profile/,
@@ -36,5 +35,5 @@ test('admits only Admin-projected OAuth completion modes', () => {
   assert.equal(get(sessionContext).passkeyRegistered, false);
 
   clearSessionContext();
-  assert.deepEqual(get(sessionContext), { oauthCompletionMode: null, profile: null, passkeyRegistered: false });
+  assert.deepEqual(get(sessionContext), { oauthCompletionMode: null, passkeyRegistered: false });
 });

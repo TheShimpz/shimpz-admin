@@ -224,7 +224,6 @@ async function routeReadyChat(page, {
   olderHistory = null,
   rejectDecisionKey = false,
   clarification = null,
-  hostedSession = false,
   reply,
   usage,
 } = {}) {
@@ -295,9 +294,7 @@ async function routeReadyChat(page, {
     }
     return route.fulfill({
       contentType: 'application/json',
-      body: JSON.stringify(hostedSession
-        ? { profile: 'hosted', authenticated: true, account_id: 'account-1' }
-        : authenticatedLocalSession({ oauth_completion_mode: oauthCompletionMode })),
+      body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: oauthCompletionMode })),
     });
   });
   await page.route('**/api/teams', (route) => route.fulfill({
@@ -1118,15 +1115,6 @@ test('a rejected Jev key is reported and an unsent one never outlives the panel'
   await expect(fast.getByRole('alert')).toHaveCount(0);
   await expect(fast.getByLabel('TypeSafe API key')).toHaveValue('');
   expect(chat.decisionRequests().map((request) => request.method)).toEqual(['GET', 'GET', 'PUT', 'GET']);
-});
-
-test('Hosted chat never offers or requests a Jev key', async ({ page }) => {
-  const chat = await routeReadyChat(page, { hostedSession: true });
-  await page.goto('/chat/');
-  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-  await expect(page.getByRole('button', { name: /^Reasoning effort/ })).toBeEnabled();
-  await expect(page.getByRole('button', { name: /^Fast routing/ })).toHaveCount(0);
-  expect(chat.decisionRequests()).toEqual([]);
 });
 
 const CLARIFICATION = {
@@ -4590,21 +4578,6 @@ test.describe('Team order', () => {
     await page.mouse.up();
     expect(orders).toEqual([]);
   });
-
-  test('Hosted offers no reordering', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
-    await routeReadyChat(page, { hostedSession: true });
-    await page.route('**/api/teams', (route) => route.fulfill({
-      json: { teams: [TEAMS[0], TEAMS[1]] },
-    }));
-    await page.goto('/chat/?team=marketing');
-    const navigation = await openTeamNavigation(page);
-    await expect(navigation.getByRole('link', { name: 'Trinity', exact: true })).toBeVisible();
-    await expect(navigation.getByTitle(/^Drag to reorder/)).toHaveCount(0);
-    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
-    await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeVisible();
-    await expect(page.getByRole('menuitem', { name: /^Move / })).toHaveCount(0);
-  });
 });
 
 test.describe('Team Routines', () => {
@@ -7006,17 +6979,6 @@ test.describe('Team Routines', () => {
     await expect(days).toHaveText(DAYS);
     await expect(turns.locator('h2 + .exchange').first()).toContainText('Question a0');
     await expect.poll(() => dayAtTop('Question e0')).toEqual({ day: 'Today', offset: 0 });
-  });
-
-  test('Hosted offers no Routines', { tag: '@mobile' }, async ({ page }) => {
-    await routeReadyChat(page, { hostedSession: true });
-    // Even with Routines available to fetch, Hosted never asks for them.
-    await routeRoutines(page);
-    await page.goto('/chat/?team=marketing');
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
-    await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeVisible();
-    await expect(page.getByRole('menuitem', { name: 'Routines' })).toHaveCount(0);
   });
 });
 

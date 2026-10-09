@@ -15,10 +15,6 @@
     active = '',
     oncreate = () => {},
     ondelete = () => {},
-    // Local Teams have Routines (ADR-0086) and can be renamed (ADR-0088); Hosted has neither yet.
-    routines = false,
-    // Local Teams keep the Supervisor's order: drag a row's handle, or Move up / Move down in its actions menu.
-    reorder = false,
     onnavigate = () => {},
     createButton = $bindable(),
   } = $props();
@@ -137,7 +133,7 @@
   }
 
   // Loads follow the Team list's membership, not every Team context transition such as a selection or a new order.
-  let routineTeams = $derived(routines ? JSON.stringify($teamContext.teams.map((team) => team.id).sort()) : '[]');
+  let routineTeams = $derived(JSON.stringify($teamContext.teams.map((team) => team.id).sort()));
 
   $effect(() => {
     const ids = JSON.parse(routineTeams);
@@ -145,8 +141,9 @@
     for (const id of ids) loadTeamRoutines(fetch, id).catch(() => {});
   });
 
-  // Reordering. The order moves at once and is saved behind it; a refusal restores the last saved order.
-  let canReorder = $derived(reorder && $teamContext.teams.length > 1);
+  // Teams keep the Supervisor's order: drag a row's handle, or Move up / Move down in its actions menu. The order
+  // moves at once and is saved behind it; a refusal restores the last saved order.
+  let canReorder = $derived($teamContext.teams.length > 1);
   let announcement = $state('');
   let list = $state();
 
@@ -431,7 +428,7 @@
                     <svg class="glitch-icon" viewBox="0 0 24 24"><path d="M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z"></path></svg>
                   {/snippet}
                 </ActionLink>
-                {#if routines && offersRoutines(team.id)}
+                {#if offersRoutines(team.id)}
                   {@const failed = teamRoutines(team.id).failed}
                   {@const attention = failed || routinesNeedAttention(team.id)}
                   {@const routinesLabel = $t(failed
@@ -459,10 +456,10 @@
                   label={$t('teamNavigation.actions', { team: team.name })}
                   deleteLabel={copy.deleteTeam}
                   renameLabel={copy.rename}
-                  onrename={routines ? () => startRename(team) : null}
+                  onrename={() => startRename(team)}
                   ondelete={() => ondelete(team)}
                   routinesLabel={$t('routine.list.open')}
-                  onroutines={routines && offersRoutines(team.id)
+                  onroutines={offersRoutines(team.id)
                     ? () => (routinesOpen = team.id)
                     : null}
                   moveUpLabel={copy.moveUp}
@@ -474,7 +471,7 @@
                 />
               </div>
             </div>
-            {#if routines && routinesOpen === team.id}
+            {#if routinesOpen === team.id}
               <TeamRoutinesDialog
                 teamId={team.id}
                 teamName={team.name}
@@ -490,7 +487,7 @@
       </ul>
     </nav>
   {/if}
-  {#if reorder}<p class="sr-only" role="status">{announcement}</p>{/if}
+  <p class="sr-only" role="status">{announcement}</p>
 </div>
 
 <style>

@@ -9,7 +9,7 @@
   import TeamNavigation from '$lib/TeamNavigation.svelte';
   import TeamSidebar from '$lib/TeamSidebar.svelte';
 
-  let { active = '', authenticated = false, profile = '', children } = $props();
+  let { active = '', authenticated = false, children } = $props();
   let chat = $derived(active === 'chat');
   let mobile = $state(
     typeof window !== 'undefined' && window.matchMedia('(max-width: 820px)').matches,
@@ -49,7 +49,7 @@
 {#snippet sidebar()}
   {#if mobile}
     <div class="mobile-footer">
-      {#if profile === 'local'}<PlatformReleaseStatus />{/if}
+      <PlatformReleaseStatus />
       <LocaleMenu compact />
     </div>
   {:else}
@@ -60,14 +60,12 @@
           bind:createButton
           oncreate={createTeam}
           ondelete={deleteTeam}
-          routines={profile === 'local'}
-          reorder={profile === 'local'}
         />
         <TeamSidebar {active} />
       </div>
       <div class="sidebar-footer">
         <LocaleMenu wide />
-        {#if profile === 'local'}<PlatformReleaseStatus />{/if}
+        <PlatformReleaseStatus />
       </div>
     </div>
   {/if}
@@ -122,8 +120,6 @@
           {active}
           oncreate={createTeam}
           ondelete={deleteTeam}
-          routines={profile === 'local'}
-          reorder={profile === 'local'}
           onnavigate={closeTeamDrawer}
         />
       </Modal>

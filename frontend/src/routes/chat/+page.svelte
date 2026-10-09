@@ -641,7 +641,7 @@
 
   $effect(() => {
     const teamId = chatTeamId;
-    if (!mounted || !teamId || $sessionContext.profile !== 'local') return;
+    if (!mounted || !teamId) return;
     const refresh = () => void refreshRoutineNotices(teamId);
     const shown = () => {
       if (document.visibilityState === 'visible') refresh();
@@ -2564,9 +2564,7 @@
               {/if}
               <BrainMenu disabled={composerBusy || stopping} />
               <EffortMenu disabled={composerBusy || stopping} />
-              {#if $sessionContext.profile === 'local'}
-                <FastRoutingMenu disabled={composerBusy || stopping} />
-              {/if}
+              <FastRoutingMenu disabled={composerBusy || stopping} />
               <Button
                 bind:element={integrationsButton}
                 class="composer-integrations"

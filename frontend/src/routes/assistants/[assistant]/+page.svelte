@@ -28,7 +28,6 @@
     loadPublicAssistantIcon,
   } from '$lib/localAssistantIcons.js';
   import { groupLocalAssistantSnapshots } from '$lib/localSnapshots.js';
-  import { sessionContext } from '$lib/sessionContext.js';
   import { refreshTeamInventory, teamContext } from '$lib/teamContext.js';
   import { ASSISTANT_ID_RE, TEAM_ID_RE } from '$lib/validate.js';
 
@@ -70,7 +69,6 @@
   let actionCopy = $derived($t('assistantStore'));
   let assistantId = $derived(page.params.assistant ?? '');
   let validAssistant = $derived(ASSISTANT_ID_RE.test(assistantId) && assistantId.length <= 40);
-  let localProfile = $derived($sessionContext.profile === 'local');
   let runningTeams = $derived($teamContext.teams.filter((team) => team.status === 'running'));
   let requestedTeamId = $derived.by(() => {
     const candidate = page.url.searchParams.get('team') ?? '';
@@ -160,7 +158,7 @@
     const language = $locale;
     const [publicResult, localResult] = await Promise.allSettled([
       listPublicAssistantCatalog(fetch, language),
-      localProfile ? listLocalAssistantSnapshots(fetch) : Promise.resolve([]),
+      listLocalAssistantSnapshots(fetch),
     ]);
     if (request !== sourcesRequest) return;
     const groups = localResult.status === 'fulfilled' ? groupLocalAssistantSnapshots(localResult.value) : [];

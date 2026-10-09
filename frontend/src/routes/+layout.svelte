@@ -20,8 +20,6 @@
   let { children } = $props();
 
   let phase = $state('checking');
-  let profile = $state('');
-  let username = $state('');
   let password = $state('');
   let confirmation = $state('');
   let code = $state('');
@@ -69,7 +67,7 @@
     ) return;
     const timeout = globalThis.setTimeout(() => {
       assistantsViewDeadlineReached = true;
-    }, profile === 'local' ? 1000 : 2200);
+    }, 1000);
     return () => globalThis.clearTimeout(timeout);
   });
 
@@ -78,7 +76,6 @@
   });
 
   function clearCredentials() {
-    username = '';
     password = '';
     confirmation = '';
     code = '';
@@ -106,58 +103,46 @@
       const response = await fetch('/api/session', { method: 'POST', cache: 'no-store' });
       if (!response.ok) throw new Error('session unavailable');
       const session = await response.json();
-      if (session?.profile !== 'local' && session?.profile !== 'hosted') {
-        throw new Error('invalid session profile');
+      if (session?.profile !== 'local') throw new Error('invalid session profile');
+      const authenticationState = session?.authentication_state;
+      if (!['uninitialized', 'enrollment-required', 'configured', 'recovery-required'].includes(authenticationState)) {
+        throw new Error('invalid authentication state');
       }
-      profile = session.profile;
-      if (profile === 'local') {
-        const authenticationState = session?.authentication_state;
-        if (!['uninitialized', 'enrollment-required', 'configured', 'recovery-required'].includes(authenticationState)) {
-          throw new Error('invalid authentication state');
-        }
-        if (authenticationState === 'recovery-required') {
-          phase = 'recovery';
-          return;
-        }
-        if (session?.authenticated === true) {
-          if (authenticationState !== 'configured' || session?.origin_admitted !== true) {
-            throw new Error('invalid authenticated session');
-          }
-          setSessionContext(session);
-          const offerPasskey =
-            !skipPasskeyOffer &&
-            session?.authentication_method === 'totp' &&
-            session?.passkey_enrollment_available === true &&
-            session?.passkey_registered === false;
-          if (offerPasskey) {
-            redirectAfterAuthentication = redirectToChat;
-            phase = 'passkey-offer';
-          } else {
-            await enterReady(redirectToChat);
-          }
-          return;
-        }
-        if (authenticationState === 'uninitialized' && session?.initialized === false) {
-          phase = 'setup';
-          return;
-        }
-        if (authenticationState === 'enrollment-required' && session?.initialized === true) {
-          phase = 'enrollment-resume';
-          return;
-        }
-        if (authenticationState === 'configured' && session?.initialized === true) {
-          phase = 'login';
-          return;
-        }
-        throw new Error('invalid local session');
+      if (authenticationState === 'recovery-required') {
+        phase = 'recovery';
+        return;
       }
       if (session?.authenticated === true) {
-        await enterReady(redirectToChat);
-      } else if (session?.account_id === null) {
-        phase = 'login';
-      } else {
-        throw new Error('invalid hosted session');
+        if (authenticationState !== 'configured' || session?.origin_admitted !== true) {
+          throw new Error('invalid authenticated session');
+        }
+        setSessionContext(session);
+        const offerPasskey =
+          !skipPasskeyOffer &&
+          session?.authentication_method === 'totp' &&
+          session?.passkey_enrollment_available === true &&
+          session?.passkey_registered === false;
+        if (offerPasskey) {
+          redirectAfterAuthentication = redirectToChat;
+          phase = 'passkey-offer';
+        } else {
+          await enterReady(redirectToChat);
+        }
+        return;
       }
+      if (authenticationState === 'uninitialized' && session?.initialized === false) {
+        phase = 'setup';
+        return;
+      }
+      if (authenticationState === 'enrollment-required' && session?.initialized === true) {
+        phase = 'enrollment-resume';
+        return;
+      }
+      if (authenticationState === 'configured' && session?.initialized === true) {
+        phase = 'login';
+        return;
+      }
+      throw new Error('invalid local session');
     } catch {
       error = $t('auth.unreachable');
     }
@@ -168,7 +153,6 @@
     if (body.code === 'password-too-short') return $t('auth.tooShort');
     if (body.code === 'password-blocklisted') return $t('auth.commonPassword');
     if (response.status === 401) return $t('auth.badPassword');
-    if (response.status === 403 && profile === 'hosted') return $t('auth.supervisorRequired');
     return typeof body.detail === 'string' && body.detail.length <= 160
       ? body.detail
       : `HTTP ${response.status}`;
@@ -182,10 +166,6 @@
   async function submitPassword() {
     if (busy || !['setup', 'enrollment-resume', 'login'].includes(phase)) return;
     error = '';
-    if (profile === 'hosted' && !username) {
-      error = $t('auth.usernameRequired');
-      return;
-    }
     if (phase === 'setup' && password.length < 15) {
       error = $t('auth.tooShort');
       return;
@@ -202,17 +182,12 @@
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(profile === 'hosted' ? { username, password } : { password }),
+        body: JSON.stringify({ password }),
       });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
         if (body.code === 'password-recovery-required') phase = 'recovery';
         else error = responseError(response, body);
-        return;
-      }
-      if (profile === 'hosted') {
-        clearCredentials();
-        await checkSession({ redirectToChat: true });
         return;
       }
       if (submittedPhase !== 'login') {
@@ -338,13 +313,11 @@
 
 <div class="initial-content" class:initial-content-hidden={initialBoot} inert={initialBoot ? true : undefined} aria-hidden={initialBoot ? 'true' : undefined}>
   {#if phase === 'ready'}
-    <AdminShell {active} authenticated {profile}>{@render children()}</AdminShell>
+    <AdminShell {active} authenticated>{@render children()}</AdminShell>
   {:else}
     <AdminShell>
       <AuthScreen
         {phase}
-        {profile}
-        bind:username
         bind:password
         bind:confirmation
         bind:code

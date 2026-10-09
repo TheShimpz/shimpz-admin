@@ -740,47 +740,6 @@ test('shows an over-budget public icon as unavailable instead of loading forever
   await expect(iconBox.locator('img')).toHaveCount(0);
 });
 
-test('renders public Assistants directly in Hosted without Local enumeration', async ({ page }) => {
-  let localInventoryRequests = 0;
-  await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
-  await page.route('**/api/session', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ profile: 'hosted', authenticated: true, account_id: 'account-1' }),
-  }));
-  await page.route('**/api/teams', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ teams: [] }),
-  }));
-  await page.route('**/api/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [] }),
-  }));
-  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ version: 1, locale: 'en', assistants: [{
-      assistant_id: 'published-helper',
-      assistant_version: '1.0.0',
-      creators: ['@creator'],
-      icon_digest: `sha256:${'e'.repeat(64)}`,
-      name: 'Published Helper',
-      source_digest: `sha256:${'f'.repeat(64)}`,
-      summary: 'A published Assistant available to Hosted.',
-      ...structuredClone(PAGE_COPY),
-    }] }),
-  }));
-  await page.route('**/api/local-assistants', (route) => {
-    localInventoryRequests += 1;
-    return route.fulfill({ status: 500, body: '{}' });
-  });
-
-  await page.goto('/assistants/');
-
-  const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
-  await expect(catalog.getByText('Published Helper', { exact: true })).toBeVisible();
-  await expect(catalog.locator('.assistant-catalog-loading')).toHaveCount(0);
-  expect(localInventoryRequests).toBe(0);
-});
-
 test('keeps public discovery available when Local snapshot enumeration fails', async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({

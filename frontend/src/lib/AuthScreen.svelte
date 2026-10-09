@@ -5,8 +5,6 @@
 
   let {
     phase,
-    profile = '',
-    username = $bindable(''),
     password = $bindable(''),
     confirmation = $bindable(''),
     code = $bindable(''),
@@ -27,7 +25,6 @@
   let totpEnrollment = $derived(phase === 'totp-enrollment');
   let totpLogin = $derived(phase === 'totp-login');
   let passkeyOffer = $derived(phase === 'passkey-offer');
-  let hosted = $derived(profile === 'hosted');
   let recovery = $derived(phase === 'recovery');
   let passwordPhase = $derived(setup || resumeEnrollment || phase === 'login');
   let confirmationError = $derived(setup && error === $t('auth.mismatch') ? error : '');
@@ -39,7 +36,6 @@
     if (totpEnrollment) return $t('auth.totpSetupTitle');
     if (totpLogin) return $t('auth.totpLoginTitle');
     if (passkeyOffer) return $t('auth.passkeySetupTitle');
-    if (hosted) return $t('auth.hostedLoginTitle');
     return $t('auth.loginTitle');
   }
 
@@ -49,7 +45,6 @@
     if (totpEnrollment) return $t('auth.totpSetupLead');
     if (totpLogin) return $t('auth.totpLoginLead');
     if (passkeyOffer) return $t('auth.passkeySetupLead');
-    if (hosted) return $t('auth.hostedLoginLead');
     return $t('auth.loginLead');
   }
 </script>
@@ -86,15 +81,12 @@
 
       {#if passwordPhase}
         <form onsubmit={(event) => (event.preventDefault(), onSubmitPassword())}>
-          {#if hosted}
-            <TextField id="account-username" label={$t('auth.username')} type="text" bind:value={username} autocomplete="username" maxlength="32" required disabled={busy} />
-          {/if}
           <TextField id="admin-password" label={$t('auth.password')} type="password" bind:value={password} autocomplete={setup ? 'new-password' : 'current-password'} hint={setup ? $t('auth.passwordHint') : undefined} required minlength={setup ? 15 : undefined} disabled={busy} />
           {#if setup}
             <TextField id="admin-password-confirm" label={$t('auth.confirm')} type="password" bind:value={confirmation} autocomplete="new-password" required minlength="15" disabled={busy} error={confirmationError} />
           {/if}
           {#if formError}<Notice variant="error">{formError}</Notice>{/if}
-          <DialogAction kind="confirm" type="submit" disabled={busy || !password || (hosted && !username)}>
+          <DialogAction kind="confirm" type="submit" disabled={busy || !password}>
             {busy ? $t('auth.checking') : setup ? $t('auth.continue') : $t('auth.signIn')}
           </DialogAction>
         </form>
