@@ -104,7 +104,8 @@ export const MAX_INCIDENTS = 32;
 const DAY_SECONDS = 86400;
 export const MIN_CONTINUOUS_GAP_SECONDS = 5;
 export const MAX_CONTINUOUS_GAP_SECONDS = 86400;
-export const MAX_ROLLUP_RUNS = 60 / MIN_CONTINUOUS_GAP_SECONDS;
+// Runs start their gap apart, but one after an overrun or a confirmed change starts at once: one a second.
+export const MAX_ROLLUP_RUNS = 60;
 
 /** A failed Routine request, named by the safe code Admin forwards. */
 export class RoutineError extends Error {
