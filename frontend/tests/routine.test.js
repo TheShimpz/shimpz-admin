@@ -637,7 +637,7 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   assert.equal(scheduleWords({ kind: 'monthly', day: 28, time: '18:30' }, words, 'en'), 'On day 28 of every month at 18:30');
   // A continuous Routine's pause and cap are numbers in the viewer's locale.
   const continuous = { kind: 'continuous', gap: 5, cap: 17280 };
-  assert.equal(scheduleWords(continuous, words, 'en'), 'Every 5 s after each run, up to 17,280 a day');
+  assert.equal(scheduleWords(continuous, words, 'en'), 'Every 5 s, up to 17,280 a day');
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     assert.doesNotMatch(scheduleWords(continuous, catalog.schedule, locale), /\{/, locale);
   }
@@ -768,7 +768,7 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'user-skipped', detail: { ...UNPLACED, choice: 'delete' } },
     { ...RUN_ENTRY, outcome: 'skipped', run_id: null, usage: null, notice_id: 'f'.repeat(32), id: `${'f'.repeat(32)}:routine`, detail: { missed: 3 } },
     { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, usage: null, detail: { assistants: ['shimpz-cloudflare'] } },
-    { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 12 } },
+    { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 60 } },
     { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'human', ...STEP } },
     { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']], position: null, steps: null } },
     { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'plan-input-type', actions: [], position: { phase: 'replay', step: 37 }, steps: 120 } },
@@ -822,9 +822,9 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'paused', detail: { ...STEP, reason: 'approve' } },
     // A person's skip is a run outcome; it never stands in for the missed-schedule skip.
     { ...RUN_ENTRY, outcome: 'user-skipped', run_id: null, usage: null, detail: STEP },
-    // A minute's healthy rollup belongs to the Routine, counts at most what its gaps allow, and names no Actions.
+    // A minute's healthy rollup belongs to the Routine, counts at most one run a second, and names no Actions.
     { ...RUN_ENTRY, outcome: 'healthy', detail: { runs: 2 } },
-    { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 13 } },
+    { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 61 } },
     { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 2, actions: [] } },
     { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'email', ...STEP } },
     { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'human', ...UNPLACED } },

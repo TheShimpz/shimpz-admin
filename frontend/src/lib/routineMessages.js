@@ -16,7 +16,7 @@ export const routineMessages = {
       weekly: '{weekday} at {time}',
       weekdays: { mon: 'Every Monday', tue: 'Every Tuesday', wed: 'Every Wednesday', thu: 'Every Thursday', fri: 'Every Friday', sat: 'Every Saturday', sun: 'Every Sunday' },
       monthly: 'On day {day} of every month at {time}',
-      continuous: 'Every {gap} s after each run, up to {cap} a day',
+      continuous: 'Every {gap} s, up to {cap} a day',
     },
     list: {
       open: 'Routines',
@@ -137,7 +137,7 @@ export const routineMessages = {
       weekly: '{weekday} às {time}',
       weekdays: { mon: 'Toda segunda-feira', tue: 'Toda terça-feira', wed: 'Toda quarta-feira', thu: 'Toda quinta-feira', fri: 'Toda sexta-feira', sat: 'Todo sábado', sun: 'Todo domingo' },
       monthly: 'No dia {day} de cada mês às {time}',
-      continuous: 'A cada {gap} s após cada execução, até {cap} por dia',
+      continuous: 'A cada {gap} s, até {cap} por dia',
     },
     list: {
       open: 'Rotinas',
@@ -258,7 +258,7 @@ export const routineMessages = {
       weekly: '{weekday} a las {time}',
       weekdays: { mon: 'Cada lunes', tue: 'Cada martes', wed: 'Cada miércoles', thu: 'Cada jueves', fri: 'Cada viernes', sat: 'Cada sábado', sun: 'Cada domingo' },
       monthly: 'El día {day} de cada mes a las {time}',
-      continuous: 'Cada {gap} s tras cada ejecución, hasta {cap} al día',
+      continuous: 'Cada {gap} s, hasta {cap} al día',
     },
     list: {
       open: 'Rutinas',
@@ -379,7 +379,7 @@ export const routineMessages = {
       weekly: '{weekday} {time}',
       weekdays: { mon: '每周一', tue: '每周二', wed: '每周三', thu: '每周四', fri: '每周五', sat: '每周六', sun: '每周日' },
       monthly: '每月 {day} 日 {time}',
-      continuous: '每次运行结束 {gap} 秒后再次运行，每天最多 {cap} 次',
+      continuous: '每 {gap} 秒运行一次，每天最多 {cap} 次',
     },
     list: {
       open: '例行任务',
@@ -500,7 +500,7 @@ export const routineMessages = {
       weekly: '{weekday} à {time}',
       weekdays: { mon: 'Chaque lundi', tue: 'Chaque mardi', wed: 'Chaque mercredi', thu: 'Chaque jeudi', fri: 'Chaque vendredi', sat: 'Chaque samedi', sun: 'Chaque dimanche' },
       monthly: 'Le {day} de chaque mois à {time}',
-      continuous: 'Toutes les {gap} s après chaque exécution, jusqu’à {cap} par jour',
+      continuous: 'Toutes les {gap} s, jusqu’à {cap} par jour',
     },
     list: {
       open: 'Routines',
@@ -621,7 +621,7 @@ export const routineMessages = {
       weekly: '{weekday} um {time}',
       weekdays: { mon: 'Jeden Montag', tue: 'Jeden Dienstag', wed: 'Jeden Mittwoch', thu: 'Jeden Donnerstag', fri: 'Jeden Freitag', sat: 'Jeden Samstag', sun: 'Jeden Sonntag' },
       monthly: 'Am {day}. jedes Monats um {time}',
-      continuous: 'Alle {gap} s nach jeder Ausführung, bis zu {cap} pro Tag',
+      continuous: 'Alle {gap} s, bis zu {cap} pro Tag',
     },
     list: {
       open: 'Routinen',
@@ -742,7 +742,7 @@ export const routineMessages = {
       weekly: '{weekday} {time}',
       weekdays: { mon: '毎週月曜日', tue: '毎週火曜日', wed: '毎週水曜日', thu: '毎週木曜日', fri: '毎週金曜日', sat: '毎週土曜日', sun: '毎週日曜日' },
       monthly: '毎月 {day} 日 {time}',
-      continuous: '各実行の {gap} 秒後に再実行、1 日最大 {cap} 回',
+      continuous: '{gap} 秒ごとに実行、1 日最大 {cap} 回',
     },
     list: {
       open: 'ルーティン',
@@ -863,7 +863,7 @@ export const routineMessages = {
       weekly: '{weekday} في {time}',
       weekdays: { mon: 'كل يوم اثنين', tue: 'كل يوم ثلاثاء', wed: 'كل يوم أربعاء', thu: 'كل يوم خميس', fri: 'كل يوم جمعة', sat: 'كل يوم سبت', sun: 'كل يوم أحد' },
       monthly: 'في اليوم {day} من كل شهر في {time}',
-      continuous: 'كل {gap} ث بعد كل تشغيل، حتى {cap} يوميًا',
+      continuous: 'كل {gap} ث، حتى {cap} يوميًا',
     },
     list: {
       open: 'الروتينات',
