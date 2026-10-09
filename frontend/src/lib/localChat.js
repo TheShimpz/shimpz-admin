@@ -441,7 +441,8 @@ function canonicalHumanRequest(value) {
   const input = canonicalHumanInputBase(value, base);
   if (HUMAN_LENGTH_LIMITS.has(base.kind)) {
     const limit = HUMAN_LENGTH_LIMITS.get(base.kind);
-    const storedInput = base.kind === 'input:password' && Object.hasOwn(value, 'stored_input')
+    // A password request always names the Stored Input Team keeps it as (ADR-0106).
+    const storedInput = base.kind === 'input:password'
       ? canonicalId(value.stored_input, undefined, isIdentifier)
       : undefined;
     const lengthKeys = [...baseKeys, 'label', 'required', 'placeholder', 'min_length', 'max_length'];

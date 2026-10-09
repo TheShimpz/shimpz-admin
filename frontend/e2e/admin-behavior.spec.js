@@ -113,6 +113,8 @@ function humanRequest(kind) {
       placeholder: kind === 'input:phone' ? '+1 415 555 0123' : 'Enter the reviewed value',
       min_length: 1,
       max_length: kind === 'input:textarea' ? 16_000 : kind === 'input:password' ? 128 : 64,
+      // A password request always names the Stored Input Team keeps it as (ADR-0106).
+      ...(kind === 'input:password' ? { stored_input: 'cloudflare-token' } : {}),
     };
   }
   const options = [
@@ -3273,7 +3275,6 @@ test('cancels code-mode OAuth when the browser blocks its separate tab', async (
 // The exact value each kind submits; a passkey answers with its ceremony, not a typed value.
 const humanValues = {
   'input:textarea': 'Reviewed value',
-  'input:password': 'third-party-secret',
   'input:phone': '+1 415 555 0123',
   'input:select': 'safe',
   'input:choices': ['safe'],
@@ -3281,10 +3282,10 @@ const humanValues = {
   'auth:totp': '123456',
 };
 
-// Approval and input:choice are completed in localized-requests.spec.js, input:text by the code-point bound test below.
+// Approval and input:choice are completed in localized-requests.spec.js, input:text by the code-point bound test below,
+// and input:password, always a Stored Input, by the Stored Input request tests.
 const humanPresentations = [
   ['input:textarea', 'Provide the missing Action context'],
-  ['input:password', 'Provide the missing Action context'],
   ['input:phone', 'Provide the missing Action context'],
   ['input:select', 'Provide the missing Action context'],
   ['input:choices', 'Provide the missing Action context'],
@@ -3306,16 +3307,12 @@ for (const [kind, title] of humanPresentations) {
     // Beside its Creator-authored title, the request names the reviewed Assistant and the exact version it authorizes.
     await expect(dialog).toContainText('Shimpz Cloudflare · v0.4.1');
     // A secret is never typed into a visible field.
-    if (kind === 'input:password') {
-      await expect(dialog.getByLabel(/Cloudflare API secret/)).toHaveAttribute('type', 'password');
-    } else if (kind === 'auth:password') {
+    if (kind === 'auth:password') {
       await expect(dialog.getByLabel('Supervisor password')).toHaveAttribute('type', 'password');
     }
 
     if (kind === 'input:textarea') {
       await dialog.getByLabel(/Response/).fill('Reviewed value');
-    } else if (kind === 'input:password') {
-      await dialog.getByLabel(/Cloudflare API secret/).fill('third-party-secret');
     } else if (kind === 'input:phone') {
       await dialog.getByLabel(/Contact phone/).fill('+1 415 555 0123');
     } else if (kind === 'input:select') {

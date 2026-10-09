@@ -201,6 +201,7 @@ function humanRequest(kind) {
       placeholder: 'Enter a value',
       min_length: 1,
       max_length: kind === 'input:textarea' ? 16_000 : 64,
+      ...(kind === 'input:password' ? { stored_input: 'exa-api-key' } : {}),
     };
   }
   if (['input:select', 'input:choice'].includes(kind)) {
@@ -288,6 +289,8 @@ test('chat accepts every exact bounded public human request presentation', () =>
     parseChatEvent(storedInput, 'team_1', 'Marketing').request.stored_input,
     'whatsapp-token',
   );
+  const { stored_input: _slot, ...bare } = humanRequest('input:password');
+  assert.throws(() => parseChatEvent(humanChallenge('input:password', bare), 'team_1', 'Marketing'), /invalid/i);
   const wrongKind = humanChallenge('input:text', { ...humanRequest('input:text'), stored_input: 'whatsapp-token' });
   assert.throws(() => parseChatEvent(wrongKind, 'team_1', 'Marketing'), /invalid/i);
 });
