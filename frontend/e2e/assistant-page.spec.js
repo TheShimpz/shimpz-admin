@@ -33,15 +33,17 @@ const STAGED_PAGE = assistantDetails({
 
 // `inventory()` is the Team's installed Assistants at each read (null fails that read); `deletes` records every
 // uninstall request and `deleteStatus` answers it; `stagedStatus` fails the Local snapshot enumeration when it is not
-// 200.
+// 200. `stagedGate()` and `detailsGate(locale)` may return a promise that holds that reply until it settles.
 async function routePage(page, {
   inventory = () => [],
   staged = [stagedSnapshot({ name: 'Cloudflare' })],
   stagedStatus = 200,
+  stagedGate = () => undefined,
   published = [],
   deletes = [],
   deleteStatus = 200,
   stagedPage = STAGED_PAGE,
+  detailsGate = () => undefined,
 } = {}) {
   await page.route('**/api/**', async (route) => {
     const request = route.request();
@@ -51,7 +53,10 @@ async function routePage(page, {
       return route.fulfill({ contentType: 'image/png', body: ICON });
     }
     if (/^\/api\/local-assistants\/[0-9a-f]{64}\/details$/.test(url.pathname)) {
-      return route.fulfill({ json: { ...stagedPage, locale } });
+      await detailsGate(locale);
+      const copy = typeof stagedPage === 'function' ? stagedPage(locale) : stagedPage;
+      // A held reply may answer a request the page has already abandoned.
+      return route.fulfill({ json: { ...copy, locale } }).catch(() => {});
     }
     if (url.pathname === '/api/teams/marketing/assistants/shimpz-cloudflare/details') {
       const installed = inventory().find((entry) => entry.assistant === 'shimpz-cloudflare');
@@ -65,6 +70,7 @@ async function routePage(page, {
     if (url.pathname === '/api/teams/marketing/assistants' && inventory() === null) {
       return route.fulfill({ status: 503, json: { detail: 'Team is unavailable' } });
     }
+    if (url.pathname === '/api/local-assistants') await stagedGate();
     if (url.pathname === '/api/local-assistants' && stagedStatus !== 200) {
       return route.fulfill({ status: stagedStatus, json: { error: 'unavailable', code: 'local-assistant-snapshots-unavailable' } });
     }
@@ -242,4 +248,41 @@ test('reports a failed uninstall in the interface language', async ({ page }) =>
   await page.getByRole('article').getByRole('button', { name: copy.assistantPage.uninstall, exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: copy.store.assistantUninstallConfirm }).click();
   await expect(page.getByRole('dialog').getByRole('alert')).toHaveText(copy.assistantPage.uninstallFailed);
+});
+
+test('never shows a page read for the previous language once the language changed', async ({ page }) => {
+  const portuguese = "Configure o DNS dos seus domínios sem abrir um painel.";
+  let releaseEnglish;
+  const englishHeld = new Promise((resolve) => { releaseEnglish = resolve; });
+  let releaseListing;
+  const listingHeld = new Promise((resolve) => { releaseListing = resolve; });
+  let listings = 0;
+  await routePage(page, {
+    // Only the English reply names the second Creator, so its copy is recognizable wherever it would appear.
+    stagedPage: (locale) => (locale === 'pt' ? { ...STAGED_PAGE, creators: ['@shimpz'], summary: portuguese } : STAGED_PAGE),
+    detailsGate: (locale) => (locale === 'en' ? englishHeld : undefined),
+    stagedGate: () => ((listings += 1) === 2 ? listingHeld : undefined),
+  });
+  const englishRequested = page.waitForRequest((request) => request.url().includes('/details?locale=en'));
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  await englishRequested;
+
+  // The language changes while the English page is still being read and before the sources are read again.
+  await page.getByRole('button', { name: 'Language: English' }).click();
+  await page.getByRole('menuitemradio', { name: /Português/ }).click();
+  await expect.poll(() => listings).toBe(2);
+  const english = (request) => request.url().includes('/details?locale=en');
+  const englishSettled = Promise.race([
+    page.waitForResponse((response) => english(response.request())),
+    page.waitForEvent('requestfailed', english),
+  ]);
+  releaseEnglish();
+  await englishSettled;
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  const sheet = page.getByRole('article');
+  await expect(sheet.getByText('@roxygens', { exact: true })).toHaveCount(0);
+
+  releaseListing();
+  await expect(sheet.getByRole('heading', { level: 2 })).toHaveText(portuguese);
+  await expect(sheet.getByText('@roxygens', { exact: true })).toHaveCount(0);
 });

@@ -188,24 +188,36 @@
     return `${current.mode}:${subject}`;
   }
 
-  // Read the page copy of exactly the shown target: the installed binding, the staged image, or the publication.
-  async function loadDetails(current, team, language) {
-    const request = ++detailsRequest;
+  // Forget the shown page copy and refuse every reply still in flight for it.
+  function clearDetails() {
+    detailsRequest += 1;
     detailsController?.abort();
-    const controller = new AbortController();
-    detailsController = controller;
-    detailsKey = targetKey(current, team, language);
+    detailsController = null;
+    detailsKey = '';
     details = null;
-    const reads = ['installed', 'local', 'public'].includes(current.mode);
-    detailsPhase = reads ? 'loading' : 'idle';
+    detailsPhase = 'idle';
     iconFailed = false;
     releaseIcon();
     iconSrc = '';
+  }
+
+  // Read the page copy of exactly the shown target: the installed binding, the staged image, or the publication.
+  async function loadDetails(current, team, language) {
+    clearDetails();
+    const request = detailsRequest;
+    const controller = new AbortController();
+    detailsController = controller;
+    detailsKey = targetKey(current, team, language);
+    const reads = ['installed', 'local', 'public'].includes(current.mode);
+    detailsPhase = reads ? 'loading' : 'idle';
     if (!reads) {
       settleInitialView();
       return;
     }
-    const stale = () => request !== detailsRequest;
+    // A reply counts only for the request, Assistant, Team, and language it was read for.
+    const subject = assistantId;
+    const stale = () => request !== detailsRequest || subject !== assistantId || team?.id !== activeTeam?.id
+      || language !== $locale;
     try {
       if (current.mode === 'installed') {
         iconSrc = `/api/teams/${encodeURIComponent(team.id)}/assistants/${encodeURIComponent(assistantId)}/icon`;
@@ -258,6 +270,7 @@
     void $locale;
     void assistantId;
     untrack(() => {
+      clearDetails();
       sourcesPhase = 'loading';
       void loadSources();
     });
