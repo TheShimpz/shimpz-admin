@@ -571,7 +571,7 @@
     {#if detailsPhase === 'loading'}
       <Skeleton class="assistant-page-loading" height="14rem" />
     {:else if pageCopyReady}
-      <div class="layout" class:with-rail={links.length > 0}>
+      <div class="layout">
         <div class="main">
           <section class="block" aria-labelledby="assistant-summary">
             <h2 id="assistant-summary" class="title">{details.summary}</h2>
@@ -615,8 +615,13 @@
           </section>
         </div>
 
-        {#if links.length}
-          <aside class="rail">
+        <aside class="rail">
+          <!-- No rating service exists yet, so the score reads as no ratings rather than a made-up average. -->
+          <section class="score" aria-label={pageCopy.ratings}>
+            <span class="stars" aria-hidden="true">{#each [1, 2, 3, 4, 5] as star (star)}<i></i>{/each}</span>
+            <span class="count">{pageCopy.noRatings}</span>
+          </section>
+          {#if links.length}
             <nav class="social" aria-label={pageCopy.links}>
               <ul>
                 {#each links as link (link.kind)}
@@ -629,8 +634,8 @@
                 {/each}
               </ul>
             </nav>
-          </aside>
-        {/if}
+          {/if}
+        </aside>
       </div>
     {/if}
   {/if}
@@ -749,12 +754,11 @@
 
   .layout {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(17rem, 21rem);
     align-items: start;
     gap: var(--gap-region);
   }
 
-  .layout.with-rail { grid-template-columns: minmax(0, 1fr) minmax(17rem, 21rem); }
 
   .main { display: grid; gap: var(--gap-section); min-width: 0; }
   .block { display: grid; gap: var(--gap-item); max-width: 50rem; }
@@ -906,6 +910,16 @@
     box-shadow: inset 0 0 0 1px var(--shimpz-color-border);
   }
 
+  .score { display: grid; gap: var(--gap-inside); }
+  .stars { display: flex; gap: var(--gap-inside); }
+  .stars i {
+    width: 1rem;
+    height: 1rem;
+    background: color-mix(in oklab, var(--shimpz-color-yellow) 22%, var(--shimpz-color-surface));
+    clip-path: polygon(50% 0, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  }
+  .count { color: var(--shimpz-color-text-dim); font: 600 0.66rem/1.4 var(--shimpz-font-mono); letter-spacing: 0.1em; text-transform: uppercase; }
+
   .social ul { display: grid; gap: var(--gap-item); margin: 0; padding: 0; list-style: none; }
   .social :global(.shimpz-action-link) {
     --link-border: color-mix(in oklab, var(--shimpz-color-cyan) 30%, transparent);
@@ -918,7 +932,7 @@
   .missing { margin: 0; color: var(--shimpz-color-text-muted); }
 
   @media (max-width: 1080px) {
-    .layout.with-rail { grid-template-columns: minmax(0, 1fr); }
+    .layout { grid-template-columns: minmax(0, 1fr); }
     .rail { position: static; max-width: 46rem; }
   }
 
