@@ -1006,7 +1006,7 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await expect(installDialog).toBeVisible();
   await expect(installDialog).toContainText(imageId);
   await expect(installDialog).toContainText('Marketing');
-  await installDialog.getByRole('button', { name: 'Install or replace' }).click();
+  await installDialog.getByRole('button', { name: 'Install', exact: true }).click();
   await expect(installDialog.getByRole('button', { name: 'Installing…' })).toBeVisible();
   await expect(installDialog).toBeHidden();
   await expect(page.getByText('Local Assistant installed', { exact: true })).toBeVisible();
@@ -1145,7 +1145,7 @@ test('removes an installed publication before its staged build is installed', as
   await sheet.getByRole('button', { name: 'Install', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Install WhatsApp Automation?' });
   await expect(dialog).toContainText(imageId);
-  await dialog.getByRole('button', { name: 'Install or replace' }).click();
+  await dialog.getByRole('button', { name: 'Install', exact: true }).click();
   await expect(sheet.getByRole('button', { name: 'Uninstall', exact: true })).toBeVisible();
 });
 
