@@ -37,7 +37,8 @@ class RoutineScheduler:
         self._jitter = jitter
         self._stop = threading.Event()
         self._wake = threading.Event()
-        self._due_at: float | None = None
+        # The first tick comes at once: a run may already be due, and a restart must not hold it back an interval.
+        self._due_at: float | None = time.time()
         self._slots = threading.BoundedSemaphore(workers)
         self._long = threading.Lock()
         self._workers = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="shimpz-routine-run")

@@ -587,9 +587,13 @@ class RoutineSchedulerTests(unittest.TestCase):
             self.assertTrue(runner._wake.wait(5))
         self.assertEqual(runner.delay(time.time() + 60), scheduler.MIN_WAKE_SECONDS)
 
-    def test_a_rodar_wake_claims_at_once_instead_of_waiting_for_the_interval(self) -> None:
+    def test_a_start_or_a_rodar_wake_claims_at_once_instead_of_waiting_for_the_interval(self) -> None:
         runner = scheduler.RoutineScheduler(interval=30, jitter=0)
         self.addCleanup(runner.close)
+        # A fresh scheduler ticks at once: a run may already be due when Admin starts.
+        self.assertEqual(runner.delay(time.time()), scheduler.MIN_WAKE_SECONDS)
+        with mock.patch.object(team, "claim", return_value=IDLE):
+            runner.tick()
         self.assertEqual(runner.delay(time.time()), 30)
         runner.wake()
         self.assertTrue(runner._wake.is_set())
