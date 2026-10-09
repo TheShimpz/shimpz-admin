@@ -540,6 +540,7 @@ class ChatHistoryTests(ChatHistoryCase):
 
         for state, fields in (
             ("failed", {"status": 503}),
+            ("failed", {"status": 409, "code": "assistant_limit_reached"}),
             ("stopped", {}),
         ):
             event = {
@@ -562,6 +563,10 @@ class ChatHistoryTests(ChatHistoryCase):
         }
         with self.assertRaises(ValueError):
             history._install_payload(invalid_failed, "marketing")
+        # A failed install names only Team's closed Assistant-limit code, and only beside its 409.
+        for status, code in ((503, "assistant_limit_reached"), (409, "team-context-changed")):
+            with self.subTest(status=status, code=code), self.assertRaises(ValueError):
+                history._install_payload({**invalid_failed, "status": status, "code": code}, "marketing")
 
     def test_rejects_malformed_uninstall_and_stored_payloads(self) -> None:
         assistant = uninstall_assistant()

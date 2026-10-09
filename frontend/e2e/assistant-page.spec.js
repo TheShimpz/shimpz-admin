@@ -49,6 +49,7 @@ async function routePage(page, {
   stagedPage = STAGED_PAGE,
   detailsGate = () => undefined,
   inventoryGate = () => undefined,
+  installRefusal = false,
 } = {}) {
   await page.route('**/api/**', async (route) => {
     const request = route.request();
@@ -72,6 +73,9 @@ async function routePage(page, {
       deletes.push(url.pathname);
       if (deleteStatus !== 200) return route.fulfill({ status: deleteStatus, json: { detail: 'Team refused the request' } });
       return route.fulfill({ json: { assistant: 'shimpz-cloudflare', uninstalled: true } });
+    }
+    if (installRefusal && request.method() === 'POST' && url.pathname.startsWith('/api/teams/marketing/assistants')) {
+      return route.fulfill({ status: 409, json: { detail: 'Team is full', code: 'assistant_limit_reached' } });
     }
     if (url.pathname === '/api/teams/marketing/assistants' && inventory() === null) {
       return route.fulfill({ status: 503, json: { detail: 'Team is unavailable' } });
@@ -262,6 +266,17 @@ test('reports a failed uninstall in the interface language', async ({ page }) =>
   await page.getByRole('article').getByRole('button', { name: copy.assistantPage.uninstall, exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: copy.store.assistantUninstallConfirm }).click();
   await expect(page.getByRole('dialog').getByRole('alert')).toHaveText(copy.assistantPage.uninstallFailed);
+});
+
+test('reports an install Team refused at its Assistant limit in the interface language', async ({ page }) => {
+  const copy = messages.pt;
+  await page.addInitScript(() => localStorage.setItem('shimpz_lang', 'pt'));
+  await routePage(page, { installRefusal: true });
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  await page.getByRole('article').getByRole('button', { name: copy.assistantPage.install, exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: copy.store.localInstall, exact: true }).click();
+  await expect(page.getByRole('dialog').getByRole('alert'))
+    .toHaveText(copy.store.assistantLimitReached.replace('{maximum}', '16'));
 });
 
 test('never shows a page read for the previous language once the language changed', async ({ page }) => {

@@ -467,7 +467,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 )
                 self.assertEqual(result, assistant_plan.Preparation())
 
-    def test_scope_overflow_fails_before_any_installation(self) -> None:
+    def test_a_plan_beyond_the_team_limit_fails_before_any_installation(self) -> None:
         enabled_ids = tuple(f"enabled-{index}" for index in range(15))
         result, _planner = self._prepare(
             "Configure Cloudflare e envie WhatsApp",
@@ -478,7 +478,25 @@ class AssistantPlanPreparationTests(unittest.TestCase):
             assistant_ids=enabled_ids,
         )
 
-        self.assertEqual(result, assistant_plan.Preparation(error_status=409))
+        self.assertIs(result, assistant_plan.LIMIT_REACHED)
+        self.assertEqual(result.error_code, "assistant_limit_reached")
+        full = assistant_inventory.installed(
+            _installed(*((f"helper-{index}", "running") for index in range(assistant_plan.MAX_TEAM_ASSISTANTS)))
+        )
+        self.assertIs(
+            assistant_plan.prepare_install(
+                "team_1", _payload("Instale o Cloudflare"), ("cloudflare",), full, (CLOUDFLARE,), ENGLISH_ONLY
+            ),
+            assistant_plan.LIMIT_REACHED,
+        )
+        # A task that would name more Assistants than one turn may is refused the same way.
+        crowded = _payload("x", tuple(f"helper-{index}" for index in range(assistant_plan.MAX_CHAT_ASSISTANTS)))
+        self.assertIs(
+            assistant_plan.prepare_install(
+                "team_1", crowded, ("cloudflare",), {}, (CLOUDFLARE,), ENGLISH_ONLY, task_follows=True
+            ),
+            assistant_plan.LIMIT_REACHED,
+        )
 
     def test_explicit_install_continues_a_requested_task_after_install_or_confirmation(self) -> None:
         payload = _payload("Instale o Cloudflare e configure meu domínio", ("whatsapp",))
@@ -767,6 +785,16 @@ class AssistantPlanExecutionTests(unittest.TestCase):
             ["installed", "failed", "pending"],
         )
         self.assertEqual(install.call_count, 2)
+
+    def test_team_limit_refusal_carries_its_closed_code_to_the_terminal_event(self) -> None:
+        limited = assistant_install.InstallResult(409, code=assistant_install.ASSISTANT_LIMIT_REACHED)
+        with mock.patch.object(assistant_plan.assistant_install, "install_publication", return_value=limited):
+            result = _execute(self._plan(CLOUDFLARE))
+
+        self.assertEqual((result.state, result.status, result.code), ("failed", 409, "assistant_limit_reached"))
+        plan = self._plan(CLOUDFLARE)
+        event = assistant_plan.event(plan, "failed", result.assistants, status=result.status, code=result.code)
+        self.assertEqual((event["status"], event["code"]), (409, "assistant_limit_reached"))
 
     def test_stop_is_cooperative_between_items(self) -> None:
         stopped = threading.Event()

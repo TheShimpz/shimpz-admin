@@ -4108,40 +4108,6 @@ test('opens the mobile Team list as a modal drawer and restores focus', { tag: '
   await expect(drawer).toBeHidden();
 });
 
-test('names every running Assistant beyond the chat limit and sends exactly the limit', async ({ page }) => {
-  const chat = await routeReadyChat(page);
-  const ids = Array.from({ length: 18 }, (_value, index) => `helper-${String(index).padStart(2, '0')}`);
-  await page.route('**/api/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
-      assistants: ids.map((id, index) => ({ id, title: `Helper ${index}` })),
-    }),
-  }));
-  await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
-      assistants: ids.map((assistant) => ({
-        assistant,
-        assistant_version: '1.0.0',
-        status: 'running',
-        provenance: 'published',
-      })),
-    }),
-  }));
-  await page.goto('/chat/');
-
-  const notice = page.locator('.assistant-overflow');
-  await expect(notice).toContainText('more running Assistants than one conversation can use (16)');
-  await expect(notice).toContainText('Helper 16, Helper 17');
-  await expect(notice.getByRole('link', { name: 'Open the Store' })).toHaveAttribute('href', '/assistants/?team=marketing');
-
-  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await fillWhenReady(page, composer, 'Check the scope');
-  await page.getByRole('button', { name: 'Send' }).click();
-  await expect.poll(() => chat.chatFrames().length).toBe(1);
-  expect(chat.chatFrames()[0].assistant_ids).toEqual(ids.slice(0, 16));
-});
-
 test('Escape during an effort save returns focus to the trigger once it is enabled again', async ({ page }) => {
   const chat = await routeReadyChat(page, { holdInferenceWrite: true });
   await page.goto('/chat/');

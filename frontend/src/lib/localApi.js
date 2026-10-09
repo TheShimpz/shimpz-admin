@@ -1,5 +1,6 @@
 import {
   ASSISTANT_ID_RE,
+  ASSISTANT_LIMIT_REACHED,
   codePointLength,
   CONTROL_RE,
   exactKeys,
@@ -212,6 +213,11 @@ export async function listInstalledAssistants(fetcher, teamId) {
   });
 }
 
+/** Team's closed Assistant-limit refusal of an install, or no code for any other failure. */
+function installRefusalCode(response, body) {
+  return response.status === 409 && body.code === ASSISTANT_LIMIT_REACHED ? ASSISTANT_LIMIT_REACHED : '';
+}
+
 /** Install or reconcile one allowlisted Assistant without invoking an Action or starting a chat turn. */
 export async function installAssistant(fetcher, teamId, assistantId, sourceDigest) {
   if (typeof fetcher !== 'function' || !TEAM_ID_RE.test(teamId)) {
@@ -236,6 +242,7 @@ export async function installAssistant(fetcher, teamId, assistantId, sourceDiges
     throw new LocalApiError(
       safeApiError(installBody, 'The local Assistant could not be installed.'),
       installResponse.status,
+      installRefusalCode(installResponse, installBody),
     );
   }
   if (installBody.assistant !== assistantId || typeof installBody.installed !== 'boolean') {
@@ -347,6 +354,7 @@ export async function installLocalAssistant(fetcher, teamId, imageId) {
     throw new LocalApiError(
       safeApiError(body, 'The Local Assistant snapshot could not be installed.'),
       response.status,
+      installRefusalCode(response, body),
     );
   }
   const keys = ['assistant', 'image_id', 'installed', 'provenance', 'unpublished'];

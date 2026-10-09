@@ -1,6 +1,6 @@
 <script>
   import { flushSync, getContext, onMount, tick } from 'svelte';
-  import { AssistantIcon, Button, ChatTask, EmptyState, FileInput, Message, Notice, ScrollArea, TextAreaField, TextField, TextLink, Toolbar } from '@shimpz/frontend';
+  import { AssistantIcon, Button, ChatTask, EmptyState, FileInput, Message, Notice, ScrollArea, TextAreaField, TextField, Toolbar } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
   import AttachmentChip from '$lib/AttachmentChip.svelte';
   import {
@@ -44,7 +44,8 @@
   import { configureModelContext, loadModelContext, modelContext } from '$lib/modelContext.js';
   import { SESSION_ENDED, sessionContext } from '$lib/sessionContext.js';
   import ShimpzThinking from '$lib/ShimpzThinking.svelte';
-  import { MAX_CHAT_ASSISTANTS, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
+  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
+  import { ASSISTANT_LIMIT_REACHED } from '$lib/validate.js';
   import {
     CHAT_WS_PROTOCOL,
     authorizeAssistantIntegration,
@@ -251,9 +252,6 @@
   let providerKey = $state('');
   let currentProgress = $derived(progressEvents.at(-1));
   let assistantNames = $derived(new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant.name])));
-  let omittedAssistantNames = $derived(
-    $teamContext.omittedAssistantIds.map((id) => assistantNames.get(id) ?? id),
-  );
   let liveStatus = $derived(
     lifecycleWorking
       ? installPlanWorking
@@ -475,7 +473,7 @@
         text: entry.state === 'installed'
           ? (entry.outcome === 'already-installed' ? copy.install.already : copy.install.complete)
           : entry.state === 'failed'
-            ? copy.install.failed
+            ? installFailureText(entry.code)
             : copy.disconnected,
         author,
         installPlan: {
@@ -484,6 +482,7 @@
           assistants: entry.assistants,
           ...(entry.outcome ? { outcome: entry.outcome } : {}),
           ...(entry.status ? { status: entry.status } : {}),
+          ...(entry.code ? { code: entry.code } : {}),
         },
       };
     }
@@ -729,7 +728,7 @@
           text: incoming.state === 'installed'
             ? copy.install.complete
             : incoming.state === 'failed'
-              ? copy.install.failed
+              ? installFailureText(incoming.code)
               : incoming.state === 'stopped'
                 ? copy.disconnected
                 : turn.text,
@@ -738,6 +737,7 @@
             state: incoming.state,
             assistants: incoming.assistants,
             ...(incoming.status ? { status: incoming.status } : {}),
+            ...(incoming.code ? { code: incoming.code } : {}),
           },
         }
       : turn);
@@ -1022,7 +1022,16 @@
     return copy.requestFailed;
   }
 
+  function assistantLimitText() {
+    return $t('store.assistantLimitReached', { maximum: String(MAX_TEAM_ASSISTANTS) });
+  }
+
+  function installFailureText(code) {
+    return code === ASSISTANT_LIMIT_REACHED ? assistantLimitText() : copy.install.failed;
+  }
+
   function projectedChatError(status, detail) {
+    if (status === 409 && detail === ASSISTANT_LIMIT_REACHED) return { message: assistantLimitText(), detail: '' };
     if (status === 403 && detail === 'authentication was not confirmed') {
       return { message: copy.authenticationDenied, detail: '' };
     }
@@ -1338,7 +1347,10 @@
           }
           busy = false;
           if (incoming.state === 'failed') {
-            setError(friendlyChatError(incoming.status), `HTTP ${incoming.status}`);
+            setError(
+              incoming.code === ASSISTANT_LIMIT_REACHED ? assistantLimitText() : friendlyChatError(incoming.status),
+              `HTTP ${incoming.status}`,
+            );
           } else {
             clearError();
           }
@@ -2447,15 +2459,6 @@
           {/each}
         </ScrollArea>
 
-        {#if omittedAssistantNames.length > 0}
-          <Notice class="assistant-overflow" variant="warning">
-            {$t('chatPage.assistantOverflow', {
-              limit: MAX_CHAT_ASSISTANTS,
-              names: omittedAssistantNames.join(', '),
-            })}
-            <TextLink href={`/assistants/?team=${encodeURIComponent($teamContext.selectedTeamId)}`}>{copy.openStore}</TextLink>
-          </Notice>
-        {/if}
         {#if visibleError}
           <Notice class="error" variant="error">
             <strong>{visibleError}</strong>

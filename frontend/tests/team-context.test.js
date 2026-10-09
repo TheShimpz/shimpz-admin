@@ -8,7 +8,6 @@ import {
   createTeam,
   deleteTeam,
   loadTeamContext,
-  MAX_CHAT_ASSISTANTS,
   refreshTeamInventory,
   reloadTeamList,
   renameTeam,
@@ -93,7 +92,6 @@ test('loads one authoritative Team context and honors a valid preferred Team', a
     ],
     installedAssistants: [installedAssistant('hello-pulse')],
     activeAssistantIds: ['hello-pulse'],
-    omittedAssistantIds: [],
     error: '',
   });
 });
@@ -198,7 +196,6 @@ test('a confirmed empty inventory retains the catalog while malformed Team data 
     ],
     installedAssistants: [],
     activeAssistantIds: [],
-    omittedAssistantIds: [],
     error: '',
   });
   assert.equal(catalogRequests, 1);
@@ -548,7 +545,6 @@ test('deleting the last Team rehydrates an authoritative empty context', async (
     ],
     installedAssistants: [],
     activeAssistantIds: [],
-    omittedAssistantIds: [],
     error: '',
   });
 });
@@ -590,7 +586,6 @@ test('clear invalidates a late context response', async () => {
     catalog: [],
     installedAssistants: [],
     activeAssistantIds: [],
-    omittedAssistantIds: [],
     error: '',
   });
 });
@@ -606,28 +601,11 @@ test('every running Assistant joins the chat scope and stopped ones stay out', a
   });
   await loadTeamContext(inventory('running'), 'marketing');
   assert.deepEqual(get(teamContext).activeAssistantIds, ['hello-pulse', 'salesnator']);
-  assert.deepEqual(get(teamContext).omittedAssistantIds, []);
 
   await refreshTeamInventory(inventory('outdated'));
   assert.deepEqual(get(teamContext).activeAssistantIds, ['salesnator']);
   await refreshTeamInventory(inventory('running'));
   assert.deepEqual(get(teamContext).activeAssistantIds, ['hello-pulse', 'salesnator']);
-});
-
-test('Assistant scope keeps the exact protocol limit and reports every omitted Assistant', async () => {
-  const catalog = Array.from({ length: MAX_CHAT_ASSISTANTS + 2 }, (_value, index) => ({
-    id: `assistant-${index}`,
-    title: `Assistant ${index}`,
-  }));
-  const installed = catalog.map((entry) => installedAssistant(entry.id));
-  await loadTeamContext(fixtureFetcher({
-    '/api/assistants': async () => response(200, { assistants: catalog }),
-    '/api/teams/marketing/assistants': async () => response(200, { assistants: installed }),
-  }), 'marketing');
-
-  const ids = installed.map((entry) => entry.assistant);
-  assert.deepEqual(get(teamContext).activeAssistantIds, ids.slice(0, MAX_CHAT_ASSISTANTS));
-  assert.deepEqual(get(teamContext).omittedAssistantIds, ids.slice(MAX_CHAT_ASSISTANTS));
 });
 
 function deferred() {

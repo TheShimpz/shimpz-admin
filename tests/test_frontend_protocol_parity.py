@@ -23,6 +23,10 @@ TURN_BOUNDS = {
         "MAX_REPLY_CHARS": turn_contract.MAX_REPLY_CHARS,
         "MAX_GUIDANCE_REPLY_CHARS": turn_contract.MAX_INTENT_ROUTE_REPLY_CHARS,
         "MAX_TEAM_NAME_CHARS": team_contract.MAX_TEAM_NAME_CHARS,
+        "MAX_ASSISTANTS": team_contract.MAX_CHAT_ASSISTANTS,
+    },
+    "teamContext.js": {
+        "MAX_TEAM_ASSISTANTS": team_contract.MAX_TEAM_ASSISTANTS,
     },
     "chatHistory.js": {
         "MAX_MESSAGE_CHARS": team_contract.MAX_CHAT_MESSAGE_CHARS,

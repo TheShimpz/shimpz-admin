@@ -127,6 +127,21 @@ test('loads the exact already-installed terminal outcome', async () => {
   assert.deepEqual(result.entries, [restored(entry)]);
 });
 
+test('loads a failed install that Team refused at its Assistant limit, and only that code', async () => {
+  const failed = {
+    ...installedEntry(),
+    state: 'failed',
+    status: 409,
+    code: 'assistant_limit_reached',
+    assistants: [{ ...installedEntry().assistants[0], status: 'failed' }],
+  };
+  const load = (entry) => listChatHistory(async () => response(200, { entries: [entry], before: null }), 'marketing');
+  assert.deepEqual((await load(failed)).entries, [restored(failed)]);
+  for (const invalid of [{ ...failed, status: 503 }, { ...failed, code: 'team-context-changed' }]) {
+    await assert.rejects(load(invalid), (error) => error instanceof LocalApiError);
+  }
+});
+
 test('fails closed on malformed or secret-bearing chat history', async () => {
   const invalidEntries = [
     { ...installedEntry(), access_token: 'must-not-cross' },

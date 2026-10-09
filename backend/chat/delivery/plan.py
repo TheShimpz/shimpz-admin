@@ -134,6 +134,7 @@ async def _deliver_admitted(
         result.state,
         result.assistants,
         status=result.status,
+        code=result.code,
         continuation=continuation if result.state == "installed" else None,
     )
     if not await _commit_install(team_id, turn, terminal):
@@ -228,7 +229,7 @@ async def deliver_result(
         )
     elif preparation.error_status is not None:
         connection.assistant_reference = None
-        detail = "Assistant capability planning could not complete; retry the task"
+        detail = preparation.error_code or "Assistant capability planning could not complete; retry the task"
         await operations.finish_turn(
             websocket,
             connection,

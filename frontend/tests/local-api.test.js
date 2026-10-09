@@ -100,6 +100,24 @@ test('safe install errors stop after one request and prefer error over detail', 
   assert.equal(safeApiError({ error: 'specific', detail: 'generic' }, 'fallback'), 'specific');
 });
 
+test('an install refused at the Team Assistant limit carries only that closed code', async () => {
+  const refusal = (status, code) => async () => response(status, { detail: 'refused', code });
+  await assert.rejects(
+    installAssistant(refusal(409, 'assistant_limit_reached'), 'team_1', 'hello-pulse', SOURCE_DIGEST),
+    (error) => error instanceof LocalApiError && error.status === 409 && error.code === 'assistant_limit_reached',
+  );
+  await assert.rejects(
+    installLocalAssistant(refusal(409, 'assistant_limit_reached'), 'team_1', LOCAL_IMAGE_ID),
+    (error) => error instanceof LocalApiError && error.code === 'assistant_limit_reached',
+  );
+  for (const [status, code] of [[409, 'team-context-changed'], [503, 'assistant_limit_reached']]) {
+    await assert.rejects(
+      installAssistant(refusal(status, code), 'team_1', 'hello-pulse', SOURCE_DIGEST),
+      (error) => error instanceof LocalApiError && error.code === '',
+    );
+  }
+});
+
 test('invalid install responses fail closed without invoking anything else', async () => {
   for (const body of [
     { assistant: 'other', installed: true },

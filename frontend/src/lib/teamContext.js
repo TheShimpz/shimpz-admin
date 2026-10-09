@@ -17,8 +17,8 @@ const MAX_PASSWORD_CHARS = 4096;
 const MAX_INSTALLED_ASSISTANTS = 128;
 const MAX_TEAM_RESIDUE_CLASSES = 32;
 const TEAM_RESIDUE_CLASS_RE = /^[a-z][a-z0-9_]{0,63}$/;
-// The chat protocol admits at most this many Assistants in one turn's capability scope.
-export const MAX_CHAT_ASSISTANTS = 16;
+// The most Assistants one Team may have installed (Team's MAX_TEAM_ASSISTANTS); a turn may name every one of them.
+export const MAX_TEAM_ASSISTANTS = 16;
 
 function emptyContext() {
   return {
@@ -28,7 +28,6 @@ function emptyContext() {
     catalog: [],
     installedAssistants: [],
     activeAssistantIds: [],
-    omittedAssistantIds: [],
     error: '',
   };
 }
@@ -37,13 +36,11 @@ export const teamContext = writable(emptyContext());
 
 let generation = 0;
 function chatScope(installedAssistants) {
-  // Every running Assistant joins the chat in inventory order; any beyond the protocol bound is reported as omitted.
-  const running = installedAssistants
-    .filter((entry) => entry.status === 'running')
-    .map((entry) => entry.assistant);
+  // Every running Assistant joins the chat in inventory order; a Team never has more than one turn may name.
   return {
-    activeAssistantIds: running.slice(0, MAX_CHAT_ASSISTANTS),
-    omittedAssistantIds: running.slice(MAX_CHAT_ASSISTANTS),
+    activeAssistantIds: installedAssistants
+      .filter((entry) => entry.status === 'running')
+      .map((entry) => entry.assistant),
   };
 }
 
@@ -141,7 +138,6 @@ function markFailure(attempt, error, fallback, clearAuthority) {
       phase: 'error',
       installedAssistants: [],
       activeAssistantIds: [],
-      omittedAssistantIds: [],
       error: safe.message,
     }));
   }
@@ -181,7 +177,6 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
       catalog,
       installedAssistants: [],
       activeAssistantIds: [],
-      omittedAssistantIds: [],
     };
     if (attempt === generation) {
       listVersion += 1;
@@ -241,7 +236,6 @@ export async function selectTeam(fetcher, id) {
     selectedTeamId: canonicalId,
     installedAssistants: [],
     activeAssistantIds: [],
-    omittedAssistantIds: [],
     error: '',
   });
   try {
@@ -273,7 +267,6 @@ export async function selectTeam(fetcher, id) {
         phase: 'error',
         installedAssistants: [],
         activeAssistantIds: [],
-        omittedAssistantIds: [],
         error: safe.message,
       });
     }
@@ -290,7 +283,6 @@ export async function refreshTeamInventory(fetcher) {
       phase: 'ready',
       installedAssistants: [],
       activeAssistantIds: [],
-      omittedAssistantIds: [],
       error: '',
     });
     return { installedAssistants: [] };
@@ -305,7 +297,6 @@ export async function refreshTeamInventory(fetcher) {
     phase: 'loading',
     installedAssistants: [],
     activeAssistantIds: [],
-    omittedAssistantIds: [],
     error: '',
   });
   try {
@@ -355,7 +346,6 @@ export async function createTeam(fetcher, name) {
     phase: 'loading',
     error: '',
     activeAssistantIds: [],
-    omittedAssistantIds: [],
   });
   let created;
   try {

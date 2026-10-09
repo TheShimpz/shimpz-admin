@@ -6,6 +6,7 @@ import { parseTaskUsage } from './taskUsage.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import {
   ASSISTANT_ID_RE,
+  ASSISTANT_LIMIT_REACHED,
   codePointLength,
   exactKeys,
   isInstant,
@@ -161,11 +162,12 @@ function messageEntry(value, suffix, status) {
 
 function installEntry(value, suffix, status) {
   const failed = value.state === 'failed';
+  const limited = failed && 'code' in value;
   const alreadyInstalled = value.outcome === 'already-installed';
   if (
     suffix !== 'install' ||
     !exactKeys(value, failed
-      ? ['assistants', 'id', 'kind', 'state', 'status']
+      ? ['assistants', 'id', 'kind', 'state', 'status', ...(limited ? ['code'] : [])]
       : alreadyInstalled
         ? ['assistants', 'id', 'kind', 'outcome', 'state']
         : ['assistants', 'id', 'kind', 'state']) ||
@@ -174,7 +176,8 @@ function installEntry(value, suffix, status) {
     !Array.isArray(value.assistants) ||
     value.assistants.length < 1 ||
     value.assistants.length > MAX_ASSISTANTS ||
-    (failed && (!Number.isInteger(value.status) || value.status < 400 || value.status > 599))
+    (failed && (!Number.isInteger(value.status) || value.status < 400 || value.status > 599)) ||
+    (limited && (value.status !== 409 || value.code !== ASSISTANT_LIMIT_REACHED))
   ) throw invalidHistory(status);
   const assistants = value.assistants.map((assistant) => installAssistant(assistant, status));
   if (
@@ -188,6 +191,7 @@ function installEntry(value, suffix, status) {
     assistants,
     ...(alreadyInstalled ? { outcome: value.outcome } : {}),
     ...(failed ? { status: value.status } : {}),
+    ...(limited ? { code: value.code } : {}),
   };
 }
 

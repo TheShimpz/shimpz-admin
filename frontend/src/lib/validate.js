@@ -10,6 +10,8 @@ export const MAX_ACTION_ID_CHARS = 128;
 export const OPAQUE_ID_RE = /^[0-9a-f]{32}$/;
 export const TRACE_ID_RE = OPAQUE_ID_RE;
 export const CONTROL_RE = /[\u0000-\u001f\u007f]/;
+// Team's closed refusal of a fresh install beyond the Team's MAX_TEAM_ASSISTANTS (HTTP 409); Admin localizes it.
+export const ASSISTANT_LIMIT_REACHED = 'assistant_limit_reached';
 const INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
 const MAX_TEAM_NAME_CHARS = 80;

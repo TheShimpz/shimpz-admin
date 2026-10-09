@@ -6,6 +6,7 @@ import { LocalApiError, safeApiError } from './localApi.js';
 import { isLocale } from './locales.js';
 import {
   ASSISTANT_ID_RE,
+  ASSISTANT_LIMIT_REACHED,
   codePointLength,
   CONTROL_RE,
   exactKeys,
@@ -1066,6 +1067,9 @@ function parseAssistantInstallPlanEvent(value, expectedTeamId, expectedTeamName)
   const failed = value.state === 'failed';
   const fields = ['type', 'state', 'plan_id', 'team_id', 'assistants'];
   if (failed) fields.push('status');
+  // Only Team's closed Assistant-limit refusal names a code beside its status.
+  const limited = failed && 'code' in value;
+  if (limited) fields.push('code');
   if (value.state === 'installed') {
     fields.push('continuation');
     if ('outcome' in value) fields.push('outcome');
@@ -1083,6 +1087,7 @@ function parseAssistantInstallPlanEvent(value, expectedTeamId, expectedTeamName)
       value.status < 400 ||
       value.status > 599
     )) ||
+    (limited && (value.status !== 409 || value.code !== ASSISTANT_LIMIT_REACHED)) ||
     (value.state === 'installed' && (
       !['dispatch', 'none'].includes(value.continuation) ||
       ('outcome' in value && value.outcome !== 'already-installed')
@@ -1128,6 +1133,7 @@ function parseAssistantInstallPlanEvent(value, expectedTeamId, expectedTeamName)
     ...(value.state === 'installed' ? { continuation: value.continuation } : {}),
     ...('outcome' in value ? { outcome: value.outcome } : {}),
     ...(failed ? { status: value.status } : {}),
+    ...(limited ? { code: value.code } : {}),
   };
 }
 

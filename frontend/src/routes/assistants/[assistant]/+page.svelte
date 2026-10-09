@@ -28,8 +28,8 @@
     loadPublicAssistantIcon,
   } from '$lib/localAssistantIcons.js';
   import { groupLocalAssistantSnapshots } from '$lib/localSnapshots.js';
-  import { refreshTeamInventory, teamContext } from '$lib/teamContext.js';
-  import { ASSISTANT_ID_RE, TEAM_ID_RE } from '$lib/validate.js';
+  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
+  import { ASSISTANT_ID_RE, ASSISTANT_LIMIT_REACHED, TEAM_ID_RE } from '$lib/validate.js';
 
   const initialViewReadiness = getContext(INITIAL_VIEW_READINESS);
 
@@ -368,6 +368,13 @@
     return { current: inventory.find((entry) => entry.assistant === frozen.assistantId) ?? null };
   }
 
+  // Team's refusal of an install beyond the Team's bound reads as that fact; any other failure keeps its own copy.
+  function installFailure(failure, fallback) {
+    return failure?.code === ASSISTANT_LIMIT_REACHED
+      ? $t('store.assistantLimitReached', { maximum: String(MAX_TEAM_ASSISTANTS) })
+      : fallback;
+  }
+
   async function confirmInstall() {
     const frozen = dialogTarget;
     if (busy || !frozen || dialogAction !== 'install' || !['install', 'error'].includes(dialogMode)) return;
@@ -388,9 +395,9 @@
         label: storeCopy.assistantInstalledLabel,
         message: $t('store.assistantInstalledMessage', { assistant: frozen.name, team: frozen.team.name }),
       });
-    } catch {
+    } catch (failure) {
       await refreshInventory(frozen.team);
-      dialogError = pageCopy.installFailed;
+      dialogError = installFailure(failure, pageCopy.installFailed);
       dialogMode = 'error';
     } finally {
       busy = false;
@@ -473,8 +480,8 @@
         label: storeCopy.localInstalledLabel,
         message: $t('store.localInstalledMessage', { assistant: result.assistant, team: frozen.team.name }),
       });
-    } catch {
-      localDialogError = storeCopy.localFailure;
+    } catch (failure) {
+      localDialogError = installFailure(failure, storeCopy.localFailure);
     } finally {
       busy = false;
       installingImage = '';

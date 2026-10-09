@@ -18,6 +18,7 @@ from protocol.http.v1 import turn as turn_contract
 MAX_PLAN_ASSISTANTS = turn_contract.MAX_CAPABILITY_SELECTED
 MAX_INSTALL_ASSISTANTS = turn_contract.MAX_INTENT_ROUTE_SELECTED
 MAX_CHAT_ASSISTANTS = team_contract.MAX_CHAT_ASSISTANTS
+MAX_TEAM_ASSISTANTS = team_contract.MAX_TEAM_ASSISTANTS
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +44,12 @@ class Preparation:
     plan: Plan | None = None
     already_installed: AlreadyInstalled | None = None
     error_status: int | None = None
+    error_code: str | None = None
+
+
+# A plan that would leave the Team with more Assistants than it may have is refused before Team admission, with the
+# same closed code Team's own refusal carries.
+LIMIT_REACHED = Preparation(error_status=409, error_code=assistant_install.ASSISTANT_LIMIT_REACHED)
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +57,7 @@ class Result:
     state: Literal["installed", "failed", "stopped"]
     assistants: tuple[dict[str, object], ...]
     status: int | None = None
+    code: str | None = None
 
 
 def _planner_candidate(
@@ -191,6 +199,11 @@ def _shown_preparation(
     return replace(preparation, plan=replace(plan, assistants=assistants))
 
 
+def _beyond_limit(installed: dict[str, assistant_inventory.InstalledAssistant], missing: tuple[str, ...]) -> bool:
+    """Whether installing the missing Assistants would leave the Team with more than it may have."""
+    return len(set(installed) | set(missing)) > MAX_TEAM_ASSISTANTS
+
+
 def _prepared_plan(
     team_id: str,
     enabled_ids: tuple[str, ...],
@@ -206,7 +219,7 @@ def _prepared_plan(
     expected = {assistant.assistant_id: assistant for assistant in shortlist}
     dispatch_ids = tuple(sorted(set(enabled_ids) | set(dispatch_selected or selected)))
     if len(dispatch_ids) > MAX_CHAT_ASSISTANTS:
-        return Preparation(error_status=409)
+        return LIMIT_REACHED
     return Preparation(
         Plan(
             plan_id=secrets.token_hex(16),
@@ -277,6 +290,8 @@ def _prepare_gap(
     installable_ids = frozenset(assistant.assistant_id for assistant in shortlist)
     missing = tuple(assistant_id for assistant_id in selected if assistant_id in installable_ids)
     enabled_ids = tuple(capability.assistant_id for capability in enabled)
+    if _beyond_limit(installed, missing):
+        return LIMIT_REACHED
     return _shown_preparation(_prepared_plan(team_id, enabled_ids, shortlist, missing), catalog, locale)
 
 
@@ -300,6 +315,40 @@ def prepare_capability(
     except OSError, ValueError, team.TeamRequestError:
         return Preparation()
     return _prepare_gap(team_id, payload["message"], available, installed, enabled, catalog, payload["locale"])
+
+
+def _already_installed(
+    team_id: str,
+    selected: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...],
+    installed: dict[str, assistant_inventory.InstalledAssistant],
+    dispatch_ids: tuple[str, ...],
+    catalog: store_catalog.StoreCatalog,
+    locale: str,
+) -> Preparation:
+    """Confirm a selection that is already running, shown in the turn's interface language."""
+    if len(dispatch_ids) > MAX_CHAT_ASSISTANTS:
+        return Preparation(error_status=409)
+    shown = _shown_or_none(selected, catalog, locale)
+    if shown is None:
+        return Preparation(error_status=502)
+    return Preparation(
+        already_installed=AlreadyInstalled(
+            plan_id=secrets.token_hex(16),
+            team_id=team_id,
+            assistants=tuple(
+                {
+                    "id": assistant.assistant_id,
+                    "name": assistant.name,
+                    "summary": assistant.summary,
+                    "providers": sorted({integration.provider for integration in assistant.integrations}),
+                    "provenance": installed[assistant.assistant_id].provenance,
+                    "status": "installed",
+                }
+                for assistant in shown
+            ),
+            dispatch_ids=dispatch_ids,
+        )
+    )
 
 
 def prepare_install(
@@ -331,29 +380,10 @@ def prepare_install(
     )
     if not missing:
         dispatch_ids = tuple(sorted(set(payload["assistant_ids"]) | set(selected_ids))) if task_follows else ()
-        if len(dispatch_ids) > MAX_CHAT_ASSISTANTS:
-            return Preparation(error_status=409)
-        shown = _shown_or_none(tuple(identities[assistant_id] for assistant_id in selected_ids), catalog, locale)
-        if shown is None:
-            return Preparation(error_status=502)
-        return Preparation(
-            already_installed=AlreadyInstalled(
-                plan_id=secrets.token_hex(16),
-                team_id=team_id,
-                assistants=tuple(
-                    {
-                        "id": assistant.assistant_id,
-                        "name": assistant.name,
-                        "summary": assistant.summary,
-                        "providers": sorted({integration.provider for integration in assistant.integrations}),
-                        "provenance": installed[assistant.assistant_id].provenance,
-                        "status": "installed",
-                    }
-                    for assistant in shown
-                ),
-                dispatch_ids=dispatch_ids,
-            )
-        )
+        selected = tuple(identities[assistant_id] for assistant_id in selected_ids)
+        return _already_installed(team_id, selected, installed, dispatch_ids, catalog, locale)
+    if _beyond_limit(installed, missing):
+        return LIMIT_REACHED
     prepared = _prepared_plan(
         team_id,
         tuple(payload["assistant_ids"]),
@@ -390,6 +420,7 @@ def event(
     assistants: tuple[dict[str, object], ...],
     *,
     status: int | None = None,
+    code: str | None = None,
     continuation: Literal["dispatch", "none"] | None = None,
 ) -> dict[str, object]:
     if state == "installed":
@@ -406,6 +437,8 @@ def event(
     }
     if status is not None:
         payload["status"] = status
+    if code is not None:
+        payload["code"] = code
     if continuation is not None:
         payload["continuation"] = continuation
     return payload
@@ -427,7 +460,8 @@ def already_installed_event(result: AlreadyInstalled) -> dict[str, object]:
 def _install_and_prove_running(
     team_id: str,
     assistant: store_catalog.CatalogAssistant | local_catalog.LocalAssistant,
-) -> int | None:
+) -> tuple[int, str | None] | None:
+    """None once the Assistant is proven running, else the failure status and Team's closed code, if any."""
     try:
         result = (
             assistant_install.install_local_snapshot(team_id, assistant)
@@ -435,15 +469,15 @@ def _install_and_prove_running(
             else assistant_install.install_publication(team_id, assistant)
         )
     except OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError:
-        return 502
+        return 502, None
     if result.installed is None or not 200 <= result.status < 300:
-        return result.status if 400 <= result.status <= 599 else 502
+        return (result.status, result.code) if 400 <= result.status <= 599 else (502, None)
     try:
         installed = assistant_inventory.installed(team.list_installed_assistants(team_id))
     except TypeError, ValueError, team.TeamRequestError:
-        return 502
+        return 502, None
     current = installed.get(assistant.assistant_id)
-    return None if current is not None and current.status == "running" else 502
+    return None if current is not None and current.status == "running" else (502, None)
 
 
 def execute(
@@ -458,10 +492,10 @@ def execute(
             return Result("stopped", _items(plan, states))
         states[assistant.assistant_id] = "installing"
         progress(_items(plan, states))
-        status = _install_and_prove_running(plan.team_id, assistant)
-        if status is not None:
+        failure = _install_and_prove_running(plan.team_id, assistant)
+        if failure is not None:
             states[assistant.assistant_id] = "failed"
-            return Result("failed", _items(plan, states), status)
+            return Result("failed", _items(plan, states), *failure)
         states[assistant.assistant_id] = "installed"
         progress(_items(plan, states))
     return Result("installed", _items(plan, states))

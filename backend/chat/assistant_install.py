@@ -7,11 +7,22 @@ from team import bridge as team
 
 from chat import local_catalog, store_catalog
 
+# Team's closed refusal of a fresh install beyond the Team's MAX_TEAM_ASSISTANTS; Admin localizes it.
+ASSISTANT_LIMIT_REACHED = "assistant_limit_reached"
+
 
 @dataclass(frozen=True, slots=True)
 class InstallResult:
     status: int
     installed: bool | None = None
+    code: str | None = None
+
+
+def limit_code(status: int, body: object) -> str | None:
+    """Carry only Team's closed Assistant-limit refusal; any other failure stays a bare status."""
+    if status == 409 and isinstance(body, dict) and body.get("code") == ASSISTANT_LIMIT_REACHED:
+        return ASSISTANT_LIMIT_REACHED
+    return None
 
 
 def install_publication(team_id: str, assistant: store_catalog.CatalogAssistant) -> InstallResult:
@@ -36,7 +47,7 @@ def _result(response: object, installed: Callable[[team.TeamResponse], bool]) ->
     if not team.is_team_response(response):
         return InstallResult(502)
     if not 200 <= response.status < 300:
-        return InstallResult(response.status)
+        return InstallResult(response.status, code=limit_code(response.status, response.body))
     try:
         return InstallResult(response.status, installed(response))
     except ValueError:

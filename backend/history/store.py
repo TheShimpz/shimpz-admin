@@ -16,7 +16,7 @@ from pathlib import Path
 
 from history import context as conversation_context
 
-from chat import store_catalog
+from chat import assistant_install, store_catalog
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import routine_notice as routine_notice_contract
@@ -422,6 +422,8 @@ def _install_payload(event: object, team_id: str) -> dict[str, object]:
             expected.add("outcome")
     elif state == "failed":
         expected.add("status")
+        if "code" in event:
+            expected.add("code")
     elif state != "stopped":
         raise ValueError("chat history Assistant install event is not terminal")
     if (
@@ -447,6 +449,7 @@ def _install_payload(event: object, team_id: str) -> dict[str, object]:
         not isinstance(event.get("status"), int)
         or isinstance(event.get("status"), bool)
         or not 400 <= event["status"] <= 599
+        or ("code" in event and (event["status"], event["code"]) != (409, assistant_install.ASSISTANT_LIMIT_REACHED))
     ):
         raise ValueError("chat history failed result is invalid")
     return {
@@ -454,6 +457,7 @@ def _install_payload(event: object, team_id: str) -> dict[str, object]:
         "state": state,
         "assistants": canonical,
         **({"status": event["status"]} if state == "failed" else {}),
+        **({"code": event["code"]} if "code" in event else {}),
         **({"outcome": event["outcome"]} if "outcome" in event else {}),
     }
 

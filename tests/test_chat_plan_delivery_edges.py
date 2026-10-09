@@ -526,6 +526,10 @@ class PlanDeliveryEdges(unittest.TestCase):
             error.error_terminal.assert_called_once()
             error.finish_turn.assert_awaited_once()
 
+            # Admin's own Assistant-limit refusal names Team's closed code as its detail.
+            limited = await deliver(assistant_plan.LIMIT_REACHED)
+            limited.error_terminal.assert_called_once_with(409, "assistant_limit_reached")
+
             stopped = await deliver(assistant_plan.Preparation(plan=_plan()), stop_requested=True)
             stopped.finish_turn.assert_awaited_once_with(
                 mock.sentinel.websocket,

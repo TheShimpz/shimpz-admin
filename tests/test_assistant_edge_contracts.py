@@ -196,7 +196,7 @@ class AssistantPlanEdges(unittest.TestCase):
     def test_install_and_runtime_recheck_exceptions_become_bad_gateway(self) -> None:
         candidate = _catalog_assistant("whatsapp", provider="whatsapp")
         with mock.patch.object(assistant_plan.assistant_install, "install_publication", side_effect=OSError):
-            self.assertEqual(assistant_plan._install_and_prove_running("team_1", candidate), 502)
+            self.assertEqual(assistant_plan._install_and_prove_running("team_1", candidate), (502, None))
         with (
             mock.patch.object(
                 assistant_plan.assistant_install,
@@ -205,7 +205,7 @@ class AssistantPlanEdges(unittest.TestCase):
             ),
             mock.patch.object(assistant_plan.team, "list_installed_assistants", side_effect=ValueError),
         ):
-            self.assertEqual(assistant_plan._install_and_prove_running("team_1", candidate), 502)
+            self.assertEqual(assistant_plan._install_and_prove_running("team_1", candidate), (502, None))
 
 
 class AssistantProposalEdges(unittest.TestCase):

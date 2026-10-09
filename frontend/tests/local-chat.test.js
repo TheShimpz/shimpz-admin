@@ -504,6 +504,7 @@ test('chat admits only the exact aggregate Assistant installation plan lifecycle
     }),
     frame('failed', ['pending', 'pending'], { status: 429 }),
     frame('failed', ['installed', 'failed'], { status: 503 }),
+    frame('failed', ['installed', 'failed'], { status: 409, code: 'assistant_limit_reached' }),
     frame('stopped', ['installed', 'pending']),
   ];
   for (const event of valid) {
@@ -583,6 +584,21 @@ test('chat rejects widened, cross-Team, duplicated, or malformed installation pl
     {
       ...planned,
       state: 'stopped',
+      assistants: [{ ...cloudflare, status: 'failed' }, whatsapp],
+    },
+    // A failed plan names only Team's closed Assistant-limit code, and only beside its 409.
+    {
+      ...planned,
+      state: 'failed',
+      status: 503,
+      code: 'assistant_limit_reached',
+      assistants: [{ ...cloudflare, status: 'failed' }, whatsapp],
+    },
+    {
+      ...planned,
+      state: 'failed',
+      status: 409,
+      code: 'team-context-changed',
       assistants: [{ ...cloudflare, status: 'failed' }, whatsapp],
     },
   ]) assert.throws(

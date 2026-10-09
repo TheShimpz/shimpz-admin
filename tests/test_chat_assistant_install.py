@@ -74,6 +74,19 @@ class AssistantInstallTests(unittest.TestCase):
                 assistant_install.team.TeamResponse(409, {"detail": "/private/path"}),
                 assistant_install.InstallResult(409),
             ),
+            # Only Team's closed Assistant-limit refusal carries its code through.
+            (
+                assistant_install.team.TeamResponse(409, {"detail": "full", "code": "assistant_limit_reached"}),
+                assistant_install.InstallResult(409, code=assistant_install.ASSISTANT_LIMIT_REACHED),
+            ),
+            (
+                assistant_install.team.TeamResponse(429, {"detail": "busy", "code": "assistant_limit_reached"}),
+                assistant_install.InstallResult(429),
+            ),
+            (
+                assistant_install.team.TeamResponse(409, {"detail": "busy", "code": "team-context-changed"}),
+                assistant_install.InstallResult(409),
+            ),
             (object(), assistant_install.InstallResult(502)),
         )
         for response, expected in cases:
