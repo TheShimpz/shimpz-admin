@@ -14,10 +14,10 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1] / "backend" / "protocol" / "http"
 EXPECTED_UPSTREAM = {
     "repository": "https://github.com/TheShimpz/shimpz-teams",
-    "commit": "4a974a142c79fc417b6499d3390dff4a21e83beb",
+    "commit": "2162bd4991eac879ea8e268cc051d9215611efea",
     "path": "protocol/http/v1",
-    "tree": "d95ccc84cf2e0f462e93f089d7d82bb844d275b7",
-    "contract_files_sha256": "9982d29e175eaab835de1aee0b0712197943e9b16f1dbf2dc648b5d5a2c5a18a",
+    "tree": "1515956ec48bfdaa10436d551eed98a1ca24afca",
+    "contract_files_sha256": "982b38860d19ddaa46478e7e827a8e29802cc372243c333c48f773bf7a1df285",
 }
 
 

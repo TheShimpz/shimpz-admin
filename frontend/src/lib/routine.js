@@ -1338,7 +1338,7 @@ const ERROR_TYPE_RE = /^[!-~]{1,128}$/;
 const PROVIDER_RE = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*$/;
 const CONDITION_RE = /^(?:exit-status:-?[0-9]{1,10}|stderr-output|timeout|frame-invalid|exit-unavailable|transport-failed)$/;
 // Tab and line feed only; every other control, bidi override or isolate, and zero-width formatting character is refused.
-const UNSAFE_DIAGNOSTIC_RE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f​-‏‪-‮⁠-⁯﻿]/u;
+const UNSAFE_DIAGNOSTIC_RE = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f\ufeff]/u;
 function diagnosticText(value) {
   return (
     typeof value === 'string' &&
