@@ -38,21 +38,33 @@ async def assistant_catalog(locale: str = "") -> JSONResponse:
         content={
             "version": 1,
             "locale": canonical,
-            "assistants": [
-                {
-                    "assistant_id": assistant.assistant_id,
-                    "name": assistant.name,
-                    "summary": assistant.summary,
-                    "assistant_version": assistant.assistant_version,
-                    "creators": list(assistant.creators),
-                    "source_digest": assistant.source_digest,
-                    "icon_digest": assistant.icon_digest,
-                }
-                for assistant in assistants
-            ],
+            "assistants": [_catalog_entry(assistant) for assistant in assistants],
         },
         headers={"Cache-Control": "no-store"},
     )
+
+
+def _catalog_entry(assistant: store_catalog.CatalogAssistant) -> dict[str, object]:
+    """One publication as the Assistants page lists it and shows it on its own page."""
+    page = assistant.page
+    if page is None:
+        raise HTTPException(status_code=502, detail="Assistant catalog is unavailable")
+    return {
+        "assistant_id": assistant.assistant_id,
+        "name": assistant.name,
+        "summary": assistant.summary,
+        "description": page.description,
+        "assistant_version": assistant.assistant_version,
+        "creators": list(assistant.creators),
+        "links": dict(page.links),
+        "source_digest": assistant.source_digest,
+        "icon_digest": assistant.icon_digest,
+        "actions": [
+            {"id": action.id, "effect": action.effect, "description": action.description} for action in page.actions
+        ],
+        "integrations": [{"id": item.provider, "provider": item.provider} for item in assistant.integrations],
+        "stored_inputs": [{"id": identifier, "label": label} for identifier, label in page.stored_inputs],
+    }
 
 
 async def assistant_icon(assistant_id: str) -> Response:

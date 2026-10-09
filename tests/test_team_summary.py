@@ -59,5 +59,50 @@ class InstalledSummaryTests(unittest.TestCase):
             self.assertEqual(caught.exception.status_code, 400)
 
 
+PAGE = {
+    "locale": "ja",
+    "assistant_id": "shimpz-cloudflare",
+    "assistant_version": "1.4.0",
+    "name": "Shimpz Cloudflare",
+    "creators": ["@shimpz", "@Shimpz-Team"],
+    "summary": "DNS の変更を安全に公開します。",
+    "description": "Cloudflare のゾーンを確認し、承認後にだけレコードを公開します。",
+    "links": {},
+    "actions": [{"id": "list-zones", "effect": "read_only", "description": "ゾーンを一覧表示します。"}],
+    "integrations": [],
+    "stored_inputs": [{"id": "api-token", "label": "API トークン"}],
+}
+
+
+class InstalledDetailsTests(unittest.TestCase):
+    def details(self, team_response: transport.TeamResponse, assistant_id: str = "shimpz-cloudflare"):
+        with mock.patch.object(bridge, "assistant_details", return_value=team_response) as read:
+            response = summary.assistant_details("team_1", assistant_id, "ja")
+        read.assert_called_once_with("team_1", assistant_id, "ja")
+        return response
+
+    def test_returns_the_exact_binding_page_in_the_requested_locale(self) -> None:
+        response = self.details(transport.TeamResponse(200, {**PAGE, "trace_id": "a" * 32}))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(json.loads(response.body), PAGE)
+        self.assertEqual(response.headers["cache-control"], "no-store")
+
+    def test_refuses_another_assistant_locale_or_shape(self) -> None:
+        for body, assistant_id in (
+            (PAGE, "other-assistant"),
+            ({**PAGE, "locale": "en"}, "shimpz-cloudflare"),
+            ({**PAGE, "creators": []}, "shimpz-cloudflare"),
+        ):
+            with self.subTest(body=body, assistant_id=assistant_id), self.assertRaises(HTTPException) as caught:
+                self.details(transport.TeamResponse(200, body), assistant_id)
+            self.assertEqual(caught.exception.status_code, 502)
+
+    def test_passes_a_bounded_team_failure_through(self) -> None:
+        invalid = {"error": "Assistant needs replacement", "code": "assistant-manifest-invalid"}
+        response = self.details(transport.TeamResponse(409, invalid))
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(json.loads(response.body), invalid)
+
+
 if __name__ == "__main__":
     unittest.main()

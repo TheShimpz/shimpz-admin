@@ -305,6 +305,25 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 team.assistant_summary(team_id, assistant_id, locale)
         self.assertEqual(len(_TeamHandler.requests), before)
 
+    def test_reads_staged_and_installed_assistant_pages_in_one_closed_locale(self):
+        _TeamHandler.response_headers = {"Content-Type": "application/json"}
+        _TeamHandler.response_body = json.dumps({"locale": "pt"}).encode()
+
+        team.local_assistant_details("sha256:" + ("c" * 64), "pt")
+        self.assertEqual(_TeamHandler.requests[-1]["path"], "/v1/local-assistants/" + ("c" * 64) + "/details/pt")
+        team.assistant_details("team_1", "hello-pulse", "pt")
+        self.assertEqual(_TeamHandler.requests[-1]["path"], "/v1/teams/team_1/assistants/hello-pulse/details/pt")
+        before = len(_TeamHandler.requests)
+        for call in (
+            lambda: team.local_assistant_details("latest", "pt"),
+            lambda: team.local_assistant_details("sha256:" + ("c" * 64), "pt-BR"),
+            lambda: team.assistant_details("team_1", "Hello", "pt"),
+            lambda: team.assistant_details("team_1", "hello-pulse", None),
+        ):
+            with self.subTest(call=call), self.assertRaises(team.TeamRequestError):
+                call()
+        self.assertEqual(len(_TeamHandler.requests), before)
+
     def test_rejects_an_invalid_assistant_icon_response(self):
         _TeamHandler.response_headers = {"Content-Type": "application/octet-stream"}
         _TeamHandler.response_body = b"not an admitted icon"

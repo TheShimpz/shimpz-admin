@@ -26,6 +26,8 @@ def _assistant(**changes) -> dict[str, object]:
         "assistant_id": "shimpz-cloudflare",
         "name": "Shimpz Cloudflare",
         "summary": "Manages reviewed Cloudflare zones and DNS records.",
+        "description": "Reads your zones and records and changes one only after your approval.",
+        "links": {"github": "https://github.com/shimpz", "site": "https://shimpz.com/"},
         "assistant_version": "1.2.3",
         "creators": ["@shimpz"],
         "github": "https://github.com/TheShimpz/shimpz-cloudflare",
@@ -34,7 +36,16 @@ def _assistant(**changes) -> dict[str, object]:
         "platforms": ["linux/amd64", "linux/arm64"],
         "allowed_hosts": ["api.cloudflare.com"],
         "integrations": [{"id": "cloudflare", "provider": "cloudflare", "scopes": ["zone.read"]}],
-        "actions": [{"id": "list-zones", "integrations": ["cloudflare"], "human_requests": []}],
+        "stored_inputs": [{"id": "cloudflare-token", "label": "Cloudflare token"}],
+        "actions": [
+            {
+                "id": "list-zones",
+                "integrations": ["cloudflare"],
+                "human_requests": [],
+                "effect": "read_only",
+                "description": "List your zones.",
+            }
+        ],
     }
     value.update(changes)
     return value
@@ -93,11 +104,18 @@ class StoreCatalogTests(unittest.TestCase):
                     actions=("list-zones",),
                     assistant_version="1.2.3",
                     creators=("@shimpz",),
+                    page=store_catalog.CatalogPage(
+                        description="Reads your zones and records and changes one only after your approval.",
+                        links=(("site", "https://shimpz.com/"), ("github", "https://github.com/shimpz")),
+                        actions=(store_catalog.CatalogAction("list-zones", "read_only", "List your zones."),),
+                        stored_inputs=(("cloudflare-token", "Cloudflare token"),),
+                    ),
                 ),
             ),
         )
-        self.assertNotIn("github", repr(result))
-        self.assertNotIn("allowed_hosts", repr(result))
+        # The repository and egress hosts are checked but never projected; the GitHub link is the Creator's own.
+        self.assertNotIn("TheShimpz/shimpz-cloudflare", repr(result))
+        self.assertNotIn("api.cloudflare.com", repr(result))
 
     def test_admits_the_producer_catalog_size_and_no_more(self) -> None:
         # Store and Developers admit up to 1,000 Assistants; Admin must consume every valid producer catalog.
@@ -121,7 +139,14 @@ class StoreCatalogTests(unittest.TestCase):
         # Developers' install protocol admits up to 128 Actions per Assistant.
         def catalog(count: int) -> dict[str, object]:
             actions = [
-                {"id": f"action-{index:03d}", "integrations": [], "human_requests": []} for index in range(count)
+                {
+                    "id": f"action-{index:03d}",
+                    "integrations": [],
+                    "human_requests": [],
+                    "effect": "read_only",
+                    "description": "List your zones.",
+                }
+                for index in range(count)
             ]
             return {"version": 1, "locale": "en", "assistants": [_assistant(actions=actions)]}
 
@@ -129,6 +154,80 @@ class StoreCatalogTests(unittest.TestCase):
         self.assertEqual(len(assistant.actions), 128)
         with self.assertRaisesRegex(ValueError, "catalog Actions are invalid"):
             _validate(catalog(129))
+
+    def test_admits_the_page_copy_at_its_bounds_and_every_link_kind(self) -> None:
+        links = {
+            "site": "https://example.org/" + "a" * 236,
+            "github": "https://github.com/shimpz",
+            "x": "https://x.com/shimpz",
+            "youtube": "https://www.youtube.com/@shimpz",
+            "linkedin": "https://linkedin.com/company/shimpz",
+            "instagram": "https://instagram.com/shimpz",
+        }
+        actions = [
+            {
+                "id": "list-zones",
+                "integrations": [],
+                "human_requests": [],
+                "effect": "mutating",
+                "description": "x" * 120,
+            }
+        ]
+        value = _assistant(
+            description="d" * 499 + "\U0001f44b",
+            links=links,
+            actions=actions,
+            stored_inputs=[{"id": "token", "label": "l" * 120}],
+        )
+        (assistant,) = _validate({"version": 1, "locale": "en", "assistants": [value]})
+        self.assertEqual(len(assistant.page.description), 500)
+        self.assertEqual([kind for kind, _ in assistant.page.links], list(store_catalog.LINK_PREFIXES))
+        self.assertEqual(assistant.page.actions[0].effect, "mutating")
+        self.assertEqual(assistant.actions, ("list-zones",))
+
+    def test_refuses_page_copy_outside_its_contract(self) -> None:
+        refused = (
+            {"description": "d" * 501},
+            {"description": " untrimmed"},
+            {"description": "control\x85character"},
+            {"links": {"facebook": "https://facebook.com/shimpz"}},
+            {"links": {"github": "https://gitlab.com/shimpz"}},
+            {"links": {"x": "https://twitter.com/shimpz"}},
+            {"links": {"youtube": "https://youtube.com.example.org/watch"}},
+            {"links": {"site": "http://example.org/"}},
+            {"links": {"site": "https://example.org/" + "a" * 237}},
+            {"links": {"site": "https://user@example.org/"}},
+            {"links": []},
+            {"stored_inputs": [{"id": "token", "label": "l" * 121}]},
+            {"stored_inputs": [{"id": "token", "label": "Token", "description": "English."}]},
+            {"stored_inputs": [{"id": "token", "label": "Token"}, {"id": "token", "label": "Token"}]},
+            {
+                "actions": [
+                    {
+                        "id": "list-zones",
+                        "integrations": [],
+                        "human_requests": [],
+                        "effect": "deleting",
+                        "description": "List your zones.",
+                    }
+                ]
+            },
+            {
+                "actions": [
+                    {
+                        "id": "list-zones",
+                        "integrations": [],
+                        "human_requests": [],
+                        "effect": "read_only",
+                        "description": "x" * 121,
+                    }
+                ]
+            },
+            {"actions": [{"id": "list-zones", "integrations": [], "human_requests": [], "effect": "read_only"}]},
+        )
+        for changes in refused:
+            with self.subTest(changes=changes), self.assertRaises(ValueError):
+                _validate({"version": 1, "locale": "en", "assistants": [_assistant(**changes)]})
 
     def test_rejects_malformed_or_ambiguous_catalogs(self) -> None:
         mutations = (
@@ -170,12 +269,32 @@ class StoreCatalogTests(unittest.TestCase):
             ),
             lambda value: value["assistants"][0].update(actions=[{}]),
             lambda value: value["assistants"][0].update(
-                actions=[{"id": "Bad", "integrations": [], "human_requests": []}]
+                actions=[
+                    {
+                        "id": "Bad",
+                        "integrations": [],
+                        "human_requests": [],
+                        "effect": "read_only",
+                        "description": "List your zones.",
+                    }
+                ]
             ),
             lambda value: value["assistants"][0].update(
                 actions=[
-                    {"id": "list-zones", "integrations": [], "human_requests": []},
-                    {"id": "list-zones", "integrations": [], "human_requests": []},
+                    {
+                        "id": "list-zones",
+                        "integrations": [],
+                        "human_requests": [],
+                        "effect": "read_only",
+                        "description": "List your zones.",
+                    },
+                    {
+                        "id": "list-zones",
+                        "integrations": [],
+                        "human_requests": [],
+                        "effect": "read_only",
+                        "description": "List your zones.",
+                    },
                 ]
             ),
         )

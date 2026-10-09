@@ -67,8 +67,14 @@ class StoreCatalogIdentifierKindTests(unittest.TestCase):
     """The public Store catalog projects Developers manifests, so its Action ids are Developers identifiers."""
 
     def test_catalog_actions_and_integrations_are_developers_identifiers(self) -> None:
-        action = {"id": "a" * 64, "integrations": ["i" * 64], "human_requests": []}
-        self.assertEqual(store_catalog._actions([action]), ("a" * 64,))
+        action = {
+            "id": "a" * 64,
+            "integrations": ["i" * 64],
+            "human_requests": [],
+            "effect": "read_only",
+            "description": "List your zones.",
+        }
+        self.assertEqual([item.id for item in store_catalog._actions([action])], ["a" * 64])
         for invalid in ({"id": "a" * 65}, {"id": "dns.read"}, {"integrations": ["i" * 65]}):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 store_catalog._actions([{**action, **invalid}])

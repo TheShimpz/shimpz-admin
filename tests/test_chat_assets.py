@@ -2,6 +2,7 @@
 
 import asyncio
 import concurrent.futures
+import json
 import sys
 import unittest
 from pathlib import Path
@@ -30,10 +31,16 @@ class ChatAssetTests(unittest.TestCase):
             summary="Manage Cloudflare DNS.",
             source_digest="sha256:" + ("a" * 64),
             icon_digest="sha256:" + ("b" * 64),
-            integrations=(),
+            integrations=(store_catalog.CatalogIntegration("cloudflare", ("zone.read",)),),
             actions=("list-zones",),
             assistant_version="0.4.5",
             creators=("@shimpz",),
+            page=store_catalog.CatalogPage(
+                description="Lê seus domínios.",
+                links=(("github", "https://github.com/shimpz"),),
+                actions=(store_catalog.CatalogAction("list-zones", "read_only", "Ver seus domínios."),),
+                stored_inputs=(("token", "Chave"),),
+            ),
         )
         with mock.patch.object(assets, "submit_in_context", return_value=_future(result=(assistant,))) as submit:
             response = asyncio.run(assets.assistant_catalog("pt"))
@@ -41,15 +48,45 @@ class ChatAssetTests(unittest.TestCase):
         submit.assert_called_once_with(assets._CATALOG_EXECUTOR, store_catalog.CATALOG.get, "pt")
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertEqual(
-            response.body,
-            (
-                b'{"version":1,"locale":"pt","assistants":[{"assistant_id":"shimpz-cloudflare",'
-                b'"name":"Shimpz Cloudflare","summary":"Manage Cloudflare DNS.",'
-                b'"assistant_version":"0.4.5","creators":["@shimpz"],'
-                b'"source_digest":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",'
-                b'"icon_digest":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}'
-            ),
+            json.loads(response.body),
+            {
+                "version": 1,
+                "locale": "pt",
+                "assistants": [
+                    {
+                        "assistant_id": "shimpz-cloudflare",
+                        "name": "Shimpz Cloudflare",
+                        "summary": "Manage Cloudflare DNS.",
+                        "description": "Lê seus domínios.",
+                        "assistant_version": "0.4.5",
+                        "creators": ["@shimpz"],
+                        "links": {"github": "https://github.com/shimpz"},
+                        "source_digest": "sha256:" + "a" * 64,
+                        "icon_digest": "sha256:" + "b" * 64,
+                        "actions": [{"id": "list-zones", "effect": "read_only", "description": "Ver seus domínios."}],
+                        "integrations": [{"id": "cloudflare", "provider": "cloudflare"}],
+                        "stored_inputs": [{"id": "token", "label": "Chave"}],
+                    }
+                ],
+            },
         )
+
+    def test_a_catalog_entry_without_its_page_copy_fails_closed(self) -> None:
+        assistant = store_catalog.CatalogAssistant(
+            assistant_id="shimpz-cloudflare",
+            name="Shimpz Cloudflare",
+            summary="Manage Cloudflare DNS.",
+            source_digest="sha256:" + ("a" * 64),
+            icon_digest="sha256:" + ("b" * 64),
+            integrations=(),
+            actions=("list-zones",),
+        )
+        with (
+            mock.patch.object(assets, "submit_in_context", return_value=_future(result=(assistant,))),
+            self.assertRaises(assets.HTTPException) as caught,
+        ):
+            asyncio.run(assets.assistant_catalog("en"))
+        self.assertEqual(caught.exception.status_code, 502)
 
     def test_refuses_a_catalog_locale_outside_the_closed_set_before_any_work(self) -> None:
         with mock.patch.object(assets, "submit_in_context") as submit:

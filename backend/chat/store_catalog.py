@@ -1,7 +1,8 @@
 """Bounded Local discovery from the fixed public Store catalog, fetched and cached per interface language.
 
-Only each summary is localized, from the publication's own pack (ADR-0091); everything else is canonical, so chat
-planning reads the canonical English catalog while the Assistants page reads the Supervisor's interface language.
+Only the display copy (summary, description, Action descriptions, and Stored Input labels) is localized, from the
+publication's own pack (ADR-0091); everything else is canonical, so chat planning reads the canonical English catalog
+while the Assistants page reads the Supervisor's interface language.
 """
 
 import contextlib
@@ -19,7 +20,7 @@ from protocol.http.v1 import payload as team_contract
 
 CATALOG_HOST = "shimpz.com"
 CATALOG_PATH = "/api/assistants"
-# Chat planning and icon resolution use the canonical English catalog; summaries are its only localized field.
+# Chat planning and icon resolution use the canonical English catalog; display copy is its only localized field.
 PLANNING_LOCALE = "en"
 CATALOG_TIMEOUT_SECONDS = 5
 CATALOG_TTL_SECONDS = 60
@@ -59,6 +60,8 @@ _ASSISTANT_FIELDS = frozenset(
         "assistant_id",
         "name",
         "summary",
+        "description",
+        "links",
         "assistant_version",
         "creators",
         "github",
@@ -67,9 +70,26 @@ _ASSISTANT_FIELDS = frozenset(
         "platforms",
         "allowed_hosts",
         "integrations",
+        "stored_inputs",
         "actions",
     }
 )
+_ACTION_FIELDS = frozenset({"id", "integrations", "human_requests", "effect", "description"})
+_ACTION_EFFECTS = ("read_only", "mutating")
+# Localized display copy bounds (Assistant Spec v1): the description, and one line for an Action description or a
+# Stored Input label.
+DESCRIPTION_CHARS = 500
+LINE_CHARS = 120
+MAX_LINK_CHARS = 256
+# Creator links in display order, each with the exact https origins its kind admits; `site` admits any public host.
+LINK_PREFIXES: dict[str, tuple[str, ...]] = {
+    "site": ("https://",),
+    "github": ("https://github.com/",),
+    "x": ("https://x.com/",),
+    "youtube": ("https://youtube.com/", "https://www.youtube.com/"),
+    "linkedin": ("https://linkedin.com/", "https://www.linkedin.com/"),
+    "instagram": ("https://instagram.com/", "https://www.instagram.com/"),
+}
 
 
 class CatalogUnavailableError(OSError):
@@ -87,6 +107,25 @@ class CatalogIntegration:
 
 
 @dataclass(frozen=True, slots=True)
+class CatalogAction:
+    """One Action as the Assistant page shows it: its id, declared effect, and localized description."""
+
+    id: str
+    effect: str
+    description: str
+
+
+@dataclass(frozen=True, slots=True)
+class CatalogPage:
+    """The localized page copy and declarations of one publication; planning never reads it."""
+
+    description: str
+    links: tuple[tuple[str, str], ...]
+    actions: tuple[CatalogAction, ...]
+    stored_inputs: tuple[tuple[str, str], ...]
+
+
+@dataclass(frozen=True, slots=True)
 class CatalogAssistant:
     assistant_id: str
     name: str
@@ -97,6 +136,7 @@ class CatalogAssistant:
     actions: tuple[str, ...]
     assistant_version: str = ""
     creators: tuple[str, ...] = ()
+    page: CatalogPage | None = None
 
 
 def catalog_text(value: object, maximum: int) -> str:
@@ -109,6 +149,46 @@ def catalog_text(value: object, maximum: int) -> str:
     ):
         raise ValueError("catalog text is invalid")
     return value
+
+
+def display_text(value: object, maximum: int) -> str:
+    """One localized display text: bounded, trimmed, and free of C0, DEL, and C1 controls."""
+    text = catalog_text(value, maximum)
+    if any(0x80 <= ord(character) <= 0x9F for character in text):
+        raise ValueError("catalog display text is invalid")
+    return text
+
+
+def creator_links(value: object) -> tuple[tuple[str, str], ...]:
+    """The Creator's declared links in display order: each an https help-page URL on its kind's own host."""
+    if not isinstance(value, dict) or not set(value) <= set(LINK_PREFIXES):
+        raise ValueError("catalog links are invalid")
+    for kind, url in value.items():
+        if (
+            not isinstance(url, str)
+            or len(url) > MAX_LINK_CHARS
+            or team_contract.canonical_help_url(url) is None
+            or not url.startswith(LINK_PREFIXES[kind])
+        ):
+            raise ValueError("catalog link is invalid")
+    return tuple((kind, value[kind]) for kind in LINK_PREFIXES if kind in value)
+
+
+def _stored_inputs(value: object) -> tuple[tuple[str, str], ...]:
+    if not isinstance(value, list) or len(value) > 8:
+        raise ValueError("catalog Stored Inputs are invalid")
+    output: list[tuple[str, str]] = []
+    for item in value:
+        if (
+            not isinstance(item, dict)
+            or set(item) != {"id", "label"}
+            or team_contract.canonical_identifier(item["id"]) is None
+        ):
+            raise ValueError("catalog Stored Input is invalid")
+        output.append((item["id"], display_text(item["label"], LINE_CHARS)))
+    if len({identifier for identifier, _ in output}) != len(output):
+        raise ValueError("catalog Stored Inputs are duplicated")
+    return tuple(output)
 
 
 def _strings(value: object, maximum: int, item_maximum: int) -> tuple[str, ...]:
@@ -137,12 +217,12 @@ def _integrations(value: object) -> tuple[CatalogIntegration, ...]:
     return tuple(output)
 
 
-def _actions(value: object) -> tuple[str, ...]:
+def _actions(value: object) -> tuple[CatalogAction, ...]:
     if not isinstance(value, list) or not 1 <= len(value) <= MAX_ACTIONS:
         raise ValueError("catalog Actions are invalid")
-    output: list[str] = []
+    output: list[CatalogAction] = []
     for item in value:
-        if not isinstance(item, dict) or set(item) != {"id", "integrations", "human_requests"}:
+        if not isinstance(item, dict) or set(item) != _ACTION_FIELDS or item["effect"] not in _ACTION_EFFECTS:
             raise ValueError("catalog Action is invalid")
         action_id = item["id"]
         integrations = _strings(item["integrations"], 16, 64)
@@ -153,8 +233,8 @@ def _actions(value: object) -> tuple[str, ...]:
             or any(request not in _HUMAN_REQUEST_KINDS for request in requests)
         ):
             raise ValueError("catalog Action is invalid")
-        output.append(action_id)
-    if len(set(output)) != len(output):
+        output.append(CatalogAction(action_id, item["effect"], display_text(item["description"], LINE_CHARS)))
+    if len({action.id for action in output}) != len(output):
         raise ValueError("catalog Actions are duplicated")
     return tuple(output)
 
@@ -187,6 +267,7 @@ def _assistant(value: object) -> CatalogAssistant:
     allowed_hosts = _strings(value["allowed_hosts"], 32, 253)
     if any(host != host.lower() or "/" in host or ":" in host for host in allowed_hosts):
         raise ValueError("catalog allowed hosts are invalid")
+    actions = _actions(value["actions"])
     return CatalogAssistant(
         assistant_id=assistant_id,
         name=catalog_text(value["name"], 80),
@@ -194,9 +275,15 @@ def _assistant(value: object) -> CatalogAssistant:
         source_digest=value["source_digest"],
         icon_digest=value["icon_digest"],
         integrations=_integrations(value["integrations"]),
-        actions=_actions(value["actions"]),
+        actions=tuple(action.id for action in actions),
         assistant_version=value["assistant_version"],
         creators=creators,
+        page=CatalogPage(
+            description=display_text(value["description"], DESCRIPTION_CHARS),
+            links=creator_links(value["links"]),
+            actions=actions,
+            stored_inputs=_stored_inputs(value["stored_inputs"]),
+        ),
     )
 
 

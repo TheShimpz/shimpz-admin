@@ -497,6 +497,15 @@ def local_assistant_summary(image_id: object, locale: object) -> TeamResponse:
     return _call("GET", f"/v1/local-assistants/{digest.removeprefix('sha256:')}/summary/{canonical_locale}")
 
 
+def local_assistant_details(image_id: object, locale: object) -> TeamResponse:
+    """Return one exact unpublished image's page in one interface language, read from its own package and pack."""
+    digest = canonical_source_digest(image_id)
+    canonical_locale = team_contract.canonical_locale(locale)
+    if canonical_locale is None:
+        raise TeamRequestError("locale must be one interface language")
+    return _call("GET", f"/v1/local-assistants/{digest.removeprefix('sha256:')}/details/{canonical_locale}")
+
+
 def _assistant_path(team_id: object, assistant_id: object | None = None) -> str:
     canonical_id = canonical_team_id(team_id)
     base = f"/v1/teams/{canonical_id}/assistants"
@@ -517,6 +526,14 @@ def assistant_summary(team_id: object, assistant_id: object, locale: object) -> 
     if canonical_locale is None:
         raise TeamRequestError("locale must be one interface language")
     return _call("GET", f"{_assistant_path(team_id, assistant_id)}/summary/{canonical_locale}")
+
+
+def assistant_details(team_id: object, assistant_id: object, locale: object) -> TeamResponse:
+    """Return one installed Assistant's page in one interface language, read from its exact binding and pack."""
+    canonical_locale = team_contract.canonical_locale(locale)
+    if canonical_locale is None:
+        raise TeamRequestError("locale must be one interface language")
+    return _call("GET", f"{_assistant_path(team_id, assistant_id)}/details/{canonical_locale}")
 
 
 def install_assistant(team_id: object, payload: object) -> TeamResponse:
