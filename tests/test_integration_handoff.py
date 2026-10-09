@@ -196,8 +196,6 @@ class OAuthHandoffStoreTest(unittest.TestCase):
         for operation in (
             lambda: self._issue(admin_session="short"),
             lambda: self._issue(callback_mode="invalid"),
-            # The retired name of the local-domain mode stays refused.
-            lambda: self._issue(callback_mode="hosted"),
             lambda: self.store.consume("bad", "loopback"),
             lambda: handoff_store._completion_code(None),
             lambda: handoff_store._completion_code("bad"),

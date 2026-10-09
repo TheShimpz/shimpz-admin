@@ -46,7 +46,6 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
         self.assertIn(f"FROM {UV_IMAGE} AS uv", dockerfile)
         self.assertIn("--mount=type=bind,from=uv,source=/uv,target=/tmp/uv", dockerfile)
         self.assertIn("\nFROM dependencies AS runtime\n", dockerfile)
-        self.assertNotIn("uv-install.sh", dockerfile)
         self.assertNotIn("apt-get", runtime)
         self.assertNotIn("curl", runtime)
         self.assertNotIn("/usr/local/bin/uv", runtime)

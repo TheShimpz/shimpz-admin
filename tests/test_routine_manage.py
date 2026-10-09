@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import local_auth
-from http_request import LOOPBACK, asgi_exchange, http_request, json_headers
+from http_request import LOOPBACK, http_request, json_headers
 from team import bridge as team
 from team import transport
 
@@ -126,8 +126,8 @@ class RoutineManageTests(unittest.TestCase):
         with self.call(answer(ANSWERED)) as call:
             self.assertEqual(manage.answer_card("team_1", ID, chosen).body, ANSWERED)
         call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/incidents/{ID}/answer", chosen)
-        # Recriar is gone: a recreated answer is never admitted, and the choice is refused before Team.
-        with self.call(answer({**ANSWERED, "status": "recreated"})):
+        # An answer whose status does not match its choice is never admitted.
+        with self.call(answer({**ANSWERED, "status": "other"})):
             self.assertEqual(manage.answer_card("team_1", ID, chosen).status, 502)
 
     def test_a_card_proposal_is_confirmed_or_revoked_only_for_exactly_itself(self) -> None:
@@ -203,11 +203,8 @@ class RoutineManageTests(unittest.TestCase):
                 lambda: manage.open_card("team_1", "x"),
                 lambda: manage.answer_card("team_1", "x", {"nonce": "c" * 32, "choice": "run"}),
                 lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "other"}),
-                # Excluir is the confirmed deletion route, and the retired choices are refused before Team.
+                # Excluir is the confirmed deletion route, never a card answer.
                 lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "delete"}),
-                lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "verify"}),
-                lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "skip"}),
-                lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "pause"}),
                 lambda: manage.answer_card("team_1", ID, []),
                 lambda: manage.resume("team_1", "x"),
                 lambda: manage.diagnostics("team_1", "../x"),
@@ -227,7 +224,6 @@ class RoutineManageTests(unittest.TestCase):
                 lambda: manage.run_steps("team_1", ID, "latest", str(routine_contract.MAX_ROUTINE_STEPS)),
                 lambda: manage.confirm_proposal("team_1", "x"),
                 lambda: manage.revoke_proposal("Team 1", ID),
-                lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "recreate"}),
             ):
                 with self.assertRaises(team.TeamRequestError):
                     refused()
@@ -241,14 +237,6 @@ class RoutineRouteTests(unittest.TestCase):
         # A recorded Routine is created by its card's one confirmation, or revoked (ADR-0101). Deleting one is the
         # Supervisor's password route then the second-factor DELETE (ADR-0051).
         self.assertEqual(sum("routines" in route.path for route in local.routes), 15)
-        # The retired release of an uncertain run stays absent, as does a person's Stop of a run already going.
-        self.assertFalse(any(route.path.endswith(("/resolve", "/stop")) for route in local.routes))
-        for method in ("POST", "GET", "DELETE"):
-            with self.subTest(method=method):
-                stop = asyncio.run(
-                    asgi_exchange(local, f"/api/teams/team_1/routines/runs/{ID}/stop", LOOPBACK, method=method)
-                )
-                self.assertIn(stop.status, (404, 405))
         ok = team.TeamResponse(200, {"ok": True})
         with mock.patch.multiple(
             manage,

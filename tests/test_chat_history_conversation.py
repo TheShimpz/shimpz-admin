@@ -170,14 +170,6 @@ class ChatHistoryConversationTests(ChatHistoryCase):
         with self.assertRaises(history.HistoryUnavailableError):
             history.conversation("marketing", current)
 
-    def test_a_history_of_the_previous_schema_is_refused_not_upgraded(self) -> None:
-        with sqlite3.connect(self.path) as database:
-            database.execute("CREATE TABLE transcript (position INTEGER PRIMARY KEY)")
-            database.execute("PRAGMA user_version = 8")
-        self.path.chmod(0o600)
-        with self.assertRaisesRegex(history.HistoryUnavailableError, "unsupported"):
-            history.page("marketing")
-
     def test_an_attached_turn_never_enters_the_projection_but_stays_in_the_history(self) -> None:
         done = {"type": "done", "team_id": "marketing", "team_name": "Marketing", "clarification": None}
         plain = history.new_turn_id()

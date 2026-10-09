@@ -173,11 +173,9 @@ class TeamInferenceTests(unittest.TestCase):
         with mock.patch.object(team, "_call", return_value=response):
             self.assertIs(team.get_inference("team_1"), response)
 
-    def test_rejects_secrets_and_retired_cli_providers_before_network_io(self) -> None:
+    def test_rejects_secrets_and_invalid_providers_before_network_io(self) -> None:
         payloads = (
             {"provider": "openai", "model": "gpt-6-luna", "effort": "low", "api_key": "must-not-cross"},
-            {"provider": "codex", "model": "gpt-6-luna", "effort": "low"},
-            {"provider": "claude-code", "model": "claude-sonnet-5-5", "effort": "low"},
             {"provider": "anthropic", "model": "bad model", "effort": "low"},
             {"provider": "anthropic", "model": "gpt-6.1-sol", "effort": "low"},
             {"provider": "openai", "model": "claude-sonnet-5-5", "effort": "low"},

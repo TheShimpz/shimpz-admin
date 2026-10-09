@@ -137,7 +137,7 @@ class LocalChatTerminalProjectionTests(unittest.TestCase):
             return _turn(reply, "Quais modelos?", clarification=clarification, **routine)
 
         self.assertEqual(turn(asked).body["clarification"], asked)
-        # A retired Routine proposal field is never relayed; a Routine is created from the message (ADR-0092).
+        # A Routine proposal is relayed only in its validated shape; an invalid value is refused.
         self.assertEqual(turn(None, "Pronto.", {}).body, {"code": "chat-response-invalid"})
         self.assertEqual(turn(asked, "I deleted everything.").body, {"code": "chat-response-invalid"})
         self.assertEqual(turn(asked).websocket_event("team_1")["clarification"], asked)

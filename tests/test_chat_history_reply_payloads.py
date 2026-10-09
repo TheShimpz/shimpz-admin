@@ -89,11 +89,11 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
 
-    def test_a_reply_never_carries_a_retired_routine_proposal(self) -> None:
+    def test_a_reply_refuses_an_invalid_routine_proposal(self) -> None:
         turn_id = history.new_turn_id()
         self.assertTrue(history.append_user("marketing", turn_id, "Todo dia às 9, liste as zonas"))
         done = done_event("Pronto: todo dia às 9 listo as zonas.")
-        # A Routine is created from the message itself (ADR-0092); a reply with a proposal card is refused.
+        # A reply carries a Routine proposal only in its validated shape; an invalid value is refused.
         with self.assertRaises(ValueError):
             history.append_reply("marketing", turn_id, {**done, "routine_proposal": None})
         self.assertTrue(history.append_reply("marketing", turn_id, done))

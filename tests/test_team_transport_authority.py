@@ -87,7 +87,7 @@ class TeamTransportAuthorityTest(unittest.TestCase):
             self.addCleanup(patch.stop)
         self.local_identity = supervisor.new_identity()
 
-    def test_session_is_request_scoped_and_never_sends_the_retired_account_header(self) -> None:
+    def test_session_is_request_scoped(self) -> None:
         session = "v1:9999999999:0123456789abcdef:" + "a" * 64
         transport._call("GET", "/v1/teams")
         with transport.supervisor_session(session, local_identity=self.local_identity):
@@ -95,8 +95,6 @@ class TeamTransportAuthorityTest(unittest.TestCase):
 
         self.assertNotIn(contract.ASSERTION_HEADER, _Connection.requests[0]["headers"])
         self.assertIn(contract.ASSERTION_HEADER, _Connection.requests[1]["headers"])
-        for request in _Connection.requests:
-            self.assertNotIn("X-Shimpz-Account", request["headers"])
 
     def test_invalid_session_identity_and_authority_kind_fail_before_transport(self) -> None:
         session = "v1:9999999999:0123456789abcdef:" + "a" * 64

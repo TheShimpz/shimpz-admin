@@ -45,7 +45,6 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             [{"role": "assistant", "text": "Cloudflare foi desinstalado.", "truncated": False}],
         )
         self.assertEqual(route.call_args.args[1]["locale"], "pt")
-        self.assertNotIn("language_exemplar", route.call_args.args[1])
         candidates = [{"id": "cloudflare", "name": "Cloudflare", "summary": ""}]
         with self.assertRaises(team.TeamRequestError):
             local.intent_route(

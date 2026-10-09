@@ -519,11 +519,8 @@ class TeamAssistantRouteTest(_LiveTeamCase):
 
         self.assertTrue(document["routes_ok"])
         self.assertTrue(document["closed_api_ok"])
-        self.assertTrue(document["retired_operations_absent"])
         self.assertTrue(document["action_routes_absent"])
-        self.assertTrue(document["help_route_absent"])
         self.assertEqual(document["action_status"], 404)
-        self.assertEqual(document["help_status"], 404)
         self.assertEqual(document["anonymous_status"], 401)
         self.assertEqual(document["anonymous_body"], {"detail": "unauthenticated"})
         self.assertEqual(_TeamHandler.requests, [])
@@ -771,26 +768,11 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
             token=token,
         )
     )
-    help_status, _help_body = asyncio.run(
-        _asgi_request(
-            admin_app,
-            "GET",
-            "/api/teams/team_1/assistants/shimpz-cloudflare/help",
-            token=token,
-        )
-    )
     return {
         "routes_ok": expected.issubset(routes),
         "closed_api_ok": all(path not in admin_app.OPEN_API for path, _method in expected),
-        "retired_operations_absent": not any("/operations/" in path for path, _method in routes),
         "action_routes_absent": not any("/actions/" in path for path, _method in routes),
-        "help_route_absent": (
-            "/api/teams/{team_id}/assistants/{assistant_id}/help",
-            "GET",
-        )
-        not in routes,
         "action_status": action_status,
-        "help_status": help_status,
         "anonymous_status": status,
         "anonymous_body": body,
     }

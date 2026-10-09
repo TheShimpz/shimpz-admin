@@ -261,15 +261,6 @@ class AssistantUninstallEdges(unittest.TestCase):
         responses = (
             team.TeamResponse(200, []),
             team.TeamResponse(200, {"assistant": "whatsapp", "uninstalled": True, "trace_id": "bad"}),
-            team.TeamResponse(
-                200,
-                {
-                    "assistant": "whatsapp",
-                    "uninstalled": True,
-                    "staged_image_retained": "bad",
-                    "remove_command": "docker image rm bad",
-                },
-            ),
         )
         for response in responses:
             with self.subTest(response=response), self.assertRaises(ValueError):

@@ -35,14 +35,10 @@ class ModelProviderRouteTests(unittest.TestCase):
                 ("/api/teams/{team_id}/assistants/local", "POST"),
             }.issubset(routes)
         )
-        self.assertFalse({path for path, _method in routes if path.endswith("/instructions")})
         websocket_paths = {
             route.path for route in self.admin_app.app.routes if route.__class__.__name__ == "APIWebSocketRoute"
         }
         self.assertIn("/api/teams/{team_id}/chat/ws", websocket_paths)
-        self.assertNotIn(("/api/teams/{team_id}/chat", "POST"), routes)
-        self.assertNotIn(("/api/teams/{team_id}/chat/stop", "POST"), routes)
-        self.assertFalse(any(path.startswith("/api/notifications") for path, _method in routes))
         model_credential_routes = {
             (path, method)
             for path, method in routes

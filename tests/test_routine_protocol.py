@@ -96,12 +96,12 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
         self.assertEqual(routine_contract.literal_preview({"a": "x\u202e"}), '{"a":"x\\u202e"}')
         self.assertEqual(len(routine_contract.literal_preview("y" * 300)), routine_contract.MAX_PREVIEW_CHARS)
         self.assertFalse(routine_contract._input({"member": "", "source": "literal", "value": "1"}, 1))
-        # Every plan has a step, and the retired decision mode and condition are refused (ADR-0101, 2026-10-07).
+        # Every plan has a step, and only a closed output mode is admitted.
         self.assertEqual(
             routine_contract.canonical_disposition({"mode": "none", "step": None}, 1), {"mode": "none", "step": None}
         )
         self.assertIsNone(routine_contract.canonical_disposition({"mode": "none", "step": None}, 0))
-        self.assertIsNone(routine_contract.canonical_disposition({"mode": "decide", "step": None, "when": "always"}, 1))
+        self.assertIsNone(routine_contract.canonical_disposition({"mode": "other", "step": None}, 1))
         literal = CARD["steps"][1]["inputs"][0]
         self.assertFalse(routine_proposal_contract._card_input([], 1))
         self.assertFalse(routine_proposal_contract._card_input({**literal, "origin": "guess"}, 2))

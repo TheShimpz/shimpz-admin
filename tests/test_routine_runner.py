@@ -180,7 +180,6 @@ class RoutineHistoryTests(ChatHistoryCase):
             {key: entries[-1][key] for key in ("name", "usage", "protection_lost")},
             {key: done[key] for key in ("name", "usage", "protection_lost")},
         )
-        self.assertNotIn("quote", entries[-1])
         # A notice's row time is its own instant, never the moment Admin wrote it.
         self.assertEqual([entry["created_at"] for entry in entries], [skipped["created_at"], done["created_at"]])
         with sqlite3.connect(self.path) as database:

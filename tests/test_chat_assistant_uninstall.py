@@ -160,20 +160,14 @@ class AssistantUninstallExecutionTests(unittest.TestCase):
             ):
                 self.assertEqual(assistant_uninstall.uninstall(_proposal()), expected)
 
-    def test_local_uninstall_rejects_retired_image_fields(self) -> None:
-        image_id = "sha256:" + ("d" * 64)
+    def test_local_uninstall_rejects_an_unknown_field(self) -> None:
         valid = assistant_uninstall.team.TeamResponse(
             200,
             {"assistant": "shimpz-cloudflare", "uninstalled": True},
         )
-        retired = assistant_uninstall.team.TeamResponse(
+        extra = assistant_uninstall.team.TeamResponse(
             200,
-            {
-                "assistant": "shimpz-cloudflare",
-                "uninstalled": True,
-                "staged_image_retained": image_id,
-                "remove_command": f"docker image rm {image_id}",
-            },
+            {"assistant": "shimpz-cloudflare", "uninstalled": True, "unexpected": True},
         )
         self.assertTrue(assistant_uninstall._uninstall_body(valid, "shimpz-cloudflare"))
         self.assertEqual(
@@ -181,9 +175,9 @@ class AssistantUninstallExecutionTests(unittest.TestCase):
             assistant_uninstall.UninstallResult(200, True),
         )
         with self.assertRaises(ValueError):
-            assistant_uninstall._uninstall_body(retired, "shimpz-cloudflare")
+            assistant_uninstall._uninstall_body(extra, "shimpz-cloudflare")
         self.assertEqual(
-            assistant_uninstall._project_result(retired, "shimpz-cloudflare"),
+            assistant_uninstall._project_result(extra, "shimpz-cloudflare"),
             assistant_uninstall.UninstallResult(502),
         )
 
