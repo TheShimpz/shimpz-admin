@@ -55,7 +55,7 @@ def canonical_challenge_id(value: object) -> str:
 
 def canonical_team_chat_body(payload: object) -> dict[str, object]:
     """Validate the Team chat body: the browser's chat fields plus Admin's conversation window and request identity."""
-    if not isinstance(payload, dict) or set(payload) != team_contract.LOCAL_CHAT_BODY_FIELDS:
+    if not isinstance(payload, dict) or set(payload) != team_contract.CHAT_BODY_FIELDS:
         raise TeamRequestError("Team chat requires the chat fields, conversation, and request")
     conversation = team_contract.canonical_conversation(payload["conversation"])
     if conversation is None:
