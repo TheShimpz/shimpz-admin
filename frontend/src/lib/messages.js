@@ -567,11 +567,7 @@ export const messages = {
       "retryAction": "Try again",
       "working": "Installing…",
       "genericFailure": "The local evaluation could not be completed.",
-      "frameLoading": "Loading the Assistant Store…",
-      "frameFailureTitle": "The Store did not finish loading.",
-      "frameFailureLead": "Your local Team is unchanged. Reload the embedded Store or open the canonical page in a new tab.",
-      "retryStore": "Reload Store",
-      "openStore": "Open Store"
+      "retryStore": "Reload Store"
     },
     assistantIntegrations: {
       "trigger": "Assistant integrations",
@@ -971,11 +967,7 @@ export const messages = {
       "retryAction": "Tentar novamente",
       "working": "Instalando…",
       "genericFailure": "Não foi possível concluir a avaliação local.",
-      "frameLoading": "Carregando a Store de Assistants…",
-      "frameFailureTitle": "A Store não terminou de carregar.",
-      "frameFailureLead": "Seu Time local não foi alterado. Recarregue a Store incorporada ou abra a página oficial em uma nova aba.",
-      "retryStore": "Recarregar Store",
-      "openStore": "Abrir Store"
+      "retryStore": "Recarregar Store"
     },
     assistantIntegrations: {
       "trigger": "Integrações dos Assistants",
@@ -1375,11 +1367,7 @@ export const messages = {
       "retryAction": "Reintentar",
       "working": "Instalando…",
       "genericFailure": "No se pudo completar la evaluación local.",
-      "frameLoading": "Cargando la Store de Assistants…",
-      "frameFailureTitle": "La Store no terminó de cargar.",
-      "frameFailureLead": "Tu Equipo local no cambió. Recarga la Store integrada o abre la página oficial en una pestaña nueva.",
-      "retryStore": "Recargar Store",
-      "openStore": "Abrir Store"
+      "retryStore": "Recargar Store"
     },
     assistantIntegrations: {
       "trigger": "Integraciones de Assistants",
@@ -1779,11 +1767,7 @@ export const messages = {
       "retryAction": "重试",
       "working": "正在安装…",
       "genericFailure": "无法完成本地评估。",
-      "frameLoading": "正在加载 Assistant Store…",
-      "frameFailureTitle": "Store 未能完成加载。",
-      "frameFailureLead": "你的本地团队未发生变化。请重新加载嵌入的 Store，或在新标签页中打开官方页面。",
-      "retryStore": "重新加载 Store",
-      "openStore": "打开 Store"
+      "retryStore": "重新加载 Store"
     },
     assistantIntegrations: {
       "trigger": "Assistant 集成",
@@ -2183,11 +2167,7 @@ export const messages = {
       "retryAction": "Réessayer",
       "working": "Installation…",
       "genericFailure": "L’évaluation locale n’a pas pu aboutir.",
-      "frameLoading": "Chargement du Store d’Assistants…",
-      "frameFailureTitle": "Le Store n’a pas fini de se charger.",
-      "frameFailureLead": "Votre Équipe locale n’a pas changé. Rechargez le Store intégré ou ouvrez la page officielle dans un nouvel onglet.",
-      "retryStore": "Recharger le Store",
-      "openStore": "Ouvrir le Store"
+      "retryStore": "Recharger le Store"
     },
     assistantIntegrations: {
       "trigger": "Intégrations des Assistants",
@@ -2587,11 +2567,7 @@ export const messages = {
       "retryAction": "Erneut versuchen",
       "working": "Wird installiert…",
       "genericFailure": "Die lokale Prüfung konnte nicht abgeschlossen werden.",
-      "frameLoading": "Der Assistant Store wird geladen…",
-      "frameFailureTitle": "Der Store wurde nicht vollständig geladen.",
-      "frameFailureLead": "Dein lokales Team ist unverändert. Lade den eingebetteten Store neu oder öffne die offizielle Seite in einem neuen Tab.",
-      "retryStore": "Store neu laden",
-      "openStore": "Store öffnen"
+      "retryStore": "Store neu laden"
     },
     assistantIntegrations: {
       "trigger": "Assistant-Integrationen",
@@ -2991,11 +2967,7 @@ export const messages = {
       "retryAction": "再試行",
       "working": "インストールしています…",
       "genericFailure": "ローカルでの評価を完了できませんでした。",
-      "frameLoading": "Assistant Store を読み込んでいます…",
-      "frameFailureTitle": "Store の読み込みが完了しませんでした。",
-      "frameFailureLead": "ローカルのチームは変更されていません。埋め込まれた Store を再読み込みするか、公式ページを新しいタブで開いてください。",
-      "retryStore": "Store を再読み込み",
-      "openStore": "Store を開く"
+      "retryStore": "Store を再読み込み"
     },
     assistantIntegrations: {
       "trigger": "Assistant のインテグレーション",
@@ -3395,11 +3367,7 @@ export const messages = {
       "retryAction": "أعد المحاولة",
       "working": "جارٍ التثبيت…",
       "genericFailure": "تعذّر إكمال التقييم المحلي.",
-      "frameLoading": "جارٍ تحميل Assistant Store…",
-      "frameFailureTitle": "لم يكتمل تحميل Store.",
-      "frameFailureLead": "لم يتغيّر فريقك المحلي. أعد تحميل Store المضمَّن أو افتح الصفحة الرسمية في علامة تبويب جديدة.",
-      "retryStore": "إعادة تحميل Store",
-      "openStore": "فتح Store"
+      "retryStore": "إعادة تحميل Store"
     },
     assistantIntegrations: {
       "trigger": "حسابات Assistants",
