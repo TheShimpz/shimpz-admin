@@ -666,8 +666,12 @@
 />
 
 <style>
+  /* From the sidebar to the viewport's edge, so the body starts one page step in, under the header band's icon. */
   .sheet {
     --rule: 1px solid var(--shimpz-color-border-subtle);
+    width: 100cqw;
+    margin-inline: calc((100% - 100cqw) / 2);
+    padding-inline: var(--shimpz-page-padding);
     display: grid;
     /* The header band's divider sits one section step from the content on both sides. */
     gap: var(--gap-section);
@@ -676,8 +680,7 @@
 
   /* Header band from the sidebar to the viewport's edge, like the catalog; the action sits at its far right. */
   .hero {
-    width: 100cqw;
-    margin-inline: calc((100% - 100cqw) / 2);
+    margin-inline: calc(-1 * var(--shimpz-page-padding));
     margin-block-start: calc(-1 * var(--shimpz-page-padding));
     padding: var(--gap-panel) var(--shimpz-page-padding) var(--gap-section);
     background: linear-gradient(180deg, color-mix(in oklab, var(--shimpz-color-cyan) 6%, var(--shimpz-color-surface)), var(--shimpz-color-bg));

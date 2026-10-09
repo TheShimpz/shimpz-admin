@@ -375,16 +375,19 @@
 </section>
 
 <style>
+  /* From the sidebar to the viewport's edge: the header starts where every row's icon does, one page step in. */
   .assistant-catalog {
     display: grid;
     gap: var(--gap-item);
+    width: 100cqw;
+    margin-inline: calc((100% - 100cqw) / 2);
+    padding-inline: var(--shimpz-page-padding);
   }
-  /* Two per row, edge to edge across the content column. */
+  /* Two per row, edge to edge; each row keeps the page step inside. */
   .assistant-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    width: 100cqw;
-    margin-inline: calc((100% - 100cqw) / 2);
+    margin-inline: calc(-1 * var(--shimpz-page-padding));
   }
   .catalog-header { display: grid; gap: var(--gap-item); }
   .catalog-team { display: grid; gap: var(--gap-inside); }
