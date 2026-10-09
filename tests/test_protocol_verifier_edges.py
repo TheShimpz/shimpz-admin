@@ -34,7 +34,7 @@ def _fresh_modules(*names: str):
 def _execute(source: Path, mutate=None, *, modules: dict[str, object] | None = None) -> str:
     with tempfile.TemporaryDirectory() as temporary:
         mirror = Path(temporary) / source.parent.name
-        shutil.copytree(source.parent, mirror)
+        shutil.copytree(source.parent, mirror, ignore=shutil.ignore_patterns("__pycache__"))
         if mutate is not None:
             mutate(mirror)
         output = io.StringIO()
