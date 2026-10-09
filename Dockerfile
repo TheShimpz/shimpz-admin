@@ -66,7 +66,7 @@ RUN mkdir -p /data /run/shimpz-local-release /run/shimpz-local-reset /run/shimpz
 # Every source copy below is a linked layer that no other copy depends on, so changing one file rebuilds only its
 # own layer and the final import check.
 WORKDIR /app/backend
-COPY --link backend/app.py backend/auth.py backend/authentication_state.py backend/browser.py backend/decision.py \
+COPY --link backend/app.py backend/audit.py backend/auth.py backend/authentication_state.py backend/browser.py backend/decision.py \
     backend/local_auth.py backend/models.py \
     backend/model_catalog.json \
     backend/state.py backend/supervisor.py ./

@@ -39,6 +39,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
     def setUpClass(cls) -> None:
         root = app_import.temporary_root(cls)
         cls.admin_app = app_import.load_app(root)
+        app_import.replace_for_class(cls, cls.admin_app.state, "STORE_PATH", root / "admin.json")
         app_import.replace_for_class(cls, cls.admin_app.chat_history, "STORE_PATH", root / "chat-history.sqlite3")
 
     def assert_sync_status(self, expected: int, action) -> None:

@@ -17,7 +17,9 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 import auth
 import local_auth
+import state
 from mfa import passkeys, tickets, totp
+from mfa_helper import isolated_store
 
 ORIGIN = "http://localhost:7777"
 
@@ -47,6 +49,9 @@ def _request(
 
 
 class LocalAuthEdgeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        isolated_store(self, state)
+
     def test_json_body_boundary_rejects_every_ambiguous_shape(self) -> None:
         cases = (
             (_request({}, content_type="text/plain"), 415),
@@ -134,7 +139,7 @@ class LocalAuthEdgeTests(unittest.TestCase):
                 mock.patch.object(local_auth.state, "verify_totp", return_value=result),
                 self.assertRaises(HTTPException) as totp_error,
             ):
-                local_auth._complete_totp("000000", enrollment=False, generation=2)
+                local_auth._complete_totp("000000", enrollment=False, generation=2, origin=ORIGIN)
             self.assertEqual(totp_error.exception.status_code, expected)
 
     def test_setup_and_login_reject_wrong_fields_and_resume_exact_enrollment(self) -> None:

@@ -43,6 +43,7 @@ from team import order as team_order
 from team import snapshots as team_snapshots
 from team import summary as team_summary
 
+import audit
 from action import stored_input as action_stored_input
 from chat import assets as chat_assets
 from chat import human as chat_human
@@ -155,6 +156,16 @@ def _password_recovery_response() -> JSONResponse:
     return JSONResponse(
         {"code": "password-recovery-required", "detail": "Supervisor password recovery is required"},
         status_code=503,
+    )
+
+
+@app.exception_handler(audit.AuditUnavailableError)
+async def _audit_unavailable(_request: Request, _exc: audit.AuditUnavailableError):
+    log.error("Local Supervisor authentication audit is unavailable")
+    return JSONResponse(
+        {"detail": "Supervisor authentication audit is unavailable"},
+        status_code=503,
+        headers={"Cache-Control": "no-store"},
     )
 
 
@@ -334,6 +345,8 @@ async def logout(request: Request):
     if raw_origin is not None and (origin != raw_origin or origin not in _allowed_browser_origins()):
         raise HTTPException(status_code=403, detail="logout origin is not admitted")
     if session_token:
+        if auth.verify_session(state.get().get("session_secret", ""), session_token) is not None:
+            audit.record("logout", outcome="ok", origin=origin)
         try:
             await asyncio.to_thread(state.revoke_sessions_for_logout, session_token)
         except OSError:
@@ -499,6 +512,9 @@ async def teams_destroy(team_id: str, request: Request):
         raise HTTPException(status_code=503, detail="Supervisor password verification is unavailable") from None
     if not password_ok:
         log.info("Team deletion password confirmation failed")
+        audit.record(
+            "password-rejected", outcome="denied", origin=chat_ws_common.canonical_origin(request.headers.get("origin"))
+        )
         raise HTTPException(status_code=403, detail="Supervisor password is incorrect")
 
     return await run_in_threadpool(

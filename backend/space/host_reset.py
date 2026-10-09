@@ -18,6 +18,8 @@ from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+import audit
+
 CAPABILITY_PATH = Path(os.environ.get("SHIMPZ_HOST_RESET_CAPABILITY_FILE") or "/run/shimpz-local-reset/capability.json")
 MAX_CAPABILITY_BYTES = 1024
 MAX_CAPABILITY_SECONDS = 120
@@ -132,6 +134,7 @@ async def reset(
         digest, expires_at = verify_capability(capability)
     except HostResetCapabilityError:
         log.info("Local Space host reset denied: host capability unavailable")
+        audit.record("host-reset", outcome="denied")
         raise HTTPException(status_code=403, detail="host reset authorization is unavailable") from None
     if setup_lock.locked():
         log.info("Local Space host reset deferred: setup or reset is busy")
@@ -163,7 +166,9 @@ async def reset(
             raise RuntimeError("host reset authority is unavailable")
         if not state.consume_host_reset_capability(digest, expires_at):
             log.info("Local Space host reset denied: consumed host capability")
+            audit.record("host-reset", outcome="denied")
             raise HTTPException(status_code=403, detail="host reset authorization is unavailable")
+        audit.record("host-reset", outcome="ok")
         try:
             response = await run_in_threadpool(action)
         except Exception:
