@@ -9,3 +9,5 @@ FROM mcr.microsoft.com/playwright:v1.62.0-noble@sha256:baed2032d533817f3dbe6425d
 RUN dpkg --purge nodejs
 COPY --from=node /usr/local/bin/node /usr/local/bin/node
 RUN test "$(node --version)" = v26.11.1
+# The image never runs as root; the gates also pass the invoking user explicitly.
+USER 1001:1001
