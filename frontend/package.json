@@ -13,7 +13,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "measure:assistants": "pnpm build && node perf/assistant-catalog.mjs",
-    "check": "svelte-check --tsconfig ./.svelte-kit/tsconfig.json",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./jsconfig.json --fail-on-warnings",
     "test": "node tests/run-tests.mjs",
     "test:e2e": "playwright test"
   },
