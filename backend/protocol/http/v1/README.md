@@ -123,6 +123,31 @@ most 8 MiB, and the original lowercase SHA-256 (`payload.canonical_file_disclosu
 Admin renders as text, never a Creator translation parameter. Team binds the disclosed file to the challenge and
 delivers only bytes with that size and digest; any other challenge carries no `file`.
 
+Team's own Action confirmation policy (ADR-0110) is a Team setting only a Supervisor session reads and changes, on by
+default: `GET /v1/teams/:team_id/action-confirmation` and `PUT` with exactly `{"confirm_mutating": true|false}` both
+answer `{team_id, confirm_mutating}`. While it is on, a chat Action whose reviewed `effect` is `mutating` and that
+declares no authorization capability pauses before its workload starts with a `human-required` challenge whose
+`request` is Team's, never the Assistant's: exactly `{kind: "confirmation", ordinal: 0, policy: "mutating-actions",
+binding, fingerprint}`, where `binding` is the lowercase SHA-256 of the canonical JSON naming the policy, the
+principal, the Team, the Assistant, its immutable image and container, the Action, its interrupt, and the canonical
+validated arguments, and `fingerprint` is the SHA-256 of the canonical request without it, as for every request. It
+references no catalog copy, so `rendered` is `{}` and Admin shows its own localized confirmation copy; it is answered
+with `submit` and exactly `true`, or `deny`. The answer is kept by Team beside the Action's replay transcript and is
+never sent to the workload; a confirmation of any other binding or argument authorizes nothing. An Action that
+declares an authorization keeps its one ceremony (ADR-0046), a compiled Routine run is unchanged (its card granted
+each Action), and a direct `assistant-invoke` is itself the Supervisor's request-bound decision on its exact body.
+
+Every chat confirmation challenge, Team's `confirmation` and a declared `approval`, `auth:password`, `auth:totp`, or
+`auth:passkey`, also carries `input`, the platform-rendered projection of the Action's validated input
+(`payload.canonical_input_projection`): exactly `{fields, omitted}`, where `fields` holds at most 16 rows
+`{name, value, truncated}` in strictly ascending `name` order, one per top-level argument. `name` (1 to 128
+characters) is the argument's name and `value` (1 to 400) its canonical JSON text, so a string stays quoted; both are
+printable because every other character is escaped as a visible `\uXXXX`. `truncated` is true when either had to be
+cut to its bound, and `omitted` counts the arguments past the sixteenth row (it is nonzero only with 16 rows). Admin
+renders the rows as literal text and must show both a cut row and the count of omitted arguments, so no argument is
+ever hidden silently. Team's `confirmation` always carries `input`; a Routine run's challenge and any input request
+carry none.
+
 A completed Team chat terminal body carries `clarification`, either `null` or one exact Brain
 multiple-choice question (ADR-0081): `question` (at most 240 characters), two to five `options` with a
 `label` (at most 80) and a `description` (at most 160, may be empty), and a `default_index` that points to the one
@@ -499,8 +524,8 @@ an inert bounded `label`; the HTTP adapter adds `trace_id`. Labels never replace
 history, describe Action schemas, or grant authority. Binding drift fails closed. Model or label failure is
 availability failure after installation and must not be represented as installation rollback.
 
-The internal Team bearer is machine authority only for the one-use OAuth callback continuation and
-the Local bootstrap reset. The bootstrap reset is admitted only while Team independently verifies
+The internal Team bearer is machine authority only for the one-use OAuth callback continuation, the Local bootstrap
+reset, health and activity reads, and Admin's Routine scheduler (claim, notices, and their acknowledgement). The bootstrap reset is admitted only while Team independently verifies
 that the Supervisor key directory is safe and the Supervisor public key is absent; after identity
 establishment it fails closed and never substitutes for human Supervisor evidence. Admin emits one short-lived
 Ed25519 assertion in `X-Shimpz-Supervisor` after validating either its current browser session or the exact
@@ -511,6 +536,19 @@ For an authentication-gated Action response, that same signed, one-use assertion
 `assurance` binding containing only the exact reviewed `auth:*` kind and pending challenge ID.
 Team requires that binding for the matching authentication challenge and rejects it on every
 non-authentication request. Credential and factor material never cross this protocol.
+
+Team verifies every Supervisor assertion under its own pin of the Supervisor key, kept in Team's private state: the
+first verification pins the key Admin publishes, and later changes to Admin's published file do not change it. The
+Supervisor rotates the key with `POST /v1/space/supervisor-key`, a `session` assertion signed by the pinned key whose
+body is exactly `{"public_key": key}` (`supervisor.canonical_key_rotation`): the new Ed25519 verification key as the
+canonical unpadded base64url of its 32 raw bytes. Team atomically and durably replaces its pin and answers
+`{"rotated": true, "key_sha256": digest}` with the lowercase SHA-256 of the new key's raw bytes; from then on an
+assertion signed by the earlier key is refused. A retry of a rotation that already took effect, signed by either key,
+answers the same; a rotation verified by a key that is no longer pinned, or whose key is not a valid Ed25519 point,
+is refused with `409` `supervisor-key-rotation-refused`. Admin keeps the pending new key beside the current one until
+Team answers, and after a restart with a pending key it retries signed by the earlier key and, when Team refuses it
+because it already switched, signed by the new one. A bootstrap reset, admitted only while Admin publishes no key,
+also removes Team's pin.
 
 An authenticated Supervisor may inspect persistent Action input status through
 `GET /v1/teams/:team_id/assistant-stored-inputs`. The response is metadata-only: each current
