@@ -363,6 +363,20 @@ def _team_unavailable() -> TeamResponse:
     return TeamResponse(502, {"detail": "team unavailable"})
 
 
+def _forget_token() -> None:
+    """Drop the cached bearer, so the next request reads the token file Team wrote on its latest start."""
+    global _token_cache
+    with _token_cache_lock:
+        _token_cache = None
+
+
+def _bearer_refused(response: http.client.HTTPResponse) -> None:
+    """Accept only Team's exact bearer refusal; any other 401 is an invalid answer."""
+    body = _decode_response(response)
+    if body.get("error") != "authentication required":
+        raise OSError("invalid team authentication response")
+
+
 def _exchange[Result: (TeamResponse, TeamAssetResponse)](
     method: str,
     path: str,
@@ -372,7 +386,32 @@ def _exchange[Result: (TeamResponse, TeamAssetResponse)](
     bindings: _RequestBindings,
     reading: _Reading[Result],
 ) -> Result:
-    """One authenticated Team exchange whose every connection, dispatch, or decode failure answers unavailable."""
+    """One authenticated Team exchange, sent again once with a re-read bearer when Team refuses the cached one.
+
+    Team issues a fresh bearer on every start and checks it before it reads the request or verifies its assertion, so
+    resending the same request is safe for every method. A second refusal answers unavailable.
+    """
+    result = _exchange_once(method, path, entity, timeout=timeout, bindings=bindings, reading=reading)
+    if result is not None:
+        return result
+    _forget_token()
+    result = _exchange_once(method, path, entity, timeout=timeout, bindings=bindings, reading=reading)
+    if result is not None:
+        return result
+    log.warning("%s was refused the Team bearer twice (%s)", reading.subject, method)
+    return reading.unavailable()
+
+
+def _exchange_once[Result: (TeamResponse, TeamAssetResponse)](
+    method: str,
+    path: str,
+    entity: _Entity,
+    *,
+    timeout: int,
+    bindings: _RequestBindings,
+    reading: _Reading[Result],
+) -> Result | None:
+    """One Team exchange; None when Team refused the bearer, and unavailable on any other failure."""
     try:
         host, port = _endpoint()
         headers = _request_headers(
@@ -396,6 +435,10 @@ def _exchange[Result: (TeamResponse, TeamAssetResponse)](
         response = connection.getresponse()
         if not 200 <= response.status <= 599:
             raise OSError("invalid team status")
+        if response.status == HTTPStatus.UNAUTHORIZED:
+            _bearer_refused(response)
+            log.info("%s %s %s -> Team refused the bearer", reading.subject, method, path)
+            return None
         result = reading.decode(response)
     except (OSError, UnicodeError, http.client.HTTPException, *reading.decode_errors):
         # Exception text, bearer and bodies may contain internals. Never copy them into logs or JSON.
