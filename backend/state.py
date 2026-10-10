@@ -38,9 +38,11 @@ MAX_SECOND_FACTOR_FAILURES = 1_000_000
 
 @dataclass(frozen=True)
 class _StoreCache:
+    """The store's validated JSON text at one file identity; each read parses its own private copy from it."""
+
     path: Path
     identity: tuple[int, int, int, int] | None
-    data: dict
+    text: str
 
 
 _store_cache: _StoreCache | None = None
@@ -65,20 +67,22 @@ def _read():
     with _STORE_LOCK:
         identity = _store_identity(path)
         if _store_cache is not None and (_store_cache.path, _store_cache.identity) == (path, identity):
-            return copy.deepcopy(_store_cache.data)
+            return json.loads(_store_cache.text)
         if identity is None:
+            text = "{}"
             data = {}
         else:
             try:
-                data = json.loads(_read_store_file(path))
+                text = _read_store_file(path)
+                data = json.loads(text)
             except (json.JSONDecodeError, UnicodeDecodeError) as e:
                 raise RuntimeError(f"admin store {path} is corrupt — refusing to read: {e}") from None
             if _store_identity(path) != identity:
                 raise RuntimeError(f"admin store {path} changed while reading")
             if not isinstance(data, dict):
                 raise RuntimeError(f"admin store {path} is not a JSON object")
-        _store_cache = _StoreCache(path, identity, data)
-        return copy.deepcopy(data)
+        _store_cache = _StoreCache(path, identity, text)
+        return data
 
 
 def _fsync_directory(path: Path) -> None:
@@ -119,7 +123,7 @@ def _write(data):
         except BaseException:
             tmp.unlink(missing_ok=True)
             raise
-        _store_cache = _StoreCache(STORE_PATH, _store_identity(STORE_PATH), copy.deepcopy(data))
+        _store_cache = _StoreCache(STORE_PATH, _store_identity(STORE_PATH), payload.decode("utf-8"))
 
 
 def _always_write(_result: object) -> bool:
