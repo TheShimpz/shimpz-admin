@@ -38,7 +38,7 @@ function input() {
       || typeof cookie !== 'string' || !/^shimpz_admin=[A-Za-z0-9:+._~-]{16,4096}$/.test(cookie)
       || !Number.isSafeInteger(samples) || samples < 1 || samples > MAX_SAMPLES
       || !['ordinary', 'uninstall-proposal'].includes(mode)
-      || process.versions.node.split('.')[0] !== '24') {
+      || process.versions.node.split('.')[0] !== '26') {
     throw new Error('Invalid disposable browser input');
   }
   return { origin, session: cookie.slice('shimpz_admin='.length), samples, mode };
