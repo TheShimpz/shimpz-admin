@@ -464,6 +464,7 @@ async def local_space_reset(request: Request):
         request,
         max_password_chars=MAX_PASSWORD_CHARS,
         read_json=partial(_bounded_json_object, max_bytes=MAX_TEAM_DELETE_BODY_BYTES),
+        recheck_password=partial(local_auth.recheck_password, context=_LOCAL_AUTH_CONTEXT),
         team_response=_space_reset_response,
     )
 
@@ -528,19 +529,7 @@ async def teams_destroy(team_id: str, request: Request):
     if not 1 <= len(password) <= MAX_PASSWORD_CHARS:
         raise HTTPException(status_code=400, detail="Supervisor password is invalid")
 
-    record = state.get()
-    try:
-        password_ok = await asyncio.to_thread(auth.verify_password, password, record)
-    except TypeError, ValueError:
-        log.warning("Admin password record is invalid")
-        raise HTTPException(status_code=503, detail="Supervisor password verification is unavailable") from None
-    if not password_ok:
-        log.info("Team deletion password confirmation failed")
-        audit.record(
-            "password-rejected", outcome="denied", origin=chat_ws_common.canonical_origin(request.headers.get("origin"))
-        )
-        raise HTTPException(status_code=403, detail="Supervisor password is incorrect")
-
+    await local_auth.recheck_password(request, password, _LOCAL_AUTH_CONTEXT)
     return await run_in_threadpool(
         _team_response,
         lambda: _team_delete_with_history(team_id, lambda: team.destroy_confirmed(team_id, team_name)),

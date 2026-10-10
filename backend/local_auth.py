@@ -123,6 +123,19 @@ async def _verify_password(password: object, context: Context, origin: str | Non
     return record
 
 
+async def recheck_password(request: Request, password: object, context: Context) -> None:
+    """Confirm the password for a session-held destructive operation within the same budget and lockout as sign-in.
+
+    A session holder therefore guesses no faster here than at login; every refusal is journaled the same way.
+    """
+    try:
+        await _verify_password(password, context, canonical_origin(request.headers.get("origin")))
+    except HTTPException as exc:
+        if exc.status_code == 401:
+            raise HTTPException(status_code=403, detail="Supervisor password is incorrect") from None
+        raise
+
+
 def _ticket(request: Request, context: Context, purpose: str, subject: str = "") -> tuple[str, tickets.Ticket]:
     token = request.cookies.get(TICKET_COOKIE, "")
     try:

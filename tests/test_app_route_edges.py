@@ -187,24 +187,24 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             self.assert_status(400, self.admin_app.teams_destroy("team_1", request))
 
         payload = {"team_name": "Marketing", "password": "violet otter lantern quartz 92"}
+        attempt = self.admin_app.local_auth.auth
+        corrupt = mock.AsyncMock(side_effect=self.admin_app.auth.PasswordRecordError("corrupt"))
         with (
             mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value=payload)),
-            mock.patch.object(self.admin_app.state, "get", return_value={}),
-            mock.patch.object(self.admin_app.asyncio, "to_thread", side_effect=ValueError("corrupt")),
+            mock.patch.object(attempt, "attempt_login", new=corrupt),
+            self.assertRaises(self.admin_app.auth.PasswordRecordError),
         ):
-            self.assert_status(503, self.admin_app.teams_destroy("team_1", request))
+            asyncio.run(self.admin_app.teams_destroy("team_1", request))
 
         with (
             mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value=payload)),
-            mock.patch.object(self.admin_app.state, "get", return_value={}),
-            mock.patch.object(self.admin_app.asyncio, "to_thread", new=mock.AsyncMock(return_value=False)),
+            mock.patch.object(attempt, "attempt_login", new=mock.AsyncMock(return_value=(False, 0))),
         ):
             self.assert_status(403, self.admin_app.teams_destroy("team_1", request))
 
         with (
             mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value=payload)),
-            mock.patch.object(self.admin_app.state, "get", return_value={}),
-            mock.patch.object(self.admin_app.asyncio, "to_thread", new=mock.AsyncMock(return_value=True)),
+            mock.patch.object(attempt, "attempt_login", new=mock.AsyncMock(return_value=(True, 0))),
             mock.patch.object(
                 self.admin_app.team,
                 "destroy_confirmed",

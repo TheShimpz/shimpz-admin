@@ -354,10 +354,13 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
         )
         self.assert_status(400, self.admin_app.local_space_reset(_request("/space", {"password": 1})))
         self.assert_status(400, self.admin_app.local_space_reset(_request("/space", {"password": ""})))
-        with mock.patch.object(self.admin_app.space_reset.asyncio, "to_thread", side_effect=ValueError("corrupt")):
-            self.assert_status(
-                503,
-                self.admin_app.local_space_reset(_request("/space", {"password": "violet otter lantern quartz 92"})),
+        corrupt = mock.AsyncMock(side_effect=self.admin_app.auth.PasswordRecordError("corrupt"))
+        with (
+            mock.patch.object(self.admin_app.local_auth.auth, "attempt_login", new=corrupt),
+            self.assertRaises(self.admin_app.auth.PasswordRecordError),
+        ):
+            asyncio.run(
+                self.admin_app.local_space_reset(_request("/space", {"password": "violet otter lantern quartz 92"}))
             )
 
 
