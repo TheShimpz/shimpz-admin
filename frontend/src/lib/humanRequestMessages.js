@@ -1,5 +1,9 @@
 export const humanRequestMessages = {
   en: {
+    confirm: 'Confirm', confirmationTitle: 'Confirm this Action',
+    confirmationLead: '{assistant} is about to run {action}, which changes something. It runs only after you confirm.',
+    inputLabel: 'Input', inputTruncated: 'Shortened', inputOmitted: '{count} more fields not shown',
+    inputNone: 'This Action takes no input.',
     chooseOption: 'Choose an option', approve: 'Approve action', submit: 'Send', authorize: 'Confirm authorization', cancel: 'Cancel',
     keyHelp: 'How to get it', storedInputNeed: '{assistant} needs this key to continue.',
     storedInputPlaceholder: 'Paste your key here', expiresIn: 'Expires in {time}',
@@ -15,6 +19,10 @@ export const humanRequestMessages = {
     expired: 'The Action request expired. Send the message again to retry.',
   },
   pt: {
+    confirm: 'Confirmar', confirmationTitle: 'Confirme este Action',
+    confirmationLead: 'O {assistant} vai executar {action}, que altera algo. Ele só é executado depois que você confirmar.',
+    inputLabel: 'Entrada', inputTruncated: 'Encurtado', inputOmitted: 'Mais {count} campos não exibidos',
+    inputNone: 'Este Action não recebe entrada.',
     chooseOption: 'Escolha uma opção', approve: 'Aprovar ação', submit: 'Enviar', authorize: 'Confirmar autorização', cancel: 'Cancelar',
     keyHelp: 'Como obter', storedInputNeed: 'O {assistant} precisa desta chave para continuar.',
     storedInputPlaceholder: 'Cole sua chave aqui', expiresIn: 'Expira em {time}',
@@ -30,6 +38,10 @@ export const humanRequestMessages = {
     expired: 'A solicitação do Action expirou. Envie a mensagem novamente para tentar de novo.',
   },
   es: {
+    confirm: 'Confirmar', confirmationTitle: 'Confirma este Action',
+    confirmationLead: '{assistant} va a ejecutar {action}, que cambia algo. Solo se ejecuta después de que lo confirmes.',
+    inputLabel: 'Entrada', inputTruncated: 'Acortado', inputOmitted: '{count} campos más sin mostrar',
+    inputNone: 'Este Action no recibe entrada.',
     chooseOption: 'Elige una opción', approve: 'Aprobar acción', submit: 'Enviar', authorize: 'Confirmar autorización', cancel: 'Cancelar',
     keyHelp: 'Cómo obtenerla', storedInputNeed: '{assistant} necesita esta clave para continuar.',
     storedInputPlaceholder: 'Pega tu clave aquí', expiresIn: 'Caduca en {time}',
@@ -45,6 +57,10 @@ export const humanRequestMessages = {
     expired: 'La solicitud de Action caducó. Envía el mensaje de nuevo para volver a intentarlo.',
   },
   zh: {
+    confirm: '确认', confirmationTitle: '确认此 Action',
+    confirmationLead: '{assistant} 即将运行 {action}，它会更改某些内容。只有在你确认后才会运行。',
+    inputLabel: '输入', inputTruncated: '已缩短', inputOmitted: '另有 {count} 个字段未显示',
+    inputNone: '此 Action 不需要输入。',
     chooseOption: '选择一个选项', approve: '批准操作', submit: '发送', authorize: '确认授权', cancel: '取消',
     keyHelp: '获取方法', storedInputNeed: '{assistant} 需要此密钥才能继续。',
     storedInputPlaceholder: '在这里粘贴密钥', expiresIn: '{time} 后过期',
@@ -60,6 +76,10 @@ export const humanRequestMessages = {
     expired: 'Action 请求已过期。请重新发送消息后再试。',
   },
   fr: {
+    confirm: 'Confirmer', confirmationTitle: 'Confirmez ce Action',
+    confirmationLead: '{assistant} va exécuter {action}, qui modifie quelque chose. Il ne s’exécute qu’après votre confirmation.',
+    inputLabel: 'Entrée', inputTruncated: 'Raccourci', inputOmitted: '{count} champs supplémentaires non affichés',
+    inputNone: 'Ce Action ne prend aucune entrée.',
     chooseOption: 'Choisissez une option', approve: 'Approuver l’action', submit: 'Envoyer', authorize: 'Confirmer l’autorisation', cancel: 'Annuler',
     keyHelp: 'Comment l’obtenir', storedInputNeed: '{assistant} a besoin de cette clé pour continuer.',
     storedInputPlaceholder: 'Collez votre clé ici', expiresIn: 'Expire dans {time}',
@@ -75,6 +95,10 @@ export const humanRequestMessages = {
     expired: 'La demande d’Action a expiré. Renvoyez le message pour réessayer.',
   },
   de: {
+    confirm: 'Bestätigen', confirmationTitle: 'Diesen Action bestätigen',
+    confirmationLead: '{assistant} führt gleich {action} aus, das etwas ändert. Es läuft erst, nachdem du bestätigst.',
+    inputLabel: 'Eingabe', inputTruncated: 'Gekürzt', inputOmitted: '{count} weitere Felder nicht angezeigt',
+    inputNone: 'Dieser Action nimmt keine Eingabe an.',
     chooseOption: 'Option auswählen', approve: 'Aktion freigeben', submit: 'Senden', authorize: 'Autorisierung bestätigen', cancel: 'Abbrechen',
     keyHelp: 'So bekommst du das', storedInputNeed: '{assistant} braucht diesen Schlüssel, um fortzufahren.',
     storedInputPlaceholder: 'Füge deinen Schlüssel hier ein', expiresIn: 'Läuft ab in {time}',
@@ -90,6 +114,10 @@ export const humanRequestMessages = {
     expired: 'Die Action-Anfrage ist abgelaufen. Sende die Nachricht erneut, um es noch einmal zu versuchen.',
   },
   ja: {
+    confirm: '確認', confirmationTitle: 'この Action を確認',
+    confirmationLead: '{assistant} が {action} を実行しようとしています。これは何かを変更します。確認するまで実行されません。',
+    inputLabel: '入力', inputTruncated: '短縮済み', inputOmitted: '表示されていないフィールドがあと {count} 件あります',
+    inputNone: 'この Action は入力を受け取りません。',
     chooseOption: 'オプションを選択', approve: 'アクションを承認', submit: '送信', authorize: '認証を確認', cancel: 'キャンセル',
     keyHelp: '取得方法', storedInputNeed: '{assistant} を続けるにはこのキーが必要です。',
     storedInputPlaceholder: 'ここにキーを貼り付け', expiresIn: '残り {time}',
@@ -105,6 +133,10 @@ export const humanRequestMessages = {
     expired: 'Action リクエストの有効期限が切れました。再試行するにはメッセージをもう一度送信してください。',
   },
   ar: {
+    confirm: 'تأكيد', confirmationTitle: 'أكّد هذا الـ Action',
+    confirmationLead: 'سيشغّل {assistant} الإجراء {action} الذي يغيّر شيئًا. لا يعمل إلا بعد أن تؤكّد.',
+    inputLabel: 'المدخلات', inputTruncated: 'مختصر', inputOmitted: '{count} حقول أخرى غير معروضة',
+    inputNone: 'لا يأخذ هذا الـ Action أي مدخلات.',
     chooseOption: 'اختر خيارًا', approve: 'الموافقة على الإجراء', submit: 'إرسال', authorize: 'تأكيد التفويض', cancel: 'إلغاء',
     keyHelp: 'كيفية الحصول عليه', storedInputNeed: 'يحتاج {assistant} إلى هذا المفتاح للمتابعة.',
     storedInputPlaceholder: 'الصق مفتاحك هنا', expiresIn: 'تنتهي خلال {time}',

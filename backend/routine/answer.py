@@ -148,8 +148,14 @@ def _open(canonical: str, run: str, opening: dict[str, str]) -> team.TeamRespons
         projected = human.project(body, canonical)
     except human.HumanChallengeError:
         return manage._INVALID
-    # A Routine holds no file grant, so its challenge never discloses one (ADR-0093).
-    if "file" in projected or projected["locale"] != opening["locale"]:
+    # A Routine holds no file grant, so its challenge never discloses one (ADR-0093); a run's card carries no input rows
+    # (ADR-0101 §6) and no policy confirmation, since its card granted each Action (ADR-0112).
+    if (
+        "file" in projected
+        or "input" in projected
+        or projected["request"]["kind"] == human.CONFIRMATION_KIND
+        or projected["locale"] != opening["locale"]
+    ):
         # Team renders the opening in exactly the language it names (ADR-0091); any other copy is not this opening.
         return manage._INVALID
     deadline = time.monotonic() + projected["expires_in"]

@@ -320,3 +320,101 @@ test('a challenge without exactly its rendered copy, locale, and pack fails clos
     /invalid/i,
   );
 });
+
+// Team's own confirmation of a mutating Action (ADR-0112) and the input rows every chat confirmation card may show.
+const INPUT = Object.freeze({
+  fields: [
+    { name: 'name', value: '"www"', truncated: false },
+    { name: 'proxied', value: 'true', truncated: false },
+    { name: 'ttl', value: '300', truncated: false },
+  ],
+  omitted: 0,
+});
+
+function teamConfirmation(extra = {}, request = {}) {
+  return {
+    type: 'human-required',
+    challenge_id: CHALLENGE_ID,
+    expires_in: 180,
+    assistant: { id: 'shimpz-cloudflare', name: 'Cloudflare', version: '0.4.4' },
+    action: { id: 'create-dns-record', summary: 'Create one DNS record.' },
+    request: {
+      kind: 'confirmation',
+      ordinal: 0,
+      policy: 'mutating-actions',
+      binding: 'a'.repeat(64),
+      fingerprint: 'f'.repeat(64),
+      ...request,
+    },
+    rendered: {},
+    locale: 'en',
+    pack_digest: `sha256:${'5'.repeat(64)}`,
+    input: structuredClone(INPUT),
+    ...extra,
+  };
+}
+
+const sixteen = Array.from({ length: 16 }, (_, index) => ({
+  name: `f${String(index).padStart(2, '0')}`,
+  value: '1',
+  truncated: false,
+}));
+
+test('Team confirmation parses with no Assistant copy and always carries its input rows', () => {
+  const challenge = teamConfirmation();
+  const parsed = parseChatEvent(challenge, 'team_1', 'Marketing');
+  assert.deepEqual(parsed, challenge);
+  assert.deepEqual(displayedHumanRequest(parsed), challenge.request);
+  // Rows Team marked shortened, rows past the sixteenth counted, and an escaped bidirectional control stay as sent.
+  for (const input of [
+    { fields: [], omitted: 0 },
+    { fields: [{ name: 'content', value: '"v=spf1 \\u202e"', truncated: true }], omitted: 0 },
+    { fields: sixteen, omitted: 3 },
+    // Python orders names by code point: U+FF21 sorts before U+1F600, unlike JavaScript's UTF-16 comparison.
+    { fields: [{ name: 'Ａ', value: '1', truncated: false }, { name: '😀', value: '1', truncated: false }], omitted: 0 },
+  ]) assert.deepEqual(parseChatEvent(teamConfirmation({ input }), 'team_1', 'Marketing').input, input);
+
+  const withoutInput = teamConfirmation();
+  delete withoutInput.input;
+  for (const event of [
+    withoutInput,
+    teamConfirmation({ rendered: { title: 'Confirm' } }),
+    teamConfirmation({}, { ordinal: 1 }),
+    teamConfirmation({}, { policy: 'other' }),
+    teamConfirmation({}, { binding: 'A'.repeat(64) }),
+    teamConfirmation({}, { title: messageReference('Confirm') }),
+    teamConfirmation({ input: { fields: [{ name: 'b', value: '1', truncated: false }, { name: 'a', value: '1', truncated: false }], omitted: 0 } }),
+    teamConfirmation({ input: { fields: [{ name: 'a', value: '1', truncated: false }, { name: 'a', value: '2', truncated: false }], omitted: 0 } }),
+    teamConfirmation({ input: { fields: [{ name: 'a', value: 'line\nbreak', truncated: false }], omitted: 0 } }),
+    teamConfirmation({ input: { fields: [{ name: 'a', value: 'x'.repeat(401), truncated: false }], omitted: 0 } }),
+    teamConfirmation({ input: { fields: [{ name: 'a'.repeat(129), value: '1', truncated: false }], omitted: 0 } }),
+    teamConfirmation({ input: { fields: [{ name: 'a', value: '', truncated: false }], omitted: 0 } }),
+    teamConfirmation({ input: { fields: [{ name: 'a', value: '1', truncated: false }], omitted: 2 } }),
+    teamConfirmation({ input: { fields: [...sixteen, { name: 'g', value: '1', truncated: false }], omitted: 0 } }),
+    teamConfirmation({ input: { fields: [{ name: 'a', value: '1', truncated: 0 }], omitted: 0 } }),
+    teamConfirmation({ input: { fields: [{ name: 'a', value: '1', truncated: false }], omitted: -1 } }),
+    teamConfirmation({ input: { fields: sixteen, omitted: 4097 } }),
+    teamConfirmation({ input: { fields: [{ name: 'a', value: '1', truncated: false }] } }),
+    teamConfirmation({ input: [] }),
+  ]) assert.throws(() => parseChatEvent(event, 'team_1', 'Marketing'), /invalid/i);
+});
+
+test('a declared authorization may show input rows, and an input request never does', () => {
+  const approval = {
+    type: 'human-required',
+    challenge_id: CHALLENGE_ID,
+    expires_in: 180,
+    assistant: { id: 'shimpz-cloudflare', name: 'Cloudflare', version: '0.4.4' },
+    action: { id: 'update-dns-record', summary: 'Update one DNS record.' },
+    ...localizedChallenge({
+      kind: 'approval',
+      ordinal: 0,
+      title: 'Publish?',
+      description: 'Cloudflare updates one record.',
+      fingerprint: 'e'.repeat(64),
+    }),
+    input: structuredClone(INPUT),
+  };
+  assert.deepEqual(parseChatEvent(approval, 'team_1', 'Marketing').input, INPUT);
+  assert.throws(() => parseChatEvent({ ...portugueseChoice(), input: structuredClone(INPUT) }, 'team_1', 'Marketing'), /invalid/i);
+});

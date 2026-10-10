@@ -91,6 +91,22 @@ def _response(request: dict[str, object], **overrides: object) -> dict[str, obje
     return {key: item for key, item in value.items() if item is not ABSENT}
 
 
+# Team's confirmation card rows: literal escaped canonical JSON, one cut row flagged, nothing omitted (ADR-0112).
+INPUT = {
+    "fields": [
+        {"name": "content", "value": '"v=spf1 \\u202e"', "truncated": True},
+        {"name": "ttl", "value": "300", "truncated": False},
+    ],
+    "omitted": 0,
+}
+
+
+def _confirmation(**overrides: object) -> dict[str, object]:
+    """Team's own policy confirmation request, fingerprinted as every request is."""
+    request = {"kind": "confirmation", "ordinal": 0, "policy": "mutating-actions", "binding": "c" * 64, **overrides}
+    return _fingerprinted(request)
+
+
 REQUEST = {"issued_at": 1_700_000_000, "nonce": "0" * 32}
 
 
@@ -291,6 +307,62 @@ class HumanChallengeProjectionTests(unittest.TestCase):
                     local._project_pending_challenge(team.TeamResponse(428, body), "team_1"),
                     team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
                 )
+
+    def test_team_confirmation_projects_with_admin_copy_and_always_shows_its_input(self) -> None:
+        request = _confirmation()
+        projected = local._project_pending_challenge(
+            team.TeamResponse(428, _response(request, input=INPUT, rendered={})), "team_1"
+        )
+        event = projected.websocket_event("team_1")
+        self.assertEqual(event["request"], request)
+        # It references no catalog copy: Admin words the card, and the rows are Team's literal escaped text.
+        self.assertEqual(event["rendered"], {})
+        self.assertEqual(event["input"], INPUT)
+        invalid = (
+            # Team's confirmation always shows what it confirms.
+            _response(request, rendered={}),
+            _response(request, input={**INPUT, "omitted": 1}, rendered={}),
+            _response(
+                request, input={"fields": [{"name": "a", "value": "line\nbreak", "truncated": False}], "omitted": 0}
+            ),
+            _response(request, input=INPUT, rendered={"title": "Rendered title"}),
+            _response(_confirmation(ordinal=1), input=INPUT, rendered={}),
+            _response(_confirmation(policy="other"), input=INPUT, rendered={}),
+            _response(_confirmation(binding="A" * 64), input=INPUT, rendered={}),
+            _response(_confirmation(binding=None), input=INPUT, rendered={}),
+            _response(_confirmation(title=reference("Confirm")), input=INPUT, rendered={}),
+            # An input request shows no rows; only a confirmation card does.
+            _response(_request("input:text"), input=INPUT),
+        )
+        for body in invalid:
+            with self.subTest(body=body):
+                self.assertEqual(
+                    local._project_pending_challenge(team.TeamResponse(428, body), "team_1"),
+                    team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+                )
+
+    def test_a_declared_authorization_may_show_its_input_rows(self) -> None:
+        for kind in ("approval", "auth:password"):
+            with self.subTest(kind=kind):
+                projected = local._project_pending_challenge(
+                    team.TeamResponse(428, _response(_request(kind), input=INPUT)), "team_1"
+                )
+                self.assertEqual(projected.websocket_event("team_1")["input"], INPUT)
+
+    def test_a_confirmation_is_answered_only_with_true_or_a_denial(self) -> None:
+        request = _confirmation()
+        self.assertTrue(human.browser_value(request, True))
+        self.assertFalse(human.browser_value(request, "true"))
+        self.assertFalse(human.browser_value(request, False))
+        submit = {"type": "human-response", "challenge_id": CHALLENGE_ID, "decision": "submit", "value": True}
+        payload, assurance, rejection, failure = asyncio.run(
+            human.response_payload(dict(submit), request, mock.AsyncMock())
+        )
+        self.assertEqual(payload, {"challenge_id": CHALLENGE_ID, "decision": "submit", "value": True})
+        self.assertEqual((assurance, rejection, failure), (None, None, None))
+        deny = {"type": "human-response", "challenge_id": CHALLENGE_ID, "decision": "deny"}
+        payload, *_rest = asyncio.run(human.response_payload(dict(deny), request, mock.AsyncMock()))
+        self.assertEqual(payload, {"challenge_id": CHALLENGE_ID, "decision": "deny"})
 
     def test_rendered_copy_locale_and_pack_project_beside_the_canonical_request(self) -> None:
         request, rendered = localize(

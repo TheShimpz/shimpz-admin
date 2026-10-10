@@ -1286,8 +1286,11 @@ export async function openRoutineChallenge(fetcher, teamId, runId, locale, parse
   } catch {
     throw new RoutineError('routine-response-invalid');
   }
-  // The opening named the language its copy renders in; a challenge in any other language is not this opening.
-  if (challenge.locale !== locale) throw new RoutineError('routine-response-invalid');
+  // The opening named the language its copy renders in; a challenge in any other language is not this opening. A run's
+  // card shows no input rows (ADR-0101 §6) and is never Team's policy confirmation, since its card granted each Action.
+  if (challenge.locale !== locale || challenge.input || challenge.request?.kind === 'confirmation') {
+    throw new RoutineError('routine-response-invalid');
+  }
   return { status: 'human-required', challenge };
 }
 

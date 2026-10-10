@@ -86,6 +86,19 @@ export const HUMAN_REQUEST_KINDS = Object.freeze([
   'auth:password',
 ]);
 const HUMAN_AUTH_KINDS = new Set(HUMAN_REQUEST_KINDS.filter((kind) => kind.startsWith('auth:')));
+// Team's own confirmation of a mutating Action that declares no authorization (ADR-0112): it names only its policy and
+// the SHA-256 of the exact call it binds, references no catalog copy, and Admin words its card.
+export const CONFIRMATION_KIND = 'confirmation';
+const CONFIRMATION_POLICY = 'mutating-actions';
+// The requests whose card may show the Action's validated input; Team's confirmation always shows it.
+const INPUT_KINDS = new Set([CONFIRMATION_KIND, 'approval', ...HUMAN_AUTH_KINDS]);
+// The bounds of that input's rows (Team HTTP payload.canonical_input_projection).
+const INPUT_PROJECTION_MAX_FIELDS = 16;
+const INPUT_PROJECTION_NAME_CHARS = 128;
+const INPUT_PROJECTION_VALUE_CHARS = 400;
+const INPUT_PROJECTION_MAX_OMITTED = 4096;
+// Python's str.isprintable: no control, format, surrogate, private-use, unassigned, or separator but the space.
+const UNPRINTABLE_RE = /[\p{C}\p{Zl}\p{Zp}]|[^\P{Zs} ]/u;
 const HUMAN_LENGTH_LIMITS = new Map([
   ['input:text', 4096],
   ['input:textarea', 16_000],
@@ -434,7 +447,70 @@ export function canonicalPurpose(value) {
   return value;
 }
 
+function canonicalConfirmationRequest(value) {
+  if (
+    !exactKeys(value, ['kind', 'ordinal', 'policy', 'binding', 'fingerprint']) ||
+    value.ordinal !== 0 ||
+    value.policy !== CONFIRMATION_POLICY ||
+    typeof value.binding !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(value.binding) ||
+    typeof value.fingerprint !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(value.fingerprint)
+  ) throw new LocalApiError('The local chat response is invalid.');
+  return {
+    kind: CONFIRMATION_KIND,
+    ordinal: 0,
+    policy: CONFIRMATION_POLICY,
+    binding: value.binding,
+    fingerprint: value.fingerprint,
+  };
+}
+
+function projectedText(value, maximum) {
+  return typeof value === 'string' && value.length > 0 && codePointLength(value) <= maximum &&
+    !UNPRINTABLE_RE.test(value);
+}
+
+// Python orders strings by code point; JavaScript's < compares UTF-16 units, which differ past the BMP.
+function codePointOrder(left, right) {
+  const a = [...left];
+  const b = [...right];
+  for (let index = 0; index < Math.min(a.length, b.length); index += 1) {
+    const difference = a[index].codePointAt(0) - b[index].codePointAt(0);
+    if (difference) return difference;
+  }
+  return a.length - b.length;
+}
+
+/**
+ * The rows of an Action's validated input a confirmation card shows (ADR-0112): at most 16 `{name, value, truncated}`
+ * rows of literal escaped text in strictly ascending name order, and the count of arguments past the last row.
+ */
+export function canonicalInputProjection(value) {
+  if (
+    !exactKeys(value, ['fields', 'omitted']) ||
+    !Array.isArray(value.fields) ||
+    value.fields.length > INPUT_PROJECTION_MAX_FIELDS ||
+    !Number.isSafeInteger(value.omitted) ||
+    value.omitted < 0 ||
+    value.omitted > INPUT_PROJECTION_MAX_OMITTED ||
+    (value.omitted > 0 && value.fields.length !== INPUT_PROJECTION_MAX_FIELDS)
+  ) throw new LocalApiError('The local chat response is invalid.');
+  const fields = value.fields.map((field, index) => {
+    if (
+      !exactKeys(field, ['name', 'value', 'truncated']) ||
+      !projectedText(field.name, INPUT_PROJECTION_NAME_CHARS) ||
+      !projectedText(field.value, INPUT_PROJECTION_VALUE_CHARS) ||
+      typeof field.truncated !== 'boolean' ||
+      (index > 0 && codePointOrder(value.fields[index - 1].name, field.name) >= 0)
+    ) throw new LocalApiError('The local chat response is invalid.');
+    return { name: field.name, value: field.value, truncated: field.truncated };
+  });
+  return { fields, omitted: value.omitted };
+}
+
 function canonicalHumanRequest(value) {
+  if (value?.kind === CONFIRMATION_KIND) return canonicalConfirmationRequest(value);
   const base = canonicalHumanRequestBase(value);
   const baseKeys = ['kind', 'ordinal', 'title', 'description', 'fingerprint'];
   if (base.kind === 'approval' || HUMAN_AUTH_KINDS.has(base.kind)) {
@@ -1445,7 +1521,9 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     // only for a Stored Input request, the help text and help link its reviewed Assistant declared. The rendered copy,
     // its concrete locale, and the language pack's digest are required beside the canonical request (ADR-0091).
     // An authorization request may also disclose the one original file its approved Action receives (ADR-0093).
-    const optional = ['purpose', 'help', 'help_url', 'file'].filter((key) => Object.hasOwn(value, key));
+    // Every chat confirmation card may show the Action's validated input, and Team's own confirmation always does
+    // (ADR-0112).
+    const optional = ['purpose', 'help', 'help_url', 'file', 'input'].filter((key) => Object.hasOwn(value, key));
     if (
       !exactKeys(value, [
         'type', 'challenge_id', 'expires_in', 'assistant', 'action', 'request', 'rendered', 'locale', 'pack_digest',
@@ -1468,6 +1546,10 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     if (optional.includes('file') && request.kind !== 'approval' && !HUMAN_AUTH_KINDS.has(request.kind)) {
       throw new LocalApiError('The local chat response is invalid.');
     }
+    if (
+      (optional.includes('input') && !INPUT_KINDS.has(request.kind)) ||
+      (request.kind === CONFIRMATION_KIND && !optional.includes('input'))
+    ) throw new LocalApiError('The local chat response is invalid.');
     return {
       type: 'human-required',
       challenge_id: value.challenge_id,
@@ -1486,6 +1568,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
         }
         : {}),
       ...(optional.includes('file') ? { file: parseFileDisclosure(value.file) } : {}),
+      ...(optional.includes('input') ? { input: canonicalInputProjection(value.input) } : {}),
     };
   }
   throw new LocalApiError('The local chat response is invalid.');

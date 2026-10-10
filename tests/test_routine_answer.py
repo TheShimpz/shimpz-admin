@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from http_request import LOOPBACK, http_request, json_headers
 from team import bridge as team
 from team import transport
-from test_chat_human_projection import _fingerprinted, _request, _response
+from test_chat_human_projection import INPUT, _confirmation, _fingerprinted, _request, _response
 from tests.localized_request import localization, rendered_for
 
 from chat import human
@@ -136,6 +136,14 @@ class RoutineAnswerTests(unittest.TestCase):
         }
         with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, filed)):
             self.assertEqual(answer.open_challenge("team_1", RUN, {"locale": "pt"}), manage._INVALID)
+
+        # A run's card shows no input rows (ADR-0101 §6) and is never Team's policy confirmation (ADR-0112).
+        for refused in (
+            {**_response(approval, input=INPUT, **localization(rendered_for(approval), "pt")), "run_id": RUN},
+            {**_response(_confirmation(), input=INPUT, **localization({}, "pt")), "run_id": RUN},
+        ):
+            with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, refused)):
+                self.assertEqual(answer.open_challenge("team_1", RUN, {"locale": "pt"}), manage._INVALID)
 
         # A challenge rendered in another language than the opening named is refused and never remembered.
         with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, body)):

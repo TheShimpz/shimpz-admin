@@ -10,7 +10,7 @@
   import { attachmentKind, identifierName } from '$lib/attachments.js';
   import DialogAction from '$lib/DialogAction.svelte';
   import { t } from '$lib/i18n.js';
-  import { displayedHumanRequest } from '$lib/localChat.js';
+  import { CONFIRMATION_KIND, displayedHumanRequest } from '$lib/localChat.js';
 
   let {
     open = $bindable(false),
@@ -40,6 +40,9 @@
   let request = $derived(challenge ? displayedHumanRequest(challenge) : undefined);
   let kind = $derived(request?.kind ?? '');
   let isAuth = $derived(kind.startsWith('auth:'));
+  // Team's own confirmation of a mutating Action (ADR-0112) carries no Assistant copy: Admin words its card.
+  let isConfirmation = $derived(kind === CONFIRMATION_KIND);
+  let actionName = $derived(identifierName(challenge?.action?.id));
   let isStoredInput = $derived(kind === 'input:password' && Boolean(request?.stored_input));
   let rejected = $derived(Boolean(rejection));
   // Lead with why this task needs the pause, as the Brain wrote it for this conversation. A Stored Input request is
@@ -48,15 +51,23 @@
     rejected
       ? request?.description
       : challenge?.purpose
-        ?? (isStoredInput ? $t('humanRequest.storedInputNeed', { assistant: challenge?.assistant?.name ?? '' }) : request?.description),
+        ?? (isStoredInput
+          ? $t('humanRequest.storedInputNeed', { assistant: challenge?.assistant?.name ?? '' })
+          : isConfirmation ? confirmationLead : request?.description),
+  );
+  let confirmationLead = $derived(
+    $t('humanRequest.confirmationLead', { assistant: challenge?.assistant?.name ?? '', action: actionName }),
   );
   // The Brain's purpose explains why; it never replaces the Assistant's own description of what will be authorized,
   // so any other request keeps that scope visible beside the purpose.
   let scope = $derived(
     !rejected && !isStoredInput && challenge?.purpose && request?.description !== challenge.purpose
-      ? request?.description ?? ''
+      ? (isConfirmation ? confirmationLead : request?.description ?? '')
       : '',
   );
+  // The Action's validated input as Team rendered it: literal escaped rows, each shortened row marked, and the count
+  // of arguments past the last row, so nothing it will run with is hidden silently (ADR-0112).
+  let input = $derived(rejected ? null : challenge?.input ?? null);
   // An authorization request may name the one original file its approved Action receives, with any metadata embedded
   // in it; the person sees exactly that file before authorizing (ADR-0093).
   let disclosedFile = $derived(rejected ? null : challenge?.file ?? null);
@@ -90,7 +101,7 @@
       ? (locked ? copy.lockedTitle : copy.deniedTitle)
       : isStoredInput
         ? challenge?.assistant?.name ?? ''
-        : request?.title,
+        : isConfirmation ? copy.confirmationTitle : request?.title,
   );
   // A Stored Input field keeps the Action's own label, rendered in the interface language, so each of several keys
   // one Assistant needs is named apart; Admin supplies only the placeholder.
@@ -103,7 +114,7 @@
       : '',
   );
   let primaryLabel = $derived(
-    kind === 'approval' ? copy.approve : isAuth ? copy.authorize : copy.submit,
+    isConfirmation ? copy.confirm : kind === 'approval' ? copy.approve : isAuth ? copy.authorize : copy.submit,
   );
   let displayedSeconds = $derived(
     challenge?.challenge_id === countdownChallengeId
@@ -198,6 +209,10 @@
   function submit(event) {
     event.preventDefault();
     if (working || !challenge) return;
+    if (isConfirmation) {
+      onrespond({ decision: 'submit', value: true });
+      return;
+    }
     if (!fieldValid) {
       validationError = copy.invalid;
       return;
@@ -267,6 +282,30 @@
       </div>
     {/if}
 
+    {#if input}
+      <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard scrolling where the card has no field of its own) -->
+      <section class="request-input" aria-label={copy.inputLabel} tabindex="0">
+        {#if input.fields.length}
+          <dl>
+            {#each input.fields as field (field.name)}
+              <div class="input-row">
+                <dt>{field.name}</dt>
+                <dd>
+                  <span class="input-value">{field.value}</span>
+                  {#if field.truncated}<span class="input-cut">{copy.inputTruncated}</span>{/if}
+                </dd>
+              </div>
+            {/each}
+          </dl>
+        {:else if !input.omitted}
+          <p>{copy.inputNone}</p>
+        {/if}
+        {#if input.omitted}
+          <p class="input-omitted">{$t('humanRequest.inputOmitted', { count: String(input.omitted) })}</p>
+        {/if}
+      </section>
+    {/if}
+
     {#if rejected}
       <div class="request-state" bind:this={stateStatus} tabindex="-1">
         <Notice variant="error">
@@ -278,7 +317,7 @@
       <div class="request-state" bind:this={stateStatus} tabindex="-1">
         <Notice>{copy.validating}</Notice>
       </div>
-    {:else}
+    {:else if !isConfirmation}
       <div bind:this={fieldsContainer}>
         <ActionRequestFields
           request={fieldRequest}
@@ -327,5 +366,13 @@
   .request-file { display: grid; gap: var(--gap-item); max-width: 58ch; }
   .request-file ul { margin: 0; padding: 0; list-style: none; }
   .request-file p { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.8rem; line-height: 1.55; }
+  .request-input { display: grid; gap: var(--gap-item); max-width: 58ch; }
+  .request-input dl { display: grid; gap: var(--gap-item); margin: 0; }
+  .input-row { display: grid; gap: 0.15rem; }
+  .request-input dt { color: var(--shimpz-color-text-muted); font: 500 0.72rem/1.4 var(--shimpz-font-mono); overflow-wrap: anywhere; }
+  .request-input dd { margin: 0; font: 400 0.78rem/1.5 var(--shimpz-font-mono); overflow-wrap: anywhere; white-space: pre-wrap; }
+  .input-cut { margin-inline-start: var(--gap-item); color: var(--shimpz-color-text-dim); font-size: 0.68rem; }
+  .request-input p { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.8rem; }
+  .request-input:focus-visible { outline: 2px solid var(--shimpz-color-yellow); outline-offset: 3px; }
   .request-state:focus-visible { outline: 2px solid var(--shimpz-color-yellow); outline-offset: 3px; }
 </style>

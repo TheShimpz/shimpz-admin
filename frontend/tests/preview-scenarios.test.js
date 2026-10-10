@@ -191,6 +191,7 @@ test('a human request names an Assistant its Team inventory lists, so Admin open
     ['human-request', 'input:password'],
     ['human-approval', 'input:choice'],
     ['human-confirm', 'approval'],
+    ['action-confirmation', 'confirmation'],
   ]) {
     const scenario = createScenario(name);
     const [challenge] = scenario.chat.message({ type: 'chat', message: 'News', files: [], assistant_ids: [], locale: 'en' });

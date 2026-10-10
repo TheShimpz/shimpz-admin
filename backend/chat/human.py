@@ -50,9 +50,17 @@ RESPONSE_FIELDS = frozenset(
     }
 )
 # Optional presentation beside the Assistant-authored request; never part of its fingerprint (ADR-0090). `file` is
-# the platform-controlled disclosure of the one file an authorization of a file-taking Action delivers (ADR-0093).
-PRESENTATION_FIELDS = frozenset({"purpose", "help", "help_url", "file"})
+# the platform-controlled disclosure of the one file an authorization of a file-taking Action delivers (ADR-0093), and
+# `input` the platform-rendered rows of the validated Action input every chat confirmation card shows (ADR-0112).
+PRESENTATION_FIELDS = frozenset({"purpose", "help", "help_url", "file", "input"})
 AUTHORIZATION_KINDS = frozenset({"approval", *AUTH_KINDS})
+# Team's own confirmation of a mutating Action that declares no authorization (ADR-0112). It references no catalog
+# copy, so Admin words the card itself; its request names only the policy and the SHA-256 of the exact call it binds.
+CONFIRMATION_KIND = "confirmation"
+CONFIRMATION_POLICY = "mutating-actions"
+_CONFIRMATION_FIELDS = frozenset({"kind", "ordinal", "policy", "binding"})
+# The requests whose card shows the Action's input: Team's confirmation always, a declared authorization in chat.
+INPUT_KINDS = frozenset({CONFIRMATION_KIND, *AUTHORIZATION_KINDS})
 _BASE_FIELDS = frozenset({"kind", "ordinal", "title", "description", "fingerprint"})
 # A copy field is a catalog reference (Assistant Spec v1, ADR-0091). Admin never holds the reviewed catalog, so it
 # admits each reference's closed shape and parameter grammar; Team alone resolves the declared message and parameters.
@@ -282,6 +290,15 @@ def _presentation(body: dict[str, object], request: dict[str, object]) -> dict[s
         if disclosed is None or request["kind"] not in AUTHORIZATION_KINDS:
             raise HumanChallengeError("invalid human challenge file disclosure")
         presentation["file"] = disclosed
+    if "input" in body:
+        # Rows of literal escaped text, each cut row flagged and every argument past the last row counted (ADR-0112).
+        shown = team_contract.canonical_input_projection(body["input"])
+        if shown is None or request["kind"] not in INPUT_KINDS:
+            raise HumanChallengeError("invalid human challenge input")
+        presentation["input"] = shown
+    elif request["kind"] == CONFIRMATION_KIND:
+        # Team's confirmation always shows what it confirms.
+        raise HumanChallengeError("invalid human challenge input")
     return presentation
 
 
@@ -325,12 +342,26 @@ def _request(value: object) -> dict[str, object]:
         not isinstance(kind, str)
         or type(ordinal) is not int
         or not 0 <= ordinal < MAX_REQUESTS_PER_ACTION
-        or not _reference(request.get("title"))
-        or not _reference(request.get("description"))
-        or not _kind(request, kind)
+        or not (_confirmation(request) if kind == CONFIRMATION_KIND else _assistant_request(request, kind))
     ):
         raise HumanChallengeError("invalid human request")
     return {**request, "fingerprint": fingerprint}
+
+
+def _confirmation(request: dict[str, object]) -> bool:
+    """Team's policy confirmation: ordinal 0, its policy, and the lowercase SHA-256 of the call it binds."""
+    binding = request.get("binding")
+    return (
+        set(request) == _CONFIRMATION_FIELDS
+        and request["ordinal"] == 0
+        and request["policy"] == CONFIRMATION_POLICY
+        and isinstance(binding, str)
+        and team_contract.SHA256_RE.fullmatch(binding) is not None
+    )
+
+
+def _assistant_request(request: dict[str, object], kind: str) -> bool:
+    return _reference(request.get("title")) and _reference(request.get("description")) and _kind(request, kind)
 
 
 def _kind(request: dict[str, object], kind: str) -> bool:
@@ -461,7 +492,7 @@ def browser_value(request: object, value: object) -> bool:
     valid = False
     if isinstance(request, dict):
         kind = request.get("kind")
-        if kind == "approval":
+        if kind in {"approval", CONFIRMATION_KIND}:
             valid = value is True
         elif kind in AUTH_KINDS:
             valid = isinstance(value, str) and 1 <= len(value) <= 4096
