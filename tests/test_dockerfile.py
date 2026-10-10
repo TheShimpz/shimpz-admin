@@ -34,8 +34,8 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
         self.assertIn(
-            "FROM --platform=$BUILDPLATFORM node:24-bookworm@sha256:"
-            "3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0 AS ui",
+            "FROM --platform=$BUILDPLATFORM node:26.11.1-bookworm@sha256:"
+            "f1233c415b41ffcf237c717b3dea92e9d4ea006e0e4c71edcb790605d74f5404 AS ui",
             dockerfile,
         )
 
@@ -77,9 +77,9 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
         # install, so an unchanged lock reuses the installed packages at every commit.
         self.assertRegex(stages["ui"], r"(?m)^ARG SOURCE_DATE_EPOCH=0$")
         # BuildKit stamps a WORKDIR with the epoch, so neither precedes the install.
-        install = stages["ui"].index("RUN cd /w && corepack pnpm install --frozen-lockfile --ignore-scripts ")
+        install = stages["ui"].index("RUN cd /w && sh bootstrap-pnpm.sh /tmp/pnpm-cache /opt/pnpm ")
         self.assertNotRegex(stages["ui"][:install], r"(?m)^(ARG SOURCE_DATE_EPOCH|WORKDIR)\b")
-        self.assertLess(stages["ui"].index("ARG SOURCE_DATE_EPOCH=0"), stages["ui"].index("RUN corepack pnpm build"))
+        self.assertLess(stages["ui"].index("ARG SOURCE_DATE_EPOCH=0"), stages["ui"].index("RUN pnpm build"))
 
     def test_runtime_image_packages_the_password_blocklist(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")

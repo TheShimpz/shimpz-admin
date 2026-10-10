@@ -5,6 +5,10 @@ packages:
 # dependencies, and the frontend library ships its source, so its own `prepare` (svelte-kit sync) is not needed.
 ignoreScripts: true
 
+# pnpm runs only at the release packageManager names, as bootstrap-pnpm.sh installs it: a mismatch fails instead of
+# downloading another release.
+pmOnFail: error
+
 overrides:
   cookie: 0.7.2
   devalue: 5.9.3

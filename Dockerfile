@@ -8,15 +8,18 @@
 FROM ghcr.io/astral-sh/uv:0.12.1@sha256:cf4eedcaa81655197f625739489effcbe71b61ceb1506f332c3facae5deceded AS uv
 
 # ── stage 2: build the SvelteKit static UI ────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM node:24-bookworm@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0 AS ui
+FROM --platform=$BUILDPLATFORM node:26.11.1-bookworm@sha256:f1233c415b41ffcf237c717b3dea92e9d4ea006e0e4c71edcb790605d74f5404 AS ui
 # IPv6 egress is broken on the build host (see main Dockerfile) → prefer IPv4 so package downloads don't hang.
 RUN echo 'precedence ::ffff:0:0/96 100' >> /etc/gai.conf
 # The package install precedes every commit-bound input, so an unchanged lock reuses it at every commit: BuildKit
 # gives a WORKDIR the release epoch as its creation time, and every RUN after an ARG reads the ARG's value.
-COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml /w/
-# The exact pnpm the manifest names (Corepack), from the lock alone. No dependency runs an install script
-# (pnpm-workspace.yaml, repeated here): the build's native packages (Rolldown) ship as prebuilt optional dependencies.
-RUN cd /w && corepack pnpm install --frozen-lockfile --ignore-scripts --store-dir /tmp/pnpm-store && \
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml frontend/bootstrap-pnpm.sh /w/
+# The exact pnpm the manifest names, its registry tarball verified by bootstrap-pnpm.sh (Node.js 26 bundles no
+# Corepack), installs from the lock alone. No dependency runs an install script (pnpm-workspace.yaml, repeated here):
+# the build's native packages (Rolldown) ship as prebuilt optional dependencies.
+ENV PATH="/opt/pnpm/bin:$PATH"
+RUN cd /w && sh bootstrap-pnpm.sh /tmp/pnpm-cache /opt/pnpm && rm -rf /tmp/pnpm-cache && \
+    pnpm install --frozen-lockfile --ignore-scripts --store-dir /tmp/pnpm-store && \
     rm -rf /tmp/pnpm-store
 WORKDIR /w
 COPY frontend/ ./
@@ -24,7 +27,7 @@ COPY frontend/ ./
 # Normalize the copied artifact tree explicitly: the release builder supplies the Git-derived epoch and the final
 # Python stage consumes only this tree.
 ARG SOURCE_DATE_EPOCH=0
-RUN corepack pnpm build && \
+RUN pnpm build && \
     find /w/build -depth -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
 
 # ── stage 3: resolve target-platform Python dependencies ───────────────────────────────────────
