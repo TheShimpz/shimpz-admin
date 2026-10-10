@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from protocol.http.v1 import challenge as team_challenge
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import turn as turn_contract
 
@@ -89,8 +90,8 @@ class FrontendProtocolParityTests(unittest.TestCase):
 
     def test_the_browser_rendered_copy_bounds_are_the_team_bounds(self) -> None:
         for name, bounds in (
-            ("RENDERED_FIELD_CHARS", team_contract.RENDERED_FIELD_CHARS),
-            ("RENDERED_OPTION_CHARS", team_contract.RENDERED_OPTION_CHARS),
+            ("RENDERED_FIELD_CHARS", team_challenge.RENDERED_FIELD_CHARS),
+            ("RENDERED_OPTION_CHARS", team_challenge.RENDERED_OPTION_CHARS),
         ):
             with self.subTest(name=name):
                 literal = re.fullmatch(r"Object\.freeze\(\{ (.+) \}\)", _constant(self.source, name))

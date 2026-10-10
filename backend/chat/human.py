@@ -15,6 +15,7 @@ from dataclasses import dataclass
 import auth
 from team import bridge as team
 
+from protocol.http.v1 import challenge as team_challenge
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
@@ -258,7 +259,7 @@ def project(body: object, team_id: str) -> dict[str, object]:
 
 def _localization(body: dict[str, object], request: dict[str, object]) -> dict[str, object]:
     """The display copy of exactly the request's references, its concrete locale, and the pack (ADR-0091)."""
-    rendered = team_contract.canonical_rendered(body["rendered"], request)
+    rendered = team_challenge.canonical_rendered(body["rendered"], request)
     locale = team_contract.canonical_locale(body["locale"])
     pack_digest = team_contract.canonical_pack_digest(body["pack_digest"])
     if rendered is None or locale is None or pack_digest is None:
@@ -286,13 +287,13 @@ def _presentation(body: dict[str, object], request: dict[str, object]) -> dict[s
         raise HumanChallengeError("invalid human challenge help")
     if "file" in body:
         # The consent names exactly the file whose original bytes the approval delivers; the filename is literal data.
-        disclosed = team_contract.canonical_file_disclosure(body["file"])
+        disclosed = team_challenge.canonical_file_disclosure(body["file"])
         if disclosed is None or request["kind"] not in AUTHORIZATION_KINDS:
             raise HumanChallengeError("invalid human challenge file disclosure")
         presentation["file"] = disclosed
     if "input" in body:
         # Rows of literal escaped text, each cut row flagged and every argument past the last row counted (ADR-0112).
-        shown = team_contract.canonical_input_projection(body["input"])
+        shown = team_challenge.canonical_input_projection(body["input"])
         if shown is None or request["kind"] not in INPUT_KINDS:
             raise HumanChallengeError("invalid human challenge input")
         presentation["input"] = shown

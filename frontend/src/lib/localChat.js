@@ -92,7 +92,7 @@ export const CONFIRMATION_KIND = 'confirmation';
 const CONFIRMATION_POLICY = 'mutating-actions';
 // The requests whose card may show the Action's validated input; Team's confirmation always shows it.
 const INPUT_KINDS = new Set([CONFIRMATION_KIND, 'approval', ...HUMAN_AUTH_KINDS]);
-// The bounds of that input's rows (Team HTTP payload.canonical_input_projection).
+// The bounds of that input's rows (Team HTTP challenge.canonical_input_projection).
 const INPUT_PROJECTION_MAX_FIELDS = 16;
 const INPUT_PROJECTION_NAME_CHARS = 128;
 const INPUT_PROJECTION_VALUE_CHARS = 400;
@@ -305,7 +305,7 @@ function renderedText(text, reference, maximum) {
 }
 
 // The display copy of exactly the canonical request's copy fields, in its field and option order (Team HTTP
-// payload.canonical_rendered); option values and kinds stay in the request.
+// challenge.canonical_rendered); option values and kinds stay in the request.
 function canonicalRendered(value, request) {
   const fields = Object.keys(RENDERED_FIELD_CHARS).filter((field) => Object.hasOwn(request, field));
   const options = Object.hasOwn(request, 'options');

@@ -148,7 +148,7 @@ function positiveSize(value, maximum) {
 }
 
 /**
- * The one file an authorization challenge discloses (Team payload.canonical_file_disclosure): exactly the original
+ * The one file an authorization challenge discloses (Team challenge.canonical_file_disclosure): exactly the original
  * the approved Action receives, with any metadata embedded in it. Anything else fails closed.
  */
 export function parseFileDisclosure(value) {
