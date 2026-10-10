@@ -2,13 +2,16 @@
   import { Card, Notice, ShimpzBrand, TextField } from '@shimpz/frontend';
   import DialogAction from '$lib/DialogAction.svelte';
   import { t } from '$lib/i18n.js';
+  import RecoveryCodes from '$lib/RecoveryCodes.svelte';
 
   let {
     phase,
     password = $bindable(''),
     confirmation = $bindable(''),
     code = $bindable(''),
+    recoveryCode = $bindable(''),
     enrollment = null,
+    recoveryCodes = null,
     passkeyAvailable = false,
     error = '',
     busy = false,
@@ -17,23 +20,33 @@
     onUsePasskey,
     onRegisterPasskey,
     onSkipPasskey,
+    onUseRecoveryCode,
+    onSubmitRecoveryCode,
+    onRecoveryCodesSaved,
     onRetry,
   } = $props();
 
   let setup = $derived(phase === 'setup');
   let resumeEnrollment = $derived(phase === 'enrollment-resume');
-  let totpEnrollment = $derived(phase === 'totp-enrollment');
+  let totpReenrollment = $derived(phase === 'totp-reenrollment');
+  let totpEnrollment = $derived(phase === 'totp-enrollment' || totpReenrollment);
+  let recoveryCodeLogin = $derived(phase === 'recovery-code');
+  let showRecoveryCodes = $derived(phase === 'recovery-codes' && recoveryCodes !== null);
   let totpLogin = $derived(phase === 'totp-login');
   let passkeyOffer = $derived(phase === 'passkey-offer');
   let recovery = $derived(phase === 'recovery');
   let passwordPhase = $derived(setup || resumeEnrollment || phase === 'login');
+  let returning = $derived(['login', 'recovery-code', 'totp-reenrollment'].includes(phase));
   let confirmationError = $derived(setup && error === $t('auth.mismatch') ? error : '');
   let formError = $derived(confirmationError ? '' : error);
 
   function title() {
     if (setup) return $t('auth.setupTitle');
     if (resumeEnrollment) return $t('auth.resumeMfaTitle');
+    if (totpReenrollment) return $t('security.reenrollTitle');
     if (totpEnrollment) return $t('auth.totpSetupTitle');
+    if (recoveryCodeLogin) return $t('security.recoveryCodeTitle');
+    if (showRecoveryCodes) return $t('security.codesTitle');
     if (totpLogin) return $t('auth.totpLoginTitle');
     if (passkeyOffer) return $t('auth.passkeySetupTitle');
     return $t('auth.loginTitle');
@@ -42,7 +55,10 @@
   function lead() {
     if (setup) return $t('auth.setupLead');
     if (resumeEnrollment) return $t('auth.resumeMfaLead');
+    if (totpReenrollment) return $t('security.reenrollLead');
     if (totpEnrollment) return $t('auth.totpSetupLead');
+    if (recoveryCodeLogin) return $t('security.recoveryCodeLead');
+    if (showRecoveryCodes) return $t('security.codesLead');
     if (totpLogin) return $t('auth.totpLoginLead');
     if (passkeyOffer) return $t('auth.passkeySetupLead');
     return $t('auth.loginLead');
@@ -52,7 +68,7 @@
 <section class="auth-stage" aria-labelledby="auth-title">
   <div class="welcome">
     <p class="kicker">
-      {recovery ? $t('auth.recoveryKicker') : phase === 'login' ? $t('auth.returning') : $t('auth.firstRun')}
+      {recovery ? $t('auth.recoveryKicker') : returning ? $t('auth.returning') : $t('auth.firstRun')}
     </p>
     <ShimpzBrand variant="hero" />
     <div class="welcome-copy"><p class="hero-title">{$t('auth.heroTitle')}</p></div>
@@ -104,11 +120,22 @@
           <TextField id="admin-totp" label={$t('auth.totpCode')} type="text" bind:value={code} autocomplete="one-time-code" inputmode="numeric" pattern={'[0-9]{6}'} minlength="6" maxlength="6" required disabled={busy} />
           {#if formError}<Notice variant="error">{formError}</Notice>{/if}
           <DialogAction kind="confirm" type="submit" disabled={busy || !/^[0-9]{6}$/.test(code)}>{busy ? $t('auth.checking') : $t('auth.verify')}</DialogAction>
-          {#if totpLogin && passkeyAvailable}
+          {#if totpLogin}
             <div class="alternative"><span>{$t('auth.or')}</span></div>
-            <DialogAction kind="confirm" variant="secondary" type="button" onclick={onUsePasskey} disabled={busy}>{$t('auth.usePasskey')}</DialogAction>
+            {#if passkeyAvailable}
+              <DialogAction kind="confirm" variant="secondary" type="button" onclick={onUsePasskey} disabled={busy}>{$t('auth.usePasskey')}</DialogAction>
+            {/if}
+            <DialogAction kind="confirm" variant="secondary" type="button" onclick={onUseRecoveryCode} disabled={busy}>{$t('security.useRecoveryCode')}</DialogAction>
           {/if}
         </form>
+      {:else if recoveryCodeLogin}
+        <form onsubmit={(event) => (event.preventDefault(), onSubmitRecoveryCode())}>
+          <TextField id="admin-recovery-code" label={$t('security.recoveryCodeLabel')} type="text" bind:value={recoveryCode} autocomplete="one-time-code" spellcheck="false" maxlength="64" required disabled={busy} />
+          {#if formError}<Notice variant="error">{formError}</Notice>{/if}
+          <DialogAction kind="confirm" type="submit" disabled={busy || !recoveryCode.trim()}>{busy ? $t('auth.checking') : $t('auth.continue')}</DialogAction>
+        </form>
+      {:else if showRecoveryCodes}
+        <RecoveryCodes codes={recoveryCodes} ondone={onRecoveryCodesSaved} />
       {:else if passkeyOffer}
         <div class="passkey-actions">
           {#if formError}<Notice variant="error">{formError}</Notice>{/if}

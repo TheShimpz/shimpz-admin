@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import state
-from mfa_helper import code, configure_supervisor, isolated_store
+from mfa_helper import code, configure_supervisor, isolated_store, recovery_record
 
 NOW = 1_800_000_000
 
@@ -183,12 +183,16 @@ class AdminStoreCacheTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             state.begin_supervisor_setup("violet otter lantern quartz 92", now=NOW)
 
-        result = state.verify_totp(code(enrollment.secret, NOW + 1), enrollment=True, now=NOW + 1)
+        result = state.verify_totp(
+            code(enrollment.secret, NOW + 1), ceremony="setup", now=NOW + 1, codes=recovery_record()
+        )
         self.assertIs(result, state.totp.Verification.ACCEPTED)
         with self.assertRaises(state.totp.TotpStateError):
             state.resume_totp_enrollment(now=NOW + 2)
         with self.assertRaises(state.totp.TotpStateError):
-            state.verify_totp(code(enrollment.secret, NOW + 30), enrollment=True, now=NOW + 30)
+            state.verify_totp(
+                code(enrollment.secret, NOW + 30), ceremony="setup", now=NOW + 30, codes=recovery_record()
+            )
 
     def test_logout_rotates_sessions_only_for_current_evidence(self) -> None:
         self.assertIs(state.revoke_sessions_for_logout("not-a-session"), False)

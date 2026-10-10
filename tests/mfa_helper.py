@@ -1,6 +1,8 @@
 """Test-only helpers that establish the exact current Local MFA contract."""
 
 import base64
+import copy
+import functools
 import hashlib
 import hmac
 import tempfile
@@ -20,10 +22,27 @@ def code(secret: str, timestamp: int = NOW) -> str:
     return str(value % 1_000_000).zfill(6)
 
 
+@functools.cache
+def _recovery_set():
+    from mfa import recovery
+
+    return recovery.new_set()
+
+
+def recovery_codes() -> tuple[str, ...]:
+    """The recovery codes `configure_supervisor` installs: one set derived once per test process."""
+    return _recovery_set().codes
+
+
+def recovery_record() -> dict[str, object]:
+    """A private copy of the fixture set's persisted record."""
+    return copy.deepcopy(_recovery_set().record)
+
+
 def configure_supervisor(state_module, password: str) -> str:
-    """Create password+TOTP state and return its current session secret."""
+    """Create password+TOTP state with the fixture recovery codes and return its current session secret."""
     enrollment = state_module.begin_supervisor_setup(password, now=NOW)
-    result = state_module.verify_totp(code(enrollment.secret), enrollment=True, now=NOW)
+    result = state_module.verify_totp(code(enrollment.secret), ceremony="setup", now=NOW, codes=recovery_record())
     if result.value != "accepted":
         raise AssertionError("test MFA setup failed")
     return state_module.get()["session_secret"]

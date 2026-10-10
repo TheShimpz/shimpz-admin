@@ -4,10 +4,17 @@ import { get } from 'svelte/store';
 
 import {
   acknowledgeFailedAttempts,
+  beginRecoveryCodes,
   clearSecuritySummary,
   loadSecuritySummary,
+  recoveryCodes,
+  recoveryCodesText,
+  replaceRecoveryCodes,
+  SecurityError,
   securitySummary,
 } from '../src/lib/security.js';
+
+const CODES = Array.from({ length: 10 }, (_, index) => `abcd-efgh-jk${String(index).padStart(2, '0')}`);
 
 function answer(status, body) {
   const calls = [];
@@ -19,10 +26,10 @@ function answer(status, body) {
 }
 
 test('the summary reads the failed attempts a sign-in reported', async () => {
-  const { calls, fetcher } = answer(200, { failed_second_factor_attempts: 3 });
+  const { calls, fetcher } = answer(200, { failed_second_factor_attempts: 3, recovery_codes_remaining: 9 });
 
-  assert.deepEqual(await loadSecuritySummary(fetcher), { failedAttempts: 3 });
-  assert.deepEqual(get(securitySummary), { failedAttempts: 3 });
+  assert.deepEqual(await loadSecuritySummary(fetcher), { failedAttempts: 3, recoveryCodesRemaining: 9 });
+  assert.deepEqual(get(securitySummary), { failedAttempts: 3, recoveryCodesRemaining: 9 });
   assert.equal(calls[0].url, '/api/admin/security');
   assert.equal(calls[0].init.cache, 'no-store');
   clearSecuritySummary();
@@ -30,9 +37,9 @@ test('the summary reads the failed attempts a sign-in reported', async () => {
 });
 
 test('an acknowledgment names exactly the attempts the Supervisor saw', async () => {
-  const { calls, fetcher } = answer(200, { failed_second_factor_attempts: 1 });
+  const { calls, fetcher } = answer(200, { failed_second_factor_attempts: 1, recovery_codes_remaining: 10 });
 
-  assert.deepEqual(await acknowledgeFailedAttempts(fetcher, 3), { failedAttempts: 1 });
+  assert.deepEqual(await acknowledgeFailedAttempts(fetcher, 3), { failedAttempts: 1, recoveryCodesRemaining: 10 });
   assert.equal(calls[0].url, '/api/admin/security/failures');
   assert.equal(calls[0].init.method, 'POST');
   assert.deepEqual(JSON.parse(calls[0].init.body), { acknowledged: 3 });
@@ -44,8 +51,63 @@ test('an acknowledgment names exactly the attempts the Supervisor saw', async ()
 
 test('a refused or malformed answer fails closed', async () => {
   await assert.rejects(loadSecuritySummary(answer(503, { detail: 'unavailable' }).fetcher), /unavailable/);
-  for (const body of [{}, { failed_second_factor_attempts: -1 }, { failed_second_factor_attempts: 1, extra: 1 }]) {
+  for (const body of [
+    {},
+    { failed_second_factor_attempts: -1, recovery_codes_remaining: 1 },
+    { failed_second_factor_attempts: 1, recovery_codes_remaining: 11 },
+    { failed_second_factor_attempts: 1, recovery_codes_remaining: 1, extra: 1 },
+  ]) {
     await assert.rejects(loadSecuritySummary(answer(200, body).fetcher), /invalid/);
   }
   await assert.rejects(loadSecuritySummary(null), /Invalid sign-in security request/);
+});
+
+test('a recovery set is exactly ten distinct codes in their written form', () => {
+  assert.deepEqual(recoveryCodes(CODES), CODES);
+  for (const value of [null, CODES.slice(1), [...CODES.slice(1), CODES[0].toUpperCase()], [...CODES.slice(1), CODES[1]],
+    [...CODES.slice(1), 'abcd-efgh-jkil']]) {
+    assert.equal(recoveryCodes(value), null);
+  }
+  assert.equal(recoveryCodesText(CODES.slice(0, 2), 'Codes'), `Codes\n\n${CODES[0]}\n${CODES[1]}\n`);
+});
+
+test('replacing the codes starts with the password and spends one second factor for the new set', async () => {
+  const offer = answer(202, { methods: ['totp'] });
+  assert.deepEqual(await beginRecoveryCodes(offer.fetcher, 'a password'), { passkey: null });
+  assert.equal(offer.calls[0].url, '/api/admin/recovery-codes/confirmation');
+  assert.deepEqual(JSON.parse(offer.calls[0].init.body), { password: 'a password' });
+  const passkey = answer(202, { methods: ['totp', 'passkey'], passkey_options: { challenge: 'c' } });
+  assert.deepEqual(await beginRecoveryCodes(passkey.fetcher, 'a password'), { passkey: { challenge: 'c' } });
+
+  securitySummary.set({ failedAttempts: 0, recoveryCodesRemaining: 2 });
+  const replaced = answer(200, { recovery_codes: CODES });
+  assert.deepEqual(await replaceRecoveryCodes(replaced.fetcher, { code: '123456' }), CODES);
+  assert.equal(replaced.calls[0].url, '/api/admin/recovery-codes');
+  assert.deepEqual(JSON.parse(replaced.calls[0].init.body), { code: '123456' });
+  assert.equal(get(securitySummary).recoveryCodesRemaining, 10);
+  clearSecuritySummary();
+  assert.deepEqual(await replaceRecoveryCodes(answer(200, { recovery_codes: CODES }).fetcher, { credential: {} }), CODES);
+  assert.equal(get(securitySummary), null);
+});
+
+test('a refused or malformed confirmation is a closed error and nothing invalid is sent', async () => {
+  const refused = answer(429, { code: 'authentication-locked', retry_after: 60 });
+  await assert.rejects(beginRecoveryCodes(refused.fetcher, 'a password'), (error) => (
+    error instanceof SecurityError && error.code === 'authentication-locked' && error.status === 429 && error.retryAfter === 60
+  ));
+  await assert.rejects(beginRecoveryCodes(answer(500, { code: 'Not A Code', retry_after: 1e9 }).fetcher, 'p'), (error) => (
+    error.code === 'request-failed' && error.retryAfter === 0
+  ));
+  for (const body of [{ methods: ['passkey'] }, { methods: ['totp'], extra: 1 }, { methods: ['totp', 'passkey'] }]) {
+    await assert.rejects(beginRecoveryCodes(answer(202, body).fetcher, 'p'), /response-invalid/);
+  }
+  await assert.rejects(beginRecoveryCodes(answer(202, {}).fetcher, ''), /request-invalid/);
+  await assert.rejects(beginRecoveryCodes(null, 'p'), /request-invalid/);
+  for (const proof of [{}, { code: '12345' }, { code: '123456', credential: {} }, { credential: null }]) {
+    await assert.rejects(replaceRecoveryCodes(answer(200, {}).fetcher, proof), /request-invalid/);
+  }
+  await assert.rejects(replaceRecoveryCodes(answer(200, { recovery_codes: CODES.slice(1) }).fetcher, { code: '123456' }),
+    /response-invalid/);
+  await assert.rejects(replaceRecoveryCodes(answer(200, { recovery_codes: CODES, x: 1 }).fetcher, { code: '123456' }),
+    /response-invalid/);
 });

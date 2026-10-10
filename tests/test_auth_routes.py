@@ -69,6 +69,8 @@ class AuthRouteTests(unittest.TestCase):
                     "/api/admin/setup/totp",
                     "/api/login/totp",
                     "/api/login/passkey",
+                    "/api/login/recovery",
+                    "/api/login/recovery/totp",
                     "/api/oauth/cloudflare/start",
                     "/api/oauth/cloudflare/callback",
                     "/api/space/host",
@@ -273,7 +275,7 @@ class AuthRouteTests(unittest.TestCase):
                 )
             )
 
-        self.assertEqual(json.loads(response.body), {"methods": ["totp"]})
+        self.assertEqual(json.loads(response.body), {"methods": ["totp", "recovery-code"]})
 
     def test_passkey_registration_capacity_is_a_conflict_not_server_error(self) -> None:
         configure_supervisor(self.admin_app.state, "violet otter lantern quartz 92")

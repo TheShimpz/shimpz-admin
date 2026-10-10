@@ -102,6 +102,8 @@ OPEN_API = frozenset(
         "/api/admin/setup/totp",
         "/api/login/totp",
         "/api/login/passkey",
+        "/api/login/recovery",
+        "/api/login/recovery/totp",
         "/api/oauth/cloudflare/start",
         "/api/oauth/cloudflare/callback",
         "/api/space/host",
@@ -412,6 +414,44 @@ async def local_login_passkey(request: Request):
     return await local_auth.confirm_login_passkey(request, _LOCAL_AUTH_CONTEXT)
 
 
+async def local_login_recovery(request: Request):
+    async with _ADMIN_SETUP_LOCK:
+        return await local_auth.confirm_login_recovery(request, _LOCAL_AUTH_CONTEXT)
+
+
+async def local_recovery_enrollment(request: Request):
+    async with _ADMIN_SETUP_LOCK:
+        return await local_auth.confirm_recovery_enrollment(request, _LOCAL_AUTH_CONTEXT)
+
+
+async def recovery_codes_confirmation(request: Request):
+    """Replacing the recovery codes starts with the Supervisor password, as any confirmed operation does (ADR-0051)."""
+
+    async def begin() -> JSONResponse:
+        try:
+            return await local_auth.begin_operation(request, _LOCAL_AUTH_CONTEXT, local_auth.RECOVERY_CODES_SUBJECT)
+        except local_auth.OperationRefusedError as exc:
+            return local_auth.operation_refusal(exc)
+
+    return await team_http.no_store(begin)
+
+
+async def recovery_codes_replace(request: Request):
+    async def replace() -> JSONResponse:
+        payload = await team_http.bounded_json_object(request, local_auth.MAX_BODY_BYTES)
+        try:
+            response = await run_in_threadpool(
+                local_auth.regenerate_recovery_codes, request, _LOCAL_AUTH_CONTEXT, payload
+            )
+        except local_auth.OperationRefusedError as exc:
+            response = local_auth.operation_refusal(exc)
+        # The ticket is spent either way; a stale cookie would only be refused.
+        response.delete_cookie(local_auth.TICKET_COOKIE, path="/api/")
+        return response
+
+    return await team_http.no_store(replace)
+
+
 async def local_passkey_registration_begin(request: Request):
     return await local_auth.begin_passkey_registration(request, _LOCAL_AUTH_CONTEXT)
 
@@ -424,6 +464,10 @@ app.add_api_route("/api/admin/setup", admin_setup, methods=["POST"])
 app.add_api_route("/api/admin/setup/totp", admin_setup_totp, methods=["POST"])
 app.add_api_route("/api/login/totp", local_login_totp, methods=["POST"])
 app.add_api_route("/api/login/passkey", local_login_passkey, methods=["POST"])
+app.add_api_route("/api/login/recovery", local_login_recovery, methods=["POST"])
+app.add_api_route("/api/login/recovery/totp", local_recovery_enrollment, methods=["POST"])
+app.add_api_route("/api/admin/recovery-codes/confirmation", recovery_codes_confirmation, methods=["POST"])
+app.add_api_route("/api/admin/recovery-codes", recovery_codes_replace, methods=["POST"])
 app.add_api_route("/api/admin/passkeys/registration", local_passkey_registration_begin, methods=["POST"])
 app.add_api_route("/api/admin/passkeys", local_passkey_registration_complete, methods=["POST"])
 

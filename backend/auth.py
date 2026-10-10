@@ -19,6 +19,9 @@ MIN_PASSWORD_CHARS = 15
 MAX_PASSWORD_CHARS = 4 * 1024
 RECORD_STATE_CONFIGURED = "configured"
 RECORD_STATE_ENROLLMENT_REQUIRED = "enrollment-required"
+# Internal only: a recovery code replaced TOTP, and only its re-enrollment is admitted until it completes. Discovery and
+# the release admission present it as `configured`, since signing in with a recovery code is its one way forward.
+RECORD_STATE_RECOVERY_ENROLLMENT = "recovery-enrollment"
 RECORD_STATE_RECOVERY_REQUIRED = "recovery-required"
 RECORD_STATE_UNINITIALIZED = "uninitialized"
 

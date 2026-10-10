@@ -1,4 +1,4 @@
-"""The Supervisor's own view of its sign-in security (ADR-0051).
+"""The Supervisor's own view of its sign-in security (ADR-0051): reported failures and the recovery codes left.
 
 A successful sign-in reports the second-factor attempts refused since the previous one, and Admin keeps reporting them
 after every later sign-in until the Supervisor acknowledges them. An acknowledgment names how many it saw, so a refusal
@@ -25,9 +25,15 @@ def _response(body: dict[str, object]) -> JSONResponse:
     return response
 
 
+def _summary() -> dict[str, object]:
+    return {
+        "failed_second_factor_attempts": state.unacknowledged_second_factor_failures(),
+        "recovery_codes_remaining": state.recovery_codes_remaining(),
+    }
+
+
 async def summary() -> JSONResponse:
-    failures = await run_in_threadpool(state.unacknowledged_second_factor_failures)
-    return _response({"failed_second_factor_attempts": failures})
+    return _response(await run_in_threadpool(_summary))
 
 
 async def acknowledge_failures(request: Request) -> JSONResponse:
@@ -35,5 +41,5 @@ async def acknowledge_failures(request: Request) -> JSONResponse:
     count = payload.get("acknowledged") if set(payload) == {"acknowledged"} else None
     if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= state.MAX_SECOND_FACTOR_FAILURES:
         raise HTTPException(status_code=400, detail="request body must contain only a positive acknowledged count")
-    remaining = await run_in_threadpool(state.acknowledge_second_factor_failures, count)
-    return _response({"failed_second_factor_attempts": remaining})
+    await run_in_threadpool(state.acknowledge_second_factor_failures, count)
+    return await summary()

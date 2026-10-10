@@ -6,6 +6,7 @@
   import LocaleMenu from '$lib/LocaleMenu.svelte';
   import PlatformReleaseStatus from '$lib/PlatformReleaseStatus.svelte';
   import SecurityAlert from '$lib/SecurityAlert.svelte';
+  import SecurityDialog from '$lib/SecurityDialog.svelte';
   import TeamDialogs from '$lib/TeamDialogs.svelte';
   import TeamNavigation from '$lib/TeamNavigation.svelte';
   import TeamSidebar from '$lib/TeamSidebar.svelte';
@@ -19,6 +20,8 @@
   let teamDrawer = $state();
   let teamDrawerTrigger = $state();
   let createButton = $state();
+  let securityDialog = $state();
+  let securityTrigger = $state();
 
   function closeTeamDrawer() {
     teamDrawer?.close();
@@ -47,10 +50,18 @@
   });
 </script>
 
+{#snippet securityButton()}
+  <Button bind:element={securityTrigger} class="security-open" variant="ghost" size="sm" type="button" aria-haspopup="dialog" onclick={() => securityDialog?.open()}>
+    <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v6c0 4.2 2.9 7.6 7 9 4.1-1.4 7-4.8 7-9V6z"></path></svg>
+    {$t('security.open')}
+  </Button>
+{/snippet}
+
 {#snippet sidebar()}
   {#if mobile}
     <div class="mobile-footer">
       <PlatformReleaseStatus />
+      {@render securityButton()}
       <LocaleMenu compact />
     </div>
   {:else}
@@ -65,6 +76,7 @@
         <TeamSidebar {active} />
       </div>
       <div class="sidebar-footer">
+        {@render securityButton()}
         <LocaleMenu wide />
         <PlatformReleaseStatus />
       </div>
@@ -109,6 +121,7 @@
 >
   {#if authenticated}
     <TeamDialogs bind:this={teamDialogs} onsettled={restoreTeamFocus} />
+    <SecurityDialog bind:this={securityDialog} onclose={() => queueMicrotask(() => securityTrigger?.focus())} />
     {#if mobile}
       <Modal class="team-drawer" bind:element={teamDrawer} labelledBy="team-drawer-title">
         <div class="team-drawer-head">
@@ -154,6 +167,7 @@
   .shell-sidebar { display: grid; min-width: 0; min-height: 100%; grid-template-rows: minmax(0, 1fr) auto; }
   .sidebar-footer { display: grid; min-width: 0; gap: var(--gap-item); padding-block-start: var(--gap-group); }
   .sidebar-footer > :global(.shimpz-dropdown) { width: auto; margin-inline: var(--gap-group); }
+  .sidebar-footer > :global(.security-open) { justify-self: stretch; margin-inline: var(--gap-group); }
   .sidebar-footer > :global(.platform-release) { justify-content: center; border-block-start: 0; }
 
   .menu-icon { width: 1.25rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-width: 1.8; }

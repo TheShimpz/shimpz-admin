@@ -37,13 +37,18 @@ EVENTS = frozenset(
         "origin-learned",
         "origin-replaced",
         "operation-confirmed",
+        "recovery-code-used",
+        "recovery-code-rejected",
+        "recovery-code-locked",
+        "recovery-completed",
+        "recovery-codes-generated",
         "logout",
         "host-reset",
         "space-reset",
     }
 )
 OUTCOMES = frozenset({"ok", "denied"})
-METHODS = frozenset({"totp", "passkey"})
+METHODS = frozenset({"totp", "passkey", "recovery-code"})
 
 
 class AuditUnavailableError(RuntimeError):

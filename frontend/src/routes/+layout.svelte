@@ -14,6 +14,7 @@
   import { clearModelContext, modelContext } from '$lib/modelContext.js';
   import { authenticateWithPasskey, passkeyFailure, registerPasskey } from '$lib/passkey.js';
   import { clearTeamRoutines } from '$lib/routineContext.js';
+  import { recoveryCodes as validRecoveryCodes } from '$lib/security.js';
   import { clearSessionContext, SESSION_ENDED, setSessionContext } from '$lib/sessionContext.js';
   import { clearTeamContext, teamContext } from '$lib/teamContext.js';
 
@@ -23,7 +24,9 @@
   let password = $state('');
   let confirmation = $state('');
   let code = $state('');
+  let recoveryCode = $state('');
   let enrollment = $state(null);
+  let recoveryCodes = $state(null);
   let passkeyOptions = $state(null);
   let error = $state('');
   let busy = $state(false);
@@ -79,8 +82,17 @@
     password = '';
     confirmation = '';
     code = '';
+    recoveryCode = '';
     enrollment = null;
     passkeyOptions = null;
+  }
+
+  async function showEnrollment(body) {
+    const secret = body?.enrollment?.secret;
+    const uri = body?.enrollment?.uri;
+    if (typeof secret !== 'string' || typeof uri !== 'string') throw new Error('invalid enrollment');
+    const qr = await QRCode.toDataURL(uri, { margin: 1, width: 184, errorCorrectionLevel: 'M' });
+    enrollment = { secret, qr };
   }
 
   async function enterReady(redirectToChat) {
@@ -191,24 +203,20 @@
         return;
       }
       if (submittedPhase !== 'login') {
-        const secret = body?.enrollment?.secret;
-        const uri = body?.enrollment?.uri;
-        if (response.status !== 202 || typeof secret !== 'string' || typeof uri !== 'string') {
-          throw new Error('invalid enrollment');
-        }
-        const qr = await QRCode.toDataURL(uri, { margin: 1, width: 184, errorCorrectionLevel: 'M' });
-        enrollment = { secret, qr };
+        if (response.status !== 202) throw new Error('invalid enrollment');
+        await showEnrollment(body);
         password = confirmation = '';
         phase = 'totp-enrollment';
         return;
       }
       const methods = body?.methods;
-      if (response.status !== 202 || !Array.isArray(methods) || !methods.includes('totp')) {
+      if (response.status !== 202 || !Array.isArray(methods) || !methods.includes('recovery-code')) {
         throw new Error('invalid login ceremony');
       }
       passkeyOptions = methods.includes('passkey') ? body.passkey_options : null;
       password = '';
-      phase = 'totp-login';
+      // Until the authenticator a recovery code replaced is enrolled again, another recovery code is the only way in.
+      phase = methods.includes('totp') ? 'totp-login' : 'recovery-code';
     } catch {
       error = $t('auth.unreachable');
     } finally {
@@ -216,19 +224,33 @@
     }
   }
 
+  const TOTP_ENDPOINTS = {
+    'totp-enrollment': '/api/admin/setup/totp',
+    'totp-reenrollment': '/api/login/recovery/totp',
+    'totp-login': '/api/login/totp',
+  };
+
   async function submitTotp() {
-    if (busy || !['totp-enrollment', 'totp-login'].includes(phase) || !/^[0-9]{6}$/.test(code)) return;
+    const endpoint = TOTP_ENDPOINTS[phase];
+    if (busy || !endpoint || !/^[0-9]{6}$/.test(code)) return;
     error = '';
     busy = true;
-    const enrollmentAttempt = phase === 'totp-enrollment';
+    const submittedPhase = phase;
     try {
-      const response = await fetch(enrollmentAttempt ? '/api/admin/setup/totp' : '/api/login/totp', {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code }),
       });
+      const body = await response.json().catch(() => ({}));
+      // A wrong code while enrolling again keeps the enrollment: Admin hands back a fresh ticket for the next code.
+      if (submittedPhase === 'totp-reenrollment' && response.status === 401) {
+        code = '';
+        error = $t('security.codeIncorrect');
+        return;
+      }
       if (!response.ok) {
-        phase = enrollmentAttempt ? 'enrollment-resume' : 'login';
+        phase = submittedPhase === 'totp-enrollment' ? 'enrollment-resume' : 'login';
         clearCredentials();
         error = response.status === 429 ? $t('auth.tooManyAttempts') : $t('auth.badCodeRetry');
         busy = false;
@@ -236,12 +258,54 @@
         return;
       }
       clearCredentials();
+      if (submittedPhase !== 'totp-login') {
+        // An enrollment shows its new recovery codes once, before the signed-in Admin opens.
+        recoveryCodes = validRecoveryCodes(body?.recovery_codes);
+        if (!recoveryCodes) throw new Error('invalid recovery codes');
+        phase = 'recovery-codes';
+        return;
+      }
       await checkSession({ redirectToChat: true });
     } catch {
       error = $t('auth.unreachable');
     } finally {
       busy = false;
     }
+  }
+
+  async function submitRecoveryCode() {
+    if (busy || phase !== 'recovery-code' || !recoveryCode.trim()) return;
+    error = '';
+    busy = true;
+    try {
+      const response = await fetch('/api/login/recovery', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: recoveryCode }),
+      });
+      const body = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        phase = 'login';
+        clearCredentials();
+        error = response.status === 429 ? $t('auth.tooManyAttempts') : $t('security.recoveryCodeRetry');
+        busy = false;
+        await focusPassword();
+        return;
+      }
+      if (response.status !== 202) throw new Error('invalid recovery');
+      await showEnrollment(body);
+      recoveryCode = '';
+      phase = 'totp-reenrollment';
+    } catch {
+      error = $t('auth.unreachable');
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function recoveryCodesSaved() {
+    recoveryCodes = null;
+    await checkSession({ redirectToChat: true });
   }
 
   async function usePasskey() {
@@ -321,7 +385,9 @@
         bind:password
         bind:confirmation
         bind:code
+        bind:recoveryCode
         {enrollment}
+        {recoveryCodes}
         passkeyAvailable={passkeyOptions !== null}
         {error}
         {busy}
@@ -330,6 +396,9 @@
         onUsePasskey={usePasskey}
         onRegisterPasskey={registerLocalPasskey}
         onSkipPasskey={() => enterReady(redirectAfterAuthentication)}
+        onUseRecoveryCode={() => { error = ''; code = ''; phase = 'recovery-code'; }}
+        onSubmitRecoveryCode={submitRecoveryCode}
+        onRecoveryCodesSaved={recoveryCodesSaved}
         onRetry={() => checkSession()}
       />
     </AdminShell>

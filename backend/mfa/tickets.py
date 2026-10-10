@@ -9,8 +9,9 @@ from dataclasses import dataclass
 TICKET_TTL_SECONDS = 180
 TICKET_CAPACITY = 64
 MAX_SUBJECT_CHARS = 128
-# Login and enrollment complete a session; an operation ticket confirms one exact Supervisor operation, its subject.
-PURPOSES = frozenset({"login", "totp-enrollment", "operation"})
+# Login and enrollment complete a session (a recovery code's TOTP re-enrollment among them); an operation ticket
+# confirms one exact Supervisor operation, its subject.
+PURPOSES = frozenset({"login", "totp-enrollment", "recovery-enrollment", "operation"})
 
 
 class TicketError(RuntimeError):

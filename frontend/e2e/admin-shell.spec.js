@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import { assistantDetails, PAGE_COPY, publicAssistant } from './assistantPages.js';
 import { accessibilityViolations } from './axe.js';
+import { recoveryCodeSet } from './securityScenarios.js';
 
 function localSession(overrides = {}) {
   return {
@@ -68,7 +69,10 @@ test('completes mandatory authenticator enrollment before opening Admin', async 
   await page.route('**/api/admin/setup/totp', async (route) => {
     expect(await route.request().postDataJSON()).toEqual({ code: '123456' });
     authenticationState = 'configured';
-    await route.fulfill({ contentType: 'application/json', body: JSON.stringify({ ok: true, method: 'totp' }) });
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ ok: true, method: 'totp', recovery_codes: recoveryCodeSet(0) }),
+    });
   });
 
   await page.goto('/');
@@ -87,6 +91,9 @@ test('completes mandatory authenticator enrollment before opening Admin', async 
   await page.getByRole('button', { name: 'Verify and continue' }).click();
   await enrollmentResponse;
 
+  // The recovery codes are shown once, before Admin opens.
+  await expect(page.getByRole('list', { name: 'Recovery codes' }).getByRole('listitem')).toHaveText(recoveryCodeSet(0));
+  await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('button', { name: /^(New Team|Open the Team list)$/ })).toBeVisible();
 });
 
@@ -103,7 +110,11 @@ test('announces a rejected TOTP and returns focus to password entry', async ({ p
   }));
   await page.route('**/api/login', (route) => {
     ticketIssued = true;
-    return route.fulfill({ status: 202, contentType: 'application/json', body: JSON.stringify({ methods: ['totp'] }) });
+    return route.fulfill({
+      status: 202,
+      contentType: 'application/json',
+      body: JSON.stringify({ methods: ['totp', 'recovery-code'] }),
+    });
   });
   await page.route('**/api/login/totp', (route) => route.fulfill({
     status: 401,
@@ -187,7 +198,7 @@ test('registers and then uses a UV passkey through the browser ceremony', async 
     status: 202,
     contentType: 'application/json',
     body: JSON.stringify({
-      methods: ['totp', 'passkey'],
+      methods: ['totp', 'passkey', 'recovery-code'],
       passkey_options: {
         allowCredentials: [{ id: credentialId, type: 'public-key' }],
         challenge: 'YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk',

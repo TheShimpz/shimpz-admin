@@ -23,7 +23,7 @@ from typing import cast
 import auth
 import supervisor
 from mfa import passkeys as webauthn
-from mfa import totp
+from mfa import recovery, totp
 
 from protocol.http.v1.websocket import canonical_origin
 
@@ -184,9 +184,22 @@ def _authentication_state(data: dict) -> str:
     try:
         _validated_passkeys(passkey_records)
         _validated_second_factor_failures(data.get("second_factor_failures"))
-        return totp.state(data.get("totp"))
-    except (totp.TotpStateError, webauthn.PasskeyError) as exc:
+        return _factor_state(totp.state(data.get("totp")), data)
+    except (totp.TotpStateError, webauthn.PasskeyError, recovery.RecoveryStateError) as exc:
         raise auth.PasswordRecordError("Local Supervisor MFA record requires bounded recovery") from exc
+
+
+def _factor_state(factor: str, data: dict) -> str:
+    """First enrollment has no recovery codes yet; a pending TOTP beside a set is the re-enrollment a code began."""
+    if "recovery_codes" not in data:
+        raise recovery.RecoveryStateError("stored recovery codes are missing")
+    codes = data["recovery_codes"]
+    if codes is None:
+        if factor != auth.RECORD_STATE_ENROLLMENT_REQUIRED:
+            raise recovery.RecoveryStateError("an active TOTP factor requires recovery codes")
+        return factor
+    recovery.validated(codes)
+    return auth.RECORD_STATE_RECOVERY_ENROLLMENT if factor == auth.RECORD_STATE_ENROLLMENT_REQUIRED else factor
 
 
 def _validated_second_factor_failures(record: object) -> dict[str, int]:
@@ -290,11 +303,15 @@ def authentication_state() -> str:
 
 
 def classified_authentication_state() -> str:
-    """Project a current state while classifying only an invalid auth record for recovery."""
+    """Project the public state, classifying only an invalid auth record for recovery.
+
+    A re-enrollment that a recovery code began is presented as `configured`: its only way forward is signing in again.
+    """
     try:
-        return authentication_state()
+        current = authentication_state()
     except auth.PasswordRecordError:
         return auth.RECORD_STATE_RECOVERY_REQUIRED
+    return auth.RECORD_STATE_CONFIGURED if current == auth.RECORD_STATE_RECOVERY_ENROLLMENT else current
 
 
 def revoke_sessions_for_logout(session_token: object) -> bool:
@@ -364,6 +381,7 @@ def begin_supervisor_setup(password: str, *, now: int | None = None) -> totp.Enr
         data["passkeys"] = []
         data["totp"] = totp.new_record(now)
         data["second_factor_failures"] = {"since_sign_in": 0, "unacknowledged": 0}
+        data["recovery_codes"] = None
         data["created"] = int(time.time()) if now is None else now
         return totp.enrollment(data["totp"])
 
@@ -491,22 +509,33 @@ def commit_passkey_authentication(
     return cast(tuple[str, str | None], _mutate(commit, journal=journal))
 
 
+# What each TOTP ceremony requires of the current state, and whether an accepted code completes an enrollment.
+_TOTP_CEREMONIES = {
+    "setup": (auth.RECORD_STATE_ENROLLMENT_REQUIRED, True),
+    "recovery": (auth.RECORD_STATE_RECOVERY_ENROLLMENT, True),
+    "login": (auth.RECORD_STATE_CONFIGURED, False),
+    "operation": (auth.RECORD_STATE_CONFIGURED, False),
+}
+
+
 def verify_totp(
     code: object,
     *,
-    enrollment: bool,
+    ceremony: str,
     now: int | None = None,
     generation: int | None = None,
-    sign_in: bool = False,
+    codes: dict[str, object] | None = None,
     journal: Callable[[object], None] | None = None,
 ) -> totp.Verification:
     """Persist one TOTP attempt, activation, replay evidence, and session rotation, journaling its outcome first.
 
     A ceremony passes the factor generation its password ticket was issued under, checked inside the same transaction.
-    Every refused code counts as a failed second-factor attempt; an accepted enrollment or `sign_in` code completes a
-    sign-in.
+    Every refused code counts as a failed second-factor attempt. An accepted `setup` or `recovery` code activates the
+    pending factor with the fresh recovery `codes`, and with `login` it completes a sign-in.
     """
-    expected = auth.RECORD_STATE_ENROLLMENT_REQUIRED if enrollment else auth.RECORD_STATE_CONFIGURED
+    expected, enrolls = _TOTP_CEREMONIES[ceremony]
+    if enrolls:
+        recovery.validated(codes)
 
     def verify(data: dict) -> totp.Verification:
         if _authentication_state(data) != expected:
@@ -516,14 +545,83 @@ def verify_totp(
         result = totp.verify(data["totp"], code, now)
         if result in {totp.Verification.INVALID, totp.Verification.LOCKED}:
             _second_factor_refused(data)
-        elif result is totp.Verification.ACCEPTED and (enrollment or sign_in):
+        elif result is totp.Verification.ACCEPTED and ceremony != "operation":
             _signed_in(data)
-        if result is totp.Verification.ACCEPTED and enrollment:
+        if result is totp.Verification.ACCEPTED and enrolls:
+            data["recovery_codes"] = copy.deepcopy(codes)
             data["factor_generation"] = int(data["factor_generation"]) + 1
             data["session_secret"] = auth.new_secret()
         return result
 
     return cast(totp.Verification, _mutate(verify, journal=journal))
+
+
+_RECOVERY_STATES = frozenset({auth.RECORD_STATE_CONFIGURED, auth.RECORD_STATE_RECOVERY_ENROLLMENT})
+
+
+def recovery_candidate(typed: object) -> recovery.Candidate:
+    """Derive a typed recovery code under the current set's salt, before the transaction that spends it."""
+    data = _read()
+    if _authentication_state(data) not in _RECOVERY_STATES:
+        raise totp.TotpStateError("recovery codes are unavailable")
+    return recovery.candidate(data["recovery_codes"], typed)
+
+
+def spend_recovery_code(
+    derived: recovery.Candidate,
+    *,
+    generation: int,
+    now: int | None = None,
+    journal: Callable[[object], None] | None = None,
+) -> tuple[totp.Verification, totp.Enrollment | None]:
+    """Spend one recovery code under the TOTP failure budget, journaling the outcome before it is persisted.
+
+    An accepted code replaces TOTP with a fresh pending factor, rotates the session secret so every session ends, and
+    admits only that factor's re-enrollment, whose secret it returns. A refused code counts as a refused second factor.
+    """
+    timestamp = int(time.time()) if now is None else now
+
+    def spend(data: dict) -> tuple[totp.Verification, totp.Enrollment | None]:
+        if _authentication_state(data) not in _RECOVERY_STATES:
+            raise totp.TotpStateError("recovery codes are unavailable")
+        if data["factor_generation"] != generation or data["recovery_codes"]["salt"] != derived.salt:
+            return totp.Verification.CHANGED, None
+        factor = data["totp"]
+        if totp.locked(factor, timestamp):
+            _second_factor_refused(data)
+            return totp.Verification.LOCKED, None
+        if not recovery.spend(data["recovery_codes"], derived, timestamp):
+            _second_factor_refused(data)
+            return totp.record_failure(factor, timestamp), None
+        data["totp"] = totp.new_record(timestamp)
+        data["factor_generation"] = generation + 1
+        data["session_secret"] = auth.new_secret()
+        return totp.Verification.ACCEPTED, totp.enrollment(data["totp"])
+
+    # A ceremony from before a factor change spends nothing and leaves nothing to journal.
+    outcome = _mutate(spend, lambda result: result[0] is not totp.Verification.CHANGED, journal)
+    return cast(tuple[totp.Verification, totp.Enrollment | None], outcome)
+
+
+def replace_recovery_codes(codes: dict[str, object], *, journal: Callable[[object], None] | None = None) -> None:
+    """Replace the whole set with a fresh one, journaling it first; every code of the previous set stops working."""
+    recovery.validated(codes)
+
+    def replace(data: dict) -> None:
+        if _authentication_state(data) != auth.RECORD_STATE_CONFIGURED:
+            raise totp.TotpStateError("recovery codes are unavailable")
+        data["recovery_codes"] = copy.deepcopy(codes)
+        data["factor_generation"] = int(data["factor_generation"]) + 1
+
+    _mutate(replace, journal=journal)
+
+
+def recovery_codes_remaining() -> int:
+    """How many of the current recovery codes are still unused."""
+    data = _read()
+    if _authentication_state(data) != auth.RECORD_STATE_CONFIGURED:
+        raise totp.TotpStateError("recovery codes are unavailable")
+    return recovery.remaining(data["recovery_codes"])
 
 
 def consume_host_reset_capability(digest: str, expires_at: int, *, now: int | None = None) -> bool:

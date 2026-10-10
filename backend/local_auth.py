@@ -13,7 +13,7 @@ import state
 import supervisor
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
-from mfa import passkeys, tickets, totp
+from mfa import passkeys, recovery, tickets, totp
 from team import http as team_http
 
 import audit
@@ -26,6 +26,8 @@ SESSION_COOKIE = "shimpz_admin"
 TICKET_COOKIE = "shimpz_admin_ticket"
 MAX_BODY_BYTES = 8 * 1024
 PASSKEY_ENROLLMENT_FRESH_SECONDS = 5 * 60
+FACTORS_CHANGED = "authentication factors changed; enter the password again"
+RECOVERY_CODES_SUBJECT = "recovery-codes"
 
 
 @dataclass(slots=True)
@@ -164,7 +166,15 @@ def _bind_origin(origin: str | None) -> None:
             log.info("Local Admin browser origin replaced after MFA")
 
 
-def _complete_totp(code: object, *, enrollment: bool, generation: int, origin: str | None, accepted: str) -> None:
+def _complete_totp(
+    code: object,
+    *,
+    ceremony: str,
+    generation: int,
+    origin: str | None,
+    accepted: str,
+    codes: recovery.CodeSet | None = None,
+) -> None:
     """Verify one code, journaling its outcome (`accepted` names a success) before the attempt is persisted."""
 
     def journal(result: object) -> None:
@@ -176,7 +186,11 @@ def _complete_totp(code: object, *, enrollment: bool, generation: int, origin: s
             audit.record("totp-rejected", outcome="denied", origin=origin)
 
     result = state.verify_totp(
-        code, enrollment=enrollment, generation=generation, sign_in=accepted == "login", journal=journal
+        code,
+        ceremony=ceremony,
+        generation=generation,
+        codes=None if codes is None else codes.record,
+        journal=journal,
     )
     if result is totp.Verification.LOCKED:
         raise HTTPException(status_code=429, detail="verification code is temporarily locked")
@@ -195,7 +209,7 @@ async def setup(request: Request, context: Context) -> JSONResponse:
         raise HTTPException(status_code=400, detail="request body must contain only password")
     origin = _request_origin(request)
     current = state.authentication_state()
-    if current == auth.RECORD_STATE_CONFIGURED:
+    if current in {auth.RECORD_STATE_CONFIGURED, auth.RECORD_STATE_RECOVERY_ENROLLMENT}:
         raise HTTPException(status_code=409, detail="Local Supervisor authentication is already configured")
     if current == auth.RECORD_STATE_UNINITIALIZED:
         password = payload["password"]
@@ -227,14 +241,23 @@ async def confirm_setup(request: Request, context: Context) -> JSONResponse:
     if set(payload) != {"code"}:
         raise HTTPException(status_code=400, detail="request body must contain only code")
     _token, ticket = _ticket(request, context, "totp-enrollment")
+    response = await _complete_enrollment(payload["code"], ticket, context, "setup", "setup-completed")
+    log.info("Local Supervisor MFA enrollment completed")
+    return response
+
+
+async def _complete_enrollment(
+    code: object, ticket: tickets.Ticket, context: Context, ceremony: str, accepted: str
+) -> JSONResponse:
+    """Activate the pending TOTP with a fresh recovery set, sign in, and show the set's codes this one time."""
+    codes = await asyncio.to_thread(recovery.new_set)
     _complete_totp(
-        payload["code"], enrollment=True, generation=ticket.generation, origin=ticket.origin, accepted="setup-completed"
+        code, ceremony=ceremony, generation=ticket.generation, origin=ticket.origin, accepted=accepted, codes=codes
     )
     _bind_origin(ticket.origin)
     context.factor_changed()
-    response = _response({"ok": True, "method": "totp"})
+    response = _response({"ok": True, "method": "totp", "recovery_codes": list(codes.codes)})
     _set_session(response, state.get()["session_secret"], "totp", ticket.origin)
-    log.info("Local Supervisor MFA enrollment completed")
     return response
 
 
@@ -256,17 +279,21 @@ async def login(request: Request, context: Context) -> JSONResponse:
     payload = await _json_object(request)
     if set(payload) != {"password"}:
         raise HTTPException(status_code=400, detail="request body must contain only password")
-    if state.authentication_state() != auth.RECORD_STATE_CONFIGURED:
+    current = state.authentication_state()
+    if current not in {auth.RECORD_STATE_CONFIGURED, auth.RECORD_STATE_RECOVERY_ENROLLMENT}:
         raise HTTPException(status_code=409, detail="Local Supervisor MFA setup is incomplete")
     origin = _request_origin(request)
     await _verify_password(payload["password"], context, origin)
     generation = state.factor_generation()
     token = context.ticket_store.issue("login", origin, generation)
-    options = _login_passkey_options(token, origin, generation, context)
-    body: dict[str, object] = {"methods": ["totp"]}
-    if options is not None:
-        body["methods"] = ["totp", "passkey"]
-        body["passkey_options"] = options
+    # While a recovery code's re-enrollment is open, only another recovery code can begin it again.
+    body: dict[str, object] = {"methods": ["recovery-code"]}
+    if current == auth.RECORD_STATE_CONFIGURED:
+        options = _login_passkey_options(token, origin, generation, context)
+        body["methods"] = ["totp", "recovery-code"]
+        if options is not None:
+            body["methods"] = ["totp", "passkey", "recovery-code"]
+            body["passkey_options"] = options
     response = _response(body, 202)
     _set_ticket(response, token, origin)
     return response
@@ -279,9 +306,13 @@ async def confirm_login_totp(request: Request, context: Context) -> JSONResponse
         raise HTTPException(status_code=400, detail="request body must contain only code")
     token, ticket = _ticket(request, context, "login")
     _discard_challenge(token, context)
-    _complete_totp(
-        payload["code"], enrollment=False, generation=ticket.generation, origin=ticket.origin, accepted="login"
-    )
+    try:
+        _complete_totp(
+            payload["code"], ceremony="login", generation=ticket.generation, origin=ticket.origin, accepted="login"
+        )
+    except totp.TotpStateError:
+        # TOTP is no longer what the ticket was issued for: a recovery code replaced it, and only re-enrollment remains.
+        raise HTTPException(status_code=409, detail=FACTORS_CHANGED) from None
     _bind_origin(ticket.origin)
     response = _response({"ok": True, "method": "totp"})
     _set_session(response, state.get()["session_secret"], "totp", ticket.origin)
@@ -303,6 +334,65 @@ async def confirm_login_passkey(request: Request, context: Context) -> JSONRespo
     response = _response({"ok": True, "method": "passkey"})
     _set_session(response, secret, "webauthn", ticket.origin)
     log.info("Local Supervisor login completed with a passkey")
+    return response
+
+
+async def confirm_login_recovery(request: Request, context: Context) -> JSONResponse:
+    """Spend one password ticket and one recovery code; admit only the re-enrollment of TOTP, never a session."""
+    payload = await _json_object(request)
+    if set(payload) != {"code"}:
+        raise HTTPException(status_code=400, detail="request body must contain only code")
+    token, ticket = _ticket(request, context, "login")
+    _discard_challenge(token, context)
+    try:
+        derived = await asyncio.to_thread(state.recovery_candidate, payload["code"])
+    except totp.TotpStateError:
+        raise HTTPException(status_code=409, detail=FACTORS_CHANGED) from None
+
+    def journal(outcome: object) -> None:
+        result = cast(tuple[totp.Verification, object], outcome)[0]
+        if result is totp.Verification.ACCEPTED:
+            audit.record("recovery-code-used", outcome="ok", origin=ticket.origin, method="recovery-code")
+        elif result is totp.Verification.LOCKED:
+            audit.record("recovery-code-locked", outcome="denied", origin=ticket.origin)
+        else:
+            audit.record("recovery-code-rejected", outcome="denied", origin=ticket.origin)
+
+    result, enrollment = state.spend_recovery_code(derived, generation=ticket.generation, journal=journal)
+    if result is totp.Verification.LOCKED:
+        raise HTTPException(status_code=429, detail="verification code is temporarily locked")
+    if result is totp.Verification.CHANGED:
+        raise HTTPException(status_code=409, detail=FACTORS_CHANGED)
+    if enrollment is None:
+        raise HTTPException(status_code=401, detail="invalid recovery code")
+    # Every session ended with the old factor; the re-enrollment is this browser's own, bound to the new generation.
+    context.factor_changed()
+    log.warning("Local Supervisor recovery code used; TOTP re-enrollment is required")
+    reenrollment = context.ticket_store.issue("recovery-enrollment", ticket.origin, state.factor_generation())
+    response = _response({"enrollment": {"secret": enrollment.secret, "uri": enrollment.uri}}, 202)
+    _set_ticket(response, reenrollment, ticket.origin)
+    return response
+
+
+async def confirm_recovery_enrollment(request: Request, context: Context) -> JSONResponse:
+    """Complete the TOTP re-enrollment a recovery code began, issuing the session and a fresh set of codes."""
+    payload = await _json_object(request)
+    if set(payload) != {"code"}:
+        raise HTTPException(status_code=400, detail="request body must contain only code")
+    _token, ticket = _ticket(request, context, "recovery-enrollment")
+    try:
+        response = await _complete_enrollment(payload["code"], ticket, context, "recovery", "recovery-completed")
+    except HTTPException as exc:
+        if exc.status_code != 401:
+            raise
+        # A mistyped code costs no further recovery code: the same browser gets a fresh ticket for the next code, and
+        # the pending factor's own failure budget bounds the attempts.
+        refused = _response({"detail": exc.detail}, 401)
+        _set_ticket(
+            refused, context.ticket_store.issue("recovery-enrollment", ticket.origin, ticket.generation), ticket.origin
+        )
+        return refused
+    log.info("Local Supervisor TOTP re-enrollment completed")
     return response
 
 
@@ -533,7 +623,7 @@ def _operation_second_factor(method: str, value: object, token: str, ticket: tic
             _discard_challenge(token, context)
             _complete_totp(
                 value,
-                enrollment=False,
+                ceremony="operation",
                 generation=ticket.generation,
                 origin=ticket.origin,
                 accepted="operation-confirmed",
@@ -574,3 +664,23 @@ def confirm_operation[T](
         raise _unavailable() from None
     log.info("Supervisor operation confirmed with %s", "TOTP" if method == "totp" else "a passkey")
     return dispatch()
+
+
+def regenerate_recovery_codes(request: Request, context: Context, payload: dict) -> JSONResponse:
+    """Replace every recovery code once the operation's second factor confirmed it, returning the new set once.
+
+    Run on a worker thread: the confirmation and the set's ten derivations both block.
+    """
+
+    def regenerate() -> JSONResponse:
+        codes = recovery.new_set()
+        origin = canonical_origin(request.headers.get("origin"))
+        state.replace_recovery_codes(
+            codes.record,
+            journal=lambda _result: audit.record("recovery-codes-generated", outcome="ok", origin=origin),
+        )
+        context.factor_changed()
+        log.info("Local Supervisor recovery codes replaced")
+        return _response({"recovery_codes": list(codes.codes)})
+
+    return confirm_operation(request, context, RECOVERY_CODES_SUBJECT, payload, regenerate)

@@ -16,7 +16,7 @@ import {
   routineView,
   setAside,
 } from './routineScenarios.js';
-import { securityRoutes, securityStart } from './securityScenarios.js';
+import { recoveryCodeSet, securityRoutes, securityStart } from './securityScenarios.js';
 
 export const TEAM = { team_id: 'marketing', team_name: 'Marketing', status: 'running' };
 
@@ -240,6 +240,26 @@ const STARTS = {
     human: 'file',
   }),
   empty: () => ({ session: authenticatedLocalSession(), teams: [], routines: [], runs: [] }),
+  // The Supervisor signs in again: with an authenticator code, or with a recovery code and the authenticator's
+  // re-enrollment it begins, which shows a new set of codes once (ADR-0051).
+  'sign-in': () => ({
+    session: { profile: 'local', authenticated: false, initialized: true, authentication_state: 'configured' },
+    teams: [...TEAMS],
+    routines: [],
+    runs: [],
+  }),
+  // The signed-in Supervisor with two recovery codes left: Security replaces them all after the password and a code.
+  'recovery-codes': () => ({
+    session: authenticatedLocalSession({
+      authentication_method: 'totp',
+      passkey_enrollment_available: false,
+      passkey_registered: false,
+    }),
+    teams: [...TEAMS],
+    routines: [],
+    runs: [],
+    security: securityStart({ used: recoveryCodeSet(0).slice(0, 8) }),
+  }),
   // The sign-in after three refused authenticator codes: the report stays on every page until acknowledged (ADR-0051).
   'security-alert': () => ({
     session: authenticatedLocalSession({ authentication_method: 'totp' }),
@@ -248,6 +268,7 @@ const STARTS = {
     runs: [],
     security: securityStart({ failedAttempts: 3 }),
   }),
+  // First setup: the password, the authenticator, then the recovery codes shown once (ADR-0051).
   setup: () => ({
     session: { profile: 'local', authenticated: false, initialized: false, authentication_state: 'uninitialized' },
     teams: [],

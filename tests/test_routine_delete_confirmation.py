@@ -200,7 +200,7 @@ class RoutineDeleteConfirmationTests(unittest.TestCase):
         self.assertEqual(verify.call_args.kwargs["generation"], generation)
         before = state.get()["totp"]
         state._write({**state.get(), "factor_generation": generation + 1})
-        changed = state.verify_totp(self.code(), enrollment=False, generation=generation)
+        changed = state.verify_totp(self.code(), ceremony="operation", generation=generation)
         self.assertIs(changed, totp.Verification.CHANGED)
         self.assertEqual(state.get()["totp"], before)
         self.team_delete.reset_mock()

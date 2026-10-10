@@ -139,14 +139,14 @@ class LocalAuthEdgeTests(unittest.TestCase):
                 mock.patch.object(local_auth.state, "verify_totp", return_value=result),
                 self.assertRaises(HTTPException) as totp_error,
             ):
-                local_auth._complete_totp("000000", enrollment=False, generation=2, origin=ORIGIN, accepted="login")
+                local_auth._complete_totp("000000", ceremony="login", generation=2, origin=ORIGIN, accepted="login")
             self.assertEqual(totp_error.exception.status_code, expected)
 
     def test_a_code_presented_after_the_factors_changed_is_not_journaled(self) -> None:
         secret = configure_supervisor(state, "violet otter lantern quartz 92")
         with self.assertRaises(HTTPException) as changed:
             local_auth._complete_totp(
-                "000000", enrollment=False, generation=state.factor_generation() + 1, origin=ORIGIN, accepted="login"
+                "000000", ceremony="login", generation=state.factor_generation() + 1, origin=ORIGIN, accepted="login"
             )
         self.assertEqual(changed.exception.status_code, 409)
         self.assertFalse(local_auth.audit.path().exists())
@@ -216,7 +216,7 @@ class LocalAuthEdgeTests(unittest.TestCase):
             mock.patch.object(local_auth, "_login_passkey_options", return_value=options),
         ):
             response = asyncio.run(local_auth.login(_request({"password": "secret"}), context))
-        self.assertEqual(json.loads(response.body)["methods"], ["totp", "passkey"])
+        self.assertEqual(json.loads(response.body)["methods"], ["totp", "passkey", "recovery-code"])
         self.assertEqual(json.loads(response.body)["passkey_options"], options)
 
     def test_passkey_availability_helpers_fail_closed(self) -> None:

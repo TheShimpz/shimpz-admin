@@ -168,7 +168,7 @@ class AuthHTTPTests(unittest.TestCase):
             {"password": GOOD_PASSWORD},
         )
         login_ticket = ticket_cookie(login_cookie)
-        self.assertEqual((login_status, login_payload), (202, {"methods": ["totp"]}))
+        self.assertEqual((login_status, login_payload), (202, {"methods": ["totp", "recovery-code"]}))
         self.assertIsNotNone(login_ticket)
         self.assertIsNone(session_cookie(login_cookie))
         login_status, login_payload, login_cookie = request(
