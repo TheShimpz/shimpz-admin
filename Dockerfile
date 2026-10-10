@@ -14,7 +14,9 @@ RUN echo 'precedence ::ffff:0:0/96 100' >> /etc/gai.conf
 # The package install precedes every commit-bound input, so an unchanged lock reuses it at every commit: BuildKit
 # gives a WORKDIR the release epoch as its creation time, and every RUN after an ARG reads the ARG's value.
 COPY frontend/package.json frontend/package-lock.json /w/
-RUN cd /w && npm ci --no-audit --no-fund && rm -rf /root/.npm
+# No dependency runs an install script: the build's native packages (esbuild, Rolldown) ship as prebuilt optional
+# dependencies that need none.
+RUN cd /w && npm ci --ignore-scripts --no-audit --no-fund && rm -rf /root/.npm
 WORKDIR /w
 COPY frontend/ ./
 # The frontend tests run in the deploy's test entry point, not here. adapter-static writes the SPA to /w/build.
@@ -33,7 +35,7 @@ RUN npm run build && \
 # without a build cache. The base ships no bytecode and the read-only runtime cannot write any, so the standard library
 # and the environment are compiled here, hash-checked, with fixed timestamps: without it every Admin start, health
 # probe, and helper recompiles each imported module (start to healthy about 3 s instead of 1 s).
-FROM python:3.14-slim@sha256:cea0e6040540fb2b965b6e7fb5ffa00871e632eef63719f0ea54bca189ce14a6 AS dependencies
+FROM python:3.14-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS dependencies
 RUN --mount=type=tmpfs,target=/tmp \
     --mount=type=bind,from=uv,source=/uv,target=/tmp/uv \
     --mount=type=bind,source=pyproject.toml,target=/tmp/project/pyproject.toml \
@@ -113,4 +115,5 @@ RUN python -c "import app" && \
     python -m compileall -q -f --invalidation-mode checked-hash /app/backend
 USER admin
 EXPOSE 4600
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "4600", "--workers", "1", "--log-level", "warning"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "4600", "--workers", "1", "--log-level", "warning", \
+     "--no-access-log", "--no-server-header"]
