@@ -13,8 +13,8 @@ importers:
   .:
     dependencies:
       '@shimpz/frontend':
-        specifier: https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/caa906eac9492f81063d996dab447510a67f313f
-        version: https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/caa906eac9492f81063d996dab447510a67f313f(svelte@5.56.8)
+        specifier: https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/4e2be156c874df0a2c8f11d60c819a5510dfc3ca
+        version: https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/4e2be156c874df0a2c8f11d60c819a5510dfc3ca(svelte@5.56.8)
       qrcode:
         specifier: 1.5.4
         version: 1.5.4
@@ -204,10 +204,10 @@ packages:
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
-  '@shimpz/frontend@https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/caa906eac9492f81063d996dab447510a67f313f':
-    resolution: {gitHosted: true, integrity: sha512-fFAp4HZB0eclgY5JRpfSGjVmpgmI21g1O406Q6ZVxyqrooDL+Af4P1ETZ/mjWXBDdSG95/QYGnG7EmKjkLuSjw==, tarball: https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/caa906eac9492f81063d996dab447510a67f313f}
+  '@shimpz/frontend@https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/4e2be156c874df0a2c8f11d60c819a5510dfc3ca':
+    resolution: {gitHosted: true, integrity: sha512-e6NUpaVJoxrbVuNvkIifTMeTJCEKwNtvp2fvuheB7ASc85wyfB/ctt3PRaQ4pwj2+0TC5sxn0ywVJhqESht3pg==, tarball: https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/4e2be156c874df0a2c8f11d60c819a5510dfc3ca}
     version: 0.5.3
-    engines: {node: 24.x}
+    engines: {node: 26.x}
     peerDependencies:
       svelte: ^5.56.8
 
@@ -791,7 +791,7 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
-  '@shimpz/frontend@https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/caa906eac9492f81063d996dab447510a67f313f(svelte@5.56.8)':
+  '@shimpz/frontend@https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/4e2be156c874df0a2c8f11d60c819a5510dfc3ca(svelte@5.56.8)':
     dependencies:
       '@fontsource-variable/inter': 5.3.0
       '@fontsource/ibm-plex-mono': 5.3.0
