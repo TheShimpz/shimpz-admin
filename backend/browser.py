@@ -90,14 +90,17 @@ def security_headers(script_sources: tuple[str, ...], admitted_origins: frozense
 
 
 def admits_unsafe_request(request: Request, admitted_origins: Callable[[], frozenset[str]]) -> bool:
-    """Admit a state-changing request only from Admin's own page at an origin Admin admits (CSRF).
+    """Admit a state-changing request only from Admin's own page at an origin Admin admits (CSRF)."""
+    return request.method not in UNSAFE_METHODS or from_admin_page(request, admitted_origins)
+
+
+def from_admin_page(request: Request, admitted_origins: Callable[[], frozenset[str]]) -> bool:
+    """Whether the browser says Admin's own page, at an origin Admin admits, sent this request.
 
     SameSite is site-scoped, so another loopback port or a sibling host still sends the session cookie. Fetch
     Metadata must say `same-origin` and an Origin must be one exact admitted origin; whichever header the client
-    sends must pass, and a request carrying neither is refused.
+    sends must pass, and a request carrying neither does not come from the page.
     """
-    if request.method not in UNSAFE_METHODS:
-        return True
     fetch_sites = request.headers.getlist("sec-fetch-site")
     origins = request.headers.getlist("origin")
     if len(fetch_sites) > 1 or len(origins) > 1 or not (fetch_sites or origins):

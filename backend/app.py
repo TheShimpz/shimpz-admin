@@ -247,8 +247,13 @@ async def _session_current(cookies) -> bool:
 
 
 def _supervisor_activity(request: Request) -> bool:
-    """Every API request is Supervisor activity except a page's own background refresh, which marks itself."""
-    return request.headers.get(BACKGROUND_HEADER) != "background"
+    """A request from Admin's own page is Supervisor activity, except the page's background refresh, which marks itself.
+
+    Another page on the same site may still read with the session cookie, but its requests never renew the session.
+    """
+    return request.headers.get(BACKGROUND_HEADER) != "background" and browser.from_admin_page(
+        request, _allowed_browser_origins
+    )
 
 
 def _team_session_scope(cookies, *, authority_kind: str = "session"):

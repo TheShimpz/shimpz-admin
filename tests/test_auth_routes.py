@@ -18,6 +18,8 @@ from starlette.responses import PlainTextResponse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
+# What the browser marks on every request the Admin page sends to its own origin.
+ADMIN_PAGE = ((b"sec-fetch-site", b"same-origin"),)
 
 
 class AuthRouteTests(unittest.TestCase):
@@ -98,7 +100,7 @@ class AuthRouteTests(unittest.TestCase):
         cookie: str | None = None,
         ticket: str | None = None,
         method: str | None = None,
-        background: bool = False,
+        browser: tuple[tuple[bytes, bytes], ...] = ADMIN_PAGE,
     ) -> Request:
         raw_path, _, query = path.partition("?")
         body = json.dumps(payload).encode() if payload is not None else b""
@@ -109,8 +111,7 @@ class AuthRouteTests(unittest.TestCase):
             headers.append((b"cookie", f"shimpz_admin={cookie}".encode("ascii")))
         if ticket is not None:
             headers.append((b"cookie", f"shimpz_admin_ticket={ticket}".encode("ascii")))
-        if background:
-            headers.append((b"shimpz-activity", b"background"))
+        headers.extend(browser)
         return http_request(
             raw_path,
             LOOPBACK,
@@ -174,7 +175,8 @@ class AuthRouteTests(unittest.TestCase):
             return PlainTextResponse("allowed")
 
         def status(session: str, *, background: bool) -> int:
-            request = self._request("/api/model-providers", cookie=session, background=background)
+            marks = (*ADMIN_PAGE, (b"shimpz-activity", b"background")) if background else ADMIN_PAGE
+            request = self._request("/api/model-providers", cookie=session, browser=marks)
             return asyncio.run(self.admin_app._gate(request, allowed)).status_code
 
         with mock.patch.object(auth, "SESSIONS", auth.SessionActivity(clock=lambda: now[0])):
@@ -188,6 +190,24 @@ class AuthRouteTests(unittest.TestCase):
             self.assertEqual(status(attended, background=True), 200)
             now[0] = 2 * auth.IDLE_SECONDS
             self.assertEqual(status(attended, background=False), 401)
+
+    def test_another_page_on_the_site_may_read_but_never_renews_the_session(self) -> None:
+        auth = self.admin_app.auth
+        now = [0.0]
+
+        async def allowed(_request):
+            return PlainTextResponse("allowed")
+
+        def status(session: str, fetch_site: bytes) -> int:
+            request = self._request("/api/model-providers", cookie=session, browser=((b"sec-fetch-site", fetch_site),))
+            return asyncio.run(self.admin_app._gate(request, allowed)).status_code
+
+        with mock.patch.object(auth, "SESSIONS", auth.SessionActivity(clock=lambda: now[0])):
+            session = self._cookie(self._configure("violet otter lantern quartz 92")[1], "shimpz_admin")
+            now[0] = auth.IDLE_SECONDS - 600
+            self.assertEqual(status(session, b"same-site"), 200)
+            now[0] = auth.IDLE_SECONDS + 1
+            self.assertEqual(status(session, b"same-origin"), 401)
 
     def test_a_session_this_process_does_not_track_is_refused(self) -> None:
         _setup, confirmed = self._configure("violet otter lantern quartz 92")
