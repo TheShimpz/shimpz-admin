@@ -1,4 +1,4 @@
-import { routineProposalMessages } from '../src/lib/routineProposalMessages.js';
+import { routineQuestionMessages } from '../src/lib/routineQuestionMessages.js';
 
 // Routine scenarios for the owner's preview and the browser tests (ADR-0087, ADR-0092, ADR-0101): every Routine notice
 // titled by the name Team froze into it, a deleted Routine's last notice, runs' usage with and without a model, a held
@@ -623,9 +623,8 @@ function recordTurn(state, message, reply) {
 // Each Team protocol output label in every interface language, read back as Team reads it: using the result in other
 // Actions records those Actions as part of the work and shows the result.
 const OUTPUT_ORDER = ['show', 'changes', 'none', 'show'];
-const OUTPUT_MODES = Object.freeze(Object.fromEntries(Object.values(routineProposalMessages)
-  .filter((catalog) => catalog.questions)
-  .flatMap((catalog) => catalog.questions.output.answers.map((label, index) => [label, OUTPUT_ORDER[index]]))));
+const OUTPUT_MODES = Object.freeze(Object.fromEntries(Object.values(routineQuestionMessages)
+  .flatMap((questions) => questions.output.answers.map((label, index) => [label, OUTPUT_ORDER[index]]))));
 
 // Whether a send answers the pending question: a target question needs one option's exact JSON text, which is kept;
 // an output question needs one of Team's output labels, whose choice the card then carries.

@@ -1588,8 +1588,8 @@ const QUESTION_KEYS = {
  * answer Team matches, so a string and an integer of the same digits stay distinct; every other answer is sent as the
  * words it shows. An interval over budget offers the shortest interval that fits.
  */
-export function questionWords(question, copy) {
-  const words = copy.questions[QUESTION_KEYS[question.code]];
+export function questionWords(question, questions) {
+  const words = questions[QUESTION_KEYS[question.code]];
   if (question.code === 'routine-binding-ambiguous') {
     const answers = question.options.map((option) => {
       const target = questionTarget(option.value).shown;

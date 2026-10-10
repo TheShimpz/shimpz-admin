@@ -20,11 +20,14 @@ import {
   revokeRoutineProposal,
   runBinding,
 } from '../src/lib/routine.js';
-import { routineMessages } from '../src/lib/routineMessages.js';
+import { messages } from '../src/lib/messages.js';
 import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from '../src/lib/localApi.js';
 import { loadAssistantDetails, loadLocalAssistantDetails, loadLocalAssistantSummary } from '../src/lib/localAssistantIcons.js';
 import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
 import { ROUTINE_TEXT, routineLifecycleStart } from '../e2e/routineScenarios.js';
+
+// Each interface language's own catalog of this copy.
+const routineMessages = Object.fromEntries(Object.entries(messages).map(([code, catalog]) => [code, catalog.routine]));
 
 const ROUTINES = '/api/teams/marketing/routines';
 
@@ -120,7 +123,7 @@ test("a question scenario asks Team's question in every language and answers the
       const scenario = createScenario(name, locale);
       const send = (message) => scenario.chat.message({ type: 'chat', message, files: [], assistant_ids: [] })[0];
       const asked = parseChatEvent(send(ROUTINE_TEXT[locale].request), 'marketing', 'Marketing');
-      const words = questionWords(asked.routine_question, routineMessages[locale].proposal);
+      const words = questionWords(asked.routine_question, routineMessages[locale].proposal.questions);
       assert.ok(words.question.length > 0, `${name} ${locale}`);
       // A target question is answered only by an option's exact JSON text; a schedule question by any words.
       const answer = words.answers.at(-1).text;

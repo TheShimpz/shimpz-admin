@@ -76,7 +76,10 @@ import {
   pageBinding,
   runBinding,
 } from '../src/lib/routine.js';
-import { routineMessages } from '../src/lib/routineMessages.js';
+import { messages } from '../src/lib/messages.js';
+
+// Each interface language's own catalog of this copy.
+const routineMessages = Object.fromEntries(Object.entries(messages).map(([code, catalog]) => [code, catalog.routine]));
 
 const WEEKLY = { kind: 'weekly', weekday: 0, time: '09:00' };
 
@@ -263,14 +266,14 @@ test('a Routine question is admitted only in its closed form and reads as facts 
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     const copy = catalog.proposal;
     for (const value of valid) {
-      const words = questionWords(value, copy);
+      const words = questionWords(value, copy.questions);
       assert.ok(words.question.length > 0 && !/\{/u.test(words.question), `${locale} ${value.code}`);
       assert.ok(words.answers.every((answer) => answer.label.length > 0 && !/\{/u.test(answer.label)), `${locale} ${value.code}`);
     }
     const schedule = copy.questions.schedule.answers;
-    assert.deepEqual(questionWords(valid[0], copy).answers, schedule.map((answer) => ({ label: answer, text: answer })));
+    assert.deepEqual(questionWords(valid[0], copy.questions).answers, schedule.map((answer) => ({ label: answer, text: answer })));
   }
-  const en = routineMessages.en.proposal;
+  const en = routineMessages.en.proposal.questions;
   // A person reads each target's label; the answer sends its exact JSON text, the only form Team matches.
   assert.deepEqual(questionWords(valid[2], en).answers, [
     { label: `shimpz.com (${'a'.repeat(32)})`, text: quoted('a'.repeat(32)) },

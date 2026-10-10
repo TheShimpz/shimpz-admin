@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test';
 
 import { routeScenario } from './scenarioRoutes.js';
-import { securityMessages } from '../src/lib/securityMessages.js';
+import { messages } from '../src/lib/messages.js';
 
 // Replacing the Supervisor signing key (ADR-0051) against the built Admin with scenario fixtures (ADR-0087): Security
 // confirms it with the password and a second factor, and says how Team answered.
 const PASSWORD = 'violet otter lantern quartz 92';
-const copy = securityMessages.en;
+const copy = messages.en.security;
 
 function recordRequests(page) {
   const bodies = [];

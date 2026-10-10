@@ -16,7 +16,7 @@
   let custom = $state('');
   let error = $state('');
 
-  let words = $derived(questionWords(question, copy));
+  let words = $derived(questionWords(question, copy.questions));
   let answer = $derived(choice === OTHER ? custom : choice === '' ? '' : words.answers[Number(choice)]?.text ?? '');
   let ready = $derived(answer.trim().length > 0);
 

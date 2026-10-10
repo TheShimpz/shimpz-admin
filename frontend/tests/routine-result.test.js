@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { attemptWords, conditionWords, inputWords } from '../src/lib/routine.js';
-import { routineMessages } from '../src/lib/routineMessages.js';
+import { messages } from '../src/lib/messages.js';
 import {
   attemptsByStep,
   durationWords,
@@ -13,6 +13,9 @@ import {
   valueKind,
   visibleSteps,
 } from '../src/lib/routineResult.js';
+
+// Each interface language's own catalog of this copy.
+const routineMessages = Object.fromEntries(Object.entries(messages).map(([code, catalog]) => [code, catalog.routine]));
 
 const text = (value, cut = false) => ({ kind: 'text', value, cut });
 const number = (value) => ({ kind: 'number', value });

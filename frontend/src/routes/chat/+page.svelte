@@ -41,7 +41,8 @@
   import Markdown from '$lib/Markdown.svelte';
   import { escapeMarkdownText } from '$lib/markdown.js';
   import { locale, t } from '$lib/i18n.js';
-  import { messages } from '$lib/messages.js';
+  import { CLARIFICATION_LABELS } from '$lib/clarificationLabels.js';
+  import { routineQuestionMessages } from '$lib/routineQuestionMessages.js';
   import { configureModelContext, loadModelContext, modelContext } from '$lib/modelContext.js';
   import { SESSION_ENDED, sessionContext } from '$lib/sessionContext.js';
   import ShimpzThinking from '$lib/ShimpzThinking.svelte';
@@ -287,9 +288,7 @@
   let visibleErrorDetail = $derived(error ? errorDetail : contextErrorDetail);
 
   // Every interface language's labels, so an answer sent in one language still closes its question in another.
-  const CLARIFY_LABELS = Object.values(messages)
-    .map(({ clarify }) => ({ question: clarify?.questionLabel, answer: clarify?.answerLabel }))
-    .filter(({ question, answer }) => question && answer);
+  const CLARIFY_LABELS = Object.values(CLARIFICATION_LABELS);
 
   // The user message each live answer projected, mapped to the assistant turn of the card it answered.
   let liveAnswers = $state(new Map());
@@ -306,8 +305,8 @@
   function asClarification(exchange) {
     const asked = exchange.assistant?.routineQuestion;
     if (!asked) return exchange;
-    const question = questionWords(asked, $t('routine').proposal).question;
-    const questions = Object.values(messages).map(({ routine }) => questionWords(asked, routine.proposal).question);
+    const question = questionWords(asked, $t('routine').proposal.questions).question;
+    const questions = Object.values(routineQuestionMessages).map((words) => questionWords(asked, words).question);
     return { ...exchange, assistant: { ...exchange.assistant, clarification: { question, questions } } };
   }
   let answerable = $derived(exchanges.map(asClarification));

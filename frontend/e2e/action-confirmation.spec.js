@@ -4,10 +4,9 @@ import { expect, test } from '@playwright/test';
 
 import { accessibilityViolations } from './axe.js';
 import { routeScenario } from './scenarioRoutes.js';
-import { humanRequestMessages } from '../src/lib/humanRequestMessages.js';
 import { messages } from '../src/lib/messages.js';
 
-const copy = humanRequestMessages.en;
+const copy = messages.en.humanRequest;
 
 async function sendMessage(page, message) {
   const label = messages.en.chatPage.send;

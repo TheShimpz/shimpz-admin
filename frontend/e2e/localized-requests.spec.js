@@ -3,7 +3,6 @@
 // selected is never answered: Admin obtains a fresh challenge in the selected language first.
 import { expect, test } from '@playwright/test';
 
-import { humanRequestMessages } from '../src/lib/humanRequestMessages.js';
 import { LOCALES } from '../src/lib/locales.js';
 import { messages } from '../src/lib/messages.js';
 import { localizedChallenge } from './localizedRequest.js';
@@ -168,7 +167,7 @@ async function switchLanguageBehindRequest(page, from, to) {
 
 // Answer one open request with the person's choice; `value` is what the browser frame must carry.
 async function answer(dialog, kind, locale) {
-  const labels = humanRequestMessages[locale];
+  const labels = messages[locale].humanRequest;
   if (kind === 'approval') {
     await dialog.getByRole('button', { name: labels.approve, exact: true }).click();
     return true;
@@ -239,7 +238,7 @@ test('a request that arrives after the language changed is answered only through
   chat.team.hold = new Set(['sync']);
   chat.release();
   const stale = page.getByRole('dialog', { name: ENGLISH.approval.title });
-  await expect(stale.getByRole('button', { name: humanRequestMessages.pt.approve, exact: true })).toBeDisabled();
+  await expect(stale.getByRole('button', { name: messages.pt.humanRequest.approve, exact: true })).toBeDisabled();
   await expect.poll(() => chat.of('sync').map((frame) => frame.locale)).toEqual(['en', 'pt']);
 
   chat.team.hold = new Set();
@@ -248,7 +247,7 @@ test('a request that arrives after the language changed is answered only through
   await expect(dialog).toContainText(renderedCopy('approval', 'pt').description);
   // The purpose was written in English, so the Portuguese challenge shows only its localized scope.
   await expect(dialog).not.toContainText('English 0');
-  await dialog.getByRole('button', { name: humanRequestMessages.pt.approve, exact: true }).click();
+  await dialog.getByRole('button', { name: messages.pt.humanRequest.approve, exact: true }).click();
   await expect(page.getByText('Done 1.')).toBeVisible();
   expect(chat.of('human-response')).toEqual([
     { type: 'human-response', challenge_id: '2'.padStart(32, '0'), decision: 'submit', value: true },
@@ -260,7 +259,7 @@ test('switching back while a reissue is undelivered never answers the request Te
   await page.goto('/chat/?team=marketing');
   await sendMessage(page, 'en', 'Publish my DNS changes');
   const english = page.getByRole('dialog', { name: ENGLISH.approval.title });
-  const approve = english.getByRole('button', { name: humanRequestMessages.en.approve, exact: true });
+  const approve = english.getByRole('button', { name: messages.en.humanRequest.approve, exact: true });
   await expect(approve).toBeEnabled();
 
   // Team reissues the request in Portuguese at once, but its fresh challenge has not reached Admin yet.
@@ -281,7 +280,7 @@ test('switching back while a reissue is undelivered never answers the request Te
   await expect.poll(() => chat.of('sync').map((frame) => frame.locale)).toEqual(['en', 'pt', 'en']);
   await expect.poll(() => chat.heldCount()).toBe(1);
   const portuguese = page.getByRole('dialog', { name: renderedCopy('approval', 'pt').title });
-  await expect(portuguese.getByRole('button', { name: humanRequestMessages.en.approve, exact: true })).toBeDisabled();
+  await expect(portuguese.getByRole('button', { name: messages.en.humanRequest.approve, exact: true })).toBeDisabled();
   expect(chat.of('human-response')).toEqual([]);
 
   chat.team.defer = new Set();
@@ -310,7 +309,7 @@ test('a reconnect restores the pending request in the language selected while th
 
   const dialog = page.getByRole('dialog', { name: renderedCopy('approval', 'de').title });
   await expect(dialog).toContainText(renderedCopy('approval', 'de').description);
-  await dialog.getByRole('button', { name: humanRequestMessages.de.approve, exact: true }).click();
+  await dialog.getByRole('button', { name: messages.de.humanRequest.approve, exact: true }).click();
   await expect(page.getByText('Done 1.')).toBeVisible();
   const syncs = chat.of('sync').map((frame) => frame.locale);
   expect(syncs.at(-1)).toBe('de');

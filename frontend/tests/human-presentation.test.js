@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { localizedChallenge, messageReference } from '../e2e/localizedRequest.js';
-import { humanRequestMessages } from '../src/lib/humanRequestMessages.js';
+import { messages } from '../src/lib/messages.js';
 import { LOCALES } from '../src/lib/locales.js';
 import {
   canonicalHelpUrl,
@@ -11,6 +11,9 @@ import {
   HELP_URL_PATTERN,
   parseChatEvent,
 } from '../src/lib/localChat.js';
+
+// Each interface language's own catalog of this copy.
+const humanRequestMessages = Object.fromEntries(Object.entries(messages).map(([code, catalog]) => [code, catalog.humanRequest]));
 
 const CHALLENGE_ID = 'b'.repeat(32);
 
