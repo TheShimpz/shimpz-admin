@@ -518,7 +518,6 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
             fake.__dict__.update(overrides)
             return fake
 
-        label = payload.canonical_action_label
         modules = (
             *(
                 fake_payload(**{name: lambda _value: None})
@@ -528,8 +527,6 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
                 fake_payload(**{name: lambda value: "accepted" if value is None or isinstance(value, int) else value})
                 for name in ("canonical_locale", "canonical_help_url", "canonical_purpose")
             ),
-            fake_payload(canonical_action_label=lambda _value: None),
-            fake_payload(canonical_action_label=lambda value: label(value) if label(value) is not None else "accepted"),
         )
         for fake in modules:
             with self.subTest(fake=fake), self.assertRaises(SystemExit):

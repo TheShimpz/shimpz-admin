@@ -58,9 +58,6 @@ class PayloadEdges(unittest.TestCase):
             self.assertIsNone(payload.canonical_help_url(value))
         for value in (object(), "a — b", "see https://example.com", "x" * 281):
             self.assertIsNone(payload.canonical_purpose(value))
-        for value in (object(), "e\u0301", " label ", "bad\x00label"):
-            self.assertIsNone(payload.canonical_action_label(value))
-        self.assertEqual(payload.canonical_action_label("List zones"), "List zones")
 
     def test_scalar_validators_and_filename_edges(self) -> None:
         self.assertIsNone(payload.canonical_source_digest(None))
