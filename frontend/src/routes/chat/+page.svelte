@@ -86,7 +86,8 @@
   // Selections whose files are still being read; each blocks sending until its files join the message or are refused.
   let attachmentInspections = $state([]);
   let nextAttachmentInspection = 0;
-  let turns = $state([]);
+  // Every change replaces the list or the turn it changes, never a field in place, so no turn needs a deep proxy.
+  let turns = $state.raw([]);
   let nextRenderKey = 0;
   let busy = $state(false);
   // Assistants the current turn's continuing install plan proved running; a just-in-time request may reach the

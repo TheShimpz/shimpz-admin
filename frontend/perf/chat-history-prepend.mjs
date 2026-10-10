@@ -67,6 +67,10 @@ function apiFixture(method, path) {
       passkey_registered: false, oauth_completion_mode: 'automatic',
       features: { teamCredentials: true },
     }),
+    'GET /api/admin/security': () => ({
+      failed_second_factor_attempts: 0, recovery_codes_remaining: 10,
+      sign_in_history: { previous: { at: '2026-09-23T00:00:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 0 },
+    }),
     'GET /api/teams': () => ({ teams: [team] }),
     'GET /api/assistants': () => ({ assistants: [] }),
     'GET /api/model-providers': () => ({ providers: models }),
