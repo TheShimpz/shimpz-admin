@@ -1574,7 +1574,7 @@ test('keeps a saved key when the model selection fails and retries only the sele
 
 test('compiled Chat renders Markdown and its execution receipt', async ({ page }) => {
   await routeReadyChat(page, {
-    reply: `**Rendered answer** with a [safe link](https://example.com) and [your bank](https://evil.example/c?d=1).
+    reply: `**Rendered answer** with a [safe link](https://example.com), [your bank](https://evil.example/c?d=1) and [https://pаypal.com](https://pаypal.com).
 
 :success[The deployment completed.]
 :warning[Review the DNS TTL before publishing.]
@@ -1592,6 +1592,9 @@ test('compiled Chat renders Markdown and its execution receipt', async ({ page }
   // A label never hides where its link leads: the host it opens is part of the link.
   await expect(page.getByRole('link', { name: 'your bank (evil.example)', exact: true }))
     .toHaveAttribute('href', 'https://evil.example/c?d=1');
+  // A look-alike address in the label names the punycode host it really opens.
+  await expect(page.getByRole('link', { name: 'https://pаypal.com (xn--pypal-4ve.com)', exact: true }))
+    .toHaveAttribute('href', 'https://xn--pypal-4ve.com/');
   const notices = page.locator('.shimpz-message--assistant [data-slot="notice"]');
   await expect(notices).toHaveCount(3);
   for (let index = 0; index < 3; index += 1) {

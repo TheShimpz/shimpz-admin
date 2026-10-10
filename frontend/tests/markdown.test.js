@@ -68,6 +68,29 @@ test('keeps raw HTML inert text and refuses executable or credential-bearing lin
   assert.match(tokens.map((token) => token.text).join(''), /<img src=x onerror=alert\(1\)>/);
 });
 
+test('names the ASCII host of a link whose label spells it only after URL normalization', () => {
+  const links = parseInline(
+    '[https://pаypal.com](https://pаypal.com) [https://pаypal.com/login](https://pаypal.com/login) '
+      + '[bücher.example](https://bücher.example/) [https://bücher.example/](https://bücher.example/) '
+      + '[xn--bcher-kva.example](https://bücher.example/) '
+      + '[https://xn--bcher-kva.example/](https://bücher.example/) '
+      + '[https://ｅxample.com/](https://example.com/) [https://ex%61mple.com/](https://example.com/) '
+      + '[HTTPS://Example.com](https://example.com)',
+  ).filter((token) => token.type === 'link');
+
+  assert.deepEqual(links.map((token) => [token.text, token.host]), [
+    ['https://pаypal.com', 'xn--pypal-4ve.com'],
+    ['https://pаypal.com/login', 'xn--pypal-4ve.com'],
+    ['bücher.example', 'xn--bcher-kva.example'],
+    ['https://bücher.example/', 'xn--bcher-kva.example'],
+    ['xn--bcher-kva.example', ''],
+    ['https://xn--bcher-kva.example/', ''],
+    ['https://ｅxample.com/', 'example.com'],
+    ['https://ex%61mple.com/', 'example.com'],
+    ['HTTPS://Example.com', ''],
+  ]);
+});
+
 test('names the destination host of every link whose label is not that host or address', () => {
   const links = parseInline(
     '[your bank](https://evil.example:8443/collect?data=secret) [Example.com](https://example.com/a) '

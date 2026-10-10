@@ -1,4 +1,6 @@
 const HTTP_URL = /^https?:\/\//i;
+const URL_AUTHORITY = /^https?:\/\/([^/?#]*)/i;
+const VISIBLE_ASCII = /^[\x21-\x7e]+$/;
 const LIST_ITEM = /^ {0,3}([-+*]|\d+[.)])\s+(.+)$/;
 const HEADING = /^(#{1,3})\s+(.+?)\s*$/;
 const TABLE_DIVIDER = /^:?-{3,}:?$/;
@@ -48,13 +50,18 @@ function safeLink(raw) {
 }
 
 // A model-written label can name any place while its link leads elsewhere, carrying anything in its query. The link
-// therefore always shows the host it opens (in its ASCII form, so a look-alike name cannot pass for another), unless
-// the label already is that host or that exact address.
+// therefore always shows the host it opens in its ASCII form, unless the label's own characters already spell that
+// ASCII host or that address with that ASCII host. URL parsing alone never proves this: it maps a look-alike or
+// fullwidth label to the same punycode host the label visibly does not show.
 function linkToken(label, url) {
   const host = url.host;
-  const plain = label.trim().toLowerCase();
-  const shown = plain === host || safeLink(label.trim())?.href === url.href;
+  const plain = label.trim();
+  const shown = VISIBLE_ASCII.test(plain) && (plain.toLowerCase() === host || spellsAddress(plain, url));
   return { type: 'link', text: label, href: url.href, host: shown ? '' : host };
+}
+
+function spellsAddress(plain, url) {
+  return safeLink(plain)?.href === url.href && URL_AUTHORITY.exec(plain)[1].toLowerCase() === url.host;
 }
 
 /** Parse a deliberately small inline Markdown subset into text-only display tokens. */
