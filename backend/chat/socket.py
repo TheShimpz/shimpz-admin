@@ -44,6 +44,9 @@ MAX_PUBLIC_ERROR_CHARS = projection.MAX_PUBLIC_ERROR_CHARS
 STOP_RESULT_WAIT_SECONDS = 15
 # How often a socket waiting for its next frame checks that its session has not ended, e.g. by staying idle too long.
 SESSION_CHECK_SECONDS = 60
+# The frames a person sends. Anything else, such as the sync a page sends on its own whenever it reconnects, is checked
+# against the session without renewing it, so an unattended page that keeps reconnecting still idles out.
+USER_OPERATIONS = frozenset({"chat", "resume-task", "stop", "human-response"})
 FrameError = chat_ws_common.FrameError
 log = logging.getLogger("shimpz-admin")
 
@@ -876,8 +879,9 @@ async def serve(
 ) -> None:
     """Serve one authenticated local chat socket without letting it outlive its Admin session.
 
-    `session_ok` checks the session before each operation, which is Supervisor activity; `session_current` checks it
-    without counting as activity, on admission and while the socket waits, so an idle session closes its socket.
+    `session_ok` checks the session before each user operation, which is Supervisor activity; `session_current` checks
+    it without counting as activity on admission, before an automatic frame, and while the socket waits, so an idle
+    session closes its socket.
     """
     canonical_id = await _admit(websocket, team_id, session_current, allowed_origins)
     if canonical_id is None:
@@ -897,9 +901,11 @@ async def serve(
                     return
                 # A session can expire, idle out, or be rotated while a socket is open. Revalidating it before
                 # every operation, and while waiting for one, prevents that connection from extending authority.
-                session_status = (
-                    frame if isinstance(frame, str) else await _session_status(session_ok, websocket.cookies)
-                )
+                if isinstance(frame, str):
+                    session_status = frame
+                else:
+                    check = session_ok if frame.get("type") in USER_OPERATIONS else session_current
+                    session_status = await _session_status(check, websocket.cookies)
                 if session_status != "active":
                     connection.closed = True
                     await websocket.close(code=1013 if session_status == "unavailable" else 4401)

@@ -157,15 +157,13 @@ class ChatWebSocketTests(ChatWebSocketCase):
         async def scenario() -> None:
             websocket = await self._open()
             now[0] = auth.IDLE_SECONDS - 60
-            await websocket.send_json({"type": "unsupported"})
-            self.assertEqual((await websocket.next_message())["type"], "websocket.send")
+            await websocket.send_json({"type": "stop"})
             # A waiting socket rechecks its session and stays open while the session is current.
-            with self.assertRaises(TimeoutError):
-                await websocket.next_message(wait_seconds=0.3)
+            await asyncio.sleep(0.3)
             now[0] = auth.IDLE_SECONDS + 60
             self.assertTrue(auth.SESSIONS.current(self.token, activity=False))
             now[0] = 2 * auth.IDLE_SECONDS
-            self.assertEqual(await websocket.next_message(), {"type": "websocket.close", "code": 4401, "reason": ""})
+            self.assertEqual(await self._closed(websocket), 4401)
             await websocket.finish()
 
         sessions = auth.SessionActivity(clock=lambda: now[0])
@@ -175,6 +173,36 @@ class ChatWebSocketTests(ChatWebSocketCase):
             mock.patch.object(self.chat_socket, "SESSION_CHECK_SECONDS", 0.05),
         ):
             asyncio.run(scenario())
+
+    def test_an_unattended_page_reconnecting_across_the_idle_deadline_is_closed(self) -> None:
+        auth = self.admin_app.auth
+        now = [0.0]
+
+        async def scenario() -> None:
+            websocket = await self._open()
+            now[0] = auth.IDLE_SECONDS - 60
+            # A reconnecting page sends sync on its own; it is checked against the session but does not renew it.
+            await websocket.send_json({"type": "sync", "locale": "en"})
+            await asyncio.sleep(0.3)
+            now[0] = auth.IDLE_SECONDS + 60
+            self.assertEqual(await self._closed(websocket), 4401)
+            await websocket.finish()
+            self.assertFalse(auth.SESSIONS.current(self.token, activity=False))
+
+        sessions = auth.SessionActivity(clock=lambda: now[0])
+        sessions.register(self.token)
+        with (
+            mock.patch.object(auth, "SESSIONS", sessions),
+            mock.patch.object(self.chat_socket, "SESSION_CHECK_SECONDS", 0.05),
+        ):
+            asyncio.run(scenario())
+
+    @staticmethod
+    async def _closed(websocket) -> int:
+        """Read past the socket's events to its close, returning the close code."""
+        while (message := await websocket.next_message())["type"] != "websocket.close":
+            pass
+        return message["code"]
 
     def test_session_authority_unavailability_uses_retryable_close_code(self) -> None:
         async def scenario() -> None:
