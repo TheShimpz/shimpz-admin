@@ -1,6 +1,6 @@
 // Measure a real built chat page while older, bounded history is prepended.
 // API and WebSocket fixtures are synthetic; Team, Brain, and provider are excluded.
-// Build first, then run with Node.js 24 and the pinned Playwright browser image.
+// Build first, then run with Node.js 26 in the browser image ../playwright.Dockerfile builds.
 // Chromium TaskDuration is page-wide; nearest-rank p95 depends on the sample count.
 // Script, layout, and style counters help attribution but do not account for all task time or paint.
 // ThreadTime is sampled separately and can differ from TaskDuration in either direction.

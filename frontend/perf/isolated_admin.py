@@ -13,7 +13,6 @@ import uuid
 from pathlib import Path
 
 ADMIN_IMAGE = os.environ.get("SHIMPZ_PERF_ADMIN_IMAGE", "shimpz-admin:perf")
-BROWSER_IMAGE = "mcr.microsoft.com/playwright:v1.62.0-noble"
 FRONTEND = Path(__file__).resolve().parent.parent
 CONTAINER_TEMP_DIR = Path("/") / "tmp"
 ADMIN_CPUS = 2
@@ -126,6 +125,17 @@ def image_metadata(image: str) -> dict[str, str | None]:
     }
 
 
+def browser_image_metadata() -> dict[str, str | None]:
+    # Playwright's browsers on Node.js 26, built from the frontend's recipe and run by the image ID the build prints.
+    recipe = (FRONTEND / "playwright.Dockerfile").read_text(encoding="utf-8")
+    built = subprocess.run(
+        ["docker", "build", "--quiet", "-"], input=recipe, capture_output=True, text=True, timeout=900, check=False
+    )
+    if built.returncode:
+        raise RuntimeError("Docker build of the browser image failed; inspect the Docker daemon.")
+    return image_metadata(built.stdout.strip())
+
+
 def runtime_environment(admin_image: dict[str, str | None], browser_image: dict[str, str | None]) -> dict[str, object]:
     node = required_docker(
         "run",
@@ -142,8 +152,8 @@ def runtime_environment(admin_image: dict[str, str | None], browser_image: dict[
         "-p",
         "process.version",
     ).stdout.strip()
-    if node.split(".", 1)[0] != "v24":
-        raise RuntimeError("The browser image must run Node.js 24.")
+    if node.split(".", 1)[0] != "v26":
+        raise RuntimeError("The browser image must run Node.js 26.")
     checkout = FRONTEND.parent
     head = subprocess.run(
         ["git", "-C", str(checkout), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
@@ -177,7 +187,7 @@ def runtime_environment(admin_image: dict[str, str | None], browser_image: dict[
 
 def run() -> None:
     admin_image = image_metadata(ADMIN_IMAGE)
-    browser_image = image_metadata(BROWSER_IMAGE)
+    browser_image = browser_image_metadata()
     print(json.dumps(runtime_environment(admin_image, browser_image)))
     identity = uuid.uuid4().hex[:12]
     container = f"shimpz-perf-admin-auth-{identity}"

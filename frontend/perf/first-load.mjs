@@ -3,7 +3,7 @@
 // so Team, Brain, and provider timing are excluded. The build is served as Admin's backend serves it, uncompressed and
 // under its policy (e2e/serveBuild.mjs on port 4173); the gzip size is what the same files compress to at level 9, for
 // comparison only. Each sample is a new browser context in one interface language (SHIMPZ_PERF_LOCALES, default
-// en,pt). Build first, then run with Node.js 24 in the pinned Playwright image.
+// en,pt). Build first, then run with Node.js 26 in the image ../playwright.Dockerfile builds.
 import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';

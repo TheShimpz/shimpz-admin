@@ -10,7 +10,7 @@ import { performance } from 'node:perf_hooks';
 import { preview } from 'vite';
 import modelCatalog from '../src/lib/modelCatalog.json' with { type: 'json' };
 
-if (Number(process.versions.node.split('.')[0]) !== 24) throw new Error('This benchmark requires Node.js 24.');
+if (Number(process.versions.node.split('.')[0]) !== 26) throw new Error('This benchmark requires Node.js 26.');
 const samples = positiveInteger(process.env.SHIMPZ_PERF_SAMPLES, 20);
 const apiDelayMs = nonnegativeInteger(process.env.SHIMPZ_PERF_API_DELAY_MS, 40);
 const snapshotDelayMs = nonnegativeInteger(process.env.SHIMPZ_PERF_SNAPSHOT_DELAY_MS, apiDelayMs);

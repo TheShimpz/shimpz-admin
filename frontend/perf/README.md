@@ -1,20 +1,20 @@
 # Local chat progress measurement
 
-Build `frontend/` with Node.js 24, then run the built Local chat benchmark from
+Build `frontend/` with Node.js 26, then run the built Local chat benchmark from
 that directory. It alternates fresh Chromium contexts with and without the
 selected synthetic WebSocket progress frames at the configured interval, and
 checks the live ledger's final row, final announcement, terminal reply, and
 completed receipt. The commands below use 128 events separated by 25 ms.
-The measured runs used Playwright 1.62.0 at the digest below, 2 CPUs, 2 GiB,
+Run it in the image `playwright.Dockerfile` builds (Playwright 1.62.0 on Node.js 26), 2 CPUs, 2 GiB,
 512 MiB shared memory, and no container network. Install dependencies first
 with network access, then build and measure offline. From `admin/frontend/`,
 reproduce that environment with:
 
 ```sh
 export CHAT_PERF_USER="$(id -u):$(id -g)" CHAT_PERF_DIR="$PWD"
-export CHAT_PERF_IMAGE='mcr.microsoft.com/playwright@sha256:baed2032d533817f3dbe6425de795788430ba345e819a1201337009ba17c9d07'
-sg docker -c 'docker run --rm --cpus 2 --memory 2g --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e HOME=/tmp -e COREPACK_HOME=/work/node_modules/.corepack "$CHAT_PERF_IMAGE" corepack pnpm install --frozen-lockfile'
-sg docker -c 'docker run --rm --network none --cpus 2 --memory 2g --shm-size 512m --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e HOME=/tmp -e COREPACK_HOME=/work/node_modules/.corepack "$CHAT_PERF_IMAGE" corepack pnpm build'
+export CHAT_PERF_IMAGE="$(sg docker -c 'docker build --quiet - < playwright.Dockerfile')"
+sg docker -c 'docker run --rm --cpus 2 --memory 2g --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e HOME=/tmp "$CHAT_PERF_IMAGE" sh -ceu "sh bootstrap-pnpm.sh /tmp/pnpm-cache /tmp/pnpm; /tmp/pnpm/bin/pnpm install --frozen-lockfile"'
+sg docker -c 'docker run --rm --network none --cpus 2 --memory 2g --shm-size 512m --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e HOME=/tmp "$CHAT_PERF_IMAGE" node_modules/.bin/vite build'
 sg docker -c 'docker run --rm --network none --cpus 2 --memory 2g --shm-size 512m --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e SHIMPZ_PROGRESS_CASES=128 -e SHIMPZ_PROGRESS_GAP_MS=25 -e SHIMPZ_PERF_SAMPLES=15 -e SHIMPZ_PERF_MOTION=reduce "$CHAT_PERF_IMAGE" node perf/chat-progress.mjs'
 sg docker -c 'docker run --rm --network none --cpus 2 --memory 2g --shm-size 512m --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e SHIMPZ_PROGRESS_CASES=128 -e SHIMPZ_PROGRESS_GAP_MS=25 -e SHIMPZ_PERF_SAMPLES=15 -e SHIMPZ_PERF_MOTION=no-preference "$CHAT_PERF_IMAGE" node perf/chat-progress.mjs'
 ```
@@ -66,7 +66,7 @@ must not be added to Admin or Team timing figures.
 
 ## Local Assistants page measurement
 
-From the Admin repository, install `frontend/` dependencies with Node.js 24 (`(cd frontend && corepack pnpm install --frozen-lockfile)`), then build the
+From the Admin repository, install `frontend/` dependencies with Node.js 26 (`(cd frontend && sh bootstrap-pnpm.sh /tmp/pnpm-cache /tmp/pnpm && /tmp/pnpm/bin/pnpm install --frozen-lockfile)`), then build the
 current image and run the isolated entrypoint:
 
 ```sh
@@ -81,7 +81,7 @@ SHIMPZ_PERF_SAMPLES=15 SHIMPZ_PERF_COUNTS=24 SHIMPZ_PERF_SNAPSHOT_DELAY_MS=2400 
 Use a CPU/memory-limited builder when the host requires one; this host used `--builder shimpz-limited`. If the current
 shell lacks its account's Docker group, run each Docker command through `sg docker -c '...'`.
 Set `SHIMPZ_PERF_ADMIN_CPUSET` to match the Local Admin CPU set when it has one. The entrypoint fixes Admin at
-2 CPUs/512 MiB and Chromium at 2 CPUs/2 GiB. It uses Node.js 24 from Playwright 1.62.0 and a fresh, labeled Admin
+2 CPUs/512 MiB and Chromium at 2 CPUs/2 GiB. It builds `frontend/playwright.Dockerfile` (Playwright 1.62.0 on Node.js 26), runs that image by ID, and uses a fresh, labeled Admin
 volume. Admin has no external network or published port; Chromium shares only its loopback namespace. The entrypoint
 checks ownership before cleanup, stops the disposable container, removes its volume, and reports any residue.
 
@@ -95,5 +95,5 @@ slow snapshot API; it does not measure a real Team, Docker inventory, provider, 
 credentials or session state to the result file. On failure, the entrypoint drops browser stderr to avoid retaining
 credential-bearing diagnostics; it reports the failed run and owned cleanup state.
 
-For a static UI-only run, build `frontend/` with Node.js 24 and run `node perf/assistant-catalog.mjs` there without
+For a static UI-only run, build `frontend/` with Node.js 26 and run `node perf/assistant-catalog.mjs` there without
 `SHIMPZ_PERF_ISOLATED_AUTH`. That mode uses a mocked session and the Vite preview server.
