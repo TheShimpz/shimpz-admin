@@ -20,6 +20,8 @@ from urllib.parse import urlencode
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.concurrency import run_in_threadpool
+from starlette.datastructures import MutableHeaders
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import browser
@@ -311,29 +313,73 @@ def _supervisor_refusal(request: Request) -> Response | None:
     return None
 
 
-@app.middleware("http")
-async def _gate(request: Request, call_next):
+def _secured_send(send: Send, headers: dict[str, str]) -> Send:
+    """Send the response with the browser boundary, and these headers, set on its start as it leaves."""
+
+    async def secured(message: Message) -> None:
+        if message["type"] == "http.response.start":
+            response_headers = MutableHeaders(scope=message)
+            for name, value in (headers | browser.security_headers(SPA_SCRIPT_SOURCES, _socket_origins())).items():
+                response_headers[name] = value
+        await send(message)
+
+    return secured
+
+
+async def _gate(scope: Scope, receive: Receive, send: Send, application: ASGIApp) -> None:
     """Keep static/auth routes open and validate the current Supervisor on every API call."""
+    request = Request(scope, receive)
     path = request.url.path
 
     # Static SPA + assets (login form has no secret) and the open auth endpoints.
     if not path.startswith("/api/") or path in OPEN_API:
-        response = await call_next(request)
+        headers = {}
         if path in {"/api/session", "/api/space/host"}:
-            response.headers["Cache-Control"] = "no-store"
+            headers["Cache-Control"] = "no-store"
         if path == "/api/session":
-            response.headers["Vary"] = "Origin"
-        return _secure_response(response)
+            headers["Vary"] = "Origin"
+        await application(scope, receive, _secured_send(send, headers))
+        return
     # Everything else under /api/ requires a valid session and, to change state, Admin's own page.
     if (refusal := _supervisor_refusal(request)) is not None:
-        return _refused(refusal)
+        await _refused(refusal)(scope, receive, send)
+        return
+    started = False
+
+    async def sending(message: Message) -> None:
+        nonlocal started
+        started = True
+        await send(message)
+
     try:
         with _team_session_scope(request.cookies):
-            response = await call_next(request)
-            return _secure_response(response)
+            await application(scope, receive, _secured_send(sending, {}))
     except supervisor.SupervisorAuthorityError, team.TeamRequestError:
+        # A response already under way cannot be replaced; it fails as the server error it is.
+        if started:
+            raise
         response = JSONResponse({"detail": "Supervisor authority is unavailable"}, status_code=503)
-        return _refused(response)
+        await _refused(response)(scope, receive, send)
+
+
+class _SupervisorGate:
+    """Admin's HTTP gate as plain ASGI middleware.
+
+    It adds no task or body stream per request, and the Team session scope's context reaches the route itself.
+    WebSockets authenticate in the chat socket, and lifespan passes through.
+    """
+
+    def __init__(self, application: ASGIApp) -> None:
+        self.application = application
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.application(scope, receive, send)
+            return
+        await _gate(scope, receive, send, self.application)
+
+
+app.add_middleware(_SupervisorGate)
 
 
 @app.post("/api/session")

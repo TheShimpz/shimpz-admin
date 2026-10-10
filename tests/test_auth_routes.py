@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 import app_import
-from http_request import LOOPBACK, http_request, json_headers
+from http_request import LOOPBACK, http_request, json_headers, through_gate
 from mfa_helper import code, configure_supervisor
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
@@ -84,7 +84,8 @@ class AuthRouteTests(unittest.TestCase):
             return PlainTextResponse("bounded failure", status_code=400)
 
         result = asyncio.run(
-            self.admin_app._gate(
+            through_gate(
+                self.admin_app,
                 self._request("/api/space/host", {}, method="DELETE"),
                 response,
             )
@@ -155,7 +156,9 @@ class AuthRouteTests(unittest.TestCase):
         async def allowed(_request):
             return PlainTextResponse("allowed")
 
-        with_cookie = asyncio.run(self.admin_app._gate(self._request("/api/model-providers", cookie=session), allowed))
+        with_cookie = asyncio.run(
+            through_gate(self.admin_app, self._request("/api/model-providers", cookie=session), allowed)
+        )
         self.assertEqual(with_cookie.status_code, 200)
 
         async def should_not_run(_request):
@@ -164,7 +167,7 @@ class AuthRouteTests(unittest.TestCase):
         for query in (f"shimpz_admin={session}", f"token={session}"):
             with self.subTest(query=query.partition("=")[0]):
                 guarded = asyncio.run(
-                    self.admin_app._gate(self._request(f"/api/model-providers?{query}"), should_not_run)
+                    through_gate(self.admin_app, self._request(f"/api/model-providers?{query}"), should_not_run)
                 )
                 self.assertEqual(guarded.status_code, 401)
                 self.assertNotIn("set-cookie", guarded.headers)
@@ -179,7 +182,7 @@ class AuthRouteTests(unittest.TestCase):
         def status(session: str, *, background: bool) -> int:
             marks = (*ADMIN_PAGE, (b"shimpz-activity", b"background")) if background else ADMIN_PAGE
             request = self._request("/api/model-providers", cookie=session, browser=marks)
-            return asyncio.run(self.admin_app._gate(request, allowed)).status_code
+            return asyncio.run(through_gate(self.admin_app, request, allowed)).status_code
 
         with mock.patch.object(auth, "SESSIONS", auth.SessionActivity(clock=lambda: now[0])):
             _setup, confirmed = self._configure("violet otter lantern quartz 92")
@@ -202,7 +205,7 @@ class AuthRouteTests(unittest.TestCase):
 
         def status(session: str, fetch_site: bytes) -> int:
             request = self._request("/api/model-providers", cookie=session, browser=((b"sec-fetch-site", fetch_site),))
-            return asyncio.run(self.admin_app._gate(request, allowed)).status_code
+            return asyncio.run(through_gate(self.admin_app, request, allowed)).status_code
 
         with mock.patch.object(auth, "SESSIONS", auth.SessionActivity(clock=lambda: now[0])):
             session = self._cookie(self._configure("violet otter lantern quartz 92")[1], "shimpz_admin")
@@ -221,7 +224,9 @@ class AuthRouteTests(unittest.TestCase):
 
         # A restarted Admin, or one that evicted the session, has no record of its activity: sign in again.
         with mock.patch.object(auth, "SESSIONS", auth.SessionActivity()):
-            response = asyncio.run(self.admin_app._gate(self._request("/api/model-providers", cookie=session), allowed))
+            response = asyncio.run(
+                through_gate(self.admin_app, self._request("/api/model-providers", cookie=session), allowed)
+            )
         self.assertEqual(response.status_code, 401)
 
     def test_password_setup_runs_off_the_event_loop(self) -> None:
@@ -445,7 +450,7 @@ class AuthRouteTests(unittest.TestCase):
         def answer(origin: str):
             request = self._request("/api/model-providers/openai", {"api_key": "x"}, origin=origin, cookie=session)
             request.scope["method"] = "PUT"
-            return asyncio.run(self.admin_app._gate(request, route))
+            return asyncio.run(through_gate(self.admin_app, request, route))
 
         refused = answer("http://127.0.0.1:5173")
         self.assertEqual((refused.status_code, refused.headers["cache-control"]), (403, "no-store"))

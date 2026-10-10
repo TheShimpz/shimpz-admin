@@ -3,6 +3,7 @@
 from typing import NamedTuple
 from urllib.parse import unquote
 
+from starlette.datastructures import Headers
 from starlette.requests import Request
 
 
@@ -106,5 +107,34 @@ async def asgi_exchange(
     return Exchange(
         start["status"],
         {key.decode().lower(): value.decode() for key, value in start["headers"]},
+        b"".join(message.get("body", b"") for message in messages if message["type"] == "http.response.body"),
+    )
+
+
+class Gated(NamedTuple):
+    """The status, headers, and body Admin's gate answered one request with."""
+
+    status_code: int
+    headers: Headers
+    body: bytes
+
+
+async def through_gate(admin_app, request: Request, route) -> Gated:
+    """Pass one request through Admin's gate to a stand-in route (an async function from a request to a response)."""
+
+    async def application(scope, receive, send) -> None:
+        response = await route(Request(scope, receive))
+        await response(scope, receive, send)
+
+    messages: list[dict] = []
+
+    async def send(message: dict) -> None:
+        messages.append(message)
+
+    await admin_app._gate(request.scope, request.receive, send, application)
+    start = next(message for message in messages if message["type"] == "http.response.start")
+    return Gated(
+        start["status"],
+        Headers(raw=start["headers"]),
         b"".join(message.get("body", b"") for message in messages if message["type"] == "http.response.body"),
     )

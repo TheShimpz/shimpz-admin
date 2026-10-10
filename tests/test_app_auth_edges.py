@@ -14,7 +14,7 @@ from starlette.requests import Request
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from http_request import http_request, json_headers, remote
+from http_request import http_request, json_headers, remote, through_gate
 
 
 def _request(
@@ -206,8 +206,38 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
                 side_effect=self.admin_app.supervisor.SupervisorAuthorityError("unavailable"),
             ),
         ):
-            response = asyncio.run(self.admin_app._gate(_request("/api/teams"), should_not_run))
+            response = asyncio.run(through_gate(self.admin_app, _request("/api/teams"), should_not_run))
         self.assertEqual(response.status_code, 503)
+
+    def test_a_team_authority_failure_after_the_response_started_is_not_answered_twice(self) -> None:
+        failure = self.admin_app.team.TeamRequestError
+        sent: list[dict] = []
+
+        async def send(message):
+            sent.append(message)
+
+        async def starts_then_fails(_scope, _receive, send_message):
+            await send_message({"type": "http.response.start", "status": 200, "headers": []})
+            raise failure("unavailable")
+
+        request = _request("/api/teams", cookie="token")
+        with (
+            mock.patch.object(self.admin_app, "_session_evidence", return_value={"subject": "supervisor"}),
+            mock.patch.object(self.admin_app, "_team_session_scope", return_value=nullcontext()),
+            self.assertRaises(failure),
+        ):
+            asyncio.run(self.admin_app._gate(request.scope, request.receive, send, starts_then_fails))
+        self.assertEqual([message["type"] for message in sent], ["http.response.start"])
+
+    def test_a_websocket_passes_the_gate_to_the_chat_socket_unchanged(self) -> None:
+        calls = []
+
+        async def application(scope, receive, send):
+            calls.append(scope["type"])
+
+        gate = self.admin_app._SupervisorGate(application)
+        asyncio.run(gate({"type": "websocket", "path": "/api/teams/marketing/chat/ws"}, None, None))
+        self.assertEqual(calls, ["websocket"])
 
     def test_gate_runs_an_authenticated_route_inside_the_supervisor_scope(self) -> None:
         async def route(_request):
@@ -218,7 +248,7 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
             mock.patch.object(self.admin_app, "_session_evidence", return_value=evidence),
             mock.patch.object(self.admin_app, "_team_session_scope", return_value=nullcontext()) as scope,
         ):
-            response = asyncio.run(self.admin_app._gate(_request("/api/teams", cookie="token"), route))
+            response = asyncio.run(through_gate(self.admin_app, _request("/api/teams", cookie="token"), route))
         self.assertEqual(response.status_code, 200)
         self.assertIn("Content-Security-Policy", response.headers)
         scope.assert_called_once()
@@ -243,7 +273,7 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
             self.fail("corrupt Local authentication reached a protected route")
 
         with mock.patch.object(self.admin_app, "_session_evidence", side_effect=error):
-            gated = asyncio.run(self.admin_app._gate(_request("/api/teams"), should_not_run))
+            gated = asyncio.run(through_gate(self.admin_app, _request("/api/teams"), should_not_run))
         self.assertEqual(gated.status_code, 503)
         self.assertEqual(json.loads(gated.body)["code"], "password-recovery-required")
 

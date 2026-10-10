@@ -13,7 +13,7 @@ from unittest import mock
 
 import app_import
 from fastapi import HTTPException
-from http_request import LOOPBACK, http_request, json_headers
+from http_request import LOOPBACK, http_request, json_headers, through_gate
 from mfa_helper import NOW, code, configure_supervisor, isolated_store, recovery_codes
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -359,7 +359,7 @@ class SecurityRouteTests(unittest.TestCase):
             except HTTPException as exc:
                 return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
-        return asyncio.run(self.admin_app._gate(request, route))
+        return asyncio.run(through_gate(self.admin_app, request, route))
 
     def _events(self) -> list[tuple[str, str, str | None]]:
         lines = self.admin_app.audit.path().read_text(encoding="utf-8").splitlines()

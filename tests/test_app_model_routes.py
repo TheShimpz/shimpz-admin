@@ -8,7 +8,7 @@ from unittest import mock
 
 import app_import
 from fastapi import HTTPException
-from http_request import LOOPBACK, http_request
+from http_request import LOOPBACK, http_request, through_gate
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -53,7 +53,7 @@ class ModelProviderRouteTests(unittest.TestCase):
         async def should_not_run(_request):
             self.fail("unauthenticated request reached the model credential route")
 
-        response = asyncio.run(self.admin_app._gate(http_request(path, LOOPBACK, method="GET"), should_not_run))
+        response = asyncio.run(through_gate(self.admin_app, http_request(path, LOOPBACK, method="GET"), should_not_run))
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.body, b'{"detail":"unauthenticated"}')
 
