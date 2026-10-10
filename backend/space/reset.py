@@ -5,6 +5,9 @@ from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 from team import bridge as team
 
+import audit
+from protocol.http.v1.websocket import canonical_origin
+
 
 async def authenticated(
     request: Request, *, max_password_chars: int, read_json, recheck_password, team_response
@@ -17,4 +20,6 @@ async def authenticated(
     if not 1 <= len(password) <= max_password_chars:
         raise HTTPException(status_code=400, detail="Supervisor password is invalid")
     await recheck_password(request, password)
+    # Journaled before Team, history, or the saved order changes: an unwritable journal refuses the reset.
+    audit.record("space-reset", outcome="ok", origin=canonical_origin(request.headers.get("origin")))
     return await run_in_threadpool(team_response, team.reset_space)

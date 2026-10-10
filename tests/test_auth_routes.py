@@ -397,6 +397,7 @@ class AuthRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(json.loads(response.body), {"reset": True})
         team_reset.assert_called_once_with()
+        self.assertEqual(self._journal()[-1], "space-reset")
 
         wrong = self._request("/api/space", {"password": "definitely wrong"})
         wrong.scope["method"] = "DELETE"
@@ -465,6 +466,22 @@ class AuthRouteTests(unittest.TestCase):
             asyncio.run(self.admin_app.login(self._request("/api/login", {"password": password})))
         self.assertEqual(login.exception.status_code, 429)
         self.assertEqual(self._journal()[-limit:], ["password-rejected"] * (limit - 1) + ["password-locked"])
+
+    def test_an_unwritable_journal_refuses_a_space_reset_before_team(self) -> None:
+        password = "violet otter lantern quartz 92"
+        configure_supervisor(self.admin_app.state, password)
+        reset = self._request("/api/space", {"password": password})
+        reset.scope["method"] = "DELETE"
+        unwritable = self.admin_app.audit.AuditUnavailableError("unwritable")
+        with (
+            mock.patch.object(self.admin_app.audit, "_failure", unwritable),
+            mock.patch.object(self.admin_app.team, "reset_space") as team_reset,
+            mock.patch.object(self.admin_app.chat_history_http, "space_reset") as history_reset,
+            self.assertRaises(self.admin_app.audit.AuditUnavailableError),
+        ):
+            asyncio.run(self.admin_app.local_space_reset(reset))
+        team_reset.assert_not_called()
+        history_reset.assert_not_called()
 
     def test_an_unwritable_journal_answers_unavailable_and_is_never_cached(self) -> None:
         error = self.admin_app.audit.AuditUnavailableError("unwritable")

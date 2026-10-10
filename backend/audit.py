@@ -39,6 +39,7 @@ EVENTS = frozenset(
         "operation-confirmed",
         "logout",
         "host-reset",
+        "space-reset",
     }
 )
 OUTCOMES = frozenset({"ok", "denied"})
