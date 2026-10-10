@@ -1,15 +1,15 @@
 <script>
   import { Button, Modal, ShimpzBrand, WorkspaceShell } from '@shimpz/frontend';
   import { onMount } from 'svelte';
-  import AdminNotice from '$lib/AdminNotice.svelte';
-  import { t } from '$lib/i18n.js';
-  import LocaleMenu from '$lib/LocaleMenu.svelte';
-  import PlatformReleaseStatus from '$lib/PlatformReleaseStatus.svelte';
-  import SecurityAlert from '$lib/SecurityAlert.svelte';
-  import SecurityDialog from '$lib/SecurityDialog.svelte';
-  import TeamDialogs from '$lib/TeamDialogs.svelte';
-  import TeamNavigation from '$lib/TeamNavigation.svelte';
-  import TeamSidebar from '$lib/TeamSidebar.svelte';
+  import AdminNotice from '#lib/AdminNotice.svelte';
+  import { t } from '#lib/i18n.js';
+  import LocaleMenu from '#lib/LocaleMenu.svelte';
+  import PlatformReleaseStatus from '#lib/PlatformReleaseStatus.svelte';
+  import SecurityAlert from '#lib/SecurityAlert.svelte';
+  import SecurityDialog from '#lib/SecurityDialog.svelte';
+  import TeamDialogs from '#lib/TeamDialogs.svelte';
+  import TeamNavigation from '#lib/TeamNavigation.svelte';
+  import TeamSidebar from '#lib/TeamSidebar.svelte';
 
   let { active = '', authenticated = false, children } = $props();
   let chat = $derived(active === 'chat');

@@ -6,11 +6,11 @@
     PromptDialog,
     TextLink,
   } from '@shimpz/frontend';
-  import AttachmentChip from '$lib/AttachmentChip.svelte';
-  import { attachmentKind, identifierName } from '$lib/attachments.js';
-  import DialogAction from '$lib/DialogAction.svelte';
-  import { t } from '$lib/i18n.js';
-  import { CONFIRMATION_KIND, displayedHumanRequest } from '$lib/localChat.js';
+  import AttachmentChip from '#lib/AttachmentChip.svelte';
+  import { attachmentKind, identifierName } from '#lib/attachments.js';
+  import DialogAction from '#lib/DialogAction.svelte';
+  import { t } from '#lib/i18n.js';
+  import { CONFIRMATION_KIND, displayedHumanRequest } from '#lib/localChat.js';
 
   let {
     open = $bindable(false),

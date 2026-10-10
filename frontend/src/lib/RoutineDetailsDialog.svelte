@@ -8,9 +8,9 @@
     MAX_ARRIVED_RUNS,
     mergedRoutineRuns,
     routineRuns,
-  } from '$lib/chatHistory.js';
-  import { locale, t } from '$lib/i18n.js';
-  import { assistantNames, loadAssistantNames } from '$lib/assistantNames.js';
+  } from '#lib/chatHistory.js';
+  import { locale, t } from '#lib/i18n.js';
+  import { assistantNames, loadAssistantNames } from '#lib/assistantNames.js';
   import {
     ATTENTION_STATUSES,
     clockWords,
@@ -28,18 +28,18 @@
     STATUS_TAGS,
     STATUS_WORDS,
     untilWords,
-  } from '$lib/routine.js';
-  import { dropTeamRoutine, loadTeamRoutines } from '$lib/routineContext.js';
-  import { backgroundFetch } from '$lib/localApi.js';
-  import RoutineDecision from '$lib/RoutineDecision.svelte';
-  import RoutineDeletion from '$lib/RoutineDeletion.svelte';
-  import RoutinePlan from '$lib/RoutinePlan.svelte';
-  import RoutineRunDetails from '$lib/RoutineRunDetails.svelte';
-  import RoutineRunView from '$lib/RoutineRunView.svelte';
-  import RoutineIcon from '$lib/RoutineIcon.svelte';
-  import RoutineModal from '$lib/RoutineModal.svelte';
-  import RoutineTag from '$lib/RoutineTag.svelte';
-  import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '$lib/taskUsage.js';
+  } from '#lib/routine.js';
+  import { dropTeamRoutine, loadTeamRoutines } from '#lib/routineContext.js';
+  import { backgroundFetch } from '#lib/localApi.js';
+  import RoutineDecision from '#lib/RoutineDecision.svelte';
+  import RoutineDeletion from '#lib/RoutineDeletion.svelte';
+  import RoutinePlan from '#lib/RoutinePlan.svelte';
+  import RoutineRunDetails from '#lib/RoutineRunDetails.svelte';
+  import RoutineRunView from '#lib/RoutineRunView.svelte';
+  import RoutineIcon from '#lib/RoutineIcon.svelte';
+  import RoutineModal from '#lib/RoutineModal.svelte';
+  import RoutineTag from '#lib/RoutineTag.svelte';
+  import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '#lib/taskUsage.js';
 
   // One Routine in full (ADR-0086, ADR-0092). While a run waits for the person, the whole panel is that decision and
   // nothing else: a held run's recovery choices or a frozen run's approval, with what it needs to decide. Once it is

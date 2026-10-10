@@ -9,9 +9,9 @@
     ScrollArea,
     Toolbar,
   } from '@shimpz/frontend';
-  import { locale, t } from '$lib/i18n.js';
-  import { loadAssistantSummary } from '$lib/localAssistantIcons.js';
-  import { assistantIntegrationProviderLabel } from '$lib/localChat.js';
+  import { locale, t } from '#lib/i18n.js';
+  import { loadAssistantSummary } from '#lib/localAssistantIcons.js';
+  import { assistantIntegrationProviderLabel } from '#lib/localChat.js';
 
   let {
     open = false,

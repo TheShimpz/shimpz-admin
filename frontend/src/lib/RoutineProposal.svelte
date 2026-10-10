@@ -1,8 +1,8 @@
 <script>
   import { Button } from '@shimpz/frontend';
 
-  import { assistantNames, loadAssistantNames } from '$lib/assistantNames.js';
-  import { loadTeamRoutines } from '$lib/routineContext.js';
+  import { assistantNames, loadAssistantNames } from '#lib/assistantNames.js';
+  import { loadTeamRoutines } from '#lib/routineContext.js';
   import {
     confirmRoutineProposal,
     displayZone,
@@ -14,7 +14,7 @@
     revokeRoutineProposal,
     routineErrorMessage,
     scheduleWords,
-  } from '$lib/routine.js';
+  } from '#lib/routine.js';
 
   // The card of a Routine a recording turn recorded (ADR-0101 section 5.2), under its reply: everything the person
   // confirms, in full and as escaped text — its name, schedule, timezone, next runs, daily cap, what each run does

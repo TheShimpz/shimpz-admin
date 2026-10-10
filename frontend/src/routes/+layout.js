@@ -1,4 +1,4 @@
-import { localeReady } from '$lib/i18n.js';
+import { localeReady } from '#lib/i18n.js';
 
 // SPA mode: the local control panel talks to FastAPI over fetch/WS; nothing is prerendered
 // with data and nothing is server-rendered (adapter-static fallback serves index.html).

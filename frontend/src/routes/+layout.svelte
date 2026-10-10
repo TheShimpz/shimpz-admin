@@ -4,18 +4,18 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { onMount, setContext, tick } from 'svelte';
-  import AdminShell from '$lib/AdminShell.svelte';
-  import AuthScreen from '$lib/AuthScreen.svelte';
-  import BootScreen from '$lib/BootScreen.svelte';
-  import { clearAdminNotice } from '$lib/adminNotice.js';
-  import { locale, LOCALES, t } from '$lib/i18n.js';
-  import { INITIAL_VIEW_READINESS } from '$lib/initialView.js';
-  import { clearModelContext, modelContext } from '$lib/modelContext.js';
-  import { authenticateWithPasskey, passkeyFailure, registerPasskey } from '$lib/passkey.js';
-  import { clearTeamRoutines } from '$lib/routineContext.js';
-  import { recoveryCodes as validRecoveryCodes } from '$lib/security.js';
-  import { clearSessionContext, SESSION_ENDED, setSessionContext } from '$lib/sessionContext.js';
-  import { clearTeamContext, teamContext } from '$lib/teamContext.js';
+  import AdminShell from '#lib/AdminShell.svelte';
+  import AuthScreen from '#lib/AuthScreen.svelte';
+  import BootScreen from '#lib/BootScreen.svelte';
+  import { clearAdminNotice } from '#lib/adminNotice.js';
+  import { locale, LOCALES, t } from '#lib/i18n.js';
+  import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
+  import { clearModelContext, modelContext } from '#lib/modelContext.js';
+  import { authenticateWithPasskey, passkeyFailure, registerPasskey } from '#lib/passkey.js';
+  import { clearTeamRoutines } from '#lib/routineContext.js';
+  import { recoveryCodes as validRecoveryCodes } from '#lib/security.js';
+  import { clearSessionContext, SESSION_ENDED, setSessionContext } from '#lib/sessionContext.js';
+  import { clearTeamContext, teamContext } from '#lib/teamContext.js';
 
   let { children } = $props();
 
@@ -97,7 +97,7 @@
   }
 
   async function enterReady(redirectToChat) {
-    if (redirectToChat || page.url.pathname === '/') await goto('/chat/', { replaceState: true });
+    if (redirectToChat || page.url.pathname === '/') await goto('/chat/', { replace: true });
     phase = 'ready';
   }
 

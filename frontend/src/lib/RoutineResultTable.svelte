@@ -1,8 +1,8 @@
 <script>
-  import RoutineOutput from '$lib/RoutineOutput.svelte';
-  import RoutineResultValue from '$lib/RoutineResultValue.svelte';
-  import { omittedWords } from '$lib/routine.js';
-  import { isScalar } from '$lib/routineResult.js';
+  import RoutineOutput from '#lib/RoutineOutput.svelte';
+  import RoutineResultValue from '#lib/RoutineResultValue.svelte';
+  import { omittedWords } from '#lib/routine.js';
+  import { isScalar } from '#lib/routineResult.js';
 
   // A list of a run's shown result as the Admin's data table: mono column headings over zebra rows in one bordered
   // region that scrolls on its own, with its headings kept in view. Each cell reads by its column's kind; a list of

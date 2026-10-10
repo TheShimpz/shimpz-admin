@@ -2,7 +2,7 @@
   import { Button } from '@shimpz/frontend';
   import { tick, untrack } from 'svelte';
 
-  import RoutineIcon from '$lib/RoutineIcon.svelte';
+  import RoutineIcon from '#lib/RoutineIcon.svelte';
   import {
     dispositionWords,
     fillRoutineCopy,
@@ -11,8 +11,8 @@
     needsPage,
     readPlanSteps,
     summaryChain,
-  } from '$lib/routine.js';
-  import { visibleSteps } from '$lib/routineResult.js';
+  } from '#lib/routine.js';
+  import { visibleSteps } from '#lib/routineResult.js';
 
   // A Routine plan's safe projection (ADR-0092) in words. Its revision's summary shows at once: how many steps, their
   // Actions in order, and what each run does with its result. The steps themselves are read page by page for exactly

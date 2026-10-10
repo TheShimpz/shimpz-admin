@@ -6,30 +6,30 @@
   import { page } from '$app/state';
   import { getContext, onMount, untrack } from 'svelte';
   import { ActionLink, AssistantIcon, Button, Disclosure, Notice, Skeleton, TextLink } from '@shimpz/frontend';
-  import { showAdminNotice } from '$lib/adminNotice.js';
-  import AssistantActionDialog from '$lib/AssistantActionDialog.svelte';
-  import { actionGroups, continuingText, pageTarget } from '$lib/assistantPage.js';
-  import { CREATOR_LINK_ICONS, CREATOR_LINK_NAMES } from '$lib/creatorLinkIcons.js';
-  import { locale, t } from '$lib/i18n.js';
-  import { INITIAL_VIEW_READINESS } from '$lib/initialView.js';
-  import LocalAssistantInstallDialog from '$lib/LocalAssistantInstallDialog.svelte';
+  import { showAdminNotice } from '#lib/adminNotice.js';
+  import AssistantActionDialog from '#lib/AssistantActionDialog.svelte';
+  import { actionGroups, continuingText, pageTarget } from '#lib/assistantPage.js';
+  import { CREATOR_LINK_ICONS, CREATOR_LINK_NAMES } from '#lib/creatorLinkIcons.js';
+  import { locale, t } from '#lib/i18n.js';
+  import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
+  import LocalAssistantInstallDialog from '#lib/LocalAssistantInstallDialog.svelte';
   import {
     installAssistant,
     installLocalAssistant,
     listLocalAssistantSnapshots,
     listPublicAssistantCatalog,
     uninstallAssistant,
-  } from '$lib/localApi.js';
+  } from '#lib/localApi.js';
   import {
     isInadmissibleLocalPreview,
     loadAssistantDetails,
     loadLocalAssistantDetails,
     loadLocalAssistantIcon,
     loadPublicAssistantIcon,
-  } from '$lib/localAssistantIcons.js';
-  import { groupLocalAssistantSnapshots } from '$lib/localSnapshots.js';
-  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
-  import { ASSISTANT_ID_RE, ASSISTANT_LIMIT_REACHED, TEAM_ID_RE } from '$lib/validate.js';
+  } from '#lib/localAssistantIcons.js';
+  import { groupLocalAssistantSnapshots } from '#lib/localSnapshots.js';
+  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teamContext.js';
+  import { ASSISTANT_ID_RE, ASSISTANT_LIMIT_REACHED, TEAM_ID_RE } from '#lib/validate.js';
 
   const initialViewReadiness = getContext(INITIAL_VIEW_READINESS);
 

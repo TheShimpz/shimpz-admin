@@ -1,9 +1,9 @@
 <script>
   import { Notice } from '@shimpz/frontend';
   import { onMount } from 'svelte';
-  import DialogAction from '$lib/DialogAction.svelte';
-  import { t } from '$lib/i18n.js';
-  import { acknowledgeFailedAttempts, clearSecuritySummary, loadSecuritySummary, securitySummary } from '$lib/security.js';
+  import DialogAction from '#lib/DialogAction.svelte';
+  import { t } from '#lib/i18n.js';
+  import { acknowledgeFailedAttempts, clearSecuritySummary, loadSecuritySummary, securitySummary } from '#lib/security.js';
 
   // The second-factor attempts refused since the previous sign-in (ADR-0051). The report stays on every page until the
   // Supervisor acknowledges the exact count it shows; one refused meanwhile keeps it on screen.

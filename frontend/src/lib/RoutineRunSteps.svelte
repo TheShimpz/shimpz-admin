@@ -2,7 +2,7 @@
   import { Button } from '@shimpz/frontend';
   import { tick, untrack } from 'svelte';
 
-  import RoutineIcon from '$lib/RoutineIcon.svelte';
+  import RoutineIcon from '#lib/RoutineIcon.svelte';
   import {
     attemptWords,
     conditionWords,
@@ -12,8 +12,8 @@
     needsPage,
     pageBinding,
     readRunSteps,
-  } from '$lib/routine.js';
-  import { durationWords, visibleSteps } from '$lib/routineResult.js';
+  } from '#lib/routine.js';
+  import { durationWords, visibleSteps } from '#lib/routineResult.js';
 
   // The steps of one Routine run as the run recorded them (ADR-0092 amendment, 2026-10-05, scale), numbered in order:
   // each step's Action and Assistant, what happened to it, how long its attempt took, the inputs that attempt was

@@ -10,5 +10,5 @@ ignoreScripts: true
 pmOnFail: error
 
 overrides:
-  cookie: 0.7.2
-  devalue: 5.9.3
+  cookie: 2.0.1
+  devalue: 5.9.4

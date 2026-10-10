@@ -3,14 +3,14 @@
   import { flip } from 'svelte/animate';
   import { ActionLink, Button, ShimpzBrand, TextField } from '@shimpz/frontend';
 
-  import { showAdminNotice } from '$lib/adminNotice.js';
+  import { showAdminNotice } from '#lib/adminNotice.js';
 
-  import { t } from '$lib/i18n.js';
-  import { loadTeamRoutines, retainTeamRoutines, routineContext } from '$lib/routineContext.js';
-  import { loadActionConfirmation, saveActionConfirmation } from '$lib/actionConfirmation.js';
-  import TeamActionsMenu from '$lib/TeamActionsMenu.svelte';
-  import { renameTeam, reorderTeams, teamContext } from '$lib/teamContext.js';
-  import TeamRoutinesDialog from '$lib/TeamRoutinesDialog.svelte';
+  import { t } from '#lib/i18n.js';
+  import { loadTeamRoutines, retainTeamRoutines, routineContext } from '#lib/routineContext.js';
+  import { loadActionConfirmation, saveActionConfirmation } from '#lib/actionConfirmation.js';
+  import TeamActionsMenu from '#lib/TeamActionsMenu.svelte';
+  import { renameTeam, reorderTeams, teamContext } from '#lib/teamContext.js';
+  import TeamRoutinesDialog from '#lib/TeamRoutinesDialog.svelte';
 
   let {
     active = '',

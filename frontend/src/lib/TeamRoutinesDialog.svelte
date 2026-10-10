@@ -2,12 +2,12 @@
   import { Button, Notice } from '@shimpz/frontend';
   import { tick } from 'svelte';
 
-  import ChoiceBrowser from '$lib/ChoiceBrowser.svelte';
-  import { locale, t } from '$lib/i18n.js';
-  import { fillRoutineCopy, routineStatus, scheduleWords, STATUS_TAGS, STATUS_WORDS } from '$lib/routine.js';
-  import RoutineDetailsDialog from '$lib/RoutineDetailsDialog.svelte';
-  import RoutineModal from '$lib/RoutineModal.svelte';
-  import { loadTeamRoutines } from '$lib/routineContext.js';
+  import ChoiceBrowser from '#lib/ChoiceBrowser.svelte';
+  import { locale, t } from '#lib/i18n.js';
+  import { fillRoutineCopy, routineStatus, scheduleWords, STATUS_TAGS, STATUS_WORDS } from '#lib/routine.js';
+  import RoutineDetailsDialog from '#lib/RoutineDetailsDialog.svelte';
+  import RoutineModal from '#lib/RoutineModal.svelte';
+  import { loadTeamRoutines } from '#lib/routineContext.js';
 
   // One Team's Routines as a choice modal (ADR-0086): each its clock tinted by its status, its name, and when it runs;
   // the status is said in words only to assistive technology. Choosing one turns the modal into that Routine's panel,

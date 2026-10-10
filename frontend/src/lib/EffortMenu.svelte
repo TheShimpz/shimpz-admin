@@ -1,12 +1,12 @@
 <script>
   import { Button } from '@shimpz/frontend';
 
-  import { showAdminNotice } from '$lib/adminNotice.js';
-  import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '$lib/composerPanel.js';
-  import { t } from '$lib/i18n.js';
-  import { modelContext, selectTeamEffort } from '$lib/modelContext.js';
-  import { INFERENCE_EFFORTS } from '$lib/modelProviders.js';
-  import { teamContext } from '$lib/teamContext.js';
+  import { showAdminNotice } from '#lib/adminNotice.js';
+  import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/composerPanel.js';
+  import { t } from '#lib/i18n.js';
+  import { modelContext, selectTeamEffort } from '#lib/modelContext.js';
+  import { INFERENCE_EFFORTS } from '#lib/modelProviders.js';
+  import { teamContext } from '#lib/teamContext.js';
 
   // The Team's reasoning effort (ADR-0074) in its own composer control: a slider of three radios, and a trigger
   // whose bars light up to the current level.

@@ -2,18 +2,18 @@
   import { page } from '$app/state';
   import { getContext, onMount, tick, untrack } from 'svelte';
   import { Button, Notice, Skeleton, Toolbar } from '@shimpz/frontend';
-  import AssistantRow from '$lib/AssistantRow.svelte';
-  import { INITIAL_VIEW_READINESS } from '$lib/initialView.js';
-  import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from '$lib/localApi.js';
-  import { locale, t } from '$lib/i18n.js';
+  import AssistantRow from '#lib/AssistantRow.svelte';
+  import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
+  import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from '#lib/localApi.js';
+  import { locale, t } from '#lib/i18n.js';
   import {
     loadLocalAssistantIcon,
     loadLocalAssistantSummary,
     loadPublicAssistantIcon,
-  } from '$lib/localAssistantIcons.js';
-  import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '$lib/localSnapshots.js';
-  import { teamContext } from '$lib/teamContext.js';
-  import { TEAM_ID_RE } from '$lib/validate.js';
+  } from '#lib/localAssistantIcons.js';
+  import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '#lib/localSnapshots.js';
+  import { teamContext } from '#lib/teamContext.js';
+  import { TEAM_ID_RE } from '#lib/validate.js';
 
   const ICON_PRESENTATION_BUDGET_MS = 1500;
   // How long an icon request may stay open after its presentation budget: a slow host still delivers it, a request that

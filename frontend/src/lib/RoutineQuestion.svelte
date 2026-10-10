@@ -2,8 +2,8 @@
   import { tick } from 'svelte';
   import { Button, RadioField, TextField } from '@shimpz/frontend';
 
-  import { composeClarifiedRequest } from '$lib/clarification.js';
-  import { questionWords } from '$lib/routine.js';
+  import { composeClarifiedRequest } from '#lib/clarification.js';
+  import { questionWords } from '#lib/routine.js';
 
   // What Team asks before a recorded Routine can become a card (ADR-0101). The person's answer is an ordinary send,
   // composed with the original request as a clarification's answer is, and nothing is chosen for them: no option is

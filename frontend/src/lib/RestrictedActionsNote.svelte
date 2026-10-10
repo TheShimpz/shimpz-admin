@@ -1,6 +1,6 @@
 <script>
-  import { identifierName } from '$lib/attachments.js';
-  import { t } from '$lib/i18n.js';
+  import { identifierName } from '#lib/attachments.js';
+  import { t } from '#lib/i18n.js';
 
   // A neutral note under a reply whose message carried readable attachments: which Actions Team withheld, by their
   // Assistant and Action names, and the attachment-free way to use them. It offers nothing to run (ADR-0093).

@@ -1,7 +1,7 @@
 <script>
   import { Button } from '@shimpz/frontend';
 
-  import RoutineIcon from '$lib/RoutineIcon.svelte';
+  import RoutineIcon from '#lib/RoutineIcon.svelte';
 
   // The one Admin choice list: an optional question as its title, then one row per choice between hairlines. Each row
   // is one shared Button: its icon in a small chamfered tile (tinted by an optional `tone`), its label, one line that

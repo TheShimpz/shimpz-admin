@@ -1,10 +1,10 @@
 <script>
   import { Button, TextField } from '@shimpz/frontend';
 
-  import ChoiceList from '$lib/ChoiceList.svelte';
-  import RoutineIcon from '$lib/RoutineIcon.svelte';
-  import { fillRoutineCopy } from '$lib/routine.js';
-  import { rankBySimilarity } from '$lib/textSimilarity.js';
+  import ChoiceList from '#lib/ChoiceList.svelte';
+  import RoutineIcon from '#lib/RoutineIcon.svelte';
+  import { fillRoutineCopy } from '#lib/routine.js';
+  import { rankBySimilarity } from '#lib/textSimilarity.js';
 
   // A ChoiceList a person can search and page through: a search field on top finds items by text similarity (typos,
   // accents, and partial words allowed) over each item's `search` text or its label and line, and Previous and Next

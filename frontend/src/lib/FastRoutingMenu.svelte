@@ -2,9 +2,9 @@
   import { onMount, tick } from 'svelte';
   import { Button, StatusBadge, TextField, TextLink } from '@shimpz/frontend';
 
-  import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '$lib/composerPanel.js';
-  import { loadDecisionProvider, removeDecisionKey, saveDecisionKey } from '$lib/decisionProvider.js';
-  import { t } from '$lib/i18n.js';
+  import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/composerPanel.js';
+  import { loadDecisionProvider, removeDecisionKey, saveDecisionKey } from '#lib/decisionProvider.js';
+  import { t } from '#lib/i18n.js';
 
   // The optional Jev key (ADR-0077) in its own composer control. Only Local Admin custodies it; the caller renders
   // this control only there. Phase is idle, loading, ready, saving, or unavailable.

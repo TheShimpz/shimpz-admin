@@ -1,5 +1,5 @@
 <script>
-  import { dayLabel } from '$lib/chatDays.js';
+  import { dayLabel } from '#lib/chatDays.js';
 
   // The day above that day's first transcript item. It stays at the top of the transcript while that day's items
   // scroll under it, and the next day's header takes its place. A heading, so a screen reader can move by day; it

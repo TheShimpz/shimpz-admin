@@ -1,7 +1,7 @@
 <script>
-  import DialogAction from '$lib/DialogAction.svelte';
-  import { t } from '$lib/i18n.js';
-  import { recoveryCodesText } from '$lib/security.js';
+  import DialogAction from '#lib/DialogAction.svelte';
+  import { t } from '#lib/i18n.js';
+  import { recoveryCodesText } from '#lib/security.js';
 
   // A fresh set of recovery codes (ADR-0051), shown this one time: Admin keeps only their digests. The Supervisor copies
   // or downloads them, then continues.

@@ -4,15 +4,15 @@
   import { page } from '$app/state';
   import { onMount } from 'svelte';
 
-  import { t } from '$lib/i18n.js';
+  import { t } from '#lib/i18n.js';
   import {
     clearModelContext,
     loadModelContext,
     modelContext,
     preloadModelProviders,
-  } from '$lib/modelContext.js';
-  import { loadTeamContext, selectTeam, teamContext } from '$lib/teamContext.js';
-  import { TEAM_ID_RE } from '$lib/validate.js';
+  } from '#lib/modelContext.js';
+  import { loadTeamContext, selectTeam, teamContext } from '#lib/teamContext.js';
+  import { TEAM_ID_RE } from '#lib/validate.js';
 
   let { active = '' } = $props();
 
@@ -22,9 +22,9 @@
   });
 
   function updateLocationTeam(id) {
-    const next = new URL(page.url);
+    const next = new URL(page.url.href);
     next.searchParams.set('team', id);
-    return goto(next, { replaceState: true, keepFocus: true, noScroll: true });
+    return goto(next, { replace: true, reset: false });
   }
 
   async function retry() {

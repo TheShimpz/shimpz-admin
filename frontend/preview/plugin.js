@@ -36,7 +36,7 @@ export function adminPreview() {
     },
     // Install the scenario before SvelteKit starts: the generated client app module loads before the router runs.
     transform(code, id) {
-      if (!id.split('?')[0].endsWith('/.svelte-kit/generated/client/app.js')) return null;
+      if (!id.split('?')[0].endsWith('/.svelte-kit/generated/dev/client/app.js')) return null;
       return { code: `import ${JSON.stringify(INSTALL)};\n${code}`, map: null };
     },
   };

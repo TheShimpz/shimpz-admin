@@ -5,14 +5,14 @@
     Notice,
     TextField,
   } from '@shimpz/frontend';
-  import DialogAction from '$lib/DialogAction.svelte';
-  import { locale, t } from '$lib/i18n.js';
+  import DialogAction from '#lib/DialogAction.svelte';
+  import { locale, t } from '#lib/i18n.js';
   import {
     assistantIntegrationLabels,
     assistantIntegrationMessageParts,
     localizedIntegrationList,
-  } from '$lib/assistantIntegrationMessages.js';
-  import { assistantIntegrationProviderLabel } from '$lib/localChat.js';
+  } from '#lib/assistantIntegrationMessages.js';
+  import { assistantIntegrationProviderLabel } from '#lib/localChat.js';
 
   let {
     open = false,

@@ -1,9 +1,9 @@
 <script>
   import { onMount } from 'svelte';
   import packageMetadata from '../../package.json';
-  import { t } from '$lib/i18n.js';
-  import { backgroundFetch } from '$lib/localApi.js';
-  import { fetchPlatformRelease, isDeveloperRelease } from '$lib/platformRelease.js';
+  import { t } from '#lib/i18n.js';
+  import { backgroundFetch } from '#lib/localApi.js';
+  import { fetchPlatformRelease, isDeveloperRelease } from '#lib/platformRelease.js';
 
   let status = $state(null);
   const adminVersion = packageMetadata.version;

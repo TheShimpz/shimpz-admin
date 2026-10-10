@@ -1,12 +1,12 @@
 <script>
   import { Button, Disclosure } from '@shimpz/frontend';
 
-  import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
-  import { assistantNames } from '$lib/assistantNames.js';
-  import ChoiceList from '$lib/ChoiceList.svelte';
-  import { locale } from '$lib/i18n.js';
-  import { createHumanResponseFrame, parseChatEvent } from '$lib/localChat.js';
-  import RoutineIcon from '$lib/RoutineIcon.svelte';
+  import AssistantHumanRequestDialog from '#lib/AssistantHumanRequestDialog.svelte';
+  import { assistantNames } from '#lib/assistantNames.js';
+  import ChoiceList from '#lib/ChoiceList.svelte';
+  import { locale } from '#lib/i18n.js';
+  import { createHumanResponseFrame, parseChatEvent } from '#lib/localChat.js';
+  import RoutineIcon from '#lib/RoutineIcon.svelte';
   import {
     answerRoutineCard,
     answerRoutineChallenge,
@@ -17,7 +17,7 @@
     openRoutineChallenge,
     resumeRoutineIntegrations,
     routineErrorMessage,
-  } from '$lib/routine.js';
+  } from '#lib/routine.js';
 
   // The decision one Routine run waits for (ADR-0092), the same wherever it is shown: a held or paused run's
   // recovery card, or a frozen run's approval through chat's own dialog. Nothing runs until the Supervisor answers.

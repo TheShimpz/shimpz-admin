@@ -1,9 +1,9 @@
 <script>
   import { DialogFrame, Modal, Notice } from '@shimpz/frontend';
 
-  import DialogAction from '$lib/DialogAction.svelte';
-  import { locale } from '$lib/i18n.js';
-  import RoutineRunSteps from '$lib/RoutineRunSteps.svelte';
+  import DialogAction from '#lib/DialogAction.svelte';
+  import { locale } from '#lib/i18n.js';
+  import RoutineRunSteps from '#lib/RoutineRunSteps.svelte';
   import {
     attemptWords,
     conditionWords,
@@ -12,7 +12,7 @@
     readRunDiagnostics,
     routineErrorMessage,
     runBinding,
-  } from '$lib/routine.js';
+  } from '#lib/routine.js';
 
   // One Routine run's execution details (ADR-0092 section 8): its own step records, read page by page for its
   // historical revision (ADR-0092 amendment, 2026-10-05, scale), then Team's sanitized record of each failed attempt.

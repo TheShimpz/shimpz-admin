@@ -1,9 +1,9 @@
 <script>
-  import RoutineOutput from '$lib/RoutineOutput.svelte';
-  import RoutineResult from '$lib/RoutineResult.svelte';
-  import RoutineResultTable from '$lib/RoutineResultTable.svelte';
-  import RoutineResultValue from '$lib/RoutineResultValue.svelte';
-  import { fillRoutineCopy, omittedWords } from '$lib/routine.js';
+  import RoutineOutput from '#lib/RoutineOutput.svelte';
+  import RoutineResult from '#lib/RoutineResult.svelte';
+  import RoutineResultTable from '#lib/RoutineResultTable.svelte';
+  import RoutineResultValue from '#lib/RoutineResultValue.svelte';
+  import { fillRoutineCopy, omittedWords } from '#lib/routine.js';
 
   // A run's shown result organized for reading (ADR-0092 amendment, 2026-10-05, output): its single values as one
   // compact summary strip, each small group of them under its own label, then each list as a table and each deeper

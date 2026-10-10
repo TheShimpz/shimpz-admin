@@ -1,8 +1,8 @@
 <script>
   import { flushSync, getContext, onMount, tick } from 'svelte';
   import { AssistantIcon, Button, ChatTask, EmptyState, FileInput, Message, Notice, ScrollArea, TextAreaField, TextField, Toolbar } from '@shimpz/frontend';
-  import AssistantHumanRequestDialog from '$lib/AssistantHumanRequestDialog.svelte';
-  import AttachmentChip from '$lib/AttachmentChip.svelte';
+  import AssistantHumanRequestDialog from '#lib/AssistantHumanRequestDialog.svelte';
+  import AttachmentChip from '#lib/AttachmentChip.svelte';
   import {
     AttachmentUploadError,
     attachmentKind,
@@ -10,44 +10,44 @@
     attachmentRefusal,
     MAX_ATTACHMENTS,
     uploadTeamFile,
-  } from '$lib/attachments.js';
-  import ComposerAttachments from '$lib/ComposerAttachments.svelte';
-  import RestrictedActionsNote from '$lib/RestrictedActionsNote.svelte';
-  import DialogAction from '$lib/DialogAction.svelte';
-  import AssistantIntegrationsDialog from '$lib/AssistantIntegrationsDialog.svelte';
-  import AssistantIntegrationsDrawer from '$lib/AssistantIntegrationsDrawer.svelte';
-  import { historyBoundary, historySince, listChatHistory } from '$lib/chatHistory.js';
-  import BrainMenu from '$lib/BrainMenu.svelte';
-  import EffortMenu from '$lib/EffortMenu.svelte';
-  import FastRoutingMenu from '$lib/FastRoutingMenu.svelte';
-  import ClarificationCard from '$lib/ClarificationCard.svelte';
-  import { clarifiedRequest, matchClarificationAnswers } from '$lib/clarification.js';
-  import { promptHistoryStep } from '$lib/promptHistory.js';
-  import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '$lib/taskUsage.js';
-  import RoutineProposal from '$lib/RoutineProposal.svelte';
-  import RoutineQuestion from '$lib/RoutineQuestion.svelte';
-  import RoutineRunEntry from '$lib/RoutineRunEntry.svelte';
-  import ChatDay from '$lib/ChatDay.svelte';
-  import { calendarDay, clockTime, exchangeDays, instantValue, turnInstants, untilNextDay } from '$lib/chatDays.js';
-  import { newerRoutineEntries, questionWords, refusalWords } from '$lib/routine.js';
-  import { loadTeamRoutines } from '$lib/routineContext.js';
-  import { backgroundFetch } from '$lib/localApi.js';
-  import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
+  } from '#lib/attachments.js';
+  import ComposerAttachments from '#lib/ComposerAttachments.svelte';
+  import RestrictedActionsNote from '#lib/RestrictedActionsNote.svelte';
+  import DialogAction from '#lib/DialogAction.svelte';
+  import AssistantIntegrationsDialog from '#lib/AssistantIntegrationsDialog.svelte';
+  import AssistantIntegrationsDrawer from '#lib/AssistantIntegrationsDrawer.svelte';
+  import { historyBoundary, historySince, listChatHistory } from '#lib/chatHistory.js';
+  import BrainMenu from '#lib/BrainMenu.svelte';
+  import EffortMenu from '#lib/EffortMenu.svelte';
+  import FastRoutingMenu from '#lib/FastRoutingMenu.svelte';
+  import ClarificationCard from '#lib/ClarificationCard.svelte';
+  import { clarifiedRequest, matchClarificationAnswers } from '#lib/clarification.js';
+  import { promptHistoryStep } from '#lib/promptHistory.js';
+  import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '#lib/taskUsage.js';
+  import RoutineProposal from '#lib/RoutineProposal.svelte';
+  import RoutineQuestion from '#lib/RoutineQuestion.svelte';
+  import RoutineRunEntry from '#lib/RoutineRunEntry.svelte';
+  import ChatDay from '#lib/ChatDay.svelte';
+  import { calendarDay, clockTime, exchangeDays, instantValue, turnInstants, untilNextDay } from '#lib/chatDays.js';
+  import { newerRoutineEntries, questionWords, refusalWords } from '#lib/routine.js';
+  import { loadTeamRoutines } from '#lib/routineContext.js';
+  import { backgroundFetch } from '#lib/localApi.js';
+  import ExecutionReceipt from '#lib/ExecutionReceipt.svelte';
   import {
     createExecutionProjection,
     extendExecutionProjection,
     localizedEventLabel,
-  } from '$lib/executionProgress.js';
-  import Markdown from '$lib/Markdown.svelte';
-  import { escapeMarkdownText } from '$lib/markdown.js';
-  import { locale, t } from '$lib/i18n.js';
-  import { CLARIFICATION_LABELS } from '$lib/clarificationLabels.js';
-  import { routineQuestionMessages } from '$lib/routineQuestionMessages.js';
-  import { configureModelContext, loadModelContext, modelContext } from '$lib/modelContext.js';
-  import { SESSION_ENDED, sessionContext } from '$lib/sessionContext.js';
-  import ShimpzThinking from '$lib/ShimpzThinking.svelte';
-  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '$lib/teamContext.js';
-  import { ASSISTANT_LIMIT_REACHED } from '$lib/validate.js';
+  } from '#lib/executionProgress.js';
+  import Markdown from '#lib/Markdown.svelte';
+  import { escapeMarkdownText } from '#lib/markdown.js';
+  import { locale, t } from '#lib/i18n.js';
+  import { CLARIFICATION_LABELS } from '#lib/clarificationLabels.js';
+  import { routineQuestionMessages } from '#lib/routineQuestionMessages.js';
+  import { configureModelContext, loadModelContext, modelContext } from '#lib/modelContext.js';
+  import { SESSION_ENDED, sessionContext } from '#lib/sessionContext.js';
+  import ShimpzThinking from '#lib/ShimpzThinking.svelte';
+  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teamContext.js';
+  import { ASSISTANT_LIMIT_REACHED } from '#lib/validate.js';
   import {
     CHAT_WS_PROTOCOL,
     authorizeAssistantIntegration,
@@ -65,7 +65,7 @@
     listAssistantStoredInputs,
     parseChatEvent,
     oauthReturnFailure,
-  } from '$lib/localChat.js';
+  } from '#lib/localChat.js';
 
 
   let mounted = $state(false);

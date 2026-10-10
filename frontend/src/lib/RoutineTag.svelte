@@ -1,5 +1,5 @@
 <script>
-  import RoutineIcon from '$lib/RoutineIcon.svelte';
+  import RoutineIcon from '#lib/RoutineIcon.svelte';
 
   // A Routine status tag (ADR-0086): one color per status for its text, border, and icon, the same in a transcript card
   // and the details panel. Its words always say the status; color only repeats it. Each color keeps at least 4.5:1

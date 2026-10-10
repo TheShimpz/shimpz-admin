@@ -3,11 +3,11 @@
   import { page } from '$app/state';
 
   import { DialogFrame, Modal, Notice, TextField } from '@shimpz/frontend';
-  import DialogAction from '$lib/DialogAction.svelte';
-  import { showAdminNotice } from '$lib/adminNotice.js';
-  import { t } from '$lib/i18n.js';
-  import { LocalApiError } from '$lib/localApi.js';
-  import { createTeam, deleteTeam, teamContext } from '$lib/teamContext.js';
+  import DialogAction from '#lib/DialogAction.svelte';
+  import { showAdminNotice } from '#lib/adminNotice.js';
+  import { t } from '#lib/i18n.js';
+  import { LocalApiError } from '#lib/localApi.js';
+  import { createTeam, deleteTeam, teamContext } from '#lib/teamContext.js';
 
   let { onsettled = () => {} } = $props();
 
@@ -135,10 +135,13 @@
       label: $t('chatContext.deleteSuccessLabel'),
       message: $t('chatContext.deleteSuccessMessage', { team: target.name }),
     });
-    const next = new URL(page.url);
-    if ($teamContext.selectedTeamId) next.searchParams.set('team', $teamContext.selectedTeamId);
-    else next.searchParams.delete('team');
-    await goto(next, { replaceState: true, keepFocus: true, noScroll: true });
+    // goto refuses a location without a route (the not-found page), which has no Team selection to record.
+    if (page.route.id) {
+      const next = new URL(page.url.href);
+      if ($teamContext.selectedTeamId) next.searchParams.set('team', $teamContext.selectedTeamId);
+      else next.searchParams.delete('team');
+      await goto(next, { replace: true, reset: false });
+    }
     onsettled();
   }
 </script>

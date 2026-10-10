@@ -18,19 +18,23 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@shimpz/frontend": "https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/4e2be156c874df0a2c8f11d60c819a5510dfc3ca",
+    "@shimpz/frontend": "https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/dab6070dcf2735b13adbb18ab3ac2ad5b7d7a3aa",
     "qrcode": "1.5.4"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",
     "@playwright/test": "1.62.0",
-    "@sveltejs/adapter-static": "3.0.10",
-    "@sveltejs/kit": "2.70.2",
-    "@sveltejs/vite-plugin-svelte": "7.2.0",
+    "@sveltejs/adapter-static": "4.0.0",
+    "@sveltejs/kit": "3.0.1",
+    "@sveltejs/vite-plugin-svelte": "7.3.1",
     "@types/node": "26.6.4",
     "acorn": "8.18.0",
-    "svelte": "5.56.8",
-    "svelte-check": "4.7.3",
-    "vite": "8.1.5"
+    "svelte": "5.57.2",
+    "svelte-check": "4.7.6",
+    "typescript": "6.0.3",
+    "vite": "8.3.4"
+  },
+  "imports": {
+    "#lib/*": "./src/lib/*"
   }
 }

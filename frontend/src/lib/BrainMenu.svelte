@@ -1,11 +1,11 @@
 <script>
   import { Button, ChoiceItem } from '@shimpz/frontend';
 
-  import { showAdminNotice } from '$lib/adminNotice.js';
-  import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '$lib/composerPanel.js';
-  import { t } from '$lib/i18n.js';
-  import { modelContext, selectTeamBrain } from '$lib/modelContext.js';
-  import { teamContext } from '$lib/teamContext.js';
+  import { showAdminNotice } from '#lib/adminNotice.js';
+  import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/composerPanel.js';
+  import { t } from '#lib/i18n.js';
+  import { modelContext, selectTeamBrain } from '#lib/modelContext.js';
+  import { teamContext } from '#lib/teamContext.js';
 
   let { disabled = false } = $props();
 

@@ -1,7 +1,7 @@
 <script>
   import { Button } from '@shimpz/frontend';
 
-  import { fillRoutineCopy, outputScalarWords } from '$lib/routine.js';
+  import { fillRoutineCopy, outputScalarWords } from '#lib/routine.js';
 
   // One value of a Routine run's shown result as escaped text, read by its column's kind: an identifier in mono that
   // stays on one line and copies exactly the value Team projected, a number in tabular figures, a yes or no, a short
