@@ -37,14 +37,24 @@ function appendText(tokens, text) {
 }
 
 function safeLink(raw) {
-  if (typeof raw !== 'string' || raw.length > 2048 || !HTTP_URL.test(raw)) return '';
+  if (typeof raw !== 'string' || raw.length > 2048 || !HTTP_URL.test(raw)) return null;
   try {
     const url = new URL(raw);
-    if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) return '';
-    return url.href;
+    if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) return null;
+    return url;
   } catch {
-    return '';
+    return null;
   }
+}
+
+// A model-written label can name any place while its link leads elsewhere, carrying anything in its query. The link
+// therefore always shows the host it opens (in its ASCII form, so a look-alike name cannot pass for another), unless
+// the label already is that host or that exact address.
+function linkToken(label, url) {
+  const host = url.host;
+  const plain = label.trim().toLowerCase();
+  const shown = plain === host || safeLink(label.trim())?.href === url.href;
+  return { type: 'link', text: label, href: url.href, host: shown ? '' : host };
 }
 
 /** Parse a deliberately small inline Markdown subset into text-only display tokens. */
@@ -96,8 +106,8 @@ export function parseInline(source) {
       const hrefEnd = labelEnd === -1 ? -1 : input.indexOf(')', labelEnd + 2);
       if (labelEnd > cursor + 1 && hrefEnd > labelEnd + 2) {
         const label = unescapeInline(input.slice(cursor + 1, labelEnd));
-        const href = safeLink(input.slice(labelEnd + 2, hrefEnd).trim());
-        if (href) tokens.push({ type: 'link', text: label, href });
+        const url = safeLink(input.slice(labelEnd + 2, hrefEnd).trim());
+        if (url) tokens.push(linkToken(label, url));
         else appendText(tokens, label);
         cursor = hrefEnd + 1;
         continue;

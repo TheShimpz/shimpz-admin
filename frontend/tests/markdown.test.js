@@ -17,7 +17,7 @@ test('reads backslash escapes inside bold, emphasis, and link labels', () => {
     { type: 'text', text: ' ' },
     { type: 'emphasis', text: 'c*d' },
     { type: 'text', text: ' ' },
-    { type: 'link', text: 'e]f', href: 'https://example.com/' },
+    { type: 'link', text: 'e]f', href: 'https://example.com/', host: 'example.com' },
   ]);
   // An escaped closing marker does not close its span.
   assert.equal(parseInline('**a\\** b').some((token) => token.type === 'strong'), false);
@@ -63,9 +63,25 @@ test('keeps raw HTML inert text and refuses executable or credential-bearing lin
   assert.equal(tokens.some((token) => token.type === 'link' && token.text !== 'safe'), false);
   assert.deepEqual(
     tokens.filter((token) => token.type === 'link'),
-    [{ type: 'link', text: 'safe', href: 'https://example.com/docs' }],
+    [{ type: 'link', text: 'safe', href: 'https://example.com/docs', host: 'example.com' }],
   );
   assert.match(tokens.map((token) => token.text).join(''), /<img src=x onerror=alert\(1\)>/);
+});
+
+test('names the destination host of every link whose label is not that host or address', () => {
+  const links = parseInline(
+    '[your bank](https://evil.example:8443/collect?data=secret) [Example.com](https://example.com/a) '
+      + '[https://example.com/a](https://example.com/a) [https://example.com](https://evil.example/) '
+      + '[pаypal.com](https://pаypal.com/)',
+  ).filter((token) => token.type === 'link');
+
+  assert.deepEqual(links.map((token) => [token.text, token.host]), [
+    ['your bank', 'evil.example:8443'],
+    ['Example.com', ''],
+    ['https://example.com/a', ''],
+    ['https://example.com', 'evil.example'],
+    ['pаypal.com', 'xn--pypal-4ve.com'],
+  ]);
 });
 
 test('does not expose any HTML node or attribute channel in its output model', () => {
