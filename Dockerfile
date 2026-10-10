@@ -1,4 +1,4 @@
-# syntax=docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
+# syntax=docker/dockerfile:1@sha256:4edf897a3ffa55b89f906fc8cc78afdb3f1834cc9c7083565e611a8a7d5fe99e
 # check=skip=SecretsUsedInArgOrEnv ; shared GIDs are numeric access boundaries, never credentials
 #
 # shimpz-admin — the persistent local Team control panel. Runs as a compose service on 127.0.0.1
@@ -8,7 +8,7 @@
 FROM ghcr.io/astral-sh/uv:0.12.1@sha256:cf4eedcaa81655197f625739489effcbe71b61ceb1506f332c3facae5deceded AS uv
 
 # ── stage 2: build the SvelteKit static UI ────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM node:24-bookworm@sha256:19cd848a0e073d34bd8cd5545a1b6b4d28489b3e3b607366621ced442bd5f6b4 AS ui
+FROM --platform=$BUILDPLATFORM node:24-bookworm@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0 AS ui
 # IPv6 egress is broken on the build host (see main Dockerfile) → prefer IPv4 so npm doesn't hang.
 RUN echo 'precedence ::ffff:0:0/96 100' >> /etc/gai.conf
 # The package install precedes every commit-bound input, so an unchanged lock reuses it at every commit: BuildKit

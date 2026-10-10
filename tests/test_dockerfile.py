@@ -35,7 +35,7 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
 
         self.assertIn(
             "FROM --platform=$BUILDPLATFORM node:24-bookworm@sha256:"
-            "19cd848a0e073d34bd8cd5545a1b6b4d28489b3e3b607366621ced442bd5f6b4 AS ui",
+            "3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0 AS ui",
             dockerfile,
         )
 
