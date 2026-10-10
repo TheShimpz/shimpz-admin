@@ -677,6 +677,72 @@ def local_supervisor() -> supervisor.LocalIdentity:
     return supervisor.identity_from_record(_read())
 
 
+# The new Supervisor signing key a rotation saved durably beside the current one until Team answers (ADR-0051).
+PENDING_KEY_FIELD = "supervisor_pending_signing_key"
+
+
+class SupervisorKeyRotationError(RuntimeError):
+    """The rotation's pending key is not the one the caller holds, or the Supervisor is not configured."""
+
+
+def pending_supervisor_key() -> supervisor.LocalIdentity | None:
+    """The Supervisor's pending signing key, under the current Supervisor id, or None when no rotation is open."""
+    data = _read()
+    if PENDING_KEY_FIELD not in data:
+        return None
+    current = supervisor.identity_from_record(data)
+    pending = supervisor.identity_from_record(data, key_field=PENDING_KEY_FIELD)
+    if pending.private_key_hex == current.private_key_hex:
+        raise supervisor.SupervisorAuthorityError("Local Supervisor pending key is invalid")
+    return pending
+
+
+def begin_supervisor_key_rotation(
+    pending: supervisor.LocalIdentity, *, journal: Callable[[object], None] | None = None
+) -> None:
+    """Durably save a new signing key beside the current one, journaling it first; one rotation is open at a time."""
+
+    def begin(data: dict) -> None:
+        current = supervisor.identity_from_record(data)
+        if (
+            _authentication_state(data) != auth.RECORD_STATE_CONFIGURED
+            or PENDING_KEY_FIELD in data
+            or pending.supervisor_id != current.supervisor_id
+            or pending.private_key_hex == current.private_key_hex
+        ):
+            raise SupervisorKeyRotationError("a Supervisor key rotation cannot begin")
+        supervisor.identity_from_record(
+            {"supervisor_id": pending.supervisor_id, "supervisor_signing_key": pending.private_key_hex}
+        )
+        data[PENDING_KEY_FIELD] = pending.private_key_hex
+
+    _mutate(begin, journal=journal)
+
+
+def _settle_rotation(pending: supervisor.LocalIdentity, adopt: bool, journal: Callable[[object], None] | None) -> None:
+    def settle(data: dict) -> None:
+        if data.get(PENDING_KEY_FIELD) != pending.private_key_hex:
+            raise SupervisorKeyRotationError("the Supervisor key rotation is no longer open")
+        if adopt:
+            # The earlier key is overwritten in the same atomic write that makes the new one current.
+            data["supervisor_signing_key"] = data[PENDING_KEY_FIELD]
+        del data[PENDING_KEY_FIELD]
+
+    _mutate(settle, journal=journal)
+
+
+def adopt_supervisor_key(pending: supervisor.LocalIdentity, *, journal: Callable[[object], None] | None = None) -> None:
+    """Team pins the pending key now: make it current and drop the earlier one, journaling it first."""
+    _settle_rotation(pending, True, journal)
+
+
+def abandon_supervisor_key(
+    pending: supervisor.LocalIdentity, *, journal: Callable[[object], None] | None = None
+) -> None:
+    """Team kept the current key: drop the pending one, journaling it first."""
+    _settle_rotation(pending, False, journal)
+
+
 _ROUTINE_FIELDS = {"id_field": "routine_subject", "key_field": "routine_signing_key"}
 
 

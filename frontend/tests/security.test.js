@@ -5,11 +5,13 @@ import { get } from 'svelte/store';
 import {
   acknowledgeFailedAttempts,
   beginRecoveryCodes,
+  beginSupervisorKeyRotation,
   clearSecuritySummary,
   loadSecuritySummary,
   recoveryCodes,
   recoveryCodesText,
   replaceRecoveryCodes,
+  rotateSupervisorKey,
   SecurityError,
   securitySummary,
 } from '../src/lib/security.js';
@@ -141,4 +143,27 @@ test('a refused or malformed confirmation is a closed error and nothing invalid 
     /response-invalid/);
   await assert.rejects(replaceRecoveryCodes(answer(200, { recovery_codes: CODES, x: 1 }).fetcher, { code: '123456' }),
     /response-invalid/);
+});
+
+test('replacing the signing key starts with the password and resolves only when Team pins the new key', async () => {
+  const offer = answer(202, { methods: ['totp'] });
+  assert.deepEqual(await beginSupervisorKeyRotation(offer.fetcher, 'a password'), { passkey: null });
+  assert.equal(offer.calls[0].url, '/api/admin/supervisor-key/confirmation');
+  const rotated = answer(200, { rotated: true });
+  assert.equal(await rotateSupervisorKey(rotated.fetcher, { code: '123456' }), true);
+  assert.equal(rotated.calls[0].url, '/api/admin/supervisor-key');
+  assert.deepEqual(JSON.parse(rotated.calls[0].init.body), { code: '123456' });
+  for (const [status, code] of [
+    [503, 'supervisor-key-rotation-pending'],
+    [409, 'supervisor-key-rotation-refused'],
+    [409, 'supervisor-key-rotation-busy'],
+  ]) {
+    await assert.rejects(rotateSupervisorKey(answer(status, { code }).fetcher, { code: '123456' }), (error) => (
+      error instanceof SecurityError && error.code === code && error.status === status
+    ));
+  }
+  for (const body of [{}, { rotated: false }, { rotated: true, key_sha256: 'a' }]) {
+    await assert.rejects(rotateSupervisorKey(answer(200, body).fetcher, { code: '123456' }), /response-invalid/);
+  }
+  await assert.rejects(rotateSupervisorKey(answer(200, {}).fetcher, { code: '12' }), /request-invalid/);
 });

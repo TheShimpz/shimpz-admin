@@ -58,13 +58,18 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
                 mock.patch.object(self.admin_app.state, "is_initialized", return_value=True),
                 mock.patch.object(self.admin_app.asyncio, "to_thread", new=mock.AsyncMock()) as to_thread,
                 scheduler as routines,
+                mock.patch.object(self.admin_app.supervisor_key, "Recovery") as recovery,
             ):
                 async with self.admin_app._lifespan(self.admin_app.app):
-                    # Local runs its Routine scheduler for exactly the application's lifetime.
+                    # Local runs its Routine scheduler and the retry of an open Supervisor key rotation for exactly
+                    # the application's lifetime.
                     routines.return_value.start.assert_called_once_with()
                     routines.return_value.close.assert_not_called()
+                    recovery.return_value.start.assert_called_once_with()
+                    recovery.return_value.close.assert_not_called()
             to_thread.assert_awaited_once_with(self.admin_app._materialize_local_supervisor)
             routines.return_value.close.assert_called_once_with()
+            recovery.return_value.close.assert_called_once_with()
 
         async def uninitialized() -> None:
             with (

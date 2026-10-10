@@ -289,6 +289,30 @@ const STARTS = {
       signIns: { previous: { at: '2026-10-08T21:14:00Z', origin: 'https://admin.example.com' }, failures_since: 4 },
     }),
   }),
+  // Security replaces the Supervisor signing key after the password and a code, and Team pins the new key (ADR-0051).
+  'supervisor-key': () => ({
+    session: authenticatedLocalSession({
+      authentication_method: 'totp',
+      passkey_enrollment_available: false,
+      passkey_registered: false,
+    }),
+    teams: [...TEAMS],
+    routines: [],
+    runs: [],
+    security: securityStart(),
+  }),
+  // The same replacement while Team cannot be reached: the new key is kept and Admin keeps asking Team.
+  'supervisor-key-pending': () => ({
+    session: authenticatedLocalSession({
+      authentication_method: 'totp',
+      passkey_enrollment_available: false,
+      passkey_registered: false,
+    }),
+    teams: [...TEAMS],
+    routines: [],
+    runs: [],
+    security: securityStart({ keyRotation: 'pending' }),
+  }),
   // First setup: the password, the authenticator, then the recovery codes shown once (ADR-0051).
   setup: () => ({
     session: { profile: 'local', authenticated: false, initialized: false, authentication_state: 'uninitialized' },

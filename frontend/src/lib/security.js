@@ -141,10 +141,10 @@ async function confirmation(fetcher, url, payload) {
   return body;
 }
 
-/** Start replacing the recovery codes with the Supervisor password; Admin offers the second factor that confirms it. */
-export async function beginRecoveryCodes(fetcher, password) {
+// A confirmed operation starts with the Supervisor password; Admin offers the second factor that confirms it.
+async function beginOperation(fetcher, url, password) {
   if (typeof password !== 'string' || password.length < 1) throw new SecurityError('request-invalid');
-  const body = await confirmation(fetcher, `${RECOVERY_CODES}/confirmation`, { password });
+  const body = await confirmation(fetcher, url, { password });
   const methods = JSON.stringify(body.methods);
   if (methods === '["totp"]' && exactKeys(body, ['methods'])) return { passkey: null };
   if (methods === '["totp","passkey"]' && exactKeys(body, ['methods', 'passkey_options']) && body.passkey_options
@@ -154,14 +154,44 @@ export async function beginRecoveryCodes(fetcher, password) {
   throw new SecurityError('response-invalid');
 }
 
-/** Spend the started confirmation on one second factor, `{ code }` or `{ credential }`, and receive the new set once. */
-export async function replaceRecoveryCodes(fetcher, proof) {
+/** Start replacing the recovery codes with the Supervisor password. */
+export function beginRecoveryCodes(fetcher, password) {
+  return beginOperation(fetcher, `${RECOVERY_CODES}/confirmation`, password);
+}
+
+// Spend a started confirmation on one second factor, `{ code }` or `{ credential }`.
+function completeOperation(fetcher, url, proof) {
   const byCode = exactKeys(proof, ['code']) && /^[0-9]{6}$/.test(proof.code);
   const byPasskey = exactKeys(proof, ['credential']) && proof.credential && typeof proof.credential === 'object';
-  if (!byCode && !byPasskey) throw new SecurityError('request-invalid');
-  const body = await confirmation(fetcher, RECOVERY_CODES, proof);
+  if (!byCode && !byPasskey) return Promise.reject(new SecurityError('request-invalid'));
+  return confirmation(fetcher, url, proof);
+}
+
+/** Spend the started confirmation on one second factor and receive the new set once. */
+export async function replaceRecoveryCodes(fetcher, proof) {
+  const body = await completeOperation(fetcher, RECOVERY_CODES, proof);
   const codes = exactKeys(body, ['recovery_codes']) ? recoveryCodes(body.recovery_codes) : null;
   if (!codes) throw new SecurityError('response-invalid');
   securitySummary.update((current) => current && { ...current, recoveryCodesRemaining: RECOVERY_CODE_COUNT });
   return codes;
+}
+
+// The Supervisor's signing key (ADR-0051): Team verifies every Supervisor request under the key it pins, and replaces
+// that pin only when the current key signs the change. Replacing it is a confirmed operation.
+const SUPERVISOR_KEY = '/api/admin/supervisor-key';
+
+/** Start replacing the Supervisor signing key with the Supervisor password. */
+export function beginSupervisorKeyRotation(fetcher, password) {
+  return beginOperation(fetcher, `${SUPERVISOR_KEY}/confirmation`, password);
+}
+
+/**
+ * Spend the started confirmation on one second factor; resolves once Team pins the new key. A refusal names why:
+ * `supervisor-key-rotation-refused` (Team kept the current key), `supervisor-key-rotation-pending` (the new key is
+ * saved and Admin keeps asking Team), or `supervisor-key-rotation-busy` (another replacement is in progress).
+ */
+export async function rotateSupervisorKey(fetcher, proof) {
+  const body = await completeOperation(fetcher, SUPERVISOR_KEY, proof);
+  if (!exactKeys(body, ['rotated']) || body.rotated !== true) throw new SecurityError('response-invalid');
+  return true;
 }

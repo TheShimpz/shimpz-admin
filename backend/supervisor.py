@@ -116,6 +116,11 @@ def _public_bytes(identity: LocalIdentity) -> bytes:
     )
 
 
+def public_key_raw(identity: LocalIdentity) -> bytes:
+    """The 32 raw bytes of the identity's Ed25519 verification key."""
+    return _private_key(identity).public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+
+
 def _safe_public_file(path: Path, expected_gid: int) -> bytes | None:
     try:
         metadata = path.lstat()

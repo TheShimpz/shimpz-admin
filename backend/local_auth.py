@@ -14,6 +14,7 @@ import supervisor
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from mfa import passkeys, recovery, tickets, totp
+from space import supervisor_key
 from team import http as team_http
 
 import audit
@@ -28,6 +29,7 @@ MAX_BODY_BYTES = 8 * 1024
 PASSKEY_ENROLLMENT_FRESH_SECONDS = 5 * 60
 FACTORS_CHANGED = "authentication factors changed; enter the password again"
 RECOVERY_CODES_SUBJECT = "recovery-codes"
+SUPERVISOR_KEY_SUBJECT = "supervisor-key"
 
 
 @dataclass(slots=True)
@@ -684,3 +686,37 @@ def regenerate_recovery_codes(request: Request, context: Context, payload: dict)
         return _response({"recovery_codes": list(codes.codes)})
 
     return confirm_operation(request, context, RECOVERY_CODES_SUBJECT, payload, regenerate)
+
+
+# How a rotation ended, as the browser reads it: Team pins the new key, kept the current one, or has not answered yet.
+_ROTATION_ANSWERS = {
+    supervisor_key.Outcome.ROTATED: (200, {"rotated": True}),
+    supervisor_key.Outcome.ABANDONED: (409, {"code": "supervisor-key-rotation-refused"}),
+    supervisor_key.Outcome.PENDING: (503, {"code": "supervisor-key-rotation-pending"}),
+}
+
+
+def rotate_supervisor_key(
+    request: Request, context: Context, payload: dict, recovery_retry: supervisor_key.Recovery | None
+) -> JSONResponse:
+    """Replace the Supervisor's signing key once the operation's second factor confirmed it (ADR-0051).
+
+    Run on a worker thread: the confirmation blocks, and so do Team's answers. A rotation Team has not answered yet
+    stays open and is retried in the background.
+    """
+
+    def rotate() -> JSONResponse:
+        origin = canonical_origin(request.headers.get("origin"))
+        try:
+            outcome = supervisor_key.rotate(request.cookies.get(SESSION_COOKIE, ""), origin)
+        except state.SupervisorKeyRotationError:
+            return _response({"code": "supervisor-key-rotation-busy"}, 409)
+        except (*_STATE_FAILURES, audit.AuditUnavailableError):
+            log.warning("Local Supervisor key rotation is unavailable")
+            return _response({"code": "supervisor-key-unavailable"}, 503)
+        if outcome is supervisor_key.Outcome.PENDING and recovery_retry is not None:
+            recovery_retry.wake()
+        status, body = _ROTATION_ANSWERS[outcome]
+        return _response(body, status)
+
+    return confirm_operation(request, context, SUPERVISOR_KEY_SUBJECT, payload, rotate)

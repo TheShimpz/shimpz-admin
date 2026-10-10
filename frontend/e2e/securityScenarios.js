@@ -26,6 +26,9 @@ export function securityStart(overrides = {}) {
     used: [],
     ticket: null,
     signIns: { previous: { at: '2026-10-08T21:14:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 0 },
+    // How Team answers a Supervisor key replacement: it pins the new key, or cannot be reached (`pending`).
+    keyRotation: 'rotate',
+    keysReplaced: 0,
     ...overrides,
   };
 }
@@ -151,6 +154,24 @@ function signedInRoutes(state, method, path, body) {
     security.ticket = null;
     if (!authenticatorCode(body)) return refused(401, { code: 'code-incorrect' });
     return ok({ recovery_codes: freshSet(security) });
+  }
+  return supervisorKeyRoutes(security, method, path, body);
+}
+
+// Replacing the Supervisor signing key (ADR-0051): the same confirmation, then Team's answer.
+function supervisorKeyRoutes(security, method, path, body) {
+  if (path === '/api/admin/supervisor-key/confirmation' && method === 'POST') {
+    if (!password(body)) return refused(401, { code: 'password-incorrect' });
+    security.ticket = 'supervisor-key';
+    return accepted({ methods: ['totp'] });
+  }
+  if (path === '/api/admin/supervisor-key' && method === 'POST') {
+    if (security.ticket !== 'supervisor-key') return refused(401, { code: 'authentication-expired' });
+    security.ticket = null;
+    if (!authenticatorCode(body)) return refused(401, { code: 'code-incorrect' });
+    if (security.keyRotation === 'pending') return refused(503, { code: 'supervisor-key-rotation-pending' });
+    security.keysReplaced += 1;
+    return ok({ rotated: true });
   }
   return null;
 }

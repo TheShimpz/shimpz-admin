@@ -5,12 +5,25 @@
   import DialogAction from '$lib/DialogAction.svelte';
   import { t } from '$lib/i18n.js';
   import { authenticateWithPasskey, passkeyFailure } from '$lib/passkey.js';
-  import { beginRecoveryCodes, replaceRecoveryCodes, SecurityError } from '$lib/security.js';
+  import { SecurityError } from '$lib/security.js';
   import { sessionContext } from '$lib/sessionContext.js';
 
-  // Replacing every recovery code (ADR-0051) is a confirmed operation: the Supervisor password, then one second factor
-  // bound to it. A code is the default; a passkey is offered beside it only where this address has one.
-  let { ondone, oncancel } = $props();
+  // A confirmed Supervisor operation (ADR-0051), such as replacing the recovery codes or the signing key: the Supervisor
+  // password, then one second factor bound to it. A code is the default; a passkey is offered beside it only where this
+  // address has one. `begin(fetch, password)` resolves to the offer, `complete(fetch, proof)` to what `ondone` receives,
+  // and `failures` words the operation's own refusal codes.
+  let {
+    lead,
+    action,
+    working,
+    passkeyHint,
+    expired,
+    begin,
+    complete,
+    failures = {},
+    ondone,
+    oncancel,
+  } = $props();
 
   const id = $props.id();
   let password = $state('');
@@ -50,7 +63,9 @@
       code = '';
       error = $t('security.codeLocked');
     } else if (reason === 'authentication-expired') {
-      error = $t('security.expired');
+      error = expired;
+    } else if (Object.hasOwn(failures, reason)) {
+      error = failures[reason];
     } else if (reason === 'passkey-failed' || reason === 'passkey-suspended') {
       error = $t('security.passkeyFailed');
     } else if (failure instanceof SecurityError) {
@@ -78,13 +93,13 @@
     busy = true;
     passwordError = codeError = error = '';
     try {
-      const offer = await beginRecoveryCodes(fetch, password);
+      const offer = await begin(fetch, password);
       const factor = live ? await proof(offer) : null;
-      // A dialog closed while the passkey was asked for never replaces the codes.
+      // A dialog closed while the passkey was asked for never runs the operation.
       if (!factor || !live) return;
-      const codes = await replaceRecoveryCodes(fetch, factor);
+      const result = await complete(fetch, factor);
       password = code = '';
-      ondone(codes);
+      ondone(result);
     } catch (failure) {
       refused(failure);
     } finally {
@@ -94,7 +109,7 @@
 </script>
 
 <form class="regeneration" onsubmit={submit}>
-  <p class="lead">{$t('security.regenerateLead')}</p>
+  <p class="lead">{lead}</p>
   <TextField id={`${id}-password`} label={$t('security.password')} type="password" bind:value={password}
     autocomplete="current-password" required disabled={busy} error={passwordError} />
   {#if passkeyOffered}
@@ -109,12 +124,12 @@
       autocomplete="one-time-code" inputmode="numeric" pattern={'[0-9]{6}'} minlength="6" maxlength="6" required
       disabled={busy} error={codeError} />
   {:else}
-    <p class="hint">{$t('security.passkeyHint')}</p>
+    <p class="hint">{passkeyHint}</p>
   {/if}
   {#if error}<Notice variant="error">{error}</Notice>{/if}
   <footer class="foot">
     <DialogAction kind="cancel" type="button" disabled={busy} onclick={oncancel}>{$t('security.cancel')}</DialogAction>
-    <DialogAction kind="confirm" type="submit" disabled={busy || !ready}>{busy ? $t('security.generating') : $t('security.generate')}</DialogAction>
+    <DialogAction kind="confirm" type="submit" disabled={busy || !ready}>{busy ? working : action}</DialogAction>
   </footer>
 </form>
 

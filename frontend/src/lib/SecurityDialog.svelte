@@ -4,14 +4,23 @@
   import DialogAction from '$lib/DialogAction.svelte';
   import { locale, t } from '$lib/i18n.js';
   import RecoveryCodes from '$lib/RecoveryCodes.svelte';
-  import RecoveryCodesRegeneration from '$lib/RecoveryCodesRegeneration.svelte';
-  import { securitySummary } from '$lib/security.js';
+  import OperationConfirmation from '$lib/OperationConfirmation.svelte';
+  import {
+    beginRecoveryCodes,
+    beginSupervisorKeyRotation,
+    replaceRecoveryCodes,
+    rotateSupervisorKey,
+    securitySummary,
+  } from '$lib/security.js';
 
   // The Supervisor's sign-in security settings (ADR-0051): how many recovery codes are left, and replacing them all.
   let { dialog = $bindable(), onclose } = $props();
   const id = $props.id();
-  // `summary` reads the counts, `confirm` asks for the password and a second factor, `codes` shows the new set once.
+  // `summary` reads the counts, `confirm` asks for the password and a second factor before replacing the recovery codes,
+  // `codes` shows the new set once, and `rotate` confirms replacing the Supervisor signing key.
   let view = $state('summary');
+  // Set once a key replacement completed, until the dialog closes.
+  let rotated = $state(false);
   // The content exists only while the dialog is open, so nothing in it speaks to assistive technology meanwhile.
   let opened = $state(false);
   let codes = $state(null);
@@ -25,6 +34,7 @@
   export function open() {
     view = 'summary';
     codes = null;
+    rotated = false;
     opened = true;
     dialog?.showModal();
   }
@@ -32,6 +42,7 @@
   function close() {
     view = 'summary';
     codes = null;
+    rotated = false;
     opened = false;
     dialog?.close();
     onclose?.();
@@ -58,7 +69,35 @@
         <p class="lead">{$t('security.codesLead')}</p>
         <RecoveryCodes {codes} ondone={() => { codes = null; view = 'summary'; }} />
       {:else if view === 'confirm'}
-        <RecoveryCodesRegeneration ondone={replaced} oncancel={() => (view = 'summary')} />
+        <OperationConfirmation
+          lead={$t('security.regenerateLead')}
+          action={$t('security.generate')}
+          working={$t('security.generating')}
+          passkeyHint={$t('security.passkeyHint')}
+          expired={$t('security.expired')}
+          begin={beginRecoveryCodes}
+          complete={replaceRecoveryCodes}
+          ondone={replaced}
+          oncancel={() => (view = 'summary')}
+        />
+      {:else if view === 'rotate'}
+        <OperationConfirmation
+          lead={$t('security.rotateLead')}
+          action={$t('security.rotate')}
+          working={$t('security.rotating')}
+          passkeyHint={$t('security.rotatePasskeyHint')}
+          expired={$t('security.rotateExpired')}
+          begin={beginSupervisorKeyRotation}
+          complete={rotateSupervisorKey}
+          failures={{
+            'supervisor-key-rotation-refused': $t('security.rotateRefused'),
+            'supervisor-key-rotation-pending': $t('security.rotatePending'),
+            'supervisor-key-rotation-busy': $t('security.rotateBusy'),
+            'supervisor-key-unavailable': $t('security.rotateUnavailable'),
+          }}
+          ondone={() => { rotated = true; view = 'summary'; }}
+          oncancel={() => (view = 'summary')}
+        />
       {:else}
         <section class="history" aria-labelledby={`${id}-history`}>
           <h3 id={`${id}-history`}>{$t('security.historyLabel')}</h3>
@@ -87,6 +126,12 @@
           {/if}
           <DialogAction kind="confirm" variant="secondary" type="button" onclick={() => (view = 'confirm')}>{$t('security.regenerate')}</DialogAction>
         </section>
+        <section class="key" aria-labelledby={`${id}-key`}>
+          <h3 id={`${id}-key`}>{$t('security.keyLabel')}</h3>
+          <p>{$t('security.keyLead')}</p>
+          {#if rotated}<Notice variant="success">{$t('security.rotated')}</Notice>{/if}
+          <DialogAction kind="confirm" variant="secondary" type="button" onclick={() => { rotated = false; view = 'rotate'; }}>{$t('security.rotate')}</DialogAction>
+        </section>
       {/if}
     </div>
   </div>
@@ -99,7 +144,7 @@
   h2 { margin: 0; font-size: 1rem; }
   h3 { margin: 0; color: var(--text-dim); font: 700 0.72rem/1 var(--shimpz-font-mono); letter-spacing: 0.09em; text-transform: uppercase; }
   .body { display: grid; gap: var(--gap-group); padding: var(--gap-panel); }
-  .recovery, .history { display: grid; justify-items: start; gap: var(--gap-group); }
-  .recovery p, .history p, .lead { margin: 0; color: var(--text-dim); line-height: 1.6; }
+  .recovery, .history, .key { display: grid; justify-items: start; gap: var(--gap-group); }
+  .recovery p, .history p, .key p, .lead { margin: 0; color: var(--text-dim); line-height: 1.6; }
   svg { width: 1.1rem; height: 1.1rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
 </style>

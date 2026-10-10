@@ -1,6 +1,7 @@
 """The Supervisor's own sign-in security: refused second factors reported after sign-in (ADR-0051)."""
 
 import asyncio
+import hashlib
 import json
 import os
 import sys
@@ -348,6 +349,8 @@ class SecurityRouteTests(unittest.TestCase):
             ("POST", "/api/admin/security/failures"): app.security.acknowledge_failures,
             ("POST", "/api/admin/recovery-codes/confirmation"): app.recovery_codes_confirmation,
             ("POST", "/api/admin/recovery-codes"): app.recovery_codes_replace,
+            ("POST", "/api/admin/supervisor-key/confirmation"): app.supervisor_key_confirmation,
+            ("POST", "/api/admin/supervisor-key"): app.supervisor_key_rotate,
         }[(request.method, request.url.path)]
 
         async def route(admitted: Request):
@@ -628,6 +631,79 @@ class SecurityRouteTests(unittest.TestCase):
             )
         )
         self.assertEqual(json.loads(password.body), {"code": "password-incorrect"})
+
+    def _rotation(self, cookies: dict[str, str], factor: dict[str, str]):
+        offer = self._gated(
+            self._request("/api/admin/supervisor-key/confirmation", {"password": PASSWORD}, cookies=cookies)
+        )
+        self.assertEqual((offer.status_code, json.loads(offer.body)), (202, {"methods": ["totp"]}))
+        ticket = self._cookie(offer, "shimpz_admin_ticket")
+        return self._gated(
+            self._request("/api/admin/supervisor-key", factor, cookies={**cookies, "shimpz_admin_ticket": ticket})
+        )
+
+    def test_rotating_the_supervisor_key_needs_the_password_and_a_second_factor(self) -> None:
+        app = self.admin_app
+        session, _codes = self._configure()
+        cookies = {"shimpz_admin": session}
+        original = app.state.local_supervisor()
+        unauthenticated = self._request("/api/admin/supervisor-key/confirmation", {"password": PASSWORD})
+        self.assertEqual(self._gated(unauthenticated).status_code, 401)
+        team = mock.Mock(return_value=None)
+
+        def pinned(method, path, payload):
+            raw = app.supervisor_key.base64.urlsafe_b64decode(payload["public_key"] + "=")
+            team(method, path)
+            return app.team.TeamResponse(200, {"rotated": True, "key_sha256": hashlib.sha256(raw).hexdigest()})
+
+        with mock.patch.object(app.supervisor_key.transport, "_call", side_effect=pinned):
+            wrong = self._rotation(cookies, {"code": "000000"})
+            self.assertEqual((wrong.status_code, json.loads(wrong.body)), (401, {"code": "code-incorrect"}))
+            team.assert_not_called()
+            rotated = self._rotation(cookies, {"code": self._code()})
+        self.assertEqual((rotated.status_code, json.loads(rotated.body)), (200, {"rotated": True}))
+        self.assertEqual(rotated.headers["cache-control"], "no-store")
+        team.assert_called_once_with("POST", "/v1/space/supervisor-key")
+        self.assertNotEqual(app.state.local_supervisor(), original)
+        # The session stays: the key changes, not the Supervisor.
+        self.assertEqual(self._gated(self._request("/api/admin/security", cookies=cookies)).status_code, 200)
+        self.assertIn(("supervisor-key-rotated", "ok", None), self._events())
+
+    def test_a_rotation_team_did_not_settle_answers_its_outcome(self) -> None:
+        app = self.admin_app
+        session, _codes = self._configure()
+        cookies = {"shimpz_admin": session}
+        retry = mock.Mock()
+        app.app.state.supervisor_key_recovery = retry
+        self.addCleanup(delattr, app.app.state, "supervisor_key_recovery")
+        unavailable = app.team.TeamResponse(502, {"detail": "team unavailable"})
+        with mock.patch.object(app.supervisor_key.transport, "_call", return_value=unavailable):
+            pending = self._rotation(cookies, {"code": self._code()})
+        self.assertEqual(
+            (pending.status_code, json.loads(pending.body)), (503, {"code": "supervisor-key-rotation-pending"})
+        )
+        retry.wake.assert_called_once_with()
+        refused = app.team.TeamResponse(403, {"code": "invalid-supervisor"})
+        with mock.patch.object(app.supervisor_key.transport, "_call", return_value=refused):
+            abandoned = self._rotation(cookies, {"code": self._code()})
+        self.assertEqual(
+            (abandoned.status_code, json.loads(abandoned.body)), (409, {"code": "supervisor-key-rotation-refused"})
+        )
+        self.assertIsNone(app.state.pending_supervisor_key())
+        with mock.patch.object(app.supervisor_key, "rotate", side_effect=app.state.SupervisorKeyRotationError("x")):
+            busy = self._rotation(cookies, {"code": self._code()})
+        self.assertEqual((busy.status_code, json.loads(busy.body)), (409, {"code": "supervisor-key-rotation-busy"}))
+        with mock.patch.object(app.supervisor_key, "rotate", side_effect=OSError("x")):
+            failed = self._rotation(cookies, {"code": self._code()})
+        self.assertEqual((failed.status_code, json.loads(failed.body)), (503, {"code": "supervisor-key-unavailable"}))
+        password = self._gated(
+            self._request(
+                "/api/admin/supervisor-key/confirmation", {"password": "wrong password value"}, cookies=cookies
+            )
+        )
+        self.assertEqual(json.loads(password.body), {"code": "password-incorrect"})
+        stale = self._gated(self._request("/api/admin/supervisor-key", {"code": "123456"}, cookies=cookies))
+        self.assertEqual(json.loads(stale.body), {"code": "authentication-expired"})
 
 
 if __name__ == "__main__":
