@@ -4,7 +4,6 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { onMount, setContext, tick } from 'svelte';
-  import QRCode from 'qrcode';
   import AdminShell from '$lib/AdminShell.svelte';
   import AuthScreen from '$lib/AuthScreen.svelte';
   import BootScreen from '$lib/BootScreen.svelte';
@@ -91,6 +90,8 @@
     const secret = body?.enrollment?.secret;
     const uri = body?.enrollment?.uri;
     if (typeof secret !== 'string' || typeof uri !== 'string') throw new Error('invalid enrollment');
+    // The encoder is fetched only for this one-time enrollment, never on an ordinary load.
+    const { default: QRCode } = await import('qrcode');
     const qr = await QRCode.toDataURL(uri, { margin: 1, width: 184, errorCorrectionLevel: 'M' });
     enrollment = { secret, qr };
   }
