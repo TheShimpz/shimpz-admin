@@ -2,7 +2,7 @@
   import { Button, Modal, Notice } from '@shimpz/frontend';
 
   import DialogAction from '$lib/DialogAction.svelte';
-  import { t } from '$lib/i18n.js';
+  import { locale, t } from '$lib/i18n.js';
   import RecoveryCodes from '$lib/RecoveryCodes.svelte';
   import RecoveryCodesRegeneration from '$lib/RecoveryCodesRegeneration.svelte';
   import { securitySummary } from '$lib/security.js';
@@ -16,6 +16,11 @@
   let opened = $state(false);
   let codes = $state(null);
   let remaining = $derived($securitySummary?.recoveryCodesRemaining);
+  let signIns = $derived($securitySummary?.signIns);
+
+  function signedInAt(at) {
+    return new Intl.DateTimeFormat($locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(at));
+  }
 
   export function open() {
     view = 'summary';
@@ -55,6 +60,22 @@
       {:else if view === 'confirm'}
         <RecoveryCodesRegeneration ondone={replaced} oncancel={() => (view = 'summary')} />
       {:else}
+        <section class="history" aria-labelledby={`${id}-history`}>
+          <h3 id={`${id}-history`}>{$t('security.historyLabel')}</h3>
+          {#if !signIns}
+            <p>{$t('security.historyUnavailable')}</p>
+          {:else}
+            <p>
+              {signIns.previous
+                ? $t('security.lastSignIn', {
+                  time: signedInAt(signIns.previous.at),
+                  origin: signIns.previous.origin ?? $t('security.originUnknown'),
+                })
+                : $t('security.lastSignInNone')}
+            </p>
+            {#if signIns.previous}<p>{$t('security.failuresSince', { count: signIns.failuresSince })}</p>{/if}
+          {/if}
+        </section>
         <section class="recovery" aria-labelledby={`${id}-codes`}>
           <h3 id={`${id}-codes`}>{$t('security.codesLabel')}</h3>
           {#if remaining === undefined}
@@ -78,7 +99,7 @@
   h2 { margin: 0; font-size: 1rem; }
   h3 { margin: 0; color: var(--text-dim); font: 700 0.72rem/1 var(--shimpz-font-mono); letter-spacing: 0.09em; text-transform: uppercase; }
   .body { display: grid; gap: var(--gap-group); padding: var(--gap-panel); }
-  .recovery { display: grid; justify-items: start; gap: var(--gap-group); }
-  .recovery p, .lead { margin: 0; color: var(--text-dim); line-height: 1.6; }
+  .recovery, .history { display: grid; justify-items: start; gap: var(--gap-group); }
+  .recovery p, .history p, .lead { margin: 0; color: var(--text-dim); line-height: 1.6; }
   svg { width: 1.1rem; height: 1.1rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
 </style>

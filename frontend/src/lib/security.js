@@ -1,7 +1,7 @@
 import { writable } from 'svelte/store';
 
 import { backgroundFetch, LocalApiError, safeApiError } from './localApi.js';
-import { exactKeys, jsonObject } from './validate.js';
+import { exactKeys, isInstant, jsonObject } from './validate.js';
 
 // The Supervisor's own sign-in security (ADR-0051): the refused second-factor attempts a sign-in reported, kept until
 // the Supervisor acknowledges them, and the single-use recovery codes left.
@@ -19,16 +19,43 @@ function count(value) {
   return Number.isSafeInteger(value) && value >= 0 && value <= MAX_COUNT;
 }
 
-function summary(response, body) {
+const ORIGIN_RE = /^https?:\/\/[a-z0-9.[\]:-]{1,253}$/;
+
+// The sign-in before this one and the refused attempts since, read back from Admin's journal; null while unreadable.
+function history(value) {
+  if (value === null) return { valid: true, history: null };
+  if (!exactKeys(value, ['previous', 'failures_since']) || !count(value.failures_since)) return { valid: false };
+  const previous = value.previous;
+  if (previous === null) return { valid: true, history: { previous: null, failuresSince: value.failures_since } };
   if (
-    !exactKeys(body, ['failed_second_factor_attempts', 'recovery_codes_remaining']) ||
+    !exactKeys(previous, ['at', 'origin']) ||
+    !isInstant(previous.at) ||
+    (previous.origin !== null && (typeof previous.origin !== 'string' || !ORIGIN_RE.test(previous.origin)))
+  ) {
+    return { valid: false };
+  }
+  return {
+    valid: true,
+    history: { previous: { at: previous.at, origin: previous.origin }, failuresSince: value.failures_since },
+  };
+}
+
+function summary(response, body) {
+  const signIns = history(body?.sign_in_history);
+  if (
+    !exactKeys(body, ['failed_second_factor_attempts', 'recovery_codes_remaining', 'sign_in_history']) ||
     !count(body.failed_second_factor_attempts) ||
     !count(body.recovery_codes_remaining) ||
-    body.recovery_codes_remaining > RECOVERY_CODE_COUNT
+    body.recovery_codes_remaining > RECOVERY_CODE_COUNT ||
+    !signIns.valid
   ) {
     throw new LocalApiError('The sign-in security summary is invalid.', response.status);
   }
-  return { failedAttempts: body.failed_second_factor_attempts, recoveryCodesRemaining: body.recovery_codes_remaining };
+  return {
+    failedAttempts: body.failed_second_factor_attempts,
+    recoveryCodesRemaining: body.recovery_codes_remaining,
+    signIns: signIns.history,
+  };
 }
 
 async function send(fetcher, url, init, fallback) {

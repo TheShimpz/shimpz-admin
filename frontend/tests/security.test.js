@@ -14,6 +14,7 @@ import {
   securitySummary,
 } from '../src/lib/security.js';
 
+const HISTORY = { previous: { at: '2026-10-08T21:14:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 2 };
 const CODES = Array.from({ length: 10 }, (_, index) => `abcd-efgh-jk${String(index).padStart(2, '0')}`);
 
 function answer(status, body) {
@@ -26,10 +27,17 @@ function answer(status, body) {
 }
 
 test('the summary reads the failed attempts a sign-in reported', async () => {
-  const { calls, fetcher } = answer(200, { failed_second_factor_attempts: 3, recovery_codes_remaining: 9 });
+  const { calls, fetcher } = answer(200, {
+    failed_second_factor_attempts: 3, recovery_codes_remaining: 9, sign_in_history: HISTORY,
+  });
+  const expected = {
+    failedAttempts: 3,
+    recoveryCodesRemaining: 9,
+    signIns: { previous: { at: '2026-10-08T21:14:00Z', origin: 'http://127.0.0.1:7777' }, failuresSince: 2 },
+  };
 
-  assert.deepEqual(await loadSecuritySummary(fetcher), { failedAttempts: 3, recoveryCodesRemaining: 9 });
-  assert.deepEqual(get(securitySummary), { failedAttempts: 3, recoveryCodesRemaining: 9 });
+  assert.deepEqual(await loadSecuritySummary(fetcher), expected);
+  assert.deepEqual(get(securitySummary), expected);
   assert.equal(calls[0].url, '/api/admin/security');
   assert.equal(calls[0].init.cache, 'no-store');
   clearSecuritySummary();
@@ -37,9 +45,13 @@ test('the summary reads the failed attempts a sign-in reported', async () => {
 });
 
 test('an acknowledgment names exactly the attempts the Supervisor saw', async () => {
-  const { calls, fetcher } = answer(200, { failed_second_factor_attempts: 1, recovery_codes_remaining: 10 });
+  const { calls, fetcher } = answer(200, {
+    failed_second_factor_attempts: 1, recovery_codes_remaining: 10, sign_in_history: null,
+  });
 
-  assert.deepEqual(await acknowledgeFailedAttempts(fetcher, 3), { failedAttempts: 1, recoveryCodesRemaining: 10 });
+  assert.deepEqual(await acknowledgeFailedAttempts(fetcher, 3), {
+    failedAttempts: 1, recoveryCodesRemaining: 10, signIns: null,
+  });
   assert.equal(calls[0].url, '/api/admin/security/failures');
   assert.equal(calls[0].init.method, 'POST');
   assert.deepEqual(JSON.parse(calls[0].init.body), { acknowledged: 3 });
@@ -51,15 +63,34 @@ test('an acknowledgment names exactly the attempts the Supervisor saw', async ()
 
 test('a refused or malformed answer fails closed', async () => {
   await assert.rejects(loadSecuritySummary(answer(503, { detail: 'unavailable' }).fetcher), /unavailable/);
+  const valid = { failed_second_factor_attempts: 1, recovery_codes_remaining: 1, sign_in_history: null };
   for (const body of [
     {},
-    { failed_second_factor_attempts: -1, recovery_codes_remaining: 1 },
-    { failed_second_factor_attempts: 1, recovery_codes_remaining: 11 },
-    { failed_second_factor_attempts: 1, recovery_codes_remaining: 1, extra: 1 },
+    { ...valid, failed_second_factor_attempts: -1 },
+    { ...valid, recovery_codes_remaining: 11 },
+    { ...valid, extra: 1 },
+    { failed_second_factor_attempts: 1, recovery_codes_remaining: 1 },
+    { ...valid, sign_in_history: { previous: null } },
+    { ...valid, sign_in_history: { previous: null, failures_since: -1 } },
+    { ...valid, sign_in_history: { ...HISTORY, previous: { at: 'yesterday', origin: null } } },
+    { ...valid, sign_in_history: { ...HISTORY, previous: { at: HISTORY.previous.at, origin: 'javascript:alert(1)' } } },
+    { ...valid, sign_in_history: { ...HISTORY, previous: { at: HISTORY.previous.at, origin: 7 } } },
+    { ...valid, sign_in_history: { ...HISTORY, previous: { at: HISTORY.previous.at } } },
   ]) {
     await assert.rejects(loadSecuritySummary(answer(200, body).fetcher), /invalid/);
   }
   await assert.rejects(loadSecuritySummary(null), /Invalid sign-in security request/);
+});
+
+test('a sign-in history may name no earlier sign-in or an unknown origin', async () => {
+  const none = { failed_second_factor_attempts: 0, recovery_codes_remaining: 10,
+    sign_in_history: { previous: null, failures_since: 0 } };
+  assert.deepEqual((await loadSecuritySummary(answer(200, none).fetcher)).signIns, { previous: null, failuresSince: 0 });
+  const unknown = { ...none, sign_in_history: { previous: { at: HISTORY.previous.at, origin: null }, failures_since: 1 } };
+  assert.deepEqual((await loadSecuritySummary(answer(200, unknown).fetcher)).signIns.previous, {
+    at: HISTORY.previous.at, origin: null,
+  });
+  clearSecuritySummary();
 });
 
 test('a recovery set is exactly ten distinct codes in their written form', () => {

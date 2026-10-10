@@ -19,7 +19,15 @@ export function recoveryCodeSet(index) {
 }
 
 export function securityStart(overrides = {}) {
-  return { failedAttempts: 0, sets: 1, codes: recoveryCodeSet(0), used: [], ticket: null, ...overrides };
+  return {
+    failedAttempts: 0,
+    sets: 1,
+    codes: recoveryCodeSet(0),
+    used: [],
+    ticket: null,
+    signIns: { previous: { at: '2026-10-08T21:14:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 0 },
+    ...overrides,
+  };
 }
 
 const ok = (json) => ({ status: 200, json: structuredClone(json) });
@@ -41,6 +49,7 @@ function summary(security) {
   return {
     failed_second_factor_attempts: security.failedAttempts,
     recovery_codes_remaining: security.codes.length - security.used.length,
+    sign_in_history: structuredClone(security.signIns),
   };
 }
 

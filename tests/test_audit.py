@@ -1,5 +1,6 @@
 """The durable Supervisor authentication journal: metadata only, bounded, and fail-closed."""
 
+import calendar
 import json
 import sys
 import tempfile
@@ -141,6 +142,84 @@ class AuthenticationAuditHTTPTests(unittest.TestCase):
                 self.assertIsNone(session_cookie(set_cookie))
                 self.assertNotIn("browser_origin", json.loads((root / "admin.json").read_text(encoding="utf-8")))
                 self.assertEqual(request(port, "POST", "/api/login", {"password": "definitely wrong"})[0], 503)
+
+
+def _line(ts: str, event: str, outcome: str = "ok", origin: str | None = EXTERNAL) -> str:
+    return json.dumps({"ts": ts, "event": event, "outcome": outcome, "origin": origin}) + "\n"
+
+
+def _moment(ts: str) -> int:
+    return calendar.timegm(time.strptime(ts, "%Y-%m-%dT%H:%M:%SZ"))
+
+
+class SignInHistoryTests(unittest.TestCase):
+    def setUp(self) -> None:
+        isolated_store(self, state)
+        self.journal = audit.path()
+        self.journal.parent.mkdir(parents=True, exist_ok=True)
+
+    def _write(self, path: Path, *lines: str) -> None:
+        path.write_text("".join(lines), encoding="utf-8")
+        path.chmod(0o600)
+
+    def test_the_previous_sign_in_and_the_refused_attempts_since_it(self) -> None:
+        self._write(
+            self.journal,
+            _line("2026-10-01T08:00:00Z", "setup-completed"),
+            _line("2026-10-02T09:00:00Z", "login", origin="http://127.0.0.1:7777"),
+            _line("2026-10-03T10:00:00Z", "password-rejected", "denied", None),
+            _line("2026-10-03T10:01:00Z", "totp-rejected", "denied"),
+            _line("2026-10-03T10:02:00Z", "recovery-code-locked", "denied"),
+            _line("2026-10-03T10:03:00Z", "operation-confirmed"),
+            _line("2026-10-03T10:04:00Z", "logout"),
+            _line("2026-10-04T11:00:00Z", "login"),
+            # A later sign-in, from another browser, is not the reader's own.
+            _line("2026-10-05T12:00:00Z", "login"),
+        )
+
+        history = audit.sign_in_history(_moment("2026-10-04T11:00:00Z"))
+
+        self.assertEqual(
+            history,
+            {"previous": {"at": "2026-10-02T09:00:00Z", "origin": "http://127.0.0.1:7777"}, "failures_since": 3},
+        )
+        self.assertEqual(audit.sign_in_history(_moment("2026-10-05T12:00:00Z"))["failures_since"], 0)
+
+    def test_the_history_reads_the_rotated_backups_and_ignores_a_line_cut_short(self) -> None:
+        self._write(self.journal.with_name("audit.jsonl.2"), _line("2026-10-01T08:00:00Z", "setup-completed"))
+        self._write(self.journal.with_name("audit.jsonl.1"), _line("2026-10-02T08:00:00Z", "totp-locked", "denied"))
+        self._write(self.journal, _line("2026-10-03T08:00:00Z", "recovery-completed"), '{"ts": "2026-10-03T')
+
+        history = audit.sign_in_history(_moment("2026-10-03T08:00:00Z"))
+
+        self.assertEqual(history, {"previous": {"at": "2026-10-01T08:00:00Z", "origin": EXTERNAL}, "failures_since": 1})
+
+    def test_without_an_earlier_sign_in_there_is_no_previous_one(self) -> None:
+        self.assertEqual(
+            audit.sign_in_history(_moment("2026-10-03T08:00:00Z")), {"previous": None, "failures_since": 0}
+        )
+        self._write(self.journal, _line("2026-10-03T08:00:00Z", "login"))
+        self.assertEqual(
+            audit.sign_in_history(_moment("2026-10-03T08:00:00Z")), {"previous": None, "failures_since": 0}
+        )
+
+    def test_a_journal_that_is_not_exactly_what_admin_wrote_is_unavailable(self) -> None:
+        for content in (
+            "not json\n",
+            "[]\n",
+            _line("yesterday", "login"),
+            _line("2026-10-03T08:00:00Z", "password-accepted"),
+            _line("2026-10-03T08:00:00Z", "login", origin="HTTPS://ADMIN.EXAMPLE.TEST"),
+            _line("2026-10-03T08:00:00Z", "login").replace(EXTERNAL, "\u00e9"),
+        ):
+            with self.subTest(content=content[:40]):
+                self._write(self.journal, content)
+                with self.assertRaises(audit.HistoryUnavailableError):
+                    audit.sign_in_history(_moment("2026-10-03T08:00:00Z"))
+        self._write(self.journal, _line("2026-10-03T08:00:00Z", "login"))
+        self.journal.chmod(0o644)
+        with self.assertRaises(audit.HistoryUnavailableError):
+            audit.sign_in_history(_moment("2026-10-03T08:00:00Z"))
 
 
 if __name__ == "__main__":

@@ -8,6 +8,7 @@ the exact browser origin, and the second-factor method: never a password, code, 
 or digest.
 """
 
+import calendar
 import json
 import os
 import stat
@@ -48,6 +49,21 @@ EVENTS = frozenset(
     }
 )
 OUTCOMES = frozenset({"ok", "denied"})
+# The events that complete a sign-in, and the refused attempts to sign in, for the Supervisor's sign-in history.
+SIGN_INS = frozenset({"login", "setup-completed", "recovery-completed"})
+SIGN_IN_FAILURES = frozenset(
+    {
+        "password-rejected",
+        "password-locked",
+        "totp-rejected",
+        "totp-locked",
+        "passkey-rejected",
+        "passkey-suspended",
+        "recovery-code-rejected",
+        "recovery-code-locked",
+    }
+)
+_TIME_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
 METHODS = frozenset({"totp", "passkey", "recovery-code"})
 
 
@@ -121,7 +137,7 @@ def record(event: str, *, outcome: str, origin: str | None = None, method: str |
     ):
         raise ValueError("invalid authentication audit event")
     entry: dict[str, object] = {
-        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "ts": time.strftime(_TIME_FORMAT, time.gmtime()),
         "event": event,
         "outcome": outcome,
         "origin": origin,
@@ -138,3 +154,63 @@ def record(event: str, *, outcome: str, origin: str | None = None, method: str |
         except (OSError, AuditUnavailableError) as exc:
             _failure = AuditUnavailableError("the authentication journal could not be written")
             raise _failure from exc
+
+
+class HistoryUnavailableError(RuntimeError):
+    """The journal cannot be read back as the exact lines Admin wrote."""
+
+
+def _read_journal(journal: Path) -> list[bytes]:
+    """The complete lines of one journal file; a final line cut short by a crash was never acknowledged."""
+    try:
+        descriptor = os.open(journal, os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    except FileNotFoundError:
+        return []
+    with os.fdopen(descriptor, "rb") as handle:
+        metadata = os.fstat(handle.fileno())
+        if not _safe(metadata) or metadata.st_size > 2 * MAX_BYTES:
+            raise HistoryUnavailableError("the authentication journal has unsafe metadata")
+        lines = handle.read(2 * MAX_BYTES + 1).split(b"\n")
+    return lines[:-1]
+
+
+def _entry(line: bytes) -> tuple[int, dict[str, object]]:
+    try:
+        entry = json.loads(line.decode("ascii"))
+        moment = calendar.timegm(time.strptime(entry["ts"], _TIME_FORMAT))
+    except (ValueError, TypeError, KeyError, UnicodeDecodeError) as exc:
+        raise HistoryUnavailableError("the authentication journal holds an unreadable line") from exc
+    origin = entry.get("origin") if isinstance(entry, dict) else None
+    if (
+        not isinstance(entry, dict)
+        or entry.get("event") not in EVENTS
+        or (origin is not None and (not isinstance(origin, str) or canonical_origin(origin) != origin))
+    ):
+        raise HistoryUnavailableError("the authentication journal holds an unreadable line")
+    return moment, entry
+
+
+def sign_in_history(signed_in_at: int) -> dict[str, object]:
+    """The sign-in before the one at `signed_in_at`, and the refused attempts to sign in between the two.
+
+    The current sign-in is the latest journaled one at or before `signed_in_at`; one made later, from another browser,
+    is not the reader's own. With no earlier sign-in kept in the journal and its backups, `previous` is None.
+    """
+    journal = path()
+    with _LOCK:
+        files = [journal.with_name(f"{journal.name}.{index}") for index in range(BACKUPS, 0, -1)] + [journal]
+        entries = [_entry(line) for file in files for line in _read_journal(file)]
+    sign_ins = [
+        index
+        for index, (moment, entry) in enumerate(entries)
+        if entry["event"] in SIGN_INS and entry.get("outcome") == "ok" and moment <= signed_in_at
+    ]
+    if len(sign_ins) < 2:
+        return {"previous": None, "failures_since": 0}
+    previous, current = sign_ins[-2], sign_ins[-1]
+    moment, signed_in = entries[previous]
+    failures = sum(attempt["event"] in SIGN_IN_FAILURES for _moment, attempt in entries[previous + 1 : current])
+    return {
+        "previous": {"at": time.strftime(_TIME_FORMAT, time.gmtime(moment)), "origin": signed_in.get("origin")},
+        "failures_since": failures,
+    }

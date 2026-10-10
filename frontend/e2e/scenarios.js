@@ -260,13 +260,17 @@ const STARTS = {
     runs: [],
     security: securityStart({ used: recoveryCodeSet(0).slice(0, 8) }),
   }),
-  // The sign-in after three refused authenticator codes: the report stays on every page until acknowledged (ADR-0051).
+  // The sign-in after three refused authenticator codes: the report stays on every page until acknowledged, and Security
+  // names the previous sign-in, its address, and the four refused attempts since it (ADR-0051).
   'security-alert': () => ({
     session: authenticatedLocalSession({ authentication_method: 'totp' }),
     teams: [...TEAMS],
     routines: [],
     runs: [],
-    security: securityStart({ failedAttempts: 3 }),
+    security: securityStart({
+      failedAttempts: 3,
+      signIns: { previous: { at: '2026-10-08T21:14:00Z', origin: 'https://admin.example.com' }, failures_since: 4 },
+    }),
   }),
   // First setup: the password, the authenticator, then the recovery codes shown once (ADR-0051).
   setup: () => ({

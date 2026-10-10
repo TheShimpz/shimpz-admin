@@ -344,7 +344,7 @@ class SecurityRouteTests(unittest.TestCase):
         """Send one request through the Admin gate to its route, answering a route's refusal as FastAPI does."""
         app = self.admin_app
         endpoint = {
-            ("GET", "/api/admin/security"): lambda _request: app.security.summary(),
+            ("GET", "/api/admin/security"): app.security.summary,
             ("POST", "/api/admin/security/failures"): app.security.acknowledge_failures,
             ("POST", "/api/admin/recovery-codes/confirmation"): app.recovery_codes_confirmation,
             ("POST", "/api/admin/recovery-codes"): app.recovery_codes_replace,
@@ -366,16 +366,32 @@ class SecurityRouteTests(unittest.TestCase):
         session = {"shimpz_admin": self._sign_in()}
 
         summary = self._gated(self._request("/api/admin/security", cookies=session))
+        body = json.loads(summary.body)
+        history = body.pop("sign_in_history")
         self.assertEqual(
-            (summary.status_code, json.loads(summary.body)),
-            (200, {"failed_second_factor_attempts": 1, "recovery_codes_remaining": 10}),
+            (summary.status_code, body), (200, {"failed_second_factor_attempts": 1, "recovery_codes_remaining": 10})
         )
         self.assertEqual(summary.headers["cache-control"], "no-store")
+        # The sign-in before this one was the setup, and one code was refused since.
+        self.assertEqual((history["previous"]["origin"], history["failures_since"]), (ORIGIN, 1))
+        self.assertRegex(history["previous"]["at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 
         acknowledged = self._gated(self._request("/api/admin/security/failures", {"acknowledged": 1}, cookies=session))
         self.assertEqual(json.loads(acknowledged.body)["failed_second_factor_attempts"], 0)
         summary = self._gated(self._request("/api/admin/security", cookies=session))
         self.assertEqual(json.loads(summary.body)["failed_second_factor_attempts"], 0)
+
+    def test_an_unreadable_journal_leaves_the_rest_of_the_summary(self) -> None:
+        session = {"shimpz_admin": self._sign_in()}
+        self.admin_app.audit.path().chmod(0o644)
+
+        summary = self._gated(self._request("/api/admin/security", cookies=session))
+
+        self.assertEqual(json.loads(summary.body)["sign_in_history"], None)
+        self.assertEqual(json.loads(summary.body)["recovery_codes_remaining"], recovery.CODE_COUNT)
+        with self.assertRaises(HTTPException) as raised:
+            self.admin_app.security._history("v3:not-a-session")
+        self.assertEqual(raised.exception.status_code, 401)
 
     def test_the_report_needs_a_session_and_an_acknowledgment_names_a_positive_count(self) -> None:
         self.assertEqual(self._gated(self._request("/api/admin/security")).status_code, 401)
@@ -455,8 +471,10 @@ class SecurityRouteTests(unittest.TestCase):
         self.assertEqual(len(fresh), recovery.CODE_COUNT)
         self.assertFalse(set(fresh) & set(codes))
         new_session = {"shimpz_admin": self._cookie(completed, "shimpz_admin")}
-        summary = self._gated(self._request("/api/admin/security", cookies=new_session))
-        self.assertEqual(json.loads(summary.body), {"failed_second_factor_attempts": 2, "recovery_codes_remaining": 10})
+        summary = json.loads(self._gated(self._request("/api/admin/security", cookies=new_session)).body)
+        self.assertEqual(summary["failed_second_factor_attempts"], 2)
+        self.assertEqual(summary["recovery_codes_remaining"], 10)
+        self.assertEqual(summary["sign_in_history"]["failures_since"], 2)
         self.assertEqual(
             [event for event in self._events() if event[0].startswith("recovery")],
             [
