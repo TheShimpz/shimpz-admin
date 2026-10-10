@@ -71,32 +71,6 @@ class AuthHTTPTests(unittest.TestCase):
                 self.assertEqual(payload, {"detail": "too many login attempts"})
                 self.assertEqual(headers["retry-after"], "60")
 
-    def test_password_rechecks_share_the_sign_in_budget_and_lockout(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            with AdminHTTPServer(root) as server:
-                port = server.port
-                origin = f"http://127.0.0.1:{port}"
-                session, _enrollment = self._setup(port)
-                wrong = {"team_name": "Marketing", "password": "definitely wrong"}
-                statuses = [
-                    request(port, "DELETE", "/api/teams/marketing", wrong, session=session, origin=origin)[0]
-                    for _ in range(auth.LOGIN_FAILURE_LIMIT)
-                ]
-                self.assertEqual(statuses, [403] * (auth.LOGIN_FAILURE_LIMIT - 1) + [429])
-
-                # The lock is the sign-in's own: neither another recheck nor a sign-in may guess meanwhile.
-                reset = request(
-                    port, "DELETE", "/api/space", {"password": GOOD_PASSWORD}, session=session, origin=origin
-                )
-                self.assertEqual(reset[0], 429)
-                self.assertEqual(request(port, "POST", "/api/login", {"password": GOOD_PASSWORD})[0], 429)
-                journal = [json.loads(line)["event"] for line in (root / "audit.jsonl").read_text().splitlines()]
-                self.assertEqual(
-                    journal[-auth.LOGIN_FAILURE_LIMIT :],
-                    ["password-rejected"] * (auth.LOGIN_FAILURE_LIMIT - 1) + ["password-locked"],
-                )
-
     def test_a_restarted_admin_asks_every_session_to_sign_in_again(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

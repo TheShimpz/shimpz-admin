@@ -142,6 +142,17 @@ class LocalAuthEdgeTests(unittest.TestCase):
                 local_auth._complete_totp("000000", enrollment=False, generation=2, origin=ORIGIN)
             self.assertEqual(totp_error.exception.status_code, expected)
 
+    def test_an_unchanged_external_origin_is_rebound_without_a_journal_event(self) -> None:
+        external = "https://admin.example.test"
+        with (
+            mock.patch.object(local_auth.state, "browser_origin", return_value=external),
+            mock.patch.object(local_auth.state, "bind_browser_origin", return_value="unchanged") as bound,
+            mock.patch.object(local_auth.audit, "record") as journaled,
+        ):
+            local_auth._bind_origin(external)
+        bound.assert_called_once_with(external)
+        journaled.assert_not_called()
+
     def test_setup_and_login_reject_wrong_fields_and_resume_exact_enrollment(self) -> None:
         context = local_auth.Context()
         with self.assertRaises(HTTPException) as setup_shape:

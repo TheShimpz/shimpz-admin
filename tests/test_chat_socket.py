@@ -159,6 +159,9 @@ class ChatWebSocketTests(ChatWebSocketCase):
             now[0] = auth.IDLE_SECONDS - 60
             await websocket.send_json({"type": "unsupported"})
             self.assertEqual((await websocket.next_message())["type"], "websocket.send")
+            # A waiting socket rechecks its session and stays open while the session is current.
+            with self.assertRaises(TimeoutError):
+                await websocket.next_message(wait_seconds=0.3)
             now[0] = auth.IDLE_SECONDS + 60
             self.assertTrue(auth.SESSIONS.current(self.token, activity=False))
             now[0] = 2 * auth.IDLE_SECONDS

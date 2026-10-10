@@ -67,6 +67,17 @@ class JournalTests(unittest.TestCase):
         for path in (self.journal, *self.journal.parent.glob(f"{audit.FILE_NAME}.*")):
             self.assertLessEqual(path.stat().st_size, 300)
 
+    def test_an_unsafe_backup_refuses_rotation(self) -> None:
+        backup = self.journal.with_name(f"{audit.FILE_NAME}.1")
+        backup.write_text("", encoding="ascii")
+        backup.chmod(0o644)
+        with mock.patch.object(audit, "MAX_BYTES", 120):
+            audit.record("password-rejected", outcome="denied")
+            with self.assertRaises(audit.AuditUnavailableError):
+                audit.record("password-rejected", outcome="denied")
+        self.assertEqual(len(_events(self.journal)), 1)
+        self.assertEqual(backup.read_text(encoding="ascii"), "")
+
     def test_a_failure_refuses_every_later_event_until_restart(self) -> None:
         self.journal.write_text("", encoding="ascii")
         self.journal.chmod(0o644)

@@ -112,6 +112,16 @@ class PasswordVerifierTests(unittest.TestCase):
         self.assertFalse(sessions.current("attended", activity=True))
         self.assertFalse(sessions.current("never-issued", activity=True))
 
+    def test_a_new_session_forgets_idle_ones_before_evicting_an_active_one(self) -> None:
+        now = [0.0]
+        sessions = auth.SessionActivity(clock=lambda: now[0], idle_seconds=3600, capacity=2)
+        sessions.register("idle")
+        now[0] = 3000
+        sessions.register("active")
+        now[0] = 3600
+        sessions.register("new")
+        self.assertEqual([sessions.current(token, activity=False) for token in ("active", "new")], [True, True])
+
     def test_tracking_is_bounded_and_evicts_the_least_recent_session(self) -> None:
         now = [0.0]
         sessions = auth.SessionActivity(clock=lambda: now[0], capacity=2)

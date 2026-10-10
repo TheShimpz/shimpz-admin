@@ -408,6 +408,71 @@ class AuthRouteTests(unittest.TestCase):
         self.assertEqual(caught.exception.status_code, 403)
         blocked.assert_not_called()
 
+    def _journal(self) -> list[str]:
+        journal = self.admin_app.audit.path()
+        lines = journal.read_text(encoding="ascii").splitlines() if journal.exists() else []
+        return [json.loads(line)["event"] for line in lines]
+
+    def test_a_cross_origin_state_change_never_reaches_its_route(self) -> None:
+        session = self._cookie(self._configure("violet otter lantern quartz 92")[1], "shimpz_admin")
+
+        async def route(_request):
+            return PlainTextResponse("changed")
+
+        def answer(origin: str):
+            request = self._request("/api/model-providers/openai", {"api_key": "x"}, origin=origin, cookie=session)
+            request.scope["method"] = "PUT"
+            return asyncio.run(self.admin_app._gate(request, route))
+
+        refused = answer("http://127.0.0.1:5173")
+        self.assertEqual((refused.status_code, refused.headers["cache-control"]), (403, "no-store"))
+        self.assertEqual(json.loads(refused.body), {"detail": "browser origin is not admitted"})
+        self.assertEqual(answer("http://127.0.0.1:7777").status_code, 200)
+
+    def test_logout_journals_the_session_it_ends(self) -> None:
+        session = self._cookie(self._configure("violet otter lantern quartz 92")[1], "shimpz_admin")
+        response = asyncio.run(
+            self.admin_app.logout(self._request("/api/logout", origin="http://127.0.0.1:7777", cookie=session))
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(self._journal()[-1], "logout")
+        self.assertIsNone(self.admin_app._session_evidence({"shimpz_admin": session}))
+
+    def test_password_rechecks_share_the_sign_in_budget_and_lockout(self) -> None:
+        password = "violet otter lantern quartz 92"
+        session = self._cookie(self._configure(password)[1], "shimpz_admin")
+        limit = self.admin_app.auth.LOGIN_FAILURE_LIMIT
+
+        def team_deletion(attempt: str) -> int:
+            request = self._request(
+                "/api/teams/marketing", {"team_name": "Marketing", "password": attempt}, cookie=session
+            )
+            request.scope["method"] = "DELETE"
+            with self.assertRaises(self.admin_app.HTTPException) as refused:
+                asyncio.run(self.admin_app.teams_destroy("marketing", request))
+            return refused.exception.status_code
+
+        with mock.patch.object(self.admin_app.team, "destroy_confirmed") as destroyed:
+            self.assertEqual([team_deletion("definitely wrong") for _ in range(limit)], [403] * (limit - 1) + [429])
+        destroyed.assert_not_called()
+        # The lock is sign-in's own: neither another recheck nor a sign-in may guess while it lasts.
+        reset = self._request("/api/space", {"password": password}, cookie=session)
+        reset.scope["method"] = "DELETE"
+        with self.assertRaises(self.admin_app.HTTPException) as locked:
+            asyncio.run(self.admin_app.local_space_reset(reset))
+        self.assertEqual((locked.exception.status_code, locked.exception.headers["Retry-After"]), (429, "60"))
+        with self.assertRaises(self.admin_app.HTTPException) as login:
+            asyncio.run(self.admin_app.login(self._request("/api/login", {"password": password})))
+        self.assertEqual(login.exception.status_code, 429)
+        self.assertEqual(self._journal()[-limit:], ["password-rejected"] * (limit - 1) + ["password-locked"])
+
+    def test_an_unwritable_journal_answers_unavailable_and_is_never_cached(self) -> None:
+        error = self.admin_app.audit.AuditUnavailableError("unwritable")
+        with self.assertLogs("shimpz-admin", "ERROR"):
+            response = asyncio.run(self.admin_app._audit_unavailable(self._request("/api/login"), error))
+        self.assertEqual((response.status_code, response.headers["cache-control"]), (503, "no-store"))
+        self.assertEqual(json.loads(response.body), {"detail": "Supervisor authentication audit is unavailable"})
+
     def test_local_space_reset_bounds_team_request_failure(self) -> None:
         password = "violet otter lantern quartz 92"
         configure_supervisor(self.admin_app.state, password)

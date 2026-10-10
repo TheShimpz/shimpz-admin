@@ -52,6 +52,12 @@ class SecurityHeaderTests(unittest.TestCase):
                 self.assertEqual(status, expected_status)
                 self.assert_security_headers(headers)
 
+    def test_an_unreadable_admitted_origin_narrows_sockets_to_the_static_origins(self) -> None:
+        with mock.patch.object(self.admin_app.state, "browser_origin", side_effect=RuntimeError("corrupt store")):
+            status, headers = asyncio.run(self._request("GET", "/"))
+        self.assertEqual(status, 200)
+        self.assert_security_headers(headers)
+
     def test_identity_failure_is_hardened(self) -> None:
         unavailable = self.admin_app.SessionEvidenceUnavailableError("unavailable")
         with mock.patch.object(self.admin_app, "_session_evidence", side_effect=unavailable):
