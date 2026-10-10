@@ -1,3 +1,5 @@
+// Admin's interface languages, its one list of them: the Team protocol's chat locales (tests/i18n.test.js), each with
+// its native name and text direction, in menu order.
 export const LOCALES = [
   { code: 'en', name: 'English', dir: 'ltr' },
   { code: 'pt', name: 'Português', dir: 'ltr' },

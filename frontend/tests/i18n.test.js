@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
+import { LOCALES } from '../src/lib/locales.js';
 import { messages } from '../src/lib/messages.js';
 import {
   assistantIntegrationLabels,
@@ -8,7 +10,7 @@ import {
   localizedIntegrationList,
 } from '../src/lib/assistantIntegrationMessages.js';
 
-const expectedLocales = ['en', 'pt', 'es', 'zh', 'fr', 'de', 'ja', 'ar'];
+const expectedLocales = LOCALES.map(({ code }) => code);
 
 function leafPaths(value, prefix = '') {
   return Object.entries(value).flatMap(([key, child]) => {
@@ -19,6 +21,14 @@ function leafPaths(value, prefix = '') {
     return [path];
   });
 }
+
+test("Admin's interface languages are exactly the Team protocol's chat locales", () => {
+  // The protocol mirror is the authority (ADR-0090): a chat turn may name only these languages.
+  const source = readFileSync(new URL('../../backend/protocol/http/v1/payload.py', import.meta.url), 'utf8');
+  const locales = source.match(/^CHAT_LOCALES = frozenset\(\{([^}]*)\}\)$/mu)[1].match(/[a-z]{2}/gu);
+  assert.deepEqual([...expectedLocales].sort(), [...locales].sort());
+  assert.equal(new Set(expectedLocales).size, expectedLocales.length);
+});
 
 test('every Admin locale implements the complete English message contract', () => {
   assert.deepEqual(Object.keys(messages), expectedLocales);

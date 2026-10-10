@@ -1,6 +1,9 @@
 // Preview only (ADR-0087): answer the Admin API and the chat socket from a scenario inside the browser, before the
 // application boots. A request or socket the scenario does not answer fails here; nothing reaches a backend.
+import { get } from 'svelte/store';
+
 import { createScenario, SCENARIOS } from '../e2e/scenarios.js';
+import { locale } from '../src/lib/i18n.js';
 
 const STORAGE_KEY = 'shimpz-preview-scenario';
 
@@ -16,21 +19,9 @@ function chosenScenario() {
   return SCENARIOS.includes(name) ? name : 'ready';
 }
 
-// The interface language Admin will start in (i18n.js), so the scenario's own texts match it; after switching the
-// language, reload the preview to see the scenario in it.
-function chosenLocale() {
-  const supported = ['en', 'pt', 'es', 'zh', 'fr', 'de', 'ja', 'ar'];
-  let stored = null;
-  try {
-    stored = localStorage.getItem('shimpz_lang');
-  } catch {
-    stored = null;
-  }
-  const candidates = [stored, ...(navigator.languages ?? [navigator.language])].filter(Boolean);
-  return candidates.map((code) => code.slice(0, 2).toLowerCase()).find((code) => supported.includes(code)) ?? 'en';
-}
-
-const scenario = createScenario(chosenScenario(), chosenLocale());
+// The scenario's own texts are in the interface language Admin starts in (i18n.js); after switching the language, reload
+// the preview to see the scenario in it.
+const scenario = createScenario(chosenScenario(), get(locale));
 // Switching the interface language reloads the preview, so the scenario's texts follow it.
 try {
   const setItem = Storage.prototype.setItem;
