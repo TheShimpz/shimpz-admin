@@ -98,6 +98,7 @@ class AuthRouteTests(unittest.TestCase):
         cookie: str | None = None,
         ticket: str | None = None,
         method: str | None = None,
+        background: bool = False,
     ) -> Request:
         raw_path, _, query = path.partition("?")
         body = json.dumps(payload).encode() if payload is not None else b""
@@ -108,6 +109,8 @@ class AuthRouteTests(unittest.TestCase):
             headers.append((b"cookie", f"shimpz_admin={cookie}".encode("ascii")))
         if ticket is not None:
             headers.append((b"cookie", f"shimpz_admin_ticket={ticket}".encode("ascii")))
+        if background:
+            headers.append((b"shimpz-activity", b"background"))
         return http_request(
             raw_path,
             LOOPBACK,
@@ -162,6 +165,42 @@ class AuthRouteTests(unittest.TestCase):
                 )
                 self.assertEqual(guarded.status_code, 401)
                 self.assertNotIn("set-cookie", guarded.headers)
+
+    def test_background_refreshes_never_keep_an_idle_session_alive(self) -> None:
+        auth = self.admin_app.auth
+        now = [0.0]
+
+        async def allowed(_request):
+            return PlainTextResponse("allowed")
+
+        def status(session: str, *, background: bool) -> int:
+            request = self._request("/api/model-providers", cookie=session, background=background)
+            return asyncio.run(self.admin_app._gate(request, allowed)).status_code
+
+        with mock.patch.object(auth, "SESSIONS", auth.SessionActivity(clock=lambda: now[0])):
+            _setup, confirmed = self._configure("violet otter lantern quartz 92")
+            polled = self._cookie(confirmed, "shimpz_admin")
+            attended = auth.issue_session(self.admin_app.state.get()["session_secret"], "totp")
+            now[0] = auth.IDLE_SECONDS - 600
+            self.assertEqual((status(polled, background=True), status(attended, background=False)), (200, 200))
+            now[0] = auth.IDLE_SECONDS + 1
+            self.assertEqual(status(polled, background=True), 401)
+            self.assertEqual(status(attended, background=True), 200)
+            now[0] = 2 * auth.IDLE_SECONDS
+            self.assertEqual(status(attended, background=False), 401)
+
+    def test_a_session_this_process_does_not_track_is_refused(self) -> None:
+        _setup, confirmed = self._configure("violet otter lantern quartz 92")
+        session = self._cookie(confirmed, "shimpz_admin")
+        auth = self.admin_app.auth
+
+        async def allowed(_request):
+            return PlainTextResponse("allowed")
+
+        # A restarted Admin, or one that evicted the session, has no record of its activity: sign in again.
+        with mock.patch.object(auth, "SESSIONS", auth.SessionActivity()):
+            response = asyncio.run(self.admin_app._gate(self._request("/api/model-providers", cookie=session), allowed))
+        self.assertEqual(response.status_code, 401)
 
     def test_password_setup_runs_off_the_event_loop(self) -> None:
         password = "violet otter lantern quartz 92"

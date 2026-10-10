@@ -93,7 +93,7 @@ class AdminHTTPServer:
 
     def __enter__(self) -> AdminHTTPServer:
         supervisor_directory = self.root / "supervisor"
-        supervisor_directory.mkdir(mode=0o2770)
+        supervisor_directory.mkdir(mode=0o2770, exist_ok=True)
         supervisor_directory.chmod(0o2770)
         self.process = subprocess.Popen(
             [

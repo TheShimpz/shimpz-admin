@@ -71,6 +71,7 @@ TEAM_CREDENTIALS_ENABLED = os.environ.get("SHIMPZ_TEAM_CREDENTIALS_ENABLED", "1"
 UI_DIR = Path(__file__).resolve().parent.parent / "frontend" / "build"
 COOKIE = "shimpz_admin"
 OAUTH_COOKIE = "shimpz_oauth_binding"
+BACKGROUND_HEADER = "shimpz-activity"
 OAUTH_COOKIE_PATH = "/api/oauth/cloudflare"
 OAUTH_COOKIE_TTL = 300
 OAUTH_START_PATH = "/api/oauth/cloudflare/start"
@@ -214,13 +215,14 @@ def _allowed_browser_origins() -> frozenset[str]:
     return frozenset(origins)
 
 
-def _session_evidence(cookies) -> dict[str, object] | None:
+def _session_evidence(cookies, *, activity: bool = False) -> dict[str, object] | None:
     if state.authentication_state() != auth.RECORD_STATE_CONFIGURED:
         return None
     record = state.get()
     session = auth.verify_session(
         record.get("session_secret", ""),
         cookies.get(COOKIE, ""),
+        activity=activity,
     )
     try:
         evidence = supervisor.local_session_evidence(
@@ -234,8 +236,19 @@ def _session_evidence(cookies) -> dict[str, object] | None:
     return evidence
 
 
-async def _session_ok(cookies) -> bool:
+async def _session_active(cookies) -> bool:
+    """A chat operation is Supervisor activity and restarts the session's idle time."""
+    return _session_evidence(cookies, activity=True) is not None
+
+
+async def _session_current(cookies) -> bool:
+    """Admitting or watching a chat socket checks its session without counting as Supervisor activity."""
     return _session_evidence(cookies) is not None
+
+
+def _supervisor_activity(request: Request) -> bool:
+    """Every API request is Supervisor activity except a page's own background refresh, which marks itself."""
+    return request.headers.get(BACKGROUND_HEADER) != "background"
 
 
 def _team_session_scope(cookies, *, authority_kind: str = "session"):
@@ -271,6 +284,9 @@ def _supervisor_refusal(request: Request) -> Response | None:
         return JSONResponse({"detail": "unauthenticated"}, status_code=401)
     if not browser.admits_unsafe_request(request, _allowed_browser_origins):
         return JSONResponse({"detail": "browser origin is not admitted"}, status_code=403)
+    # Only a request the gate admits counts as activity, so a refused cross-origin request never extends the session.
+    if _supervisor_activity(request):
+        auth.SESSIONS.current(request.cookies.get(COOKIE, ""), activity=True)
     request.state.supervisor = evidence
     return None
 
@@ -528,7 +544,8 @@ async def team_chat_ws(websocket: WebSocket, team_id: str):
     await chat_socket.serve(
         websocket,
         team_id,
-        session_ok=_session_ok,
+        session_ok=_session_active,
+        session_current=_session_current,
         request_scope=_team_session_scope,
         allowed_origins=_allowed_browser_origins,
         authenticate=_AUTHENTICATE_ACTION_REQUEST,

@@ -28,6 +28,16 @@ const PUBLIC_CREATOR_RE = /^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 
 export { LocalApiError };
 
+/**
+ * Fetch for a request the page makes on its own, such as a periodic refresh. The Admin does not count it as Supervisor
+ * activity, so an unattended page cannot keep its session alive.
+ */
+export function backgroundFetch(input, init = {}) {
+  const headers = new Headers(init.headers);
+  headers.set('Shimpz-Activity', 'background');
+  return fetch(input, { ...init, headers });
+}
+
 export function safeApiError(body, fallback) {
   const candidate = body?.error ?? body?.detail;
   return typeof candidate === 'string' && candidate.length <= 300 ? candidate : fallback;

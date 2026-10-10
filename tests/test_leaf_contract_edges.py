@@ -27,7 +27,7 @@ REQUEST = {"issued_at": 1_700_000_000, "nonce": "0" * 32}
 class AuthenticationEdgeTests(unittest.TestCase):
     def test_malformed_and_non_numeric_signed_sessions_fail_closed(self) -> None:
         secret = auth.new_secret()
-        self.assertFalse(auth.verify_session(secret, "v2:1:nonce:signature"))
+        self.assertFalse(auth.verify_session(secret, f"{auth._SESSION_SCHEME}:1:nonce:signature"))
         body = "v1:not-a-time:nonce"
         signature = hmac.new(bytes.fromhex(secret), body.encode(), hashlib.sha256).hexdigest()
         self.assertFalse(auth.verify_session(secret, f"{body}:{signature}"))

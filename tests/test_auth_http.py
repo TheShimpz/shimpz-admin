@@ -71,6 +71,17 @@ class AuthHTTPTests(unittest.TestCase):
                 self.assertEqual(payload, {"detail": "too many login attempts"})
                 self.assertEqual(headers["retry-after"], "60")
 
+    def test_a_restarted_admin_asks_every_session_to_sign_in_again(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with AdminHTTPServer(root) as server:
+                session, _enrollment = self._setup(server.port)
+                self.assertEqual(request(server.port, "GET", "/api/model-providers", session=session)[0], 200)
+            with AdminHTTPServer(root) as restarted:
+                self.assertEqual(request(restarted.port, "GET", "/api/model-providers", session=session)[0], 401)
+                status, payload, _ = request(restarted.port, "POST", "/api/session", session=session)
+                self.assertEqual((status, payload["authenticated"]), (200, False))
+
     def test_a_malformed_password_record_is_health_visible_but_grants_no_authority(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -175,7 +186,7 @@ class AuthHTTPTests(unittest.TestCase):
         self._assert_authenticated_session(port, fresh_session)
 
         self.assertEqual(request(port, "GET", "/api/model-providers", session="garbage-not-a-token")[0], 401)
-        expired = auth.issue_session(record["session_secret"], "totp", ttl=-10)
+        expired = auth.issue_session(record["session_secret"], "totp", issued_at=int(time.time()) - auth.TTL - 10)
         self.assertEqual(request(port, "GET", "/api/model-providers", session=expired)[0], 401)
         foreign = auth.issue_session(auth.new_secret(), "totp")
         self.assertEqual(request(port, "GET", "/api/model-providers", session=foreign)[0], 401)

@@ -5,6 +5,7 @@ import hashlib
 import hmac
 import sys
 import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -84,7 +85,42 @@ class PasswordVerifierTests(unittest.TestCase):
         body = f"{scheme}:not-a-time:nonce:pwd+totp"
         signature = hmac.new(bytes.fromhex(secret), body.encode(), hashlib.sha256).hexdigest()
         self.assertIsNone(auth.verify_session(secret, f"{body}:{signature}"))
-        self.assertIsNone(auth.verify_session(secret, auth.issue_session(secret, "totp", ttl=-1)))
+
+    def test_a_session_ends_a_day_after_its_sign_in_however_active(self) -> None:
+        secret = auth.new_secret()
+        now = int(time.time())
+        for issued_at, valid in ((now - auth.TTL + 60, True), (now - auth.TTL, False), (now + 60, False)):
+            with self.subTest(issued_at=issued_at - now):
+                token = auth.issue_session(secret, "totp", issued_at=issued_at)
+                evidence = auth.verify_session(secret, token, activity=True)
+                self.assertEqual(evidence is not None, valid)
+        evidence = auth.verify_session(secret, auth.issue_session(secret, "webauthn", issued_at=now - 10))
+        self.assertEqual((evidence.issued_at, evidence.expires_at), (now - 10, now - 10 + auth.TTL))
+
+    def test_only_activity_restarts_a_tracked_session_idle_time(self) -> None:
+        now = [0.0]
+        sessions = auth.SessionActivity(clock=lambda: now[0], idle_seconds=3600)
+        sessions.register("polled")
+        sessions.register("attended")
+        now[0] = 3000
+        self.assertTrue(sessions.current("polled", activity=False))
+        self.assertTrue(sessions.current("attended", activity=True))
+        now[0] = 3600
+        self.assertFalse(sessions.current("polled", activity=True))
+        self.assertTrue(sessions.current("attended", activity=False))
+        now[0] = 6600
+        self.assertFalse(sessions.current("attended", activity=True))
+        self.assertFalse(sessions.current("never-issued", activity=True))
+
+    def test_tracking_is_bounded_and_evicts_the_least_recent_session(self) -> None:
+        now = [0.0]
+        sessions = auth.SessionActivity(clock=lambda: now[0], capacity=2)
+        for index, token in enumerate(("first", "second", "third")):
+            now[0] = index
+            sessions.register(token)
+        self.assertEqual(
+            [sessions.current(token, activity=False) for token in ("first", "second", "third")], [False, True, True]
+        )
 
     def test_session_signature_must_be_lowercase_ascii_hex_before_comparison(self) -> None:
         secret = auth.new_secret()

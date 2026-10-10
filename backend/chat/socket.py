@@ -42,6 +42,8 @@ CHAT_SUBPROTOCOL = "shimpz.chat.v7"
 MAX_FRAME_BYTES = socket_boundary.MAX_FRAME_BYTES
 MAX_PUBLIC_ERROR_CHARS = projection.MAX_PUBLIC_ERROR_CHARS
 STOP_RESULT_WAIT_SECONDS = 15
+# How often a socket waiting for its next frame checks that its session has not ended, e.g. by staying idle too long.
+SESSION_CHECK_SECONDS = 60
 FrameError = chat_ws_common.FrameError
 log = logging.getLogger("shimpz-admin")
 
@@ -793,7 +795,7 @@ def _has_subprotocol(websocket: WebSocket) -> bool:
 async def _admit(
     websocket: WebSocket,
     team_id: object,
-    session_ok: Callable[[Mapping[str, str]], Awaitable[bool]],
+    session_current: Callable[[Mapping[str, str]], Awaitable[bool]],
     allowed_origins: Callable[[], frozenset[str]],
 ) -> str | None:
     origin = canonical_origin(websocket.headers.get("origin"))
@@ -815,11 +817,24 @@ async def _admit(
     except team.TeamRequestError:
         await websocket.close(code=4400)
         return None
-    session_status = await _session_status(session_ok, websocket.cookies)
+    session_status = await _session_status(session_current, websocket.cookies)
     if session_status != "active":
         await websocket.close(code=1013 if session_status == "unavailable" else 4401)
         return None
     return canonical_id
+
+
+async def _next_frame(
+    websocket: WebSocket, session_current: Callable[[Mapping[str, str]], Awaitable[bool]]
+) -> dict[str, object] | str:
+    """Wait for the next frame, or return the session status that ended while the socket waited."""
+    while True:
+        try:
+            return await asyncio.wait_for(receive_bounded_json(websocket), timeout=SESSION_CHECK_SECONDS)
+        except TimeoutError:
+            session_status = await _session_status(session_current, websocket.cookies)
+            if session_status != "active":
+                return session_status
 
 
 async def _close_connection(
@@ -854,12 +869,17 @@ async def serve(
     team_id: object,
     *,
     session_ok: Callable[[Mapping[str, str]], Awaitable[bool]],
+    session_current: Callable[[Mapping[str, str]], Awaitable[bool]],
     request_scope: Callable[[Mapping[str, str]], contextlib.AbstractContextManager[None]],
     allowed_origins: Callable[[], frozenset[str]],
     authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
 ) -> None:
-    """Serve one authenticated local chat socket without letting it outlive its Admin session."""
-    canonical_id = await _admit(websocket, team_id, session_ok, allowed_origins)
+    """Serve one authenticated local chat socket without letting it outlive its Admin session.
+
+    `session_ok` checks the session before each operation, which is Supervisor activity; `session_current` checks it
+    without counting as activity, on admission and while the socket waits, so an idle session closes its socket.
+    """
+    canonical_id = await _admit(websocket, team_id, session_current, allowed_origins)
     if canonical_id is None:
         return
 
@@ -869,15 +889,17 @@ async def serve(
         try:
             while True:
                 try:
-                    frame = await receive_bounded_json(websocket)
+                    frame = await _next_frame(websocket, session_current)
                 except FrameError as exc:
                     await _send_event(websocket, _error_terminal(exc.status, exc.detail))
                     connection.closed = True
                     await websocket.close(code=exc.close_code)
                     return
-                # A week-long cookie can expire or be rotated while a socket is open. Revalidating the
-                # signed token before every operation prevents that connection from extending authority.
-                session_status = await _session_status(session_ok, websocket.cookies)
+                # A session can expire, idle out, or be rotated while a socket is open. Revalidating it before
+                # every operation, and while waiting for one, prevents that connection from extending authority.
+                session_status = (
+                    frame if isinstance(frame, str) else await _session_status(session_ok, websocket.cookies)
+                )
                 if session_status != "active":
                     connection.closed = True
                     await websocket.close(code=1013 if session_status == "unavailable" else 4401)

@@ -45,7 +45,7 @@ _wait_for_thread = chat_socket_fixtures.wait_for_thread
 class ChatWebSocketTests(ChatWebSocketCase):
     def test_origin_subprotocol_and_session_are_required_before_accept(self) -> None:
         async def scenario() -> None:
-            with mock.patch.object(self.admin_app, "_session_ok", side_effect=AssertionError("auth must not run")):
+            with mock.patch.object(self.admin_app, "_session_current", side_effect=AssertionError("auth must not run")):
                 denied = _Socket(self.admin_app.app, origin="http://localhost:7777.evil.test")
                 self.assertEqual(await denied.start(), {"type": "websocket.close", "code": 4403, "reason": ""})
                 await denied.finish()
@@ -150,13 +150,36 @@ class ChatWebSocketTests(ChatWebSocketCase):
 
         asyncio.run(scenario())
 
+    def test_a_chat_operation_is_activity_and_an_idle_session_closes_its_socket(self) -> None:
+        auth = self.admin_app.auth
+        now = [0.0]
+
+        async def scenario() -> None:
+            websocket = await self._open()
+            now[0] = auth.IDLE_SECONDS - 60
+            await websocket.send_json({"type": "unsupported"})
+            self.assertEqual((await websocket.next_message())["type"], "websocket.send")
+            now[0] = auth.IDLE_SECONDS + 60
+            self.assertTrue(auth.SESSIONS.current(self.token, activity=False))
+            now[0] = 2 * auth.IDLE_SECONDS
+            self.assertEqual(await websocket.next_message(), {"type": "websocket.close", "code": 4401, "reason": ""})
+            await websocket.finish()
+
+        sessions = auth.SessionActivity(clock=lambda: now[0])
+        sessions.register(self.token)
+        with (
+            mock.patch.object(auth, "SESSIONS", sessions),
+            mock.patch.object(self.chat_socket, "SESSION_CHECK_SECONDS", 0.05),
+        ):
+            asyncio.run(scenario())
+
     def test_session_authority_unavailability_uses_retryable_close_code(self) -> None:
         async def scenario() -> None:
             unavailable = self.admin_app.SessionEvidenceUnavailableError()
             with mock.patch.object(
                 self.admin_app,
-                "_session_ok",
-                new=mock.AsyncMock(side_effect=[True, unavailable]),
+                "_session_active",
+                new=mock.AsyncMock(side_effect=unavailable),
             ):
                 websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("must not run"))

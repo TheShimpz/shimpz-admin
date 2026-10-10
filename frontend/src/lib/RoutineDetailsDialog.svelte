@@ -30,6 +30,7 @@
     untilWords,
   } from '$lib/routine.js';
   import { dropTeamRoutine, loadTeamRoutines } from '$lib/routineContext.js';
+  import { backgroundFetch } from '$lib/localApi.js';
   import RoutineDecision from '$lib/RoutineDecision.svelte';
   import RoutineDeletion from '$lib/RoutineDeletion.svelte';
   import RoutinePlan from '$lib/RoutinePlan.svelte';
@@ -176,7 +177,7 @@
     refreshing = true;
     const opened = search;
     try {
-      const since = await historySince(fetch, teamId, seen, { routine: routineId });
+      const since = await historySince(backgroundFetch, teamId, seen, { routine: routineId });
       if (opened !== search || searchingOlder) return;
       const merged = mergedRoutineRuns(recent, since.entries, routineId);
       const added = merged.length - recent.length;

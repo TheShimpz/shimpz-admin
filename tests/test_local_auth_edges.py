@@ -303,7 +303,7 @@ class LocalAuthEdgeTests(unittest.TestCase):
         self.assertEqual(stale.exception.status_code, 401)
 
         token = "s" * 32
-        evidence = auth.SessionEvidence(int(time.time()) + auth.TTL, "totp")
+        evidence = auth.SessionEvidence(int(time.time()), "totp")
         context = local_auth.Context()
         with (
             mock.patch.object(local_auth, "passkey_enrollment_available", return_value=True),

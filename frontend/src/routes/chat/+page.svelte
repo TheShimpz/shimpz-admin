@@ -31,6 +31,7 @@
   import { calendarDay, clockTime, exchangeDays, instantValue, turnInstants, untilNextDay } from '$lib/chatDays.js';
   import { newerRoutineEntries, questionWords, refusalWords } from '$lib/routine.js';
   import { loadTeamRoutines } from '$lib/routineContext.js';
+  import { backgroundFetch } from '$lib/localApi.js';
   import ExecutionReceipt from '$lib/ExecutionReceipt.svelte';
   import {
     createExecutionProjection,
@@ -603,9 +604,9 @@
     routineRefreshing = true;
     const generation = historyGeneration;
     try {
-      loadTeamRoutines(fetch, teamId).catch(() => {});
+      loadTeamRoutines(backgroundFetch, teamId).catch(() => {});
       if (!routineMergeIdle()) return;
-      const since = await historySince(fetch, teamId, historySeen);
+      const since = await historySince(backgroundFetch, teamId, historySeen);
       if (generation !== historyGeneration || chatTeamId !== teamId || !routineMergeIdle()) return;
       const team = $teamContext.teams.find((entry) => entry.id === teamId);
       if (!team) return;

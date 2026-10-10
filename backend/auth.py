@@ -54,8 +54,12 @@ _BLOCKLIST = frozenset(
 LOGIN_FAILURE_LIMIT = 5
 LOGIN_LOCK_SECONDS = 60
 
-TTL = 7 * 24 * 3600
-_SESSION_SCHEME = "v2"
+# A session lasts at most a day from its sign-in and ends after an hour without Supervisor activity (NIST SP 800-63B-4
+# AAL2). Activity is tracked only in this process, so a restart or an evicted session asks for a new sign-in.
+TTL = 24 * 3600
+IDLE_SECONDS = 3600
+MAX_TRACKED_SESSIONS = 64
+_SESSION_SCHEME = "v3"
 _SESSION_SIGNATURE = re.compile(r"[0-9a-f]{64}\Z")
 _SESSION_METHODS = frozenset({"totp", "webauthn"})
 
@@ -76,8 +80,64 @@ class LoginRateLimitedError(RuntimeError):
 class SessionEvidence:
     """Signed Local session evidence for one completed MFA ceremony."""
 
-    expires_at: int
+    issued_at: int
     method: str
+
+    @property
+    def expires_at(self) -> int:
+        return self.issued_at + TTL
+
+
+class SessionActivity:
+    """The last Supervisor activity of each session this process issued, keyed by the token's digest.
+
+    A session it never issued or no longer tracks is unknown and refused. Only activity moves `last_seen`, so a page
+    polling in the background cannot keep an unattended session alive.
+    """
+
+    def __init__(
+        self,
+        *,
+        clock: Callable[[], float] = time.monotonic,
+        idle_seconds: int = IDLE_SECONDS,
+        capacity: int = MAX_TRACKED_SESSIONS,
+    ) -> None:
+        self._clock = clock
+        self._idle_seconds = idle_seconds
+        self._capacity = capacity
+        self._lock = threading.Lock()
+        self._last_seen: dict[str, float] = {}
+
+    @staticmethod
+    def _key(token: str) -> str:
+        return hashlib.sha256(token.encode("ascii")).hexdigest()
+
+    def register(self, token: str) -> None:
+        with self._lock:
+            now = self._clock()
+            for key in [key for key, seen in self._last_seen.items() if now - seen >= self._idle_seconds]:
+                del self._last_seen[key]
+            while len(self._last_seen) >= self._capacity:
+                del self._last_seen[min(self._last_seen, key=self._last_seen.__getitem__)]
+            self._last_seen[self._key(token)] = now
+
+    def current(self, token: str, *, activity: bool) -> bool:
+        """Whether the session is tracked and not idle; Supervisor activity also restarts its idle time."""
+        key = self._key(token)
+        with self._lock:
+            now = self._clock()
+            seen = self._last_seen.get(key)
+            if seen is None:
+                return False
+            if now - seen >= self._idle_seconds:
+                del self._last_seen[key]
+                return False
+            if activity:
+                self._last_seen[key] = now
+            return True
+
+
+SESSIONS = SessionActivity()
 
 
 class LocalLoginLimiter:
@@ -230,14 +290,16 @@ def verify_password(password: str, record: object) -> bool:
     return hmac.compare_digest(_derive(password, salt), expected)
 
 
-def issue_session(secret_hex: str, method: str, ttl: int = TTL) -> str:
-    """Mint a signed Local MFA session token valid for ``ttl`` seconds."""
+def issue_session(secret_hex: str, method: str, *, issued_at: int | None = None) -> str:
+    """Mint and track one signed Local MFA session token, valid for `TTL` seconds from its sign-in."""
     if method not in _SESSION_METHODS:
         raise ValueError("invalid Local session authentication method")
-    exp = int(time.time()) + int(ttl)
-    body = f"{_SESSION_SCHEME}:{exp}:{secrets.token_hex(8)}:pwd+{method}"
+    issued = int(time.time()) if issued_at is None else issued_at
+    body = f"{_SESSION_SCHEME}:{issued}:{secrets.token_hex(8)}:pwd+{method}"
     sig = hmac.new(bytes.fromhex(secret_hex), body.encode("utf-8"), hashlib.sha256).hexdigest()
-    return f"{body}:{sig}"
+    token = f"{body}:{sig}"
+    SESSIONS.register(token)
+    return token
 
 
 def _session_parts(token: str) -> tuple[list[str], str] | None:
@@ -254,8 +316,7 @@ def _session_parts(token: str) -> tuple[list[str], str] | None:
     return (parts, method) if method in _SESSION_METHODS else None
 
 
-def verify_session(secret_hex: str, token: str) -> SessionEvidence | None:
-    """Return structured MFA evidence for an authentic, unexpired Local session."""
+def _signed_evidence(secret_hex: str, token: str) -> SessionEvidence | None:
     parsed = _session_parts(token) if secret_hex and token else None
     if parsed is None:
         return None
@@ -265,12 +326,17 @@ def verify_session(secret_hex: str, token: str) -> SessionEvidence | None:
         expected = hmac.new(bytes.fromhex(secret_hex), body.encode("utf-8"), hashlib.sha256).hexdigest()
     except ValueError:
         return None
-    if not hmac.compare_digest(parts[4], expected):
+    if not hmac.compare_digest(parts[4], expected) or not parts[1].isascii() or not parts[1].isdigit():
         return None
-    try:
-        expires_at = int(parts[1])
-    except ValueError:
+    return SessionEvidence(int(parts[1]), method)
+
+
+def verify_session(secret_hex: str, token: str, *, activity: bool = False) -> SessionEvidence | None:
+    """Return MFA evidence for an authentic, unexpired, tracked, and active Local session.
+
+    `activity` marks the request as the Supervisor's own action, which restarts the session's idle time.
+    """
+    evidence = _signed_evidence(secret_hex, token)
+    if evidence is None or not evidence.issued_at <= time.time() < evidence.expires_at:
         return None
-    if expires_at <= time.time():
-        return None
-    return SessionEvidence(expires_at, method)
+    return evidence if SESSIONS.current(token, activity=activity) else None

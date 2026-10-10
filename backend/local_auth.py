@@ -346,7 +346,8 @@ async def begin_passkey_registration(request: Request, context: Context) -> JSON
         raise HTTPException(status_code=409, detail="passkeys are unavailable at this Admin address")
     session_token = request.cookies.get(SESSION_COOKIE, "")
     evidence = auth.verify_session(state.get().get("session_secret", ""), session_token)
-    if evidence is None or evidence.expires_at - time.time() < auth.TTL - PASSKEY_ENROLLMENT_FRESH_SECONDS:
+    # Freshness is the sign-in's own time, never an inference from when the session would expire.
+    if evidence is None or time.time() - evidence.issued_at > PASSKEY_ENROLLMENT_FRESH_SECONDS:
         raise HTTPException(status_code=401, detail="fresh multifactor authentication is required")
     try:
         generation = state.factor_generation()

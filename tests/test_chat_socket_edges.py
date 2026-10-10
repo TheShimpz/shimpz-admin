@@ -802,6 +802,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
                     websocket,
                     "team_1",
                     session_ok=mock.AsyncMock(return_value=True),
+                    session_current=mock.AsyncMock(return_value=True),
                     request_scope=lambda _cookies: contextlib.nullcontext(),
                     allowed_origins=lambda: frozenset(),
                     authenticate=mock.AsyncMock(return_value=human.AuthenticationResult("verified")),
