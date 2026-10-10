@@ -503,6 +503,29 @@ class AuthRouteTests(unittest.TestCase):
         team_reset.assert_not_called()
         history_reset.assert_not_called()
 
+    def test_an_unwritable_journal_leaves_the_factors_and_sessions_unchanged(self) -> None:
+        setup = asyncio.run(
+            self.admin_app.admin_setup(
+                self._request("/api/admin/setup", {"password": "violet otter lantern quartz 92"})
+            )
+        )
+        secret = json.loads(setup.body)["enrollment"]["secret"]
+        before = self.admin_app.state.get()
+        confirm = self._request(
+            "/api/admin/setup/totp",
+            {"code": code(secret, int(time.time()))},
+            ticket=self._cookie(setup, "shimpz_admin_ticket"),
+        )
+        unwritable = self.admin_app.audit.AuditUnavailableError("unwritable")
+        with (
+            mock.patch.object(self.admin_app.audit, "_failure", unwritable),
+            self.assertRaises(self.admin_app.audit.AuditUnavailableError),
+        ):
+            asyncio.run(self.admin_app.admin_setup_totp(confirm))
+        # The verified code activated nothing: TOTP is still pending, and no generation or session moved.
+        self.assertEqual(self.admin_app.state.get(), before)
+        self.assertEqual(self.admin_app.state.authentication_state(), "enrollment-required")
+
     def test_an_unwritable_journal_answers_unavailable_and_is_never_cached(self) -> None:
         error = self.admin_app.audit.AuditUnavailableError("unwritable")
         with self.assertLogs("shimpz-admin", "ERROR"):

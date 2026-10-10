@@ -6,6 +6,7 @@ import logging
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from typing import cast
 
 import auth
 import state
@@ -163,17 +164,25 @@ def _bind_origin(origin: str | None) -> None:
             log.info("Local Admin browser origin replaced after MFA")
 
 
-def _complete_totp(code: object, *, enrollment: bool, generation: int, origin: str | None) -> None:
-    result = state.verify_totp(code, enrollment=enrollment, generation=generation)
+def _complete_totp(code: object, *, enrollment: bool, generation: int, origin: str | None, accepted: str) -> None:
+    """Verify one code, journaling its outcome (`accepted` names a success) before the attempt is persisted."""
+
+    def journal(result: object) -> None:
+        if result is totp.Verification.ACCEPTED:
+            audit.record(accepted, outcome="ok", origin=origin, method="totp")
+        elif result is totp.Verification.LOCKED:
+            audit.record("totp-locked", outcome="denied", origin=origin)
+        elif result is totp.Verification.INVALID:
+            audit.record("totp-rejected", outcome="denied", origin=origin)
+
+    result = state.verify_totp(code, enrollment=enrollment, generation=generation, journal=journal)
     if result is totp.Verification.LOCKED:
-        audit.record("totp-locked", outcome="denied", origin=origin)
         raise HTTPException(status_code=429, detail="verification code is temporarily locked")
     if result is totp.Verification.EXPIRED:
         raise HTTPException(status_code=409, detail="TOTP enrollment expired; enter the password again")
     if result is totp.Verification.CHANGED:
         raise HTTPException(status_code=409, detail="authentication factors changed; enter the password again")
     if result is not totp.Verification.ACCEPTED:
-        audit.record("totp-rejected", outcome="denied", origin=origin)
         raise HTTPException(status_code=401, detail="invalid verification code")
 
 
@@ -216,8 +225,9 @@ async def confirm_setup(request: Request, context: Context) -> JSONResponse:
     if set(payload) != {"code"}:
         raise HTTPException(status_code=400, detail="request body must contain only code")
     _token, ticket = _ticket(request, context, "totp-enrollment")
-    _complete_totp(payload["code"], enrollment=True, generation=ticket.generation, origin=ticket.origin)
-    audit.record("setup-completed", outcome="ok", origin=ticket.origin, method="totp")
+    _complete_totp(
+        payload["code"], enrollment=True, generation=ticket.generation, origin=ticket.origin, accepted="setup-completed"
+    )
     _bind_origin(ticket.origin)
     context.factor_changed()
     response = _response({"ok": True, "method": "totp"})
@@ -267,8 +277,9 @@ async def confirm_login_totp(request: Request, context: Context) -> JSONResponse
         raise HTTPException(status_code=400, detail="request body must contain only code")
     token, ticket = _ticket(request, context, "login")
     _discard_challenge(token, context)
-    _complete_totp(payload["code"], enrollment=False, generation=ticket.generation, origin=ticket.origin)
-    audit.record("login", outcome="ok", origin=ticket.origin, method="totp")
+    _complete_totp(
+        payload["code"], enrollment=False, generation=ticket.generation, origin=ticket.origin, accepted="login"
+    )
     _bind_origin(ticket.origin)
     response = _response({"ok": True, "method": "totp"})
     _set_session(response, state.get()["session_secret"], "totp", ticket.origin)
@@ -282,11 +293,10 @@ async def confirm_login_passkey(request: Request, context: Context) -> JSONRespo
     if set(payload) != {"credential"}:
         raise HTTPException(status_code=400, detail="request body must contain only credential")
     token, ticket = _ticket(request, context, "login")
-    secret, suspension_reason = _passkey_assertion(token, ticket, payload["credential"], context)
+    secret, suspension_reason = _passkey_assertion(token, ticket, payload["credential"], context, "login")
     if suspension_reason is not None:
-        _suspended(suspension_reason, context, ticket.origin)
+        _suspended(suspension_reason, context)
         raise HTTPException(status_code=401, detail="passkey was suspended; enter the password and use TOTP")
-    audit.record("login", outcome="ok", origin=ticket.origin, method="passkey")
     _bind_origin(ticket.origin)
     response = _response({"ok": True, "method": "passkey"})
     _set_session(response, secret, "webauthn", ticket.origin)
@@ -301,9 +311,19 @@ def _discard_challenge(token: str, context: Context) -> None:
 
 
 def _passkey_assertion(
-    token: str, ticket: tickets.Ticket, credential: object, context: Context
+    token: str, ticket: tickets.Ticket, credential: object, context: Context, accepted: str
 ) -> tuple[str, str | None]:
-    """Verify one UV assertion against the ticket's own challenge and commit it, or raise its closed outcome."""
+    """Verify one UV assertion against the ticket's own challenge and commit it, or raise its closed outcome.
+
+    The commit journals a suspension, or the success named by `accepted`, before the credential's update is persisted.
+    """
+
+    def journal(result: object) -> None:
+        if cast(tuple[str, str | None], result)[1] is not None:
+            audit.record("passkey-suspended", outcome="denied", origin=ticket.origin)
+        else:
+            audit.record(accepted, outcome="ok", origin=ticket.origin, method="passkey")
+
     try:
         challenge = context.challenge_store.consume(token, "authentication")
         if challenge.generation != ticket.generation or challenge.origin != ticket.origin:
@@ -311,7 +331,9 @@ def _passkey_assertion(
         identifier = passkeys.credential_id(credential)
         original = state.passkey_for_authentication(identifier, challenge.origin)
         verified = passkeys.verify_authentication(challenge, credential, original)
-        return state.commit_passkey_authentication(original, verified, ticket.generation, now=int(time.time()))
+        return state.commit_passkey_authentication(
+            original, verified, ticket.generation, now=int(time.time()), journal=journal
+        )
     except passkeys.PasskeyConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
     except passkeys.PasskeyUnavailableError:
@@ -319,9 +341,8 @@ def _passkey_assertion(
         raise HTTPException(status_code=401, detail="invalid passkey authentication") from None
 
 
-def _suspended(reason: str, context: Context, origin: str | None) -> None:
+def _suspended(reason: str, context: Context) -> None:
     context.factor_changed()
-    audit.record("passkey-suspended", outcome="denied", origin=origin)
     if reason == "counter-regression":
         log.warning("Local Supervisor passkey suspended: counter-regression")
     else:
@@ -386,8 +407,11 @@ async def complete_passkey_registration(request: Request, context: Context) -> J
         if challenge.origin != origin or challenge.generation != state.factor_generation():
             raise passkeys.PasskeyConflictError("authentication factors changed; retry")
         record = passkeys.verify_registration(challenge, payload["credential"], int(time.time()))
-        audit.record("passkey-registered", outcome="ok", origin=origin)
-        secret = state.add_passkey(record, challenge.generation)
+        secret = state.add_passkey(
+            record,
+            challenge.generation,
+            journal=lambda _secret: audit.record("passkey-registered", outcome="ok", origin=origin),
+        )
     except passkeys.PasskeyConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
     except passkeys.PasskeyUnavailableError as exc:
@@ -505,18 +529,24 @@ def _operation_second_factor(method: str, value: object, token: str, ticket: tic
     try:
         if method == "totp":
             _discard_challenge(token, context)
-            _complete_totp(value, enrollment=False, generation=ticket.generation, origin=ticket.origin)
+            _complete_totp(
+                value,
+                enrollment=False,
+                generation=ticket.generation,
+                origin=ticket.origin,
+                accepted="operation-confirmed",
+            )
             return
-        _secret, suspension_reason = _passkey_assertion(token, ticket, value, context)
+        _secret, suspension_reason = _passkey_assertion(token, ticket, value, context, "operation-confirmed")
     except HTTPException as exc:
         raise OperationRefusedError(*refusals.get(exc.status_code, (503, "authentication-unavailable"))) from None
     if suspension_reason is not None:
-        _suspended(suspension_reason, context, ticket.origin)
+        _suspended(suspension_reason, context)
         raise OperationRefusedError(401, "passkey-suspended")
 
 
 def _confirmed(request: Request, context: Context, subject: str, method: str, value: object) -> None:
-    origin = _operation_origin(request)
+    _operation_origin(request)
     try:
         token, ticket = _ticket(request, context, "operation", subject)
     except HTTPException:
@@ -525,7 +555,6 @@ def _confirmed(request: Request, context: Context, subject: str, method: str, va
     session = auth.verify_session(state.get().get("session_secret", ""), request.cookies.get(SESSION_COOKIE, ""))
     if session is None:
         raise OperationRefusedError(401, "authentication-expired")
-    audit.record("operation-confirmed", outcome="ok", origin=origin, method=method)
 
 
 def confirm_operation[T](

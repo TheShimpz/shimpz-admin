@@ -19,7 +19,7 @@ import auth
 import local_auth
 import state
 from mfa import passkeys, tickets, totp
-from mfa_helper import isolated_store
+from mfa_helper import configure_supervisor, isolated_store
 
 ORIGIN = "http://localhost:7777"
 
@@ -139,8 +139,18 @@ class LocalAuthEdgeTests(unittest.TestCase):
                 mock.patch.object(local_auth.state, "verify_totp", return_value=result),
                 self.assertRaises(HTTPException) as totp_error,
             ):
-                local_auth._complete_totp("000000", enrollment=False, generation=2, origin=ORIGIN)
+                local_auth._complete_totp("000000", enrollment=False, generation=2, origin=ORIGIN, accepted="login")
             self.assertEqual(totp_error.exception.status_code, expected)
+
+    def test_a_code_presented_after_the_factors_changed_is_not_journaled(self) -> None:
+        secret = configure_supervisor(state, "violet otter lantern quartz 92")
+        with self.assertRaises(HTTPException) as changed:
+            local_auth._complete_totp(
+                "000000", enrollment=False, generation=state.factor_generation() + 1, origin=ORIGIN, accepted="login"
+            )
+        self.assertEqual(changed.exception.status_code, 409)
+        self.assertFalse(local_auth.audit.path().exists())
+        self.assertEqual(state.get()["session_secret"], secret)
 
     def test_an_unchanged_external_origin_is_rebound_without_a_journal_event(self) -> None:
         external = "https://admin.example.test"

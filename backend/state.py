@@ -126,12 +126,18 @@ def _always_write(_result: object) -> bool:
 def _mutate(
     update: Callable[[dict], object],
     should_write: Callable[[object], bool] = _always_write,
+    journal: Callable[[object], None] | None = None,
 ) -> object:
-    """Hold one lock across the complete read-modify-write transaction."""
+    """Hold one lock across the complete read-modify-write transaction.
+
+    `journal` records the transaction's outcome before anything is persisted; when it raises, nothing is written.
+    """
     with _STORE_LOCK:
         data = _read()
         result = update(data)
         if should_write(result):
+            if journal is not None:
+                journal(result)
             _write(data)
         return result
 
@@ -375,8 +381,8 @@ def passkey_for_authentication(credential_id: str, origin: str) -> dict[str, obj
     return matches[0]
 
 
-def add_passkey(record: dict[str, object], generation: int) -> str:
-    """Persist one verified credential and rotate all existing sessions."""
+def add_passkey(record: dict[str, object], generation: int, *, journal: Callable[[object], None] | None = None) -> str:
+    """Persist one verified credential and rotate all existing sessions, journaling it first."""
     validated = _validated_passkey(copy.deepcopy(record))
 
     def add(data: dict) -> str:
@@ -392,7 +398,7 @@ def add_passkey(record: dict[str, object], generation: int) -> str:
         data["session_secret"] = auth.new_secret()
         return str(data["session_secret"])
 
-    return str(_mutate(add))
+    return str(_mutate(add, journal=journal))
 
 
 def commit_passkey_authentication(
@@ -401,8 +407,9 @@ def commit_passkey_authentication(
     generation: int,
     *,
     now: int,
+    journal: Callable[[object], None] | None = None,
 ) -> tuple[str, str | None]:
-    """Commit one assertion update or suspension against the exact original record."""
+    """Commit one assertion update or suspension against the exact original record, journaling its outcome first."""
     expected = _validated_passkey(copy.deepcopy(original))
 
     def commit(data: dict) -> tuple[str, str | None]:
@@ -429,7 +436,7 @@ def commit_passkey_authentication(
         record["backup_state"] = result.backup_state
         return str(data["session_secret"]), None
 
-    return cast(tuple[str, str | None], _mutate(commit))
+    return cast(tuple[str, str | None], _mutate(commit, journal=journal))
 
 
 def verify_totp(
@@ -438,8 +445,9 @@ def verify_totp(
     enrollment: bool,
     now: int | None = None,
     generation: int | None = None,
+    journal: Callable[[object], None] | None = None,
 ) -> totp.Verification:
-    """Persist one TOTP attempt, activation, replay evidence, and session rotation.
+    """Persist one TOTP attempt, activation, replay evidence, and session rotation, journaling its outcome first.
 
     A ceremony passes the factor generation its password ticket was issued under, checked inside the same transaction.
     """
@@ -456,7 +464,7 @@ def verify_totp(
             data["session_secret"] = auth.new_secret()
         return result
 
-    return cast(totp.Verification, _mutate(verify))
+    return cast(totp.Verification, _mutate(verify, journal=journal))
 
 
 def consume_host_reset_capability(digest: str, expires_at: int, *, now: int | None = None) -> bool:

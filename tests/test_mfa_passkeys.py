@@ -1,7 +1,9 @@
 """Security contracts for Local Supervisor passkey state and challenges."""
 
 import copy
+import json
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -358,6 +360,56 @@ class PasskeyTests(unittest.TestCase):
         replacement["public_key"] = "public_key_B"
         state.add_passkey(replacement, state.factor_generation())
         self.assertEqual([item["credential_id"] for item in state.get()["passkeys"]], ["credential_B"])
+
+    def test_a_journal_failure_persists_no_passkey_change(self) -> None:
+        def unwritable(_outcome: object) -> None:
+            raise RuntimeError("journal unavailable")
+
+        generation = state.factor_generation()
+        before = state.get()
+        with self.assertRaises(RuntimeError):
+            state.add_passkey(credential(), generation, journal=unwritable)
+        self.assertEqual(state.get(), before)
+
+        state.add_passkey(credential(), generation)
+        generation = state.factor_generation()
+        before = state.get()
+        original = state.passkey_for_authentication("credential_A", ORIGIN)
+        for result in (
+            passkeys.Authentication("credential_A", 3, False, False),
+            passkeys.Authentication("credential_A", 4, False, False),
+        ):
+            with self.subTest(sign_count=result.new_sign_count), self.assertRaises(RuntimeError):
+                state.commit_passkey_authentication(original, result, generation, now=NOW + 1, journal=unwritable)
+            self.assertEqual(state.get(), before)
+
+    def test_a_passkey_sign_in_journals_its_success_or_suspension(self) -> None:
+        import local_auth
+        from mfa import tickets
+
+        import audit
+
+        # Registered a minute ago: a sign-in now records the current time as its use.
+        registered = credential() | dict.fromkeys(("created_at", "updated_at", "last_used_at"), int(time.time()) - 60)
+        state.add_passkey(registered, state.factor_generation())
+        generation = state.factor_generation()
+        context = local_auth.Context()
+        ticket = tickets.Ticket("login", ORIGIN, generation, NOW + 60)
+        # The first assertion signs in; replaying its counter suspends the credential.
+        for attempt in ("f" * 32, "r" * 32):
+            context.challenge_store.issue(attempt, "authentication", ORIGIN, generation)
+            verified = passkeys.Authentication("credential_A", 4, False, False)
+            with (
+                mock.patch.object(local_auth.passkeys, "credential_id", return_value="credential_A"),
+                mock.patch.object(local_auth.passkeys, "verify_authentication", return_value=verified),
+            ):
+                local_auth._passkey_assertion(attempt, ticket, {}, context, "login")
+        events = [json.loads(line) for line in audit.path().read_text(encoding="ascii").splitlines()]
+        self.assertEqual(
+            [(event["event"], event.get("method")) for event in events],
+            [("login", "passkey"), ("passkey-suspended", None)],
+        )
+        self.assertEqual(state.active_passkeys(ORIGIN), [])
 
     def test_counterless_passkey_arms_regression_protection_after_a_positive_count(self) -> None:
         counterless = credential()
