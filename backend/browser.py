@@ -61,7 +61,8 @@ def _socket_source(origin: str) -> str:
 def security_headers(script_sources: tuple[str, ...], admitted_origins: frozenset[str]) -> dict[str, str]:
     """Build one fail-closed policy bound to the exact compiled SPA bootstrap and Admin's admitted chat origins.
 
-    A WebSocket may reach only an admitted Admin origin, never another host.
+    A WebSocket may reach only an admitted Admin origin, never another host, and no HTML or script sink accepts a
+    string (Trusted Types).
     """
     script_policy = " ".join(("'self'", *script_sources))
     socket_policy = " ".join(("'self'", *sorted(_socket_source(origin) for origin in admitted_origins)))
@@ -79,6 +80,10 @@ def security_headers(script_sources: tuple[str, ...], admitted_origins: frozense
             # Svelte uses inline style attributes for runtime frame sizing. Scripts remain hash-bound.
             "style-src 'self' 'unsafe-inline'",
             f"connect-src {socket_policy}",
+            # Every DOM sink that parses HTML or loads script takes only a typed value, and only Svelte's own template
+            # policy may mint one, once: any other policy, a second policy of that name, and a string fail closed.
+            "require-trusted-types-for 'script'",
+            "trusted-types svelte-trusted-html",
         )
     )
     return {

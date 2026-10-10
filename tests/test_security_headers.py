@@ -36,7 +36,12 @@ class SecurityHeaderTests(unittest.TestCase):
         policy = headers["content-security-policy"]
         self.assertIn("frame-ancestors 'none'", policy)
         self.assertIn("frame-src 'none'", policy)
-        self.assertTrue(policy.endswith("; connect-src 'self' ws://127.0.0.1:7777 ws://localhost:7777"))
+        self.assertIn("; connect-src 'self' ws://127.0.0.1:7777 ws://localhost:7777;", policy)
+        directives = [directive.split(" ", 1) for directive in policy.split("; ")]
+        self.assertIn(["require-trusted-types-for", "'script'"], directives)
+        # Only Svelte's template policy, without 'allow-duplicates', so no other code can mint a trusted value.
+        self.assertIn(["trusted-types", "svelte-trusted-html"], directives)
+        self.assertEqual([name for name, _ in directives].count("trusted-types"), 1)
         self.assertEqual(headers["x-content-type-options"], "nosniff")
         self.assertEqual(headers["referrer-policy"], "no-referrer")
         self.assertIn("camera=()", headers["permissions-policy"])
