@@ -608,7 +608,7 @@ class TeamAssistantRouteTest(_LiveTeamCase):
         )
         self.assertEqual(json.loads(_TeamHandler.requests[-1]["body"]), {"team_name": "Marketing"})
         forwarded = b"".join(request["body"] for request in _TeamHandler.requests)
-        self.assertNotIn(b"test-admin-password", forwarded)
+        self.assertNotIn(b"test-team-passphrase", forwarded)
 
     def test_multipart_upload_is_bounded_and_forwarded_as_raw_bytes_without_a_path(self):
         content = b"Team private data"
@@ -788,7 +788,7 @@ def _probe_session():
 
     import app as admin_app
 
-    secret = configure_supervisor(state, "test-admin-password")
+    secret = configure_supervisor(state, "test-team-passphrase")
     token = auth.issue_session(secret, "totp")
     return admin_app, token
 
@@ -839,10 +839,10 @@ def _run_asgi_probe(scenario: str) -> None:
                 "DELETE",
                 "/api/teams/team_1",
                 (
-                    ("malformed", {"team_name": "Marketing", "password": "test-admin-password", "extra": True}),
+                    ("malformed", {"team_name": "Marketing", "password": "test-team-passphrase", "extra": True}),
                     ("wrong_password", {"team_name": "Marketing", "password": "wrong-admin-password"}),
-                    ("wrong_name", {"team_name": "Not Marketing", "password": "test-admin-password"}),
-                    ("valid", {"team_name": "Marketing", "password": "test-admin-password"}),
+                    ("wrong_name", {"team_name": "Not Marketing", "password": "test-team-passphrase"}),
+                    ("valid", {"team_name": "Marketing", "password": "test-team-passphrase"}),
                 ),
             )
         )

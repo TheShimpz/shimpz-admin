@@ -73,6 +73,7 @@ COPY --link backend/app.py backend/audit.py backend/auth.py backend/authenticati
     backend/model_catalog.json \
     backend/state.py backend/supervisor.py ./
 COPY --link backend/mfa/passkeys.py backend/mfa/tickets.py backend/mfa/totp.py ./mfa/
+COPY --link backend/blocklist/passwords.txt ./blocklist/
 COPY --link backend/action/stored_input.py ./action/
 COPY --link backend/chat/assets.py backend/chat/assistant_install.py backend/chat/assistant_inventory.py \
     backend/chat/assistant_plan.py backend/chat/assistant_proposal.py backend/chat/assistant_route.py \

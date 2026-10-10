@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import hmac
 import sys
+import tempfile
 import threading
 import time
 import unittest
@@ -47,9 +48,14 @@ class PasswordVerifierTests(unittest.TestCase):
             "violet otter" + " " * auth.MIN_PASSWORD_CHARS: "password-too-short",
             "a" + " " * 20 + "b": "password-too-short",
             "ﬀ" * 8: "password-too-short",
-            "correct horse battery staple": "password-blocklisted",
-            "Shimpz Admin Password": "password-blocklisted",
+            "passwordpassword": "password-blocklisted",
+            "PasswordPassword": "password-blocklisted",
+            "ILoveYouILoveYou": "password-blocklisted",
             "abcabcabcabcabc": "password-blocklisted",
+            # Without the words its context makes guessable, too little of the password is left.
+            "Shimpz Admin Password": "password-blocklisted",
+            "supervisor shimpz admin 12": "password-blocklisted",
+            "shimpz shimpz shimpz shimpz": "password-blocklisted",
             "x" * (auth.MAX_PASSWORD_CHARS + 1): "password-too-long",
         }
 
@@ -57,6 +63,26 @@ class PasswordVerifierTests(unittest.TestCase):
             with self.subTest(password=password[:32]):
                 self.assertEqual(auth.password_policy(password), expected)
         self.assertIsNone(auth.password_policy(GOOD_PASSWORD))
+        self.assertIsNone(auth.password_policy("shimpz violet otter lantern quartz"))
+
+    def test_an_empty_blocklist_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            empty = Path(temporary) / "passwords.txt"
+            empty.write_text("", encoding="utf-8")
+            auth.blocklist.cache_clear()
+            self.addCleanup(auth.blocklist.cache_clear)
+            with (
+                mock.patch.object(auth, "BLOCKLIST_PATH", empty),
+                self.assertRaisesRegex(RuntimeError, "blocklist is empty"),
+            ):
+                auth.blocklist()
+
+    def test_bundled_blocklist_holds_only_policy_form_entries_of_the_minimum_length(self) -> None:
+        entries = auth.blocklist()
+
+        self.assertGreater(len(entries), 1000)
+        self.assertTrue(all(auth.normalized_password(entry) == entry for entry in entries))
+        self.assertTrue(all(len(entry) >= auth.MIN_PASSWORD_CHARS for entry in entries))
 
     def test_sessions_carry_only_signed_current_mfa_evidence(self) -> None:
         secret = auth.new_secret()

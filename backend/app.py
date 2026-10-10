@@ -66,6 +66,7 @@ _AUTHENTICATE_ACTION_REQUEST = chat_human.LocalPasswordAuthority(
     )
 )
 _LOCAL_AUTH_CONTEXT = local_auth.Context()
+auth.blocklist()  # a missing password blocklist fails at import, not at the first Supervisor setup
 TEAM_CREDENTIALS_ENABLED = os.environ.get("SHIMPZ_TEAM_CREDENTIALS_ENABLED", "1").strip() == "1"
 
 UI_DIR = Path(__file__).resolve().parent.parent / "frontend" / "build"

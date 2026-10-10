@@ -81,6 +81,11 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
         self.assertNotRegex(stages["ui"][:install], r"(?m)^(ARG SOURCE_DATE_EPOCH|WORKDIR)\b")
         self.assertLess(stages["ui"].index("ARG SOURCE_DATE_EPOCH=0"), stages["ui"].index("RUN npm run build"))
 
+    def test_runtime_image_packages_the_password_blocklist(self) -> None:
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+
+        self.assertIn("COPY --link backend/blocklist/passwords.txt ./blocklist/", dockerfile)
+
     def test_runtime_keeps_one_process_for_memory_bound_mfa_ceremonies(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
         command = dockerfile.split('CMD ["uvicorn"', 1)[1]
@@ -93,6 +98,8 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
         copied = set(re.findall(r"\bbackend(?:/[a-z][a-z0-9_]*)+\.py\b", re.sub(r"\\\n\s*", " ", runtime)))
         expected = {path.relative_to(ROOT).as_posix() for path in (ROOT / "backend").rglob("*.py")}
         expected.remove("backend/protocol/http/v1/verify.py")
+        # The blocklist generator is a maintainer tool; the image carries only the list it writes.
+        expected.remove("backend/blocklist/generate.py")
 
         self.assertEqual(copied, expected)
 

@@ -340,7 +340,7 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
         for password, code in (
             ("short", "password-too-short"),
             ("x" * (self.admin_app.MAX_PASSWORD_CHARS + 1), "password-too-long"),
-            ("correct horse battery staple", "password-blocklisted"),
+            ("passwordpassword", "password-blocklisted"),
         ):
             with self.subTest(code=code):
                 response = asyncio.run(self.admin_app.admin_setup(_request("/setup", {"password": password})))
