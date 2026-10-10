@@ -5,6 +5,7 @@
   import { t } from '$lib/i18n.js';
   import LocaleMenu from '$lib/LocaleMenu.svelte';
   import PlatformReleaseStatus from '$lib/PlatformReleaseStatus.svelte';
+  import SecurityAlert from '$lib/SecurityAlert.svelte';
   import TeamDialogs from '$lib/TeamDialogs.svelte';
   import TeamNavigation from '$lib/TeamNavigation.svelte';
   import TeamSidebar from '$lib/TeamSidebar.svelte';
@@ -125,7 +126,7 @@
       </Modal>
     {/if}
     <div class:chat-layout={chat} class="authenticated-content">
-      <div class="admin-notice-region"><AdminNotice /></div>
+      <div class="admin-notice-region"><SecurityAlert /><AdminNotice /></div>
       {#if mobile}<div class="mobile-team-region"><TeamSidebar {active} /></div>{/if}
       <div class="authenticated-page">{@render children()}</div>
     </div>

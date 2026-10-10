@@ -69,7 +69,7 @@ RUN mkdir -p /data /run/shimpz-local-release /run/shimpz-local-reset /run/shimpz
 # own layer and the final import check.
 WORKDIR /app/backend
 COPY --link backend/app.py backend/audit.py backend/auth.py backend/authentication_state.py backend/browser.py backend/decision.py \
-    backend/local_auth.py backend/models.py \
+    backend/local_auth.py backend/models.py backend/security.py \
     backend/model_catalog.json \
     backend/state.py backend/supervisor.py ./
 COPY --link backend/mfa/passkeys.py backend/mfa/tickets.py backend/mfa/totp.py ./mfa/

@@ -66,6 +66,34 @@ class TotpTests(unittest.TestCase):
         self.assertIs(totp.verify(restarted, self.code(), NOW + 1), totp.Verification.LOCKED)
         later = NOW + totp.LOCK_SECONDS
         self.assertIs(totp.verify(restarted, code(str(restarted["secret"]), later), later), totp.Verification.ACCEPTED)
+        self.assertEqual((restarted["failures"], restarted["locked_until"]), (0, None))
+
+    def test_each_refusal_after_the_limit_doubles_the_lock_and_waiting_never_restores_the_budget(self) -> None:
+        self.assertIs(totp.verify(self.record, self.code(), NOW), totp.Verification.ACCEPTED)
+        timestamp = NOW + 60
+        for _ in range(totp.FAILURE_LIMIT - 1):
+            self.assertIs(totp.verify(self.record, "000000", timestamp), totp.Verification.INVALID)
+        locks = []
+        for _ in range(7):
+            self.assertIs(totp.verify(self.record, "000000", timestamp), totp.Verification.LOCKED)
+            locks.append(int(self.record["locked_until"]) - timestamp)
+            # A wrong code after the lock has ended, however much later, is still a consecutive refusal.
+            timestamp = int(self.record["locked_until"]) + 86_400
+
+        self.assertEqual(locks, [300, 600, 1200, 2400, 4800, 9600, totp.MAX_LOCK_SECONDS])
+        self.assertEqual(self.record["failures"], totp.FAILURE_LIMIT + 6)
+        accepted = totp.verify(self.record, code(str(self.record["secret"]), timestamp), timestamp)
+        self.assertIs(accepted, totp.Verification.ACCEPTED)
+        self.assertEqual(self.record["failures"], 0)
+        self.assertIs(totp.verify(self.record, "000000", timestamp + 60), totp.Verification.INVALID)
+
+    def test_the_failure_count_saturates_and_the_lock_stays_bounded(self) -> None:
+        self.record["failures"] = totp.MAX_FAILURES
+
+        self.assertIs(totp.verify(self.record, "000000", NOW), totp.Verification.LOCKED)
+        self.assertEqual(self.record["failures"], totp.MAX_FAILURES)
+        self.assertEqual(self.record["locked_until"], NOW + totp.MAX_LOCK_SECONDS)
+        self.assertEqual(totp.lock_seconds(totp.FAILURE_LIMIT - 1), 0)
 
     def test_resuming_enrollment_preserves_the_durable_failure_budget(self) -> None:
         for _ in range(totp.FAILURE_LIMIT):
@@ -76,14 +104,19 @@ class TotpTests(unittest.TestCase):
         self.assertEqual(self.record["failures"], totp.FAILURE_LIMIT)
         self.assertEqual(self.record["locked_until"], NOW + totp.LOCK_SECONDS)
         self.assertIs(totp.verify(self.record, self.code(), NOW + 1), totp.Verification.LOCKED)
-        self.assertLessEqual(self.record["failures"], totp.FAILURE_LIMIT)
+        self.assertEqual(self.record["failures"], totp.FAILURE_LIMIT)
 
     def test_pending_factor_expires_and_malformed_state_fails_closed(self) -> None:
         self.assertIs(
             totp.verify(self.record, self.code(), NOW + totp.ENROLLMENT_TTL_SECONDS + 1),
             totp.Verification.EXPIRED,
         )
-        for field, value in (("secret", "bad"), ("status", "disabled"), ("failures", True)):
+        for field, value in (
+            ("secret", "bad"),
+            ("status", "disabled"),
+            ("failures", True),
+            ("failures", totp.MAX_FAILURES + 1),
+        ):
             malformed = copy.deepcopy(self.record)
             malformed[field] = value
             with self.subTest(field=field), self.assertRaises(totp.TotpStateError):

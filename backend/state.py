@@ -31,6 +31,9 @@ STORE_PATH = Path(os.environ.get("SHIMPZ_ADMIN_STORE") or "/data/admin.json")
 _STORE_LOCK = threading.RLock()
 AUTH_VERSION = 1
 MAX_CONSUMED_HOST_RESETS = 128
+# Refused second-factor attempts since the last successful sign-in, and those a sign-in reported that the Supervisor
+# has not yet acknowledged. Both counters saturate at this bound.
+MAX_SECOND_FACTOR_FAILURES = 1_000_000
 
 
 @dataclass(frozen=True)
@@ -180,9 +183,51 @@ def _authentication_state(data: dict) -> str:
         raise auth.PasswordRecordError("Local Supervisor MFA record requires bounded recovery")
     try:
         _validated_passkeys(passkey_records)
+        _validated_second_factor_failures(data.get("second_factor_failures"))
         return totp.state(data.get("totp"))
     except (totp.TotpStateError, webauthn.PasskeyError) as exc:
         raise auth.PasswordRecordError("Local Supervisor MFA record requires bounded recovery") from exc
+
+
+def _validated_second_factor_failures(record: object) -> dict[str, int]:
+    if not isinstance(record, dict) or set(record) != {"since_sign_in", "unacknowledged"}:
+        raise totp.TotpStateError("stored second-factor failures are invalid")
+    for value in record.values():
+        if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= MAX_SECOND_FACTOR_FAILURES:
+            raise totp.TotpStateError("stored second-factor failures are invalid")
+    return record
+
+
+def _second_factor_refused(data: dict) -> None:
+    failures = data["second_factor_failures"]
+    failures["since_sign_in"] = min(failures["since_sign_in"] + 1, MAX_SECOND_FACTOR_FAILURES)
+
+
+def _signed_in(data: dict) -> None:
+    """A successful sign-in reports the refused attempts since the previous one until the Supervisor acknowledges."""
+    failures = data["second_factor_failures"]
+    failures["unacknowledged"] = min(failures["unacknowledged"] + failures["since_sign_in"], MAX_SECOND_FACTOR_FAILURES)
+    failures["since_sign_in"] = 0
+
+
+def unacknowledged_second_factor_failures() -> int:
+    """The refused second-factor attempts that sign-ins reported and the Supervisor has not acknowledged."""
+    data = _read()
+    _authentication_state(data)
+    return int(data["second_factor_failures"]["unacknowledged"])
+
+
+def acknowledge_second_factor_failures(count: int) -> int:
+    """Acknowledge `count` reported failures, never more than are reported, and return how many remain."""
+
+    def acknowledge(data: dict) -> int:
+        if _authentication_state(data) != auth.RECORD_STATE_CONFIGURED:
+            raise auth.PasswordRecordError("Local Supervisor authentication is not configured")
+        failures = data["second_factor_failures"]
+        failures["unacknowledged"] = max(failures["unacknowledged"] - count, 0)
+        return int(failures["unacknowledged"])
+
+    return cast(int, _mutate(acknowledge))
 
 
 def _validated_passkey(record: object) -> dict[str, object]:
@@ -318,6 +363,7 @@ def begin_supervisor_setup(password: str, *, now: int | None = None) -> totp.Enr
         data["webauthn_user_id"] = auth.new_secret()
         data["passkeys"] = []
         data["totp"] = totp.new_record(now)
+        data["second_factor_failures"] = {"since_sign_in": 0, "unacknowledged": 0}
         data["created"] = int(time.time()) if now is None else now
         return totp.enrollment(data["totp"])
 
@@ -407,9 +453,13 @@ def commit_passkey_authentication(
     generation: int,
     *,
     now: int,
+    sign_in: bool = False,
     journal: Callable[[object], None] | None = None,
 ) -> tuple[str, str | None]:
-    """Commit one assertion update or suspension against the exact original record, journaling its outcome first."""
+    """Commit one assertion update or suspension against the exact original record, journaling its outcome first.
+
+    A `sign_in` assertion that is accepted also completes a sign-in.
+    """
     expected = _validated_passkey(copy.deepcopy(original))
 
     def commit(data: dict) -> tuple[str, str | None]:
@@ -434,6 +484,8 @@ def commit_passkey_authentication(
             return str(data["session_secret"]), reason
         record["sign_count"] = result.new_sign_count
         record["backup_state"] = result.backup_state
+        if sign_in:
+            _signed_in(data)
         return str(data["session_secret"]), None
 
     return cast(tuple[str, str | None], _mutate(commit, journal=journal))
@@ -445,11 +497,14 @@ def verify_totp(
     enrollment: bool,
     now: int | None = None,
     generation: int | None = None,
+    sign_in: bool = False,
     journal: Callable[[object], None] | None = None,
 ) -> totp.Verification:
     """Persist one TOTP attempt, activation, replay evidence, and session rotation, journaling its outcome first.
 
     A ceremony passes the factor generation its password ticket was issued under, checked inside the same transaction.
+    Every refused code counts as a failed second-factor attempt; an accepted enrollment or `sign_in` code completes a
+    sign-in.
     """
     expected = auth.RECORD_STATE_ENROLLMENT_REQUIRED if enrollment else auth.RECORD_STATE_CONFIGURED
 
@@ -459,6 +514,10 @@ def verify_totp(
         if generation is not None and data["factor_generation"] != generation:
             return totp.Verification.CHANGED
         result = totp.verify(data["totp"], code, now)
+        if result in {totp.Verification.INVALID, totp.Verification.LOCKED}:
+            _second_factor_refused(data)
+        elif result is totp.Verification.ACCEPTED and (enrollment or sign_in):
+            _signed_in(data)
         if result is totp.Verification.ACCEPTED and enrollment:
             data["factor_generation"] = int(data["factor_generation"]) + 1
             data["session_secret"] = auth.new_secret()

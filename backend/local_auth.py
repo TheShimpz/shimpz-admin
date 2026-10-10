@@ -175,7 +175,9 @@ def _complete_totp(code: object, *, enrollment: bool, generation: int, origin: s
         elif result is totp.Verification.INVALID:
             audit.record("totp-rejected", outcome="denied", origin=origin)
 
-    result = state.verify_totp(code, enrollment=enrollment, generation=generation, journal=journal)
+    result = state.verify_totp(
+        code, enrollment=enrollment, generation=generation, sign_in=accepted == "login", journal=journal
+    )
     if result is totp.Verification.LOCKED:
         raise HTTPException(status_code=429, detail="verification code is temporarily locked")
     if result is totp.Verification.EXPIRED:
@@ -332,7 +334,7 @@ def _passkey_assertion(
         original = state.passkey_for_authentication(identifier, challenge.origin)
         verified = passkeys.verify_authentication(challenge, credential, original)
         return state.commit_passkey_authentication(
-            original, verified, ticket.generation, now=int(time.time()), journal=journal
+            original, verified, ticket.generation, now=int(time.time()), sign_in=accepted == "login", journal=journal
         )
     except passkeys.PasskeyConflictError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None

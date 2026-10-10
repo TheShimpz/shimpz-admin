@@ -27,6 +27,7 @@ import browser
 import decision
 import local_auth
 import models
+import security
 import state
 import supervisor
 from history import http as chat_history_http
@@ -132,6 +133,7 @@ routine_http.register(app, _AUTHENTICATE_ACTION_REQUEST, _LOCAL_AUTH_CONTEXT)
 team_inference.register(app)
 team_assets.register(app)
 team_summary.register(app)
+security.register(app)
 app.add_api_route(
     "/api/assistant-catalog",
     chat_assets.assistant_catalog,

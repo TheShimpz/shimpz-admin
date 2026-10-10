@@ -16,6 +16,7 @@ import {
   routineView,
   setAside,
 } from './routineScenarios.js';
+import { securityRoutes, securityStart } from './securityScenarios.js';
 
 export const TEAM = { team_id: 'marketing', team_name: 'Marketing', status: 'running' };
 
@@ -239,6 +240,14 @@ const STARTS = {
     human: 'file',
   }),
   empty: () => ({ session: authenticatedLocalSession(), teams: [], routines: [], runs: [] }),
+  // The sign-in after three refused authenticator codes: the report stays on every page until acknowledged (ADR-0051).
+  'security-alert': () => ({
+    session: authenticatedLocalSession({ authentication_method: 'totp' }),
+    teams: [...TEAMS],
+    routines: [],
+    runs: [],
+    security: securityStart({ failedAttempts: 3 }),
+  }),
   setup: () => ({
     session: { profile: 'local', authenticated: false, initialized: false, authentication_state: 'uninitialized' },
     teams: [],
@@ -551,11 +560,13 @@ export function createScenario(name = 'ready', locale = 'en') {
   const start = STARTS[name];
   if (!start) throw new Error(`unknown scenario: ${name}`);
   // A scenario's own texts, such as a Routine's name and request, are written in the interface language it starts in.
-  const state = { history: [], sequence: 0, locale, ...structuredClone(start(locale)) };
+  const state = { history: [], sequence: 0, locale, security: securityStart(), ...structuredClone(start(locale)) };
   return {
     name,
     respond({ method = 'GET', path, query = new URLSearchParams(), body = null }) {
       if (path === '/api/session' && method === 'POST') return ok(state.session);
+      const security = securityRoutes(state, method, path, body);
+      if (security) return security;
       if (!state.session.authenticated) return null;
       if (path === '/api/teams' && method === 'GET') return ok({ teams: state.teams });
       if (path === '/api/teams/order' && method === 'PUT') return reorderTeams(state, body);

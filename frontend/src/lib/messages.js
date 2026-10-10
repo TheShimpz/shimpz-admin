@@ -2,6 +2,7 @@ import { assistantPageMessages } from './assistantPageMessages.js';
 import { attachmentMessages } from './attachmentMessages.js';
 import { humanRequestMessages } from './humanRequestMessages.js';
 import { routineMessages } from './routineMessages.js';
+import { securityMessages } from './securityMessages.js';
 
 const mfaMessages = {
   en: {
@@ -469,6 +470,7 @@ export const messages = {
     routine: routineMessages.en,
     assistantPage: assistantPageMessages.en,
     attachments: attachmentMessages.en,
+    security: securityMessages.en,
     teamNavigation: {
       label: "Teams",
       newTeam: "New Team",
@@ -869,6 +871,7 @@ export const messages = {
     routine: routineMessages.pt,
     assistantPage: assistantPageMessages.pt,
     attachments: attachmentMessages.pt,
+    security: securityMessages.pt,
     teamNavigation: {
       label: "Times",
       newTeam: "Novo Time",
@@ -1269,6 +1272,7 @@ export const messages = {
     routine: routineMessages.es,
     assistantPage: assistantPageMessages.es,
     attachments: attachmentMessages.es,
+    security: securityMessages.es,
     teamNavigation: {
       label: "Equipos",
       newTeam: "Nuevo Equipo",
@@ -1669,6 +1673,7 @@ export const messages = {
     routine: routineMessages.zh,
     assistantPage: assistantPageMessages.zh,
     attachments: attachmentMessages.zh,
+    security: securityMessages.zh,
     teamNavigation: {
       label: "团队",
       newTeam: "新建团队",
@@ -2069,6 +2074,7 @@ export const messages = {
     routine: routineMessages.fr,
     assistantPage: assistantPageMessages.fr,
     attachments: attachmentMessages.fr,
+    security: securityMessages.fr,
     teamNavigation: {
       label: "Équipes",
       newTeam: "Nouvelle Équipe",
@@ -2469,6 +2475,7 @@ export const messages = {
     routine: routineMessages.de,
     assistantPage: assistantPageMessages.de,
     attachments: attachmentMessages.de,
+    security: securityMessages.de,
     teamNavigation: {
       label: "Teams",
       newTeam: "Neues Team",
@@ -2869,6 +2876,7 @@ export const messages = {
     routine: routineMessages.ja,
     assistantPage: assistantPageMessages.ja,
     attachments: attachmentMessages.ja,
+    security: securityMessages.ja,
     teamNavigation: {
       label: "チーム",
       newTeam: "新しいチーム",
@@ -3269,6 +3277,7 @@ export const messages = {
     routine: routineMessages.ar,
     assistantPage: assistantPageMessages.ar,
     attachments: attachmentMessages.ar,
+    security: securityMessages.ar,
     teamNavigation: {
       label: "الفرق",
       newTeam: "فريق جديد",

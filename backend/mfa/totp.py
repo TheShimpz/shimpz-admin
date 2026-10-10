@@ -12,9 +12,13 @@ from enum import Enum
 PERIOD_SECONDS = 30
 SECRET_BYTES = 20
 ENROLLMENT_TTL_SECONDS = 15 * 60
+# Consecutive refused codes before the first lock. Each later refusal doubles the lock from `LOCK_SECONDS` up to
+# `MAX_LOCK_SECONDS`, and only an accepted code resets the count: waiting never restores the budget, and the singleton
+# factor is never disabled.
 FAILURE_LIMIT = 5
-FAILURE_WINDOW_SECONDS = 5 * 60
 LOCK_SECONDS = 5 * 60
+MAX_LOCK_SECONDS = 4 * 3600
+MAX_FAILURES = 1_000_000
 CODE_RE = re.compile(r"^[0-9]{6}$")
 SECRET_RE = re.compile(r"^[A-Z2-7]{32}$")
 
@@ -79,7 +83,6 @@ def new_record(now: int | None = None) -> dict[str, object]:
         "resumed_at": created_at,
         "expires_at": created_at + ENROLLMENT_TTL_SECONDS,
         "failures": 0,
-        "failure_window_started_at": None,
         "locked_until": None,
         "last_accepted_step": None,
         "activated_at": None,
@@ -94,7 +97,6 @@ def _validated(record: object) -> dict[str, object]:
         "resumed_at",
         "expires_at",
         "failures",
-        "failure_window_started_at",
         "locked_until",
         "last_accepted_step",
         "activated_at",
@@ -105,7 +107,6 @@ def _validated(record: object) -> dict[str, object]:
     resumed_at = record.get("resumed_at")
     expires_at = record.get("expires_at")
     failures = record.get("failures")
-    window = record.get("failure_window_started_at")
     locked = record.get("locked_until")
     last_step = record.get("last_accepted_step")
     activated_at = record.get("activated_at")
@@ -120,8 +121,7 @@ def _validated(record: object) -> dict[str, object]:
         or resumed_at < created_at
         or isinstance(failures, bool)
         or not isinstance(failures, int)
-        or not 0 <= failures <= FAILURE_LIMIT
-        or (window is not None and (isinstance(window, bool) or not isinstance(window, int)))
+        or not 0 <= failures <= MAX_FAILURES
         or (locked is not None and (isinstance(locked, bool) or not isinstance(locked, int)))
         or (last_step is not None and (isinstance(last_step, bool) or not isinstance(last_step, int)))
     ):
@@ -177,19 +177,33 @@ def _matched_step(secret: bytes, code: object, timestamp: int) -> int | None:
     return matched
 
 
-def _record_failure(record: dict[str, object], timestamp: int) -> Verification:
-    window = record["failure_window_started_at"]
-    if not isinstance(window, int) or timestamp - window >= FAILURE_WINDOW_SECONDS:
-        record["failure_window_started_at"] = timestamp
-        record["failures"] = 1
-        record["locked_until"] = None
-        return Verification.INVALID
-    failures = min(int(record["failures"]) + 1, FAILURE_LIMIT)
+def lock_seconds(failures: int) -> int:
+    """How long `failures` consecutive refused codes lock the factor: not at all below the limit, then doubling."""
+    if failures < FAILURE_LIMIT:
+        return 0
+    return min(LOCK_SECONDS << min(failures - FAILURE_LIMIT, 16), MAX_LOCK_SECONDS)
+
+
+def record_failure(record: dict[str, object], timestamp: int) -> Verification:
+    """Count one refused code against the factor's consecutive budget, locking it once the budget is spent."""
+    failures = min(int(record["failures"]) + 1, MAX_FAILURES)
     record["failures"] = failures
-    if failures >= FAILURE_LIMIT:
-        record["locked_until"] = timestamp + LOCK_SECONDS
+    if seconds := lock_seconds(failures):
+        record["locked_until"] = timestamp + seconds
         return Verification.LOCKED
     return Verification.INVALID
+
+
+def locked(record: dict[str, object], timestamp: int) -> bool:
+    """Whether the factor's consecutive-failure lock still holds at `timestamp`."""
+    locked_until = record["locked_until"]
+    return isinstance(locked_until, int) and locked_until > timestamp
+
+
+def record_success(record: dict[str, object]) -> None:
+    """An accepted second factor restores the full budget."""
+    record["failures"] = 0
+    record["locked_until"] = None
 
 
 def verify(record: dict[str, object], code: object, now: int | None = None) -> Verification:
@@ -198,17 +212,14 @@ def verify(record: dict[str, object], code: object, now: int | None = None) -> V
     timestamp = _timestamp(now)
     if factor["status"] == "pending" and timestamp > int(factor["expires_at"]):
         return Verification.EXPIRED
-    locked_until = factor["locked_until"]
-    if isinstance(locked_until, int) and locked_until > timestamp:
+    if locked(factor, timestamp):
         return Verification.LOCKED
     matched = _matched_step(_decode_secret(factor["secret"]), code, timestamp)
     last_step = factor["last_accepted_step"]
     if matched is None or (isinstance(last_step, int) and matched <= last_step):
-        return _record_failure(factor, timestamp)
+        return record_failure(factor, timestamp)
     factor["last_accepted_step"] = matched
-    factor["failures"] = 0
-    factor["failure_window_started_at"] = None
-    factor["locked_until"] = None
+    record_success(factor)
     if factor["status"] == "pending":
         factor["status"] = "active"
         factor["expires_at"] = None
