@@ -13,8 +13,8 @@ from starlette.requests import Request
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-import local_auth
 from http_request import LOOPBACK, http_request, json_headers
+from signin import local_auth
 from team import bridge as team
 from team import transport
 

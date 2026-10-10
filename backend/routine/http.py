@@ -1,9 +1,9 @@
 """Admin routes for a Team's Routines (ADR-0086)."""
 
-import local_auth
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
+from signin import local_auth
 from team import bridge as team
 from team import http as team_http
 

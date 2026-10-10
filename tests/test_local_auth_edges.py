@@ -15,11 +15,10 @@ from starlette.requests import Request
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-import auth
-import local_auth
 import state
 from mfa import passkeys, tickets, totp
 from mfa_helper import configure_supervisor, isolated_store
+from signin import auth, local_auth
 
 ORIGIN = "http://localhost:7777"
 

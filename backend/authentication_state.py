@@ -2,8 +2,8 @@
 
 import sys
 
-import auth
 import state
+from signin import auth
 
 _ADMITTED_STATES = frozenset(
     {

@@ -15,8 +15,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 import state
 from admin_http import AdminHTTPServer, request, session_cookie, ticket_cookie
 from mfa_helper import code, isolated_store
-
-import audit
+from signin import audit
 
 PASSWORD = "violet otter lantern quartz 92"
 EXTERNAL = "https://admin.example.test"

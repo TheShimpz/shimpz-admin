@@ -11,8 +11,8 @@ from unittest import mock
 BACKEND = Path(__file__).resolve().parents[1] / "backend"
 sys.path.insert(0, str(BACKEND))
 
-import auth
-from blocklist import generate
+from signin import auth
+from signin.blocklist import generate
 
 # A tiny corpus: short entries, a duplicate in another case and width, the corpus's hex form (valid and not UTF-8 text).
 CORPUS = "\n".join(

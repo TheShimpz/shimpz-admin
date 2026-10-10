@@ -15,10 +15,9 @@ from starlette.requests import Request
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-import auth
-import local_auth
 import state
 from mfa import passkeys, tickets, totp
+from signin import auth, local_auth
 from team import bridge as team
 
 from routine import http as routine_http

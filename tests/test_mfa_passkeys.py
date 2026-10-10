@@ -384,10 +384,8 @@ class PasskeyTests(unittest.TestCase):
             self.assertEqual(state.get(), before)
 
     def test_a_passkey_sign_in_journals_its_success_or_suspension(self) -> None:
-        import local_auth
         from mfa import tickets
-
-        import audit
+        from signin import audit, local_auth
 
         # Registered a minute ago: a sign-in now records the current time as its use.
         registered = credential() | dict.fromkeys(("created_at", "updated_at", "last_used_at"), int(time.time()) - 60)

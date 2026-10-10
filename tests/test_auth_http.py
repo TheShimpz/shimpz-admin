@@ -15,7 +15,7 @@ from admin_http import AdminHTTPServer, request, request_with_headers, session_c
 from mfa_helper import code
 
 sys.path.insert(0, str(BACKEND))
-import auth
+from signin import auth
 
 
 class AuthHTTPTests(unittest.TestCase):

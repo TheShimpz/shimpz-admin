@@ -84,7 +84,7 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
     def test_runtime_image_packages_the_password_blocklist(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 
-        self.assertIn("COPY --link backend/blocklist/passwords.txt ./blocklist/", dockerfile)
+        self.assertIn("COPY --link backend/signin/blocklist/passwords.txt ./signin/blocklist/", dockerfile)
 
     def test_runtime_keeps_one_process_for_memory_bound_mfa_ceremonies(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
@@ -99,7 +99,7 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
         expected = {path.relative_to(ROOT).as_posix() for path in (ROOT / "backend").rglob("*.py")}
         expected.remove("backend/protocol/http/v1/verify.py")
         # The blocklist generator is a maintainer tool; the image carries only the list it writes.
-        expected.remove("backend/blocklist/generate.py")
+        expected.remove("backend/signin/blocklist/generate.py")
 
         self.assertEqual(copied, expected)
 

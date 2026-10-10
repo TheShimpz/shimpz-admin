@@ -21,9 +21,9 @@ from starlette.responses import JSONResponse
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-import auth
 import state
 from mfa import passkeys, recovery, totp
+from signin import auth
 
 PASSWORD = "violet otter lantern quartz 92"
 ORIGIN = "http://localhost:7777"

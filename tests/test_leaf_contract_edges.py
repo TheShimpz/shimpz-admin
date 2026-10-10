@@ -10,11 +10,11 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-import auth
 import models
 import state
 from chat.delivery import progress as chat_progress
 from mfa_helper import isolated_store
+from signin import auth
 from team import assets, bridge, transport
 
 from chat import local, payloads

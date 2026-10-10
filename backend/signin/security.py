@@ -9,14 +9,12 @@ never dismissed unseen.
 
 import logging
 
-import auth
 import state
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
+from signin import audit, auth
 from team import http as team_http
-
-import audit
 
 log = logging.getLogger("shimpz-admin")
 MAX_BODY_BYTES = 1024

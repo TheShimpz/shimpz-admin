@@ -2,10 +2,10 @@
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
+from signin import audit
 from starlette.concurrency import run_in_threadpool
 from team import bridge as team
 
-import audit
 from protocol.http.v1.websocket import canonical_origin
 
 

@@ -17,9 +17,8 @@ import threading
 
 import state
 import supervisor
+from signin import audit
 from team import transport
-
-import audit
 
 ROTATION_PATH = "/v1/space/supervisor-key"
 RETRY_SECONDS = 30.0

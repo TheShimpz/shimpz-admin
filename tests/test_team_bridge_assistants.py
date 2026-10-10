@@ -783,8 +783,8 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
 
 
 def _probe_session():
-    import auth
     import state
+    from signin import auth
 
     import app as admin_app
 

@@ -11,14 +11,12 @@ import time
 from functools import partial
 from pathlib import Path
 
-import auth
 import state
 import supervisor
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
+from signin import audit, auth
 from starlette.concurrency import run_in_threadpool
-
-import audit
 
 CAPABILITY_PATH = Path(os.environ.get("SHIMPZ_HOST_RESET_CAPABILITY_FILE") or "/run/shimpz-local-reset/capability.json")
 MAX_CAPABILITY_BYTES = 1024

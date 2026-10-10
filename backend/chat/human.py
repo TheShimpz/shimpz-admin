@@ -12,7 +12,7 @@ import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
-import auth
+from signin import auth
 from team import bridge as team
 
 from protocol.http.v1 import challenge as team_challenge

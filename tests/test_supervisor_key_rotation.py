@@ -16,10 +16,9 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 import state
 import supervisor
+from signin import audit
 from space import supervisor_key
 from team import transport
-
-import audit
 
 PASSWORD = "violet otter lantern quartz 92"
 SESSION = "session-value"

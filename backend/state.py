@@ -20,10 +20,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-import auth
 import supervisor
 from mfa import passkeys as webauthn
 from mfa import recovery, totp
+from signin import auth
 
 from protocol.http.v1.websocket import canonical_origin
 

@@ -1,8 +1,8 @@
 """Regenerate `passwords.txt`, the Supervisor common-password blocklist, from a pinned public corpus.
 
-Run from `admin/`: `uv run --frozen --python 3.14 python backend/blocklist/generate.py`. The source is the SecLists
-Pwdb top one million list at commit 913b327 (URL in `main`); its digest is verified before use. Each entry is kept
-in the policy's comparison form when that form is at least the minimum password length, so the list holds only
+Run from `admin/`: `uv run --frozen --python 3.14 python backend/signin/blocklist/generate.py`. The source is the
+SecLists Pwdb top one million list at commit 913b327 (URL in `main`); its digest is verified before use. Each entry is
+kept in the policy's comparison form when that form is at least the minimum password length, so the list holds only
 passwords the length rule alone would admit.
 """
 
@@ -11,9 +11,9 @@ import sys
 import urllib.request
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
-import auth
+from signin import auth
 
 SOURCE_SHA256 = "e9a88f67aafe65496682dc374559ee714e978bee50314767494c3e37a18c9fc8"
 HEX_PREFIX, HEX_SUFFIX = "$hex[", "]"

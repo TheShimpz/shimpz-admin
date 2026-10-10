@@ -8,16 +8,15 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import cast
 
-import auth
 import state
 import supervisor
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from mfa import passkeys, recovery, tickets, totp
+from signin import audit, auth
 from space import supervisor_key
 from team import http as team_http
 
-import audit
 from chat import socket as chat_socket
 from protocol.http.v1.websocket import canonical_origin
 

@@ -14,7 +14,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-import auth
+from signin import auth
 
 GOOD_PASSWORD = "violet otter lantern quartz 92"
 

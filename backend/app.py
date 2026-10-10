@@ -22,15 +22,13 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Red
 from starlette.concurrency import run_in_threadpool
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import auth
 import browser
 import decision
-import local_auth
 import models
-import security
 import state
 import supervisor
 from history import http as chat_history_http
+from signin import audit, auth, local_auth, security
 from space import host_reset, supervisor_key
 from space import release as platform_release
 from space import reset as space_reset
@@ -44,7 +42,6 @@ from team import order as team_order
 from team import snapshots as team_snapshots
 from team import summary as team_summary
 
-import audit
 from action import stored_input as action_stored_input
 from chat import assets as chat_assets
 from chat import human as chat_human
