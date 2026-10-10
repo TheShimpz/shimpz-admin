@@ -39,7 +39,8 @@ class _InlineScriptCollector(HTMLParser):
             self._collecting = False
 
 
-def _spa_script_sources(ui_dir: Path) -> tuple[str, ...]:
+def spa_script_sources(ui_dir: Path) -> tuple[str, ...]:
+    """Hash the compiled SPA's inline bootstrap scripts once, so the policy can admit exactly them."""
     index = ui_dir / "index.html"
     if not index.is_file():
         return ()
@@ -51,23 +52,33 @@ def _spa_script_sources(ui_dir: Path) -> tuple[str, ...]:
     )
 
 
-def security_headers(ui_dir: Path) -> dict[str, str]:
-    """Build one fail-closed policy bound to the exact compiled SPA bootstrap."""
-    script_policy = " ".join(("'self'", *_spa_script_sources(ui_dir)))
+def _socket_source(origin: str) -> str:
+    if origin.startswith("https://"):
+        return "wss" + origin.removeprefix("https")
+    return "ws" + origin.removeprefix("http")
+
+
+def security_headers(script_sources: tuple[str, ...], admitted_origins: frozenset[str]) -> dict[str, str]:
+    """Build one fail-closed policy bound to the exact compiled SPA bootstrap and Admin's admitted chat origins.
+
+    A WebSocket may reach only an admitted Admin origin, never another host.
+    """
+    script_policy = " ".join(("'self'", *script_sources))
+    socket_policy = " ".join(("'self'", *sorted(_socket_source(origin) for origin in admitted_origins)))
     content_security_policy = "; ".join(
         (
             "default-src 'self'",
             "base-uri 'self'",
             "object-src 'none'",
             "frame-ancestors 'none'",
-            "frame-src https://shimpz.com",
+            "frame-src 'none'",
             "form-action 'self'",
             "img-src 'self' data: blob:",
             "font-src 'self'",
             f"script-src {script_policy}",
             # Svelte uses inline style attributes for runtime frame sizing. Scripts remain hash-bound.
             "style-src 'self' 'unsafe-inline'",
-            "connect-src 'self' ws: wss:",
+            f"connect-src {socket_policy}",
         )
     )
     return {

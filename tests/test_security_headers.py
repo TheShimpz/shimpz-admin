@@ -35,7 +35,8 @@ class SecurityHeaderTests(unittest.TestCase):
     def assert_security_headers(self, headers: dict[str, str]) -> None:
         policy = headers["content-security-policy"]
         self.assertIn("frame-ancestors 'none'", policy)
-        self.assertIn("frame-src https://shimpz.com", policy)
+        self.assertIn("frame-src 'none'", policy)
+        self.assertTrue(policy.endswith("; connect-src 'self' ws://127.0.0.1:7777 ws://localhost:7777"))
         self.assertEqual(headers["x-content-type-options"], "nosniff")
         self.assertEqual(headers["referrer-policy"], "no-referrer")
         self.assertIn("camera=()", headers["permissions-policy"])

@@ -87,7 +87,7 @@ OAUTH_ORIGINS = {
 }
 MAX_TEAM_DELETE_BODY_BYTES = 8 * 1024
 MAX_PASSWORD_CHARS = auth.MAX_PASSWORD_CHARS
-BROWSER_SECURITY_HEADERS = browser.security_headers(UI_DIR)
+SPA_SCRIPT_SOURCES = browser.spa_script_sources(UI_DIR)
 
 # Open surface: the SPA shell (served for any non-/api path) + these auth endpoints. Everything
 # else under /api/ needs a session.
@@ -259,9 +259,17 @@ def _team_session_scope(cookies, *, authority_kind: str = "session"):
     )
 
 
+def _socket_origins() -> frozenset[str]:
+    """The origins a page may open the chat socket to; unreadable state narrows them to the static ones."""
+    try:
+        return _allowed_browser_origins()
+    except RuntimeError, OSError:
+        return chat_socket.STATIC_ORIGINS
+
+
 def _secure_response(response: Response) -> Response:
     """Apply the browser boundary consistently to SPA, API, and failure responses."""
-    for name, value in BROWSER_SECURITY_HEADERS.items():
+    for name, value in browser.security_headers(SPA_SCRIPT_SOURCES, _socket_origins()).items():
         response.headers[name] = value
     return response
 

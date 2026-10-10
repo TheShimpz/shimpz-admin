@@ -16,7 +16,9 @@ import browser
 class BrowserPolicyTests(unittest.TestCase):
     def test_missing_spa_uses_no_inline_script_hashes(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            policy = browser.security_headers(Path(directory))["Content-Security-Policy"]
+            policy = browser.security_headers(browser.spa_script_sources(Path(directory)), frozenset())[
+                "Content-Security-Policy"
+            ]
 
         script_directive = next(part.strip() for part in policy.split(";") if part.strip().startswith("script-src"))
         self.assertEqual(script_directive, "script-src 'self'")
@@ -30,13 +32,26 @@ class BrowserPolicyTests(unittest.TestCase):
                 f'<p>compiled shell</p><script src="/external.js"></script><script>{bootstrap}</script>',
                 encoding="utf-8",
             )
-            policy = browser.security_headers(ui_dir)["Content-Security-Policy"]
+            policy = browser.security_headers(browser.spa_script_sources(ui_dir), frozenset())[
+                "Content-Security-Policy"
+            ]
 
         script_directive = next(part.strip() for part in policy.split(";") if part.strip().startswith("script-src"))
         self.assertIn(f"'sha256-{digest}'", script_directive)
         self.assertNotIn("'unsafe-inline'", script_directive)
         self.assertIn("style-src 'self' 'unsafe-inline'", policy)
         self.assertIn("img-src 'self' data: blob:", policy)
+
+    def test_sockets_may_reach_only_the_admitted_admin_origins_and_nothing_is_framed(self) -> None:
+        admitted = frozenset({"http://127.0.0.1:7777", "http://localhost:7777", "https://admin.example.test"})
+        policy = browser.security_headers((), admitted)["Content-Security-Policy"]
+        directives = {part.strip().split(" ", 1)[0]: part.strip() for part in policy.split(";")}
+
+        self.assertEqual(
+            directives["connect-src"],
+            "connect-src 'self' ws://127.0.0.1:7777 ws://localhost:7777 wss://admin.example.test",
+        )
+        self.assertEqual(directives["frame-src"], "frame-src 'none'")
 
     def test_oauth_redirect_rejects_unknown_failure_values(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "invalid OAuth redirect failure"):
