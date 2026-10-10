@@ -77,9 +77,9 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
         # install, so an unchanged lock reuses the installed packages at every commit.
         self.assertRegex(stages["ui"], r"(?m)^ARG SOURCE_DATE_EPOCH=0$")
         # BuildKit stamps a WORKDIR with the epoch, so neither precedes the install.
-        install = stages["ui"].index("RUN cd /w && npm ci ")
+        install = stages["ui"].index("RUN cd /w && corepack pnpm install --frozen-lockfile --ignore-scripts ")
         self.assertNotRegex(stages["ui"][:install], r"(?m)^(ARG SOURCE_DATE_EPOCH|WORKDIR)\b")
-        self.assertLess(stages["ui"].index("ARG SOURCE_DATE_EPOCH=0"), stages["ui"].index("RUN npm run build"))
+        self.assertLess(stages["ui"].index("ARG SOURCE_DATE_EPOCH=0"), stages["ui"].index("RUN corepack pnpm build"))
 
     def test_runtime_image_packages_the_password_blocklist(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")

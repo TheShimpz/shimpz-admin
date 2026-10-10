@@ -3,12 +3,16 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": "24.x"
+  },
+  "packageManager": "pnpm@11.9.0",
   "scripts": {
     "dev": "vite dev",
     "scenarios": "vite dev --mode scenarios",
     "build": "vite build",
     "preview": "vite preview",
-    "measure:assistants": "npm run build && node perf/assistant-catalog.mjs",
+    "measure:assistants": "pnpm build && node perf/assistant-catalog.mjs",
     "check": "svelte-check --tsconfig ./.svelte-kit/tsconfig.json",
     "test": "node tests/run-tests.mjs",
     "test:e2e": "playwright test"
@@ -16,10 +20,6 @@
   "dependencies": {
     "@shimpz/frontend": "https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/caa906eac9492f81063d996dab447510a67f313f",
     "qrcode": "1.5.4"
-  },
-  "overrides": {
-    "cookie": "0.7.2",
-    "devalue": "5.9.3"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.12.1",

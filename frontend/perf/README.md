@@ -13,8 +13,8 @@ reproduce that environment with:
 ```sh
 export CHAT_PERF_USER="$(id -u):$(id -g)" CHAT_PERF_DIR="$PWD"
 export CHAT_PERF_IMAGE='mcr.microsoft.com/playwright@sha256:baed2032d533817f3dbe6425de795788430ba345e819a1201337009ba17c9d07'
-sg docker -c 'docker run --rm --cpus 2 --memory 2g --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e npm_config_cache=/tmp/npm-cache "$CHAT_PERF_IMAGE" npm ci'
-sg docker -c 'docker run --rm --network none --cpus 2 --memory 2g --shm-size 512m --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e npm_config_cache=/tmp/npm-cache "$CHAT_PERF_IMAGE" npm run build'
+sg docker -c 'docker run --rm --cpus 2 --memory 2g --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e HOME=/tmp -e COREPACK_HOME=/work/node_modules/.corepack "$CHAT_PERF_IMAGE" corepack pnpm install --frozen-lockfile'
+sg docker -c 'docker run --rm --network none --cpus 2 --memory 2g --shm-size 512m --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e HOME=/tmp -e COREPACK_HOME=/work/node_modules/.corepack "$CHAT_PERF_IMAGE" corepack pnpm build'
 sg docker -c 'docker run --rm --network none --cpus 2 --memory 2g --shm-size 512m --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e SHIMPZ_PROGRESS_CASES=128 -e SHIMPZ_PROGRESS_GAP_MS=25 -e SHIMPZ_PERF_SAMPLES=15 -e SHIMPZ_PERF_MOTION=reduce "$CHAT_PERF_IMAGE" node perf/chat-progress.mjs'
 sg docker -c 'docker run --rm --network none --cpus 2 --memory 2g --shm-size 512m --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e SHIMPZ_PROGRESS_CASES=128 -e SHIMPZ_PROGRESS_GAP_MS=25 -e SHIMPZ_PERF_SAMPLES=15 -e SHIMPZ_PERF_MOTION=no-preference "$CHAT_PERF_IMAGE" node perf/chat-progress.mjs'
 ```
@@ -66,7 +66,7 @@ must not be added to Admin or Team timing figures.
 
 ## Local Assistants page measurement
 
-From the Admin repository, install `frontend/` dependencies with Node.js 24 (`(cd frontend && npm ci)`), then build the
+From the Admin repository, install `frontend/` dependencies with Node.js 24 (`(cd frontend && corepack pnpm install --frozen-lockfile)`), then build the
 current image and run the isolated entrypoint:
 
 ```sh

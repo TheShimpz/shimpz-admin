@@ -9,23 +9,23 @@ FROM ghcr.io/astral-sh/uv:0.12.1@sha256:cf4eedcaa81655197f625739489effcbe71b61ce
 
 # ── stage 2: build the SvelteKit static UI ────────────────────────────────────────────────────
 FROM --platform=$BUILDPLATFORM node:24-bookworm@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0 AS ui
-# IPv6 egress is broken on the build host (see main Dockerfile) → prefer IPv4 so npm doesn't hang.
+# IPv6 egress is broken on the build host (see main Dockerfile) → prefer IPv4 so package downloads don't hang.
 RUN echo 'precedence ::ffff:0:0/96 100' >> /etc/gai.conf
 # The package install precedes every commit-bound input, so an unchanged lock reuses it at every commit: BuildKit
 # gives a WORKDIR the release epoch as its creation time, and every RUN after an ARG reads the ARG's value.
-COPY frontend/package.json frontend/package-lock.json /w/
-# No dependency runs an install script: the build's native packages (esbuild, Rolldown) ship as prebuilt optional
-# dependencies that need none.
-RUN cd /w && npm ci --ignore-scripts --no-audit --no-fund && rm -rf /root/.npm
+COPY frontend/package.json frontend/pnpm-lock.yaml frontend/pnpm-workspace.yaml /w/
+# The exact pnpm the manifest names (Corepack), from the lock alone. No dependency runs an install script
+# (pnpm-workspace.yaml, repeated here): the build's native packages (Rolldown) ship as prebuilt optional dependencies.
+RUN cd /w && corepack pnpm install --frozen-lockfile --ignore-scripts --store-dir /tmp/pnpm-store && \
+    rm -rf /tmp/pnpm-store
 WORKDIR /w
 COPY frontend/ ./
 # The frontend tests run in the deploy's test entry point, not here. adapter-static writes the SPA to /w/build.
 # Normalize the copied artifact tree explicitly: the release builder supplies the Git-derived epoch and the final
 # Python stage consumes only this tree.
 ARG SOURCE_DATE_EPOCH=0
-RUN npm run build && \
-    find /w/build -depth -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} + && \
-    rm -rf /root/.npm
+RUN corepack pnpm build && \
+    find /w/build -depth -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
 
 # ── stage 3: resolve target-platform Python dependencies ───────────────────────────────────────
 # This stage deliberately follows TARGETPLATFORM so native wheels match the final image. Its layer is the runtime's

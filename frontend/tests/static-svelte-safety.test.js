@@ -27,10 +27,13 @@ test('static presentation: Admin uses only shared interactive primitives', () =>
 
 test('static supply chain: shared frontend is pinned to one immutable commit', () => {
   const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-  const packageLock = JSON.parse(readFileSync(new URL('../package-lock.json', import.meta.url), 'utf8'));
+  const lock = readFileSync(new URL('../pnpm-lock.yaml', import.meta.url), 'utf8');
   const dependency = packageJson.dependencies['@shimpz/frontend'];
-  const resolved = packageLock.packages['node_modules/@shimpz/frontend'].resolved;
   const immutableCodeload = /^https:\/\/codeload\.github\.com\/TheShimpz\/shimpz-frontend\/tar\.gz\/[0-9a-f]{40}$/;
   assert.match(dependency, immutableCodeload);
-  assert.equal(resolved, dependency);
+  // The lockfile resolves the package to exactly that tarball, with its integrity, and to nothing else.
+  const resolutions = [...lock.matchAll(/^  '@shimpz\/frontend@[^']+':\n    resolution: \{([^}]*)\}$/gmu)].map(([, value]) => value);
+  assert.equal(resolutions.length, 1);
+  assert.match(resolutions[0], /\bintegrity: sha512-[A-Za-z0-9+/]+={0,2},/u);
+  assert.equal(resolutions[0].match(/\btarball: (\S+)$/u)?.[1], dependency);
 });

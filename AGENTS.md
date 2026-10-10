@@ -27,4 +27,5 @@
   `ruff check --config ruff.toml admin` from the umbrella root.
 - Run focused backend tests with
   `uv run --frozen --python 3.14 python -m unittest discover -s tests`.
-- Run frontend checks from `frontend/` with `npm test`, `npm run check`, and `npm run build` as applicable.
+- The frontend uses pnpm 11 (the `packageManager` Corepack runs) with its lockfile and no install scripts. Run its
+  checks from `frontend/` with `pnpm test`, `pnpm check`, and `pnpm build` as applicable.

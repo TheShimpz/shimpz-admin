@@ -1,0 +1,10 @@
+packages:
+  - .
+
+# No dependency runs an install script: the build's native packages (Rolldown) ship as prebuilt optional
+# dependencies, and the frontend library ships its source, so its own `prepare` (svelte-kit sync) is not needed.
+ignoreScripts: true
+
+overrides:
+  cookie: 0.7.2
+  devalue: 5.9.3
