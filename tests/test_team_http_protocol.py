@@ -4,6 +4,7 @@ import contextlib
 import hashlib
 import io
 import json
+import re
 import runpy
 import subprocess
 import sys
@@ -12,20 +13,21 @@ from pathlib import Path
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1] / "backend" / "protocol" / "http"
-EXPECTED_UPSTREAM = {
-    "repository": "https://github.com/TheShimpz/shimpz-teams",
-    "commit": "6c069691ad2aaa6cd6099f4f268264158f003e86",
-    "path": "protocol/http/v1",
-    "tree": "5d311ac989554295ad3d3b381cd461d4770cd82a",
-    "contract_files_sha256": "93fc8f1607a025f871957c26062fd5cb697b547e03559b4de49f1aa36cc1bc90",
-}
+HEX40 = re.compile(r"[0-9a-f]{40}")
 
 
 class TeamHttpProtocolTests(unittest.TestCase):
     def test_mirror_matches_pin_and_vectors(self) -> None:
-        self.assertEqual(json.loads((ROOT / "upstream.json").read_bytes()), EXPECTED_UPSTREAM)
+        # The umbrella verifies the pinned commit and tree against Team's recorded history; this mirror proves its own
+        # bytes match the pin it carries.
+        pin = json.loads((ROOT / "upstream.json").read_bytes())
+        self.assertEqual(set(pin), {"repository", "commit", "path", "tree", "contract_files_sha256"})
+        self.assertEqual(pin["repository"], "https://github.com/TheShimpz/shimpz-teams")
+        self.assertEqual(pin["path"], "protocol/http/v1")
+        self.assertRegex(pin["commit"], HEX40)
+        self.assertRegex(pin["tree"], HEX40)
         manifest = (ROOT / "v1" / "contract-files.sha256").read_bytes()
-        self.assertEqual(hashlib.sha256(manifest).hexdigest(), EXPECTED_UPSTREAM["contract_files_sha256"])
+        self.assertEqual(hashlib.sha256(manifest).hexdigest(), pin["contract_files_sha256"])
         subprocess.run([sys.executable, str(ROOT / "v1" / "verify.py")], check=True)
 
     def test_the_verifier_imports_the_mirrored_modules_flat_from_their_directory(self) -> None:
