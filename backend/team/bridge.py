@@ -309,6 +309,47 @@ def configure_inference(team_id: object, payload: object) -> TeamResponse:
     )
 
 
+def _project_action_confirmation(response: TeamResponse, team_id: str, expected: bool | None = None) -> TeamResponse:
+    """Project Team's Action confirmation setting (ADR-0112) onto exactly `{team_id, confirm_mutating}`."""
+    if not 200 <= response.status < 300:
+        return response
+    body = response.body
+    try:
+        fields = trace_envelope(body, {"team_id", "confirm_mutating"})
+    except ValueError:
+        fields = set()
+    enabled = body.get("confirm_mutating")
+    if (
+        set(body) != fields
+        or body["team_id"] != team_id
+        or type(enabled) is not bool
+        or (expected is not None and enabled is not expected)
+    ):
+        log.warning("team returned an invalid Action confirmation response")
+        return TeamResponse(502, {"detail": "Team Action confirmation response is invalid."})
+    return TeamResponse(response.status, {"team_id": team_id, "confirm_mutating": enabled})
+
+
+def get_action_confirmation(team_id: object) -> TeamResponse:
+    """Whether Team confirms this Team's mutating Actions that declare no authorization before they run."""
+    canonical_id = canonical_team_id(team_id)
+    return _project_action_confirmation(_call("GET", f"/v1/teams/{canonical_id}/action-confirmation"), canonical_id)
+
+
+def configure_action_confirmation(team_id: object, payload: object) -> TeamResponse:
+    """Forward the Supervisor's setting, exactly `{"confirm_mutating": bool}`."""
+    canonical_id = canonical_team_id(team_id)
+    if (
+        not isinstance(payload, dict)
+        or set(payload) != {"confirm_mutating"}
+        or type(payload["confirm_mutating"]) is not bool
+    ):
+        raise TeamRequestError("the Action confirmation setting requires only a boolean confirm_mutating")
+    enabled = payload["confirm_mutating"]
+    response = _call("PUT", f"/v1/teams/{canonical_id}/action-confirmation", {"confirm_mutating": enabled})
+    return _project_action_confirmation(response, canonical_id, enabled)
+
+
 canonical_chat_payload = payloads.canonical_chat_payload
 CHAT_PAYLOAD_FIELDS = payloads.CHAT_PAYLOAD_FIELDS
 canonical_team_chat_body = payloads.canonical_team_chat_body

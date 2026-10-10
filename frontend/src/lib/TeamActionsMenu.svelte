@@ -16,10 +16,46 @@
     onmovedown = null,
     first = false,
     last = false,
+    // The Team's Action confirmation setting (ADR-0112), read each time the menu opens: `load()` resolves to the current
+    // value and `save(value)` to the value Team saved; either rejects when it could not.
+    confirmLabel = '',
+    confirmation = null,
   } = $props();
 
+  // Unknown until read; `busy` while a read or a change is in flight.
+  let confirmMutating = $state(null);
+  let confirmBusy = $state(false);
+  let confirmTicket = 0;
+
+  async function readConfirmation() {
+    const ticket = ++confirmTicket;
+    confirmBusy = true;
+    try {
+      const value = await confirmation.load();
+      if (ticket === confirmTicket) confirmMutating = value;
+    } catch {
+      if (ticket === confirmTicket) confirmMutating = null;
+    } finally {
+      if (ticket === confirmTicket) confirmBusy = false;
+    }
+  }
+
+  async function toggleConfirmation() {
+    if (confirmBusy || confirmMutating === null) return;
+    const ticket = ++confirmTicket;
+    confirmBusy = true;
+    try {
+      const value = await confirmation.save(!confirmMutating);
+      if (ticket === confirmTicket) confirmMutating = value;
+    } catch {
+      // The setting Team holds is unchanged; the caller reports the failure.
+    } finally {
+      if (ticket === confirmTicket) confirmBusy = false;
+    }
+  }
+
   // A disabled item cannot take focus, so keyboard movement skips it.
-  const ITEMS = '[role="menuitem"]:not(:disabled)';
+  const ITEMS = '[role^="menuitem"]:not(:disabled)';
 
   let open = $state(false);
   let root = $state();
@@ -53,6 +89,7 @@
       return;
     }
     open = true;
+    if (confirmation) void readConfirmation();
     queueMicrotask(() => {
       menu?.showPopover();
       place();
@@ -134,6 +171,18 @@
       <Button class="item" variant="ghost" size="sm" type="button" role="menuitem" disabled={last} onclick={() => choose(onmovedown)}>
         <svg class="item-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14"></path><path d="m19 12-7 7-7-7"></path></svg>
         {moveDownLabel}
+      </Button>
+    {/if}
+    {#if confirmation}
+      <!-- A checkbox item keeps the menu open, so its new state is read where it was changed. -->
+      <Button class="item" variant="ghost" size="sm" type="button" role="menuitemcheckbox"
+        aria-checked={confirmMutating === true} disabled={confirmBusy || confirmMutating === null}
+        onclick={toggleConfirmation}>
+        <svg class="item-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="4" y="4" width="16" height="16" rx="2"></rect>
+          {#if confirmMutating}<path d="m8 12 3 3 5-6"></path>{/if}
+        </svg>
+        {confirmLabel}
       </Button>
     {/if}
     <Button class="item danger" variant="ghost" size="sm" type="button" role="menuitem" onclick={() => choose(ondelete)}>

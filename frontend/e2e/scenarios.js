@@ -228,7 +228,14 @@ const STARTS = {
     routines: [],
     runs: [],
     human: 'team-confirmation',
-    confirmMutating: true,
+  }),
+  // The Team actions menu reads each Team's Action confirmation setting, but every change of it fails.
+  'action-confirmation-unsaved': () => ({
+    session: authenticatedLocalSession(),
+    teams: [...TEAMS],
+    routines: [],
+    runs: [],
+    confirmationUnsaved: true,
   }),
   // Chat attachments (ADR-0093): files upload to the Team, and a reply to a message with files names the Actions
   // Team withheld for them; an install request with files gets the attachment-free guidance.
@@ -567,6 +574,22 @@ function teamConfirmationChallenge(locale) {
   };
 }
 
+// Each listed Team's Action confirmation setting (ADR-0112): on unless the Supervisor turned it off. The
+// `action-confirmation-unsaved` scenario reads it but refuses every change.
+function actionConfirmationRoute(state, method, path, body) {
+  const teamId = path.match(/^\/api\/teams\/([a-z0-9_]{1,40})\/action-confirmation$/)?.[1];
+  if (!teamId || !state.teams.some((team) => team.team_id === teamId)) return null;
+  state.confirmations ??= {};
+  if (method === 'GET') return ok({ team_id: teamId, confirm_mutating: state.confirmations[teamId] ?? true });
+  if (method !== 'PUT') return null;
+  if (state.confirmationUnsaved) return { status: 503, json: { detail: 'team unavailable' } };
+  if (!body || Object.keys(body).join() !== 'confirm_mutating' || typeof body.confirm_mutating !== 'boolean') {
+    return { status: 400, json: { detail: 'the Action confirmation setting requires only a boolean confirm_mutating' } };
+  }
+  state.confirmations[teamId] = body.confirm_mutating;
+  return ok({ team_id: teamId, confirm_mutating: body.confirm_mutating });
+}
+
 const HUMAN_CHALLENGES = Object.freeze({
   approval: approvalChallenge,
   confirm: confirmChallenge,
@@ -654,6 +677,8 @@ export function createScenario(name = 'ready', locale = 'en') {
         return ok({ team_id: 'marketing', team_name: name });
       }
       if (!state.teams.length) return null;
+      const confirmation = actionConfirmationRoute(state, method, path, body);
+      if (confirmation) return confirmation;
       if (state.catalog && method === 'GET') {
         const answer = catalogRoutes(path, query.get('locale'));
         if (answer) return answer;

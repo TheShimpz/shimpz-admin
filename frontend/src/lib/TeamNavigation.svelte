@@ -7,6 +7,7 @@
 
   import { t } from '$lib/i18n.js';
   import { loadTeamRoutines, retainTeamRoutines, routineContext } from '$lib/routineContext.js';
+  import { loadActionConfirmation, saveActionConfirmation } from '$lib/actionConfirmation.js';
   import TeamActionsMenu from '$lib/TeamActionsMenu.svelte';
   import { renameTeam, reorderTeams, teamContext } from '$lib/teamContext.js';
   import TeamRoutinesDialog from '$lib/TeamRoutinesDialog.svelte';
@@ -34,6 +35,18 @@
 
   function storeHref(team) {
     return `/assistants/?team=${encodeURIComponent(team.id)}`;
+  }
+
+  // Each Team's Action confirmation setting (ADR-0112) as its actions menu reads and changes it; a failure is reported.
+  function confirmationSetting(team) {
+    const report = (message) => (error) => {
+      showAdminNotice({ tone: 'error', label: copy.confirmActions, message });
+      throw error;
+    };
+    return {
+      load: () => loadActionConfirmation(fetch, team.id).catch(report(copy.confirmActionsUnavailable)),
+      save: (enabled) => saveActionConfirmation(fetch, team.id, enabled).catch(report(copy.confirmActionsFailed)),
+    };
   }
 
   // The Team whose Routines modal is open; the menu item exists only for a Team that has Routines. Leaving it returns
@@ -468,6 +481,8 @@
                   onmovedown={canReorder ? () => moveTeam(team, 1) : null}
                   first={index === 0}
                   last={index === $teamContext.teams.length - 1}
+                  confirmLabel={copy.confirmActions}
+                  confirmation={confirmationSetting(team)}
                 />
               </div>
             </div>
