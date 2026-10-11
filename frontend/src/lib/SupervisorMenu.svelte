@@ -42,17 +42,15 @@
   :global(.supervisor-menu .trigger.shimpz-button:focus-visible) { border: 0; background: none; box-shadow: none; }
   :global(.supervisor-menu .chevron) { display: none; }
   :global(.supervisor-menu .trigger-icon) { display: grid; place-items: center; }
-  /* The avatar is a control like the others: chamfered corners and the shared corner rounding. */
+  /* The avatar is a borderless control: chamfered corners and the shared corner rounding. */
   .avatar {
     display: grid;
     place-items: center;
     width: 2.5rem;
     height: 2.5rem;
-    border: 1px solid color-mix(in srgb, var(--shimpz-color-cyan) 45%, transparent);
     border-radius: var(--shimpz-radius, 0);
     background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--shimpz-color-cyan) 14%, var(--shimpz-color-surface-raised)), var(--shimpz-color-surface-raised) 70%);
     clip-path: var(--shimpz-control-shape);
-    transition: border-color 160ms ease;
   }
   .avatar svg {
     width: 1.35rem;
@@ -63,9 +61,6 @@
     stroke-linecap: round;
     filter: drop-shadow(0 0 3px color-mix(in srgb, var(--shimpz-color-cyan) 60%, transparent));
   }
-  :global(.supervisor-menu .trigger:hover) .avatar,
-  :global(.supervisor-menu .trigger:focus-visible) .avatar,
-  :global(.supervisor-menu .trigger[aria-expanded='true']) .avatar { border-color: var(--shimpz-color-cyan); }
   :global(.supervisor-menu .trigger:hover .trigger-icon),
   :global(.supervisor-menu .trigger:focus-visible .trigger-icon),
   :global(.supervisor-menu .trigger[aria-expanded='true'] .trigger-icon) {
