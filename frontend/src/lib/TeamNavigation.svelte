@@ -554,7 +554,8 @@
   .team-rename :global(.rename-field input:focus) { outline: none; box-shadow: 0 1px 0 0 var(--shimpz-color-cyan); }
   .row.is-renaming .row-actions { display: none; }
   .row :global(.team-link .action-link-content) { display: flex; min-width: 0; align-items: center; gap: var(--gap-item); }
-  .row :global(.team-link:hover), .is-selected > .row :global(.team-link) { color: var(--shimpz-color-text); }
+  /* The row paints the hover; the link's own fill and glow would split the row at the name's edge. */
+  .row :global(.team-link:hover), .is-selected > .row :global(.team-link) { color: var(--shimpz-color-text); background: transparent; border-color: transparent; box-shadow: none; }
   .monogram { display: grid; flex: 0 0 auto; width: 1.9rem; height: 1.9rem; place-items: center; color: var(--shimpz-color-text-dim); background: var(--shimpz-color-bg); border: 1px solid var(--shimpz-color-border); font: 700 0.64rem/1 var(--shimpz-font-mono); letter-spacing: 0.04em; }
   .is-selected .monogram { color: var(--shimpz-color-cyan); border-color: var(--shimpz-color-cyan); box-shadow: var(--shimpz-glow-cyan); }
   .name { min-width: 0; overflow: hidden; font: 500 0.9rem/1.2 var(--shimpz-font-sans); letter-spacing: 0; text-overflow: ellipsis; text-transform: none; white-space: nowrap; }
