@@ -23,7 +23,6 @@ class TeamInferenceTests(unittest.TestCase):
                     "team_id": "team_1",
                     "provider": "openai",
                     "model": "gpt-6-luna",
-                    "effort": "low",
                     "trace_id": TRACE_GET,
                 },
             ),
@@ -33,7 +32,6 @@ class TeamInferenceTests(unittest.TestCase):
                     "team_id": "team_1",
                     "provider": "anthropic",
                     "model": "claude-sonnet-5-5",
-                    "effort": "high",
                     "trace_id": TRACE_PUT,
                 },
             ),
@@ -43,22 +41,17 @@ class TeamInferenceTests(unittest.TestCase):
                 team.get_inference("team_1"),
                 team.TeamResponse(
                     200,
-                    {"team_id": "team_1", "provider": "openai", "model": "gpt-6-luna", "effort": "low"},
+                    {"team_id": "team_1", "provider": "openai", "model": "gpt-6-luna"},
                 ),
             )
             self.assertEqual(
                 team.configure_inference(
                     "team_1",
-                    {"provider": "anthropic", "model": "claude-sonnet-5-5", "effort": "high"},
+                    {"provider": "anthropic", "model": "claude-sonnet-5-5"},
                 ),
                 team.TeamResponse(
                     200,
-                    {
-                        "team_id": "team_1",
-                        "provider": "anthropic",
-                        "model": "claude-sonnet-5-5",
-                        "effort": "high",
-                    },
+                    {"team_id": "team_1", "provider": "anthropic", "model": "claude-sonnet-5-5"},
                 ),
             )
 
@@ -69,37 +62,25 @@ class TeamInferenceTests(unittest.TestCase):
                 mock.call(
                     "PUT",
                     "/v1/teams/team_1/inference",
-                    {"provider": "anthropic", "model": "claude-sonnet-5-5", "effort": "high"},
+                    {"provider": "anthropic", "model": "claude-sonnet-5-5"},
                 ),
             ],
         )
 
-    def test_reasoning_effort_is_closed_in_both_directions(self) -> None:
-        for effort in (None, "xhigh", "minimal"):
-            body = {"team_id": "team_1", "provider": "openai", "model": "gpt-6-luna", "trace_id": TRACE_GET}
-            if effort is not None:
-                body["effort"] = effort
-            with (
-                self.subTest(effort=effort),
-                mock.patch.object(team, "_call", return_value=team.TeamResponse(200, body)),
-            ):
-                self.assertEqual(team.get_inference("team_1").status, 502)
-        for payload in (
-            {"provider": "openai", "model": "gpt-6-luna"},
-            {"provider": "openai", "model": "gpt-6-luna", "effort": "xhigh"},
-            {"provider": "openai", "model": "gpt-6-luna", "effort": 1},
-        ):
+    def test_a_selection_is_exactly_provider_and_model_in_both_directions(self) -> None:
+        body = {"team_id": "team_1", "provider": "openai", "model": "gpt-6-luna", "trace_id": TRACE_GET, "extra": 1}
+        with mock.patch.object(team, "_call", return_value=team.TeamResponse(200, body)):
+            self.assertEqual(team.get_inference("team_1").status, 502)
+        for payload in ({"provider": "openai"}, {"provider": "openai", "model": "gpt-6-luna", "extra": 1}):
             with self.subTest(payload=payload), self.assertRaises(team.TeamRequestError):
                 team.configure_inference("team_1", payload)
         mismatched = team.TeamResponse(
             200,
-            {"team_id": "team_1", "provider": "openai", "model": "gpt-6-luna", "effort": "low", "trace_id": TRACE_PUT},
+            {"team_id": "team_1", "provider": "openai", "model": "gpt-6.1-sol", "trace_id": TRACE_PUT},
         )
         with mock.patch.object(team, "_call", return_value=mismatched):
             self.assertEqual(
-                team.configure_inference(
-                    "team_1", {"provider": "openai", "model": "gpt-6-luna", "effort": "high"}
-                ).status,
+                team.configure_inference("team_1", {"provider": "openai", "model": "gpt-6-luna"}).status,
                 502,
             )
 
@@ -175,12 +156,12 @@ class TeamInferenceTests(unittest.TestCase):
 
     def test_rejects_secrets_and_invalid_providers_before_network_io(self) -> None:
         payloads = (
-            {"provider": "openai", "model": "gpt-6-luna", "effort": "low", "api_key": "must-not-cross"},
-            {"provider": "anthropic", "model": "bad model", "effort": "low"},
-            {"provider": "anthropic", "model": "gpt-6.1-sol", "effort": "low"},
-            {"provider": "openai", "model": "claude-sonnet-5-5", "effort": "low"},
-            {"provider": "openai", "model": "gpt-5.7", "effort": "low"},
-            {"provider": "OpenAI", "model": "gpt-6.1-sol", "effort": "low"},
+            {"provider": "openai", "model": "gpt-6-luna", "api_key": "must-not-cross"},
+            {"provider": "anthropic", "model": "bad model"},
+            {"provider": "anthropic", "model": "gpt-6.1-sol"},
+            {"provider": "openai", "model": "claude-sonnet-5-5"},
+            {"provider": "openai", "model": "gpt-5.7"},
+            {"provider": "OpenAI", "model": "gpt-6.1-sol"},
         )
         with mock.patch.object(team, "_call") as call:
             for payload in payloads:

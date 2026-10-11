@@ -824,15 +824,9 @@ export default {
   },
   brainMenu: {
     label: '选择 Brain',
-    current: 'Brain：{model}，推理 {effort}',
+    current: 'Brain：{model}',
     settings: 'Brain 设置',
     model: '模型',
-    effort: '推理强度',
-    efforts: {
-      low: '低',
-      medium: '中',
-      high: '高',
-    },
     fast: {
       label: '快速路由（Jev）',
       off: '已关闭。由模型路由每条消息。',

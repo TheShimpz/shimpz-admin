@@ -824,15 +824,9 @@ export default {
   },
   brainMenu: {
     label: 'Elegir el Brain',
-    current: 'Brain: {model}, razonamiento {effort}',
+    current: 'Brain: {model}',
     settings: 'Configuración del Brain',
     model: 'Modelo',
-    effort: 'Esfuerzo de razonamiento',
-    efforts: {
-      low: 'Bajo',
-      medium: 'Medio',
-      high: 'Alto',
-    },
     fast: {
       label: 'Enrutamiento rápido (Jev)',
       off: 'Desactivado. El modelo enruta cada mensaje.',

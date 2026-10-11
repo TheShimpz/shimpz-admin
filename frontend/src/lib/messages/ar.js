@@ -824,15 +824,9 @@ export default {
   },
   brainMenu: {
     label: 'اختيار Brain',
-    current: 'Brain: {model}، استدلال {effort}',
+    current: 'Brain: {model}',
     settings: 'إعدادات Brain',
     model: 'النموذج',
-    effort: 'مستوى الاستدلال',
-    efforts: {
-      low: 'منخفض',
-      medium: 'متوسط',
-      high: 'مرتفع',
-    },
     fast: {
       label: 'التوجيه السريع (Jev)',
       off: 'متوقف. يوجّه النموذج كل رسالة.',

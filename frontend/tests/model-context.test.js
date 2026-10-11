@@ -10,7 +10,6 @@ import {
   modelContext,
   preloadModelProviders,
   selectTeamBrain,
-  selectTeamEffort,
 } from '../src/lib/modelContext.js';
 
 function response(status, body) {
@@ -36,7 +35,7 @@ const providers = [
 
 function fixtureFetcher(
   teamId = 'marketing',
-  inference = { provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' },
+  inference = { provider: 'openai', model: 'gpt-6.1-sol' },
   providerCatalog = providers,
 ) {
   return async (url, options = {}) => {
@@ -59,7 +58,7 @@ test('loads one verified provider/model authority for the selected Team', async 
   await loadModelContext(fixtureFetcher(), 'marketing');
   assert.deepEqual(get(modelContext), {
     phase: 'ready', teamId: 'marketing', providers,
-    provider: 'openai', model: 'gpt-6.1-sol', effort: 'low', ready: true, error: '',
+    provider: 'openai', model: 'gpt-6.1-sol', ready: true, error: '',
   });
 });
 
@@ -76,7 +75,7 @@ test('provider preload is shared with model hydration and cached across Team swi
     if (url === '/api/teams/marketing/inference' || url === '/api/teams/support/inference') {
       inferenceRequests += 1;
       const teamId = url.split('/')[3];
-      return response(200, { team_id: teamId, provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' });
+      return response(200, { team_id: teamId, provider: 'openai', model: 'gpt-6.1-sol' });
     }
     throw new Error(`Unexpected request: GET ${url}`);
   };
@@ -112,7 +111,6 @@ test('opens Chat by persisting the default Brain when its provider key already e
   assert.deepEqual(JSON.parse(calls[2].options.body), {
     provider: 'openai',
     model: 'gpt-6-luna',
-    effort: 'low',
   });
   assert.equal(get(modelContext).provider, 'openai');
   assert.equal(get(modelContext).model, 'gpt-6-luna');
@@ -138,7 +136,7 @@ test('persists one atomic Brain change when its provider key is verified', async
 
   assert.equal(calls.length, 1);
   assert.equal(calls[0].url, '/api/teams/marketing/inference');
-  assert.deepEqual(JSON.parse(calls[0].options.body), { provider: 'openai', model: 'gpt-6-luna', effort: 'low' });
+  assert.deepEqual(JSON.parse(calls[0].options.body), { provider: 'openai', model: 'gpt-6-luna' });
   assert.equal(get(modelContext).model, 'gpt-6-luna');
   assert.equal(get(modelContext).ready, true);
 });
@@ -195,7 +193,6 @@ test('validated credential is saved before inference and unlocks the Team', asyn
   assert.deepEqual(JSON.parse(calls[1].options.body), {
     provider: 'anthropic',
     model: 'claude-opus-5-5',
-    effort: 'low',
   });
   assert.equal(get(modelContext).ready, true);
   assert.equal(get(modelContext).providers[1].configured, true);
@@ -218,7 +215,7 @@ test('rejected credential never reaches the Team inference endpoint', async () =
 
 for (const [name, inferenceResponse] of [
   ['refused', () => response(502, { detail: 'The Team model selection could not be saved.' })],
-  ['invalid', () => response(200, { team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' })],
+  ['invalid', () => response(200, { team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol' })],
   ['unreachable', () => { throw new TypeError('Failed to fetch'); }],
 ]) {
   test(`a saved credential survives a ${name} Team selection so only the selection is retried`, async () => {
@@ -255,7 +252,7 @@ test('switching to another verified provider writes only the selected Brain once
   const calls = [];
   const base = fixtureFetcher(
     'marketing',
-    { provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' },
+    { provider: 'openai', model: 'gpt-6.1-sol' },
     configuredProviders,
   );
   const fetcher = async (url, options = {}) => {
@@ -272,7 +269,6 @@ test('switching to another verified provider writes only the selected Brain once
   assert.deepEqual(JSON.parse(calls[0].options.body), {
     provider: 'anthropic',
     model: 'claude-opus-5-5',
-    effort: 'low',
   });
   assert.equal(get(modelContext).ready, true);
 });
@@ -306,53 +302,17 @@ test('late model responses from the previous Team cannot replace current authori
     team_id: 'marketing',
     provider: 'openai',
     model: 'gpt-6.1-sol',
-    effort: 'low',
   }));
   await oldLoad;
   assert.equal(get(modelContext).teamId, 'support');
   assert.equal(get(modelContext).ready, true);
 });
 
-test('changing only the reasoning effort writes one exact Team selection', async () => {
-  const calls = [];
-  const base = fixtureFetcher();
-  const fetcher = async (url, options = {}) => {
-    calls.push({ url, options });
-    return base(url, options);
-  };
-  await loadModelContext(fetcher, 'marketing');
-  calls.length = 0;
-  const pending = selectTeamEffort(fetcher, 'marketing', 'high');
-  assert.equal(get(modelContext).ready, true);
-  await pending;
-  assert.deepEqual(calls.map((call) => `${call.options.method ?? 'GET'} ${call.url}`), [
-    'PUT /api/teams/marketing/inference',
-  ]);
-  assert.deepEqual(JSON.parse(calls[0].options.body), { provider: 'openai', model: 'gpt-6.1-sol', effort: 'high' });
-  assert.equal(get(modelContext).effort, 'high');
-  assert.equal(get(modelContext).ready, true);
-  calls.length = 0;
-  assert.equal((await selectTeamEffort(fetcher, 'marketing', 'high')).effort, 'high');
-  assert.equal(calls.length, 0);
-  await assert.rejects(selectTeamEffort(fetcher, 'marketing', 'xhigh'), /Invalid Team model request/);
-  await assert.rejects(selectTeamEffort(fetcher, 'support', 'low'), /Invalid Team model request/);
-});
-
-test('a new Team starts with low reasoning effort and rejects an unknown effort from Team', async () => {
-  await loadModelContext(fixtureFetcher('marketing', null), 'marketing');
-  assert.equal(get(modelContext).effort, 'low');
-  await assert.rejects(
-    loadModelContext(fixtureFetcher('marketing', { provider: 'openai', model: 'gpt-6.1-sol', effort: 'xhigh' }), 'marketing'),
-    /Team inference settings are invalid/,
-  );
-});
-
-
 test('a key save that finishes after the session cleared never repopulates the provider cache', async () => {
   let releasePut;
   const putHeld = new Promise((resolve) => { releasePut = resolve; });
   let providerRequests = 0;
-  const base = fixtureFetcher('marketing', { provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'low' });
+  const base = fixtureFetcher('marketing', { provider: 'anthropic', model: 'claude-sonnet-5-5' });
   const fetcher = async (url, options = {}) => {
     if (url === '/api/model-providers') providerRequests += 1;
     if (url === '/api/model-providers/anthropic' && options.method === 'PUT') {
@@ -380,8 +340,8 @@ test('a key saved while switching Teams stays in the provider cache for the next
   let releasePut;
   const putHeld = new Promise((resolve) => { releasePut = resolve; });
   let providerRequests = 0;
-  const marketing = fixtureFetcher('marketing', { provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'low' });
-  const support = fixtureFetcher('support', { provider: 'openai', model: 'gpt-6-luna', effort: 'low' });
+  const marketing = fixtureFetcher('marketing', { provider: 'anthropic', model: 'claude-sonnet-5-5' });
+  const support = fixtureFetcher('support', { provider: 'openai', model: 'gpt-6-luna' });
   const fetcher = async (url, options = {}) => {
     if (url === '/api/model-providers') providerRequests += 1;
     if (url === '/api/model-providers/anthropic' && options.method === 'PUT') {
@@ -403,8 +363,8 @@ test('a key saved while switching Teams stays in the provider cache for the next
 
 // Team marketing saves an Anthropic key while Team support, whose persisted Brain is Anthropic, becomes active.
 function teamSwitchFetcher({ releaseKey, failMarketingSelection = false, writes = [] }) {
-  const marketing = fixtureFetcher('marketing', { provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' });
-  const support = fixtureFetcher('support', { provider: 'anthropic', model: 'claude-sonnet-5-5', effort: 'low' });
+  const marketing = fixtureFetcher('marketing', { provider: 'openai', model: 'gpt-6.1-sol' });
+  const support = fixtureFetcher('support', { provider: 'anthropic', model: 'claude-sonnet-5-5' });
   return async (url, options = {}) => {
     if (options.method === 'PUT') writes.push(url);
     if (url === '/api/model-providers/anthropic' && options.method === 'PUT') {
@@ -438,7 +398,6 @@ for (const [name, failMarketingSelection] of [['completed', false], ['partially 
     assert.equal(current.teamId, 'support');
     assert.equal(current.provider, 'anthropic');
     assert.equal(current.model, 'claude-sonnet-5-5');
-    assert.equal(current.effort, 'low');
     assert.equal(current.ready, true);
     assert.equal(current.providers.find((entry) => entry.id === 'anthropic').masked, '••••late');
     // Reconciling the active Team never writes its selection; only marketing's own save reached the network.

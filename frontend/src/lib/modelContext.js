@@ -2,8 +2,6 @@ import { get, writable } from 'svelte/store';
 
 import { LocalApiError } from './localApi.js';
 import {
-  DEFAULT_INFERENCE_EFFORT,
-  INFERENCE_EFFORTS,
   listModelProviders,
   loadInference,
   saveModelSetup,
@@ -17,7 +15,6 @@ function emptyContext() {
     providers: [],
     provider: '',
     model: '',
-    effort: DEFAULT_INFERENCE_EFFORT,
     ready: false,
     error: '',
   };
@@ -67,8 +64,7 @@ function persistedAndConfigured(state, provider) {
     provider?.configured &&
     persisted?.teamId === state.teamId &&
     persisted.provider === state.provider &&
-    persisted.model === state.model &&
-    persisted.effort === state.effort,
+    persisted.model === state.model,
   );
 }
 
@@ -88,7 +84,7 @@ function reconcile(state) {
 function settle(attempt, snapshot, saved) {
   if (attempt !== generation) return snapshot;
   if (saved) {
-    persisted = { teamId: snapshot.teamId, provider: saved.provider, model: saved.model, effort: saved.effort };
+    persisted = { teamId: snapshot.teamId, provider: saved.provider, model: saved.model };
   }
   const settled = reconcile(snapshot);
   modelContext.set(settled);
@@ -133,14 +129,13 @@ export async function loadModelContext(fetcher, teamId) {
       : providers.find((entry) => entry.configured) ?? providers[0];
     if (!selected) throw new LocalApiError('Model provider settings are invalid.');
     const model = inference?.model ?? selected.default_model;
-    const effort = inference?.effort ?? DEFAULT_INFERENCE_EFFORT;
     if (!selectedModel(selected, model)) throw new LocalApiError('Team model settings are invalid.');
     let selectionReady = Boolean(inference && selected.configured);
     if (!inference && selected.configured) {
       await saveModelSetup(
         fetcher,
         teamId,
-        { provider: selected.id, model, effort, apiKey: '' },
+        { provider: selected.id, model, apiKey: '' },
         providers,
       );
       selectionReady = true;
@@ -151,11 +146,10 @@ export async function loadModelContext(fetcher, teamId) {
       providers,
       provider: selected.id,
       model,
-      effort,
       ready: selectionReady,
       error: '',
     };
-    return settle(attempt, snapshot, inference ?? (selectionReady ? { provider: selected.id, model, effort } : null));
+    return settle(attempt, snapshot, inference ?? (selectionReady ? { provider: selected.id, model } : null));
   } catch (error) {
     throw fail(attempt, error, loading);
   }
@@ -184,7 +178,7 @@ async function persist(fetcher, teamId, apiKey = '') {
     const result = await saveModelSetup(
       fetcher,
       teamId,
-      { provider: current.provider, model: current.model, effort: current.effort, apiKey },
+      { provider: current.provider, model: current.model, apiKey },
       current.providers,
     );
     const providers = withProviderState(current.providers, result.providerState);
@@ -195,7 +189,6 @@ async function persist(fetcher, teamId, apiKey = '') {
       providers,
       provider: result.inference.provider,
       model: result.inference.model,
-      effort: result.inference.effort,
       ready: true,
       error: '',
     };
@@ -249,24 +242,5 @@ export async function selectTeamBrain(fetcher, teamId, providerId, modelId) {
     ready: selected.configured && current.ready,
     error: '',
   });
-  return selected.configured ? persist(fetcher, teamId) : get(modelContext);
-}
-
-export async function selectTeamEffort(fetcher, teamId, effort) {
-  requireRequest(fetcher, teamId);
-  const current = get(modelContext);
-  const selected = providerFrom(current);
-  if (
-    current.teamId !== teamId ||
-    !selected ||
-    !INFERENCE_EFFORTS.includes(effort) ||
-    current.phase === 'loading' ||
-    current.phase === 'saving'
-  ) {
-    throw new LocalApiError('Invalid Team model request.');
-  }
-  if (current.effort === effort) return current;
-  generation += 1;
-  modelContext.set({ ...current, phase: 'ready', effort, error: '' });
   return selected.configured ? persist(fetcher, teamId) : get(modelContext);
 }

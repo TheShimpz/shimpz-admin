@@ -83,7 +83,7 @@ async function routeReadyChat(page, { teamGate, inferenceGate }) {
   }));
   await page.route('**/api/teams/marketing/inference', async (route) => {
     await inferenceGate.promise;
-    await json(route, { team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' });
+    await json(route, { team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol' });
   });
   await page.routeWebSocket('**/api/teams/marketing/chat/ws', (socket) => {
     socket.onMessage((message) => {

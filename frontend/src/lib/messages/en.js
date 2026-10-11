@@ -838,15 +838,9 @@ export default {
   },
   brainMenu: {
     label: 'Choose the Brain',
-    current: 'Brain: {model}, {effort} reasoning',
+    current: 'Brain: {model}',
     settings: 'Brain settings',
     model: 'Model',
-    effort: 'Reasoning effort',
-    efforts: {
-      low: 'Low',
-      medium: 'Medium',
-      high: 'High',
-    },
     fast: {
       label: 'Fast routing (Jev)',
       off: 'Off. The model routes every message.',

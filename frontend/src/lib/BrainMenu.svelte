@@ -35,10 +35,9 @@
   let unavailable = $derived(
     disabled || !$teamContext.selectedTeamId || $teamContext.phase === 'loading' || busy,
   );
-  let effortLabel = $derived(copy.efforts[$modelContext.effort] ?? copy.efforts.low);
   let triggerLabel = $derived(
     selected
-      ? $t('brainMenu.current', { model: selected.title, effort: effortLabel })
+      ? $t('brainMenu.current', { model: selected.title })
       : $t('chatContext.modelLoading'),
   );
 
@@ -147,7 +146,7 @@
   .brain-menu :global(.shimpz-button.brain-trigger:hover:not(:disabled)),
   .brain-menu :global(.brain-trigger[aria-expanded="true"]) { color: var(--shimpz-color-cyan); }
   /* The Brain panel: a chamfered console. Models are grouped under a quiet provider rule, the current one lit by a
-     diamond and the Team rows' scanline tint; the reasoning effort has its own composer control. */
+     diamond and the Team rows' scanline tint. */
   .panel {
     --brain-hover-bg: color-mix(in srgb, var(--shimpz-color-cyan) 7%, var(--shimpz-color-bg));
     --brain-scanlines: repeating-linear-gradient(0deg, rgb(0 240 255 / 5%) 0 1px, transparent 1px 3px);

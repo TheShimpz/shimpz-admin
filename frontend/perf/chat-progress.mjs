@@ -68,7 +68,7 @@ function fixture(method, path) {
     'GET /api/teams/perf_team/assistant-stored-inputs': () => ({ stored_inputs: [] }),
     'GET /api/teams/perf_team/routines': () => ({ team_id: team.team_id, routines: [], runs: [], incidents: [] }),
     'GET /api/teams/perf_team/inference': () => ({
-      team_id: team.team_id, provider: provider.id, model: provider.default_model, effort: 'low',
+      team_id: team.team_id, provider: provider.id, model: provider.default_model,
     }),
   };
   return answers[`${method} ${path}`]?.() ?? null;

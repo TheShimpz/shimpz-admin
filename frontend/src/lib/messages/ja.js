@@ -824,15 +824,9 @@ export default {
   },
   brainMenu: {
     label: 'Brain を選択',
-    current: 'Brain：{model}、推論 {effort}',
+    current: 'Brain：{model}',
     settings: 'Brain の設定',
     model: 'モデル',
-    effort: '推論の強度',
-    efforts: {
-      low: '低',
-      medium: '中',
-      high: '高',
-    },
     fast: {
       label: '高速ルーティング（Jev）',
       off: 'オフ。すべてのメッセージをモデルがルーティングします。',

@@ -824,15 +824,9 @@ export default {
   },
   brainMenu: {
     label: 'Brain wählen',
-    current: 'Brain: {model}, Denkaufwand {effort}',
+    current: 'Brain: {model}',
     settings: 'Brain-Einstellungen',
     model: 'Modell',
-    effort: 'Denkaufwand',
-    efforts: {
-      low: 'Niedrig',
-      medium: 'Mittel',
-      high: 'Hoch',
-    },
     fast: {
       label: 'Schnelles Routing (Jev)',
       off: 'Aus. Das Modell routet jede Nachricht.',

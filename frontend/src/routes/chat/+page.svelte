@@ -18,7 +18,6 @@
   import AssistantIntegrationsDrawer from '#lib/AssistantIntegrationsDrawer.svelte';
   import { historyBoundary, historySince, listChatHistory } from '#lib/chatHistory.js';
   import BrainMenu from '#lib/BrainMenu.svelte';
-  import EffortMenu from '#lib/EffortMenu.svelte';
   import FastRoutingMenu from '#lib/FastRoutingMenu.svelte';
   import ClarificationCard from '#lib/ClarificationCard.svelte';
   import { clarifiedRequest, matchClarificationAnswers } from '#lib/clarification.js';
@@ -940,7 +939,7 @@
       integrationsOpen ||
       document.querySelector('dialog[open], :popover-open') ||
       // Escape from a composer control returns focus to its trigger; a finished save must not take it away.
-      document.activeElement?.closest('.brain-menu, .effort-menu, .fast-menu')
+      document.activeElement?.closest('.brain-menu, .fast-menu')
     ) return;
     composerInput?.focus({ preventScroll: true });
   }
@@ -2521,7 +2520,6 @@
                 />
               {/if}
               <BrainMenu disabled={composerBusy || stopping} />
-              <EffortMenu disabled={composerBusy || stopping} />
               <FastRoutingMenu disabled={composerBusy || stopping} />
               <Button
                 bind:element={integrationsButton}

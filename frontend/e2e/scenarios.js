@@ -414,7 +414,7 @@ function otherTeamRoutes(state, method, path) {
     assistants: () => ok({ assistants: [] }),
     files: () => ok({ files: [] }),
     'chat/history': () => ok({ entries: [], before: null }),
-    inference: () => ok({ team_id: teamId, provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' }),
+    inference: () => ok({ team_id: teamId, provider: 'openai', model: 'gpt-6.1-sol' }),
     'assistant-integrations': () => ok({ integrations: [] }),
     'assistant-stored-inputs': () => ok({ stored_inputs: [] }),
     routines: () => ok({ team_id: teamId, routines: [], runs: [], incidents: [] }),
@@ -709,7 +709,7 @@ export function createScenario(name = 'ready', locale = 'en') {
         return ok({ entries: historyView(state.history, query.get('routine')), before: null });
       }
       if (path === '/api/teams/marketing/inference' && method === 'GET') {
-        return ok({ team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol', effort: 'low' });
+        return ok({ team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol' });
       }
       if (path === '/api/teams/marketing/inference' && method === 'PUT') return ok({ team_id: 'marketing', ...body });
       if (path === '/api/teams/marketing/assistant-integrations' && method === 'GET') return ok({ integrations: [] });

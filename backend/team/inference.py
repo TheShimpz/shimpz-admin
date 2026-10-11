@@ -1,4 +1,4 @@
-"""Admin routes for a Team's settings: the model selection with its reasoning effort, and Action confirmation."""
+"""Admin routes for a Team's settings: the model selection and Action confirmation."""
 
 from fastapi import FastAPI, Request
 from fastapi.concurrency import run_in_threadpool

@@ -824,15 +824,9 @@ export default {
   },
   brainMenu: {
     label: 'Escolher o Brain',
-    current: 'Brain: {model}, raciocínio {effort}',
+    current: 'Brain: {model}',
     settings: 'Configurações do Brain',
     model: 'Modelo',
-    effort: 'Esforço de raciocínio',
-    efforts: {
-      low: 'Baixo',
-      medium: 'Médio',
-      high: 'Alto',
-    },
     fast: {
       label: 'Roteamento rápido (Jev)',
       off: 'Desligado. O modelo roteia cada mensagem.',
