@@ -105,6 +105,15 @@ export function authenticatedLocalSession(overrides = {}) {
 
 // Responses are deep copies, so neither a caller nor another scenario can mutate a scenario's state.
 const ok = (json) => ({ status: 200, json: structuredClone(json) });
+// The Space's resource signal Team measures: every service running, 0.4 of 4 GiB of memory, 1.3 of 64 GiB of storage.
+const SPACE_RESOURCES = Object.freeze({
+  services_running: 7,
+  services_total: 7,
+  memory_used_bytes: 429_496_730,
+  memory_total_bytes: 4 * 2 ** 30,
+  storage_used_bytes: 1_395_864_371,
+  storage_total_bytes: 64 * 2 ** 30,
+});
 
 // Each scenario names its starting state; `ready` is the Local chat with its Team list and no Routines.
 const STARTS = {
@@ -687,6 +696,7 @@ export function createScenario(name = 'ready', locale = 'en') {
       const security = securityRoutes(state, method, path, body);
       if (security) return security;
       if (!state.session.authenticated) return null;
+      if (path === '/api/space/resources' && method === 'GET') return ok(SPACE_RESOURCES);
       if (path === '/api/teams' && method === 'GET') return ok({ teams: state.teams });
       if (path === '/api/teams/order' && method === 'PUT') return reorderTeams(state, body);
       if (path === '/api/assistants' && method === 'GET') return ok({ assistants: ASSISTANTS });

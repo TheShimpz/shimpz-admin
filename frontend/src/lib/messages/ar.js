@@ -69,6 +69,11 @@ export default {
     platformRollback: 'تم التراجع عن التحديث',
     platformOrdinal: 'إصدار المنصة المحلية {ordinal}',
     platformDeveloper: 'إصدار تطويري مبني على إصدار المنصة المحلية {ordinal}',
+    resourceServices: 'الخدمات',
+    resourceServicesTitle: 'خدمات Space قيد التشغيل',
+    resourceMemory: 'الذاكرة',
+    resourceStorage: 'التخزين',
+    resourceUnit: 'GiB',
   },
   teams: {
     kicker: 'الفرق // بيئات تشغيل معزولة',

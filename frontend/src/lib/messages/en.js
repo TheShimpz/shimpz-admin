@@ -67,6 +67,11 @@ export default {
     platformRollback: 'Update rolled back',
     platformOrdinal: 'Local platform release {ordinal}',
     platformDeveloper: 'Developer build on Local platform release {ordinal}',
+    resourceServices: 'Services',
+    resourceServicesTitle: 'Space services running',
+    resourceMemory: 'Memory',
+    resourceStorage: 'Storage',
+    resourceUnit: 'GiB',
   },
   teams: {
     kicker: 'Teams // isolated runtimes',

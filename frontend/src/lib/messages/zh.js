@@ -69,6 +69,11 @@ export default {
     platformRollback: '更新已回滚',
     platformOrdinal: '本地平台版本 {ordinal}',
     platformDeveloper: '基于本地平台版本 {ordinal} 的开发构建',
+    resourceServices: '服务',
+    resourceServicesTitle: '正在运行的 Space 服务',
+    resourceMemory: '内存',
+    resourceStorage: '存储',
+    resourceUnit: 'GiB',
   },
   teams: {
     kicker: '团队 // 隔离运行环境',

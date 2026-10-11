@@ -69,6 +69,11 @@ export default {
     platformRollback: 'Atualização revertida',
     platformOrdinal: 'Versão local da plataforma {ordinal}',
     platformDeveloper: 'Build de desenvolvimento sobre a versão local da plataforma {ordinal}',
+    resourceServices: 'Serviços',
+    resourceServicesTitle: 'Serviços do Space em execução',
+    resourceMemory: 'Memória',
+    resourceStorage: 'Armazenamento',
+    resourceUnit: 'GiB',
   },
   teams: {
     kicker: 'Times // runtimes isolados',

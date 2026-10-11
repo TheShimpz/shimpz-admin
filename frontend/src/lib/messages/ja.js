@@ -69,6 +69,11 @@ export default {
     platformRollback: '更新をロールバックしました',
     platformOrdinal: 'ローカルプラットフォーム版 {ordinal}',
     platformDeveloper: 'ローカルプラットフォーム版 {ordinal} の開発ビルド',
+    resourceServices: 'サービス',
+    resourceServicesTitle: '実行中の Space サービス',
+    resourceMemory: 'メモリ',
+    resourceStorage: 'ストレージ',
+    resourceUnit: 'GiB',
   },
   teams: {
     kicker: 'チーム // 分離ランタイム',

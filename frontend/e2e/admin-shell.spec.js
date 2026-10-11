@@ -371,6 +371,62 @@ test('reports a Local rollback as a localized warning', async ({ page }) => {
   await expect(release.getByText('Atualização revertida', { exact: true })).toBeVisible();
 });
 
+test('reads the Space resources only while visible, one read at a time, and clears them after a failed read', async ({ page }) => {
+  await page.clock.install();
+  await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+  }));
+  const reads = [];
+  await page.route('**/api/space/resources', (route) => { reads.push(route); });
+  const answer = (status) => reads.at(-1).fulfill({
+    status,
+    contentType: 'application/json',
+    body: JSON.stringify(status === 200
+      ? {
+        services_running: 6,
+        services_total: 7,
+        memory_used_bytes: 429_496_730,
+        memory_total_bytes: 4 * 2 ** 30,
+        storage_used_bytes: null,
+        storage_total_bytes: null,
+      }
+      : { detail: 'Docker is unavailable' }),
+  });
+  const visibility = (state) => page.evaluate((hidden) => {
+    if (hidden) Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    else delete document.visibilityState;
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, state === 'hidden');
+  const services = page.getByText('Services 6/7', { exact: true });
+
+  await page.goto('/assistants/');
+  await expect.poll(() => reads.length).toBe(1);
+  await answer(200);
+  await expect(services).toBeVisible();
+  await expect(page.getByText('Memory 0.4/4 GiB', { exact: true })).toBeVisible();
+
+  // A hidden page lets its turns pass; becoming visible reads at once.
+  await visibility('hidden');
+  await page.clock.runFor(61_000);
+  await page.waitForTimeout(300);
+  expect(reads).toHaveLength(1);
+  await visibility('visible');
+  await expect.poll(() => reads.length).toBe(2);
+
+  // While that read is pending, the next turn does not start another.
+  await page.clock.runFor(31_000);
+  await page.waitForTimeout(300);
+  expect(reads).toHaveLength(2);
+
+  // A failed read clears the signal, and the next turn reads again.
+  await answer(503);
+  await expect(services).toBeHidden();
+  await page.clock.runFor(31_000);
+  await expect.poll(() => reads.length).toBe(3);
+});
+
 test('opens the Store for the Team its link names and refuses a missing Team', { tag: '@mobile' }, async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({

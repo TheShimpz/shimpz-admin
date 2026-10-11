@@ -69,6 +69,11 @@ export default {
     platformRollback: 'Mise à jour annulée',
     platformOrdinal: 'Version locale de la plateforme {ordinal}',
     platformDeveloper: 'Build de développement sur la version locale de la plateforme {ordinal}',
+    resourceServices: 'Services',
+    resourceServicesTitle: 'Services du Space en cours d’exécution',
+    resourceMemory: 'Mémoire',
+    resourceStorage: 'Stockage',
+    resourceUnit: 'Gio',
   },
   teams: {
     kicker: 'Équipes // environnements isolés',

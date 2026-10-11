@@ -7,6 +7,7 @@
   import PlatformReleaseStatus from '#lib/PlatformReleaseStatus.svelte';
   import SecurityAlert from '#lib/SecurityAlert.svelte';
   import SecurityDialog from '#lib/SecurityDialog.svelte';
+  import SpaceResources from '#lib/SpaceResources.svelte';
   import TeamDialogs from '#lib/TeamDialogs.svelte';
   import TeamNavigation from '#lib/TeamNavigation.svelte';
   import TeamSidebar from '#lib/TeamSidebar.svelte';
@@ -79,6 +80,7 @@
         {@render securityButton()}
         <LocaleMenu wide />
         <PlatformReleaseStatus />
+        <SpaceResources />
       </div>
     </div>
   {/if}
