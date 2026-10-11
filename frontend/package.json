@@ -18,7 +18,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@shimpz/frontend": "https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/dab6070dcf2735b13adbb18ab3ac2ad5b7d7a3aa",
+    "@shimpz/frontend": "https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/051c81d2120982c28c3f9767faf288f4f6798e8e",
     "qrcode": "1.5.4"
   },
   "devDependencies": {

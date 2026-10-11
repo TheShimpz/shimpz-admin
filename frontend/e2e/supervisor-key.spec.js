@@ -19,7 +19,7 @@ function recordRequests(page) {
 
 async function replaceKey(page, password) {
   await page.getByRole('button', { name: 'Supervisor' }).click();
-  await page.getByRole('button', { name: copy.open }).click();
+  await page.getByRole('menuitem', { name: copy.open }).click();
   const dialog = page.getByRole('dialog', { name: copy.title });
   await dialog.getByRole('region', { name: copy.keyLabel }).getByRole('button', { name: copy.rotate }).click();
   await dialog.getByLabel(copy.password).fill(password);

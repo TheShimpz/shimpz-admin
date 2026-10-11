@@ -24,7 +24,6 @@
   let createButton = $state();
   let securityDialog = $state();
   let securityTrigger = $state();
-  let accountTrigger = $state();
 
   function closeTeamDrawer() {
     teamDrawer?.close();
@@ -61,7 +60,7 @@
 {/snippet}
 
 {#snippet supervisorMenu()}
-  <SupervisorMenu bind:element={accountTrigger} onsecurity={() => securityDialog?.open()} />
+  <SupervisorMenu onsecurity={() => securityDialog?.open()} />
 {/snippet}
 
 {#snippet sidebar()}
@@ -131,7 +130,7 @@
     <TeamDialogs bind:this={teamDialogs} onsettled={restoreTeamFocus} />
     <SecurityDialog
       bind:this={securityDialog}
-      onclose={() => queueMicrotask(() => (mobile ? securityTrigger : accountTrigger)?.focus())}
+      onclose={() => queueMicrotask(() => (mobile ? securityTrigger : document.querySelector('.supervisor-menu .trigger'))?.focus())}
     />
     {#if mobile}
       <Modal class="team-drawer" bind:element={teamDrawer} labelledBy="team-drawer-title">
