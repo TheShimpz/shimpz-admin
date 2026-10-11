@@ -39,45 +39,40 @@ export async function fetchSpaceResources(fetcher) {
   return body;
 }
 
-// Use at or above these shares of a total reads as close to full, then as full.
+// Use at or above these shares of a total reads as close to full: first a warning, then an alert.
 const WARN = 0.8;
 const ALERT = 0.9;
 
-function usage(used, total) {
-  if (used === null) return { ratio: null, level: 'unknown' };
-  const ratio = Math.min(used / total, 1);
-  return { ratio, level: ratio >= ALERT ? 'alert' : ratio >= WARN ? 'warn' : 'ok' };
-}
-
 /**
  * The signal's three segments in one interface language: running services out of all of them, then memory and the
- * storage filesystem in GiB with at most one fraction digit, or only the label when that pair is unknown. Each carries
- * its share (0 to 1, or null when unknown) and a level: a stopped service is an alert, a nearly full resource a warning
- * or an alert.
+ * storage filesystem in GiB with at most one fraction digit, or only the label when that pair is unknown.
  */
 export function resourceSegments(resources, locale, t) {
   const number = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
   const amount = (used, total) => (used === null
     ? null
     : `${number.format(used / GIB)}/${number.format(total / GIB)} ${t('shell.resourceUnit')}`);
-  const { services_running: running, services_total: total } = resources;
   return [
-    {
-      label: t('shell.resourceServices'),
-      value: `${number.format(running)}/${number.format(total)}`,
-      ratio: running / total,
-      level: running === total ? 'ok' : 'alert',
-      cells: total,
-    },
-    {
-      label: t('shell.resourceMemory'),
-      value: amount(resources.memory_used_bytes, resources.memory_total_bytes),
-      ...usage(resources.memory_used_bytes, resources.memory_total_bytes),
-    },
-    {
-      label: t('shell.resourceStorage'),
-      value: amount(resources.storage_used_bytes, resources.storage_total_bytes),
-      ...usage(resources.storage_used_bytes, resources.storage_total_bytes),
-    },
+    { label: t('shell.resourceServices'), value: `${number.format(resources.services_running)}/${number.format(resources.services_total)}` },
+    { label: t('shell.resourceMemory'), value: amount(resources.memory_used_bytes, resources.memory_total_bytes) },
+    { label: t('shell.resourceStorage'), value: amount(resources.storage_used_bytes, resources.storage_total_bytes) },
   ];
+}
+
+/**
+ * The Space's one status: its level (ok, warn, alert) and the message key of its worst condition. A stopped service is
+ * the worst, then a resource at its total, then one at or above the alert or warning share; unknown pairs count as ok.
+ */
+export function resourceStatus(resources) {
+  const share = (used, total) => (used === null ? 0 : used / total);
+  const memory = share(resources.memory_used_bytes, resources.memory_total_bytes);
+  const storage = share(resources.storage_used_bytes, resources.storage_total_bytes);
+  if (resources.services_running < resources.services_total) return { level: 'alert', message: 'shell.resourceServiceStopped' };
+  const worst = storage >= memory
+    ? { share: storage, full: 'shell.resourceStorageFull', near: 'shell.resourceStorageNearlyFull' }
+    : { share: memory, full: 'shell.resourceMemoryFull', near: 'shell.resourceMemoryNearlyFull' };
+  if (worst.share >= 1) return { level: 'alert', message: worst.full };
+  if (worst.share >= ALERT) return { level: 'alert', message: worst.near };
+  if (worst.share >= WARN) return { level: 'warn', message: worst.near };
+  return { level: 'ok', message: 'shell.resourceOk' };
 }

@@ -409,13 +409,14 @@ test('reads the Space resources only while visible, one read at a time, and clea
     else delete document.visibilityState;
     document.dispatchEvent(new Event('visibilitychange'));
   }, state === 'hidden');
-  const services = page.getByRole('definition').filter({ hasText: /6\/7, service stopped$/ });
+  const services = page.getByText('A service is stopped', { exact: true });
 
   await page.goto('/assistants/');
   await expect.poll(() => reads.length).toBe(1);
   await answer(200);
   await expect(services).toBeVisible();
-  await expect(page.getByRole('definition').filter({ hasText: /^0\.4\/4 GiB$/ })).toBeVisible();
+  // The numbers behind the status are its hover details.
+  await expect(page.getByTitle(/Memory 0\.4\/4 GiB/)).toBeVisible();
 
   // A hidden page lets its turns pass; becoming visible reads at once.
   await visibility('hidden');
@@ -481,7 +482,7 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
     contentType: 'application/json',
     body: JSON.stringify({ files: [] }),
   }));
-  // The sidebar's resource bars, one of them nearly full, are part of the scanned screen.
+  // The sidebar's status, with memory nearly full, is part of the scanned screen.
   await page.route('**/api/space/resources', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
@@ -500,9 +501,9 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
   // Each row opens its Assistant's page for the Team this catalog acts for.
   await expect(catalog.getByRole('link', { name: /^Shimpz Cloudflare/ }))
     .toHaveAttribute('href', '/assistants/shimpz-cloudflare?team=marketing');
-  // The sidebar's resource bars are a desktop element; the mobile footer does not show them.
+  // The sidebar's status is a desktop element; the mobile footer does not show it.
   if (page.viewportSize().width > 820) {
-    await expect(page.getByRole('definition').filter({ hasText: /3\.5\/4 GiB, close to full$/ })).toBeVisible();
+    await expect(page.getByText('Memory nearly full', { exact: true })).toBeVisible();
   }
   // The Assistants screen's one accessibility scan.
   expect(await accessibilityViolations(page)).toEqual([]);

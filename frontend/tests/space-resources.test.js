@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { fetchSpaceResources, resourceSegments } from '../src/lib/spaceResources.js';
+import { fetchSpaceResources, resourceSegments, resourceStatus } from '../src/lib/spaceResources.js';
 
 const GIB = 2 ** 30;
 const signal = {
@@ -61,26 +61,28 @@ test('formats each segment in the interface language and leaves an unknown pair 
     'shell.resourceUnit': 'GiB',
   };
   const t = (key) => messages[key];
-  const [services, memory, storage] = resourceSegments(signal, 'pt', t);
-  assert.deepEqual(services, { label: 'Serviços', value: '7/7', ratio: 1, level: 'ok', cells: 7 });
-  assert.deepEqual(
-    [memory.label, memory.value, memory.level, storage.label, storage.value, storage.level],
-    ['Memória', '0,4/4 GiB', 'ok', 'Armazenamento', '1,3/64 GiB', 'ok'],
-  );
-  assert.ok(Math.abs(memory.ratio - 0.1) < 1e-9);
+  assert.deepEqual(resourceSegments(signal, 'pt', t), [
+    { label: 'Serviços', value: '7/7' },
+    { label: 'Memória', value: '0,4/4 GiB' },
+    { label: 'Armazenamento', value: '1,3/64 GiB' },
+  ]);
   assert.equal(resourceSegments(signal, 'en', t)[1].value, '0.4/4 GiB');
   const unknown = { ...signal, memory_used_bytes: null, memory_total_bytes: null };
-  assert.deepEqual([resourceSegments(unknown, 'pt', t)[1].value, resourceSegments(unknown, 'pt', t)[1].ratio], [null, null]);
-  assert.equal(resourceSegments(unknown, 'pt', t)[1].level, 'unknown');
+  assert.equal(resourceSegments(unknown, 'pt', t)[1].value, null);
 });
 
-test('marks a stopped service as an alert and a nearly full resource as a warning, then an alert', () => {
-  const t = (key) => key;
-  assert.equal(resourceSegments({ ...signal, services_running: 6 }, 'en', t)[0].level, 'alert');
-  const memory = (used) => resourceSegments({ ...signal, memory_used_bytes: used }, 'en', t)[1];
-  assert.equal(memory(0.79 * 4 * GIB).level, 'ok');
-  assert.equal(memory(0.8 * 4 * GIB).level, 'warn');
-  assert.equal(memory(0.9 * 4 * GIB).level, 'alert');
-  // Docker can report more in use than its total; the share stays within the bar.
-  assert.equal(memory(5 * GIB).ratio, 1);
+test('one status names the worst condition: a stopped service, then a full, then a nearly full resource', () => {
+  const status = (change) => resourceStatus({ ...signal, ...change });
+  assert.deepEqual(status({}), { level: 'ok', message: 'shell.resourceOk' });
+  assert.deepEqual(status({ services_running: 6, storage_used_bytes: 64 * GIB }), { level: 'alert', message: 'shell.resourceServiceStopped' });
+  assert.deepEqual(status({ memory_used_bytes: 4 * GIB }), { level: 'alert', message: 'shell.resourceMemoryFull' });
+  assert.deepEqual(status({ storage_used_bytes: 0.95 * 64 * GIB }), { level: 'alert', message: 'shell.resourceStorageNearlyFull' });
+  assert.deepEqual(status({ memory_used_bytes: 0.85 * 4 * GIB }), { level: 'warn', message: 'shell.resourceMemoryNearlyFull' });
+  assert.deepEqual(status({ memory_used_bytes: 0.79 * 4 * GIB }), { level: 'ok', message: 'shell.resourceOk' });
+  // An unknown measurement never reads as a problem, and the worse share of the two decides.
+  assert.deepEqual(status({ memory_used_bytes: null, memory_total_bytes: null }), { level: 'ok', message: 'shell.resourceOk' });
+  assert.deepEqual(
+    status({ memory_used_bytes: 0.85 * 4 * GIB, storage_used_bytes: 0.92 * 64 * GIB }),
+    { level: 'alert', message: 'shell.resourceStorageNearlyFull' },
+  );
 });

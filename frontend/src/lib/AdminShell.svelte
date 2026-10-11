@@ -84,8 +84,9 @@
       </div>
       <div class="sidebar-footer">
         <LocaleMenu wide />
-        <SpaceResources />
-        <PlatformReleaseStatus />
+        <SpaceResources>
+          {#snippet lead()}<PlatformReleaseStatus />{/snippet}
+        </SpaceResources>
       </div>
     </div>
   {/if}
