@@ -48,7 +48,8 @@
 
   {#if visibleSteps.length > 0}
     <Disclosure class="ledger-details">
-      {#snippet summary()}{stagesText} <span>{visibleSteps.length}</span>{/snippet}
+      <!-- The triangle and the count are enough to see; the stages' name is announced, not shown. -->
+      {#snippet summary()}<span class="sr-only">{stagesText} </span><span class="count">{visibleSteps.length}</span>{/snippet}
       <ol class="ledger" aria-label={stagesText}>
         {#each visibleSteps as step (step.key)}
           <li class:active={step.elapsed_ms === null} class:complete={step.elapsed_ms !== null}>
@@ -168,7 +169,9 @@
     text-transform: uppercase;
   }
 
-  :global(.ledger-details [data-slot="disclosure-trigger"]) span {
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  .count {
     color: var(--accent);
     font-variant-numeric: tabular-nums;
   }
