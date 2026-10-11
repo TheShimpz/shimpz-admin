@@ -224,8 +224,9 @@ input, textarea, select { border-radius: 5px !important; }
 .shimpz-button:not(.supervisor-menu .trigger), .shimpz-choice-item, .shimpz-text-action, select { border-radius: 5px !important; }
 /* Closed boxes take the same chamfered cuts as buttons and cards: Team monograms, menu panels, popovers, dialogs. */
 .monogram { clip-path: var(--shimpz-control-shape) !important; }
-/* Larger boxes cut deeper than their rounding, so the chamfer stays visible. */
-[role="menu"], [popover], dialog {
+/* Larger boxes cut deeper than their rounding, so the chamfer stays visible. A dialog's frame is cut, never the dialog
+   itself, so the focus ring a dialog draws around itself is never clipped. */
+[role="menu"], [popover], .shimpz-dialog-frame {
   clip-path: polygon(0 0, calc(100% - var(--shimpz-cut-lg)) 0, 100% var(--shimpz-cut-lg), 100% 100%, var(--shimpz-cut-lg) 100%, 0 calc(100% - var(--shimpz-cut-lg))) !important;
 }
 
