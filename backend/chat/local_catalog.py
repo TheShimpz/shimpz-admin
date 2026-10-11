@@ -36,13 +36,8 @@ class LocalInventory:
 
 
 def _created_at(value: str) -> datetime:
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError as exc:
-        raise ValueError("Local Assistant creation time is invalid") from exc
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise ValueError("Local Assistant creation time is invalid")
-    return parsed
+    """The creation instant of an entry Team's protocol admitted: always a real, zone-qualified ISO 8601 time."""
+    return datetime.fromisoformat(value)
 
 
 def _assistant(entry: dict[str, object]) -> tuple[LocalAssistant, bool]:

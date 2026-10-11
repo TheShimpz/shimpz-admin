@@ -324,16 +324,13 @@ export async function listLocalAssistantSnapshots(fetcher, signal) {
   ) {
     throw new LocalApiError('The Local Assistant snapshot inventory is invalid.', response.status);
   }
+  // A staged identity whose labels Team refused has nothing to show, yet it must still hide the publication of the
+  // same Assistant; until the Assistants view can show it, the whole list stays unknown rather than dropping it.
+  if (body.assistants.some((entry) => entry?.reason === 'labels-invalid' && unlabeledSnapshotValid(entry))) {
+    throw new LocalApiError('The Local Assistant snapshot inventory is invalid.', response.status);
+  }
   const seen = new Set();
-  return body.assistants.flatMap((entry) => {
-    if (entry?.reason === 'labels-invalid') {
-      // A staged identity whose labels Team refused carries nothing to show; the Assistants view lists it in Phase 1b.
-      if (!unlabeledSnapshotValid(entry) || seen.has(entry.image_id)) {
-        throw new LocalApiError('The Local Assistant snapshot inventory is invalid.', response.status);
-      }
-      seen.add(entry.image_id);
-      return [];
-    }
+  return body.assistants.map((entry) => {
     if (
       !exactKeys(entry, [
         'admission',
@@ -393,7 +390,7 @@ export async function listLocalAssistantSnapshots(fetcher, signal) {
       throw new LocalApiError('The Local Assistant snapshot inventory is invalid.', response.status);
     }
     seen.add(entry.image_id);
-    return [{ ...entry }];
+    return { ...entry };
   });
 }
 
