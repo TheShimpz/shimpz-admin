@@ -59,23 +59,24 @@
   }
   .space-status.warn { --signal: var(--shimpz-color-yellow); }
   .space-status.alert { --signal: var(--shimpz-color-danger); }
+  /* The version always sits beside the summary; a long summary wraps inside itself instead. */
   .line {
     display: flex;
-    flex-wrap: wrap;
     align-items: baseline;
     justify-content: center;
-    gap: 0.35rem 0.6rem;
+    gap: 0.5rem;
     margin: 0;
   }
-  .line :global(.platform-release) { min-height: 0; padding: 0; border: 0; font-size: 0.64rem; letter-spacing: 0.06em; }
+  .line :global(.platform-release) { flex: none; min-height: 0; padding: 0; border: 0; font-size: 0.64rem; letter-spacing: 0.02em; }
   .line :global(.platform-release .indicator) { display: none; }
   .message {
     display: flex;
+    min-width: 0;
     align-items: center;
     gap: 0.4rem;
     color: var(--signal);
     font: 700 0.64rem/1.2 var(--shimpz-font-mono);
-    letter-spacing: 0.06em;
+    letter-spacing: 0.02em;
     text-shadow: 0 0 6px color-mix(in srgb, var(--signal) 50%, transparent);
     text-transform: uppercase;
   }
