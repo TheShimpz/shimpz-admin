@@ -12,7 +12,14 @@ from team import bridge as team
 from chat import local_catalog
 
 
-def _snapshot(image_character: str, created_at: str, *, assistant_id: str = "shimpz-cloudflare") -> dict[str, object]:
+def _snapshot(
+    image_character: str,
+    created_at: str,
+    *,
+    assistant_id: str = "shimpz-cloudflare",
+    admission: str = "admissible",
+    reason: str | None = None,
+) -> dict[str, object]:
     return {
         "assistant_id": assistant_id,
         "assistant_version": "0.4.5",
@@ -26,6 +33,8 @@ def _snapshot(image_character: str, created_at: str, *, assistant_id: str = "shi
         "created_at": created_at,
         "provenance": "local",
         "unpublished": True,
+        "admission": admission,
+        "reason": reason,
     }
 
 
@@ -44,7 +53,7 @@ class LocalCatalogTests(unittest.TestCase):
             },
         )
 
-        candidates = local_catalog.primary(response)
+        candidates = local_catalog.primary(response).offerable
 
         self.assertEqual([candidate.assistant_id for candidate in candidates], ["shimpz-cloudflare", "whatsapp"])
         self.assertEqual(candidates[0].image_id, "sha256:" + ("b" * 64))
@@ -62,9 +71,41 @@ class LocalCatalogTests(unittest.TestCase):
             },
         )
 
-        candidates = local_catalog.primary(response)
+        candidates = local_catalog.primary(response).offerable
 
         self.assertEqual(candidates[0].image_id, "sha256:" + ("b" * 64))
+
+    def test_only_an_admitted_identity_is_offerable_and_every_staged_identity_shadows(self) -> None:
+        response = team.TeamResponse(
+            200,
+            {
+                "assistants": [
+                    _snapshot("a", "2026-09-15T09:00:00Z", assistant_id="admitted"),
+                    _snapshot(
+                        "b",
+                        "2026-09-15T09:00:00Z",
+                        assistant_id="refused",
+                        admission="inadmissible",
+                        reason="declaration-invalid",
+                    ),
+                    _snapshot("c", "2026-09-15T09:00:00Z", assistant_id="unanswered", admission="unavailable"),
+                    # The newest image of an identity decides it, even when an older one was admitted.
+                    _snapshot("d", "2026-09-15T08:00:00Z", assistant_id="restaged"),
+                    _snapshot(
+                        "e",
+                        "2026-09-15T09:00:00Z",
+                        assistant_id="restaged",
+                        admission="inadmissible",
+                        reason="image-inconsistent",
+                    ),
+                ]
+            },
+        )
+
+        inventory = local_catalog.primary(response)
+
+        self.assertEqual([assistant.assistant_id for assistant in inventory.offerable], ["admitted"])
+        self.assertEqual(inventory.staged_ids, {"admitted", "refused", "unanswered", "restaged"})
 
     def test_rejects_widened_duplicate_or_malformed_inventory(self) -> None:
         valid = _snapshot("a", "2026-09-15T09:00:00Z")
@@ -79,6 +120,10 @@ class LocalCatalogTests(unittest.TestCase):
             team.TeamResponse(200, {"assistants": [{**valid, "created_at": "tomorrow"}]}),
             team.TeamResponse(200, {"assistants": [{**valid, "created_at": "2026-99-15T09:00:00Z"}]}),
             team.TeamResponse(200, {"assistants": [{**valid, "created_at": "2026-09-15T09:00:00.0"}]}),
+            team.TeamResponse(200, {"assistants": [{**valid, "admission": "inadmissible"}]}),
+            team.TeamResponse(200, {"assistants": [{**valid, "reason": "declaration-invalid"}]}),
+            team.TeamResponse(200, {"assistants": [{key: item for key, item in valid.items() if key != "admission"}]}),
+            team.TeamResponse(200, {"assistants": [{**valid, "name": "Shimpz\tCloudflare"}]}),
             team.TeamResponse(200, {"assistants": [], "trace_id": "bad"}),
             team.TeamResponse(200, {"assistants": [], "extra": True}),
             team.TeamResponse(503, {"detail": "private"}),

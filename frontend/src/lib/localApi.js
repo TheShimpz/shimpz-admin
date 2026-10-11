@@ -17,6 +17,7 @@ const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
 const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 const MAX_INSTALLED_ASSISTANTS = 128;
 const MAX_LOCAL_ASSISTANTS = 50;
+const LOCAL_ADMISSION_REASONS = Object.freeze(['declaration-invalid', 'image-inconsistent']);
 // The producer contract: Store and Developers admit up to 1,000 public Assistants.
 const MAX_PUBLIC_ASSISTANTS = 1000;
 // The Assistant summary is a short description of at most 80 characters, in every interface language.
@@ -261,7 +262,13 @@ export async function installAssistant(fetcher, teamId, assistantId, sourceDiges
   return { assistant: assistantId, installed: installBody.installed };
 }
 
-/** List bounded unpublished snapshots with explicitly unverified display declarations. */
+/** Team's admission verdict for one staged snapshot: a closed reason exactly when it is inadmissible. */
+function localAdmissionValid(admission, reason) {
+  if (admission === 'inadmissible') return LOCAL_ADMISSION_REASONS.includes(reason);
+  return ['admissible', 'unavailable'].includes(admission) && reason === null;
+}
+
+/** List bounded unpublished snapshots with explicitly unverified display declarations and Team's verdict. */
 export async function listLocalAssistantSnapshots(fetcher, signal) {
   if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Local Assistant snapshot request.');
   const options = { cache: 'no-store', headers: { Accept: 'application/json' } };
@@ -287,6 +294,7 @@ export async function listLocalAssistantSnapshots(fetcher, signal) {
   return body.assistants.map((entry) => {
     if (
       !exactKeys(entry, [
+        'admission',
         'assistant_id',
         'assistant_version',
         'actions',
@@ -297,9 +305,11 @@ export async function listLocalAssistantSnapshots(fetcher, signal) {
         'name',
         'platform',
         'provenance',
+        'reason',
         'summary',
         'unpublished',
       ]) ||
+      !localAdmissionValid(entry.admission, entry.reason) ||
       typeof entry.assistant_id !== 'string' ||
       !ASSISTANT_ID_RE.test(entry.assistant_id) ||
       typeof entry.assistant_version !== 'string' ||

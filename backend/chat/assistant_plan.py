@@ -235,12 +235,19 @@ def _prepared_plan(
 def planning_catalog(
     catalog: store_catalog.StoreCatalog,
 ) -> tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...]:
+    """What a plan may offer: every staged snapshot Team admitted, and each publication no staged identity shadows.
+
+    A staged identity Team refused, or could not judge this time, is never offered and still hides the publication
+    of the same Assistant, so the plan never installs the public Assistant in place of the Creator's staged one.
+    """
     with ThreadPoolExecutor(max_workers=1, thread_name_prefix="assistant-catalog") as executor:
         local_future = submit_in_context(executor, team.list_local_assistants)
         public = catalog.get(store_catalog.PLANNING_LOCALE)
-        local_assistants = local_catalog.primary(local_future.result())
-    local_ids = {assistant.assistant_id for assistant in local_assistants}
-    combined = (*local_assistants, *(assistant for assistant in public if assistant.assistant_id not in local_ids))
+        local = local_catalog.primary(local_future.result())
+    combined = (
+        *local.offerable,
+        *(assistant for assistant in public if assistant.assistant_id not in local.staged_ids),
+    )
     return tuple(sorted(combined, key=lambda assistant: assistant.assistant_id))
 
 

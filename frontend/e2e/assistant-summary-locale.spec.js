@@ -81,7 +81,7 @@ async function routeAssistants(page, { catalogLocale = (locale) => locale, catal
           assistant_id: 'zone-inspector', assistant_version: '0.1.0', name: 'Zone Inspector',
           summary: STAGED.en, actions: ['list-zones'], integrations: ['cloudflare'],
           declared_creators: ['@shimpz'], created_at: '2026-09-17T07:00:00Z', image_id: IMAGE_ID,
-          platform: 'linux/amd64', provenance: 'local', unpublished: true,
+          platform: 'linux/amd64', provenance: 'local', unpublished: true, admission: 'admissible', reason: null,
         }],
         trace_id: 'c'.repeat(32),
       },

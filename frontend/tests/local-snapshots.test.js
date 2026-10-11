@@ -21,6 +21,8 @@ function snapshot(assistantId, createdAt, imageCharacter) {
     platform: 'linux/amd64',
     provenance: 'local',
     unpublished: true,
+    admission: 'admissible',
+    reason: null,
   };
 }
 

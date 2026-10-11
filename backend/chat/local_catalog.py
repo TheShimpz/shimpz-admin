@@ -1,6 +1,5 @@
 """Strict bounded planning projection for locally staged Assistant snapshots."""
 
-import re
 from dataclasses import dataclass
 from datetime import datetime
 
@@ -9,26 +8,7 @@ from team import bridge as team
 from chat import store_catalog
 from protocol.http.v1 import payload as team_contract
 
-MAX_ASSISTANTS = 50
-_CREATOR = re.compile(r"^@[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$")
-_CREATED = re.compile(r"^[0-9TZ:+.-]{20,64}$")
-_PLATFORMS = frozenset({"linux/amd64", "linux/arm64"})
-_FIELDS = frozenset(
-    {
-        "assistant_id",
-        "assistant_version",
-        "name",
-        "summary",
-        "declared_creators",
-        "actions",
-        "integrations",
-        "image_id",
-        "platform",
-        "created_at",
-        "provenance",
-        "unpublished",
-    }
-)
+MAX_ASSISTANTS = team_contract.MAX_LOCAL_ASSISTANTS
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,18 +23,19 @@ class LocalAssistant:
     created_at: datetime
 
 
-def _ids(value: object, *, maximum: int, required: bool) -> tuple[str, ...]:
-    if not isinstance(value, list) or len(value) > maximum or (required and not value):
-        raise ValueError("Local Assistant capability projection is invalid")
-    output = tuple(team.canonical_assistant_id(item) for item in value)
-    if any(item is None for item in output) or output != tuple(sorted(set(output))):
-        raise ValueError("Local Assistant capability projection is invalid")
-    return output
+@dataclass(frozen=True, slots=True)
+class LocalInventory:
+    """The staged Local snapshots a plan may offer, and every Assistant identity staged in this Space.
+
+    A staged identity Team did not admit is never offered, yet it still shadows a publication of the same Assistant,
+    so a broken or unanswered staged snapshot never silently becomes its public publication (ADR-0060).
+    """
+
+    offerable: tuple[LocalAssistant, ...]
+    staged_ids: frozenset[str]
 
 
-def _created_at(value: object) -> datetime:
-    if not isinstance(value, str) or _CREATED.fullmatch(value) is None:
-        raise ValueError("Local Assistant creation time is invalid")
+def _created_at(value: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(value)
     except ValueError as exc:
@@ -64,60 +45,48 @@ def _created_at(value: object) -> datetime:
     return parsed
 
 
-def _assistant(value: object) -> LocalAssistant:
-    if not isinstance(value, dict) or set(value) != _FIELDS:
-        raise ValueError("Local Assistant fields are invalid")
-    assistant_id = team.canonical_assistant_id(value["assistant_id"])
-    version = value["assistant_version"]
-    image_id = value["image_id"]
-    creators = value["declared_creators"]
-    if (
-        assistant_id != value["assistant_id"]
-        or not isinstance(version, str)
-        or store_catalog.VERSION_RE.fullmatch(version) is None
-        or not isinstance(image_id, str)
-        or team_contract.SOURCE_DIGEST_RE.fullmatch(image_id) is None
-        or not isinstance(creators, list)
-        or not 1 <= len(creators) <= 4
-        or any(not isinstance(creator, str) or _CREATOR.fullmatch(creator) is None for creator in creators)
-        or len(set(creators)) != len(creators)
-        or value["platform"] not in _PLATFORMS
-        or value["provenance"] != "local"
-        or value["unpublished"] is not True
-    ):
-        raise ValueError("Local Assistant identity is invalid")
-    actions = _ids(value["actions"], maximum=128, required=True)
-    providers = _ids(value["integrations"], maximum=16, required=False)
-    return LocalAssistant(
-        assistant_id=assistant_id,
-        name=store_catalog.catalog_text(value["name"], 80),
-        summary=store_catalog.catalog_text(value["summary"], 80),
-        image_id=image_id,
-        integrations=tuple(store_catalog.CatalogIntegration(provider, ()) for provider in providers),
-        actions=actions,
-        assistant_version=version,
-        created_at=_created_at(value["created_at"]),
+def _assistant(value: object) -> tuple[LocalAssistant, bool]:
+    """One staged snapshot as Team's protocol admits it, and whether Team's verdict lets a plan offer it."""
+    entry = team_contract.canonical_local_assistant(value)
+    if entry is None:
+        raise ValueError("Local Assistant inventory entry is invalid")
+    assistant = LocalAssistant(
+        assistant_id=str(entry["assistant_id"]),
+        name=store_catalog.catalog_text(entry["name"], 80),
+        summary=store_catalog.catalog_text(entry["summary"], 80),
+        image_id=str(entry["image_id"]),
+        integrations=tuple(store_catalog.CatalogIntegration(provider, ()) for provider in entry["integrations"]),
+        actions=tuple(entry["actions"]),
+        assistant_version=str(entry["assistant_version"]),
+        created_at=_created_at(str(entry["created_at"])),
     )
+    return assistant, entry["admission"] == "admissible"
 
 
-def primary(response: object) -> tuple[LocalAssistant, ...]:
-    """Return the newest exact staged image for every Local Assistant identity."""
+def primary(response: object) -> LocalInventory:
+    """Return the newest exact staged image of every Local Assistant identity Team admitted, and every staged id."""
     if not team.is_team_response(response) or not 200 <= response.status < 300 or not isinstance(response.body, dict):
         raise ValueError("Local Assistant inventory is unavailable")
     allowed = team.trace_envelope(response.body, {"assistants"})
     raw = response.body.get("assistants")
     if set(response.body) != allowed or not isinstance(raw, list) or len(raw) > MAX_ASSISTANTS:
         raise ValueError("Local Assistant inventory is invalid")
-    candidates = tuple(_assistant(item) for item in raw)
-    image_ids = tuple(candidate.image_id for candidate in candidates)
+    entries = tuple(_assistant(item) for item in raw)
+    image_ids = tuple(assistant.image_id for assistant, _offerable in entries)
     if len(set(image_ids)) != len(image_ids):
         raise ValueError("Local Assistant inventory is invalid")
-    newest: dict[str, LocalAssistant] = {}
-    for candidate in candidates:
-        current = newest.get(candidate.assistant_id)
-        if current is None or (candidate.created_at, candidate.image_id) > (current.created_at, current.image_id):
-            newest[candidate.assistant_id] = candidate
-    return tuple(newest[assistant_id] for assistant_id in sorted(newest))
+    newest: dict[str, tuple[LocalAssistant, bool]] = {}
+    for assistant, offerable in entries:
+        current = newest.get(assistant.assistant_id)
+        if current is None or (assistant.created_at, assistant.image_id) > (
+            current[0].created_at,
+            current[0].image_id,
+        ):
+            newest[assistant.assistant_id] = (assistant, offerable)
+    return LocalInventory(
+        offerable=tuple(newest[assistant_id][0] for assistant_id in sorted(newest) if newest[assistant_id][1]),
+        staged_ids=frozenset(newest),
+    )
 
 
 def localized_summary(assistant: LocalAssistant, locale: str) -> str:

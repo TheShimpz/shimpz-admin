@@ -56,6 +56,8 @@ export function stagedSnapshot(overrides = {}) {
     platform: 'linux/amd64',
     provenance: 'local',
     unpublished: true,
+    admission: 'admissible',
+    reason: null,
     ...overrides,
   };
 }

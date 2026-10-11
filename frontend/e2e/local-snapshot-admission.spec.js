@@ -20,7 +20,7 @@ function snapshot(assistantId, imageId) {
     assistant_id: assistantId, assistant_version: '0.1.0', name: `Staged ${assistantId}`,
     summary: 'Exercises Local snapshot admission.', actions: ['list-zones'], integrations: [],
     declared_creators: ['@shimpz'], created_at: '2026-09-17T07:00:00Z', image_id: imageId,
-    platform: 'linux/amd64', provenance: 'local', unpublished: true,
+    platform: 'linux/amd64', provenance: 'local', unpublished: true, admission: 'admissible', reason: null,
   };
 }
 

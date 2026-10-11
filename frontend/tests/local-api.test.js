@@ -171,6 +171,10 @@ test('lists and installs only exact unpublished Local Assistant snapshots', asyn
     platform: 'linux/amd64',
     provenance: 'local',
     unpublished: true,
+    admission: 'admissible',
+    reason: null,
+    admission: 'admissible',
+    reason: null,
   };
   const calls = [];
   const fetcher = async (url, options) => {
@@ -207,6 +211,49 @@ test('lists and installs only exact unpublished Local Assistant snapshots', asyn
   });
 });
 
+test('keeps the Team admission verdict and refuses a verdict outside the closed contract', async () => {
+  const snapshot = {
+    assistant_id: 'hello-pulse',
+    assistant_version: '1.2.3',
+    name: 'Hello Pulse',
+    summary: 'Says hello from a Local snapshot.',
+    actions: ['say-hello'],
+    integrations: [],
+    declared_creators: ['@shimpz'],
+    created_at: '2026-08-28T17:00:00Z',
+    image_id: LOCAL_IMAGE_ID,
+    platform: 'linux/amd64',
+    provenance: 'local',
+    unpublished: true,
+    admission: 'admissible',
+    reason: null,
+  };
+  const listed = (verdict) => listLocalAssistantSnapshots(
+    async () => response(200, { assistants: [{ ...snapshot, ...verdict }] }),
+  );
+  for (const verdict of [
+    { admission: 'inadmissible', reason: 'declaration-invalid' },
+    { admission: 'inadmissible', reason: 'image-inconsistent' },
+    { admission: 'unavailable', reason: null },
+  ]) {
+    assert.deepEqual(await listed(verdict), [{ ...snapshot, ...verdict }]);
+  }
+  for (const verdict of [
+    { admission: 'inadmissible', reason: null },
+    { admission: 'inadmissible', reason: 'restage' },
+    { admission: 'admissible', reason: 'declaration-invalid' },
+    { admission: 'unavailable', reason: 'image-inconsistent' },
+    { admission: 'pending', reason: null },
+  ]) {
+    await assert.rejects(listed(verdict), /inventory is invalid/);
+  }
+  const { reason: _reason, ...withoutReason } = snapshot;
+  await assert.rejects(
+    listLocalAssistantSnapshots(async () => response(200, { assistants: [withoutReason] })),
+    /inventory is invalid/,
+  );
+});
+
 test('rejects malformed Local snapshot inventories, requests, and acknowledgements', async () => {
   await assert.rejects(
     listLocalAssistantSnapshots(async () => response(200, {
@@ -218,6 +265,8 @@ test('rejects malformed Local snapshot inventories, requests, and acknowledgemen
         platform: 'linux/amd64',
         provenance: 'local',
         unpublished: true,
+        admission: 'admissible',
+        reason: null,
       }],
     })),
     /inventory is invalid/,
@@ -235,6 +284,8 @@ test('rejects malformed Local snapshot inventories, requests, and acknowledgemen
         platform: 'linux/amd64',
         provenance: 'local',
         unpublished: true,
+        admission: 'admissible',
+        reason: null,
       }],
     })),
     /inventory is invalid/,
@@ -249,6 +300,8 @@ test('rejects malformed Local snapshot inventories, requests, and acknowledgemen
         platform: 'linux/amd64',
         provenance: 'local',
         unpublished: true,
+        admission: 'admissible',
+        reason: null,
       }],
     })),
     /inventory is invalid/,
@@ -462,6 +515,8 @@ test('bounds Assistant catalog names and summaries by Unicode code points, as th
         platform: 'linux/amd64',
         provenance: 'local',
         unpublished: true,
+        admission: 'admissible',
+        reason: null,
       }],
     }));
     const [registered] = await local(text(80));

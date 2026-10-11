@@ -98,6 +98,8 @@ def _local_inventory(
     *,
     image_character: str = "d",
     created_at: str = "2026-09-15T09:00:00Z",
+    admission: str = "admissible",
+    reason: str | None = None,
 ) -> assistant_plan.team.TeamResponse:
     return assistant_plan.team.TeamResponse(
         200,
@@ -116,6 +118,8 @@ def _local_inventory(
                     "created_at": created_at,
                     "provenance": "local",
                     "unpublished": True,
+                    "admission": admission,
+                    "reason": reason,
                 }
             ]
         },
@@ -329,6 +333,32 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         request = planner.call_args.args[2]
         self.assertNotIn("image_id", repr(request))
         self.assertNotIn("source_digest", repr(request))
+
+    def test_a_staged_snapshot_team_did_not_admit_is_never_offered_and_still_shadows_its_publication(self) -> None:
+        for admission, reason in (("inadmissible", "declaration-invalid"), ("unavailable", None)):
+            with self.subTest(admission=admission):
+                result, planner = self._prepare(
+                    "Configure Cloudflare",
+                    (CLOUDFLARE, WHATSAPP),
+                    _install_required("whatsapp"),
+                    local_inventory=_local_inventory(admission=admission, reason=reason),
+                )
+
+                offered = [candidate["id"] for candidate in planner.call_args.args[2]]
+                self.assertEqual(offered, ["whatsapp"])
+                assert result.plan is not None
+                self.assertEqual(result.plan.assistants, (WHATSAPP,))
+
+    def test_a_shadowed_identity_leaves_nothing_to_plan_when_it_was_the_only_candidate(self) -> None:
+        result, planner = self._prepare(
+            "Configure Cloudflare",
+            (CLOUDFLARE,),
+            _install_required("cloudflare"),
+            local_inventory=_local_inventory(admission="inadmissible", reason="image-inconsistent"),
+        )
+
+        self.assertEqual(result, assistant_plan.Preparation())
+        planner.assert_not_called()
 
     def test_store_outage_proceeds_without_a_capability_plan(self) -> None:
         store = mock.Mock()
@@ -678,7 +708,7 @@ class LocalizedPlanSummaryTests(unittest.TestCase):
                     )
 
     def test_a_staged_snapshot_shows_its_own_pack_summary_in_the_turn_language(self) -> None:
-        snapshot = local_catalog.primary(_local_inventory())[0]
+        snapshot = local_catalog.primary(_local_inventory()).offerable[0]
         payload = _payload("Instale o Cloudflare", locale="pt")
         translated = assistant_plan.team.TeamResponse(
             200, {"locale": "pt", "summary": "Automação local do Cloudflare.", "trace_id": "a" * 32}
@@ -836,7 +866,7 @@ class AssistantPlanExecutionTests(unittest.TestCase):
         self.assertEqual(result.status, 502)
 
     def test_installs_an_exact_local_snapshot_through_the_fresh_only_route(self) -> None:
-        local_assistant = local_catalog.primary(_local_inventory())[0]
+        local_assistant = local_catalog.primary(_local_inventory()).offerable[0]
         with (
             mock.patch.object(
                 assistant_plan.assistant_install,
@@ -913,7 +943,7 @@ class AssistantPlanExecutionTests(unittest.TestCase):
         )
 
     def test_event_discloses_only_closed_install_provenance(self) -> None:
-        local = local_catalog.primary(_local_inventory())[0]
+        local = local_catalog.primary(_local_inventory()).offerable[0]
         plan = self._plan(CLOUDFLARE, local)
 
         items = assistant_plan.initial_items(plan)
