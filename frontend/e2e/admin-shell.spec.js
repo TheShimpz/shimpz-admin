@@ -373,6 +373,16 @@ test('reports a Local rollback as a localized warning', async ({ page }) => {
 
 test('reads the Space resources only while visible, one read at a time, and clears them after a failed read', async ({ page }) => {
   await page.clock.install();
+  // The page starts each read synchronously in its timer or event, so its own count is exact once the clock has run.
+  await page.addInitScript(() => {
+    const original = window.fetch;
+    window.resourceReads = 0;
+    window.fetch = (input, init) => {
+      if (input === '/api/space/resources') window.resourceReads += 1;
+      return original(input, init);
+    };
+  });
+  const started = () => page.evaluate(() => window.resourceReads);
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -410,15 +420,14 @@ test('reads the Space resources only while visible, one read at a time, and clea
   // A hidden page lets its turns pass; becoming visible reads at once.
   await visibility('hidden');
   await page.clock.runFor(61_000);
-  await page.waitForTimeout(300);
-  expect(reads).toHaveLength(1);
+  expect(await started()).toBe(1);
   await visibility('visible');
+  expect(await started()).toBe(2);
   await expect.poll(() => reads.length).toBe(2);
 
   // While that read is pending, the next turn does not start another.
   await page.clock.runFor(31_000);
-  await page.waitForTimeout(300);
-  expect(reads).toHaveLength(2);
+  expect(await started()).toBe(2);
 
   // A failed read clears the signal, and the next turn reads again.
   await answer(503);
