@@ -247,6 +247,9 @@ test('keeps the Team admission verdict and refuses a verdict outside the closed 
   ]) {
     await assert.rejects(listed(verdict), /inventory is invalid/);
   }
+  // Team's Assistant id grammar bounds an id at 40 characters.
+  await assert.rejects(listed({ assistant_id: 'a'.repeat(41) }), /inventory is invalid/);
+  assert.equal((await listed({ assistant_id: 'a'.repeat(40) }))[0].assistant_id, 'a'.repeat(40));
   const { reason: _reason, ...withoutReason } = snapshot;
   await assert.rejects(
     listLocalAssistantSnapshots(async () => response(200, { assistants: [withoutReason] })),

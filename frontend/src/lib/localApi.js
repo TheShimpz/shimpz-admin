@@ -4,6 +4,7 @@ import {
   codePointLength,
   CONTROL_RE,
   exactKeys,
+  isAssistantId,
   isIdentifier,
   jsonObject,
   LocalApiError,
@@ -310,8 +311,7 @@ export async function listLocalAssistantSnapshots(fetcher, signal) {
         'unpublished',
       ]) ||
       !localAdmissionValid(entry.admission, entry.reason) ||
-      typeof entry.assistant_id !== 'string' ||
-      !ASSISTANT_ID_RE.test(entry.assistant_id) ||
+      !isAssistantId(entry.assistant_id) ||
       typeof entry.assistant_version !== 'string' ||
       !SEMANTIC_VERSION_RE.test(entry.assistant_version) ||
       typeof entry.name !== 'string' ||
