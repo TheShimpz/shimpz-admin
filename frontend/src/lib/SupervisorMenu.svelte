@@ -33,7 +33,7 @@
     min-height: 0;
     padding: 0;
     border: 0;
-    border-radius: 50%;
+    border-radius: 0;
     background: none;
     clip-path: none;
     box-shadow: none;
@@ -42,15 +42,17 @@
   :global(.supervisor-menu .trigger.shimpz-button:focus-visible) { border: 0; background: none; box-shadow: none; }
   :global(.supervisor-menu .chevron) { display: none; }
   :global(.supervisor-menu .trigger-icon) { display: grid; place-items: center; }
+  /* The avatar is a control like the others: chamfered corners and the shared corner rounding. */
   .avatar {
     display: grid;
     place-items: center;
     width: 2.5rem;
     height: 2.5rem;
-    border-radius: 50%;
+    border: 1px solid color-mix(in srgb, var(--shimpz-color-cyan) 45%, transparent);
+    border-radius: var(--shimpz-radius, 0);
     background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--shimpz-color-cyan) 14%, var(--shimpz-color-surface-raised)), var(--shimpz-color-surface-raised) 70%);
-    box-shadow: 0 0 0 1px color-mix(in srgb, var(--shimpz-color-cyan) 45%, transparent);
-    transition: box-shadow 160ms ease;
+    clip-path: var(--shimpz-control-shape);
+    transition: border-color 160ms ease;
   }
   .avatar svg {
     width: 1.35rem;
@@ -63,10 +65,11 @@
   }
   :global(.supervisor-menu .trigger:hover) .avatar,
   :global(.supervisor-menu .trigger:focus-visible) .avatar,
-  :global(.supervisor-menu .trigger[aria-expanded='true']) .avatar {
-    box-shadow:
-      0 0 0 2px var(--shimpz-color-cyan),
-      0 0 12px color-mix(in srgb, var(--shimpz-color-cyan) 55%, transparent);
+  :global(.supervisor-menu .trigger[aria-expanded='true']) .avatar { border-color: var(--shimpz-color-cyan); }
+  :global(.supervisor-menu .trigger:hover .trigger-icon),
+  :global(.supervisor-menu .trigger:focus-visible .trigger-icon),
+  :global(.supervisor-menu .trigger[aria-expanded='true'] .trigger-icon) {
+    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--shimpz-color-cyan) 55%, transparent));
   }
   .presence {
     position: absolute;
