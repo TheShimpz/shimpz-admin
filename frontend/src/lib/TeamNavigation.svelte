@@ -535,7 +535,7 @@
   .head :global(.new-team) { position: relative; isolation: isolate; width: 2.25rem; height: 2.25rem; min-height: 0; padding: 0; border: 0; background: transparent; clip-path: none; color: var(--shimpz-color-text-muted); }
   .head :global(.new-team::before), .row::before { content: ""; position: absolute; z-index: -1; inset: 0; clip-path: var(--shimpz-control-shape); pointer-events: none; }
   .head :global(.new-team:hover:not(:disabled)), .head :global(.new-team:focus-visible) { color: var(--shimpz-color-cyan); background: transparent; border: 0; box-shadow: none; }
-  .head :global(.new-team:hover:not(:disabled)::before), .head :global(.new-team:focus-visible::before) { background: var(--team-scanlines), var(--team-hover-bg); }
+  .head :global(.new-team:hover:not(:disabled)::before), .head :global(.new-team:focus-visible::before) { background: var(--team-hover-bg); }
   .head svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
   ul { display: grid; margin: 0; padding: 0; list-style: none; }
   .teams { gap: 2px; } /* a seam between the rows' own backgrounds, not rhythm */

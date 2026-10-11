@@ -24,7 +24,7 @@
 </DropdownMenu>
 
 <style>
-  /* The same surface as the Team list's new-Team button: transparent, with the rows' scanline tint on hover. */
+  /* The same surface as the Team list's new-Team button: transparent, with the rows' tint on hover. */
   :global(.supervisor-menu.shimpz-dropdown > .trigger.shimpz-button) {
     --button-height: 2.75rem;
     position: relative;
@@ -44,7 +44,7 @@
   :global(.supervisor-menu.shimpz-dropdown > .trigger.shimpz-button:focus-visible) { border: 0; background: transparent; box-shadow: none; }
   :global(.supervisor-menu.shimpz-dropdown > .trigger.shimpz-button:hover:not(:disabled)::before),
   :global(.supervisor-menu.shimpz-dropdown > .trigger.shimpz-button:focus-visible::before),
-  :global(.supervisor-menu.shimpz-dropdown > .trigger.shimpz-button[aria-expanded='true']::before) { background: var(--team-scanlines), var(--team-hover-bg); }
+  :global(.supervisor-menu.shimpz-dropdown > .trigger.shimpz-button[aria-expanded='true']::before) { background: var(--team-hover-bg); }
   :global(.supervisor-menu .chevron) { display: none; }
   :global(.supervisor-menu .trigger-icon) { display: grid; place-items: center; }
   /* The avatar is the bare user glyph. */
