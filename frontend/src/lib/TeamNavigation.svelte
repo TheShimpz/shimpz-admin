@@ -7,7 +7,6 @@
 
   import { t } from '#lib/i18n.js';
   import { loadTeamRoutines, retainTeamRoutines, routineContext } from '#lib/routineContext.js';
-  import { loadActionConfirmation, saveActionConfirmation } from '#lib/actionConfirmation.js';
   import TeamActionsMenu from '#lib/TeamActionsMenu.svelte';
   import { renameTeam, reorderTeams, teamContext } from '#lib/teamContext.js';
   import TeamRoutinesDialog from '#lib/TeamRoutinesDialog.svelte';
@@ -37,18 +36,6 @@
 
   function storeHref(team) {
     return `/assistants/?team=${encodeURIComponent(team.id)}`;
-  }
-
-  // Each Team's Action confirmation setting (ADR-0112) as its actions menu reads and changes it; a failure is reported.
-  function confirmationSetting(team) {
-    const report = (message) => (error) => {
-      showAdminNotice({ tone: 'error', label: copy.confirmActions, message });
-      throw error;
-    };
-    return {
-      load: () => loadActionConfirmation(fetch, team.id).catch(report(copy.confirmActionsUnavailable)),
-      save: (enabled) => saveActionConfirmation(fetch, team.id, enabled).catch(report(copy.confirmActionsFailed)),
-    };
   }
 
   // The Team whose Routines modal is open; the menu item exists only for a Team that has Routines. Leaving it returns
@@ -156,7 +143,7 @@
     for (const id of ids) loadTeamRoutines(fetch, id).catch(() => {});
   });
 
-  // Teams keep the Supervisor's order: drag a row's handle, or Move up / Move down in its actions menu. The order
+  // Teams keep the Supervisor's order: drag a Team by its name, or press Alt+ArrowUp / Alt+ArrowDown on it. The order
   // moves at once and is saved behind it; a refusal restores the last saved order.
   let canReorder = $derived($teamContext.teams.length > 1);
   let announcement = $state('');
@@ -195,14 +182,21 @@
     ids.splice(from, 1);
     ids.splice(to, 0, team.id);
     const saved = saveOrder(ids, team);
-    // The moved row's actions button takes the focus back, so the next move is one menu away.
-    await tick();
-    list?.querySelector(`[data-team-row="${team.id}"] [aria-haspopup="menu"]`)?.focus();
+    // The moved Team's name keeps the focus, so the next move is one more key press.
+    await focusTeamLink(team.id);
     await saved;
   }
 
-  // Pointer dragging works for mouse, pen, and touch from the handle only, so the rest of the row keeps scrolling,
-  // links, rename, and menus. It starts after a short movement, follows the pointer, and drops between rows.
+  function nameKeydown(event, team) {
+    const delta = { ArrowUp: -1, ArrowDown: 1 }[event.key];
+    if (!delta || !canReorder || !event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    event.preventDefault();
+    void moveTeam(team, delta);
+  }
+
+  // A mouse or pen drags a Team by its name; touch never does, so the list keeps scrolling and the name keeps opening
+  // the Team. A press that never moves stays a click. A drag starts after a short movement, follows the pointer, and
+  // drops between rows.
   const DRAG_THRESHOLD = 6;
   // Rows glide to a new place unless the Supervisor asked for reduced motion.
   const settle = () => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 160);
@@ -231,13 +225,13 @@
 
   function handleDown(event, team) {
     if (!canReorder || gesture || renaming || !event.isPrimary || event.button !== 0) return;
-    event.preventDefault();
-    const handle = event.currentTarget;
-    handle.setPointerCapture?.(event.pointerId);
+    if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
+    const source = event.currentTarget;
+    source.setPointerCapture?.(event.pointerId);
     const scroller = scrollParent(list);
     gesture = {
       team,
-      handle,
+      source,
       pointerId: event.pointerId,
       startY: event.clientY,
       y: event.clientY,
@@ -263,9 +257,9 @@
   // Holding the pointer near the top or bottom edge of the scrolling list scrolls it, faster the closer it gets.
   function autoScroll() {
     if (!gesture?.active) return;
-    // A handle that left the page (its row was removed, or the layout swapped this navigation out) ends the drag, so
+    // A name that left the page (its row was removed, or the layout swapped this navigation out) ends the drag, so
     // the loop never re-arms and never keeps a removed list or scroller alive.
-    if (!gesture.handle.isConnected) {
+    if (!gesture.source.isConnected) {
       cancelDrag();
       return;
     }
@@ -303,7 +297,7 @@
     gesture = null;
     if (!ended) return null;
     cancelAnimationFrame(ended.frame);
-    if (ended.handle.hasPointerCapture?.(ended.pointerId)) ended.handle.releasePointerCapture(ended.pointerId);
+    if (ended.source.hasPointerCapture?.(ended.pointerId)) ended.source.releasePointerCapture(ended.pointerId);
     const result = { ...ended, dropIndex, moved: ended.active };
     dragId = '';
     dragOffset = 0;
@@ -371,7 +365,7 @@
   {#if $teamContext.teams.length > 0}
     <nav aria-label={copy.label}>
       <ul bind:this={list} class={['teams', dragId && 'is-reordering']}>
-        {#each $teamContext.teams as team, index (team.id)}
+        {#each $teamContext.teams as team (team.id)}
           {@const selected = team.id === $teamContext.selectedTeamId}
           <li
             class={[
@@ -408,28 +402,22 @@
                 variant="ghost"
                 href={chatHref(team)}
                 aria-current={selected && active === 'chat' ? 'page' : undefined}
+                title={canReorder ? copy.reorderHint : undefined}
+                aria-keyshortcuts={canReorder ? 'Alt+ArrowUp Alt+ArrowDown' : undefined}
+                draggable="false"
                 onclick={onnavigate}
+                onkeydown={(event) => nameKeydown(event, team)}
+                onpointerdown={(event) => handleDown(event, team)}
+                onpointermove={handleMove}
+                onpointerup={handleUp}
+                onpointercancel={cancelDrag}
+                onlostpointercapture={(event) => { if (gesture?.pointerId === event.pointerId) cancelDrag(); }}
               >
                 <span class="monogram" aria-hidden="true">{monogram(team.name)}</span>
                 <span class="name glitch-text">{team.name}</span>
               </ActionLink>
               {/if}
               <div class="row-actions">
-                {#if canReorder}
-                  <!-- Pointer only: keyboard and assistive technology reorder from the actions menu. -->
-                  <span
-                    class="drag-handle"
-                    aria-hidden="true"
-                    title={$t('teamNavigation.dragHandle', { team: team.name })}
-                    onpointerdown={(event) => handleDown(event, team)}
-                    onpointermove={handleMove}
-                    onpointerup={handleUp}
-                    onpointercancel={cancelDrag}
-                    onlostpointercapture={(event) => { if (gesture?.pointerId === event.pointerId) cancelDrag(); }}
-                  >
-                    <svg class="glitch-icon" viewBox="0 0 24 24"><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01"></path></svg>
-                  </span>
-                {/if}
                 <ActionLink
                   class={['row-action', 'glitch-host', selected && active === 'assistants' && 'is-here']}
                   variant="ghost"
@@ -477,14 +465,6 @@
                   onroutines={offersRoutines(team.id)
                     ? () => (routinesOpen = team.id)
                     : null}
-                  moveUpLabel={copy.moveUp}
-                  moveDownLabel={copy.moveDown}
-                  onmoveup={canReorder ? () => moveTeam(team, -1) : null}
-                  onmovedown={canReorder ? () => moveTeam(team, 1) : null}
-                  first={index === 0}
-                  last={index === $teamContext.teams.length - 1}
-                  confirmLabel={copy.confirmActions}
-                  confirmation={confirmationSetting(team)}
                 />
               </div>
             </div>
@@ -573,17 +553,15 @@
   /* The dot's offsets place it on the Routines icon's corner: geometry, not rhythm. */
   .attention { position: absolute; inset-block-start: 0.45rem; inset-inline-end: 0.4rem; width: 0.4rem; height: 0.4rem; border-radius: 50%; background: var(--shimpz-color-yellow); box-shadow: 0 0 0.35rem var(--shimpz-color-yellow); pointer-events: none; }
   @media (forced-colors: active) { .attention { background: Highlight; box-shadow: none; } }
-  /* Reordering: a grip in the row actions, the lifted row following the pointer, and a cyan-to-magenta drop line with
-     a leading tick in the gap where the row will land. */
+  /* Reordering: the name is what a mouse or pen picks up (never selected as text or dragged as a link), the lifted row
+     follows the pointer, and a cyan-to-magenta drop line with a leading tick marks the gap where the row will land. */
   .team { position: relative; }
-  .drag-handle { display: grid; width: 1.5rem; height: 2.25rem; flex: 0 0 auto; place-items: center; color: var(--shimpz-color-text-dim); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
-  .drag-handle:hover { color: var(--shimpz-color-cyan); }
-  .drag-handle svg { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 2.8; stroke-linecap: square; }
-  .teams.is-reordering, .teams.is-reordering .drag-handle { cursor: grabbing; user-select: none; -webkit-user-select: none; }
+  .row :global(.team-link) { user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
+  .teams.is-reordering, .teams.is-reordering :global(.team-link) { cursor: grabbing; }
   .is-dragging { z-index: 3; }
   .is-dragging > .row { --row-bg: color-mix(in srgb, var(--shimpz-color-cyan) 12%, var(--shimpz-color-surface-raised)); filter: drop-shadow(0 0.6rem 1rem rgb(0 0 0 / 60%)) drop-shadow(0 0 0.4rem rgb(0 240 255 / 30%)); }
   .is-dragging > .row::before { background-image: var(--team-scanlines); }
-  .is-dragging .drag-handle, .is-dragging .monogram { color: var(--shimpz-color-cyan); }
+  .is-dragging .monogram { color: var(--shimpz-color-cyan); }
   .is-dragging .monogram { border-color: var(--shimpz-color-cyan); box-shadow: var(--shimpz-glow-cyan); }
   .drop-before::before, .drop-after::after {
     position: absolute; z-index: 4; inset-inline: 0; height: 6px; content: ""; pointer-events: none;
@@ -599,7 +577,6 @@
   @media (pointer: coarse) {
     .row-actions { padding: 0; }
     .row :global(.row-action), .row :global(.team-actions > .shimpz-button) { width: 2.75rem; height: 2.75rem; }
-    .drag-handle { width: 2.25rem; height: 2.75rem; }
   }
   @media (prefers-reduced-motion: reduce) {
     .row::before { transition: none; }

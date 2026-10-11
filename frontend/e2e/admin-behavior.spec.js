@@ -4066,12 +4066,8 @@ test('opens a Team chat from the Team list and its Store from the row icon', { t
   const actions = navigation.getByRole('button', { name: 'Actions for Support' });
   await actions.focus();
   await page.keyboard.press('Enter');
-  // A Local Team menu opens on Rename; a Team without Routines offers no Routines item, and the last Team's disabled
-  // Move down is skipped.
+  // A Local Team menu opens on Rename, and a Team without Routines offers no Routines item.
   await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeFocused();
-  await page.keyboard.press('ArrowDown');
-  await expect(page.getByRole('menuitem', { name: 'Move up' })).toBeFocused();
-  await expect(page.getByRole('menuitem', { name: 'Move down' })).toBeDisabled();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeFocused();
   await page.keyboard.press('ArrowDown');
@@ -4390,13 +4386,12 @@ test.describe('Team order', () => {
     return { navigation, orders };
   }
 
-  // Presses the handle, moves past the drag threshold onto the target row's upper half, and optionally cancels.
+  // Presses a Team's name, moves past the drag threshold onto the target row's upper half, and optionally cancels.
   async function mouseDrag(page, navigation, name, target, { escape = false } = {}) {
-    await navigation.getByRole('link', { name, exact: true }).hover();
-    const handle = (await navigation.getByTitle(`Drag to reorder ${name}`).boundingBox());
+    const source = await navigation.getByRole('link', { name, exact: true }).boundingBox();
     const goal = await navigation.getByRole('link', { name: target, exact: true }).boundingBox();
-    const x = handle.x + handle.width / 2;
-    const y = handle.y + handle.height / 2;
+    const x = source.x + source.width / 2;
+    const y = source.y + source.height / 2;
     await page.mouse.move(x, y);
     await page.mouse.down();
     await page.mouse.move(x, goal.y + 4, { steps: 8 });
@@ -4404,15 +4399,8 @@ test.describe('Team order', () => {
     await page.mouse.up();
   }
 
-  test('dragging a Team by its handle reorders it, saves the exact order, and keeps it across a reload', { tag: '@mobile' }, async ({ page }) => {
+  test('dragging a Team by its name reorders it, saves the exact order, and keeps it across a reload', { tag: '@mobile' }, async ({ page }) => {
     const { navigation, orders } = await openOrder(page);
-    // A press on the handle that never moves is not a drag.
-    const handle = navigation.getByTitle('Drag to reorder Neo');
-    await navigation.getByRole('link', { name: 'Neo', exact: true }).hover();
-    const box = await handle.boundingBox();
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
-    expect(orders).toEqual([]);
-
     await mouseDrag(page, navigation, 'Smith', 'Trinity');
     const moved = ['Marketing', 'Smith', 'Trinity', 'Cypher', 'Morpheus', 'Neo'];
     await expect.poll(() => teamNames(navigation)).toEqual(moved);
@@ -4422,10 +4410,16 @@ test.describe('Team order', () => {
 
     await page.reload();
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeVisible();
-    await expect.poll(async () => teamNames(await openTeamNavigation(page))).toEqual(moved);
+    const reloaded = await openTeamNavigation(page);
+    await expect.poll(() => teamNames(reloaded)).toEqual(moved);
+
+    // A press on the name that never moves is a click: it opens the Team and saves no order.
+    await reloaded.getByRole('link', { name: 'Neo', exact: true }).click();
+    await expect(page).toHaveURL(/\/chat\/?\?team=neo$/);
+    expect(orders).toHaveLength(1);
   });
 
-  test('a touch drag on the handle reorders, while Escape cancels a drag without saving', { tag: '@mobile' }, async ({ page }) => {
+  test('Escape cancels a drag without saving, and a touch on a name scrolls or opens the Team instead of dragging it', { tag: '@mobile' }, async ({ page }) => {
     const { navigation, orders } = await openOrder(page);
     await mouseDrag(page, navigation, 'Neo', 'Trinity', { escape: true });
     await expect.poll(() => teamNames(navigation)).toEqual(READY_ORDER);
@@ -4434,60 +4428,61 @@ test.describe('Team order', () => {
     expect(orders).toEqual([]);
 
     const cdp = await page.context().newCDPSession(page);
-    const handle = await navigation.getByTitle('Drag to reorder Cypher').boundingBox();
+    const source = await navigation.getByRole('link', { name: 'Cypher', exact: true }).boundingBox();
     const goal = await navigation.getByRole('link', { name: 'Trinity', exact: true }).boundingBox();
-    const x = handle.x + handle.width / 2;
-    const y = handle.y + handle.height / 2;
+    const x = source.x + source.width / 2;
+    const y = source.y + source.height / 2;
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y }] });
     for (let step = 1; step <= 8; step += 1) {
       const point = { x, y: y + (goal.y + 4 - y) * (step / 8) };
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [point] });
     }
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    const moved = ['Marketing', 'Cypher', 'Trinity', 'Morpheus', 'Neo', 'Smith'];
-    await expect.poll(() => teamNames(navigation)).toEqual(moved);
-    await expect.poll(() => orders).toEqual([{ team_ids: moved.map(ID) }]);
+    await expect.poll(() => teamNames(navigation)).toEqual(READY_ORDER);
+    expect(orders).toEqual([]);
+
+    // A tap on the name opens that Team.
+    const tap = await navigation.getByRole('link', { name: 'Cypher', exact: true }).boundingBox();
+    const point = { x: tap.x + tap.width / 2, y: tap.y + tap.height / 2 };
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [point] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await expect(page).toHaveURL(/\/chat\/?\?team=cypher$/);
+    expect(orders).toEqual([]);
   });
 
-  test('Move up and Move down reorder from the keyboard, announce the place, and keep focus on the Team', { tag: '@mobile' }, async ({ page }) => {
+  test('Alt+ArrowUp and Alt+ArrowDown on a Team name reorder it, announce the place, and keep focus on the name', { tag: '@mobile' }, async ({ page }) => {
     const { navigation, orders } = await openOrder(page);
-    const actions = navigation.getByRole('button', { name: 'Actions for Neo' });
-    await actions.focus();
-    await page.keyboard.press('Enter');
-    await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeFocused();
-    await page.keyboard.press('ArrowDown');
-    await expect(page.getByRole('menuitem', { name: 'Move up' })).toBeFocused();
-    await page.keyboard.press('Enter');
+    const neo = navigation.getByRole('link', { name: 'Neo', exact: true });
+    await neo.focus();
+    await page.keyboard.press('Alt+ArrowUp');
 
     const moved = ['Marketing', 'Trinity', 'Cypher', 'Neo', 'Morpheus', 'Smith'];
     await expect.poll(() => teamNames(navigation)).toEqual(moved);
-    await expect(actions).toBeFocused();
+    await expect(neo).toBeFocused();
     await expect(page.getByRole('status').filter({ hasText: 'Neo moved to position 4 of 6' })).toHaveCount(1);
     await expect.poll(() => orders).toEqual([{ team_ids: moved.map(ID) }]);
 
-    await page.keyboard.press('Enter');
-    await page.getByRole('menuitem', { name: 'Move down' }).click();
+    await page.keyboard.press('Alt+ArrowDown');
     await expect.poll(() => teamNames(navigation)).toEqual(READY_ORDER);
-    await expect(actions).toBeFocused();
+    await expect(neo).toBeFocused();
     await expect.poll(() => orders.length).toBe(2);
 
     // The boundaries cannot move further.
-    await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
-    await expect(page.getByRole('menuitem', { name: 'Move up' })).toBeDisabled();
-    await expect(page.getByRole('menuitem', { name: 'Move down' })).toBeEnabled();
-    await page.keyboard.press('Escape');
-    await navigation.getByRole('button', { name: 'Actions for Smith' }).click();
-    await expect(page.getByRole('menuitem', { name: 'Move down' })).toBeDisabled();
-    await page.keyboard.press('Escape');
-    await expect.poll(() => orders).toHaveLength(2);
+    await navigation.getByRole('link', { name: 'Marketing', exact: true }).focus();
+    await page.keyboard.press('Alt+ArrowUp');
+    await navigation.getByRole('link', { name: 'Smith', exact: true }).focus();
+    await page.keyboard.press('Alt+ArrowDown');
+    await expect.poll(() => teamNames(navigation)).toEqual(READY_ORDER);
+    expect(orders).toHaveLength(2);
   });
 
   test('a refused save restores only the order and keeps the selected Team', async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     const { navigation, orders } = await openOrder(page, 'reorder-unavailable', 'neo');
     await expect(navigation.getByRole('link', { name: 'Neo', exact: true })).toHaveAttribute('aria-current', 'page');
-    await navigation.getByRole('button', { name: 'Actions for Smith' }).click();
-    await page.getByRole('menuitem', { name: 'Move up' }).click();
+    const smith = navigation.getByRole('link', { name: 'Smith', exact: true });
+    await smith.focus();
+    await page.keyboard.press('Alt+ArrowUp');
 
     await expect(page.getByText('The Team order could not be saved. The previous order is back.')).toBeVisible();
     await expect.poll(() => teamNames(navigation)).toEqual(READY_ORDER);
@@ -4495,8 +4490,8 @@ test.describe('Team order', () => {
     await expect(navigation.getByRole('link', { name: 'Neo', exact: true })).toHaveAttribute('aria-current', 'page');
 
     // The next save goes through.
-    await navigation.getByRole('button', { name: 'Actions for Smith' }).click();
-    await page.getByRole('menuitem', { name: 'Move up' }).click();
+    await smith.focus();
+    await page.keyboard.press('Alt+ArrowUp');
     await expect.poll(() => orders.length).toBe(2);
     await expect.poll(() => teamNames(navigation)).toEqual(['Marketing', 'Trinity', 'Cypher', 'Morpheus', 'Smith', 'Neo']);
   });
@@ -4523,10 +4518,9 @@ test.describe('Team order', () => {
       };
     });
     const { navigation, orders } = await openOrder(page);
-    await navigation.getByRole('link', { name: 'Neo', exact: true }).hover();
-    const handle = await navigation.getByTitle('Drag to reorder Neo').boundingBox();
-    const x = handle.x + handle.width / 2;
-    const y = handle.y + handle.height / 2;
+    const source = await navigation.getByRole('link', { name: 'Neo', exact: true }).boundingBox();
+    const x = source.x + source.width / 2;
+    const y = source.y + source.height / 2;
     await page.mouse.move(x, y);
     await page.mouse.down();
     await page.mouse.move(x, y - 20, { steps: 4 });
