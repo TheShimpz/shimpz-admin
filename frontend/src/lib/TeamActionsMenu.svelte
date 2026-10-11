@@ -130,7 +130,9 @@
   .team-actions :global(svg) { width: 1.1rem; height: 1.1rem; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
   .content { position: fixed; z-index: 80; top: var(--menu-top); left: var(--menu-left); display: grid; min-width: 11rem; padding: var(--gap-item); margin: 0; color: var(--shimpz-color-text); background: var(--shimpz-color-surface-raised); border: 1px solid var(--shimpz-color-border); box-shadow: 0 1rem 3rem rgb(0 0 0 / 65%); }
   .content:not(:popover-open) { display: none; }
-  .content :global(.item) { width: 100%; justify-content: flex-start; gap: var(--gap-inside); border: 0; background: transparent; clip-path: none; font-size: 0.7rem; text-align: start; }
+  .content :global(.item) { width: 100%; justify-content: flex-start; gap: 0.6em; border: 0; background: transparent; clip-path: none; font-size: 0.82rem; letter-spacing: 0.01em; text-align: start; text-transform: none; }
+  /* Each item's icon follows its text: one text height, a matching stroke. */
+  .content :global(.item-icon) { width: 1.15em; height: 1.15em; stroke-width: 1.8; }
   .content :global(.item-icon) { flex: none; width: 0.95rem; height: 0.95rem; stroke-width: 2; stroke-linejoin: round; }
   .content :global(.item.danger) { color: var(--shimpz-color-danger); }
   .content :global(.item:hover) { background: var(--shimpz-color-surface-high); }
