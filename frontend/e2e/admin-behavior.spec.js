@@ -3572,6 +3572,11 @@ test('a reply shows what its task used only when its done frame reports usage', 
   await expect(reply).toContainText('$0.0095');
   await expect(reply).toContainText('13,680 tokens');
   await expect(reply.getByTitle(/GPT-6 Luna: 11,900 input · 580 output/)).toHaveCount(1);
+  // With recorded steps the usage line is the one control that opens them, and it still announces their count.
+  const receipt = reply.locator('.receipt summary');
+  await expect(receipt).toHaveAccessibleName(/^≈ \$0\.0095 · 13,680 tokens · 6\.2 s · Execution stages recorded: \d+$/);
+  await receipt.click();
+  await expect(reply.locator('.receipt ol li').first()).toBeVisible();
 });
 
 test('a reply restored from history shows its usage line, and one stored without usage shows none', async ({ page }) => {

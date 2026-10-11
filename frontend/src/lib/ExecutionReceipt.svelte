@@ -13,6 +13,8 @@
     progressLabels = {},
     teamName = 'Team',
     assistantNames = new Map(),
+    // The reply's usage line: when given, it is the visible summary and the step count is announced after it.
+    line = undefined,
   } = $props();
   let open = $state(false);
   let steps = $derived(open ? executionSteps(events) : []);
@@ -32,7 +34,13 @@
 
 {#if events.length > 0}
   <Disclosure class="receipt" bind:open>
-    {#snippet summary()}{summaryLabel.before}<span class="step-count">{stepCount}</span>{summaryLabel.after}{/snippet}
+    {#snippet summary()}
+      {#if line}
+        {@render line()}<span class="sr-only"> · {summaryLabel.before}{stepCount}{summaryLabel.after}</span>
+      {:else}
+        {summaryLabel.before}<span class="step-count">{stepCount}</span>{summaryLabel.after}
+      {/if}
+    {/snippet}
     {#if open}
       <ol>
         {#each steps as step, index (step.key)}
@@ -64,6 +72,8 @@
     letter-spacing: 0.055em;
     text-transform: uppercase;
   }
+
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
   .step-count,
   .step-number {

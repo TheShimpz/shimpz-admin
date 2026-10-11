@@ -2354,12 +2354,19 @@
                       </div>
                     {/if}
                   {/if}
-                  {#if assistantTurn.usage}
+                  <!-- With recorded steps, the usage line itself opens them: one line, its triangle beside it. -->
+                  {#snippet usageLine()}
+                    <span class="task-usage" title={formatTaskUsageDetail(assistantTurn.usage, $locale, copy.usage)}>
+                      {formatTaskUsage(assistantTurn.usage, $locale, copy.usage)}
+                    </span>
+                  {/snippet}
+                  {#if assistantTurn.usage && !assistantTurn.receipt?.length}
                     <p class="task-usage" title={formatTaskUsageDetail(assistantTurn.usage, $locale, copy.usage)}>
                       {formatTaskUsage(assistantTurn.usage, $locale, copy.usage)}
                     </p>
                   {/if}
                   <ExecutionReceipt
+                    line={assistantTurn.usage ? usageLine : undefined}
                     events={assistantTurn.receipt ?? []}
                     label={copy.progressStagesExecuted}
                     progressLabels={copy.progress}
@@ -2756,6 +2763,8 @@
     overflow-wrap: anywhere;
   }
 
+  /* Inside the receipt's uppercase summary the usage keeps its own case and spacing. */
+  span.task-usage { margin: 0; text-transform: none; }
   .task-usage {
     margin: var(--gap-inside) 0 0;
     color: var(--shimpz-color-text-dim);
