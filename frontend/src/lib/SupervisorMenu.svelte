@@ -1,8 +1,8 @@
 <script>
-  import { Button, ShimpzBrand } from '@shimpz/frontend';
+  import { Button } from '@shimpz/frontend';
   import { t } from '#lib/i18n.js';
 
-  // The Supervisor's account: the Shimpz symbol as an avatar that opens the account's sign-in security.
+  // The Supervisor's account: an avatar that opens the account's sign-in security.
   let { onsecurity, element = $bindable() } = $props();
 </script>
 
@@ -18,7 +18,9 @@
   title={$t('shell.supervisorMenu')}
   onclick={() => onsecurity?.()}
 >
-  <span class="avatar"><ShimpzBrand class="supervisor-mark" variant="symbol" decorative /></span>
+  <span class="avatar">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="9" r="3.6"></circle><path d="M5 20c.9-3.6 3.6-5.6 7-5.6s6.1 2 7 5.6"></path></svg>
+  </span>
   <span class="presence" aria-hidden="true"></span>
 </Button>
 
@@ -47,11 +49,19 @@
     height: 2.5rem;
     overflow: hidden;
     border-radius: 50%;
-    background: var(--shimpz-color-surface-raised);
+    background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--shimpz-color-cyan) 14%, var(--shimpz-color-surface-raised)), var(--shimpz-color-surface-raised) 70%);
     box-shadow: 0 0 0 1px color-mix(in srgb, var(--shimpz-color-cyan) 45%, transparent);
     transition: box-shadow 160ms ease;
   }
-  .avatar :global(.supervisor-mark img) { width: 2.5rem; height: 2.5rem; transform: scale(1.3) translate(3.5%, 4%); }
+  .avatar svg {
+    width: 1.35rem;
+    height: 1.35rem;
+    fill: none;
+    stroke: var(--shimpz-color-cyan);
+    stroke-width: 1.7;
+    stroke-linecap: round;
+    filter: drop-shadow(0 0 3px color-mix(in srgb, var(--shimpz-color-cyan) 60%, transparent));
+  }
   :global(.supervisor-account:hover) .avatar,
   :global(.supervisor-account:focus-visible) .avatar {
     box-shadow:
