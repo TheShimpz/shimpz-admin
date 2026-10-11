@@ -409,7 +409,7 @@ test('reads the Space resources only while visible, one read at a time, and clea
     else delete document.visibilityState;
     document.dispatchEvent(new Event('visibilitychange'));
   }, state === 'hidden');
-  const services = page.getByRole('definition').filter({ hasText: /^6\/7$/ });
+  const services = page.getByRole('definition').filter({ hasText: /6\/7, service stopped$/ });
 
   await page.goto('/assistants/');
   await expect.poll(() => reads.length).toBe(1);
@@ -481,6 +481,18 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
     contentType: 'application/json',
     body: JSON.stringify({ files: [] }),
   }));
+  // The sidebar's resource bars, one of them nearly full, are part of the scanned screen.
+  await page.route('**/api/space/resources', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      services_running: 7,
+      services_total: 7,
+      memory_used_bytes: 3.5 * 2 ** 30,
+      memory_total_bytes: 4 * 2 ** 30,
+      storage_used_bytes: 2 ** 30,
+      storage_total_bytes: 64 * 2 ** 30,
+    }),
+  }));
 
   await page.goto('/assistants/?team=marketing');
   const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
@@ -488,6 +500,10 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
   // Each row opens its Assistant's page for the Team this catalog acts for.
   await expect(catalog.getByRole('link', { name: /^Shimpz Cloudflare/ }))
     .toHaveAttribute('href', '/assistants/shimpz-cloudflare?team=marketing');
+  // The sidebar's resource bars are a desktop element; the mobile footer does not show them.
+  if (page.viewportSize().width > 820) {
+    await expect(page.getByRole('definition').filter({ hasText: /3\.5\/4 GiB, close to full$/ })).toBeVisible();
+  }
   // The Assistants screen's one accessibility scan.
   expect(await accessibilityViolations(page)).toEqual([]);
   if (page.viewportSize().width <= 820) await page.getByRole('button', { name: 'Open the Team list' }).click();

@@ -74,6 +74,9 @@ export default {
     resourceMemory: '内存',
     resourceStorage: '存储',
     resourceUnit: 'GiB',
+    resourceNearlyFull: '即将用满',
+    resourceFull: '已满',
+    resourceServiceStopped: '有服务已停止',
   },
   teams: {
     kicker: '团队 // 隔离运行环境',

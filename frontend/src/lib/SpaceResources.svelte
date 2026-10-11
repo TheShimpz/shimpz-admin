@@ -9,6 +9,12 @@
   let pending = false;
   let segments = $derived(resources ? resourceSegments(resources, $locale, $t) : []);
 
+  // What the colour says, also in words: a stopped service, or a resource close to full or full.
+  function severity(segment, index) {
+    if (segment.level === 'alert') return $t(index === 0 ? 'shell.resourceServiceStopped' : 'shell.resourceFull');
+    return segment.level === 'warn' ? $t('shell.resourceNearlyFull') : '';
+  }
+
   // One read at a time and only while the page is visible: a hidden page or a read still pending skips its turn.
   async function refresh() {
     if (pending || document.visibilityState !== 'visible') return;
@@ -38,14 +44,20 @@
     {#each segments as segment, index (segment.label)}
       <div class="row {segment.level}" title={index === 0 ? $t('shell.resourceServicesTitle') : undefined}>
         <dt>{segment.label}</dt>
-        <dd>{segment.value ?? '—'}</dd>
-        <span
-          class="bar"
-          class:cells={segment.cells}
-          style:--cells={segment.cells}
-          style:--share={segment.ratio ?? 0}
-          aria-hidden="true"
-        ></span>
+        <dd>
+          <span class="value"
+            >{#if segment.level === 'warn' || segment.level === 'alert'}<span class="flag" aria-hidden="true">▲</span
+              >{/if}{segment.value ?? '—'}{#if severity(segment, index)}<span class="sr-only"
+                >, {severity(segment, index)}</span
+              >{/if}</span
+          ><span
+            class="bar"
+            class:cells={segment.cells}
+            style:--cells={segment.cells}
+            style:--share={segment.ratio ?? 0}
+            aria-hidden="true"
+          ></span></dd
+        >
       </div>
     {/each}
   </dl>
@@ -59,7 +71,12 @@
     margin: 0;
     padding: 0.25rem var(--gap-group);
   }
-  .row { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 0.25rem var(--gap-inside); min-width: 0; }
+  .row { display: grid; grid-template-columns: 1fr auto; gap: 0.25rem var(--gap-inside); min-width: 0; }
+  dt { grid-area: 1 / 1; align-self: baseline; }
+  dd { display: grid; grid-area: 1 / 1 / 3 / -1; grid-template-columns: 1fr auto; row-gap: 0.25rem; }
+  .value { grid-area: 1 / 2; display: flex; align-items: center; gap: 0.3rem; }
+  .flag { font-size: 0.55rem; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .row.warn { --signal: var(--shimpz-color-yellow); }
   .row.alert { --signal: var(--shimpz-color-danger); }
   .row.unknown { --signal: var(--shimpz-color-text-dim); }
@@ -83,7 +100,7 @@
   .row.ok:not(:first-child) dd { color: var(--shimpz-color-text); text-shadow: none; }
   .bar {
     position: relative;
-    grid-column: 1 / -1;
+    grid-area: 2 / 1 / 3 / -1;
     height: 4px;
     background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--signal) 16%, transparent) 0 6px, transparent 6px 8px);
   }

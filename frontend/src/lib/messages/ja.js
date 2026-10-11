@@ -74,6 +74,9 @@ export default {
     resourceMemory: 'メモリ',
     resourceStorage: 'ストレージ',
     resourceUnit: 'GiB',
+    resourceNearlyFull: 'ほぼ満杯',
+    resourceFull: '満杯',
+    resourceServiceStopped: '停止中のサービスあり',
   },
   teams: {
     kicker: 'チーム // 分離ランタイム',

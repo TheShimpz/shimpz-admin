@@ -74,6 +74,9 @@ export default {
     resourceMemory: 'Memória',
     resourceStorage: 'Armazenamento',
     resourceUnit: 'GiB',
+    resourceNearlyFull: 'quase cheio',
+    resourceFull: 'cheio',
+    resourceServiceStopped: 'serviço parado',
   },
   teams: {
     kicker: 'Times // runtimes isolados',

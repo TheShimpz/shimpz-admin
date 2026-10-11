@@ -74,6 +74,9 @@ export default {
     resourceMemory: 'Mémoire',
     resourceStorage: 'Stockage',
     resourceUnit: 'Gio',
+    resourceNearlyFull: 'presque plein',
+    resourceFull: 'plein',
+    resourceServiceStopped: 'service arrêté',
   },
   teams: {
     kicker: 'Équipes // environnements isolés',

@@ -74,6 +74,9 @@ export default {
     resourceMemory: 'الذاكرة',
     resourceStorage: 'التخزين',
     resourceUnit: 'GiB',
+    resourceNearlyFull: 'ممتلئ تقريبًا',
+    resourceFull: 'ممتلئ',
+    resourceServiceStopped: 'خدمة متوقفة',
   },
   teams: {
     kicker: 'الفرق // بيئات تشغيل معزولة',

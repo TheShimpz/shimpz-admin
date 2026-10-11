@@ -72,6 +72,9 @@ export default {
     resourceMemory: 'Memory',
     resourceStorage: 'Storage',
     resourceUnit: 'GiB',
+    resourceNearlyFull: 'close to full',
+    resourceFull: 'full',
+    resourceServiceStopped: 'service stopped',
   },
   teams: {
     kicker: 'Teams // isolated runtimes',
