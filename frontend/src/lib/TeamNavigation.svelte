@@ -544,7 +544,6 @@
   /* The selected Team keeps the hover treatment: the same tint and scanlines. */
   .row:hover, .row:focus-within, .is-selected > .row { --row-bg: var(--team-hover-bg); }
   .row:hover::before, .row:focus-within::before, .is-selected > .row::before { background-image: var(--team-scanlines); }
-  .row:hover .monogram { animation: admin-glitch-icon 280ms steps(1, end); }
   /* Row actions always stay visible beside the name, so a Team's Routines and actions are found without hovering. */
   .row-actions { display: flex; align-items: center; padding-inline-end: var(--gap-item); }
   .row :global(.team-link) { min-width: 0; height: auto; min-height: 2.75rem; justify-content: flex-start; padding: var(--gap-inside) var(--gap-group); border: 0; background: transparent; clip-path: none; color: var(--shimpz-color-text-muted); }
@@ -557,7 +556,6 @@
   /* The row paints the hover; the link's own fill and glow would split the row at the name's edge. */
   .row :global(.team-link:hover), .is-selected > .row :global(.team-link) { color: var(--shimpz-color-text); background: transparent; border-color: transparent; box-shadow: none; }
   .monogram { display: grid; flex: 0 0 auto; width: 1.9rem; height: 1.9rem; place-items: center; color: var(--shimpz-color-text-dim); background: var(--shimpz-color-bg); border: 1px solid var(--shimpz-color-border); font: 700 0.64rem/1 var(--shimpz-font-mono); letter-spacing: 0.04em; }
-  .is-selected .monogram { color: var(--shimpz-color-cyan); border-color: var(--shimpz-color-cyan); box-shadow: var(--shimpz-glow-cyan); }
   .name { min-width: 0; overflow: hidden; font: 500 0.9rem/1.2 var(--shimpz-font-sans); letter-spacing: 0; text-overflow: ellipsis; text-transform: none; white-space: nowrap; }
   .row :global(.row-action), .row :global(.team-actions > .shimpz-button) { width: 2.25rem; height: 2.25rem; min-width: 0; min-height: 0; padding: 0; border: 0; background: transparent; clip-path: none; color: var(--shimpz-color-text-dim); }
   .row :global(.row-action:hover), .row :global(.row-action.is-here), .row :global(.team-actions > .shimpz-button:hover),
@@ -595,7 +593,7 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .row::before { transition: none; }
-    .row .name, .row .monogram, .row :global(svg), .head :global(svg) { animation: none !important; }
+    .row .name, .row :global(svg), .head :global(svg) { animation: none !important; }
   }
   @media (forced-colors: active) {
     .drop-before::before, .drop-after::after { background: Highlight; filter: none; }
