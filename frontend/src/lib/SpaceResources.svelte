@@ -11,8 +11,10 @@
 
   // What the colour says, also in words: a stopped service, or a resource close to full or full.
   function severity(segment, index) {
-    if (segment.level === 'alert') return $t(index === 0 ? 'shell.resourceServiceStopped' : 'shell.resourceFull');
-    return segment.level === 'warn' ? $t('shell.resourceNearlyFull') : '';
+    if (index === 0) return segment.level === 'alert' ? $t('shell.resourceServiceStopped') : '';
+    if (segment.level !== 'warn' && segment.level !== 'alert') return '';
+    // "Full" only when nothing is left; above the thresholds but below the total it is close to full.
+    return $t(segment.ratio >= 1 ? 'shell.resourceFull' : 'shell.resourceNearlyFull');
   }
 
   // One read at a time and only while the page is visible: a hidden page or a read still pending skips its turn.
