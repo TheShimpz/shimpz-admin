@@ -119,8 +119,7 @@
     </svg>
   </Button>
   <div bind:this={panel} id={panelId} class="panel" role="dialog" aria-label={copy.settings} popover="manual">
-    <p class="section-label" id={`${panelId}-model`}>{copy.model}</p>
-    <div class="models" role="group" aria-labelledby={`${panelId}-model`}>
+    <div class="models" role="group" aria-label={copy.model}>
       {#each options as option, index (option.value)}
         {#if index === 0 || options[index - 1].provider !== option.provider}
           <p class="provider" aria-hidden="true">{option.providerTitle}</p>
@@ -162,7 +161,6 @@
     box-shadow: 0 1.25rem 3rem rgb(0 0 0 / 70%);
   }
   .panel:not(:popover-open) { display: none; }
-  .section-label { margin: 0; padding-inline: var(--gap-item); color: var(--shimpz-color-text-dim); font: 700 0.6rem/1 var(--shimpz-font-mono); letter-spacing: 0.16em; text-transform: uppercase; }
   .models { display: grid; gap: 1px; } /* a hairline seam between the rows' own tints, not rhythm */
   .provider { display: flex; align-items: center; gap: var(--gap-item); margin: var(--gap-item) 0 var(--gap-inside); padding-inline: var(--gap-item); color: var(--shimpz-color-cyan); font: 600 0.58rem/1 var(--shimpz-font-mono); letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.7; }
   .provider::after { flex: 1; height: 1px; background: var(--shimpz-color-border); content: ""; }

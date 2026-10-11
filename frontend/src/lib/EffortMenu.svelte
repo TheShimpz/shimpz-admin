@@ -128,14 +128,13 @@
     id={panelId}
     class="panel"
     role="dialog"
-    aria-labelledby={`${panelId}-title`}
+    aria-label={copy.effort}
     popover="manual"
   >
-    <p class="title" id={`${panelId}-title`}>{copy.effort}</p>
     <div
       class="effort"
       role="radiogroup"
-      aria-labelledby={`${panelId}-title`}
+      aria-label={copy.effort}
       style:--effort-fill={effortIndex / (INFERENCE_EFFORTS.length - 1)}
     >
       <span class="track" aria-hidden="true"><span class="fill"></span></span>
@@ -179,7 +178,6 @@
     box-shadow: 0 1.25rem 3rem rgb(0 0 0 / 70%);
   }
   .panel:not(:popover-open) { display: none; }
-  .title { margin: 0; color: var(--shimpz-color-text-dim); font: 700 0.6rem/1 var(--shimpz-font-mono); letter-spacing: 0.16em; text-transform: uppercase; }
   /* A slider: a hairline track through three notched stops, lit up to a glowing diamond thumb that slides to the
      current level. Each stop stays a radio, so keyboard and assistive use are unchanged. */
   .effort { --stop-center: calc(100% / 6); position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); margin-block-start: var(--gap-inside); }
