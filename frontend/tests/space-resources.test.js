@@ -61,12 +61,26 @@ test('formats each segment in the interface language and leaves an unknown pair 
     'shell.resourceUnit': 'GiB',
   };
   const t = (key) => messages[key];
-  assert.deepEqual(resourceSegments(signal, 'pt', t), [
-    { label: 'Serviços', value: '7/7' },
-    { label: 'Memória', value: '0,4/4 GiB' },
-    { label: 'Armazenamento', value: '1,3/64 GiB' },
-  ]);
+  const [services, memory, storage] = resourceSegments(signal, 'pt', t);
+  assert.deepEqual(services, { label: 'Serviços', value: '7/7', ratio: 1, level: 'ok', cells: 7 });
+  assert.deepEqual(
+    [memory.label, memory.value, memory.level, storage.label, storage.value, storage.level],
+    ['Memória', '0,4/4 GiB', 'ok', 'Armazenamento', '1,3/64 GiB', 'ok'],
+  );
+  assert.ok(Math.abs(memory.ratio - 0.1) < 1e-9);
   assert.equal(resourceSegments(signal, 'en', t)[1].value, '0.4/4 GiB');
   const unknown = { ...signal, memory_used_bytes: null, memory_total_bytes: null };
-  assert.equal(resourceSegments(unknown, 'pt', t)[1].value, null);
+  assert.deepEqual([resourceSegments(unknown, 'pt', t)[1].value, resourceSegments(unknown, 'pt', t)[1].ratio], [null, null]);
+  assert.equal(resourceSegments(unknown, 'pt', t)[1].level, 'unknown');
+});
+
+test('marks a stopped service as an alert and a nearly full resource as a warning, then an alert', () => {
+  const t = (key) => key;
+  assert.equal(resourceSegments({ ...signal, services_running: 6 }, 'en', t)[0].level, 'alert');
+  const memory = (used) => resourceSegments({ ...signal, memory_used_bytes: used }, 'en', t)[1];
+  assert.equal(memory(0.79 * 4 * GIB).level, 'ok');
+  assert.equal(memory(0.8 * 4 * GIB).level, 'warn');
+  assert.equal(memory(0.9 * 4 * GIB).level, 'alert');
+  // Docker can report more in use than its total; the share stays within the bar.
+  assert.equal(memory(5 * GIB).ratio, 1);
 });

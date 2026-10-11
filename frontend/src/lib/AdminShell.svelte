@@ -79,8 +79,8 @@
       <div class="sidebar-footer">
         {@render securityButton()}
         <LocaleMenu wide />
-        <PlatformReleaseStatus />
         <SpaceResources />
+        <PlatformReleaseStatus />
       </div>
     </div>
   {/if}

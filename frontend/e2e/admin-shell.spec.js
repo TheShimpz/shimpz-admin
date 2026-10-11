@@ -409,13 +409,13 @@ test('reads the Space resources only while visible, one read at a time, and clea
     else delete document.visibilityState;
     document.dispatchEvent(new Event('visibilitychange'));
   }, state === 'hidden');
-  const services = page.getByText('Services 6/7', { exact: true });
+  const services = page.getByRole('definition').filter({ hasText: /^6\/7$/ });
 
   await page.goto('/assistants/');
   await expect.poll(() => reads.length).toBe(1);
   await answer(200);
   await expect(services).toBeVisible();
-  await expect(page.getByText('Memory 0.4/4 GiB', { exact: true })).toBeVisible();
+  await expect(page.getByRole('definition').filter({ hasText: /^0\.4\/4 GiB$/ })).toBeVisible();
 
   // A hidden page lets its turns pass; becoming visible reads at once.
   await visibility('hidden');
