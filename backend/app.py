@@ -601,6 +601,7 @@ async def local_space_reset(request: Request):
 
 
 app.add_api_route("/api/space", local_space_reset, methods=["DELETE"])
+app.add_api_route("/api/space/resources", lambda: team_http.response(team.space_resources), methods=["GET"])
 
 
 # Teams and Assistants stay outside OPEN_API. Admin keeps Supervisor authentication while this
