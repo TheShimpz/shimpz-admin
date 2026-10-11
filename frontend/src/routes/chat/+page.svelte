@@ -2771,6 +2771,7 @@
   /* The time sits right after its author's name instead of across the message. */
   :global(.turns [data-slot="message-header"]) {
     justify-content: flex-start;
+    gap: 1ch; /* one word space, the same as between "às" and the time */
   }
   /* "às" reads as a word in the sentence "NEO às 10:30:00", not as part of the uppercase label. */
   .turn-at {
