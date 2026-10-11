@@ -46,7 +46,7 @@ test('Security names the previous sign-in, where it came from, and the failed at
   await routeScenario(page, 'security-alert');
   await page.goto('/chat/');
 
-  await page.getByRole('button', { name: 'Security' }).click();
+  await page.getByRole('button', { name: 'Supervisor' }).click();
   const signIns = page.getByRole('dialog', { name: 'Sign-in security' }).getByRole('region', { name: 'Sign-ins' });
   await expect(signIns).toContainText('https://admin.example.com');
   await expect(signIns).toContainText(new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' })

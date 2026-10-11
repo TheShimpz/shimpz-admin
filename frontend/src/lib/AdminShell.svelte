@@ -8,6 +8,7 @@
   import SecurityAlert from '#lib/SecurityAlert.svelte';
   import SecurityDialog from '#lib/SecurityDialog.svelte';
   import SpaceResources from '#lib/SpaceResources.svelte';
+  import SupervisorMenu from '#lib/SupervisorMenu.svelte';
   import TeamDialogs from '#lib/TeamDialogs.svelte';
   import TeamNavigation from '#lib/TeamNavigation.svelte';
   import TeamSidebar from '#lib/TeamSidebar.svelte';
@@ -23,6 +24,7 @@
   let createButton = $state();
   let securityDialog = $state();
   let securityTrigger = $state();
+  let accountTrigger = $state();
 
   function closeTeamDrawer() {
     teamDrawer?.close();
@@ -58,6 +60,10 @@
   </Button>
 {/snippet}
 
+{#snippet supervisorMenu()}
+  <SupervisorMenu bind:element={accountTrigger} onsecurity={() => securityDialog?.open()} />
+{/snippet}
+
 {#snippet sidebar()}
   {#if mobile}
     <div class="mobile-footer">
@@ -73,11 +79,11 @@
           bind:createButton
           oncreate={createTeam}
           ondelete={deleteTeam}
+          account={supervisorMenu}
         />
         <TeamSidebar {active} />
       </div>
       <div class="sidebar-footer">
-        {@render securityButton()}
         <LocaleMenu wide />
         <SpaceResources />
         <PlatformReleaseStatus />
@@ -123,7 +129,10 @@
 >
   {#if authenticated}
     <TeamDialogs bind:this={teamDialogs} onsettled={restoreTeamFocus} />
-    <SecurityDialog bind:this={securityDialog} onclose={() => queueMicrotask(() => securityTrigger?.focus())} />
+    <SecurityDialog
+      bind:this={securityDialog}
+      onclose={() => queueMicrotask(() => (mobile ? securityTrigger : accountTrigger)?.focus())}
+    />
     {#if mobile}
       <Modal class="team-drawer" bind:element={teamDrawer} labelledBy="team-drawer-title">
         <div class="team-drawer-head">

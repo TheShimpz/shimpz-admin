@@ -118,7 +118,7 @@ test('Security replaces every recovery code after the password and an authentica
   const sent = recordRequests(page, /^\/api\/admin\/recovery-codes/);
   await page.goto('/chat/');
 
-  await page.getByRole('button', { name: 'Security' }).click();
+  await page.getByRole('button', { name: 'Supervisor' }).click();
   const dialog = page.getByRole('dialog', { name: 'Sign-in security' });
   await expect(dialog).toContainText('2 of 10');
   await dialog.getByRole('button', { name: 'Generate new codes' }).click();
@@ -135,7 +135,8 @@ test('Security replaces every recovery code after the password and an authentica
   await expect(dialog).toContainText('10 of 10');
   await dialog.getByRole('button', { name: 'Close' }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Security' })).toBeFocused();
+  // Closing returns to the Supervisor account that opened it.
+  await expect(page.getByRole('button', { name: 'Supervisor' })).toBeFocused();
   expect(sent).toEqual([
     ['/api/admin/recovery-codes/confirmation', { password: 'wrong password' }],
     ['/api/admin/recovery-codes/confirmation', { password: PASSWORD }],

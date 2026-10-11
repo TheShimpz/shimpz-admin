@@ -74,6 +74,7 @@ export default {
     resourceMemory: 'الذاكرة',
     resourceStorage: 'التخزين',
     resourceUnit: 'GiB',
+    supervisorMenu: 'Supervisor',
     resourceNearlyFull: 'ممتلئ تقريبًا',
     resourceFull: 'ممتلئ',
     resourceServiceStopped: 'خدمة متوقفة',

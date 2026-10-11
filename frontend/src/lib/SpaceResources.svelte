@@ -72,9 +72,9 @@
     padding: 0.25rem var(--gap-group);
   }
   .row { display: grid; grid-template-columns: 1fr auto; gap: 0.25rem var(--gap-inside); min-width: 0; }
-  dt { grid-area: 1 / 1; align-self: baseline; }
-  dd { display: grid; grid-area: 1 / 1 / 3 / -1; grid-template-columns: 1fr auto; row-gap: 0.25rem; }
-  .value { grid-area: 1 / 2; display: flex; align-items: center; gap: 0.3rem; }
+  dt { grid-area: 1 / 1; display: flex; align-items: flex-end; height: 1rem; line-height: 1; }
+  dd { display: grid; grid-area: 1 / 1 / 3 / -1; grid-template: 1rem auto / 1fr auto; row-gap: 0.25rem; }
+  .value { grid-area: 1 / 2; display: flex; align-items: flex-end; gap: 0.3rem; height: 1rem; line-height: 1; }
   .flag { font-size: 0.55rem; }
   .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .row.warn { --signal: var(--shimpz-color-yellow); }

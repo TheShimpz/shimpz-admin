@@ -74,6 +74,7 @@ export default {
     resourceMemory: '内存',
     resourceStorage: '存储',
     resourceUnit: 'GiB',
+    supervisorMenu: 'Supervisor',
     resourceNearlyFull: '即将用满',
     resourceFull: '已满',
     resourceServiceStopped: '有服务已停止',

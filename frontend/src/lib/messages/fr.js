@@ -74,6 +74,7 @@ export default {
     resourceMemory: 'Mémoire',
     resourceStorage: 'Stockage',
     resourceUnit: 'Gio',
+    supervisorMenu: 'Supervisor',
     resourceNearlyFull: 'presque plein',
     resourceFull: 'plein',
     resourceServiceStopped: 'service arrêté',
