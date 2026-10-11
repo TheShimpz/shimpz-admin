@@ -349,6 +349,21 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 assert result.plan is not None
                 self.assertEqual(result.plan.assistants, (WHATSAPP,))
 
+    def test_a_staged_identity_with_refused_labels_still_shadows_its_publication(self) -> None:
+        inventory = _local_inventory(admission="inadmissible", reason="labels-invalid")
+        entry = inventory.body["assistants"][0]
+        entry.update(dict.fromkeys(assistant_plan.team_contract.LOCAL_ASSISTANT_LABEL_FIELDS))
+        result, planner = self._prepare(
+            "Configure Cloudflare",
+            (CLOUDFLARE, WHATSAPP),
+            _install_required("whatsapp"),
+            local_inventory=inventory,
+        )
+
+        self.assertEqual([candidate["id"] for candidate in planner.call_args.args[2]], ["whatsapp"])
+        assert result.plan is not None
+        self.assertEqual(result.plan.assistants, (WHATSAPP,))
+
     def test_a_shadowed_identity_leaves_nothing_to_plan_when_it_was_the_only_candidate(self) -> None:
         result, planner = self._prepare(
             "Configure Cloudflare",

@@ -18,7 +18,7 @@ const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
 const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 const MAX_INSTALLED_ASSISTANTS = 128;
 const MAX_LOCAL_ASSISTANTS = 50;
-const LOCAL_ADMISSION_REASONS = Object.freeze(['declaration-invalid', 'image-inconsistent']);
+const LOCAL_ADMISSION_REASONS = Object.freeze(['declaration-invalid', 'image-inconsistent', 'labels-invalid']);
 // The producer contract: Store and Developers admit up to 1,000 public Assistants.
 const MAX_PUBLIC_ASSISTANTS = 1000;
 // The Assistant summary is a short description of at most 80 characters, in every interface language.
@@ -269,6 +269,39 @@ function localAdmissionValid(admission, reason) {
   return ['admissible', 'unavailable'].includes(admission) && reason === null;
 }
 
+const LOCAL_LABEL_FIELDS = Object.freeze([
+  'actions',
+  'assistant_version',
+  'created_at',
+  'declared_creators',
+  'integrations',
+  'name',
+  'summary',
+]);
+
+/** A staged identity whose stage labels Team refused: its id and image, and every label member null. */
+function unlabeledSnapshotValid(entry) {
+  return (
+    exactKeys(entry, [
+      ...LOCAL_LABEL_FIELDS,
+      'admission',
+      'assistant_id',
+      'image_id',
+      'platform',
+      'provenance',
+      'reason',
+      'unpublished',
+    ]) &&
+    entry.admission === 'inadmissible' &&
+    isAssistantId(entry.assistant_id) &&
+    SHA256_RE.test(entry.image_id) &&
+    ['linux/amd64', 'linux/arm64'].includes(entry.platform) &&
+    entry.provenance === 'local' &&
+    entry.unpublished === true &&
+    LOCAL_LABEL_FIELDS.every((key) => entry[key] === null)
+  );
+}
+
 /** List bounded unpublished snapshots with explicitly unverified display declarations and Team's verdict. */
 export async function listLocalAssistantSnapshots(fetcher, signal) {
   if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Local Assistant snapshot request.');
@@ -292,7 +325,15 @@ export async function listLocalAssistantSnapshots(fetcher, signal) {
     throw new LocalApiError('The Local Assistant snapshot inventory is invalid.', response.status);
   }
   const seen = new Set();
-  return body.assistants.map((entry) => {
+  return body.assistants.flatMap((entry) => {
+    if (entry?.reason === 'labels-invalid') {
+      // A staged identity whose labels Team refused carries nothing to show; the Assistants view lists it in Phase 1b.
+      if (!unlabeledSnapshotValid(entry) || seen.has(entry.image_id)) {
+        throw new LocalApiError('The Local Assistant snapshot inventory is invalid.', response.status);
+      }
+      seen.add(entry.image_id);
+      return [];
+    }
     if (
       !exactKeys(entry, [
         'admission',
@@ -352,7 +393,7 @@ export async function listLocalAssistantSnapshots(fetcher, signal) {
       throw new LocalApiError('The Local Assistant snapshot inventory is invalid.', response.status);
     }
     seen.add(entry.image_id);
-    return { ...entry };
+    return [{ ...entry }];
   });
 }
 

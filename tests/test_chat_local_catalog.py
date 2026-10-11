@@ -107,6 +107,36 @@ class LocalCatalogTests(unittest.TestCase):
         self.assertEqual([assistant.assistant_id for assistant in inventory.offerable], ["admitted"])
         self.assertEqual(inventory.staged_ids, {"admitted", "refused", "unanswered", "restaged"})
 
+    def test_a_staged_identity_whose_labels_team_refused_shadows_without_being_offered(self) -> None:
+        unlabeled = {
+            **_snapshot("c", "2026-09-15T09:00:00Z", assistant_id="broken-labels"),
+            **dict.fromkeys(
+                ("assistant_version", "name", "summary", "declared_creators", "actions", "integrations", "created_at")
+            ),
+            "admission": "inadmissible",
+            "reason": "labels-invalid",
+        }
+        response = team.TeamResponse(
+            200,
+            {
+                "assistants": [
+                    _snapshot("a", "2026-09-15T09:00:00Z", assistant_id="admitted"),
+                    unlabeled,
+                    # A labeled admissible image of the same identity is still not offered beside the refused one.
+                    _snapshot("d", "2026-09-15T10:00:00Z", assistant_id="broken-labels"),
+                ]
+            },
+        )
+
+        inventory = local_catalog.primary(response)
+
+        self.assertEqual([assistant.assistant_id for assistant in inventory.offerable], ["admitted"])
+        self.assertEqual(inventory.staged_ids, {"admitted", "broken-labels"})
+        unlabeled_only = team.TeamResponse(200, {"assistants": [unlabeled]})
+        self.assertEqual(
+            local_catalog.primary(unlabeled_only), local_catalog.LocalInventory((), frozenset({"broken-labels"}))
+        )
+
     def test_rejects_widened_duplicate_or_malformed_inventory(self) -> None:
         valid = _snapshot("a", "2026-09-15T09:00:00Z")
         cases = (

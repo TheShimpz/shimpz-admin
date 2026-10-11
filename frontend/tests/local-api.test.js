@@ -250,6 +250,35 @@ test('keeps the Team admission verdict and refuses a verdict outside the closed 
   // Team's Assistant id grammar bounds an id at 40 characters.
   await assert.rejects(listed({ assistant_id: 'a'.repeat(41) }), /inventory is invalid/);
   assert.equal((await listed({ assistant_id: 'a'.repeat(40) }))[0].assistant_id, 'a'.repeat(40));
+  // A staged identity whose labels Team refused carries nothing to show, so the list leaves it out until Phase 1b.
+  const unlabeled = {
+    ...snapshot,
+    assistant_id: 'broken-labels',
+    image_id: `sha256:${'e'.repeat(64)}`,
+    assistant_version: null,
+    name: null,
+    summary: null,
+    declared_creators: null,
+    actions: null,
+    integrations: null,
+    created_at: null,
+    admission: 'inadmissible',
+    reason: 'labels-invalid',
+  };
+  const both = (extra) => listLocalAssistantSnapshots(
+    async () => response(200, { assistants: [snapshot, { ...unlabeled, ...extra }] }),
+  );
+  assert.deepEqual(await both({}), [snapshot]);
+  for (const extra of [
+    { name: 'Broken' },
+    { admission: 'admissible' },
+    { assistant_id: 'Broken' },
+    { image_id: LOCAL_IMAGE_ID },
+    { platform: 'linux/riscv64' },
+    { unpublished: false },
+  ]) {
+    await assert.rejects(both(extra), /inventory is invalid/);
+  }
   const { reason: _reason, ...withoutReason } = snapshot;
   await assert.rejects(
     listLocalAssistantSnapshots(async () => response(200, { assistants: [withoutReason] })),
