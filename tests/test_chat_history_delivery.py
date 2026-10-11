@@ -37,12 +37,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
             self.assertEqual(
                 payload, {"message": "Hello", "files": [], "assistant_ids": [], "locale": "en", "timezone": None}
             )
-            # The browser receives the seal of exactly this send's identity.
-            self.assertEqual(websocket.send_json.await_args.args[0]["type"], "sent")
-            self.assertEqual(
-                websocket.send_json.await_args.args[0]["request"].split(".")[:2],
-                [str(identity["issued_at"]), identity["nonce"]],
-            )
+            self.assertEqual(set(identity), {"issued_at", "nonce"})
             self.assertEqual(connection.admitted_history_id, "a" * 32)
             append.assert_called_once_with("team_1", "a" * 32, "Hello", files=[])
 
@@ -109,7 +104,6 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
                 "assistant_ids": [],
                 "locale": "en",
                 "timezone": None,
-                "request": None,
             }
             listing = team.TeamResponse(200, {"team_id": "team_1", "files": []})
             with (

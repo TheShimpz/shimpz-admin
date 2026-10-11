@@ -607,9 +607,6 @@ async function routeReadyChat(page, {
         socket.send(JSON.stringify({ type: 'sync-empty' }));
       } else if (frame.type === 'chat' || frame.type === 'resume-task') {
         chatFrames.push(frame);
-        // Admin seals each admitted send; a resend carries its seal back unchanged (ADR-0092).
-        const seal = frame.request ?? `${1_790_000_000 + chatFrames.length}.${'a'.repeat(32)}.${'b'.repeat(64)}`;
-        socket.send(JSON.stringify({ type: 'sent', request: seal }));
         if (disconnectFirstChat && !firstChatDisconnected && frame.type === 'chat') {
           firstChatDisconnected = true;
           socket.close({ code: 1011, reason: 'Synthetic interrupted turn' });
@@ -1284,51 +1281,8 @@ test('a custom answer takes focus and can be sent only once it has text', async 
   ]);
 });
 
-test('a failed answer is sent again once by Try again, without a second user turn', async ({ page }) => {
-  const scenario = await routeScenario(page, 'clarify-error');
-  const { card } = await askVoiceQuestion(page, scenario);
-  const composed = composedAnswer(
-    VOICE_REQUEST,
-    SCENARIO_CLARIFICATION.question,
-    SCENARIO_CLARIFICATION.options[1].label,
-  );
-
-  await card.getByRole('radio', { name: SCENARIO_CLARIFICATION.options[1].label }).check();
-  await card.getByRole('button', { name: 'Answer' }).click();
-  const retry = page.getByRole('button', { name: 'Try again' });
-  await expect(retry).toBeEnabled();
-  expect(sentMessages(scenario.chatFrames())).toEqual([VOICE_REQUEST, composed]);
-
-  await retry.click();
-  await expect(page.getByText(`Certo — sigo com ${SCENARIO_CLARIFICATION.options[1].label}`)).toBeVisible();
-  await expect(retry).toHaveCount(0);
-  expect(sentMessages(scenario.chatFrames())).toEqual([VOICE_REQUEST, composed, composed]);
-  await expect(page.getByRole('article', { name: 'You' })).toHaveCount(2);
-});
-
-test('Try again resends only the latest failed message', async ({ page }) => {
-  const chat = await routeReadyChat(page, { terminalError: true });
-  await page.goto('/chat/');
-  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await fillWhenReady(page, composer, 'List my DNS zones');
-  await page.getByRole('button', { name: 'Send' }).click();
-  const retry = page.getByRole('button', { name: 'Try again' });
-  await expect(retry).toBeEnabled();
-
-  // A new message replaces the failed one as the only message that can be sent again.
-  await fillWhenReady(page, composer, 'List my DNS records');
-  await page.getByRole('button', { name: 'Send' }).click();
-  await expect(retry).toBeEnabled();
-  await retry.click();
-  await expect(retry).toBeEnabled();
-  const frames = chat.chatFrames();
-  expect(sentMessages(frames)).toEqual(['List my DNS zones', 'List my DNS records', 'List my DNS records']);
-  // A new send names no identity; Try again carries back the seal Admin gave the failed send (ADR-0092).
-  expect(frames.map((frame) => frame.request)).toEqual([null, null, `${1_790_000_002}.${'a'.repeat(32)}.${'b'.repeat(64)}`]);
-});
-
-test('a send refused while the Space resets explains the reset and can be sent again', async ({ page }) => {
-  const chat = await routeReadyChat(page, {
+test('a send refused while the Space resets explains the reset', async ({ page }) => {
+  await routeReadyChat(page, {
     terminalError: 409,
     terminalDetail: 'space-resetting: the Space is being reset; retry when it finishes',
   });
@@ -1337,21 +1291,9 @@ test('a send refused while the Space resets explains the reset and can be sent a
   await page.getByRole('button', { name: 'Send' }).click();
   const notice = page.locator('[data-slot="notice"].shimpz-notice--error');
   await expect(notice).toContainText(messages.en.chatPage.spaceResetting);
-
-  await page.getByRole('button', { name: 'Try again' }).click();
-  await expect.poll(() => sentMessages(chat.chatFrames())).toEqual(['List my DNS zones', 'List my DNS zones']);
 });
 
-test('a send Admin refuses as expired is never offered to be sent again', async ({ page }) => {
-  await routeReadyChat(page, { terminalError: 410 });
-  await page.goto('/chat/');
-  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
-  await page.getByRole('button', { name: 'Send' }).click();
-  await expect(page.getByText('HTTP 410', { exact: false })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
-});
-
-test('an error delivered by a reconnect sync never offers to resend a finished request', async ({ page }) => {
+test('an error delivered by a reconnect sync is shown without sending the finished request again', async ({ page }) => {
   await routeScenario(page, 'ready');
   const frames = [];
   let connections = 0;
@@ -1384,7 +1326,6 @@ test('an error delivered by a reconnect sync never offers to resend a finished r
   await page.getByRole('button', { name: 'Send' }).click();
 
   await expect(page.getByText('The local chat runtime is unavailable.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
   expect(frames.filter((frame) => frame.type === 'chat')).toHaveLength(1);
   expect(connections).toBe(2);
 });
@@ -2640,7 +2581,6 @@ test('resumes one prior capability objective after reconnect and installs its As
     objective_assistant_ids: [],
     locale: 'en',
     timezone: await page.evaluate(() => Intl.DateTimeFormat().resolvedOptions().timeZone),
-    request: null,
   });
   const persistedBrowserState = await page.evaluate(() => JSON.stringify({
     local: Object.entries(localStorage),
@@ -2706,7 +2646,7 @@ test('keeps target-required guidance valid when Stop races its response', async 
   await expect(page.getByText('The secure chat response was invalid.', { exact: true })).toHaveCount(0);
 });
 
-test('a failed uninstall decision never offers to resend the earlier request', async ({ page }) => {
+test('a failed uninstall decision shows its error', async ({ page }) => {
   const chat = await routeReadyChat(page, { assistantUninstall: true, failUninstallDecision: true });
   await page.goto('/chat/');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -2717,11 +2657,10 @@ test('a failed uninstall decision never offers to resend the earlier request', a
   await uninstall.click();
 
   await expect(page.getByRole('alert').filter({ hasText: 'chat history is unavailable' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
   expect(chat.chatFrames().map((frame) => frame.message)).toEqual(['Uninstall the Cloudflare Assistant', 'yes']);
 });
 
-test('a typed uninstall decision that fails is never offered for resend', async ({ page }) => {
+test('a typed uninstall decision that fails shows its error', async ({ page }) => {
   const chat = await routeReadyChat(page, { assistantUninstall: true, failUninstallDecision: true });
   await page.goto('/chat/');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -2732,7 +2671,6 @@ test('a typed uninstall decision that fails is never offered for resend', async 
   await page.getByRole('button', { name: 'Send' }).click();
 
   await expect(page.getByRole('alert').filter({ hasText: 'chat history is unavailable' })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
   expect(chat.chatFrames().map((frame) => frame.message)).toEqual(['Uninstall the Cloudflare Assistant', 'no']);
 });
 
@@ -3863,7 +3801,6 @@ test('reports a committed uninstall when the Team inventory cannot refresh', asy
     'Shimpz Cloudflare is no longer installed in Marketing, but the current Team inventory could not be refreshed.',
   );
   await expect(toast).toContainText('Reload this page to confirm the Assistant list.');
-  await expect(page.getByRole('button', { name: 'Try again' })).toHaveCount(0);
 });
 
 test('keeps a first Store install ready while local display metadata catches up', { tag: '@mobile' }, async ({ page }, testInfo) => {

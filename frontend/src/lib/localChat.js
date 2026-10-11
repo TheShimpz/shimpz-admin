@@ -775,37 +775,24 @@ function requireLocale(locale) {
   return locale;
 }
 
-// The seal Admin gives each admitted send (ADR-0092): its issue instant, nonce, and Admin's authentication tag.
-const SEND_SEAL_RE = /^[1-9][0-9]{0,11}\.[0-9a-f]{32}\.[0-9a-f]{64}$/;
-
-function requireSendRequest(request) {
-  if (request !== null && (typeof request !== 'string' || !SEND_SEAL_RE.test(request))) {
-    throw new LocalApiError('Invalid chat request.');
-  }
-  return request;
-}
-
 /**
  * Build the ordinary chat frame accepted by shimpz.chat.v7, in the interface language the Brain writes in, with the
- * browser's timezone, which Team uses only as the default zone of a Routine the message creates, and `request`: null
- * for a new send, or the seal Admin gave a send to resend exactly it (ADR-0092).
+ * browser's timezone, which Team uses only as the default zone of a Routine the message creates.
  */
-export function createChatFrame(teamId, turn, locale, request) {
+export function createChatFrame(teamId, turn, locale) {
   requireTeam(teamId);
   return {
     type: 'chat',
     ...canonicalChatTurn(turn),
     locale: requireLocale(locale),
     timezone: browserTimezone(),
-    request: requireSendRequest(request),
   };
 }
 
 /** Build Local Admin's one-use resume frame without persisting the prior objective. */
-export function createResumeTaskFrame(teamId, turn, objectiveTurn, locale, request) {
+export function createResumeTaskFrame(teamId, turn, objectiveTurn, locale) {
   requireTeam(teamId);
   requireLocale(locale);
-  const sent = requireSendRequest(request);
   const current = canonicalChatTurn(turn);
   const objective = canonicalChatTurn(objectiveTurn);
   if (
@@ -825,7 +812,6 @@ export function createResumeTaskFrame(teamId, turn, objectiveTurn, locale, reque
     objective_assistant_ids: objective.assistant_ids,
     locale,
     timezone: browserTimezone(),
-    request: sent,
   };
 }
 
@@ -1447,13 +1433,6 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       event.total = value.total;
     }
     return event;
-  }
-  if (value.type === 'sent') {
-    // The seal of the send Admin just admitted; only a resend of exactly that message may carry it back.
-    if (!exactKeys(value, ['type', 'request']) || typeof value.request !== 'string' || !SEND_SEAL_RE.test(value.request)) {
-      throw new LocalApiError('The local chat response is invalid.');
-    }
-    return { type: 'sent', request: value.request };
   }
   if (value.type === 'stopped' && exactKeys(value, ['type'])) return { type: 'stopped' };
   if (value.type === 'sync-empty' && exactKeys(value, ['type'])) return { type: 'sync-empty' };

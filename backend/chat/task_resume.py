@@ -4,7 +4,7 @@ import asyncio
 import threading
 from dataclasses import dataclass
 
-from chat.connection import Connection, Turn, request_identity, valid_sent_request
+from chat.connection import Connection, Turn, request_identity
 from chat.delivery import plan as plan_delivery
 from chat.delivery import route as route_delivery
 from chat.executor import ExecutorSaturatedError
@@ -33,8 +33,7 @@ def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], di
         "objective_assistant_ids",
         "locale",
         "timezone",
-        "request",
-    } or not valid_sent_request(frame["request"]):
+    }:
         raise team.TeamRequestError("invalid task resume request")
     payload = team.canonical_chat_payload(
         {
@@ -67,7 +66,6 @@ def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], di
 async def admit(
     websocket: WebSocket,
     connection: Connection,
-    team_id: str,
     frame: dict[str, object],
     operations: Operations,
 ) -> tuple[dict[str, object], dict[str, object], dict[str, object]] | None:
@@ -86,15 +84,7 @@ async def admit(
             operations.error_terminal(409, "an Assistant challenge must be resolved before another turn"),
         )
         return None
-    sealed = request_identity(team_id, frame["request"], payloads[1])
-    if sealed is None:
-        await operations.send_event(
-            websocket,
-            operations.error_terminal(410, "this message can no longer be sent again; send it as a new message"),
-        )
-        return None
-    await operations.send_event(websocket, {"type": "sent", "request": sealed[1]})
-    return (*payloads, sealed[0])
+    return (*payloads, request_identity())
 
 
 async def dispatch(
@@ -104,7 +94,7 @@ async def dispatch(
     frame: dict[str, object],
     operations: Operations,
 ) -> None:
-    admitted = await admit(websocket, connection, team_id, frame, operations)
+    admitted = await admit(websocket, connection, frame, operations)
     if admitted is None:
         return
     payload, objective, identity = admitted

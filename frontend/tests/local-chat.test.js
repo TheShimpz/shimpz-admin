@@ -74,15 +74,12 @@ function response(status, body) {
   return { ok: status >= 200 && status < 300, status, async json() { return body; } };
 }
 
-const SENT = null;
-const SEAL = `1790000000.${'c'.repeat(32)}.${'d'.repeat(64)}`;
-
 test('chat builds only the versioned WebSocket contract', () => {
   const frame = createChatFrame('team_1', {
     message: '  Hi  ',
     files: ['a'.repeat(32)],
     assistant_ids: ['shimpz-cloudflare'],
-  }, 'pt', SENT);
+  }, 'pt');
   assert.deepEqual(frame, {
     type: 'chat',
     message: 'Hi',
@@ -90,21 +87,11 @@ test('chat builds only the versioned WebSocket contract', () => {
     assistant_ids: ['shimpz-cloudflare'],
     locale: 'pt',
     timezone: browserTimezone(),
-    request: SENT,
   });
   for (const locale of [undefined, null, 'pt-BR', 'EN', 'it', 1]) {
     assert.throws(
-      () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, locale, SENT),
+      () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, locale),
       /Invalid local chat request/,
-    );
-  }
-  // A new send names no identity; a resend carries back exactly the seal Admin gave it, and nothing else names one.
-  assert.equal(createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, 'pt', SEAL).request, SEAL);
-  for (const request of [undefined, {}, 'seal', SEAL.toUpperCase(), `0.${'c'.repeat(32)}.${'d'.repeat(64)}`,
-    { nonce: 'c'.repeat(32), resend: true }, 7]) {
-    assert.throws(
-      () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, 'pt', request),
-      /Invalid chat request/,
     );
   }
   assert.doesNotMatch(JSON.stringify(frame), /action|provider|model|api_key|credential/);
@@ -136,7 +123,6 @@ test('chat resumes only one exact prior capability objective', () => {
       { message: 'Você mesmo consegue habilitar?', files: [], assistant_ids: [] },
       objective,
       'pt',
-      SENT,
     ),
     {
       type: 'resume-task',
@@ -147,8 +133,7 @@ test('chat resumes only one exact prior capability objective', () => {
       objective_assistant_ids: [],
       locale: 'pt',
       timezone: browserTimezone(),
-      request: SENT,
-    },
+      },
   );
   assert.throws(
     () => createResumeTaskFrame(
@@ -156,7 +141,6 @@ test('chat resumes only one exact prior capability objective', () => {
       { message: 'Você mesmo consegue habilitar?', files: [], assistant_ids: [] },
       objective,
       'xx',
-      SENT,
     ),
     /Invalid local chat request/,
   );
@@ -179,7 +163,7 @@ test('chat resumes only one exact prior capability objective', () => {
     ],
   ]) {
     assert.throws(
-      () => createResumeTaskFrame('team_1', current, prior, 'pt', SENT),
+      () => createResumeTaskFrame('team_1', current, prior, 'pt'),
       /Invalid task resume request/,
     );
   }
@@ -349,9 +333,9 @@ test('chat rejects augmented, sensitive, and out-of-bounds human requests', () =
 
 test('chat requires one exact bounded Assistant scope and keeps empty scope Brain-only', () => {
   assert.deepEqual(
-    createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, 'en', SENT),
+    createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, 'en'),
     {
-      type: 'chat', message: 'Hi', files: [], assistant_ids: [], locale: 'en', timezone: browserTimezone(), request: SENT,
+      type: 'chat', message: 'Hi', files: [], assistant_ids: [], locale: 'en', timezone: browserTimezone(),
     },
   );
 
@@ -364,7 +348,7 @@ test('chat requires one exact bounded Assistant scope and keeps empty scope Brai
     assert.throws(
       () => createChatFrame('team_1', {
         message: 'Hi', files: [], assistant_ids: [], ...extra,
-      }, 'en', SENT),
+      }, 'en'),
       /only message, files, and assistant_ids/,
     );
   }
@@ -377,7 +361,7 @@ test('chat requires one exact bounded Assistant scope and keeps empty scope Brai
     Array.from({ length: 17 }, (_value, index) => `assistant-${index}`),
   ]) {
     assert.throws(
-      () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids }, 'en', SENT),
+      () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids }, 'en'),
       /Invalid local chat request/,
     );
   }
@@ -1101,7 +1085,7 @@ test('a terminal event admits a Team name of 80 code points and refuses 81', () 
 });
 
 test('chat text is bounded by Unicode code points, as its producers count it', () => {
-  const chat = (message) => createChatFrame('team_1', { message, files: [], assistant_ids: [] }, 'en', SENT);
+  const chat = (message) => createChatFrame('team_1', { message, files: [], assistant_ids: [] }, 'en');
   const human = (value) => createHumanResponseFrame('team_1', CHALLENGE_ID, 'submit', value);
   const done = (reply) => parseChatEvent(
     { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply, clarification: null },
@@ -1156,17 +1140,5 @@ test('chat rejects invalid, cross-Team, augmented, or secret terminal events', (
       () => parseChatEvent(body, 'team_1', 'Marketing'),
       /response is invalid/,
     );
-  }
-});
-
-test('a sent event carries exactly one seal Admin issued', () => {
-  assert.deepEqual(parseChatEvent({ type: 'sent', request: SEAL }, 'team_1', 'Marketing'), { type: 'sent', request: SEAL });
-  for (const value of [
-    { type: 'sent' },
-    { type: 'sent', request: null },
-    { type: 'sent', request: 'seal' },
-    { type: 'sent', request: SEAL, team_id: 'team_1' },
-  ]) {
-    assert.throws(() => parseChatEvent(value, 'team_1', 'Marketing'), /invalid/);
   }
 });

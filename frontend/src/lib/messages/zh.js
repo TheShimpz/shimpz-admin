@@ -294,7 +294,6 @@ export default {
     authenticationDenied: '未能确认 Supervisor 密码。此操作未执行。请重新发起操作后再试。',
     authenticationUnavailable: 'Supervisor 密码验证当前不可用。此操作未执行。请稍后再试。',
     technicalDetail: '技术详情',
-    retry: '重试',
     usage: {
       tokens: '词元',
       input: '输入',

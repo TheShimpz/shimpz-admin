@@ -292,7 +292,6 @@ export default {
     authenticationDenied: 'The Supervisor password was not confirmed. This action was not executed. Start the action again to retry.',
     authenticationUnavailable: 'Supervisor password verification is unavailable. This action was not executed. Try again later.',
     technicalDetail: 'Technical detail',
-    retry: 'Try again',
     usage: {
       tokens: 'tokens',
       input: 'input',

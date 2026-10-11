@@ -294,7 +294,6 @@ export default {
     authenticationDenied: 'No se confirmó la contraseña del Supervisor. Esta acción no se ejecutó. Inicia la acción de nuevo para volver a intentarlo.',
     authenticationUnavailable: 'La verificación de la contraseña del Supervisor no está disponible. Esta acción no se ejecutó. Inténtalo de nuevo más tarde.',
     technicalDetail: 'Detalle técnico',
-    retry: 'Reintentar',
     usage: {
       tokens: 'tokens',
       input: 'entrada',

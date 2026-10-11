@@ -294,7 +294,6 @@ export default {
     authenticationDenied: 'A senha do Supervisor não foi confirmada. Esta ação não foi executada. Inicie a ação novamente para tentar outra vez.',
     authenticationUnavailable: 'A verificação da senha do Supervisor está indisponível. Esta ação não foi executada. Tente novamente mais tarde.',
     technicalDetail: 'Detalhe técnico',
-    retry: 'Tentar novamente',
     usage: {
       tokens: 'tokens',
       input: 'entrada',

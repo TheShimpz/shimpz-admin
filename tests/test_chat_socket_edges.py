@@ -17,7 +17,6 @@ from team import bridge as team
 from tests.chat_socket_case import ChatDeliveryCase, resume_operations
 from tests.chat_socket_fixtures import human_challenge, human_response
 
-from chat import connection as chat_connection
 from chat import human, local, socket, task_resume
 from tests import chat_socket_fixtures
 
@@ -127,15 +126,14 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
 
         asyncio.run(scenario())
 
-    def test_a_chat_frame_names_its_logical_send_and_an_expired_resend_is_refused(self) -> None:
-        frame = chat_socket_fixtures.chat_frame("Hello", request="1." + "a" * 32 + "." + "b" * 64)
+    def test_a_chat_frame_is_exact(self) -> None:
+        frame = chat_socket_fixtures.chat_frame("Hello")
 
         async def scenario() -> None:
-            for candidate, status in (
-                ({key: value for key, value in frame.items() if key != "request"}, 400),
-                ({**frame, "request": {"nonce": "x", "resend": True}}, 400),
-                ({**frame, "locale": "pt-BR"}, 400),
-                (frame, 410),
+            for candidate in (
+                {**frame, "request": None},
+                {key: value for key, value in frame.items() if key != "timezone"},
+                {**frame, "locale": "pt-BR"},
             ):
                 websocket = mock.AsyncMock()
                 with mock.patch.object(socket.history, "append_user") as append:
@@ -143,33 +141,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
                         await socket._admit_chat_payload(websocket, socket._Connection(), "team_1", candidate)
                     )
                 append.assert_not_called()
-                self.assertEqual(websocket.send_json.await_args.args[0]["status"], status)
-
-        asyncio.run(scenario())
-
-    def test_a_resend_through_the_socket_reuses_its_sealed_identity_only_while_fresh(self) -> None:
-        frame = chat_socket_fixtures.chat_frame("Every day at 9, list my zones")
-
-        async def admit(candidate, now):
-            websocket = mock.AsyncMock()
-            with (
-                mock.patch.object(chat_connection.time, "time", return_value=now),
-                mock.patch.object(socket.history, "append_user", return_value=True) as append,
-            ):
-                admitted = await socket._admit_chat_payload(websocket, socket._Connection(), "team_1", candidate)
-            return admitted, websocket.send_json.await_args.args[0], append
-
-        async def scenario() -> None:
-            (_payload, identity), sent, _append = await admit(frame, 1_000_000)
-            self.assertEqual(sent["type"], "sent")
-            resend = {**frame, "request": sent["request"]}
-            (_payload, again), _sent, _append = await admit(resend, 1_000_899)
-            self.assertEqual(again, identity)
-            # Expired, the original send is refused before any history row or Team turn exists.
-            refused, terminal, append = await admit(resend, 1_000_900)
-            self.assertIsNone(refused)
-            self.assertEqual(terminal["status"], 410)
-            append.assert_not_called()
+                self.assertEqual(websocket.send_json.await_args.args[0]["status"], 400)
 
         asyncio.run(scenario())
 
@@ -178,13 +150,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
 
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            admitted = await task_resume.admit(
-                websocket,
-                socket._Connection(),
-                "team_1",
-                valid,
-                resume_operations(),
-            )
+            admitted = await task_resume.admit(websocket, socket._Connection(), valid, resume_operations())
             self.assertEqual(
                 admitted[:2],
                 (
@@ -193,7 +159,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
                 ),
             )
             self.assertRegex(admitted[2]["nonce"], r"\A[0-9a-f]{32}\Z")
-            self.assertEqual(websocket.send_json.await_args.args[0]["type"], "sent")
+            websocket.send_json.assert_not_called()
 
             invalid = (
                 {**valid, "extra": True},
@@ -204,8 +170,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
                 {key: value for key, value in valid.items() if key != "locale"},
                 {**valid, "locale": None},
                 {**valid, "locale": "pt-BR"},
-                {key: value for key, value in valid.items() if key != "request"},
-                {**valid, "request": {"nonce": "x", "resend": False}},
+                {**valid, "request": None},
             )
             for frame in invalid:
                 websocket.reset_mock()
@@ -213,7 +178,6 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
                     await task_resume.admit(
                         websocket,
                         socket._Connection(),
-                        "team_1",
                         frame,
                         resume_operations(),
                     )
@@ -225,7 +189,6 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
                 await task_resume.admit(
                     websocket,
                     socket._Connection(active=socket._Turn(None, "chat")),
-                    "team_1",
                     valid,
                     resume_operations(),
                 )
@@ -237,20 +200,11 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
                 await task_resume.admit(
                     websocket,
                     socket._Connection(pending_challenge_id="c" * 32),
-                    "team_1",
                     valid,
                     resume_operations(),
                 )
             )
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
-
-            # A resend whose seal Admin never issued is refused, never renewed.
-            websocket.reset_mock()
-            forged = {**valid, "request": "1." + "a" * 32 + "." + "b" * 64}
-            self.assertIsNone(
-                await task_resume.admit(websocket, socket._Connection(), "team_1", forged, resume_operations())
-            )
-            self.assertEqual(websocket.send_json.await_args.args[0]["status"], 410)
 
             websocket.reset_mock()
             with mock.patch.object(socket.lifecycle, "submit_resume") as prepare:

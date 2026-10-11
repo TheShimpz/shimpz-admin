@@ -127,14 +127,6 @@
   let lifecycleDecisionPending = $state(false);
   let error = $state('');
   let errorDetail = $state('');
-  // The message of the turn in flight, and the message of a turn that just failed, which its error offers to send
-  // again. Only a user message is retryable; a failed decision or a later unrelated error never offers a resend.
-  let retryMessage = $state('');
-  let lastSentMessage = '';
-  // The seal Admin gave the send a retry repeats (ADR-0092): Admin reuses its identity and refuses an expired one. A
-  // send Admin never sealed reached no Team, so its retry is simply a new send.
-  let lastSentRequest = null;
-  let retryRequest = null;
   let socket = $state(null);
   let socketReady = $state(false);
   let reconnectTimer;
@@ -324,11 +316,6 @@
   let attachmentsUnavailable = $derived(
     composerBusy || questionOpen || brainSaving || keyRequired || !chatTeamId,
   );
-
-  function retryLastTurn() {
-    const message = retryMessage;
-    if (message) submitMessage(message, { projectUserTurn: false, retryable: true, request: retryRequest });
-  }
 
   function groupExchanges(values) {
     const grouped = [];
@@ -936,13 +923,11 @@
   function clearError() {
     error = '';
     errorDetail = '';
-    retryMessage = '';
   }
 
   function setError(message, detail = '') {
     error = message;
     errorDetail = detail;
-    retryMessage = '';
   }
 
   async function focusComposer() {
@@ -1273,11 +1258,6 @@
           humanRejection = incoming;
           return;
         }
-        if (incoming.type === 'sent') {
-          if (!busy) throw new Error('unexpected sent frame');
-          if (lastSentMessage) lastSentRequest = incoming.request;
-          return;
-        }
         if (incoming.type === 'progress') {
           if (!busy && !syncing) throw new Error('unexpected progress frame');
           if (incoming.seq !== progressSequence + 1) throw new Error('out-of-order progress frame');
@@ -1418,19 +1398,12 @@
       }
 
       const receipt = progressEvents.map((item) => ({ ...item }));
-      // Only a turn this socket started and the user did not stop can be sent again; a terminal delivered by a
-      // reconnect sync may belong to any earlier request.
-      const retryable = !syncing && !stopping;
       expireSocketLifecycles();
       busy = false;
       syncing = false;
       stopping = false;
       resetChallengeState();
       clearTurnInstalled();
-      const failedMessage = lastSentMessage;
-      const failedRequest = lastSentRequest;
-      lastSentMessage = '';
-      lastSentRequest = null;
       if (incoming.type === 'done') {
         turns = [...turns, {
           renderKey: nextRenderKey++,
@@ -1451,16 +1424,11 @@
       } else {
         const projectedError = projectedChatError(incoming.status, incoming.detail);
         setError(projectedError.message, projectedError.detail);
-        // A send whose identity Admin refused as expired (410) is sent again only as a new message.
-        retryMessage = retryable && incoming.status !== 410 ? failedMessage : '';
-        retryRequest = failedRequest;
       }
       resetProgress();
     };
     active.onclose = (event) => {
       if (socket !== active || chatTeamId !== expectedTeamId) return;
-      lastSentMessage = '';
-      lastSentRequest = null;
       socket = null;
       socketReady = false;
       syncing = false;
@@ -1485,8 +1453,6 @@
     clearTurnInstalled();
     clearLifecycleIconCaptures();
     capabilityObjective = null;
-    lastSentMessage = '';
-    lastSentRequest = null;
     liveAnswers = new Map();
     socketTeamId = nextTeamId;
     reconnectAttempt = 0;
@@ -1856,9 +1822,7 @@
   function submitMessage(message, {
     focusActiveTurn = true,
     projectUserTurn = true,
-    retryable = projectUserTurn,
     useCapabilityObjective = true,
-    request = null,
     attached = [],
   } = {}) {
     const teamId = $teamContext.selectedTeamId;
@@ -1875,7 +1839,6 @@
     ) return false;
     let frame;
     let resumedObjective = '';
-    const decisionPending = turns.some((turn) => turn.lifecycle?.state === 'proposed');
     clearTurnInstalled();
     const assistantIds = [...$teamContext.activeAssistantIds];
     const files = attached.map((item) => item.id);
@@ -1896,11 +1859,11 @@
         assistant_ids: assistantIds,
       };
       if (resumable) {
-        frame = createResumeTaskFrame(teamId, currentTurn, resumable, $locale, request);
+        frame = createResumeTaskFrame(teamId, currentTurn, resumable, $locale);
         resumedObjective = resumable.message;
         capabilityObjective = null;
       } else {
-        frame = createChatFrame(teamId, currentTurn, $locale, request);
+        frame = createChatFrame(teamId, currentTurn, $locale);
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : copy.loadFailed);
@@ -1923,12 +1886,6 @@
     }
     try {
       socket.send(JSON.stringify(frame));
-      // A resumed task or a message sent while an uninstall awaits its decision cannot be resent as itself: the
-      // objective or the proposal was consumed, so neither is ever offered again.
-      // A message with attachments is never resent as text alone; its files are selected again.
-      lastSentMessage = retryable && !resumable && !decisionPending && files.length === 0 ? normalized : '';
-      // A resend keeps the seal it carries; a new send waits for the seal Admin returns.
-      lastSentRequest = lastSentMessage ? request : null;
       if (files.length) {
         capabilityObjective = null;
       } else if (useCapabilityObjective && !continuation) {
@@ -2464,9 +2421,6 @@
           <Notice class="error" variant="error">
             <strong>{visibleError}</strong>
             {#if visibleErrorDetail}<code>{copy.technicalDetail}: {visibleErrorDetail}</code>{/if}
-            {#if error && retryMessage && !busy}
-              <Button size="sm" variant="secondary" disabled={sendUnavailable} onclick={retryLastTurn}>{copy.retry}</Button>
-            {/if}
           </Notice>
         {/if}
 

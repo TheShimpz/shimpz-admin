@@ -294,7 +294,6 @@ export default {
     authenticationDenied: 'Das Supervisor-Passwort wurde nicht bestätigt. Diese Aktion wurde nicht ausgeführt. Starte die Aktion erneut, um es noch einmal zu versuchen.',
     authenticationUnavailable: 'Die Prüfung des Supervisor-Passworts ist nicht verfügbar. Diese Aktion wurde nicht ausgeführt. Versuche es später erneut.',
     technicalDetail: 'Technisches Detail',
-    retry: 'Erneut versuchen',
     usage: {
       tokens: 'Tokens',
       input: 'Eingabe',

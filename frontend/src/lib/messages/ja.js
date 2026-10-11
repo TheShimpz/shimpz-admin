@@ -294,7 +294,6 @@ export default {
     authenticationDenied: 'Supervisor のパスワードを確認できませんでした。この操作は実行されていません。もう一度試すには操作を再開してください。',
     authenticationUnavailable: 'Supervisor のパスワード確認を現在利用できません。この操作は実行されていません。後でもう一度お試しください。',
     technicalDetail: '技術的な詳細',
-    retry: '再試行',
     usage: {
       tokens: 'トークン',
       input: '入力',

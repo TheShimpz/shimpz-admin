@@ -46,8 +46,7 @@ class ChatHistoryFailureEdgeTests(ChatDeliveryCase):
                 delivery = connection.active.delivery
                 await delivery
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 503)
-            # The only event of the turn's own is the seal of its admitted send.
-            self.assertEqual([call.args[1]["type"] for call in send.await_args_list], ["sent"])
+            send.assert_not_awaited()
 
             pending = socket._Connection(pending_challenge_id="a" * 32)
             with (

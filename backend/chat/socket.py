@@ -67,10 +67,8 @@ STATIC_ORIGINS = _configured_origins()
 _Turn = connection.Turn
 _Connection = connection.Connection
 _SyncSnapshot = connection.SyncSnapshot
-_valid_sent_request = connection.valid_sent_request
 _request_identity = connection.request_identity
 # A retry, resend, or reconnect of a send whose identity Team would no longer admit is refused, never renewed.
-EXPIRED_SEND = "this message can no longer be sent again; send it as a new message"
 _error_terminal = projection.error_terminal
 _projected_event = projection.projected_event
 turn_terminal = projection.turn_terminal
@@ -577,17 +575,17 @@ async def _admit_chat_payload(
     frame: dict[str, object],
 ) -> tuple[dict[str, object], dict[str, object]] | None:
     """The admitted chat payload and the identity of its logical send, or None after an error terminal."""
-    if set(frame) != {"type", "request", *team.CHAT_PAYLOAD_FIELDS}:
+    if set(frame) != {"type", *team.CHAT_PAYLOAD_FIELDS}:
         await _send_event(
             websocket,
-            _error_terminal(400, "chat frame requires message, files, assistant_ids, locale, timezone, and request"),
+            _error_terminal(400, "chat frame requires message, files, assistant_ids, locale, and timezone"),
         )
         return None
     try:
         payload = team.canonical_chat_payload({key: frame[key] for key in team.CHAT_PAYLOAD_FIELDS})
     except team.TeamRequestError:
         payload = None
-    if not _valid_sent_request(frame["request"]) or payload is None:
+    if payload is None:
         await _send_event(websocket, _error_terminal(400, "invalid chat request"))
         return None
     if connection.active is not None or connection.sync_task is not None or connection.lifecycle is not None:
@@ -599,13 +597,7 @@ async def _admit_chat_payload(
             _error_terminal(409, "an Assistant challenge must be resolved before another turn"),
         )
         return None
-    sealed = _request_identity(team_id, frame["request"], payload)
-    if sealed is None:
-        await _send_event(websocket, _error_terminal(410, EXPIRED_SEND))
-        return None
-    identity, seal = sealed
-    # The browser keeps the seal to resend exactly this send; it is never a new grant.
-    await _send_event(websocket, {"type": "sent", "request": seal})
+    identity = _request_identity()
     admitted = lifecycle.reuses_history(connection, payload) or await _commit_user_history(
         websocket,
         connection,

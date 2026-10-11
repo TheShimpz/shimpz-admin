@@ -52,8 +52,7 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
                     "reply": "Which installed Assistant do you want to uninstall?",
                 },
             )
-            # The only event of the turn's own is the seal of its admitted send.
-            self.assertEqual([call.args[1]["type"] for call in send.await_args_list], ["sent"])
+            send.assert_not_awaited()
             route.assert_called_once()
 
         asyncio.run(scenario())
@@ -243,7 +242,6 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
                     "assistant_ids": [],
                     "locale": "pt",
                     "timezone": None,
-                    "request": None,
                     "unexpected": "oi",
                 },
             )

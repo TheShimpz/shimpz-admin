@@ -294,7 +294,6 @@ export default {
     authenticationDenied: 'Le mot de passe du Supervisor n’a pas été confirmé. Cette action n’a pas été exécutée. Relancez l’action pour réessayer.',
     authenticationUnavailable: 'La vérification du mot de passe du Supervisor est indisponible. Cette action n’a pas été exécutée. Réessayez plus tard.',
     technicalDetail: 'Détail technique',
-    retry: 'Réessayer',
     usage: {
       tokens: 'jetons',
       input: 'entrée',

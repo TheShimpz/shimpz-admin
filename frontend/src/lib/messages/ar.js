@@ -294,7 +294,6 @@ export default {
     authenticationDenied: 'لم يتم تأكيد كلمة مرور Supervisor. لم يُنفَّذ هذا الإجراء. ابدأ الإجراء من جديد للمحاولة مرة أخرى.',
     authenticationUnavailable: 'التحقق من كلمة مرور Supervisor غير متاح حاليًا. لم يُنفَّذ هذا الإجراء. حاول مرة أخرى لاحقًا.',
     technicalDetail: 'تفاصيل تقنية',
-    retry: 'أعد المحاولة',
     usage: {
       tokens: 'رموز',
       input: 'الإدخال',
