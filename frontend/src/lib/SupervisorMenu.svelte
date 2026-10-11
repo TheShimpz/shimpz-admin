@@ -24,20 +24,27 @@
 </DropdownMenu>
 
 <style>
-  :global(.supervisor-menu .trigger.shimpz-button) {
+  /* The same surface as the Team list's new-Team button: transparent, with the rows' scanline tint on hover. */
+  :global(.supervisor-menu.shimpz-dropdown > .trigger.shimpz-button) {
     --button-height: 2.75rem;
+    position: relative;
+    isolation: isolate;
     width: 2.75rem;
     height: 2.75rem;
     min-height: 0;
     padding: 0;
     border: 0;
     border-radius: 0;
-    background: none;
+    background: transparent;
     clip-path: none;
     box-shadow: none;
   }
-  :global(.supervisor-menu .trigger.shimpz-button:hover:not(:disabled)),
-  :global(.supervisor-menu .trigger.shimpz-button:focus-visible) { border: 0; background: none; box-shadow: none; }
+  :global(.supervisor-menu.shimpz-dropdown > .trigger.shimpz-button::before) { content: ""; position: absolute; z-index: -1; inset: 0; clip-path: var(--shimpz-control-shape); pointer-events: none; }
+  :global(.supervisor-menu.shimpz-dropdown > .trigger.shimpz-button:hover:not(:disabled)),
+  :global(.supervisor-menu.shimpz-dropdown > .trigger.shimpz-button:focus-visible) { border: 0; background: transparent; box-shadow: none; }
+  :global(.supervisor-menu.shimpz-dropdown > .trigger.shimpz-button:hover:not(:disabled)::before),
+  :global(.supervisor-menu.shimpz-dropdown > .trigger.shimpz-button:focus-visible::before),
+  :global(.supervisor-menu.shimpz-dropdown > .trigger.shimpz-button[aria-expanded='true']::before) { background: var(--team-scanlines), var(--team-hover-bg); }
   :global(.supervisor-menu .chevron) { display: none; }
   :global(.supervisor-menu .trigger-icon) { display: grid; place-items: center; }
   /* The avatar is the bare user glyph. */
