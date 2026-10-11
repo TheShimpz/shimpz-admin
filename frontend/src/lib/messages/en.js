@@ -828,7 +828,7 @@ export default {
     rename: 'Rename',
     renameLabel: 'Name for {team}',
     renameFailed: 'The Team could not be renamed.',
-    deleteTeam: 'Delete Team',
+    deleteTeam: 'Delete',
     open: 'Open the Team list',
     close: 'Close the Team list',
     reorderHint: 'Drag to reorder, or press Alt+↑ or Alt+↓',

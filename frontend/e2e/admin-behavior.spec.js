@@ -3742,7 +3742,7 @@ test('deletes a Team with its exact confirmation and reports the deletion', { ta
   await page.goto('/chat/');
   const navigation = await openTeamNavigation(page);
   await navigation.getByRole('button', { name: 'Actions for Support' }).click();
-  await page.getByRole('menuitem', { name: 'Delete Team' }).click();
+  await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
   const deleteDialog = page.getByRole('dialog', { name: 'Delete Team' });
   await deleteDialog.getByLabel('Confirm Team name').fill('Support');
   await deleteDialog.getByLabel('Supervisor password').fill('private-password');
@@ -3800,7 +3800,7 @@ test('a Team name of 80 emoji can be typed to rename and to confirm its deletion
   await expect.poll(() => renames).toEqual([{ team_name: longest }]);
 
   await navigation.getByRole('button', { name: `Actions for ${longest}` }).click();
-  await page.getByRole('menuitem', { name: 'Delete Team' }).click();
+  await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
   const deleteDialog = page.getByRole('dialog', { name: 'Delete Team' });
   await deleteDialog.getByLabel('Confirm Team name').fill(longest);
   await deleteDialog.getByLabel('Supervisor password').fill('private-password');
@@ -4069,13 +4069,13 @@ test('opens a Team chat from the Team list and its Store from the row icon', { t
   // A Local Team menu opens on Rename, and a Team without Routines offers no Routines item.
   await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeFocused();
   await page.keyboard.press('ArrowDown');
-  await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeFocused();
+  await expect(page.getByRole('menuitem', { name: 'Delete', exact: true })).toBeFocused();
   await page.keyboard.press('ArrowDown');
   await expect(page.getByRole('menuitem', { name: 'Rename' })).toBeFocused();
   await page.keyboard.press('End');
   await expect(page.getByRole('menuitem', { name: 'Routines' })).toHaveCount(0);
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('menuitem', { name: 'Delete Team' })).toBeHidden();
+  await expect(page.getByRole('menuitem', { name: 'Delete', exact: true })).toBeHidden();
   await expect(actions).toBeFocused();
 });
 

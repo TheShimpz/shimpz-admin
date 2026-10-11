@@ -55,7 +55,7 @@
     display: grid;
     gap: 0.45rem;
     margin: 0;
-    padding: 0.25rem var(--gap-group);
+    padding: 0.25rem var(--gap-group) 1.25rem;
   }
   .space-status.warn { --signal: var(--shimpz-color-yellow); }
   .space-status.alert { --signal: var(--shimpz-color-danger); }
