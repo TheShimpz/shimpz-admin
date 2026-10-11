@@ -119,6 +119,7 @@ test('Security replaces every recovery code after the password and an authentica
   await page.goto('/chat/');
 
   await page.getByRole('button', { name: 'Supervisor' }).click();
+  await page.getByRole('button', { name: 'Security' }).click();
   const dialog = page.getByRole('dialog', { name: 'Sign-in security' });
   await expect(dialog).toContainText('2 of 10');
   await dialog.getByRole('button', { name: 'Generate new codes' }).click();
