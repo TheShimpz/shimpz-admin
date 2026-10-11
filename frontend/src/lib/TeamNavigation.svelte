@@ -196,7 +196,8 @@
 
   // A mouse or pen drags a Team by its name; touch never does, so the list keeps scrolling and the name keeps opening
   // the Team. A press that never moves stays a click. A drag starts after a short movement, follows the pointer, and
-  // drops between rows.
+  // drops between rows. The name keeps the default touch-action, which also governs a pen: where a stylus pans, the
+  // pan cancels the drag and nothing is saved.
   const DRAG_THRESHOLD = 6;
   // Rows glide to a new place unless the Supervisor asked for reduced motion.
   const settle = () => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 160);
@@ -328,7 +329,19 @@
 
   // A cancelled pointer, a lost capture, or Escape drops nothing: the order was never changed during the drag.
   function cancelDrag() {
-    endGesture();
+    return endGesture();
+  }
+
+  // A drag cancelled by Escape still never ends in a click on the name it started from when the pointer is released.
+  function suppressClickOnRelease(pointerId) {
+    const release = (event) => {
+      if (event.pointerId !== pointerId) return;
+      window.removeEventListener('pointerup', release, { capture: true });
+      window.removeEventListener('pointercancel', release, { capture: true });
+      if (event.type === 'pointerup') suppressNextClick();
+    };
+    window.addEventListener('pointerup', release, { capture: true });
+    window.addEventListener('pointercancel', release, { capture: true });
   }
 
   onDestroy(cancelDrag);
@@ -338,7 +351,8 @@
     // Escape ends only the drag, never an enclosing dialog such as the mobile Team drawer.
     event.preventDefault();
     event.stopPropagation();
-    cancelDrag();
+    const ended = cancelDrag();
+    if (ended) suppressClickOnRelease(ended.pointerId);
   }
 </script>
 

@@ -4426,6 +4426,16 @@ test.describe('Team order', () => {
     // Escape ended only the drag; on a phone the Team drawer stays open.
     await expect(navigation.getByRole('link', { name: 'Neo', exact: true })).toBeVisible();
     expect(orders).toEqual([]);
+    // A drag cancelled and released on the name it started from never opens that Team.
+    const neo = await navigation.getByRole('link', { name: 'Neo', exact: true }).boundingBox();
+    await page.mouse.move(neo.x + neo.width / 2, neo.y + neo.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(neo.x + neo.width / 2, neo.y + neo.height / 2 + 10, { steps: 4 });
+    await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await expect(page).toHaveURL(/\/chat\/?\?team=marketing$/);
+    await expect(navigation.getByRole('link', { name: 'Neo', exact: true })).toBeVisible();
+    expect(orders).toEqual([]);
 
     const cdp = await page.context().newCDPSession(page);
     const source = await navigation.getByRole('link', { name: 'Cypher', exact: true }).boundingBox();
