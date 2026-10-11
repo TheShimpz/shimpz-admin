@@ -216,3 +216,22 @@ textarea:focus-visible {
     outline-color: Highlight;
   }
 }
+
+/* A light rounding of the straight corners (owner 2026-10-11); chamfers stay as they are. */
+*, *::before, *::after { border-radius: 5px; }
+input, textarea, select { border-radius: 5px !important; }
+/* The shared controls that force square corners take the same light rounding; round avatars stay round. */
+.shimpz-button:not(.supervisor-menu .trigger), .shimpz-choice-item, .shimpz-text-action, select { border-radius: 5px !important; }
+/* Closed boxes take the same chamfered cuts as buttons and cards: Team monograms, menu panels, popovers, dialogs. */
+.monogram { clip-path: var(--shimpz-control-shape) !important; }
+/* Larger boxes cut deeper than their rounding, so the chamfer stays visible. */
+[role="menu"], [popover], dialog {
+  clip-path: polygon(0 0, calc(100% - var(--shimpz-cut-lg)) 0, 100% var(--shimpz-cut-lg), 100% 100%, var(--shimpz-cut-lg) 100%, 0 calc(100% - var(--shimpz-cut-lg))) !important;
+}
+
+:root { --shimpz-radius: 5px; }
+/* One sober accent line for outline buttons, dialog cards, and focused fields. */
+:root { --shimpz-color-cyan-line: color-mix(in srgb, var(--shimpz-color-cyan) 42%, var(--shimpz-color-border)); }
+.shimpz-button--secondary { --button-border: var(--shimpz-color-cyan-line) !important; }
+.shimpz-dialog-frame { border-color: var(--shimpz-color-cyan-line) !important; }
+input:focus, textarea:focus, select:focus { border-color: var(--shimpz-color-cyan-line) !important; }
