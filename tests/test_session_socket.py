@@ -222,6 +222,37 @@ class SessionSocketFrameTests(SessionSocketCase):
 
         asyncio.run(scenario())
 
+    def test_a_waiting_read_runs_only_while_its_origin_and_session_are_still_current(self) -> None:
+        external = "https://developer.example.test"
+        workers = 4
+        started = []
+        busy = __import__("threading").Event()
+        release = __import__("threading").Event()
+
+        def listing():
+            started.append(True)
+            if len(started) == workers:
+                busy.set()
+            release.wait(5)
+            return self._listing()
+
+        async def scenario() -> None:
+            self.assertEqual(self.admin_app.state.bind_browser_origin(external), "learned")
+            websocket = await self._connect(origin=external)
+            with mock.patch.object(self.calls.team_order, "listing", side_effect=listing):
+                # The lane's four workers are busy, so a fifth read waits for one.
+                for _ in range(workers + 1):
+                    await websocket.call("teams.list", {})
+                await chat_socket_fixtures.wait_for_thread(busy)
+                # The admitted origin is replaced while the fifth read waits: it must never run under it.
+                self.assertEqual(self.admin_app.state.bind_browser_origin("https://next.example.test"), "replaced")
+                release.set()
+                self.assertEqual(await self._closed(websocket), 4403)
+                await websocket.finish()
+            self.assertEqual(len(started), workers)
+
+        asyncio.run(scenario())
+
     def test_a_result_too_large_for_one_frame_is_answered_as_a_failure(self) -> None:
         async def large(*_args):
             return 200, {"teams": ["x" * (1024 * 1024)]}

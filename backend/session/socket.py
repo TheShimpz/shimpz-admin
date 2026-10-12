@@ -169,6 +169,10 @@ class SessionSocket:
             return False
         return True
 
+    async def authorized(self) -> bool:
+        """Before a waiting call or chat frame runs: its Origin and session are still current, never renewing it."""
+        return await self._authorized(activity=False)
+
     # Chat channels
 
     def attach(self, team_id: object, locale: object) -> tuple[int, object]:
@@ -192,7 +196,7 @@ class SessionSocket:
             team_id,
             request_scope=lambda: self.gate.request_scope(self.cookies),
             authenticate=self.gate.authenticate,
-            authorized=lambda: self._authorized(activity=False),
+            authorized=self.authorized,
         )
         self.channels[team_id] = channel
         # Today's sync, after the attach result: the pending gate, an Integration resume, or `sync-empty`.

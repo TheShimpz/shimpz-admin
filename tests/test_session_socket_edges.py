@@ -118,6 +118,30 @@ class SessionCallEdgeTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_a_waiting_call_whose_socket_is_refused_or_unchecked_never_runs(self) -> None:
+        async def never(*_args):
+            raise AssertionError("must not run")
+
+        async def scenario() -> None:
+            refused = _socket(_gate(session_current=mock.AsyncMock(return_value=False)))
+            with mock.patch.dict(calls.METHODS, {"subscribe": never}):
+                await calls.run(refused, "c1", "subscribe", {"topics": ["teams"]})
+            self.assertEqual((refused.outbound.queued, refused.close_code), (0, socket.SIGNED_OUT))
+            # A lane worker whose check never answers closes its socket as unavailable instead of running.
+            stalled = _socket(_gate())
+            check = mock.Mock()
+            check.result.side_effect = TimeoutError
+            with (
+                mock.patch.object(calls.asyncio, "run_coroutine_threadsafe", return_value=check) as scheduled,
+                mock.patch.object(stalled, "end") as end,
+            ):
+                self.assertFalse(await asyncio.to_thread(calls._current, stalled))
+            scheduled.call_args.args[0].close()
+            check.cancel.assert_called_once_with()
+            end.assert_called_once_with(calls.SOCKET_UNAVAILABLE)
+
+        asyncio.run(scenario())
+
 
 class SessionSocketCheckTests(unittest.TestCase):
     def test_an_unreadable_origin_authority_closes_the_socket_as_unavailable(self) -> None:
