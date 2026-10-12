@@ -1,14 +1,19 @@
 // Measure the built Local Assistants page with bounded, deterministic API delays. The page's session socket
 // (`perf/sessionSocket.js`) runs in the page and the driver answers each of its calls after its delay; the session
 // bootstrap and the icons stay HTTP.
+// SHIMPZ_PERF_SCENARIO=navigation measures instead a same-tab visit from the chat: the chat loads, the page is left
+// alone until it sends nothing for a second (so anything it prepares at idle is done), and a click on the sidebar's
+// Store link is timed until every row's icon is decoded in the frame before its paint; then the Chat link and the Store
+// link again time the repeat visit. SHIMPZ_PERF_ICON_PX sets the icons' size (1 by default, 1024 as published).
 // For a real Supervisor session, run in a Playwright container sharing the network
 // namespace of a disposable Admin image with --network none, a fresh /data volume,
 // and uvicorn bound to port 7777 inside that namespace. No host port is published.
 // SHIMPZ_PERF_ISOLATED_AUTH=1 requires a loopback-only network and a fresh Admin.
 import { chromium } from '@playwright/test';
-import { createHmac, randomBytes } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { networkInterfaces } from 'node:os';
 import { performance } from 'node:perf_hooks';
+import { crc32, deflateSync } from 'node:zlib';
 import { preview } from 'vite';
 import modelCatalog from '../src/lib/modelCatalog.json' with { type: 'json' };
 import { installSessionSocket } from './sessionSocket.js';
@@ -20,7 +25,12 @@ const snapshotDelayMs = nonnegativeInteger(process.env.SHIMPZ_PERF_SNAPSHOT_DELA
 const iconDelayMs = nonnegativeInteger(process.env.SHIMPZ_PERF_ICON_DELAY_MS, 80);
 const composition = process.env.SHIMPZ_PERF_COMPOSITION ?? 'balanced';
 if (!['balanced', 'published'].includes(composition)) throw new Error('Invalid Assistant composition.');
+const scenario = process.env.SHIMPZ_PERF_SCENARIO ?? 'load';
+if (!['load', 'navigation'].includes(scenario)) throw new Error('Invalid benchmark scenario.');
+const iconPx = positiveInteger(process.env.SHIMPZ_PERF_ICON_PX, 1);
+if (iconPx > 1024) throw new Error('Icons are at most 1024 pixels square.');
 const isolatedAuth = process.env.SHIMPZ_PERF_ISOLATED_AUTH === '1';
+if (isolatedAuth && scenario !== 'load') throw new Error('Real Supervisor measurement covers the load scenario only.');
 if (process.env.SHIMPZ_PERF_ISOLATED_AUTH !== undefined && !isolatedAuth) {
   throw new Error('Isolated authentication mode must be exactly 1.');
 }
@@ -30,11 +40,50 @@ if (counts.length < 1 || counts.length > 3 ||
     new Set(counts).size !== counts.length) {
   throw new Error('Assistant counts must be one to three distinct integers from 1 to 50.');
 }
-const iconPng = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
-  'base64',
-);
+const iconPng = iconPx === 1
+  ? Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  )
+  : squarePng(iconPx);
+// Admin serves a publication's icon only with the digest its catalog entry names, and the page checks it.
+const iconDigest = `sha256:${createHash('sha256').update(iconPng).digest('hex')}`;
 const teamId = 'perf_team';
+
+// A square RGBA PNG with varied pixels, so its encoded size and decode work resemble a published icon's.
+function squarePng(size) {
+  const chunk = (type, data) => {
+    const length = Buffer.alloc(4);
+    length.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([length, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(size, 0);
+  header.writeUInt32BE(size, 4);
+  header.set([8, 6, 0, 0, 0], 8);
+  const rows = Buffer.alloc(size * (size * 4 + 1));
+  let seed = 7;
+  for (let y = 0; y < size; y += 1) {
+    const row = y * (size * 4 + 1);
+    for (let x = 0; x < size; x += 1) {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      const offset = row + 1 + x * 4;
+      rows[offset] = (x * 255) / size;
+      rows[offset + 1] = (y * 255) / size;
+      rows[offset + 2] = seed & 0x3f;
+      rows[offset + 3] = 255;
+    }
+  }
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', deflateSync(rows)),
+    chunk('IEND', Buffer.alloc(0)),
+  ]);
+}
 
 function positiveInteger(value, fallback) {
   if (value === undefined) return fallback;
@@ -74,7 +123,7 @@ function fixture(count) {
     assistant_version: '1.0.0',
     creators: ['@creator'],
     description: 'A measured public Assistant with one read-only Action.',
-    icon_digest: `sha256:${'b'.repeat(64)}`,
+    icon_digest: iconDigest,
     actions: [{ id: 'inspect', effect: 'read_only', description: 'Inspect the measured state.' }],
     integrations: [],
     links: {},
@@ -136,8 +185,11 @@ function callBody(method, params, data) {
     'store.catalog': () => ({ version: 1, locale: 'en', assistants: data.published, next: null }),
     'snapshots.list': () => ({ assistants: data.local, trace_id: 'c'.repeat(32) }),
     'snapshots.summary': () => ({ locale: 'en', summary: 'A measured local snapshot.' }),
+    // What the chat a navigation starts from reads: an empty transcript and no decision provider.
+    'history.page': () => ({ entries: [], before: null }),
+    'decision.read': () => ({ provider: 'typesafe', configured: false, masked: null }),
   };
-  if (['inference.read', 'assistants.list', 'integrations.list', 'routines.list'].includes(method)
+  if (['inference.read', 'assistants.list', 'integrations.list', 'routines.list', 'history.page'].includes(method)
       && params.team_id !== teamId) return null;
   return answers[method]?.() ?? null;
 }
@@ -320,6 +372,88 @@ async function sample(page, cdp, mode, count, index) {
   }
 }
 
+// Until the page has sent nothing for `quietMs` (no session socket call and no HTTP request under way or begun).
+async function settled(page, quietMs = 1000) {
+  await page.waitForFunction((quiet) => {
+    const now = performance.now();
+    const calls = window.__calls ?? [];
+    if (calls.some((call) => call.responseEnd === null)) return false;
+    const last = Math.max(
+      0,
+      ...calls.map((call) => call.responseEnd),
+      ...performance.getEntriesByType('resource').map((entry) => entry.responseEnd || now),
+    );
+    return now - last >= quiet;
+  }, quietMs, { timeout: 20000, polling: 100 });
+}
+
+// Click one sidebar link and time, on the page's clock, the first frame in which the catalog shows `expected` rows,
+// every one with its decoded icon; that frame's paint follows it, so the time is a lower bound on the visible one.
+async function timedStoreVisit(page, expected) {
+  await page.evaluate((count) => {
+    const link = document.querySelector('a[href^="/assistants/?team="]');
+    if (!link) throw new Error('The Store link is missing.');
+    const visit = { start: performance.now(), shown: null };
+    window.__visit = visit;
+    const check = () => {
+      const catalog = document.querySelector('section.assistant-catalog');
+      const rows = catalog?.querySelectorAll('a.assistant-row').length ?? 0;
+      const icons = [...(catalog?.querySelectorAll('a.assistant-row img[src^="blob:"]') ?? [])];
+      if (rows === count && icons.length === count && icons.every((icon) => icon.complete && icon.naturalWidth > 0)) {
+        visit.shown = performance.now() - visit.start;
+        return;
+      }
+      requestAnimationFrame(check);
+    };
+    requestAnimationFrame(check);
+    link.click();
+  }, expected);
+  await page.waitForFunction(() => window.__visit.shown !== null, null, { timeout: 15000 });
+  return Math.round(await page.evaluate(() => window.__visit.shown) * 10) / 10;
+}
+
+async function backToChat(page) {
+  await page.locator('a[href^="/chat/?team="]').first().click();
+  await page.locator('textarea').first().waitFor();
+  await settled(page, 300);
+}
+
+async function navigationSample(page, count, index) {
+  let errors = 0;
+  const onResponse = (response) => {
+    if (response.url().includes('/api/') && response.status() >= 400) errors += 1;
+  };
+  page.on('response', onResponse);
+  try {
+    await page.goto('/chat/', { waitUntil: 'domcontentloaded' });
+    await page.locator('textarea').first().waitFor({ timeout: 15000 });
+    await settled(page);
+    const iconsBefore = await page.evaluate(() => performance.getEntriesByType('resource')
+      .filter((entry) => /\/(?:catalog-)?icon$/.test(new URL(entry.name).pathname)).length);
+    const first = await timedStoreVisit(page, count);
+    await backToChat(page);
+    const repeat = await timedStoreVisit(page, count);
+    requireAnsweredRequests();
+    return { scenario, count, composition, iconPx, sample: index, errors, iconsBeforeVisit: iconsBefore, firstMs: first, repeatMs: repeat };
+  } finally {
+    page.off('response', onResponse);
+  }
+}
+
+function summarizeNavigation(results, count) {
+  const selected = results.filter((result) => result.count === count);
+  const metric = (name) => ({
+    p50Ms: percentile(selected.map((result) => result[name]), 0.5),
+    p95Ms: percentile(selected.map((result) => result[name]), 0.95),
+  });
+  return {
+    scenario, count, composition, iconPx, samples: selected.length,
+    delaysMs: { api: apiDelayMs, snapshots: snapshotDelayMs, icon: iconDelayMs },
+    errors: selected.reduce((total, result) => total + result.errors, 0),
+    firstVisit: metric('firstMs'), repeatVisit: metric('repeatMs'),
+  };
+}
+
 function percentile(values, fraction) {
   const sorted = [...values].sort((left, right) => left - right);
   return Math.round(sorted[Math.ceil(sorted.length * fraction) - 1]);
@@ -476,7 +610,25 @@ try {
   } finally {
     await warmContext.close();
   }
-  for (let index = 1; index <= samples; index += 1) {
+  for (let index = 1; scenario === 'navigation' && index <= samples; index += 1) {
+    for (let offset = 0; offset < counts.length; offset += 1) {
+      const count = counts[(index + offset - 1) % counts.length];
+      const context = await browser.newContext(contextOptions);
+      const page = await context.newPage();
+      const pageErrors = [];
+      page.on('pageerror', (error) => pageErrors.push(error.name));
+      await mockApi(page, { data: fixture(count) });
+      try {
+        const result = await navigationSample(page, count, index);
+        if (pageErrors.length) throw new Error('The benchmark page raised a browser error.');
+        results.push(result);
+        console.log(JSON.stringify({ type: 'sample', ...result }));
+      } finally {
+        await context.close();
+      }
+    }
+  }
+  for (let index = 1; scenario === 'load' && index <= samples; index += 1) {
     for (let offset = 0; offset < counts.length; offset += 1) {
       const count = counts[(index + offset - 1) % counts.length];
       const context = await browser.newContext(contextOptions);
@@ -505,7 +657,10 @@ try {
       }
     }
   }
-  for (const count of counts) {
+  for (const count of scenario === 'navigation' ? counts : []) {
+    console.log(JSON.stringify({ type: 'summary', ...summarizeNavigation(results, count) }));
+  }
+  for (const count of scenario === 'load' ? counts : []) {
     for (const mode of ['cold', 'warm']) {
       console.log(JSON.stringify({ type: 'summary', ...summarize(results, count, mode),
         ...(isolatedAuth ? { realSupervisor: true, mockedTeamAndCatalog: true } : {}) }));

@@ -100,6 +100,18 @@ credential-bearing diagnostics; it reports the failed run and owned cleanup stat
 For a static UI-only run, build `frontend/` with Node.js 26 and run `node perf/assistant-catalog.mjs` there without
 `SHIMPZ_PERF_ISOLATED_AUTH`. That mode uses a mocked session and the Vite preview server.
 
+`SHIMPZ_PERF_SCENARIO=navigation` (static mode only) measures a same-tab visit instead of a load: each sample opens the
+chat in a fresh context, waits until the page has sent nothing for a second (so what it reads at idle after boot is
+in), clicks the sidebar's Store link, and times on the page's clock the click to the first animation frame in which
+every row shows its decoded icon (`firstVisit`); it then returns to the chat and times a second visit (`repeatVisit`).
+A frame callback precedes paint, so both are lower bounds on the visible time. `iconsBeforeVisit` counts the icon
+requests made before the first click. `SHIMPZ_PERF_ICON_PX=1024` serves icons at the published 1024-pixel size (the
+default is one pixel), so decoding costs what it does for real icons:
+
+```sh
+sg docker -c 'docker run --rm --network none --cpus 2 --memory 2g --shm-size 512m --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -w /work -e HOME=/tmp -e SHIMPZ_PERF_SCENARIO=navigation -e SHIMPZ_PERF_SAMPLES=15 -e SHIMPZ_PERF_COUNTS=8,24 -e SHIMPZ_PERF_ICON_PX=1024 "$CHAT_PERF_IMAGE" node perf/assistant-catalog.mjs'
+```
+
 ## Admin screens measurement
 
 `screens.mjs` measures the main screens of the built UI the way `first-load.mjs` serves it: `e2e/serveBuild.mjs` on
