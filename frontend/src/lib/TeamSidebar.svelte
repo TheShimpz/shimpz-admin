@@ -35,17 +35,25 @@
     }
   }
 
+  // A Team the address asks for is selected once the context settled, also after a selection that failed: that
+  // failure keeps the previous Team selected and returns the address to it, unless another Team was asked for since.
+  // A Team is asked for once while the address names it, so a failure never repeats itself.
+  let askedId = '';
+
   $effect(() => {
     const preferredId = requestedTeamId;
+    if (preferredId !== askedId) askedId = '';
     if (
-      $teamContext.phase === 'ready' &&
+      ($teamContext.phase === 'ready' || $teamContext.phase === 'error') &&
       preferredId &&
+      preferredId !== askedId &&
       preferredId !== $teamContext.selectedTeamId &&
       $teamContext.teams.some((team) => team.id === preferredId)
     ) {
       const previousId = $teamContext.selectedTeamId;
+      askedId = preferredId;
       selectTeam(fetch, preferredId).catch(() => {
-        if (previousId) updateLocationTeam(previousId).catch(() => {});
+        if (previousId && requestedTeamId === preferredId) updateLocationTeam(previousId).catch(() => {});
       });
     }
   });

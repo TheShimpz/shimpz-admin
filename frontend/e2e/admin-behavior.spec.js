@@ -4456,6 +4456,29 @@ test('a chat that keeps reconnecting never takes the focus from a Team name bein
   await expect.poll(() => renames).toEqual([{ team_name: 'New name' }]);
 });
 
+test('a Team that fails to open leaves the chat on the previous Team and later Teams still open', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  const inventoryReads = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (/^\/api\/teams\/[a-z]+\/assistants$/.test(path)) inventoryReads.push(path);
+  });
+  await page.route('**/api/teams/neo/assistants', (route) => route.fulfill({ status: 503, json: { detail: 'unavailable' } }));
+  await page.goto('/chat/?team=marketing');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeVisible();
+  const navigation = page.locator('.shell-sidebar');
+
+  await navigation.getByRole('link', { name: 'Neo', exact: true }).click();
+  await expect.poll(() => inventoryReads).toContain('/api/teams/neo/assistants');
+  await expect(page).toHaveURL(/team=marketing/);
+  await navigation.getByRole('link', { name: 'Trinity', exact: true }).click();
+  await expect(page).toHaveURL(/team=trinity/);
+  await expect(navigation.getByRole('link', { name: 'Trinity', exact: true })).toHaveAttribute('aria-current', 'page');
+  expect(inventoryReads).toContain('/api/teams/trinity/assistants');
+  // The failed Team was asked for once, not again while the address returned.
+  expect(inventoryReads.filter((path) => path === '/api/teams/neo/assistants')).toHaveLength(1);
+});
+
 test.describe('Team order', () => {
   const READY_ORDER = ['Marketing', 'Trinity', 'Cypher', 'Morpheus', 'Neo', 'Smith'];
   const ID = (name) => name.toLowerCase();
