@@ -4524,16 +4524,19 @@ test('a chat that keeps reconnecting never takes the focus from a Team name bein
     renames.push(body);
     return ok({ team_id: 'neo', team_name: body.team_name });
   });
-  // Neo's chat channel attaches and then its session socket closes, so the composer turns busy and idle again while
-  // the name is typed.
+  // Neo's chat channel attaches, and while `dropping` its session socket closes the moment the channel synchronizes, so
+  // the composer turns busy and idle again while the name is typed. A channel that synchronizes once Admin is reachable
+  // again stays, and says so.
   let connections = 0;
   let dropping = true;
+  let settled = false;
   await routeChat(page, 'neo', (socket) => {
     connections += 1;
-    // Decided when the close is due, so a channel that attached just before Admin became reachable stays open.
-    setTimeout(() => {
+    socket.onMessage((message) => {
+      if (JSON.parse(message).type !== 'sync') return;
       if (dropping) socket.close({ code: 1011, reason: 'Synthetic interrupted connection' });
-    }, 50);
+      else settled = true;
+    });
   });
   await page.goto('/chat/?team=neo');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeVisible();
@@ -4553,9 +4556,8 @@ test('a chat that keeps reconnecting never takes the focus from a Team name bein
   // Once Admin is reachable again, the name is saved. The browser coming online retries at once, without waiting out a
   // backoff the repeated drops grew.
   dropping = false;
-  const dropped = connections;
   await page.evaluate(() => window.dispatchEvent(new Event('online')));
-  await expect.poll(() => connections, { timeout: 30_000 }).toBeGreaterThan(dropped);
+  await expect.poll(() => settled, { timeout: 30_000 }).toBe(true);
   await expect(page.getByText(messages.en.shell.reconnecting)).toHaveCount(0);
   await expect(field).toBeFocused();
   await page.keyboard.press('Enter');
