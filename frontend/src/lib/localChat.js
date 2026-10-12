@@ -16,6 +16,7 @@ import {
   isAssistantId,
   isIdentifier,
   jsonObject,
+  MAX_TEAM_NAME_CHARS,
   OPAQUE_ID_RE,
   PUBLIC_CREATOR_RE,
   SEMANTIC_VERSION_RE,
@@ -24,7 +25,7 @@ import {
 
 export const CHAT_TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const SECRET_CONTROL_RE = /[\p{C}\p{Zl}\p{Zp}]/u;
-const MAX_MESSAGE_CHARS = 16_000;
+export const MAX_MESSAGE_CHARS = 16_000;
 const MAX_FILES = 8;
 const MAX_ASSISTANTS = 16;
 const MAX_INTEGRATIONS = 512;
@@ -35,9 +36,8 @@ const MAX_INTEGRATION_ACTIONS = 128;
 const MAX_HUMAN_OPTIONS = 32;
 const MAX_HUMAN_REQUESTS_PER_ACTION = 8;
 const MAX_HUMAN_RESPONSE_CHARS = 16_000;
-const MAX_TEAM_NAME_CHARS = 80;
-const MAX_REPLY_CHARS = 60_000;
-const MAX_GUIDANCE_REPLY_CHARS = 240;
+export const MAX_REPLY_CHARS = 60_000;
+export const MAX_GUIDANCE_REPLY_CHARS = 240;
 const MAX_ERROR_DETAIL_CHARS = 800;
 const MAX_INSTALL_PROVIDERS = 16;
 const CAPABILITY_CONTINUATIONS = new Set([

@@ -1,6 +1,12 @@
 import { parseFileReferences, parseRestrictedActions } from './attachments.js';
 import { parseClarification, renderClarification } from './clarification.js';
-import { CHAT_TEXT_CONTROL_RE, parseRoutineReply } from './localChat.js';
+import {
+  CHAT_TEXT_CONTROL_RE,
+  MAX_GUIDANCE_REPLY_CHARS,
+  MAX_MESSAGE_CHARS,
+  MAX_REPLY_CHARS,
+  parseRoutineReply,
+} from './localChat.js';
 import { parseRoutineRunEntry } from './routine.js';
 import { parseTaskUsage } from './taskUsage.js';
 import { LocalApiError, safeApiError } from './localApi.js';
@@ -12,6 +18,7 @@ import {
   exactKeys,
   isInstant,
   jsonObject,
+  MAX_TEAM_NAME_CHARS,
   OPAQUE_ID_RE,
   PUBLIC_CREATOR_RE,
   SEMANTIC_VERSION_RE,
@@ -22,10 +29,6 @@ const PUBLIC_TEXT_CONTROL_RE = /[\p{C}\p{Zl}\p{Zp}]/u;
 const ENTRY_ID_RE = /^([0-9a-f]{32}):(user|reply|install|uninstall|guidance|routine)$/;
 const HISTORY_CURSOR_RE = /^(?!A{11}$)[A-Za-z0-9_-]{10}[AEIMQUYcgkosw048]$/;
 const MAX_PAGE_ENTRIES = 64;
-const MAX_MESSAGE_CHARS = 16_000;
-const MAX_REPLY_CHARS = 60_000;
-const MAX_GUIDANCE_REPLY_CHARS = 240;
-const MAX_TEAM_NAME_CHARS = 80;
 const MAX_ASSISTANTS = 4;
 const MAX_PROVIDERS = 32;
 

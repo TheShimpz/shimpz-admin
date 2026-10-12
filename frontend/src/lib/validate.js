@@ -20,7 +20,8 @@ export const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 export const ASSISTANT_LIMIT_REACHED = 'assistant_limit_reached';
 const INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 
-const MAX_TEAM_NAME_CHARS = 80;
+// A Team's display name, at most this many code points (Team's MAX_TEAM_NAME_CHARS).
+export const MAX_TEAM_NAME_CHARS = 80;
 
 export function isAssistantId(value) {
   return typeof value === 'string' && value.length <= MAX_ASSISTANT_ID_CHARS && ASSISTANT_ID_RE.test(value);
