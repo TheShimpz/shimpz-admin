@@ -144,3 +144,37 @@ test('Security replaces every recovery code after the password and an authentica
     ['/api/admin/recovery-codes', { code: '123456' }],
   ]);
 });
+
+test('Security stays open while new recovery codes are generated and then shows them', async ({ page }) => {
+  await routeScenario(page, 'recovery-codes');
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  let replacing = false;
+  await page.route('**/api/admin/recovery-codes', async (route) => {
+    replacing = true;
+    await held;
+    return route.fallback();
+  });
+  await page.goto('/chat/');
+  await page.getByRole('button', { name: 'Supervisor' }).click();
+  await page.getByRole('menuitem', { name: 'Security' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Sign-in security' });
+  await dialog.getByRole('button', { name: 'Generate new codes' }).click();
+  await dialog.getByLabel('Supervisor password').fill(PASSWORD);
+  await dialog.getByLabel('Six-digit code').fill('123456');
+  await dialog.getByRole('button', { name: 'Generate', exact: true }).click();
+  await expect.poll(() => replacing).toBe(true);
+
+  // Admin has already replaced the old codes, so no close path may drop the new set before it is shown.
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Close' }).click({ force: true });
+  await expect(dialog).toBeVisible();
+  release();
+  await expect(page.getByRole('list', { name: 'Recovery codes' }).getByRole('listitem')).toHaveText(recoveryCodeSet(1));
+  expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  await dialog.getByRole('button', { name: 'Continue' }).click();
+  await expect(dialog).toContainText('10 of 10');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+});

@@ -2,6 +2,8 @@
   import { Button, Modal, Notice } from '@shimpz/frontend';
 
   import DialogAction from '#lib/DialogAction.svelte';
+  import { tick } from 'svelte';
+
   import { locale, t } from '#lib/i18n.js';
   import RecoveryCodes from '#lib/RecoveryCodes.svelte';
   import OperationConfirmation from '#lib/OperationConfirmation.svelte';
@@ -24,6 +26,9 @@
   // The content exists only while the dialog is open, so nothing in it speaks to assistive technology meanwhile.
   let opened = $state(false);
   let codes = $state(null);
+  // While a confirmed replacement is in flight the dialog stays open: Admin may already have replaced what it shows.
+  let replacing = $state(false);
+  let codesHeading = $state();
   let remaining = $derived($securitySummary?.recoveryCodesRemaining);
   let signIns = $derived($securitySummary?.signIns);
 
@@ -40,6 +45,7 @@
   }
 
   function close() {
+    if (replacing) return;
     view = 'summary';
     codes = null;
     rotated = false;
@@ -48,9 +54,21 @@
     onclose?.();
   }
 
-  function replaced(fresh) {
+  async function confirmed(operation, fetcher, proof) {
+    replacing = true;
+    try {
+      return await operation(fetcher, proof);
+    } finally {
+      replacing = false;
+    }
+  }
+
+  async function replaced(fresh) {
     codes = fresh;
     view = 'codes';
+    // The confirmation that held the focus is gone; the new codes take it.
+    await tick();
+    codesHeading?.focus();
   }
 </script>
 
@@ -59,13 +77,13 @@
   <div class="frame">
     <header class="head">
       <h2 id={`${id}-title`}>{$t('security.title')}</h2>
-      <Button variant="ghost" size="sm" iconOnly type="button" aria-label={$t('security.close')} title={$t('security.close')} onclick={close}>
+      <Button variant="ghost" size="sm" iconOnly type="button" aria-label={$t('security.close')} title={$t('security.close')} disabled={replacing} onclick={close}>
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
       </Button>
     </header>
     <div class="body">
       {#if view === 'codes' && codes}
-        <h3>{$t('security.codesTitle')}</h3>
+        <h3 bind:this={codesHeading} tabindex="-1">{$t('security.codesTitle')}</h3>
         <p class="lead">{$t('security.codesLead')}</p>
         <RecoveryCodes {codes} ondone={() => { codes = null; view = 'summary'; }} />
       {:else if view === 'confirm'}
@@ -76,7 +94,7 @@
           passkeyHint={$t('security.passkeyHint')}
           expired={$t('security.expired')}
           begin={beginRecoveryCodes}
-          complete={replaceRecoveryCodes}
+          complete={(fetcher, proof) => confirmed(replaceRecoveryCodes, fetcher, proof)}
           ondone={replaced}
           oncancel={() => (view = 'summary')}
         />
@@ -88,7 +106,7 @@
           passkeyHint={$t('security.rotatePasskeyHint')}
           expired={$t('security.rotateExpired')}
           begin={beginSupervisorKeyRotation}
-          complete={rotateSupervisorKey}
+          complete={(fetcher, proof) => confirmed(rotateSupervisorKey, fetcher, proof)}
           failures={{
             'supervisor-key-rotation-refused': $t('security.rotateRefused'),
             'supervisor-key-rotation-pending': $t('security.rotatePending'),
