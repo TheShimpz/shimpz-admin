@@ -130,7 +130,9 @@ export const ACTIVITY_INTERVAL_MS = 60_000;
 const ACTIVITY_EVENTS = ['keydown', 'pointerdown', 'click', 'touchstart', 'wheel', 'input', 'compositionend'];
 let activityReported = -Infinity;
 // Whether Admin has not yet answered the last report with a renewed deadline; a socket lost meanwhile may have dropped it.
+// The deadline each socket opens with answers no report, so only a later one counts.
 let reportUnacknowledged = false;
+let openingDeadline = true;
 
 function reportActivity(event) {
   if (!event.isTrusted) return;
@@ -397,7 +399,8 @@ function receive(text) {
       frame.absolute_seconds < 0
     ) throw new Error('invalid session deadlines');
     const now = performance.now();
-    reportUnacknowledged = false;
+    if (openingDeadline) openingDeadline = false;
+    else reportUnacknowledged = false;
     sessionDeadlines.set({ idleAt: now + frame.idle_seconds * 1000, absoluteAt: now + frame.absolute_seconds * 1000 });
     return;
   }
@@ -525,6 +528,7 @@ function open() {
     // one reports at once. One Admin answered keeps the tab's minute.
     if (reportUnacknowledged) activityReported = -Infinity;
     reportUnacknowledged = false;
+    openingDeadline = true;
     const cause = everOpened ? 'reopen' : 'open';
     everOpened = true;
     clearTimeout(stableTimer);

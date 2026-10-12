@@ -488,7 +488,9 @@ test('the person\'s trusted input is reported at most once a minute, and only wh
     socket.failSend = false;
     input('wheel');
     assert.equal(socket.sent.filter((frame) => frame.type === 'activity').length, 3);
-    // A report Admin acknowledged with the renewed deadline keeps the tab's minute across a reconnect.
+    // A report Admin acknowledged with the renewed deadline, after the one the socket opened with, keeps the tab's
+    // minute across a reconnect.
+    socket.frame({ type: 'session', idle_seconds: 3000, absolute_seconds: 80_000 });
     socket.frame({ type: 'session', idle_seconds: 3600, absolute_seconds: 80_000 });
     socket.drop(1006);
     await flush();
@@ -506,6 +508,15 @@ test('the person\'s trusted input is reported at most once a minute, and only wh
     await flush();
     // The second reconnect in a row backs off longer.
     await new Promise((resolve) => setTimeout(resolve, 850));
+    reopened = FakeSocket.opened.at(-1);
+    reopened.open();
+    input('keydown');
+    assert.deepEqual(reopened.sent.filter((frame) => frame.type === 'activity'), [{ type: 'activity' }]);
+    // The deadline a socket opens with answers no report: one sent before it arrives still counts as unanswered.
+    reopened.frame({ type: 'session', idle_seconds: 3600, absolute_seconds: 80_000 });
+    reopened.drop(1006);
+    await flush();
+    await new Promise((resolve) => setTimeout(resolve, 1_650));
     reopened = FakeSocket.opened.at(-1);
     reopened.open();
     input('keydown');
