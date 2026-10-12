@@ -16,7 +16,7 @@
   import DialogAction from '#lib/DialogAction.svelte';
   import AssistantIntegrationsDialog from '#lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '#lib/AssistantIntegrationsDrawer.svelte';
-  import { historyBoundary, historySince, listChatHistory } from '#lib/chatHistory.js';
+  import { historyHead, listChatHistory } from '#lib/chatHistory.js';
   import BrainMenu from '#lib/BrainMenu.svelte';
   import FastRoutingMenu from '#lib/FastRoutingMenu.svelte';
   import ClarificationCard from '#lib/ClarificationCard.svelte';
@@ -29,8 +29,8 @@
   import ChatDay from '#lib/ChatDay.svelte';
   import { calendarDay, clockTime, exchangeDays, instantValue, turnInstants, untilNextDay } from '#lib/chatDays.js';
   import { newerRoutineEntries, questionWords, refusalWords } from '#lib/routine.js';
-  import { loadTeamRoutines } from '#lib/routineContext.js';
-  import { adminSocket, call, commandsReady, openChatChannel, outcomeUnknown, watchTopic } from '#lib/adminSocket.js';
+  import { showTeamRoutines } from '#lib/routineContext.js';
+  import { adminSocket, call, commandsReady, openChatChannel, outcomeUnknown } from '#lib/adminSocket.js';
   import ExecutionReceipt from '#lib/ExecutionReceipt.svelte';
   import {
     createExecutionProjection,
@@ -183,8 +183,6 @@
   let olderHistoryFailed = $state(false);
   let historySentinel = $state();
   let historyGeneration = 0;
-  // The mark of every newest history row this conversation has read, so a refresh reads only the rows written since.
-  let historySeen = new Set();
 
   let copy = $derived($t('chatPage'));
   let storeCopy = $derived($t('store'));
@@ -544,28 +542,32 @@
     };
   }
 
-  async function hydrateHistory(teamId, generation) {
+  // The Team's newest history, as its head first reads it, opens the conversation. A history that could not be read says
+  // why and the chat connects without it; once the head reads it after all, the conversation opens from it.
+  async function hydrateHistory(teamId, generation, value, connect) {
     try {
-      const page = await listChatHistory(call, teamId);
-      if (generation !== historyGeneration || chatTeamId !== teamId) return;
       const team = $teamContext.teams.find((entry) => entry.id === teamId);
       if (!team) throw new Error(copy.loadFailed);
-      turns = page.entries.map((entry) => historyTurn(entry, team.name));
-      historyBefore = page.before;
-      historySeen = historyBoundary(new Set(), page.entries);
+      turns = value.entries.map((entry) => historyTurn(entry, team.name));
+      historyBefore = value.before;
       historyLoading = false;
-      connectSocket(teamId);
+      if (error === copy.loadFailed) clearError();
+      connect();
       if (turns.length > 0) await revealLatestExchange({ instant: true });
       if (generation === historyGeneration && chatTeamId === teamId) olderHistoryArmed = true;
     } catch (reason) {
-      if (generation !== historyGeneration || chatTeamId !== teamId) return;
-      historyLoading = false;
-      setError(
-        copy.loadFailed,
-        reason instanceof Error ? reason.message : copy.loadFailed,
-      );
-      connectSocket(teamId);
+      failHydration(teamId, generation, reason, connect);
     }
+  }
+
+  function failHydration(teamId, generation, reason, connect) {
+    if (generation !== historyGeneration || chatTeamId !== teamId) return;
+    historyLoading = false;
+    setError(
+      copy.loadFailed,
+      reason instanceof Error ? reason.message : copy.loadFailed,
+    );
+    connect();
   }
 
   async function loadOlderHistory() {
@@ -621,103 +623,112 @@
   }
 
   // Admin delivers Routine notices on its own schedule (ADR-0086) and says so on the session socket (ADR-0114): while a
-  // Local Team's conversation is open, a change of that Team's Routines reads its Routine list again, and a change of its
-  // history reads the history written since it was last read: pages newest first, back to the newest row already read.
-  // The chat's view of the history holds, of the Routine notices, only each Routine's creation; its runs are its own
-  // history, which its panel reads. Only Routine rows merge into the transcript, by identity and version: a new row,
-  // or a newer version of a shown one, moves to the end as a reload would show it. The rest of the conversation, the
-  // draft, and the reader's place stay as they are; a reader already at the end follows the new row. When more was
-  // written than one refresh reads, the transcript starts again from what it read, as a reload shows it, and earlier
-  // history continues from where the refresh stopped, through every row written in between. A change that arrives
-  // while a turn or history is in motion is read once the conversation is idle again.
+  // Local Team's conversation is open, its history head (`historyHead`) reads the history written since it last read,
+  // and the Team's Routines follow their own topic. The chat's view of the history holds, of the Routine notices, only
+  // each Routine's creation; its runs are its own history, which its panel reads. Only Routine rows merge into the
+  // transcript, by identity and version: a new row, or a newer version of a shown one, moves to the end as a reload
+  // would show it. The rest of the conversation, the draft, and the reader's place stay as they are; a reader already at
+  // the end follows the new row. When more was written than one refresh reads, the transcript starts again from what it
+  // read, as a reload shows it, and earlier history continues from where the refresh stopped. What the head reads while
+  // a turn or history is in motion waits, in order, until the conversation is idle again.
   const FOLLOW_SLACK = 48;
-  let routineRefreshing = false;
-  let historyChanged = $state(false);
+  let headQueue = [];
+  let headWaiting = $state(0);
+  let headApplying = false;
 
   // A row is never added under a message still waiting for its reply, or while history or a turn is in motion.
   function routineMergeIdle() {
     return !composerBusy && !historyWorking && turns.at(-1)?.role !== 'user';
   }
 
-  async function refreshRoutineNotices(teamId) {
-    if (chatTeamId !== teamId) return;
-    if (routineRefreshing || !routineMergeIdle()) {
-      historyChanged = true;
+  async function applyHead(teamId, value) {
+    const team = $teamContext.teams.find((entry) => entry.id === teamId);
+    if (!team) return;
+    if (value.restart) {
+      turns = value.entries.map((entry) => historyTurn(entry, team.name));
+      historyBefore = value.before;
+      await revealLatestExchange({ instant: true });
       return;
     }
-    historyChanged = false;
-    routineRefreshing = true;
-    const generation = historyGeneration;
+    const shown = new Map(
+      turns.filter((turn) => turn.routineRun).map((turn) => [turn.historyId, turn.routineRun.version]),
+    );
+    const arrived = newerRoutineEntries(shown, value.entries);
+    if (arrived.length === 0) return;
+    const viewport = turnsViewport;
+    const following = Boolean(viewport) &&
+      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= FOLLOW_SLACK;
+    const moved = new Set(arrived.map((entry) => entry.id));
+    turns = [
+      ...turns.filter((turn) => !moved.has(turn.historyId)),
+      ...arrived.map((entry) => historyTurn(entry, team.name)),
+    ];
+    if (following) await revealLatestExchange();
+  }
+
+  async function drainHead(teamId) {
+    if (headApplying) return;
+    headApplying = true;
     try {
-      const since = await historySince(call, teamId, historySeen);
-      if (generation !== historyGeneration || chatTeamId !== teamId) return;
-      if (!routineMergeIdle()) {
-        historyChanged = true;
-        return;
+      while (headQueue.length && chatTeamId === teamId && !historyHydrating && routineMergeIdle()) {
+        const value = headQueue.shift();
+        headWaiting = headQueue.length;
+        await applyHead(teamId, value);
       }
-      const team = $teamContext.teams.find((entry) => entry.id === teamId);
-      if (!team) return;
-      if (since.before !== null) {
-        turns = since.entries.map((entry) => historyTurn(entry, team.name));
-        historyBefore = since.before;
-        historySeen = historyBoundary(new Set(), since.entries);
-        await revealLatestExchange({ instant: true });
-        return;
-      }
-      historySeen = historyBoundary(historySeen, since.entries);
-      const shown = new Map(
-        turns.filter((turn) => turn.routineRun).map((turn) => [turn.historyId, turn.routineRun.version]),
-      );
-      const arrived = newerRoutineEntries(shown, since.entries);
-      if (arrived.length === 0) return;
-      const viewport = turnsViewport;
-      const following = Boolean(viewport) &&
-        viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= FOLLOW_SLACK;
-      const moved = new Set(arrived.map((entry) => entry.id));
-      turns = [
-        ...turns.filter((turn) => !moved.has(turn.historyId)),
-        ...arrived.map((entry) => historyTurn(entry, team.name)),
-      ];
-      if (following) await revealLatestExchange();
-    } catch {
-      // The next change or reconnect reads again; the open conversation stays as it is.
     } finally {
-      routineRefreshing = false;
+      headApplying = false;
     }
   }
 
-  // The Team's history and Routines are subscribed as the Team opens, and the history is first read once its
-  // subscription is in place, so a Routine notice written meanwhile is never missed; the Routines are read again then
-  // too, since the Team list read them before (ADR-0114).
+  // The Team's history head and Routines are followed as the Team opens: the history is first read once its
+  // subscription is in place, so a Routine notice written meanwhile is never missed (ADR-0114).
   let stopTeamTopics = () => {};
 
   function watchTeam(teamId, generation) {
     stopTeamTopics();
     stopTeamTopics = () => {};
-    historyChanged = false;
+    headQueue = [];
+    headWaiting = 0;
     if (!teamId) return;
+    // The chat connects once, after the history opened the conversation or failed to.
+    let connected = false;
+    const connect = () => {
+      if (connected || generation !== historyGeneration) return;
+      connected = true;
+      connectSocket(teamId);
+    };
     let hydrated = false;
-    const stopHistory = watchTopic(`team/${teamId}/history`, () => {
+    let failed = false;
+    const head = historyHead(teamId, {
+      failed: (reason) => {
+        if (hydrated || failed) return;
+        failed = true;
+        failHydration(teamId, generation, reason, connect);
+      },
+    });
+    let applied = null;
+    const stopHead = head.subscribe((state) => {
       if (generation !== historyGeneration) return;
-      if (hydrated) {
-        void refreshRoutineNotices(teamId);
+      if (state.status !== 'ready' || state.value === applied) return;
+      applied = state.value;
+      if (!hydrated) {
+        hydrated = true;
+        void hydrateHistory(teamId, generation, state.value, connect);
         return;
       }
-      hydrated = true;
-      void hydrateHistory(teamId, generation);
+      headQueue.push(state.value);
+      headWaiting = headQueue.length;
     });
-    const stopRoutines = watchTopic(`team/${teamId}/routines`, () => {
-      loadTeamRoutines(call, teamId).catch(() => {});
-    });
+    const stopRoutines = showTeamRoutines(teamId);
     stopTeamTopics = () => {
-      stopHistory();
+      stopHead();
       stopRoutines();
     };
   }
 
-  // A history change held back while the conversation was in motion is read once it is idle again.
+  // What the head read while the conversation was in motion is applied, in order, once it is idle again.
   $effect(() => {
-    if (historyChanged && chatTeamId && !historyHydrating && routineMergeIdle()) void refreshRoutineNotices(chatTeamId);
+    if (headWaiting && chatTeamId && !historyHydrating && routineMergeIdle()) void drainHead(chatTeamId);
   });
 
   $effect(() => {
@@ -1522,7 +1533,6 @@
     turns = [];
     busy = false;
     historyBefore = null;
-    historySeen = new Set();
     historyWorking = false;
     olderHistoryArmed = false;
     olderHistoryFailed = false;

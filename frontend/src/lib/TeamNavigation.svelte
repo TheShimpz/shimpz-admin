@@ -6,8 +6,8 @@
   import { showAdminNotice } from '#lib/adminNotice.js';
 
   import { t } from '#lib/i18n.js';
-  import { loadTeamRoutines, retainTeamRoutines, routineContext } from '#lib/routineContext.js';
-  import { call, commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
+  import { retainTeamRoutines, routineContext } from '#lib/routineContext.js';
+  import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import TeamActionsMenu from '#lib/TeamActionsMenu.svelte';
   import { renameTeam, reorderTeams, teamContext } from '#lib/teamContext.js';
   import TeamRoutinesDialog from '#lib/TeamRoutinesDialog.svelte';
@@ -156,9 +156,7 @@
   let routineTeams = $derived(JSON.stringify($teamContext.teams.map((team) => team.id).sort()));
 
   $effect(() => {
-    const ids = JSON.parse(routineTeams);
-    retainTeamRoutines(ids);
-    for (const id of ids) loadTeamRoutines(call, id).catch(() => {});
+    retainTeamRoutines(JSON.parse(routineTeams));
   });
 
   // Teams keep the Supervisor's order: drag a Team by its name, or press Alt+ArrowUp / Alt+ArrowDown on it. The order

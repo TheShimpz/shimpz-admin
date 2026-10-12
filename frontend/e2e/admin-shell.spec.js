@@ -475,8 +475,9 @@ test('reads a Team list change heard while the shell loads, and nothing it reads
   await expect(page.getByRole('link', { name: 'Research', exact: true })).toBeVisible();
   expect(lists).toBe(2);
 
-  const routineLists = (await sessionFrames(page)).filter((frame) => frame.method === 'routines.list');
-  expect(routineLists.some((frame) => frame.params.team_id === 'research')).toBe(true);
+  // The new Team's Routines are read once their subscription is in place.
+  const routineLists = async () => (await sessionFrames(page)).filter((frame) => frame.method === 'routines.list');
+  await expect.poll(async () => (await routineLists()).some((frame) => frame.params.team_id === 'research')).toBe(true);
   // Nobody touched the page: nothing it read on its own kept the session alive.
   expect(await activityReports(page)).toBe(0);
 });

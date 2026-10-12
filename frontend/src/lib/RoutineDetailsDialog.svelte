@@ -3,8 +3,7 @@
   import { tick, untrack } from 'svelte';
 
   import {
-    historyBoundary,
-    historySince,
+    historyHead,
     MAX_ARRIVED_RUNS,
     mergedRoutineRuns,
     routineRuns,
@@ -29,7 +28,7 @@
     STATUS_WORDS,
     untilWords,
   } from '#lib/routine.js';
-  import { dropTeamRoutine, loadTeamRoutines } from '#lib/routineContext.js';
+  import { refreshTeamRoutines } from '#lib/routineContext.js';
   import { call } from '#lib/adminSocket.js';
   import RoutineDecision from '#lib/RoutineDecision.svelte';
   import RoutineDeletion from '#lib/RoutineDeletion.svelte';
@@ -114,7 +113,7 @@
     if (heldAgain) round += 1;
     else dismissed = decisionKey;
     page = 'summary';
-    await loadTeamRoutines(call, teamId).catch(() => {});
+    await refreshTeamRoutines(teamId);
   }
 
   $effect(() => {
@@ -136,67 +135,45 @@
   // The Routine's id alone: a refresh that replaces the Routine's details neither restarts nor discards its runs.
   let routineId = $derived(routine.routine_id);
 
-  // The marks of the newest history rows the panel has read, so a refresh reads only the rows written since.
-  let seen = new Set();
-  let search = 0;
-  let refreshing = false;
-
   // How many runs that ended while the panel was open joined the list since it last read its newest page, and which
   // reading of the newest page the list comes from, so an older search begun before another reading is discarded.
   let arrived = 0;
   let reading = 0;
 
-  // The newest page of the Routine's own history starts the list again; its cursor reaches every older run.
-  async function readNewest(opened) {
-    const marks = new Set();
-    const found = await routineRuns(call, teamId, routineId, { seen: marks });
-    if (opened !== search) return;
-    reading += 1;
-    seen = marks;
-    recent = found.runs;
-    olderRuns = found.before;
-    arrived = 0;
-    recentFailed = false;
-  }
-
-  // This Routine's recent runs are read when the panel opens; they are never required.
-  $effect(() => {
-    const opened = ++search;
-    seen = new Set();
-    readNewest(opened).catch(() => { if (opened === search) recentFailed = true; });
-    return () => { search += 1; };
-  });
-
-  // Whenever the Routine's runs in progress are read again, a run may have ended: the runs written since the panel last
-  // read the history join its list at the top, and the search for older runs keeps its place. When more ended than the
-  // list takes, or more was written than one refresh reads, the list starts again from the newest page instead, so no
-  // run is ever left between the list and the cursor to older runs.
-  async function refreshRecent() {
-    if (recent === null || recentFailed || refreshing || searchingOlder) return;
-    refreshing = true;
-    const opened = search;
-    try {
-      const since = await historySince(call, teamId, seen, { routine: routineId });
-      if (opened !== search || searchingOlder) return;
-      const merged = mergedRoutineRuns(recent, since.entries, routineId);
-      const added = merged.length - recent.length;
-      if (since.before === null && arrived + added <= MAX_ARRIVED_RUNS) {
-        seen = historyBoundary(seen, since.entries);
-        recent = merged;
-        arrived += added;
-      } else {
-        await readNewest(opened);
-      }
-    } catch {
-      // The next refresh tries again; the runs already listed stay.
-    } finally {
-      refreshing = false;
+  // This Routine's own history head (`historyHead`) reads its newest page when the panel opens, then the runs written
+  // since whenever Admin says the Team's history changed: they join the list at the top, and the search for older runs
+  // keeps its place. When more ended than the list takes, or more was written than one refresh reads, the list starts
+  // again from the newest page instead, so no run is ever left between the list and the cursor to older runs. The runs
+  // are never required: a refusal says the list is unavailable.
+  function applyRuns(head, value) {
+    if (value.restart) {
+      reading += 1;
+      recent = [...value.entries].reverse();
+      olderRuns = value.before;
+      arrived = 0;
+      recentFailed = false;
+      return;
     }
+    if (recent === null) return;
+    const merged = mergedRoutineRuns(recent, value.entries, routineId);
+    const added = merged.length - recent.length;
+    if (arrived + added > MAX_ARRIVED_RUNS) {
+      void head.restart();
+      return;
+    }
+    recent = merged;
+    arrived += added;
   }
 
   $effect(() => {
-    void runs;
-    untrack(() => void refreshRecent());
+    const head = historyHead(teamId, { routine: routineId });
+    let applied = null;
+    return head.subscribe((state) => untrack(() => {
+      if (state.status === 'error' && recent === null) recentFailed = true;
+      if (state.status !== 'ready' || state.value === applied) return;
+      applied = state.value;
+      applyRuns(head, state.value);
+    }));
   });
 
   // An older search that a new reading of the newest page overtook is discarded; that reading's cursor reaches its runs.
@@ -254,7 +231,7 @@
     error = '';
     try {
       await action();
-      await loadTeamRoutines(call, teamId);
+      await refreshTeamRoutines(teamId);
     } catch (failure) {
       error = routineErrorMessage(failure, copy.errors);
     } finally {
@@ -264,14 +241,15 @@
 
   async function removed(deleted) {
     if (deleted) {
-      dropTeamRoutine(teamId, routine.routine_id);
+      // The deleted Routine leaves the list with the read after its deletion, which the panel waits for.
+      await refreshTeamRoutines(teamId);
       dialog?.close();
       (ondeleted ?? onclose)();
       return;
     }
     // A run is still ending: Team keeps the Routine as being deleted until it has.
     confirming = false;
-    await loadTeamRoutines(call, teamId).catch(() => {});
+    await refreshTeamRoutines(teamId);
   }
 
   // Canceling returns to the panel, or to the decision it was opened from, with focus on the Delete it came from.
@@ -371,7 +349,7 @@
           <RoutineDecision {teamId} {teamName} runId={pending.runId}
             outcome={pending.outcome} detail={pending.detail} {copy} onsettled={settled}
             ondelete={() => (confirming = true)}
-            onunavailable={() => loadTeamRoutines(call, teamId).catch(() => {})} />
+            onunavailable={() => refreshTeamRoutines(teamId)} />
         {/key}
       </div>
     {:else if !confirming}
@@ -391,7 +369,7 @@
         {/if}
       {:else if page === 'steps'}
         <RoutinePlan {teamId} {routine} {copy} names={$assistantNames} locale={$locale}
-          onchanged={() => loadTeamRoutines(call, teamId).catch(() => {})} />
+          onchanged={() => refreshTeamRoutines(teamId)} />
       {:else}
         <ul class="runs" aria-label={copy.panel.runs}>
           {#each live as run (run.run_id)}

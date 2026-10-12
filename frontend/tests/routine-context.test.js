@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import { get } from 'svelte/store';
 
+import { socketReads } from '../src/lib/adminSocket.js';
 import {
   clearTeamRoutines,
-  dropTeamRoutine,
-  loadTeamRoutines,
+  FOLLOWED_TEAMS,
+  refreshTeamRoutines,
   retainTeamRoutines,
   routineContext,
+  showTeamRoutines,
 } from '../src/lib/routineContext.js';
+import { RETRY_FIRST_MS } from '../src/lib/synced.js';
 
 const ROUTINE = {
   routine_id: 'a'.repeat(32),
@@ -54,124 +57,172 @@ const INCIDENT = {
   steps: null,
 };
 
-// Each listing answers only when the test releases it, so responses can arrive out of order. Releasing one with
-// `FAILURE` answers it with Team's unavailable error instead.
-const FAILURE = Symbol('failure');
+const EPOCH = 'a'.repeat(32);
+const flush = () => new Promise((resolve) => setImmediate(resolve));
 
-function deferredFetcher() {
-  const pending = [];
-  // The session socket's `routines.list` read (ADR-0114), answered when the test releases it.
-  const fetch = (method, params) => new Promise((resolve) => {
+// The session socket as the Routine lists see it: each watched topic's listeners, and each `routines.list` read held
+// until the test answers it, with the revision of the Team's Routines topic it reflects.
+function socket() {
+  const watched = new Map();
+  const reads = [];
+  socketReads.watch = (topic, listener) => {
+    if (!watched.has(topic)) watched.set(topic, new Set());
+    watched.get(topic).add(listener);
+    return () => watched.get(topic).delete(listener);
+  };
+  socketReads.call = (method, params) => new Promise((resolve) => {
     assert.equal(method, 'routines.list');
-    pending.push((routines, runs = [], incidents = []) => {
-      const team = params.team_id;
-      if (routines === FAILURE) {
-        resolve({ ok: false, status: 503, async json() { return { code: 'routine-unavailable' }; } });
-        return;
-      }
-      resolve({ ok: true, status: 200, async json() { return { team_id: team, routines, runs, incidents }; } });
+    reads.push({
+      team: params.team_id,
+      answer(routines, { runs = [], incidents = [], revision = 1, status = 200 } = {}) {
+        const body = status === 200 ? { team_id: params.team_id, routines, runs, incidents } : { code: 'routine-unavailable' };
+        resolve({
+          ok: status === 200,
+          status,
+          async json() { return body; },
+          revision: status === 200 ? { topic: `team/${params.team_id}/routines`, epoch: EPOCH, revision } : null,
+        });
+      },
     });
   });
-  return { fetch, pending };
+  return {
+    reads,
+    watched,
+    announce(teamId, cause, revision) {
+      for (const listener of [...(watched.get(`team/${teamId}/routines`) ?? [])]) {
+        listener(`team/${teamId}/routines`, cause, { epoch: EPOCH, revision });
+      }
+    },
+  };
 }
 
-async function settle(promise) {
-  await promise;
-  await new Promise((resolve) => setImmediate(resolve));
+function listedIds(teamId) {
+  return get(routineContext).get(teamId)?.routines.map((item) => item.routine_id);
 }
 
-test('only a Team\'s newest Routine listing applies, whatever order responses arrive in', async () => {
+test('a listed Team is read once its subscription is in place, and again on each change, in order', async () => {
   clearTeamRoutines();
-  const api = deferredFetcher();
-  const older = loadTeamRoutines(api.fetch, 'constructor');
-  const newer = loadTeamRoutines(api.fetch, 'constructor');
-  api.pending[1]([ROUTINE]);
-  await settle(newer);
-  api.pending[0]([]);
-  await settle(older);
-  assert.deepEqual(get(routineContext).get('constructor').routines.map((item) => item.routine_id), [ROUTINE.routine_id]);
-  // A Team id that names an Object.prototype member resolves to nothing until it is loaded.
+  const api = socket();
+  retainTeamRoutines(['constructor']);
+  assert.equal(api.reads.length, 0);
+  // A Team not read yet has nothing listed, never an empty list, and no inherited property is a Team.
+  assert.equal(get(routineContext).get('constructor'), undefined);
   assert.equal(get(routineContext).get('toString'), undefined);
-});
-
-test('a removed Team, an ended session, or a confirmed deletion discards responses still in flight', async () => {
-  clearTeamRoutines();
-  const api = deferredFetcher();
-  await settle(Promise.all([loadTeamRoutines(api.fetch, 'marketing'), Promise.resolve(api.pending[0]([ROUTINE, OTHER], [RUN]))]));
-
-  const afterRemoval = loadTeamRoutines(api.fetch, 'marketing');
-  retainTeamRoutines(['sales']);
-  api.pending[1]([ROUTINE]);
-  await settle(afterRemoval);
-  assert.equal(get(routineContext).has('marketing'), false);
-
-  const afterSession = loadTeamRoutines(api.fetch, 'marketing');
-  clearTeamRoutines();
-  api.pending[2]([ROUTINE]);
-  await settle(afterSession);
-  assert.equal(get(routineContext).size, 0);
-
-  const loaded = loadTeamRoutines(api.fetch, 'marketing');
-  api.pending[3]([ROUTINE, OTHER], [RUN], [INCIDENT]);
-  await settle(loaded);
-  const beforeDeletion = loadTeamRoutines(api.fetch, 'marketing');
-  dropTeamRoutine('marketing', ROUTINE.routine_id);
-  // Deleting a Routine sets its held runs aside: none of its incidents waits for a card any more.
-  const remaining = { routines: [OTHER], runs: [], incidents: [], failed: false };
-  assert.deepEqual(get(routineContext).get('marketing'), remaining);
-  api.pending[4]([ROUTINE, OTHER], [RUN]);
-  await settle(beforeDeletion);
-  assert.deepEqual(get(routineContext).get('marketing'), remaining);
-
-  // Dropping a Routine of a Team never loaded leaves the projection unchanged.
-  const unchanged = get(routineContext);
-  dropTeamRoutine('sales', ROUTINE.routine_id);
-  assert.equal(get(routineContext), unchanged);
-});
-
-test('a failed listing never reads as a Team without Routines: it keeps what was known and says it failed', async () => {
-  clearTeamRoutines();
-  const api = deferredFetcher();
-  // A Team whose first listing fails is marked failed, with nothing listed, and the caller hears the failure.
-  const first = loadTeamRoutines(api.fetch, 'marketing');
-  api.pending[0](FAILURE);
-  await assert.rejects(first);
-  assert.deepEqual(get(routineContext).get('marketing'), { routines: [], runs: [], incidents: [], failed: true });
-
-  // A listing that succeeds clears the failure; a later failure keeps the last known lists beside it.
-  const loaded = loadTeamRoutines(api.fetch, 'marketing');
-  api.pending[1]([ROUTINE, OTHER], [RUN], [INCIDENT]);
-  await settle(loaded);
-  assert.equal(get(routineContext).get('marketing').failed, false);
-  const refreshed = loadTeamRoutines(api.fetch, 'marketing');
-  api.pending[2](FAILURE);
-  await assert.rejects(refreshed);
-  assert.deepEqual(get(routineContext).get('marketing'), {
-    routines: [ROUTINE, OTHER], runs: [RUN], incidents: [INCIDENT], failed: true,
+  api.announce('constructor', 'open', 1);
+  api.announce('constructor', 'changed', 2);
+  // The change heard while the first read runs is read once, after it: an older answer never shows last.
+  assert.equal(api.reads.length, 1);
+  api.reads[0].answer([], { revision: 1 });
+  await flush();
+  assert.equal(api.reads.length, 2);
+  api.reads[1].answer([ROUTINE], { revision: 2 });
+  await flush();
+  assert.deepEqual(listedIds('constructor'), [ROUTINE.routine_id]);
+  // A reopen at the revision already read reads nothing; one at a newer revision reads again.
+  api.announce('constructor', 'reopen', 2);
+  assert.equal(api.reads.length, 2);
+  api.announce('constructor', 'reopen', 3);
+  assert.equal(api.reads.length, 3);
+  api.reads[2].answer([ROUTINE, OTHER], { runs: [RUN], incidents: [INCIDENT], revision: 3 });
+  await flush();
+  assert.deepEqual(get(routineContext).get('constructor'), {
+    routines: [ROUTINE, OTHER], runs: [RUN], incidents: [INCIDENT], failed: false,
   });
-
-  // A confirmed deletion keeps the failure, since what is left was still not read again.
-  dropTeamRoutine('marketing', ROUTINE.routine_id);
-  assert.deepEqual(get(routineContext).get('marketing'), { routines: [OTHER], runs: [], incidents: [], failed: true });
-
-  // Only the newest listing applies: an older failure that arrives after a newer success changes nothing.
-  const older = loadTeamRoutines(api.fetch, 'marketing');
-  const newer = loadTeamRoutines(api.fetch, 'marketing');
-  api.pending[4]([OTHER]);
-  await settle(newer);
-  api.pending[3](FAILURE);
-  await assert.rejects(older);
-  assert.deepEqual(get(routineContext).get('marketing'), { routines: [OTHER], runs: [], incidents: [], failed: false });
-
-  // A failure still in flight when its Team is removed, or its session ends, leaves nothing behind.
-  const removed = loadTeamRoutines(api.fetch, 'marketing');
-  retainTeamRoutines(['sales']);
-  api.pending[5](FAILURE);
-  await assert.rejects(removed);
-  assert.equal(get(routineContext).has('marketing'), false);
-  const ended = loadTeamRoutines(api.fetch, 'sales');
   clearTeamRoutines();
-  api.pending[6](FAILURE);
-  await assert.rejects(ended);
+});
+
+test('a removed Team or an ended session discards what is still in flight', async () => {
+  clearTeamRoutines();
+  const api = socket();
+  retainTeamRoutines(['marketing']);
+  api.announce('marketing', 'open', 1);
+  retainTeamRoutines(['sales']);
+  api.reads[0].answer([ROUTINE]);
+  await flush();
+  assert.equal(get(routineContext).has('marketing'), false);
+  api.announce('sales', 'open', 1);
+  clearTeamRoutines();
+  api.reads[1].answer([ROUTINE]);
+  await flush();
   assert.equal(get(routineContext).size, 0);
+});
+
+test('a refusal keeps what was known beside its failure; an outage is read again on its own', async () => {
+  clearTeamRoutines();
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const api = socket();
+    retainTeamRoutines(['marketing']);
+    api.announce('marketing', 'open', 1);
+    // A first listing Team refuses is marked failed with nothing listed.
+    api.reads[0].answer([], { status: 409 });
+    await flush();
+    assert.deepEqual(get(routineContext).get('marketing'), { routines: [], runs: [], incidents: [], failed: true });
+    api.announce('marketing', 'changed', 2);
+    api.reads[1].answer([ROUTINE, OTHER], { runs: [RUN], revision: 2 });
+    await flush();
+    assert.equal(get(routineContext).get('marketing').failed, false);
+    // A Team that is briefly unavailable keeps its lists, unmarked, and is read again after a backoff.
+    api.announce('marketing', 'changed', 3);
+    api.reads[2].answer([], { status: 503 });
+    await flush();
+    assert.deepEqual(get(routineContext).get('marketing'), {
+      routines: [ROUTINE, OTHER], runs: [RUN], incidents: [], failed: false,
+    });
+    mock.timers.tick(RETRY_FIRST_MS);
+    assert.equal(api.reads.length, 4);
+    api.reads[3].answer([OTHER], { revision: 3 });
+    await flush();
+    assert.deepEqual(listedIds('marketing'), [OTHER.routine_id]);
+    // A later refusal keeps the last known lists beside it.
+    api.announce('marketing', 'changed', 4);
+    api.reads[4].answer([], { status: 404 });
+    await flush();
+    assert.deepEqual(get(routineContext).get('marketing'), { routines: [OTHER], runs: [], incidents: [], failed: true });
+  } finally {
+    mock.timers.reset();
+    clearTeamRoutines();
+  }
+});
+
+test('a change to a Routine shows only through the read after it', async () => {
+  clearTeamRoutines();
+  const api = socket();
+  retainTeamRoutines(['marketing']);
+  api.announce('marketing', 'open', 1);
+  api.reads[0].answer([ROUTINE, OTHER]);
+  await flush();
+  let settled = false;
+  const refreshed = refreshTeamRoutines('marketing').then(() => { settled = true; });
+  await flush();
+  assert.equal(settled, false);
+  assert.deepEqual(listedIds('marketing'), [ROUTINE.routine_id, OTHER.routine_id]);
+  api.reads[1].answer([OTHER], { revision: 2 });
+  await refreshed;
+  assert.deepEqual(listedIds('marketing'), [OTHER.routine_id]);
+  // A Team not listed has nothing to read again.
+  await refreshTeamRoutines('sales');
+  clearTeamRoutines();
+});
+
+test('the first Teams follow their Routines topic, any other is read once, and the shown one always follows', async () => {
+  clearTeamRoutines();
+  const api = socket();
+  const ids = Array.from({ length: FOLLOWED_TEAMS + 2 }, (_, index) => `team_${index}`);
+  retainTeamRoutines(ids);
+  assert.equal(api.watched.size, FOLLOWED_TEAMS);
+  const last = ids.at(-1);
+  // A Team past the followed ones is read as it is listed, without a topic.
+  assert.ok(api.reads.some((read) => read.team === last));
+  const read = api.reads.find((item) => item.team === last);
+  read.answer([ROUTINE]);
+  await flush();
+  assert.deepEqual(listedIds(last), [ROUTINE.routine_id]);
+  // Shown in the chat, it follows its topic, and its last listing stays while it reads again.
+  const stop = showTeamRoutines(last);
+  assert.ok(api.watched.has(`team/${last}/routines`));
+  assert.deepEqual(listedIds(last), [ROUTINE.routine_id]);
+  stop();
+  assert.equal(api.watched.get(`team/${last}/routines`).size, 0);
+  clearTeamRoutines();
 });

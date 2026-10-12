@@ -7,8 +7,7 @@
   import { fillRoutineCopy, routineStatus, scheduleWords, STATUS_TAGS, STATUS_WORDS } from '#lib/routine.js';
   import RoutineDetailsDialog from '#lib/RoutineDetailsDialog.svelte';
   import RoutineModal from '#lib/RoutineModal.svelte';
-  import { loadTeamRoutines } from '#lib/routineContext.js';
-  import { call } from '#lib/adminSocket.js';
+  import { refreshTeamRoutines } from '#lib/routineContext.js';
 
   // One Team's Routines as a choice modal (ADR-0086): each its clock tinted by its status, its name, and when it runs;
   // the status is said in words only to assistive technology. Choosing one turns the modal into that Routine's panel,
@@ -52,9 +51,7 @@
   async function retry() {
     retrying = true;
     try {
-      await loadTeamRoutines(call, teamId);
-    } catch {
-      // The Team's listing stays marked as failed.
+      await refreshTeamRoutines(teamId);
     } finally {
       retrying = false;
     }

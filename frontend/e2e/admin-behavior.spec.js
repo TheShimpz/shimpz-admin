@@ -4352,7 +4352,10 @@ async function routeRoutines(
   });
   await routeRead(page, 'routines.list', (params) => {
     if (params.team_id !== 'marketing') return undefined;
-    if (listFailsAfterDelete && calls.deletes.length > 0) return ok({ code: 'team-unavailable' }, 503);
+    if (listFailsAfterDelete && calls.deletes.length > 0 && !calls.failedAfterDelete) {
+      calls.failedAfterDelete = true;
+      return ok({ code: 'team-unavailable' }, 503);
+    }
     return ok({ team_id: 'marketing', routines, runs, incidents });
   });
   await page.route('**/api/teams/marketing/routines/*/resume', async (route) => {
@@ -4998,11 +5001,12 @@ test.describe('Team Routines', () => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await routeReadyChat(page);
     let available = false;
+    // Team refuses the listing: no outage, which the list would read again on its own, but a refusal it shows.
     await routeRead(page, 'routines.list', (params) => {
       if (params.team_id !== 'marketing') return undefined;
       return available
         ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] })
-        : ok({ code: 'routine-unavailable' }, 503);
+        : ok({ code: 'routine-listing-refused' }, 409);
     });
     await page.goto('/chat/?team=marketing');
     const navigation = await openTeamNavigation(page);
@@ -5046,7 +5050,8 @@ test.describe('Team Routines', () => {
         before: null,
       },
     });
-    // The refresh after the deletion fails; the confirmed deletion must still leave the list.
+    // The first read after the deletion finds Team briefly unavailable; the list is read again on its own, and the
+    // deleted Routine leaves it with the read that succeeds.
     const calls = await routeRoutines(page, { listFailsAfterDelete: true, held: false });
     const diagnostics = [];
     await page.route('**/api/teams/marketing/routines/runs/*/diagnostics', async (route) => {
