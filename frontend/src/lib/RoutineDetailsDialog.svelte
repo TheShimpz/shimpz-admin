@@ -108,11 +108,24 @@
   let round = $state(0);
   let decisionKey = $derived(decision ? `${decision.runId}:${decision.outcome}` : '');
   let pending = $derived(decision && decisionKey !== dismissed ? decision : null);
+  // What the person last chose to see: the decision the panel opened with or the one their own answer led to, and the
+  // page they picked. A decision or a plan the panel shows on its own after a background update reads automatically.
+  let personDecision = $state(untrack(() => `${decisionKey}:${round}`));
+  let personPage = $state(false);
+  $effect(() => {
+    if (pending) personPage = false;
+  });
+
+  function choose(next) {
+    page = next;
+    personPage = true;
+  }
 
   async function settled(words, heldAgain) {
     decided = words;
     if (heldAgain) round += 1;
     else dismissed = decisionKey;
+    personDecision = `${decisionKey}:${round}`;
     page = 'summary';
     await loadTeamRoutines(call, teamId).catch(() => {});
   }
@@ -303,7 +316,7 @@
     }[event.key];
     if (next === undefined) return;
     event.preventDefault();
-    page = PAGES[next].id;
+    choose(PAGES[next].id);
     document.getElementById(`${id}-tab-${page}`)?.focus();
   }
 
@@ -336,7 +349,7 @@
       {#each PAGES as item (item.id)}
         <Button id={`${id}-tab-${item.id}`} class="tab" variant="ghost" size="sm" type="button" role="tab"
           aria-selected={page === item.id} aria-controls={`${id}-page`} tabindex={page === item.id ? 0 : -1}
-          onclick={() => (page = item.id)} onkeydown={moveTab}>
+          onclick={() => choose(item.id)} onkeydown={moveTab}>
           {#snippet icon()}<RoutineIcon name={item.icon} />{/snippet}{copy.panel[item.id]}
         </Button>
       {/each}
@@ -372,7 +385,8 @@
           <RoutineDecision {teamId} {teamName} runId={pending.runId}
             outcome={pending.outcome} detail={pending.detail} {copy} onsettled={settled}
             ondelete={() => (confirming = true)}
-            onunavailable={() => loadTeamRoutines(call, teamId).catch(() => {})} />
+            automatic={`${decisionKey}:${round}` !== personDecision}
+            onunavailable={() => loadTeamRoutines(backgroundCall, teamId).catch(() => {})} />
         {/key}
       </div>
     {:else if !confirming}
@@ -391,7 +405,7 @@
           </p>
         {/if}
       {:else if page === 'steps'}
-        <RoutinePlan {teamId} {routine} {copy} names={$assistantNames} locale={$locale}
+        <RoutinePlan {teamId} {routine} {copy} names={$assistantNames} locale={$locale} automatic={!personPage}
           onchanged={() => loadTeamRoutines(backgroundCall, teamId).catch(() => {})} />
       {:else}
         <ul class="runs" aria-label={copy.panel.runs}>

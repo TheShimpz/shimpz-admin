@@ -5451,6 +5451,45 @@ test.describe('Team Routines', () => {
     expect(openings).toHaveLength(2);
   });
 
+  test('a decision and a plan the panel shows because a run changed in the background never renew the session', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
+    await routeReadyChat(page);
+    const run = 'd'.repeat(32);
+    let runs = [];
+    let incidents = [];
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
+    // Team has no card for the run that was held: the panel reads the Routine list again on its own.
+    await page.route('**/api/teams/marketing/routines/incidents/*/card', (route) => route.fulfill({
+      status: 404, json: { code: 'routine-incident-unavailable' },
+    }));
+    const requests = recordRequests(page);
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+    const navigation = await openTeamNavigation(page);
+    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('tab', { name: 'Steps' }).click();
+    const steps = () => requests.filter((request) => /\/steps\/\d+$/u.test(request.path));
+    await expect.poll(() => steps().length).toBe(1);
+
+    // A run is held while nobody watches: the panel opens its decision on its own.
+    runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', scheduled_at: '2026-10-01T12:00:00Z', request_kind: null, assistant_id: null, action: null, position: null, steps: null }];
+    await routineNotice(page);
+    await expect.poll(() => requests.some((request) => request.path.endsWith('/card'))).toBe(true);
+    // The run ended on its own as well: the plan the person was reading shows again.
+    runs = [];
+    await routineNotice(page);
+    await expect.poll(() => steps().length).toBeGreaterThan(1);
+
+    // The person's own Steps read counts; nothing the page did on its own does.
+    expect(steps()[0].background).toBe(false);
+    expect(steps().slice(1).map((request) => request.background)).not.toContain(false);
+    expect(requests.filter((request) => request.path.endsWith('/card')).map((request) => request.background))
+      .not.toContain(false);
+    expect(await laterCalls(page, 'routines.list', () => true, 0)).not.toContain(false);
+  });
+
   test('an answer that arrives after its Routine moved on never dismisses the newer decision', async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });

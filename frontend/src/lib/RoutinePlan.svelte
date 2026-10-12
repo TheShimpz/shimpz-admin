@@ -22,7 +22,8 @@
   // and the saved keys an Action uses by name only. A revision that changed while it was read is never mixed with the
   // new one: `onchanged` reads the Routine again, which brings its new summary. Every value is Team's escaped preview,
   // rendered as text, never as Markdown or HTML.
-  let { teamId, routine, copy, names = {}, locale, onchanged = () => {}, pageSize = 10 } = $props();
+  // `automatic`: the page showed this plan on its own (a decision before it cleared in the background), not the person.
+  let { teamId, routine, copy, names = {}, locale, onchanged = () => {}, pageSize = 10, automatic = false } = $props();
 
   let steps = $state([]);
   let next = $state(0);
@@ -85,7 +86,7 @@
       next = 0;
       pages = 1;
       failed = false;
-      void load(pageSize, opening ? fetch : backgroundFetch);
+      void load(pageSize, opening && !automatic ? fetch : backgroundFetch);
     });
   });
 

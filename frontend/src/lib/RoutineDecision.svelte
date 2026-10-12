@@ -6,6 +6,7 @@
   import ChoiceList from '#lib/ChoiceList.svelte';
   import { locale } from '#lib/i18n.js';
   import { createHumanResponseFrame, parseChatEvent } from '#lib/localChat.js';
+  import { backgroundFetch } from '#lib/localApi.js';
   import RoutineIcon from '#lib/RoutineIcon.svelte';
   import {
     answerRoutineCard,
@@ -36,6 +37,8 @@
     onsettled = () => {},
     onunavailable = null,
     ondelete = () => {},
+    // Whether the page showed this decision on its own (a run changed in the background), not the person.
+    automatic = false,
   } = $props();
 
   // A response that arrives after this decision gave way to a newer one never speaks for that newer one.
@@ -120,12 +123,18 @@
     return () => clearTimeout(timer);
   });
 
+  // The first card of a decision the page showed on its own opens automatically; every later one follows the person's
+  // answer or retry.
+  let firstOpening = true;
+
   async function openCard() {
     // Reopening after an expiry clears only that notice; a verdict shown after an answer stays.
     if (expired) result = '';
     expired = false;
+    const read = automatic && firstOpening ? backgroundFetch : fetch;
+    firstOpening = false;
     try {
-      card = await openRoutineCard(fetch, teamId, runId);
+      card = await openRoutineCard(read, teamId, runId);
     } catch (error) {
       card = null;
       // A run already settled has nothing left to answer here; its newer notice replaces this one.
