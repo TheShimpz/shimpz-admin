@@ -219,6 +219,10 @@ textarea:focus-visible {
 
 /* A light rounding of the straight corners (owner 2026-10-11); chamfers stay as they are. */
 *, *::before, *::after { border-radius: 5px; }
+/* The transparent layout wrappers that clip the page take none: on them a rounding shows nothing, but it nests rounded
+   clips around every scrolling region inside, which each scrolled or typed frame of the chat transcript redraws. */
+body, [data-slot="workspace-stage"], [data-slot="workspace-main"], .authenticated-content, .authenticated-page,
+.chat-route, .chat-workspace { border-radius: 0; }
 input, textarea, select { border-radius: 5px !important; }
 /* The shared controls that force square corners take the same light rounding; round avatars stay round. */
 .shimpz-button:not(.supervisor-menu .trigger), .shimpz-choice-item, .shimpz-text-action, select { border-radius: 5px !important; }
