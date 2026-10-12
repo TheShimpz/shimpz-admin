@@ -33,16 +33,20 @@ export function synced(topic, read, { initial = null } = {}) {
   // The revision the value reflects, and the newest one Admin announced for the topic: the value is stale while older.
   let reflects = { epoch: '', revision: -1 };
   let known = { epoch: '', revision: -1 };
+  // The reads under way belong to one era: a reset or the last screen leaving starts a new one, and a read of an older
+  // era neither publishes nor ends the reads of the current one.
+  let era = 0;
   let reading = null;
   let again = false;
-  let started = false;
   let stopped = true;
+  // Whether the topic's subscription is in place, so a read made now misses no later change; and what waits for it.
+  let subscribed = false;
+  let waiting = null;
   let retryTimer;
   let retryAttempt = 0;
   let publish = () => {};
   let failing = null;
-  // Bumped by reset: a read that started before it never publishes.
-  let era = 0;
+  const empty = () => ({ status: 'loading', value: initial, error: null, failing: null });
 
   function stale() {
     if (!has) return true;
@@ -65,8 +69,7 @@ export function synced(topic, read, { initial = null } = {}) {
     }, delay);
   }
 
-  async function once() {
-    const begun = era;
+  async function once(owner) {
     again = false;
     const before = { ...known };
     const seen = [];
@@ -78,7 +81,7 @@ export function synced(topic, read, { initial = null } = {}) {
     };
     try {
       const next = await read(call);
-      if (stopped || begun !== era) return;
+      if (owner !== era) return;
       value = next;
       has = true;
       // The oldest revision any of its results reflects; a read whose results carry none reflects what was known as
@@ -92,7 +95,7 @@ export function synced(topic, read, { initial = null } = {}) {
       publish({ status: 'ready', value, error: null, failing });
       if (stale()) again = true;
     } catch (error) {
-      if (stopped || begun !== era) return;
+      if (owner !== era) return;
       if (transientFailure(error)) {
         failing = error instanceof LocalApiError && error.status === 0 ? failing : error;
         publish({ status: has ? 'ready' : 'loading', value, error: null, failing });
@@ -104,54 +107,38 @@ export function synced(topic, read, { initial = null } = {}) {
     }
   }
 
-  /** Read again now, or once the read under way ends; settles when a read started after this call has ended. */
+  function run() {
+    const owner = era;
+    const current = (async () => {
+      try {
+        do await once(owner); while (again && owner === era);
+      } finally {
+        if (reading === current) reading = null;
+      }
+    })();
+    reading = current;
+    return current;
+  }
+
+  /**
+   * Read again now, or once the read under way ends, and never before the subscription is in place; settles when a
+   * read started after this call has ended (at once when no screen shows the value).
+   */
   function refresh() {
     if (stopped) return Promise.resolve();
+    if (topic && !subscribed) {
+      waiting ??= Promise.withResolvers();
+      return waiting.promise;
+    }
     if (reading) {
       again = true;
       return reading;
     }
-    reading = (async () => {
-      try {
-        do await once(); while (again && !stopped);
-      } finally {
-        reading = null;
-      }
-    })();
-    return reading;
+    return run();
   }
 
-  const store = writable({ status: 'loading', value: initial, error: null, failing: null }, (set) => {
-    stopped = false;
-    publish = set;
-    if (has) set({ status: 'ready', value, error: null, failing });
-    if (!topic) {
-      void refresh();
-      return () => {
-        stopped = true;
-        clearTimeout(retryTimer);
-      };
-    }
-    // Nothing was heard while no screen showed it: the first subscription reads again.
-    started = false;
-    const stop = socketReads.watch(topic, (_topic, cause, knownNow) => {
-      hear(knownNow);
-      // A change always reads; a subscription or reopen reads only what may be older than Admin's revision. A first
-      // open reads too, since nothing has been read yet.
-      if (cause === 'changed' || !started || stale()) {
-        started = true;
-        void refresh();
-      }
-    });
-    return () => {
-      stopped = true;
-      clearTimeout(retryTimer);
-      stop();
-    };
-  });
-
-  /** Forget the value and what it reflects, as a session that ended must: the next screen reads it from the start. */
-  function reset() {
+  // Forget everything read: the value, what it reflects, the reads under way, and the retry.
+  function forget() {
     era += 1;
     value = initial;
     has = false;
@@ -162,7 +149,53 @@ export function synced(topic, read, { initial = null } = {}) {
     retryAttempt = 0;
     clearTimeout(retryTimer);
     failing = null;
-    store.set({ status: 'loading', value: initial, error: null, failing: null });
+    subscribed = false;
+    waiting?.resolve();
+    waiting = null;
+  }
+
+  const store = writable(empty(), (set) => {
+    stopped = false;
+    publish = set;
+    if (!topic) {
+      void refresh();
+      return () => {
+        stopped = true;
+        forget();
+        set(empty());
+      };
+    }
+    let first = true;
+    const stop = socketReads.watch(topic, (_topic, cause, knownNow) => {
+      hear(knownNow);
+      subscribed = true;
+      const asked = waiting;
+      waiting = null;
+      // A change always reads, and so does the first subscription and anything asked for before it; a later
+      // subscription or reopen reads only what may be older than Admin's revision.
+      if (cause === 'changed' || first || asked || stale()) {
+        first = false;
+        const done = refresh();
+        if (asked) void done.then(asked.resolve, asked.resolve);
+      }
+    });
+    return () => {
+      // The last screen left: what it showed is protected data no other screen may see later without reading it again.
+      stopped = true;
+      stop();
+      forget();
+      set(empty());
+    };
+  });
+
+  /** Forget the value and what it reflects, as a session that ended must: the next screen reads it from the start. */
+  function reset() {
+    const inPlace = subscribed;
+    forget();
+    store.set(empty());
+    // A screen still showing it reads it again at once, under the subscription it still holds, or once that is in place.
+    subscribed = inPlace;
+    if (!stopped) void refresh();
   }
 
   return { subscribe: store.subscribe, refresh, reset };

@@ -199,21 +199,27 @@ test('refresh settles only once a read started after it has ended', async () => 
   stop();
 });
 
-test('a value no screen shows reads again when one shows it, and an answer after it stopped is dropped', async () => {
+test('the last screen leaving forgets the value and drops an answer still on its way', async () => {
   const socket = harness();
   const value = synced('local-assistants', snapshots);
   let { stop } = shown(value);
   socket.announce('open', 1);
+  socket.answer(0, { assistants: ['shown'] }, 1);
+  await flush();
+  socket.announce('changed', 2);
   stop();
-  socket.answer(0, { assistants: ['late'] }, 1);
+  // Protected data never outlives the screens that show it.
+  assert.deepEqual(get(value), { status: 'loading', value: null, error: null, failing: null });
+  socket.answer(1, { assistants: ['late'] }, 2);
   await flush();
   assert.equal(get(value).value, null);
   ({ stop } = shown(value));
-  socket.announce('subscribed', 1);
-  assert.equal(socket.calls.length, 2);
-  socket.answer(1, { assistants: ['shown'] }, 1);
+  assert.equal(get(value).value, null);
+  socket.announce('subscribed', 2);
+  assert.equal(socket.calls.length, 3);
+  socket.answer(2, { assistants: ['again'] }, 2);
   await flush();
-  assert.deepEqual(get(value).value, ['shown']);
+  assert.deepEqual(get(value).value, ['again']);
   stop();
 });
 
@@ -260,5 +266,66 @@ test('a reset forgets the value, and a read under way when it came never shows',
   socket.answer(1, { assistants: ['previous session'] }, 2);
   await flush();
   assert.equal(get(value).value, null);
+  // The screen still showing it reads it again for the new session.
+  assert.equal(socket.calls.length, 3);
+  stop();
+});
+
+test('a read of an earlier era never ends the current one, so two reads never overlap', async () => {
+  const socket = harness();
+  const value = synced('local-assistants', snapshots);
+  const { stop } = shown(value);
+  socket.announce('open', 1);
+  // The session ends while the first read is on its way; the screen still shows the value, so it reads again at once.
+  value.reset();
+  assert.equal(socket.calls.length, 2);
+  socket.announce('changed', 2);
+  // The earlier era's answer arrives last-but-one: it publishes nothing and leaves the current read in charge.
+  socket.answer(0, { assistants: ['previous session'] }, 1);
+  await flush();
+  assert.equal(get(value).value, null);
+  socket.announce('changed', 3);
+  assert.equal(socket.calls.length, 2);
+  socket.answer(1, { assistants: ['current'] }, 2);
+  await flush();
+  // One more read for the changes heard meanwhile, and only one.
+  assert.equal(socket.calls.length, 3);
+  socket.answer(2, { assistants: ['newest'] }, 3);
+  await flush();
+  assert.deepEqual(get(value).value, ['newest']);
+  assert.equal(socket.calls.length, 3);
+  stop();
+});
+
+test('a refresh asked for before the subscription is in place reads only once it is', async () => {
+  const socket = harness();
+  const value = synced('local-assistants', snapshots);
+  const { stop } = shown(value);
+  let settled = false;
+  const refreshed = value.refresh().then(() => { settled = true; });
+  await flush();
+  assert.equal(socket.calls.length, 0);
+  socket.announce('open', 1);
+  assert.equal(socket.calls.length, 1);
+  socket.answer(0, { assistants: ['first'] }, 1);
+  await refreshed;
+  assert.equal(settled, true);
+  assert.deepEqual(get(value).value, ['first']);
+  stop();
+});
+
+test('a reset while a screen still shows the value reads it again under the subscription it holds', async () => {
+  const socket = harness();
+  const value = synced('local-assistants', snapshots);
+  const { stop } = shown(value);
+  socket.announce('open', 1);
+  socket.answer(0, { assistants: ['first'] }, 1);
+  await flush();
+  value.reset();
+  assert.equal(get(value).status, 'loading');
+  assert.equal(socket.calls.length, 2);
+  socket.answer(1, { assistants: ['again'] }, 1);
+  await flush();
+  assert.deepEqual(get(value).value, ['again']);
   stop();
 });
