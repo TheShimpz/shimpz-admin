@@ -2459,6 +2459,50 @@ test('a message after an install waits for the Team inventory and names the inst
   });
 });
 
+test('a chat socket that opens and is closed again keeps backing off and then reports the failure', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  // Admin accepts the socket and closes it after the page's first frame, as when it cannot check the session.
+  let connections = 0;
+  let syncs = 0;
+  await page.routeWebSocket('**/api/teams/marketing/chat/ws', (socket) => {
+    connections += 1;
+    socket.onMessage(() => {
+      syncs += 1;
+      socket.close({ code: 1013, reason: 'Synthetic unavailable session check' });
+    });
+  });
+  await freezeClock(page);
+  await page.goto('/chat/?team=marketing');
+  const interrupted = page.getByText('The secure chat connection was interrupted. Reconnecting…');
+  const failed = page.getByText('The secure chat connection could not be established. Refresh this page to try again.');
+  // Each step waits until the page saw the close, then runs its clock past the longest backoff.
+  for (let step = 0; step < 40; step += 1) {
+    await expect.poll(() => syncs).toBe(connections);
+    await expect(interrupted.or(failed)).toBeVisible();
+    if (await failed.isVisible()) break;
+    const before = connections;
+    await page.clock.runFor(10_000);
+    await expect.poll(() => connections).toBeGreaterThan(before);
+  }
+  await expect(failed).toBeVisible();
+  expect(connections).toBeLessThan(25);
+});
+
+test('a protocol violation ends the install it interrupts like a dropped connection', async ({ page }) => {
+  const chat = await routeReadyChat(page, { assistantPlan: true, holdAssistantPlan: true });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'Install Cloudflare and WhatsApp');
+  await composer.press('Enter');
+  const installing = page.locator('.assistant-install-plan [data-slot="chat-task"]').first();
+  await expect(installing).toHaveAttribute('data-state', 'working');
+
+  chat.sendProgressEvent({ type: 'unexpected' });
+  await expect(page.getByText('The secure chat response was invalid.')).toBeVisible();
+  await expect(installing).toHaveAttribute('data-state', 'failed');
+  await expect(page.locator('.assistant-install-plan [data-slot="chat-task"][data-state="working"]')).toHaveCount(0);
+});
+
 test('shows the continued task execution stages after an explicit install', async ({ page }) => {
   const chat = await routeReadyChat(page, { assistantPlan: true, progressAfterPlan: true });
   await page.goto('/chat/');

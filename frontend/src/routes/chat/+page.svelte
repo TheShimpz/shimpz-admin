@@ -102,15 +102,24 @@
     turnEpoch += 1;
   }
 
-  function failProtocol(active) {
+  // What a connection that ended, closed or refused for a protocol violation, leaves behind: no turn, progress,
+  // challenge, or lifecycle card of it stays live. A reconnect may restore another turn; one this page still waits on
+  // keeps only what it observes from then on.
+  function resetConnection() {
+    clearTimeout(stableTimer);
     forgetSegments();
     socket = null;
     socketReady = false;
     busy = false;
     syncing = false;
     stopping = false;
+    expireSocketLifecycles();
     resetProgress();
     resetChallengeState();
+  }
+
+  function failProtocol(active) {
+    resetConnection();
     clearTurnInstalled();
     setError(copy.protocolError);
     active.close(1002, 'Invalid chat event');
@@ -131,6 +140,7 @@
   let socket = $state(null);
   let socketReady = $state(false);
   let reconnectTimer;
+  let stableTimer;
   const lifecycleExpiryTimers = new Map();
   const lifecycleIconCaptures = new Map();
   let reconnectAttempt = 0;
@@ -142,6 +152,9 @@
   // returns to the sign-in flow, and Admin's session refusal of an open socket is final either way.
   const RECONNECT_WINDOW_MS = 150_000;
   const MAX_RECONNECT_DELAY_MS = 10_000;
+  // Only a connection that stayed open this long restores the reconnect budget; one Admin accepts and then closes
+  // (its session check unavailable, a refusal after accept) keeps backing off and ends in the reported failure.
+  const STABLE_CONNECTION_MS = 10_000;
   const SESSION_PROBE_TIMEOUT_MS = 5_000;
   const SESSION_REFUSED_CLOSE_CODE = 4401;
   const sessionEnded = getContext(SESSION_ENDED);
@@ -1100,6 +1113,7 @@
 
   function closeSocket() {
     sessionProbe += 1;
+    clearTimeout(stableTimer);
     if (reconnectTimer) {
       clearTimeout(reconnectTimer);
       reconnectTimer = undefined;
@@ -1249,16 +1263,17 @@
         setError(copy.protocolError);
         return;
       }
-      reconnectAttempt = 0;
+      clearTimeout(stableTimer);
+      stableTimer = setTimeout(() => {
+        if (socket === active) reconnectAttempt = 0;
+      }, STABLE_CONNECTION_MS);
       socketReady = true;
       syncing = true;
       resetProgress();
       try {
         active.send(JSON.stringify(createSyncFrame(expectedTeamId, $locale)));
       } catch {
-        socket = null;
-        socketReady = false;
-        syncing = false;
+        resetConnection();
         setError(copy.disconnected);
         active.close();
         return;
@@ -1486,16 +1501,7 @@
     };
     active.onclose = (event) => {
       if (socket !== active || chatTeamId !== expectedTeamId) return;
-      // A reconnect may restore another turn; one this page still waits on keeps only what it observes from now on.
-      forgetSegments();
-      socket = null;
-      socketReady = false;
-      syncing = false;
-      stopping = false;
-      expireSocketLifecycles();
-      resetProgress();
-      if (busy) busy = false;
-      resetChallengeState();
+      resetConnection();
       if (event.code === SESSION_REFUSED_CLOSE_CODE) {
         void continueAfterSessionCheck(expectedTeamId, true);
         return;
