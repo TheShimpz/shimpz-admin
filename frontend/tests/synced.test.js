@@ -59,7 +59,7 @@ test('nothing is read until the subscription is in place, then once, and the val
   assert.equal(socket.calls.length, 1);
   socket.answer(0, { assistants: ['one'] }, 4);
   await flush();
-  assert.deepEqual(get(value), { status: 'ready', value: ['one'], error: null });
+  assert.deepEqual(get(value), { status: 'ready', value: ['one'], error: null, failing: null });
   // A subscription again at the revision the value reflects reads nothing more.
   socket.announce('reopen', 4);
   assert.equal(socket.calls.length, 1);
@@ -151,7 +151,10 @@ test('a transient failure keeps the last value and reads again after a capped ba
     socket.announce('changed', 2);
     socket.calls[1].resolve(response(503, { detail: 'Team is unavailable' }));
     await flush();
-    assert.deepEqual(get(value), { status: 'ready', value: ['kept'], error: null });
+    // The last value stays, and the failure is named while the value is read again on its own.
+    assert.equal(get(value).status, 'ready');
+    assert.deepEqual(get(value).value, ['kept']);
+    assert.equal(get(value).failing.status, 503);
     mock.timers.tick(RETRY_FIRST_MS);
     assert.equal(socket.calls.length, 3);
     socket.calls[2].resolve(response(503, { detail: 'Team is unavailable' }));
@@ -164,6 +167,7 @@ test('a transient failure keeps the last value and reads again after a capped ba
     socket.answer(3, { assistants: ['back'] }, 2);
     await flush();
     assert.deepEqual(get(value).value, ['back']);
+    assert.equal(get(value).failing, null);
     // A refusal is no outage: it is shown, with the last value kept, until a change reads again.
     socket.announce('changed', 3);
     socket.calls[4].resolve(response(404, { detail: 'Team not found' }));
@@ -223,6 +227,8 @@ test('data no topic announces is read when shown and retried until it is read', 
     assert.equal(socket.listeners.size, 0);
     socket.calls[0].reject(new LocalApiError('Admin is reconnecting.', 0, 'socket-unavailable'));
     await flush();
+    // The connection is the shell's to speak of: it is no failure of this value.
+    assert.equal(get(value).failing, null);
     mock.timers.tick(RETRY_FIRST_MS);
     socket.calls[1].resolve(response(200, { assistants: ['catalog'] }));
     await flush();
@@ -250,7 +256,7 @@ test('a reset forgets the value, and a read under way when it came never shows',
   await flush();
   socket.announce('changed', 2);
   value.reset();
-  assert.deepEqual(get(value), { status: 'loading', value: null, error: null });
+  assert.deepEqual(get(value), { status: 'loading', value: null, error: null, failing: null });
   socket.answer(1, { assistants: ['previous session'] }, 2);
   await flush();
   assert.equal(get(value).value, null);

@@ -6,7 +6,7 @@ import { derived, get, writable } from 'svelte/store';
 
 import { LocalApiError } from './localApi.js';
 import { listModelProviders, loadInference, saveModelSetup } from './modelProviders.js';
-import { synced, transientFailure } from './synced.js';
+import { synced } from './synced.js';
 import { publicError, TEAM_ID_RE } from './validate.js';
 
 function emptyContext() {
@@ -21,24 +21,7 @@ function emptyContext() {
   };
 }
 
-// The last transient failure of each read while it has no value yet: it is read again on its own meanwhile, and the
-// context says so rather than staying a load forever.
-const outage = writable({ providers: null, selection: null });
-
-function tracked(name, read, current = () => true) {
-  return async (call) => {
-    try {
-      const value = await read(call);
-      if (current()) outage.update((state) => ({ ...state, [name]: null }));
-      return value;
-    } catch (error) {
-      if (transientFailure(error) && current()) outage.update((state) => ({ ...state, [name]: error }));
-      throw error;
-    }
-  };
-}
-
-const providersValue = synced('space/models', tracked('providers', (call) => listModelProviders(call)));
+const providersValue = synced('space/models', (call) => listModelProviders(call));
 // The shown Team and its selection, read anew each time a Team view opens; `{ selection }` is null when it has none.
 const shownTeam = writable(null);
 // The shown Team's local state: a choice not yet saved, a save under way, and the failure of the last save.
@@ -50,14 +33,7 @@ let saves = 0;
 let autoSelected = 0;
 
 function selectionValue(teamId) {
-  return synced(
-    `team/${teamId}/inference`,
-    tracked(
-      'selection',
-      async (call) => ({ selection: await loadInference(teamId, call) }),
-      () => get(shownTeam)?.teamId === teamId,
-    ),
-  );
+  return synced(`team/${teamId}/inference`, async (call) => ({ selection: await loadInference(teamId, call) }));
 }
 
 const selectionState = derived(shownTeam, (shown, set) => {
@@ -72,8 +48,10 @@ function selectedModel(provider, modelId) {
   return provider?.models.find((entry) => entry.id === modelId) ?? null;
 }
 
-function refusal(state, transient) {
-  const error = state?.status === 'error' ? state.error : !state?.value ? transient : null;
+// A read that will not succeed by itself, or one with no value yet that keeps failing while it is read again: the
+// context says so rather than staying a load forever.
+function refusal(state) {
+  const error = state?.status === 'error' ? state.error : !state?.value ? state?.failing : null;
   return error ? publicError(error, 'The Team model settings are unavailable.') : null;
 }
 
@@ -82,12 +60,12 @@ function awaitingDefault(providers, selection, view) {
   return Boolean(selection && selection.selection === null && !view.choice && providers.some((entry) => entry.configured));
 }
 
-function compute(providersState, selectionStateNow, view, transient) {
+function compute(providersState, selectionStateNow, view) {
   if (!view.teamId || selectionStateNow?.teamId !== view.teamId) return emptyContext();
   const base = { ...emptyContext(), teamId: view.teamId };
   const providers = providersState.value;
   const selection = selectionStateNow.value;
-  const failed = refusal(providersState, transient.providers) ?? refusal(selectionStateNow, transient.selection);
+  const failed = refusal(providersState) ?? refusal(selectionStateNow);
   if (!providers || !selection) {
     if (view.saving) return { ...base, phase: 'saving' };
     if (failed) return { ...base, phase: 'error', error: failed.message, errorCode: failed.code ?? '' };
@@ -112,8 +90,8 @@ function compute(providersState, selectionStateNow, view, transient) {
   return { ...shown, phase: 'ready' };
 }
 
-const context = derived([providersValue, selectionState, local, outage], ([providers, selection, view, transient]) => (
-  compute(providers, selection, view, transient)
+const context = derived([providersValue, selectionState, local], ([providers, selection, view]) => (
+  compute(providers, selection, view)
 ));
 
 // A Team with no selection yet opens on the default model of a provider that already has a key, stored once per view.
@@ -148,7 +126,6 @@ export function clearModelContext() {
   views += 1;
   shownTeam.set(null);
   local.set({ teamId: '', choice: null, saving: false, error: '', errorCode: '' });
-  outage.set({ providers: null, selection: null });
   providersValue.reset();
 }
 
@@ -192,7 +169,6 @@ export function loadModelContext(teamId) {
   } else {
     views += 1;
     local.set({ teamId, choice: null, saving: false, error: '', errorCode: '' });
-    outage.update((current) => ({ ...current, selection: null }));
     shownTeam.set({ teamId, value: selectionValue(teamId) });
   }
   return settled(teamId);

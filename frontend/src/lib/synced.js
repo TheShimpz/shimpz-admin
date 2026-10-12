@@ -22,9 +22,10 @@ export function transientFailure(error) {
 /**
  * A synced value: `read(call)` reads it with `call(method, params)`, which answers as the session socket does and
  * records the revisions of `topic` its results reflect. `topic` may be null for data no topic announces (the public
- * Store catalog): it is read when shown and retried on failure. The store holds `{ status, value, error }`:
+ * Store catalog): it is read when shown and retried on failure. The store holds `{ status, value, error, failing }`:
  * `loading` until the first read ends, `ready` with the newest value, or `error` with the last value kept and the
- * failure of a read that will not succeed by itself (a refusal); a transient failure keeps the status and retries.
+ * failure of a read that will not succeed by itself (a refusal). A transient failure keeps the status and retries;
+ * `failing` names it meanwhile (an outage of Admin's own connection is the shell's to say, so it never does).
  */
 export function synced(topic, read, { initial = null } = {}) {
   let value = initial;
@@ -39,6 +40,7 @@ export function synced(topic, read, { initial = null } = {}) {
   let retryTimer;
   let retryAttempt = 0;
   let publish = () => {};
+  let failing = null;
   // Bumped by reset: a read that started before it never publishes.
   let era = 0;
 
@@ -86,15 +88,19 @@ export function synced(topic, read, { initial = null } = {}) {
         : before;
       retryAttempt = 0;
       clearTimeout(retryTimer);
-      publish({ status: 'ready', value, error: null });
+      failing = null;
+      publish({ status: 'ready', value, error: null, failing });
       if (stale()) again = true;
     } catch (error) {
       if (stopped || begun !== era) return;
       if (transientFailure(error)) {
+        failing = error instanceof LocalApiError && error.status === 0 ? failing : error;
+        publish({ status: has ? 'ready' : 'loading', value, error: null, failing });
         scheduleRetry();
         return;
       }
-      publish({ status: 'error', value, error });
+      failing = null;
+      publish({ status: 'error', value, error, failing });
     }
   }
 
@@ -115,10 +121,10 @@ export function synced(topic, read, { initial = null } = {}) {
     return reading;
   }
 
-  const store = writable({ status: 'loading', value: initial, error: null }, (set) => {
+  const store = writable({ status: 'loading', value: initial, error: null, failing: null }, (set) => {
     stopped = false;
     publish = set;
-    if (has) set({ status: 'ready', value, error: null });
+    if (has) set({ status: 'ready', value, error: null, failing });
     if (!topic) {
       void refresh();
       return () => {
@@ -155,7 +161,8 @@ export function synced(topic, read, { initial = null } = {}) {
     reading = null;
     retryAttempt = 0;
     clearTimeout(retryTimer);
-    store.set({ status: 'loading', value: initial, error: null });
+    failing = null;
+    store.set({ status: 'loading', value: initial, error: null, failing: null });
   }
 
   return { subscribe: store.subscribe, refresh, reset };

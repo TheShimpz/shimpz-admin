@@ -3,7 +3,7 @@
 // synced value, so it knows only the revision its own reads reflected. Each also says when its last read failed in a
 // way that clears by itself (Team's preview busy or unavailable, the Store unreachable): the page may say so while
 // the value keeps reading again on its own.
-import { derived, readable, writable } from 'svelte/store';
+import { derived, readable } from 'svelte/store';
 
 import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from './localApi.js';
 import {
@@ -12,59 +12,39 @@ import {
   loadLocalAssistantDetails,
   loadLocalAssistantSummary,
 } from './localAssistantIcons.js';
-import { synced, transientFailure } from './synced.js';
+import { synced } from './synced.js';
 
 const SNAPSHOTS = 'local-assistants';
 const inventory = (teamId) => `team/${teamId}/inventory`;
 
-/**
- * A synced value whose state also names `failing`: the failure of its last read when that failure clears by itself,
- * or null. Admin reconnecting is no such failure: the shell alone speaks of the connection.
- */
-function tracked(topic, read) {
-  const failure = writable(null);
-  const value = synced(topic, async (call) => {
-    try {
-      const result = await read(call);
-      failure.set(null);
-      return result;
-    } catch (error) {
-      failure.set(transientFailure(error) && error?.status !== 0 ? error : null);
-      throw error;
-    }
-  });
-  const state = derived([value, failure], ([current, failing]) => ({ ...current, failing }));
-  return { subscribe: state.subscribe, refresh: value.refresh };
-}
-
 /** This machine's staged snapshots, read again whenever one is staged or removed (the CLI). */
 export function stagedSnapshots() {
-  return tracked(SNAPSHOTS, (call) => listLocalAssistantSnapshots(call));
+  return synced(SNAPSHOTS, (call) => listLocalAssistantSnapshots(call));
 }
 
 /** The public Store catalog in one interface language: no topic announces it, so it is read when shown. */
 export function publicCatalog(locale) {
-  return tracked(null, (call) => listPublicAssistantCatalog(locale, call));
+  return synced(null, (call) => listPublicAssistantCatalog(locale, call));
 }
 
 /** One staged snapshot's summary in one interface language, from its own pack. */
 export function snapshotSummary(imageId, locale) {
-  return tracked(SNAPSHOTS, (call) => loadLocalAssistantSummary(imageId, locale, { call }));
+  return synced(SNAPSHOTS, (call) => loadLocalAssistantSummary(imageId, locale, { call }));
 }
 
 /** One staged snapshot's page in one interface language. */
 export function snapshotDetails(imageId, assistantId, locale) {
-  return tracked(SNAPSHOTS, (call) => loadLocalAssistantDetails(imageId, assistantId, locale, { call }));
+  return synced(SNAPSHOTS, (call) => loadLocalAssistantDetails(imageId, assistantId, locale, { call }));
 }
 
 /** One installed Assistant's summary in one interface language, from its binding's pack. */
 export function installedSummary(teamId, assistantId, locale) {
-  return tracked(inventory(teamId), (call) => loadAssistantSummary(teamId, assistantId, locale, { call }));
+  return synced(inventory(teamId), (call) => loadAssistantSummary(teamId, assistantId, locale, { call }));
 }
 
 /** One installed Assistant's page in one interface language, from the exact binding Team runs. */
 export function installedDetails(teamId, assistantId, locale) {
-  return tracked(inventory(teamId), (call) => loadAssistantDetails(teamId, assistantId, locale, { call }));
+  return synced(inventory(teamId), (call) => loadAssistantDetails(teamId, assistantId, locale, { call }));
 }
 
 /**
