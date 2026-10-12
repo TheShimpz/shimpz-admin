@@ -368,7 +368,7 @@
     open={Boolean(challenge)}
     {challenge}
     {rejection}
-    working={working || stale}
+    working={working || stale || !$commandsReady}
     onrespond={respond}
     ondismiss={() => (challenge = null)}
     dismissLabel={copy.run.dismiss}

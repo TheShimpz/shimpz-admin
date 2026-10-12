@@ -6772,6 +6772,51 @@ test.describe('Team Routines', () => {
     expect(await readsOf(page, 'routines.resume')).toHaveLength(1);
   });
 
+  test("a held run's approval stays disabled while Admin reconnects and is offered again once it is back", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
+    const run = 'd'.repeat(32);
+    await routeReadyChat(page, {
+      history: {
+        entries: [routineRow(run, 'frozen', {
+          request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3,
+        })],
+        before: null,
+      },
+    });
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [frozenRun(run, 'human')], incidents: [] }) : undefined));
+    await routeRead(page, 'routines.challenge', () => ok({
+      team_id: 'marketing',
+      run_id: run,
+      status: 'human-required',
+      challenge: {
+        type: 'human-required',
+        challenge_id: 'b'.repeat(32),
+        expires_in: 300,
+        assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+        action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
+        ...localizedChallenge(humanRequest('approval')),
+      },
+    }));
+    // While refusing, Admin is unreachable: each socket the page opens fails before it is upgraded.
+    let refusing = false;
+    await routeConnect(page, (socket) => {
+      if (!refusing) return true;
+      socket.connectToServer();
+      return false;
+    });
+    await page.goto('/chat/?team=marketing');
+    const panel = await openRoutinePanel(page);
+    await panel.getByRole('button', { name: 'Review' }).click();
+    const approve = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' }).getByRole('button', { name: 'Approve action' });
+    await expect(approve).toBeEnabled();
+    refusing = true;
+    await dropSessions(page);
+    await expect(approve).toBeDisabled();
+    refusing = false;
+    await expect(approve).toBeEnabled({ timeout: 20_000 });
+    expect(await readsOf(page, 'routines.human')).toEqual([]);
+  });
+
   test('an expired recovery card is withdrawn and only a person opens a fresh one', async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const held = 'b'.repeat(32);
