@@ -1,7 +1,7 @@
 import { get, writable } from 'svelte/store';
 
 import { socketReads } from './adminSocket.js';
-import { backgroundFetcher, listAssistantCatalog, listInstalledAssistants, LocalApiError, safeApiError } from './localApi.js';
+import { listAssistantCatalog, listInstalledAssistants, LocalApiError, safeApiError } from './localApi.js';
 import {
   ASSISTANT_ID_RE,
   canonicalTeamName,
@@ -94,12 +94,10 @@ function preferredTeamId(value) {
   return value;
 }
 
-// The Team list is read over the Admin session socket (ADR-0114); the rest of the context still over HTTP. A read Admin's
-// own change caused is `background`, as is every read through a background fetcher: it never renews the session.
-async function listTeams(fetcher, { background = false } = {}) {
+// The Team list is read over the Admin session socket (ADR-0114); the rest of the context still over HTTP.
+async function listTeams(fetcher) {
   requireFetcher(fetcher);
-  const automatic = background || fetcher.background === true;
-  const response = await socketReads.call('teams.list', {}, { background: automatic });
+  const response = await socketReads.call('teams.list', {});
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'The local Team inventory is unavailable.'), response.status);
@@ -176,14 +174,6 @@ let listReads = 0;
 let listBarrier = 0;
 // A Team list change Admin announced while the context loads is read once the load ends, so it is never dropped.
 let listChangedWhileLoading = null;
-// Whether the selected Team was chosen by the page itself (its Team removed elsewhere) rather than by the person: the
-// reads that open it are then automatic too, and never renew the session.
-let automaticSelection = false;
-
-/** Whether the page, not the person, selected the current Team; the reads that open it are then background reads. */
-export function selectedAutomatically() {
-  return automaticSelection;
-}
 
 function withRenames(teams, since) {
   return teams.map((team) => {
@@ -193,7 +183,6 @@ function withRenames(teams, since) {
 }
 
 async function hydrate(fetcher, preferredId, attempt, previousId = '') {
-  automaticSelection = fetcher.background === true;
   const since = renameClock;
   const read = ++listReads;
   const [listed, catalog] = await Promise.all([
@@ -275,7 +264,6 @@ async function select(fetcher, id) {
     throw new LocalApiError('Invalid local Team request.');
   }
   const attempt = ++generation;
-  automaticSelection = fetcher.background === true;
   teamContext.set({
     ...current,
     phase: 'loading',
@@ -527,8 +515,7 @@ async function putTeamOrder(fetcher, ids) {
 
 /**
  * Re-read only the Team list after Admin changed it or refused an order for stale membership: the selection, catalog,
- * and inventory stay as they are unless the selected Team itself is gone, which reloads the whole context. The re-read
- * is automatic, so it never renews the session's idle time.
+ * and inventory stay as they are unless the selected Team itself is gone, which reloads the whole context.
  */
 export async function reloadTeamList(fetcher) {
   requireFetcher(fetcher);
@@ -536,7 +523,7 @@ export async function reloadTeamList(fetcher) {
   const epoch = contextEpoch;
   const read = ++listReads;
   const revision = orderRevision;
-  const listed = await listTeams(fetcher, { background: true });
+  const listed = await listTeams(fetcher);
   const current = get(teamContext);
   if (
     epoch !== contextEpoch ||
@@ -545,8 +532,7 @@ export async function reloadTeamList(fetcher) {
     (current.phase === 'loading' && !current.teams.length)
   ) return;
   if (current.selectedTeamId && !listed.some((team) => team.id === current.selectedTeamId)) {
-    // The selected Team is gone: the whole context loads again, every read of it automatic.
-    await loadTeamContext(backgroundFetcher(fetcher), '');
+    await loadTeamContext(fetcher, '');
     return;
   }
   listVersion += 1;

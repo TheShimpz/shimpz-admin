@@ -2,7 +2,7 @@
   import { Button, Modal, ShimpzBrand, WorkspaceShell } from '@shimpz/frontend';
   import { getContext, onDestroy, onMount, untrack } from 'svelte';
   import AdminNotice from '#lib/AdminNotice.svelte';
-  import { adminSocket, connectAdminSocket, watchTopic } from '#lib/adminSocket.js';
+  import { adminSocket, connectAdminSocket, trackActivity, watchTopic } from '#lib/adminSocket.js';
   import { t } from '#lib/i18n.js';
   import LocaleMenu from '#lib/LocaleMenu.svelte';
   import PlatformReleaseStatus from '#lib/PlatformReleaseStatus.svelte';
@@ -82,7 +82,8 @@
   // Opened as the shell starts, before any screen inside it reads, and closed with it.
   if (untrack(() => authenticated)) {
     const disconnect = connectAdminSocket({ onSignedOut: () => sessionEnded?.() });
-    const stops = [watchTopic('teams', refreshTeams), watchTopic('session', refreshSession)];
+    // The person's own input, and nothing the page does on its own, keeps the session alive.
+    const stops = [watchTopic('teams', refreshTeams), watchTopic('session', refreshSession), trackActivity()];
     onDestroy(() => {
       for (const stop of stops) stop();
       disconnect();

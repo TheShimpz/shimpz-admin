@@ -61,8 +61,8 @@ CHANGE_METHODS = frozenset({"subscribe", "unsubscribe", "chat.attach", "chat.det
 
 # The `shimpz.chat.v7` frames a client sends on an attached Team's chat channel, each carrying that Team's `team_id`.
 CHAT_TYPES = frozenset({"chat", "resume-task", "stop", "sync", "human-response"})
-# A person's own chat frames: Supervisor activity, which restarts the session's idle time. `sync` is the page's own.
-CHAT_USER_TYPES = frozenset({"chat", "resume-task", "stop", "human-response"})
+# The content-free frame the page sends on the person's own input: the only frame that restarts the session's idle time.
+ACTIVITY = {"type": "activity"}
 
 
 class ProtocolError(ValueError):
@@ -102,14 +102,12 @@ def topics(params: dict[str, object]) -> tuple[str, ...]:
     return tuple(value)
 
 
-def call(frame: dict[str, object]) -> tuple[str, str, dict[str, object], bool]:
-    """Admit one call frame as its id, method, params, and whether it is an automatic read."""
-    keys = set(frame)
-    if keys not in ({"type", "id", "method", "params"}, {"type", "id", "method", "params", "background"}):
+def call(frame: dict[str, object]) -> tuple[str, str, dict[str, object]]:
+    """Admit one call frame as its id, method, and params."""
+    if set(frame) != {"type", "id", "method", "params"}:
         raise ProtocolError("invalid call frame")
     call_id, method, params = frame["id"], frame["method"], frame["params"]
-    background = frame.get("background", False)
-    if not is_call_id(call_id) or not isinstance(params, dict) or not isinstance(background, bool):
+    if not is_call_id(call_id) or not isinstance(params, dict):
         raise ProtocolError("invalid call frame")
     shape = METHODS.get(method) if isinstance(method, str) else None
     if shape is None:
@@ -121,7 +119,13 @@ def call(frame: dict[str, object]) -> tuple[str, str, dict[str, object], bool]:
         topics(params)
     elif not all(_param(value) for value in params.values()):
         raise ProtocolError("invalid call parameters")
-    return call_id, method, params, background
+    return call_id, method, params
+
+
+def activity(frame: dict[str, object]) -> None:
+    """Admit the person's activity frame, which carries nothing else."""
+    if frame != ACTIVITY:
+        raise ProtocolError("invalid activity frame")
 
 
 def chat_frame(frame: dict[str, object]) -> tuple[str, dict[str, object]]:
@@ -146,6 +150,11 @@ def result(call_id: str, status: int, body: object, revision: tuple[str, str, in
         topic, epoch, number = revision
         frame.update(topic=topic, epoch=epoch, revision=number)
     return frame
+
+
+def session(idle_seconds: float, absolute_seconds: float) -> dict[str, object]:
+    """The session's two deadlines, in whole seconds from now on Admin's clock: idle and absolute expiry."""
+    return {"type": "session", "idle_seconds": int(idle_seconds), "absolute_seconds": int(absolute_seconds)}
 
 
 def changed(topic: str, epoch: str, revision: int) -> dict[str, object]:

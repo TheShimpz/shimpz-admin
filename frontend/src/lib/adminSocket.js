@@ -95,21 +95,20 @@ function settleFirstOpen(isOpen) {
  * the call fails at once, and a socket that closes meanwhile fails it too, so a page re-reads rather than replays. Only
  * the tab's first open, before anything is on screen, is awaited.
  */
-export async function call(method, params = {}, { background = false } = {}) {
+export async function call(method, params = {}) {
   if (snapshot.phase === 'connecting' && !opened) {
     const isOpen = await new Promise((resolve) => firstOpen.add(resolve));
     if (!isOpen) throw unavailable();
   }
-  return send(method, params, background);
+  return send(method, params);
 }
 
-function send(method, params, background) {
+function send(method, params) {
   if (!connection || connection.readyState !== WebSocket.OPEN || !opened) return Promise.reject(unavailable());
   if (pending.size >= MAX_IN_FLIGHT) return Promise.reject(new LocalApiError('Too many Admin requests.', 429));
   nextCall += 1;
   const id = `c${nextCall}`;
   const frame = { type: 'call', id, method, params };
-  if (background) frame.background = true;
   return new Promise((resolve, reject) => {
     pending.set(id, { resolve, reject });
     try {
@@ -121,13 +120,43 @@ function send(method, params, background) {
   });
 }
 
-/** Run one automatic read of a topic: an automatic read never renews the session's idle time. */
-export function backgroundCall(method, params = {}) {
-  return call(method, params, { background: true });
+/** The reads screens make through the socket; a unit test may stand in for them. */
+export const socketReads = { call };
+
+// The person's own input is the only thing that keeps the session alive (ADR-0114): no call, chat frame, or HTTP
+// request does. A content-free `activity` frame reports it, at most once a minute per tab, outside the call queue and
+// only while the socket is open; input while it reconnects is never replayed.
+export const ACTIVITY_INTERVAL_MS = 60_000;
+const ACTIVITY_EVENTS = ['keydown', 'pointerdown', 'click', 'touchstart', 'wheel', 'input', 'compositionend'];
+let activityReported = -Infinity;
+
+function reportActivity(event) {
+  if (!event.isTrusted) return;
+  const now = performance.now();
+  if (now - activityReported < ACTIVITY_INTERVAL_MS) return;
+  if (!connection || connection.readyState !== WebSocket.OPEN || !opened) return;
+  try {
+    connection.send(JSON.stringify({ type: 'activity' }));
+    activityReported = now;
+  } catch {
+    // A socket that closed meanwhile reports nothing; the next input after it reopens does.
+  }
 }
 
-/** The reads screens make through the socket; a unit test may stand in for them. */
-export const socketReads = { call, backgroundCall };
+/** Report the person's own keyboard, pointer, touch, wheel, and text input; returns the function that stops it. */
+export function trackActivity(target = document) {
+  const options = { capture: true, passive: true };
+  for (const type of ACTIVITY_EVENTS) target.addEventListener(type, reportActivity, options);
+  return () => {
+    for (const type of ACTIVITY_EVENTS) target.removeEventListener(type, reportActivity, options);
+  };
+}
+
+/**
+ * The session's deadlines as Admin last told them, on this page's clock: `idleAt` when it idles out unless the person
+ * acts, and `absoluteAt` when it ends whatever they do (`performance.now()` milliseconds), or null before the first.
+ */
+export const sessionDeadlines = writable(null);
 
 // Why a listener hears of its topic: `changed` (Admin raised it), `open` (the tab's first open, when every screen reads
 // what it shows), or `reopen` (anything may have changed while the socket was closed).
@@ -194,7 +223,7 @@ function sendSubscription(method, topics, { announce = true } = {}) {
     }
     retrySubscription();
   };
-  backgroundCall(method, { topics }).then(async (response) => {
+  call(method, { topics }).then(async (response) => {
     if (!response.ok) {
       refused();
       return;
@@ -354,6 +383,18 @@ function receive(text) {
     if (!waiting) throw new Error('unexpected result');
     pending.delete(frame.id);
     waiting.resolve(answer(frame));
+    return;
+  }
+  if (frame.type === 'session') {
+    if (
+      !exact(frame, ['type', 'idle_seconds', 'absolute_seconds']) ||
+      !Number.isSafeInteger(frame.idle_seconds) ||
+      !Number.isSafeInteger(frame.absolute_seconds) ||
+      frame.idle_seconds < 0 ||
+      frame.absolute_seconds < 0
+    ) throw new Error('invalid session deadlines');
+    const now = performance.now();
+    sessionDeadlines.set({ idleAt: now + frame.idle_seconds * 1000, absoluteAt: now + frame.absolute_seconds * 1000 });
     return;
   }
   if (frame.type === 'changed') {
@@ -532,6 +573,8 @@ export function disconnectAdminSocket() {
   channels.clear();
   epoch = '';
   for (const entry of watched.values()) entry.revision = 0;
+  activityReported = -Infinity;
+  sessionDeadlines.set(null);
   setPhase('idle');
   socket?.close(1000, 'Signed out');
 }
@@ -563,11 +606,11 @@ class ChatChannel {
     // wait for it, so the page always sees the channel open before its first frame.
     this.attaching = true;
     this.waiting = [];
-    backgroundCall('chat.attach', { team_id: this.teamId, locale: this.locale }).then((response) => {
+    call('chat.attach', { team_id: this.teamId, locale: this.locale }).then((response) => {
       this.attaching = false;
       if (this.closedByPage || channels.get(this.teamId) !== this) {
         // The page closed the channel while it attached: the Team is detached again at once.
-        if (response.ok) backgroundCall('chat.detach', { team_id: this.teamId }).catch(() => {});
+        if (response.ok) call('chat.detach', { team_id: this.teamId }).catch(() => {});
         return;
       }
       if (!response.ok) {
@@ -612,7 +655,7 @@ class ChatChannel {
     this.closedByPage = true;
     this.readyState = WebSocket.CLOSED;
     if (channels.get(this.teamId) === this) channels.delete(this.teamId);
-    if (this.attached) backgroundCall('chat.detach', { team_id: this.teamId }).catch(() => {});
+    if (this.attached) call('chat.detach', { team_id: this.teamId }).catch(() => {});
     this.attached = false;
   }
 }

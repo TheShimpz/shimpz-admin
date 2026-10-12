@@ -30,7 +30,7 @@
   import { calendarDay, clockTime, exchangeDays, instantValue, turnInstants, untilNextDay } from '#lib/chatDays.js';
   import { newerRoutineEntries, questionWords, refusalWords } from '#lib/routine.js';
   import { loadTeamRoutines } from '#lib/routineContext.js';
-  import { adminSocket, backgroundCall, call, openChatChannel, watchTopic } from '#lib/adminSocket.js';
+  import { adminSocket, call, openChatChannel, watchTopic } from '#lib/adminSocket.js';
   import ExecutionReceipt from '#lib/ExecutionReceipt.svelte';
   import {
     createExecutionProjection,
@@ -46,8 +46,7 @@
   import { configureModelContext, loadModelContext, modelContext } from '#lib/modelContext.js';
   import { sessionContext } from '#lib/sessionContext.js';
   import ShimpzThinking from '#lib/ShimpzThinking.svelte';
-  import { backgroundFetch } from '#lib/localApi.js';
-  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, selectedAutomatically, teamContext } from '#lib/teamContext.js';
+  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teamContext.js';
   import { ASSISTANT_LIMIT_REACHED } from '#lib/validate.js';
   import {
     authorizeAssistantIntegration,
@@ -544,8 +543,7 @@
 
   async function hydrateHistory(teamId, generation) {
     try {
-      // A Team the page selected itself (its Team removed elsewhere) opens with an automatic read.
-      const page = await listChatHistory(selectedAutomatically() ? backgroundCall : call, teamId);
+      const page = await listChatHistory(call, teamId);
       if (generation !== historyGeneration || chatTeamId !== teamId) return;
       const team = $teamContext.teams.find((entry) => entry.id === teamId);
       if (!team) throw new Error(copy.loadFailed);
@@ -648,7 +646,7 @@
     routineRefreshing = true;
     const generation = historyGeneration;
     try {
-      const since = await historySince(backgroundCall, teamId, historySeen);
+      const since = await historySince(call, teamId, historySeen);
       if (generation !== historyGeneration || chatTeamId !== teamId) return;
       if (!routineMergeIdle()) {
         historyChanged = true;
@@ -706,7 +704,7 @@
       void hydrateHistory(teamId, generation);
     });
     const stopRoutines = watchTopic(`team/${teamId}/routines`, () => {
-      loadTeamRoutines(backgroundCall, teamId).catch(() => {});
+      loadTeamRoutines(call, teamId).catch(() => {});
     });
     stopTeamTopics = () => {
       stopHistory();
@@ -830,8 +828,7 @@
     const timer = setTimeout(() => controller.abort(), 2000);
     let captured = false;
     const source = `/api/teams/${encodeURIComponent(teamId)}/assistants/${encodeURIComponent(assistantId)}/icon`;
-    // The snapshot is the page's own read, kept for the card once the Assistant is gone: it never renews the session.
-    const promise = backgroundFetch(source, {
+    const promise = fetch(source, {
       cache: 'no-store',
       credentials: 'same-origin',
       signal: controller.signal,
@@ -965,8 +962,8 @@
     return incoming.state !== workingState;
   }
 
-  async function appendUninstallOutcome(incoming, fetcher) {
-    const { installedAssistants } = await refreshTeamInventory(fetcher);
+  async function appendUninstallOutcome(incoming) {
+    const { installedAssistants } = await refreshTeamInventory(fetch);
     if (
       lifecycleOutcomePending?.teamId !== incoming.team_id ||
       lifecycleOutcomePending?.proposalId !== incoming.proposal_id ||
@@ -1008,8 +1005,7 @@
   // the outcome deferred, with its error, until the chat's Retry reads the inventory again.
   let deferredUninstall = null;
 
-  // The inventory read that confirms an uninstall is automatic, except when the person's Retry asks for it.
-  function confirmUninstall(incoming, fetcher = backgroundFetch) {
+  function confirmUninstall(incoming) {
     deferredUninstall = null;
     lifecycleOutcomePending = {
       teamId: incoming.team_id,
@@ -1021,7 +1017,7 @@
       lifecycleOutcomePending?.teamId === incoming.team_id &&
       lifecycleOutcomePending?.proposalId === incoming.proposal_id
     );
-    return appendUninstallOutcome(incoming, fetcher)
+    return appendUninstallOutcome(incoming)
       .then(() => {
         if (current() && error === lifecycleMessages.refreshFailed) clearError();
       })
@@ -1094,7 +1090,7 @@
   async function retryInventory() {
     inventoryRetrying = true;
     try {
-      if (deferredUninstall?.team_id === chatTeamId) await confirmUninstall(deferredUninstall, fetch);
+      if (deferredUninstall?.team_id === chatTeamId) await confirmUninstall(deferredUninstall);
       else await refreshTeamInventory(fetch).catch(() => {});
       await tick();
     } finally {
@@ -1228,8 +1224,7 @@
     const epoch = turnEpoch;
     let installed = new Set();
     try {
-      // Admin's frame asked for this read, not the person: it never renews the session.
-      const { installedAssistants } = await refreshTeamInventory(backgroundFetch);
+      const { installedAssistants } = await refreshTeamInventory(fetch);
       installed = new Set(installedAssistants.map((assistant) => assistant.assistant));
     } catch {
       installed = new Set();
@@ -1406,7 +1401,7 @@
               for (const assistant of incoming.assistants) ids.add(assistant.id);
               turnInstalled = { teamId: chatTeamId, ids };
             }
-            void refreshTeamInventory(backgroundFetch).catch(() => undefined);
+            void refreshTeamInventory(fetch).catch(() => undefined);
             if (incoming.continuation === 'none') {
               capabilityObjective = null;
               busy = false;

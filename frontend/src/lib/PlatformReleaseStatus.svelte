@@ -1,11 +1,11 @@
 <script>
   import packageMetadata from '../../package.json';
   import { t } from '#lib/i18n.js';
-  import { backgroundCall, topicValue } from '#lib/adminSocket.js';
+  import { call, topicValue } from '#lib/adminSocket.js';
   import { fetchPlatformRelease, isDeveloperRelease } from '#lib/platformRelease.js';
 
   // Admin's watcher reads the release file while this status is shown and says when it changed (ADR-0114).
-  const release = topicValue('platform/release', () => fetchPlatformRelease(backgroundCall));
+  const release = topicValue('platform/release', () => fetchPlatformRelease(call));
   let status = $derived($release);
   const adminVersion = packageMetadata.version;
 </script>

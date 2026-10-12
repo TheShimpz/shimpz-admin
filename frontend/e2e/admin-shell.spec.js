@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import { assistantDetails, PAGE_COPY, publicAssistant } from './assistantPages.js';
 import { accessibilityViolations } from './axe.js';
-import { laterCalls, raiseTopic, recordRequests, routeRead, routeScenario, sessionFrames } from './scenarioRoutes.js';
+import { activityReports, raiseTopic, recordRequests, routeRead, routeScenario, sessionFrames } from './scenarioRoutes.js';
 import { recoveryCodeSet } from './securityScenarios.js';
 
 const ok = (json, status = 200) => ({ status, json });
@@ -429,7 +429,7 @@ test('reads the Space resources when Admin says they changed, one read at a time
   expect(reads).toHaveLength(3);
 });
 
-test('reads a Team list change heard while the shell loads, and re-reads after a change never renew the session', async ({ page }) => {
+test('reads a Team list change heard while the shell loads, and nothing it reads on its own reports activity', async ({ page }) => {
   const scenario = await routeScenario(page);
   const listed = (await scenario.call('teams.list', {})).json.teams;
   let releaseFirst;
@@ -453,16 +453,13 @@ test('reads a Team list change heard while the shell loads, and re-reads after a
   await expect(page.getByRole('link', { name: 'Research', exact: true })).toBeVisible();
   expect(lists).toBe(2);
 
-  // Reads Admin's change caused are automatic: none of them restarts the session's idle time.
-  const calls = (await sessionFrames(page)).filter((frame) => frame.type === 'call');
-  const teamLists = calls.filter((frame) => frame.method === 'teams.list');
-  expect(teamLists.slice(1).map((frame) => frame.background)).toEqual([true]);
-  const routineLists = calls.filter((frame) => frame.method === 'routines.list');
+  const routineLists = (await sessionFrames(page)).filter((frame) => frame.method === 'routines.list');
   expect(routineLists.some((frame) => frame.params.team_id === 'research')).toBe(true);
-  expect(routineLists.filter((frame) => frame.background !== true)).toEqual([]);
+  // Nobody touched the page: nothing it read on its own kept the session alive.
+  expect(await activityReports(page)).toBe(0);
 });
 
-test('a selected Team removed elsewhere reloads the Team context without renewing the session', async ({ page }) => {
+test('a selected Team removed and made again elsewhere reloads the Team context without reporting activity', async ({ page }) => {
   const scenario = await routeScenario(page);
   const listed = (await scenario.call('teams.list', {})).json.teams;
   let removed = false;
@@ -476,36 +473,29 @@ test('a selected Team removed elsewhere reloads the Team context without renewin
   await expect(navigation.getByRole('link', { name: 'Marketing', exact: true })).toBeVisible();
   await expect.poll(() => scenario.sessions.some((session) => session.subscribed('teams'))).toBe(true);
 
-  // Another tab deleted Marketing: the whole context loads again, and every read that causes is automatic.
+  // Another tab deleted Marketing: the whole context loads again.
   const requests = recordRequests(page);
   removed = true;
   await raiseTopic(page, 'teams');
   await expect(navigation.getByRole('link', { name: 'Marketing', exact: true })).toHaveCount(0);
-  // The Team selected in its place opens: its model settings and its chat history are read, automatically too.
+  // The Team selected in its place opens: its model settings and its chat history are read.
   const replacement = (path) => /^\/api\/teams\/(?!marketing\/)[a-z0-9_]+\/inference$/.test(path);
   await expect.poll(() => requests.some((request) => replacement(request.path))).toBe(true);
   const histories = async () => (await sessionFrames(page)).filter((frame) => (
     frame.type === 'call' && frame.method === 'history.page' && frame.params.team_id !== 'marketing'
   ));
   await expect.poll(async () => (await histories()).length).toBeGreaterThan(0);
-  expect(requests.map((request) => request.background)).not.toContain(false);
-  expect(await laterCalls(page, 'teams.list')).not.toContain(false);
-  expect((await histories()).map((frame) => frame.background === true)).not.toContain(false);
 
   // Marketing is made again elsewhere: the address still names it, so the page selects it again, on its own.
   removed = false;
   await raiseTopic(page, 'teams');
   await expect.poll(() => requests.some((request) => request.path === '/api/teams/marketing/inference')).toBe(true);
-  await expect.poll(async () => (await sessionFrames(page)).some((frame) => (
-    frame.method === 'history.page' && frame.params.team_id === 'marketing' && frame.background === true
-  ))).toBe(true);
-  expect(requests.map((request) => `${request.path} ${request.background}`).filter((entry) => entry.endsWith(' false')))
-    .toEqual([]);
-  expect(await laterCalls(page, 'history.page', (params) => params.team_id === 'marketing' && !params.before))
-    .not.toContain(false);
+  await expect(navigation.getByRole('link', { name: 'Marketing', exact: true })).toBeVisible();
+  // Nobody touched the page: none of this kept the session alive.
+  expect(await activityReports(page)).toBe(0);
 });
 
-test('an Assistant page whose Team was removed elsewhere reads the page for the Team chosen in its place automatically', async ({ page }) => {
+test('an Assistant page whose Team was removed elsewhere reads the page for the Team chosen in its place without reporting activity', async ({ page }) => {
   const scenario = await routeScenario(page);
   const listed = (await scenario.call('teams.list', {})).json.teams;
   let removed = false;
@@ -523,8 +513,7 @@ test('an Assistant page whose Team was removed elsewhere reads the page for the 
   await raiseTopic(page, 'teams');
   // The page reads the Assistant's page copy again for the Team the page selected in Marketing's place.
   await expect.poll(() => requests.some((request) => request.path === '/api/teams/trinity/assistants/shimpz-cloudflare/details')).toBe(true);
-  expect(requests.map((request) => `${request.path} ${request.background}`).filter((entry) => entry.endsWith(' false')))
-    .toEqual([]);
+  expect(await activityReports(page)).toBe(0);
 });
 
 test('reads the Local release status at open and when Admin says it changed, never on a timer', async ({ page }) => {

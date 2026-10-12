@@ -22,12 +22,18 @@ class SessionProtocolVectorTests(unittest.TestCase):
     def test_every_valid_call_is_admitted_and_every_invalid_one_refused(self) -> None:
         for frame in VECTORS["calls"]["valid"]:
             with self.subTest(frame=frame):
-                call_id, method, params, background = frames.call(frame)
-                self.assertEqual((call_id, method, params), (frame["id"], frame["method"], frame["params"]))
-                self.assertIs(background, frame.get("background", False))
+                self.assertEqual(frames.call(frame), (frame["id"], frame["method"], frame["params"]))
         for frame in VECTORS["calls"]["invalid"]:
             with self.subTest(frame=frame), self.assertRaises(frames.ProtocolError) as refused:
                 frames.call(frame)
+            self.assertEqual(refused.exception.close_code, 1008)
+
+    def test_the_activity_frame_carries_nothing_but_its_type(self) -> None:
+        for frame in VECTORS["activity"]["valid"]:
+            self.assertIsNone(frames.activity(frame))
+        for frame in VECTORS["activity"]["invalid"]:
+            with self.subTest(frame=frame), self.assertRaises(frames.ProtocolError) as refused:
+                frames.activity(frame)
             self.assertEqual(refused.exception.close_code, 1008)
 
     def test_a_chat_frame_carries_its_team_and_the_exact_v7_frame(self) -> None:
@@ -54,6 +60,8 @@ class SessionProtocolVectorTests(unittest.TestCase):
         self.assertEqual(frames.result(refused["id"], refused["status"], refused["body"]), refused)
         changed = server["changed"]
         self.assertEqual(frames.changed(changed["topic"], changed["epoch"], changed["revision"]), changed)
+        session = server["session"]
+        self.assertEqual(frames.session(3480.9, 82800.2), session)
         self.assertRegex(changed["epoch"], frames.EPOCH_RE)
 
     def test_topics_follow_the_closed_grammar(self) -> None:

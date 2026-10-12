@@ -88,12 +88,8 @@ class ChatWebSocketTests(ChatWebSocketCase):
     def test_session_authority_unavailability_uses_retryable_close_code(self) -> None:
         async def scenario() -> None:
             unavailable = self.admin_app.SessionEvidenceUnavailableError()
-            with mock.patch.object(
-                self.admin_app,
-                "_session_active",
-                new=mock.AsyncMock(side_effect=unavailable),
-            ):
-                websocket = await self._open()
+            websocket = await self._open()
+            with mock.patch.object(self.admin_app, "_session_evidence", side_effect=unavailable):
                 await websocket.send_json(chat_socket_fixtures.chat_frame("must not run"))
                 self.assertEqual(
                     await websocket.next_message(),

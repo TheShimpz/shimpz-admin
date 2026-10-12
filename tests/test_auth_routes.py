@@ -172,69 +172,30 @@ class AuthRouteTests(unittest.TestCase):
                 self.assertEqual(guarded.status_code, 401)
                 self.assertNotIn("set-cookie", guarded.headers)
 
-    def test_background_refreshes_never_keep_an_idle_session_alive(self) -> None:
-        # The page's automatic HTTP reads (until they move to the session socket) mark themselves background; every
-        # other request from Admin's own page is the Supervisor's activity.
+    def test_no_http_request_renews_the_session(self) -> None:
+        # Only the session socket's activity frame, sent on the Supervisor's own input, restarts the idle time: a read
+        # or a change over HTTP, from Admin's own page or another page on the site, is admitted but renews nothing.
         auth = self.admin_app.auth
         now = [0.0]
 
         async def allowed(_request):
             return PlainTextResponse("allowed")
 
-        def status(session: str, *, background: bool) -> int:
-            marks = (*ADMIN_PAGE, (b"shimpz-activity", b"background")) if background else ADMIN_PAGE
-            request = self._request("/api/model-providers", cookie=session, browser=marks)
-            return asyncio.run(through_gate(self.admin_app, request, allowed)).status_code
-
-        with mock.patch.object(auth, "SESSIONS", auth.SessionActivity(clock=lambda: now[0])):
-            _setup, confirmed = self._configure("violet otter lantern quartz 92")
-            polled = self._cookie(confirmed, "shimpz_admin")
-            attended = auth.issue_session(self.admin_app.state.get()["session_secret"], "totp")
-            now[0] = auth.IDLE_SECONDS - 600
-            self.assertEqual((status(polled, background=True), status(attended, background=False)), (200, 200))
-            now[0] = auth.IDLE_SECONDS + 1
-            self.assertEqual(status(polled, background=True), 401)
-            self.assertEqual(status(attended, background=True), 200)
-            now[0] = 2 * auth.IDLE_SECONDS
-            self.assertEqual(status(attended, background=False), 401)
-
-    def test_an_image_the_page_renders_never_keeps_an_idle_session_alive(self) -> None:
-        # An icon the page shows loads as the browser renders it, never as the person's own request.
-        auth = self.admin_app.auth
-        now = [0.0]
-
-        async def allowed(_request):
-            return PlainTextResponse("allowed")
-
-        def status(session: str, destination: bytes) -> int:
-            marks = (*ADMIN_PAGE, (b"sec-fetch-dest", destination))
-            request = self._request("/api/teams/team_1/assistants/a/icon", cookie=session, browser=marks)
+        def status(request) -> int:
             return asyncio.run(through_gate(self.admin_app, request, allowed)).status_code
 
         with mock.patch.object(auth, "SESSIONS", auth.SessionActivity(clock=lambda: now[0])):
             session = self._cookie(self._configure("violet otter lantern quartz 92")[1], "shimpz_admin")
             now[0] = auth.IDLE_SECONDS - 600
-            self.assertEqual(status(session, b"image"), 200)
+            for request in (
+                self._request("/api/model-providers", cookie=session),
+                self._request("/api/model-providers", cookie=session, browser=((b"sec-fetch-site", b"same-site"),)),
+                self._request("/api/teams", {"name": "Marketing"}, cookie=session, origin="http://localhost:7777"),
+            ):
+                with self.subTest(method=request.method, headers=request.headers):
+                    self.assertEqual(status(request), 200)
             now[0] = auth.IDLE_SECONDS + 1
-            self.assertEqual(status(session, b"empty"), 401)
-
-    def test_another_page_on_the_site_may_read_but_never_renews_the_session(self) -> None:
-        auth = self.admin_app.auth
-        now = [0.0]
-
-        async def allowed(_request):
-            return PlainTextResponse("allowed")
-
-        def status(session: str, fetch_site: bytes) -> int:
-            request = self._request("/api/model-providers", cookie=session, browser=((b"sec-fetch-site", fetch_site),))
-            return asyncio.run(through_gate(self.admin_app, request, allowed)).status_code
-
-        with mock.patch.object(auth, "SESSIONS", auth.SessionActivity(clock=lambda: now[0])):
-            session = self._cookie(self._configure("violet otter lantern quartz 92")[1], "shimpz_admin")
-            now[0] = auth.IDLE_SECONDS - 600
-            self.assertEqual(status(session, b"same-site"), 200)
-            now[0] = auth.IDLE_SECONDS + 1
-            self.assertEqual(status(session, b"same-origin"), 401)
+            self.assertEqual(status(self._request("/api/model-providers", cookie=session)), 401)
 
     def test_a_session_this_process_does_not_track_is_refused(self) -> None:
         _setup, confirmed = self._configure("violet otter lantern quartz 92")

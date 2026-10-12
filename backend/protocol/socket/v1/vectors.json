@@ -5,11 +5,11 @@
   "calls": {
     "valid": [
       {"type": "call", "id": "c1", "method": "teams.list", "params": {}},
-      {"type": "call", "id": "c-2_x", "method": "teams.list", "params": {}, "background": true},
+      {"type": "call", "id": "c-2_x", "method": "teams.list", "params": {}},
       {"type": "call", "id": "c3", "method": "history.page", "params": {"team_id": "marketing"}},
       {"type": "call", "id": "c4", "method": "history.page", "params": {"team_id": "marketing", "before": "AAAAAAAAAMg", "routine": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
       {"type": "call", "id": "c5", "method": "routines.list", "params": {"team_id": "marketing"}},
-      {"type": "call", "id": "c6", "method": "space.resources", "params": {}, "background": false},
+      {"type": "call", "id": "c6", "method": "space.resources", "params": {}},
       {"type": "call", "id": "c7", "method": "platform.release", "params": {}},
       {"type": "call", "id": "c8", "method": "security.summary", "params": {}},
       {"type": "call", "id": "c9", "method": "subscribe", "params": {"topics": ["teams", "team/marketing/history", "team/marketing/routines", "space/resources", "platform/release", "security/summary", "session"]}},
@@ -23,7 +23,6 @@
       {"type": "call", "id": "c1", "method": "teams.delete", "params": {}},
       {"type": "call", "id": "c1", "method": "teams.list", "params": {"extra": "x"}},
       {"type": "call", "id": "c1", "method": "teams.list"},
-      {"type": "call", "id": "c1", "method": "teams.list", "params": {}, "background": "yes"},
       {"type": "call", "id": "c1", "method": "teams.list", "params": {}, "extra": 1},
       {"type": "call", "id": "c1", "method": "history.page", "params": {}},
       {"type": "call", "id": "c1", "method": "history.page", "params": {"team_id": 7}},
@@ -33,6 +32,10 @@
       {"type": "call", "id": "c1", "method": "subscribe", "params": {"topics": ["team/marketing/inventory"]}},
       {"type": "call", "id": "c1", "method": "chat.attach", "params": {"team_id": "marketing"}}
     ]
+  },
+  "activity": {
+    "valid": [{"type": "activity"}],
+    "invalid": [{"type": "activity", "at": 1}, {"type": "activity", "extra": {}}, {"type": "Activity"}]
   },
   "chat": {
     "valid": [
@@ -48,6 +51,7 @@
   "server": {
     "result": {"type": "result", "id": "c1", "status": 200, "body": {"teams": []}, "topic": "teams", "epoch": "0123456789abcdef0123456789abcdef", "revision": 3},
     "refused": {"type": "result", "id": "c2", "status": 429, "body": {"detail": "too many calls in flight"}},
+    "session": {"type": "session", "idle_seconds": 3480, "absolute_seconds": 82800},
     "changed": {"type": "changed", "topic": "team/marketing/history", "epoch": "0123456789abcdef0123456789abcdef", "revision": 4},
     "chat": [
       {"type": "sync-empty", "team_id": "marketing"},

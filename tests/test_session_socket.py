@@ -424,7 +424,7 @@ class SessionSocketClosureTests(SessionSocketCase):
         with mock.patch.object(auth, "SESSIONS", sessions):
             asyncio.run(scenario())
 
-    def test_a_person_s_call_renews_the_session_and_an_automatic_read_does_not(self) -> None:
+    def test_no_call_renews_the_session(self) -> None:
         auth = self.admin_app.auth
 
         async def scenario() -> None:
@@ -435,11 +435,10 @@ class SessionSocketClosureTests(SessionSocketCase):
                     self.calls.team_order, "listing", return_value=SessionSocketFrameTests._listing(None)
                 ),
             ):
-                await websocket.result("teams.list", {}, background=True)
-                self.assertEqual({call.kwargs["activity"] for call in current.call_args_list}, {False})
-                current.reset_mock()
                 await websocket.result("teams.list", {})
-                self.assertIn(True, {call.kwargs["activity"] for call in current.call_args_list})
+                await websocket.result("subscribe", {"topics": ["teams"]})
+            self.assertTrue(current.call_args_list)
+            self.assertEqual({call.kwargs["activity"] for call in current.call_args_list}, {False})
             await websocket.disconnect()
 
         asyncio.run(scenario())
@@ -474,7 +473,7 @@ class SessionSocketClosureTests(SessionSocketCase):
 class SessionSocketTopicTests(SessionSocketCase):
     async def _subscribed(self, *named: str) -> _Socket:
         websocket = await self._connect()
-        result = await websocket.result("subscribe", {"topics": list(named)}, background=True)
+        result = await websocket.result("subscribe", {"topics": list(named)})
         self.assertEqual(result["status"], 200)
         self.assertEqual(result["body"]["epoch"], self.topics.EPOCH)
         self.assertEqual(set(result["body"]["topics"]), set(named))
@@ -638,14 +637,14 @@ class SessionSocketWatcherTests(SessionSocketCase):
             await asyncio.sleep(0.1)
             self.assertEqual(self.reads, [])
             with mock.patch.object(auth.SESSIONS, "current", wraps=auth.SESSIONS.current) as current:
-                await websocket.result("subscribe", {"topics": ["space/resources"]}, background=True)
+                await websocket.result("subscribe", {"topics": ["space/resources"]})
                 frame = await websocket.next_frame()
                 self.assertEqual((frame["type"], frame["topic"]), ("changed", "space/resources"))
                 # The value changed once (1 -> 2); later identical reads raise nothing.
                 with self.assertRaises(TimeoutError):
                     await websocket.next_frame(0.3)
                 self.assertEqual({call.kwargs["activity"] for call in current.call_args_list}, {False})
-            await websocket.result("unsubscribe", {"topics": ["space/resources"]}, background=True)
+            await websocket.result("unsubscribe", {"topics": ["space/resources"]})
             reads = len(self.reads)
             await asyncio.sleep(0.2)
             self.assertEqual(len(self.reads), reads)
@@ -656,7 +655,7 @@ class SessionSocketWatcherTests(SessionSocketCase):
     def test_the_watcher_reads_nothing_without_a_current_subscriber(self) -> None:
         current = mock.AsyncMock(return_value=False)
         handle = self.registry.Handle(
-            "s" * 64, "a" * 32, {}, lambda _code: None, {"space/resources"}.__contains__, current, None
+            "s" * 64, "a" * 32, {}, lambda _code: None, {"space/resources"}.__contains__, current, None, lambda: None
         )
 
         async def scenario() -> None:

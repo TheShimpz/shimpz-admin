@@ -3,7 +3,7 @@
   import { onMount } from 'svelte';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n.js';
-  import { backgroundCall, watchTopic } from '#lib/adminSocket.js';
+  import { call, watchTopic } from '#lib/adminSocket.js';
   import { acknowledgeFailedAttempts, loadSecuritySummary, securitySummary } from '#lib/security.js';
 
   // The second-factor attempts refused since the previous sign-in (ADR-0051). The report stays on every page until the
@@ -28,7 +28,7 @@
   onMount(() => {
     // Without a summary there is nothing to report; the session clears it. A sign-in, refusal, or acknowledgment
     // anywhere changes it, and Admin says so on the session socket (ADR-0114); a reopened socket reads it again.
-    return watchTopic('security/summary', () => loadSecuritySummary(backgroundCall).catch(() => {}));
+    return watchTopic('security/summary', () => loadSecuritySummary(call).catch(() => {}));
   });
 </script>
 

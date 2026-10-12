@@ -30,26 +30,6 @@ const PUBLIC_CREATOR_RE = /^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 
 export { LocalApiError };
 
-// The page's automatic HTTP reads say so: Admin never counts them as Supervisor activity (backend/app.py
-// BACKGROUND_HEADER), so an unattended page cannot keep its session alive. Most automatic reads are background calls on
-// the session socket; this marks the HTTP reads the page still makes on its own until they move there.
-export const ACTIVITY_HEADER = 'Shimpz-Activity';
-
-/** A fetcher whose requests are the page's automatic reads, which never renew the session. */
-export function backgroundFetcher(fetcher) {
-  if (fetcher.background === true) return fetcher;
-  const automatic = (input, init = {}) => {
-    const headers = new Headers(init.headers);
-    headers.set(ACTIVITY_HEADER, 'background');
-    return fetcher(input, { ...init, headers });
-  };
-  automatic.background = true;
-  return automatic;
-}
-
-/** `fetch` for one automatic read of the page. */
-export const backgroundFetch = backgroundFetcher((input, init) => fetch(input, init));
-
 export function safeApiError(body, fallback) {
   const candidate = body?.error ?? body?.detail;
   return typeof candidate === 'string' && candidate.length <= 300 ? candidate : fallback;

@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { assistantDetails, publicAssistant, stagedSnapshot } from './assistantPages.js';
 import { accessibilityViolations } from './axe.js';
 import { messages } from '../src/lib/messages.js';
-import { recordRequests, routeRead } from './scenarioRoutes.js';
+import { routeRead } from './scenarioRoutes.js';
 
 // One Assistant's own page (ADR-0087 functional coverage): it reads the exact target for the Team its link names,
 // shows its copy, Actions, credentials, and Creator links, and installs or removes it only for that Team.
@@ -226,17 +226,12 @@ test('reports an Assistant another actor already removed as uninstalled without 
       : []),
     deletes,
   });
-  const requests = recordRequests(page);
   await page.goto('/assistants/shimpz-cloudflare?team=marketing');
   await page.getByRole('article').getByRole('button', { name: 'Uninstall', exact: true }).click();
   installed = false;
   await page.getByRole('dialog', { name: 'Uninstall Cloudflare?' }).getByRole('button', { name: 'Uninstall Assistant' }).click();
   await expect(page.getByText('Assistant uninstalled', { exact: true })).toBeVisible();
   expect(deletes).toEqual([]);
-  // The page read the Team's inventory again on its own: those reads never renew the session.
-  const inventory = requests.filter((request) => request.path === '/api/teams/marketing/assistants');
-  expect(inventory.length).toBeGreaterThan(1);
-  expect(inventory.slice(1).map((request) => request.background)).not.toContain(false);
 });
 
 test('offers no install when this machine could not list its staged Assistants', async ({ page }) => {

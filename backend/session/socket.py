@@ -2,10 +2,11 @@
 
 The socket is admitted exactly as Admin's own page is: one canonical admitted Origin, Fetch Metadata that says the page
 itself opened it, the exact subprotocol, and a current Supervisor session. It stays bound to that Origin and session.
-Before every frame it acts on, and again when a waiting chat frame's turn to run comes, Admin checks that the Origin is
-still admitted and the session still current, and closes the socket when either is not (4403, 4401). A person's own
-frame renews the session's idle time; an automatic read (`background`) and the page's own sync never do. The receive
-loop never waits for a call or a write.
+Before every frame it acts on, and again when a waiting chat frame's or call's turn to run comes, Admin checks that the
+Origin is still admitted and the session still current, and closes the socket when either is not (4403, 4401). None of
+that renews the session: only the page's activity frame, sent on the person's own input, restarts its idle time, and
+the socket tells the page its deadlines when it opens and whenever that happens. The receive loop never waits for a
+call or a write.
 """
 
 import asyncio
@@ -47,10 +48,10 @@ class Gate:
     """What Admin's own HTTP gate decides, given to the socket: sessions, origins, authority, and Action passwords."""
 
     session_current: SessionCheck
-    session_active: SessionCheck
+    renew_session: SessionCheck
     allowed_origins: Callable[[], frozenset[str]]
     request_scope: Callable[[Mapping[str, str]], contextlib.AbstractContextManager[None]]
-    session_remaining: Callable[[Mapping[str, str]], float | None]
+    session_deadlines: Callable[[Mapping[str, str]], tuple[float, float] | None]
     authenticate: Callable[[str, str], Awaitable[object]]
     revoke_tickets: Callable[[tickets.Binding], None]
     cookie: str
@@ -116,6 +117,7 @@ class SessionSocket:
             self.subscriptions.__contains__,
             gate.session_current,
             lambda: gate.request_scope(self.cookies),
+            self.renewed,
         )
 
     # Outbound
@@ -140,6 +142,21 @@ class SessionSocket:
         self.outbound.closed = True
         self.closed.set()
 
+    def renewed(self) -> None:
+        """The session's idle time restarted (any thread): tell the page its new deadlines."""
+        self.loop.call_soon_threadsafe(self._send_deadlines)
+
+    def _send_deadlines(self) -> None:
+        if self.closed.is_set():
+            return
+        try:
+            deadlines = self.gate.session_deadlines(self.cookies)
+        except RuntimeError, OSError, ValueError:
+            deadlines = None
+        if deadlines is not None:
+            with contextlib.suppress(OutboundOverflowError):
+                self.send(frames.session(*deadlines))
+
     def changed(self, topic: str, revision: int) -> None:
         """A topic changed: tell the client when it subscribes to it (any thread)."""
         if topic in self.subscriptions:
@@ -152,8 +169,8 @@ class SessionSocket:
 
     # Checks
 
-    async def _authorized(self, *, activity: bool) -> bool:
-        """The bound Origin is still admitted and the session still current, or the socket closes."""
+    async def _authorized(self) -> bool:
+        """The bound Origin is still admitted and the session still current, or the socket closes; never renewing it."""
         try:
             admitted = self.origin in self.gate.allowed_origins()
         except RuntimeError, OSError:
@@ -162,8 +179,7 @@ class SessionSocket:
         if not admitted:
             self._end(ORIGIN_REFUSED)
             return False
-        check = self.gate.session_active if activity else self.gate.session_current
-        status = await registry.session_status(check, self.cookies)
+        status = await registry.session_status(self.gate.session_current, self.cookies)
         if status != "active":
             self._end(UNAVAILABLE if status == "unavailable" else SIGNED_OUT)
             return False
@@ -171,7 +187,7 @@ class SessionSocket:
 
     async def authorized(self) -> bool:
         """Before a waiting call or chat frame runs: its Origin and session are still current, never renewing it."""
-        return await self._authorized(activity=False)
+        return await self._authorized()
 
     # Chat channels
 
@@ -219,16 +235,18 @@ class SessionSocket:
         kind = frame.get("type")
         if kind == "call":
             await self._call(frame)
+        elif kind == "activity":
+            await self._activity(frame)
         elif kind in frames.CHAT_TYPES:
             await self._chat(frame)
         else:
             raise frames.ProtocolError("unsupported session frame")
 
     async def _call(self, frame: dict[str, object]) -> None:
-        call_id, method, params, background = frames.call(frame)
+        call_id, method, params = frames.call(frame)
         if call_id in self.calls:
             raise frames.ProtocolError("duplicate call id")
-        if not await self._authorized(activity=not background):
+        if not await self._authorized():
             return
         refused = calls.admission(self, method)
         if refused is None and len(self.calls) >= frames.MAX_IN_FLIGHT:
@@ -245,13 +263,30 @@ class SessionSocket:
         channel = self.channels.get(team_id)
         if channel is None:
             raise frames.ProtocolError("chat channel is not attached")
-        if not await self._authorized(activity=chat["type"] in frames.CHAT_USER_TYPES):
+        if not await self._authorized():
             return
         if chat != {"type": "stop"} and not budget.CALL_BUDGET.admit(self.session):
             self.send(frames.chat_event(team_id, chat_channel.error_terminal(429, "session call budget reached")))
             return
         if not channel.submit(chat):
             raise frames.ProtocolError("too many chat frames are waiting")
+
+    async def _activity(self, frame: dict[str, object]) -> None:
+        """The person's own input restarts the session's idle time, at most once per renewal interval per session.
+
+        It is checked as every frame is, spends the session's call budget, and renews only a session that is still
+        current, so it never revives an expired session nor moves its absolute expiry.
+        """
+        frames.activity(frame)
+        if not budget.CALL_BUDGET.admit(self.session) or not await self._authorized():
+            return
+        if not budget.RENEWALS.due(self.session):
+            return
+        status = await registry.session_status(self.gate.renew_session, self.cookies)
+        if status != "active":
+            self._end(UNAVAILABLE if status == "unavailable" else SIGNED_OUT)
+            return
+        registry.REGISTRY.renewed(self.session)
 
     async def _receive(self) -> dict[str, object] | None:
         """The next client frame, or None once the socket closed from either side."""
@@ -289,15 +324,17 @@ class SessionSocket:
         """
         while not self.closed.is_set():
             try:
-                remaining = self.gate.session_remaining(self.cookies)
+                deadlines = self.gate.session_deadlines(self.cookies)
             except RuntimeError, OSError, ValueError:
-                remaining = 0.0
-            if remaining is not None:
-                await asyncio.sleep(min(remaining + EXPIRY_MARGIN_SECONDS, SESSION_CHECK_SECONDS))
-            if not await self._authorized(activity=False):
+                deadlines = (0.0, 0.0)
+            if deadlines is not None:
+                await asyncio.sleep(min(min(deadlines) + EXPIRY_MARGIN_SECONDS, SESSION_CHECK_SECONDS))
+            if not await self._authorized():
                 return
 
     async def serve(self) -> None:
+        # The page times its expiry warning from Admin's clock, from the moment it opens.
+        self._send_deadlines()
         workers = [asyncio.create_task(self._write()), asyncio.create_task(self._expire())]
         topics.listen(self.changed)
         try:

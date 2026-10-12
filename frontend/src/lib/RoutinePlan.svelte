@@ -2,7 +2,6 @@
   import { Button } from '@shimpz/frontend';
   import { tick, untrack } from 'svelte';
 
-  import { backgroundFetch } from '#lib/localApi.js';
   import RoutineIcon from '#lib/RoutineIcon.svelte';
   import {
     dispositionWords,
@@ -22,8 +21,7 @@
   // and the saved keys an Action uses by name only. A revision that changed while it was read is never mixed with the
   // new one: `onchanged` reads the Routine again, which brings its new summary. Every value is Team's escaped preview,
   // rendered as text, never as Markdown or HTML.
-  // `automatic`: the page showed this plan on its own (a decision before it cleared in the background), not the person.
-  let { teamId, routine, copy, names = {}, locale, onchanged = () => {}, pageSize = 10, automatic = false } = $props();
+  let { teamId, routine, copy, names = {}, locale, onchanged = () => {}, pageSize = 10 } = $props();
 
   let steps = $state([]);
   let next = $state(0);
@@ -44,14 +42,13 @@
     { count: new Intl.NumberFormat(locale).format(count) },
   );
 
-  // Read pages until `wanted` steps are loaded or the plan has no more. A read the person asked for (opening the plan,
-  // revealing more) is theirs; one the page starts itself (a new revision read in the background, a retry) is automatic.
-  async function load(wanted, read = fetch) {
+  // Read pages until `wanted` steps are loaded or the plan has no more.
+  async function load(wanted) {
     const ticket = reading;
     loading = true;
     try {
       while (ticket === reading && needsPage(steps.length, wanted, next)) {
-        const page = await readPlanSteps(read, teamId, routine.routine_id, plan, next);
+        const page = await readPlanSteps(fetch, teamId, routine.routine_id, plan, next);
         if (ticket !== reading) return;
         steps = [...steps, ...page.steps];
         next = page.next;
@@ -75,18 +72,17 @@
       if (revision === readFor) {
         if (failed && !loading) {
           failed = false;
-          void load(pages * pageSize, backgroundFetch);
+          void load(pages * pageSize);
         }
         return;
       }
-      const opening = readFor === '';
       readFor = revision;
       reading += 1;
       steps = [];
       next = 0;
       pages = 1;
       failed = false;
-      void load(pageSize, opening && !automatic ? fetch : backgroundFetch);
+      void load(pageSize);
     });
   });
 

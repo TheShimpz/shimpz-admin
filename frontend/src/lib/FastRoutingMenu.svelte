@@ -10,7 +10,6 @@
     saveDecisionKey,
   } from '#lib/decisionProvider.js';
   import { t } from '#lib/i18n.js';
-  import { backgroundFetch } from '#lib/localApi.js';
 
   // The optional Jev key (ADR-0077) in its own composer control. Only Local Admin custodies it; the caller renders
   // this control only there. Phase is idle, loading, ready, saving, or unavailable.
@@ -38,8 +37,7 @@
     // A state this session already read shows at once; opening the control reads it again.
     const known = knownDecisionProvider();
     if (known) fast = { ...fast, phase: 'ready', ...known };
-    // Showing the menu is the page's own read; opening it is the person's.
-    else void loadFast(backgroundFetch);
+    else void loadFast();
   });
 
   $effect(() => {
@@ -73,11 +71,11 @@
     if (open) placePanel(trigger, panel);
   }
 
-  async function loadFast(read = fetch) {
+  async function loadFast() {
     const ticket = ++fastTicket;
     if (fast.phase !== 'ready') await settle({ phase: 'loading', error: '' });
     try {
-      const state = await loadDecisionProvider(read);
+      const state = await loadDecisionProvider(fetch);
       if (ticket === fastTicket) await settle({ phase: 'ready', ...state });
     } catch {
       if (ticket === fastTicket) await settle({ phase: 'unavailable' });

@@ -65,11 +65,16 @@ class ChatWebSocketRuntimeTests(ChatWebSocketCase):
                         self.assertEqual(websocket.subprotocol, "shimpz.admin.v1")
 
                         async def received() -> dict:
-                            return json.loads(await asyncio.wait_for(websocket.recv(), timeout=1))
+                            # Past the session deadlines Admin tells the page as it opens.
+                            while (frame := json.loads(await asyncio.wait_for(websocket.recv(), timeout=1)))[
+                                "type"
+                            ] == "session":
+                                pass
+                            return frame
 
                         await websocket.send(
                             '{"type":"call","id":"a","method":"chat.attach",'
-                            '"params":{"team_id":"team_1","locale":"en"},"background":true}'
+                            '"params":{"team_id":"team_1","locale":"en"}}'
                         )
                         self.assertEqual(
                             await received(),

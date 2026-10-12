@@ -118,30 +118,23 @@ export async function raiseTopic(page, topic) {
   for (const session of (await sessionMock(page)).sessions) session.changed(topic);
 }
 
-/**
- * Every API request the page's own scripts send from now on, in order: its method, its path, and whether it marked
- * itself an automatic read (`Shimpz-Activity: background`), which never renews the session.
- */
+/** Every API request the page's own scripts send from now on, in order: its method and its path. */
 export function recordRequests(page) {
   const requests = [];
   page.on('request', (request) => {
     const url = new URL(request.url());
     if (!url.pathname.startsWith('/api/') || !['fetch', 'xhr'].includes(request.resourceType())) return;
-    requests.push({
-      method: request.method(),
-      path: url.pathname,
-      background: request.headers()['shimpz-activity'] === 'background',
-    });
+    requests.push({ method: request.method(), path: url.pathname });
   });
   return requests;
 }
 
-/** The session socket calls the page made after its first `skip` calls of `method`, and whether each was automatic. */
-export async function laterCalls(page, method, matches = () => true, skip = 1) {
-  const calls = (await sessionFrames(page)).filter((frame) => (
-    frame.type === 'call' && frame.method === method && matches(frame.params)
-  ));
-  return calls.slice(skip).map((frame) => frame.background === true);
+/**
+ * How many times the page reported the person's own input on its session sockets (ADR-0114): the only report that
+ * keeps the session alive. Nothing the page does on its own sends one.
+ */
+export async function activityReports(page) {
+  return (await sessionFrames(page)).filter((frame) => frame.type === 'activity').length;
 }
 
 /** The client frames the page's session sockets received, in order. */

@@ -354,7 +354,7 @@ class SecurityRouteTests(unittest.TestCase):
             if opened["type"] == "websocket.close":
                 await websocket.finish()
                 return types.SimpleNamespace(status_code=401 if opened["code"] == 4401 else 503, body=b"{}")
-            result = await websocket.result("security.summary", {}, background=True)
+            result = await websocket.result("security.summary", {})
             await websocket.disconnect()
             return types.SimpleNamespace(status_code=result["status"], body=json.dumps(result["body"]).encode())
 

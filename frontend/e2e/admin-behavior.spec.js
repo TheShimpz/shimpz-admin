@@ -9,10 +9,9 @@ import { accessibilityViolations } from './axe.js';
 import { localizedChallenge } from './localizedRequest.js';
 
 import {
-  laterCalls,
+  activityReports,
   raiseTopic,
   readsOf,
-  recordRequests,
   routeChat,
   routeConnect,
   routeRead,
@@ -160,6 +159,20 @@ async function freezeClock(page, time = new Date()) {
 async function fillWhenReady(page, composer, message) {
   await composer.fill(message);
   await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
+}
+
+// Drive the composer without the person: the value and the clicks are the page's own events, never trusted input, so a
+// test can prove what the page does on its own never reports the person's activity (ADR-0114).
+async function sendUntrusted(page, message) {
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await expect(composer).toBeEnabled();
+  await composer.evaluate((field, value) => {
+    field.value = value;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+  }, message);
+  const send = page.getByRole('button', { name: 'Send' });
+  await expect(send).toBeEnabled();
+  await send.dispatchEvent('click');
 }
 
 async function openTeamNavigation(page) {
@@ -2464,7 +2477,6 @@ test('a message after an install waits for the Team inventory and names the inst
     assistantPlanContinuation: 'none',
     holdPostInstallInventory: true,
   });
-  const requests = recordRequests(page);
   await page.goto('/chat/');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await fillWhenReady(page, composer, 'Install Cloudflare and WhatsApp');
@@ -2488,10 +2500,43 @@ test('a message after an install waits for the Team inventory and names the inst
     message: 'List my zones',
     assistant_ids: ['shimpz-cloudflare', 'whatsapp'],
   });
-  // The inventory read the install caused is automatic: it never renews the session.
-  const inventory = requests.filter((request) => request.path === '/api/teams/marketing/assistants');
-  expect(inventory.length).toBeGreaterThan(1);
-  expect(inventory.slice(1).map((request) => request.background)).not.toContain(false);
+});
+
+test('an install and the inventory read it causes never report the person\'s activity', async ({ page }) => {
+  const chat = await routeReadyChat(page, { assistantPlan: true, assistantPlanContinuation: 'none' });
+  const inventory = [];
+  page.on('request', (request) => {
+    if (new URL(request.url()).pathname === '/api/teams/marketing/assistants') inventory.push(request.url());
+  });
+  await page.goto('/chat/');
+  await sendUntrusted(page, 'Install Cloudflare and WhatsApp');
+  await expect(page.locator('.assistant-install-plan [data-slot="chat-task"]').nth(1)).toHaveAttribute(
+    'data-state',
+    'complete',
+  );
+  await expect.poll(() => inventory.length).toBeGreaterThan(1);
+  expect(chat.chatFrames()).toHaveLength(1);
+  expect(await activityReports(page)).toBe(0);
+});
+
+test('an uninstall and the reads it causes never report the person\'s activity', async ({ page }) => {
+  const chat = await routeReadyChat(page, { assistantUninstall: true });
+  const reads = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.endsWith('/icon') || path === '/api/teams/marketing/assistants') reads.push(path);
+  });
+  await page.goto('/chat/');
+  await expect.poll(() => chat.syncFrames()).toBeGreaterThan(0);
+  await sendUntrusted(page, 'Uninstall the Cloudflare Assistant');
+  const task = page.locator('[data-slot="chat-task"]');
+  const uninstall = task.getByRole('button', { name: 'Uninstall Shimpz Cloudflare' });
+  await expect(uninstall).toBeEnabled();
+  await uninstall.dispatchEvent('click');
+  await expect(task).toHaveAttribute('data-state', 'complete');
+  await expect.poll(() => reads.filter((path) => path.endsWith('/icon')).length).toBeGreaterThan(0);
+  await expect.poll(() => reads.filter((path) => path === '/api/teams/marketing/assistants').length).toBeGreaterThan(1);
+  expect(await activityReports(page)).toBe(0);
 });
 
 test('a chat socket that opens and is closed again keeps backing off and then reports the failure', async ({ page }) => {
@@ -2587,7 +2632,6 @@ test('does not trust an install-only plan for a later request from an Assistant 
     humanAssistantId: 'whatsapp',
     omitPlannedWhatsappFromInventory: true,
   });
-  const requests = recordRequests(page);
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -2603,10 +2647,6 @@ test('does not trust an install-only plan for a later request from an Assistant 
 
   await expect(page.getByText('The secure chat response was invalid.')).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
-  // The inventory reads the install and the Assistant's request caused are automatic: none renews the session.
-  const inventory = requests.filter((request) => request.path === '/api/teams/marketing/assistants');
-  expect(inventory.length).toBeGreaterThan(2);
-  expect(inventory.slice(1).map((request) => request.background)).not.toContain(false);
 });
 
 test('keeps reconnecting while Admin restarts for a release and recovers without a refresh', { tag: '@slow' }, async ({ page }) => {
@@ -2817,7 +2857,6 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
     holdAssistantUninstall: true,
     holdAssistantInventoryRefresh: true,
   });
-  const requests = recordRequests(page);
   // The page's own clock decides when an icon snapshot gives up (2 s), never how fast this runner acts.
   await freezeClock(page);
   await page.goto('/chat/');
@@ -2874,12 +2913,6 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
   chat.releaseAssistantInventory();
   await expect(task.locator('img')).toHaveAttribute('src', /^data:image\/png;base64,/);
   const completedIcon = await task.locator('img').getAttribute('src');
-  // The icon snapshots and the inventory read the uninstall caused are automatic: none renews the session.
-  const automatic = requests.filter((request) => (
-    request.path.endsWith('/icon') || request.path === '/api/teams/marketing/assistants'
-  )).slice(1);
-  expect(automatic.filter((request) => request.path.endsWith('/icon')).length).toBeGreaterThan(0);
-  expect(automatic.map((request) => request.background)).not.toContain(false);
   expect(await page.evaluate(async () => (
     await fetch('/api/teams/marketing/assistants/shimpz-cloudflare/icon')
   ).status)).toBe(404);
@@ -5451,18 +5484,24 @@ test.describe('Team Routines', () => {
     expect(openings).toHaveLength(2);
   });
 
-  test('a decision and a plan the panel shows because a run changed in the background never renew the session', async ({ page }, testInfo) => {
+  test('a decision and a plan the panel shows because a run changed in the background never report activity', async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
+    await page.clock.install();
     await routeReadyChat(page);
     const run = 'd'.repeat(32);
     let runs = [];
     let incidents = [];
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
     // Team has no card for the run that was held: the panel reads the Routine list again on its own.
-    await page.route('**/api/teams/marketing/routines/incidents/*/card', (route) => route.fulfill({
-      status: 404, json: { code: 'routine-incident-unavailable' },
-    }));
-    const requests = recordRequests(page);
+    const cards = [];
+    await page.route('**/api/teams/marketing/routines/incidents/*/card', (route) => {
+      cards.push(route.request().url());
+      return route.fulfill({ status: 404, json: { code: 'routine-incident-unavailable' } });
+    });
+    const steps = [];
+    page.on('request', (request) => {
+      if (/\/steps\/\d+$/u.test(new URL(request.url()).pathname)) steps.push(request.url());
+    });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
@@ -5470,24 +5509,21 @@ test.describe('Team Routines', () => {
     await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('tab', { name: 'Steps' }).click();
-    const steps = () => requests.filter((request) => /\/steps\/\d+$/u.test(request.path));
-    await expect.poll(() => steps().length).toBe(1);
+    await expect.poll(() => steps.length).toBe(1);
+    // The person's clicks were reported once; then a minute passes with nobody at the page.
+    await expect.poll(() => activityReports(page)).toBe(1);
+    await page.clock.fastForward(61_000);
 
     // A run is held while nobody watches: the panel opens its decision on its own.
     runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', scheduled_at: '2026-10-01T12:00:00Z', request_kind: null, assistant_id: null, action: null, position: null, steps: null }];
     await routineNotice(page);
-    await expect.poll(() => requests.some((request) => request.path.endsWith('/card'))).toBe(true);
+    await expect.poll(() => cards.length).toBeGreaterThan(0);
     // The run ended on its own as well: the plan the person was reading shows again.
     runs = [];
     await routineNotice(page);
-    await expect.poll(() => steps().length).toBeGreaterThan(1);
-
-    // The person's own Steps read counts; nothing the page did on its own does.
-    expect(steps()[0].background).toBe(false);
-    expect(steps().slice(1).map((request) => request.background)).not.toContain(false);
-    expect(requests.filter((request) => request.path.endsWith('/card')).map((request) => request.background))
-      .not.toContain(false);
-    expect(await laterCalls(page, 'routines.list', () => true, 0)).not.toContain(false);
+    await expect.poll(() => steps.length).toBeGreaterThan(1);
+    // Nothing the panel did on its own kept the session alive.
+    expect(await activityReports(page)).toBe(1);
   });
 
   test('an answer that arrives after its Routine moved on never dismisses the newer decision', async ({ page }, testInfo) => {
@@ -5837,7 +5873,6 @@ test.describe('Team Routines', () => {
       refusals -= 1;
       return route.fulfill({ status: 503, json: { detail: 'unavailable' } });
     });
-    const requests = recordRequests(page);
     await page.goto('/chat/?team=marketing');
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
@@ -5854,9 +5889,6 @@ test.describe('Team Routines', () => {
     await reread;
     await expect(steps).toHaveCount(10);
     await expect(panel.getByText(messages.en.routine.plan.unavailable)).toHaveCount(0);
-    // Opening the plan was the person's read; the retry the page started itself is automatic.
-    const reads = requests.filter((request) => /\/steps\/\d+$/u.test(request.path));
-    expect(reads.map((request) => request.background)).toEqual([false, true]);
   });
 
   test("a 120-step Routine's plan shows its summary at once and reads its steps page by page as they are revealed", { tag: '@slow' }, async ({ page }, testInfo) => {
@@ -5952,8 +5984,6 @@ test.describe('Team Routines', () => {
     await expect(panel.getByRole('list', { name: 'Steps' }).locator('dd').first()).toHaveText('a\\u202eb');
     expect(await page.evaluate(() => document.body.textContent.includes('\u202e'))).toBe(false);
     await expect(panel.getByRole('button', { name: /^Show \d+ more steps?$/u })).toHaveCount(0);
-    // The Routine list the refused revision made the page read again is an automatic read, as every one here is.
-    expect(await laterCalls(page, 'routines.list', () => true, 0)).not.toContain(false);
   });
 
   test('a run view pages its own step records: a failed step, steps that never ran, and records read again once they changed', async ({ page }, testInfo) => {
@@ -6627,10 +6657,6 @@ test.describe('Team Routines', () => {
       }
       await expect.poll(listed).toEqual(everyRun());
     }
-    // Opening the panel read its newest runs; every newest-page reading a refresh started again is automatic.
-    const newest = await laterCalls(page, 'history.page', (params) => params.routine && !params.before);
-    expect(newest.length).toBeGreaterThan(1);
-    expect(newest).not.toContain(false);
   });
 
   test("an older search that a newer reading of the panel's history overtook never hides that reading", async ({ page }, testInfo) => {

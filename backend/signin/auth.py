@@ -75,9 +75,10 @@ class SessionEvidence:
 class SessionActivity:
     """The last Supervisor activity of each session this process issued, keyed by the token's digest.
 
-    A session it never issued or no longer tracks is unknown and refused. Only activity moves `last_seen`, so a page
-    polling in the background cannot keep an unattended session alive. Each listener hears which sessions stopped being
-    tracked (`None` for every session), whether they idled out, were evicted for capacity, or all ended at once.
+    A session it never issued or no longer tracks is unknown and refused. Only the Supervisor's own input moves
+    `last_seen` (the session socket's activity frame), so nothing a page does on its own keeps a session alive. Each
+    listener hears which sessions stopped being tracked (`None` for every session), whether they idled out, were
+    evicted for capacity, or all ended at once.
     """
 
     def __init__(
@@ -385,13 +386,13 @@ def verify_session(secret_hex: str, token: str, *, activity: bool = False) -> Se
     return evidence if SESSIONS.current(token, activity=activity) else None
 
 
-def session_remaining(secret_hex: str, token: str) -> float | None:
-    """Seconds until a current session ends unless it is active meanwhile, or None when it is not current.
+def session_deadlines(secret_hex: str, token: str) -> tuple[float, float] | None:
+    """Seconds until a current session idles out unless it is active meanwhile, and until its absolute expiry.
 
-    That is its absolute or its idle expiry, whichever comes first.
+    None when the session is not current.
     """
     evidence = _signed_evidence(secret_hex, token)
     idle = SESSIONS.idle_remaining(token) if evidence is not None else None
     if evidence is None or idle is None:
         return None
-    return max(0.0, min(evidence.expires_at - time.time(), idle))
+    return idle, max(0.0, evidence.expires_at - time.time())

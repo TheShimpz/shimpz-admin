@@ -44,6 +44,8 @@ class Handle:
     subscribed: Callable[[str], bool] = field(repr=False)
     current: Callable[[Mapping[str, str]], Awaitable[bool]] = field(repr=False)
     scope: Callable[[], contextlib.AbstractContextManager[None]] = field(repr=False)
+    # Tells the socket, from any thread, that its session's idle time restarted.
+    renewed: Callable[[], None] = field(repr=False)
 
 
 class Registry:
@@ -82,6 +84,13 @@ class Registry:
     def handles(self) -> tuple[Handle, ...]:
         with self._lock:
             return tuple(handle for handles in self._handles.values() for handle in handles)
+
+    def renewed(self, session: str) -> None:
+        """Tell every socket of the session that its idle time restarted, so each tab times its warning anew."""
+        with self._lock:
+            handles = tuple(self._handles.get(session, ()))
+        for handle in handles:
+            handle.renewed()
 
     def end_sessions(self, sessions: frozenset[str] | None) -> None:
         """Close every socket of these sessions, or of every session when None, as signed out."""

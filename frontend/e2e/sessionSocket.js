@@ -21,6 +21,8 @@ function channelFrame(teamId, event) {
  * - `call(method, params)`: `{ status, json }`, a promise of one, or null (refused as unavailable);
  * - `chat(teamId)`: whether the Team's channel attaches, and the channel handler `(channel) => void` it then runs, which
  *   reads `channel.onMessage((text) => ...)` and answers with `channel.send(textOrFrame)` as a v7 socket handler did.
+ * The returned session's `onActivity()` hears each report of the person's input and may answer it with the session's
+ * renewed deadlines, `{ idle_seconds, absolute_seconds }`.
  * `frames` records every client frame in order.
  */
 export function serveSession(transport, handlers) {
@@ -98,6 +100,11 @@ export function serveSession(transport, handlers) {
       after?.();
       return;
     }
+    if (frame.type === 'activity') {
+      const renewed = session.onActivity?.();
+      if (renewed) send({ type: 'session', ...renewed });
+      return;
+    }
     const channel = channels.get(frame.team_id);
     if (!channel) {
       close(1008, 'chat channel is not attached');
@@ -107,7 +114,8 @@ export function serveSession(transport, handlers) {
     channel.receive(v7);
   }
 
-  return {
+  const session = {
+    onActivity: null,
     frames,
     receive,
     close,
@@ -118,9 +126,14 @@ export function serveSession(transport, handlers) {
       topics.set(topic, revision);
       send({ type: 'changed', topic, epoch: EPOCH, revision });
     },
+    // Admin told the page the session's deadlines, in whole seconds from now.
+    deadlines(idleSeconds, absoluteSeconds) {
+      send({ type: 'session', idle_seconds: idleSeconds, absolute_seconds: absoluteSeconds });
+    },
     subscribed: (topic) => topics.has(topic),
     channel: (teamId) => channels.get(teamId),
   };
+  return session;
 }
 
 /** Handlers that answer every read and chat frame from one shared scenario (e2e/scenarios.js). */

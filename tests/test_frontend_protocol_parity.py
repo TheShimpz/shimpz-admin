@@ -198,16 +198,12 @@ class FrontendSessionSocketParityTests(unittest.TestCase):
         )
         self.assertEqual(socket_frames.CHAT_TYPES, {"chat", "resume-task", "stop", "sync", "human-response"})
 
-    def test_the_browser_marks_its_automatic_reads_with_the_header_admin_never_counts_as_activity(self) -> None:
-        backend = (ROOT / "backend" / "app.py").read_text(encoding="utf-8")
-        browser = (LIB / "localApi.js").read_text(encoding="utf-8")
-        header = re.search(r'^BACKGROUND_HEADER = "([a-z-]+)"$', backend, re.MULTILINE)
-        marked = re.search(r"^export const ACTIVITY_HEADER = '([A-Za-z-]+)';$", browser, re.MULTILINE)
-        self.assertIsNotNone(header)
-        self.assertIsNotNone(marked)
-        self.assertEqual(marked[1].lower(), header[1])
-        self.assertIn('request.headers.get(BACKGROUND_HEADER) != "background"', backend)
-        self.assertIn("headers.set(ACTIVITY_HEADER, 'background');", browser)
+    def test_the_browser_reports_activity_and_reads_deadlines_in_the_protocol_s_frames(self) -> None:
+        source = (LIB / "adminSocket.js").read_text(encoding="utf-8")
+        self.assertEqual(socket_frames.ACTIVITY, {"type": "activity"})
+        self.assertIn("connection.send(JSON.stringify({ type: 'activity' }));", source)
+        self.assertEqual(set(socket_frames.session(1, 2)), {"type", "idle_seconds", "absolute_seconds"})
+        self.assertIn("exact(frame, ['type', 'idle_seconds', 'absolute_seconds'])", source)
 
 
 if __name__ == "__main__":

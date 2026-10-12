@@ -40,6 +40,31 @@ class SessionBudget:
             return True
 
 
+class SessionRenewals:
+    """When each session's idle time last restarted, so activity frames from its other tabs meanwhile change nothing."""
+
+    def __init__(self, interval: float, *, clock: Callable[[], float] = time.monotonic) -> None:
+        self._interval = interval
+        self._clock = clock
+        self._lock = threading.Lock()
+        self._renewed: dict[str, float] = {}
+
+    def due(self, session: str) -> bool:
+        """Whether the session's idle time may restart now; a restart that is due is counted at once."""
+        now = self._clock()
+        with self._lock:
+            for key in [key for key, at in self._renewed.items() if now - at >= self._interval]:
+                del self._renewed[key]
+            if session in self._renewed:
+                return False
+            self._renewed[session] = now
+            return True
+
+
+# The shortest time between two restarts of one session's idle time; each tab reports input at most once a minute.
+RENEWAL_SECONDS = 30.0
+
 OPENS = SessionBudget(SOCKET_OPENS)
 CALL_BUDGET = SessionBudget(CALLS)
 CHANGE_BUDGET = SessionBudget(CHANGES)
+RENEWALS = SessionRenewals(RENEWAL_SECONDS)

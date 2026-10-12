@@ -30,7 +30,7 @@
     untilWords,
   } from '#lib/routine.js';
   import { dropTeamRoutine, loadTeamRoutines } from '#lib/routineContext.js';
-  import { backgroundCall, call } from '#lib/adminSocket.js';
+  import { call } from '#lib/adminSocket.js';
   import RoutineDecision from '#lib/RoutineDecision.svelte';
   import RoutineDeletion from '#lib/RoutineDeletion.svelte';
   import RoutinePlan from '#lib/RoutinePlan.svelte';
@@ -108,24 +108,11 @@
   let round = $state(0);
   let decisionKey = $derived(decision ? `${decision.runId}:${decision.outcome}` : '');
   let pending = $derived(decision && decisionKey !== dismissed ? decision : null);
-  // What the person last chose to see: the decision the panel opened with or the one their own answer led to, and the
-  // page they picked. A decision or a plan the panel shows on its own after a background update reads automatically.
-  let personDecision = $state(untrack(() => `${decisionKey}:${round}`));
-  let personPage = $state(false);
-  $effect(() => {
-    if (pending) personPage = false;
-  });
-
-  function choose(next) {
-    page = next;
-    personPage = true;
-  }
 
   async function settled(words, heldAgain) {
     decided = words;
     if (heldAgain) round += 1;
     else dismissed = decisionKey;
-    personDecision = `${decisionKey}:${round}`;
     page = 'summary';
     await loadTeamRoutines(call, teamId).catch(() => {});
   }
@@ -160,10 +147,9 @@
   let reading = 0;
 
   // The newest page of the Routine's own history starts the list again; its cursor reaches every older run.
-  // Opening the panel is the person's read; a refresh that starts the list again reads in the background.
-  async function readNewest(opened, read = call) {
+  async function readNewest(opened) {
     const marks = new Set();
-    const found = await routineRuns(read, teamId, routineId, { seen: marks });
+    const found = await routineRuns(call, teamId, routineId, { seen: marks });
     if (opened !== search) return;
     reading += 1;
     seen = marks;
@@ -190,7 +176,7 @@
     refreshing = true;
     const opened = search;
     try {
-      const since = await historySince(backgroundCall, teamId, seen, { routine: routineId });
+      const since = await historySince(call, teamId, seen, { routine: routineId });
       if (opened !== search || searchingOlder) return;
       const merged = mergedRoutineRuns(recent, since.entries, routineId);
       const added = merged.length - recent.length;
@@ -199,7 +185,7 @@
         recent = merged;
         arrived += added;
       } else {
-        await readNewest(opened, backgroundCall);
+        await readNewest(opened);
       }
     } catch {
       // The next refresh tries again; the runs already listed stay.
@@ -316,7 +302,7 @@
     }[event.key];
     if (next === undefined) return;
     event.preventDefault();
-    choose(PAGES[next].id);
+    page = PAGES[next].id;
     document.getElementById(`${id}-tab-${page}`)?.focus();
   }
 
@@ -349,7 +335,7 @@
       {#each PAGES as item (item.id)}
         <Button id={`${id}-tab-${item.id}`} class="tab" variant="ghost" size="sm" type="button" role="tab"
           aria-selected={page === item.id} aria-controls={`${id}-page`} tabindex={page === item.id ? 0 : -1}
-          onclick={() => choose(item.id)} onkeydown={moveTab}>
+          onclick={() => (page = item.id)} onkeydown={moveTab}>
           {#snippet icon()}<RoutineIcon name={item.icon} />{/snippet}{copy.panel[item.id]}
         </Button>
       {/each}
@@ -385,8 +371,7 @@
           <RoutineDecision {teamId} {teamName} runId={pending.runId}
             outcome={pending.outcome} detail={pending.detail} {copy} onsettled={settled}
             ondelete={() => (confirming = true)}
-            automatic={`${decisionKey}:${round}` !== personDecision}
-            onunavailable={() => loadTeamRoutines(backgroundCall, teamId).catch(() => {})} />
+            onunavailable={() => loadTeamRoutines(call, teamId).catch(() => {})} />
         {/key}
       </div>
     {:else if !confirming}
@@ -405,8 +390,8 @@
           </p>
         {/if}
       {:else if page === 'steps'}
-        <RoutinePlan {teamId} {routine} {copy} names={$assistantNames} locale={$locale} automatic={!personPage}
-          onchanged={() => loadTeamRoutines(backgroundCall, teamId).catch(() => {})} />
+        <RoutinePlan {teamId} {routine} {copy} names={$assistantNames} locale={$locale}
+          onchanged={() => loadTeamRoutines(call, teamId).catch(() => {})} />
       {:else}
         <ul class="runs" aria-label={copy.panel.runs}>
           {#each live as run (run.run_id)}

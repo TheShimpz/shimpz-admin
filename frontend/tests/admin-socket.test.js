@@ -59,12 +59,15 @@ globalThis.fetch = async () => ({ ok: true, json: async () => sessionAnswer });
 
 const socketModule = await import('../src/lib/adminSocket.js');
 const {
+  ACTIVITY_INTERVAL_MS,
   adminSocket,
   call,
   connectAdminSocket,
   disconnectAdminSocket,
   openChatChannel,
+  sessionDeadlines,
   topicValue,
+  trackActivity,
   watchTopic,
 } = socketModule;
 
@@ -104,15 +107,14 @@ test('a socket that does not speak the protocol is closed', () => {
 test('a call answers like a response, and fails at once while the socket is not open', async () => {
   await assert.rejects(call('teams.list'), (error) => error.code === 'socket-unavailable');
   const socket = connected();
-  const pending = call('teams.list', {}, { background: true });
+  const pending = call('teams.list', {});
   const sent = socket.answer('teams.list', { teams: [] }, 200, { topic: 'teams', epoch: EPOCH, revision: 2 });
-  assert.deepEqual(sent, { type: 'call', id: sent.id, method: 'teams.list', params: {}, background: true });
+  assert.deepEqual(sent, { type: 'call', id: sent.id, method: 'teams.list', params: {} });
   const response = await pending;
   assert.equal(response.ok, true);
   assert.deepEqual(await response.json(), { teams: [] });
   assert.deepEqual(response.revision, { topic: 'teams', epoch: EPOCH, revision: 2 });
   const refused = call('history.page', { team_id: 'marketing' });
-  assert.equal(socket.sent.at(-1).background, undefined);
   socket.answer('history.page', { detail: 'Team not found' }, 404);
   assert.equal((await refused).status, 404);
 });
@@ -256,7 +258,6 @@ test('a refused subscription is not in place: nothing is announced, and it is as
   const again = socket.sent.filter((frame) => frame.method === 'subscribe');
   assert.equal(again.length, asked + 1);
   assert.deepEqual(again.at(-1).params, { topics: ['teams'] });
-  assert.equal(again.at(-1).background, true);
   socket.answer('subscribe', { epoch: EPOCH, topics: { teams: 0 } });
   await flush();
   assert.deepEqual(heard, ['subscribed']);
@@ -455,4 +456,66 @@ test('a channel closed while it attached is detached again, and a refused attach
   socket.answer('chat.attach', { detail: 'full' }, 409);
   await flush();
   assert.equal(closed.mock.callCount(), 1);
+});
+
+test('the person\'s trusted input is reported at most once a minute, and only while the socket is open', async () => {
+  const target = new EventTarget();
+  const stop = trackActivity(target);
+  const input = (type, isTrusted = true) => {
+    const event = new Event(type);
+    Object.defineProperty(event, 'isTrusted', { value: isTrusted });
+    target.dispatchEvent(event);
+  };
+  const clock = mock.method(performance, 'now', () => 1_000_000);
+  try {
+    // Nothing is reported while no socket is open, and nothing is kept to replay once one opens.
+    input('keydown');
+    const socket = connected();
+    assert.deepEqual(socket.sent.filter((frame) => frame.type === 'activity'), []);
+    // An event the page dispatched itself is never the person's.
+    for (const type of ['keydown', 'pointerdown', 'click', 'touchstart', 'wheel', 'input', 'compositionend']) input(type, false);
+    assert.deepEqual(socket.sent.filter((frame) => frame.type === 'activity'), []);
+    input('pointerdown');
+    input('keydown');
+    assert.deepEqual(socket.sent.filter((frame) => frame.type === 'activity'), [{ type: 'activity' }]);
+    clock.mock.mockImplementation(() => 1_000_000 + ACTIVITY_INTERVAL_MS);
+    input('compositionend');
+    assert.equal(socket.sent.filter((frame) => frame.type === 'activity').length, 2);
+    // A socket that fails to send reports nothing and loses nothing.
+    clock.mock.mockImplementation(() => 1_000_000 + 2 * ACTIVITY_INTERVAL_MS);
+    socket.failSend = true;
+    input('wheel');
+    socket.failSend = false;
+    input('wheel');
+    assert.equal(socket.sent.filter((frame) => frame.type === 'activity').length, 3);
+    stop();
+    clock.mock.mockImplementation(() => 1_000_000 + 3 * ACTIVITY_INTERVAL_MS);
+    input('keydown');
+    assert.equal(socket.sent.filter((frame) => frame.type === 'activity').length, 3);
+  } finally {
+    clock.mock.restore();
+    stop();
+  }
+});
+
+test('the session\'s deadlines are read from Admin\'s clock, and a malformed one closes the socket', () => {
+  const socket = connected();
+  const clock = mock.method(performance, 'now', () => 5_000);
+  try {
+    socket.frame({ type: 'session', idle_seconds: 3480, absolute_seconds: 82800 });
+    assert.deepEqual(get(sessionDeadlines), { idleAt: 5_000 + 3_480_000, absoluteAt: 5_000 + 82_800_000 });
+    for (const frame of [
+      { type: 'session', idle_seconds: -1, absolute_seconds: 1 },
+      { type: 'session', idle_seconds: 1.5, absolute_seconds: 1 },
+      { type: 'session', idle_seconds: 1, absolute_seconds: 1, extra: true },
+    ]) {
+      const next = connected();
+      next.frame(frame);
+      assert.equal(next.closedWith, 1002);
+    }
+    disconnectAdminSocket();
+    assert.equal(get(sessionDeadlines), null);
+  } finally {
+    clock.mock.restore();
+  }
 });

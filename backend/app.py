@@ -73,8 +73,6 @@ TEAM_CREDENTIALS_ENABLED = os.environ.get("SHIMPZ_TEAM_CREDENTIALS_ENABLED", "1"
 UI_DIR = Path(__file__).resolve().parent.parent / "frontend" / "build"
 COOKIE = "shimpz_admin"
 OAUTH_COOKIE = "shimpz_oauth_binding"
-# The page's automatic HTTP reads mark themselves with this header; they never renew the session's idle time.
-BACKGROUND_HEADER = "shimpz-activity"
 OAUTH_COOKIE_PATH = "/api/oauth/cloudflare"
 OAUTH_COOKIE_TTL = 300
 OAUTH_START_PATH = "/api/oauth/cloudflare/start"
@@ -246,34 +244,22 @@ def _session_evidence(cookies, *, activity: bool = False) -> dict[str, object] |
     return evidence
 
 
-async def _session_active(cookies) -> bool:
-    """A person's own socket call or chat frame is Supervisor activity and restarts the session's idle time."""
+async def _renew_session(cookies) -> bool:
+    """The Supervisor's own input, reported by the session socket's activity frame, restarts the idle time.
+
+    It renews only a session that is still current: never one that idled out or reached its absolute expiry.
+    """
     return _session_evidence(cookies, activity=True) is not None
 
 
 async def _session_current(cookies) -> bool:
-    """Admitting a session socket, its automatic reads, and its watcher check the session without renewing it."""
+    """Every request, socket frame, and watcher check the session without renewing it."""
     return _session_evidence(cookies) is not None
 
 
-def _session_remaining(cookies) -> float | None:
-    """Seconds until the socket's session expires unless it is active meanwhile; a socket's timer closes it then."""
-    return auth.session_remaining(state.get().get("session_secret", ""), cookies.get(COOKIE, ""))
-
-
-def _supervisor_activity(request: Request) -> bool:
-    """A request from Admin's own page is Supervisor activity, except one the page makes on its own.
-
-    Most automatic reads travel on the session socket as background calls; the HTTP reads the page still makes on its
-    own (a Team inventory refreshed after an install, for instance) carry `Shimpz-Activity: background`, and an image
-    the page renders (an Assistant icon) is loaded by the browser, never asked for by the person. Another page on the
-    same site may still read with the session cookie, but its requests never renew the session.
-    """
-    return (
-        request.headers.get(BACKGROUND_HEADER) != "background"
-        and request.headers.get("sec-fetch-dest") != "image"
-        and browser.from_admin_page(request, _allowed_browser_origins)
-    )
+def _session_deadlines(cookies) -> tuple[float, float] | None:
+    """Seconds until the socket's session idles out and until its absolute expiry; its timer closes it then."""
+    return auth.session_deadlines(state.get().get("session_secret", ""), cookies.get(COOKIE, ""))
 
 
 def _team_session_scope(cookies, *, authority_kind: str = "session"):
@@ -317,9 +303,6 @@ def _supervisor_refusal(request: Request) -> Response | None:
         return JSONResponse({"detail": "unauthenticated"}, status_code=401)
     if not browser.admits_unsafe_request(request, _allowed_browser_origins):
         return JSONResponse({"detail": "browser origin is not admitted"}, status_code=403)
-    # Only a request the gate admits counts as activity, so a refused cross-origin request never extends the session.
-    if _supervisor_activity(request):
-        auth.SESSIONS.current(request.cookies.get(COOKIE, ""), activity=True)
     request.state.supervisor = evidence
     return None
 
@@ -684,10 +667,10 @@ def _session_gate() -> session_socket.Gate:
     """What Admin's HTTP gate decides, handed to one session socket as it opens."""
     return session_socket.Gate(
         session_current=_session_current,
-        session_active=_session_active,
+        renew_session=_renew_session,
         allowed_origins=_allowed_browser_origins,
         request_scope=_team_session_scope,
-        session_remaining=_session_remaining,
+        session_deadlines=_session_deadlines,
         authenticate=_AUTHENTICATE_ACTION_REQUEST,
         revoke_tickets=_LOCAL_AUTH_CONTEXT.ticket_store.revoke,
         cookie=COOKIE,

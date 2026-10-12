@@ -122,6 +122,7 @@ class Socket:
         self._task: asyncio.Task | None = None
         self._fail_send_type = fail_send_type
         self._calls = 0
+        self.deadlines: list[dict] = []
         self.send_failed = threading.Event()
 
     async def _send(self, message: dict) -> None:
@@ -138,7 +139,26 @@ class Socket:
         return await self.next_message()
 
     async def next_message(self, wait_seconds: float = EXPECTED_FRAME_SECONDS) -> dict:
-        return await asyncio.wait_for(self._outgoing.get(), timeout=wait_seconds)
+        """The next message, past the session deadlines Admin tells the page, which `deadlines` keeps in order."""
+        while True:
+            message = await asyncio.wait_for(self._outgoing.get(), timeout=wait_seconds)
+            if (
+                message.get("type") == "websocket.send"
+                and json.loads(message.get("text") or "{}").get("type") == "session"
+            ):
+                self.deadlines.append(json.loads(message["text"]))
+                continue
+            return message
+
+    async def next_session(self, wait_seconds: float = EXPECTED_FRAME_SECONDS) -> dict:
+        """The next session deadlines Admin told the page, whichever frames came before them."""
+        while not self.deadlines:
+            message = await asyncio.wait_for(self._outgoing.get(), timeout=wait_seconds)
+            frame = json.loads(message["text"]) if message.get("type") == "websocket.send" else None
+            if frame is None or frame.get("type") != "session":
+                raise AssertionError(f"expected the session's deadlines, got {message!r}")
+            self.deadlines.append(frame)
+        return self.deadlines.pop(0)
 
     async def next_frame(self, wait_seconds: float = EXPECTED_FRAME_SECONDS) -> dict:
         """The next frame exactly as Admin sent it."""
@@ -163,19 +183,16 @@ class Socket:
             value = {**value, "team_id": self.team_id}
         await self.send_text(json.dumps(value, separators=(",", ":")))
 
-    async def call(self, method: str, params: dict[str, object], *, background: bool = False) -> str:
+    async def call(self, method: str, params: dict[str, object]) -> str:
         """Send one call and return its id."""
         self._calls += 1
         call_id = f"call-{self._calls}"
-        frame: dict[str, object] = {"type": "call", "id": call_id, "method": method, "params": params}
-        if background:
-            frame["background"] = True
-        await self.send_json(frame)
+        await self.send_json({"type": "call", "id": call_id, "method": method, "params": params})
         return call_id
 
-    async def result(self, method: str, params: dict[str, object], *, background: bool = False) -> dict:
+    async def result(self, method: str, params: dict[str, object]) -> dict:
         """Call one method and return its result, which must be the next frame."""
-        call_id = await self.call(method, params, background=background)
+        call_id = await self.call(method, params)
         frame = await self.next_frame()
         if frame.get("type") != "result" or frame.get("id") != call_id:
             raise AssertionError(f"expected the result of {call_id}, got {frame!r}")
@@ -188,7 +205,7 @@ class Socket:
         to read, as the first sync of a v7 socket was.
         """
         if not synchronized:
-            result = await self.result("chat.attach", {"team_id": self.team_id, "locale": locale}, background=True)
+            result = await self.result("chat.attach", {"team_id": self.team_id, "locale": locale})
             if result["status"] != 200:
                 raise AssertionError(f"attach failed: {result!r}")
             return
@@ -197,7 +214,7 @@ class Socket:
             "integration", socket_module.team.TeamResponse(200, {"team_id": self.team_id, "status": "none"})
         )
         with mock.patch.object(socket_module, "_sync_snapshot", return_value=empty):
-            result = await self.result("chat.attach", {"team_id": self.team_id, "locale": locale}, background=True)
+            result = await self.result("chat.attach", {"team_id": self.team_id, "locale": locale})
             if result["status"] != 200:
                 raise AssertionError(f"attach failed: {result!r}")
             if await self.next_json() != {"type": "sync-empty"}:

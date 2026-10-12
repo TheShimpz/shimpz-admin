@@ -12,11 +12,10 @@ const { clearTeamContext, refreshTeamInventory, renameTeam, teamContext } = cont
 // The Team list is the session socket's `teams.list` read (ADR-0114). Each test's fixture answers it under the key
 // `/api/teams` with no method, beside the HTTP requests the context still makes, so one fixture states a whole Space.
 let fixture = null;
-socketReads.call = async (method, params, { background = false } = {}) => {
+socketReads.call = async (method, params) => {
   assert.equal(method, 'teams.list');
   assert.deepEqual(params, {});
-  const options = { cache: 'no-store', headers: { Accept: 'application/json' } };
-  return fixture('/api/teams', background ? { ...options, background } : options);
+  return fixture('/api/teams', { cache: 'no-store', headers: { Accept: 'application/json' } });
 };
 function using(operation) {
   return (fetcher, ...args) => {
@@ -1078,19 +1077,6 @@ test('reloading the list after the selected Team is gone reloads the whole conte
   assert.equal(get(teamContext).selectedTeamId, 'sales');
 });
 
-test('a list re-read after an invalidation is an automatic read that never renews the session', async () => {
-  const reads = [];
-  const { fetcher } = heldOrderFetcher();
-  const recorded = async (url, options = {}) => {
-    if (url === '/api/teams') reads.push(options.background === true);
-    return fetcher(url, options);
-  };
-  await loadTeamContext(recorded, 'support');
-  await reloadTeamList(recorded);
-  // Opening the Team context is the person's own navigation; the re-read Admin's change caused is not.
-  assert.deepEqual(reads, [false, true]);
-});
-
 // A fetcher whose Team list reads wait for the test to answer them, in any order.
 function heldListFetcher() {
   const lists = [];
@@ -1132,7 +1118,7 @@ test('a Team list change announced while the context loads is read once the load
   lists[0](['marketing', 'support', 'sales']);
   await loading;
   await settle();
-  // The change is not dropped: the list is read again, in the background, after the load.
+  // The change is not dropped: the list is read again after the load.
   assert.equal(lists.length, 2);
   lists[1](['sales', 'support', 'marketing']);
   await settle();
@@ -1141,23 +1127,6 @@ test('a Team list change announced while the context loads is read once the load
   teamListChanged(fetcher);
   await settle();
   assert.equal(lists.length, 3);
-});
-
-test('a list re-read that finds the selected Team gone reloads the context with automatic reads only', async () => {
-  let teams = THREE_TEAMS;
-  const requests = [];
-  const { fetcher } = heldOrderFetcher({ list: () => teams });
-  const recorded = async (url, options = {}) => {
-    requests.push({ url, background: new Headers(options.headers).get('Shimpz-Activity') === 'background' || options.background === true });
-    return fetcher(url, options);
-  };
-  await loadTeamContext(recorded, 'support');
-  requests.length = 0;
-  teams = listedTeams(['sales', 'marketing']);
-  await reloadTeamList(recorded);
-  assert.equal(get(teamContext).selectedTeamId, 'sales');
-  assert.ok(requests.length > 2);
-  assert.deepEqual(requests.filter((request) => !request.background), []);
 });
 
 test('a reorder that is not an exact permutation of the listed Teams is refused before any request', async () => {

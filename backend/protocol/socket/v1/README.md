@@ -12,9 +12,15 @@ bounds are pinned to `frames.py` by `tests/test_frontend_protocol_parity.py`.
 Every frame is one UTF-8 JSON object with unique keys in a text frame: a client frame at most 128 KiB, a server frame,
 envelope included, at most 1 MiB.
 
-- `call {id, method, params, background?}` asks for one Admin operation; Admin answers it with exactly one
+- `call {id, method, params}` asks for one Admin operation; Admin answers it with exactly one
   `result {id, status, body}`. A read of a topic's state also carries that topic, the process `epoch`, and the
   topic `revision` taken before the read. At most 16 calls are in flight per socket.
+- `activity {}` (exactly `{"type": "activity"}`) is the page's report of the person's own input, at most once a minute
+  per tab. It is the only frame, and nothing over HTTP, that restarts the session's idle time; Admin ignores one that
+  arrives within 30 seconds of the session's last renewal, from any tab, and it never revives an expired session or
+  moves its absolute expiry.
+- `session {idle_seconds, absolute_seconds}` tells the page, on Admin's clock, how long the session has until it idles
+  out and until its absolute expiry: once the socket opens and whenever the session's idle time restarts.
 - `changed {topic, epoch, revision}` is an invalidation only: the client reads the topic again through `call`.
 - The chat channel carries the `shimpz.chat.v7` frames of `.context/SHIMPZ_CHAT_V7.md`, each with the attached Team's
   `team_id`, after `chat.attach {team_id, locale}`.

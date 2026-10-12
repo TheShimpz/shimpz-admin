@@ -72,20 +72,19 @@ class SessionSocketChatChannelTests(SessionSocketCase):
 
         asyncio.run(scenario())
 
-    def test_a_person_s_chat_frame_renews_the_session_and_the_page_s_sync_does_not(self) -> None:
+    def test_no_chat_frame_renews_the_session(self) -> None:
+        # A turn under way or a request waiting for the person keeps nothing alive; the person's input does.
         auth = self.admin_app.auth
 
         async def scenario() -> None:
             websocket = await self._open()
             with mock.patch.object(auth.SESSIONS, "current", wraps=auth.SESSIONS.current) as current:
                 await websocket.send_json({"type": "stop"})
-                await asyncio.sleep(0.1)
-                self.assertIn(True, {call.kwargs["activity"] for call in current.call_args_list})
-                current.reset_mock()
                 with mock.patch.object(self.chat_socket, "_dispatch_sync", new=mock.AsyncMock()):
                     await websocket.send_json({"type": "sync", "locale": "en"})
                     await asyncio.sleep(0.1)
-                self.assertEqual({call.kwargs["activity"] for call in current.call_args_list}, {False})
+            self.assertTrue(current.call_args_list)
+            self.assertEqual({call.kwargs["activity"] for call in current.call_args_list}, {False})
             await websocket.disconnect()
 
         asyncio.run(scenario())

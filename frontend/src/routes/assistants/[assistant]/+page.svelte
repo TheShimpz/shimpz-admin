@@ -14,7 +14,6 @@
   import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
   import LocalAssistantInstallDialog from '#lib/LocalAssistantInstallDialog.svelte';
   import {
-    backgroundFetch,
     installAssistant,
     installLocalAssistant,
     listLocalAssistantSnapshots,
@@ -29,7 +28,7 @@
     loadPublicAssistantIcon,
   } from '#lib/localAssistantIcons.js';
   import { groupLocalAssistantSnapshots } from '#lib/localSnapshots.js';
-  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, selectedAutomatically, teamContext } from '#lib/teamContext.js';
+  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teamContext.js';
   import { ASSISTANT_ID_RE, ASSISTANT_LIMIT_REACHED, TEAM_ID_RE } from '#lib/validate.js';
 
   const initialViewReadiness = getContext(INITIAL_VIEW_READINESS);
@@ -230,27 +229,25 @@
       detailsKey = '';
       return true;
     };
-    // A Team the page selected itself (its Team removed elsewhere) shows its page through automatic reads.
-    const read = selectedAutomatically() ? backgroundFetch : fetch;
     try {
       if (current.mode === 'installed') {
         iconSrc = `/api/teams/${encodeURIComponent(team.id)}/assistants/${encodeURIComponent(assistantId)}/icon`;
-        const loaded = await loadAssistantDetails(read, team.id, assistantId, language, { signal: controller.signal });
+        const loaded = await loadAssistantDetails(fetch, team.id, assistantId, language, { signal: controller.signal });
         if (stale()) return;
         // Team answers for the binding it runs now; a page for another version is not this entry's page.
         if (loaded.assistant_version !== current.installed.assistant_version) throw new Error('stale binding');
         details = loaded;
       } else if (current.mode === 'local') {
         const imageId = current.group.primary.image_id;
-        void loadIcon(() => loadLocalAssistantIcon(read, imageId, { signal: controller.signal }), request);
-        const loaded = await loadLocalAssistantDetails(read, imageId, assistantId, language, {
+        void loadIcon(() => loadLocalAssistantIcon(fetch, imageId, { signal: controller.signal }), request);
+        const loaded = await loadLocalAssistantDetails(fetch, imageId, assistantId, language, {
           signal: controller.signal,
         });
         if (stale()) return;
         details = loaded;
       } else {
         const entry = current.publication;
-        void loadIcon(() => loadPublicAssistantIcon(read, assistantId, { signal: controller.signal }), request);
+        void loadIcon(() => loadPublicAssistantIcon(fetch, assistantId, { signal: controller.signal }), request);
         details = {
           assistant_version: entry.assistant_version,
           name: entry.name,
@@ -311,11 +308,10 @@
   });
 
   // The Team's installed Assistants read again from Team, or null when that exact Team's inventory could not be read.
-  // The page reads it on its own after an install or uninstall, so it never renews the session.
   async function readInventory(team) {
     if ($teamContext.selectedTeamId !== team.id) return null;
     try {
-      return (await refreshTeamInventory(backgroundFetch)).installedAssistants;
+      return (await refreshTeamInventory(fetch)).installedAssistants;
     } catch {
       return null;
     }

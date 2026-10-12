@@ -22,10 +22,10 @@ def _gate(**overrides) -> socket.Gate:
 
     values = {
         "session_current": current,
-        "session_active": current,
+        "renew_session": current,
         "allowed_origins": lambda: frozenset({"http://localhost:7777"}),
         "request_scope": lambda _cookies: contextlib.nullcontext(),
-        "session_remaining": lambda _cookies: 60.0,
+        "session_deadlines": lambda _cookies: (60.0, 600.0),
         "authenticate": mock.AsyncMock(),
         "revoke_tickets": mock.Mock(),
         "cookie": "shimpz_admin",
@@ -71,7 +71,9 @@ class SessionPartsTests(unittest.TestCase):
 
     def test_removing_a_socket_the_registry_never_held_changes_nothing(self) -> None:
         held = registry.Registry()
-        handle = registry.Handle("s", "a", {}, lambda _code: None, lambda _topic: False, mock.AsyncMock(), None)
+        handle = registry.Handle(
+            "s", "a", {}, lambda _code: None, lambda _topic: False, mock.AsyncMock(), None, lambda: None
+        )
         held.remove(handle)
         self.assertEqual(held.handles(), ())
 
@@ -169,9 +171,41 @@ class SessionSocketCheckTests(unittest.TestCase):
 
         async def scenario() -> None:
             session_socket = _socket(_gate(allowed_origins=unreadable))
-            self.assertFalse(await session_socket._authorized(activity=False))
+            self.assertFalse(await session_socket._authorized())
             await asyncio.sleep(0)
             self.assertEqual(session_socket.close_code, socket.UNAVAILABLE)
+
+        asyncio.run(scenario())
+
+    def test_deadlines_the_session_cannot_tell_are_never_sent(self) -> None:
+        def unreadable(_cookies):
+            raise OSError("store unreadable")
+
+        async def scenario() -> None:
+            for deadlines in (unreadable, lambda _cookies: None):
+                session_socket = _socket(_gate(session_deadlines=deadlines))
+                session_socket._send_deadlines()
+                self.assertEqual(session_socket.outbound.queued, 0)
+            closed = _socket(_gate())
+            closed._end(1000)
+            closed._send_deadlines()
+            self.assertEqual(closed.outbound.queued, 0)
+
+        asyncio.run(scenario())
+
+    def test_activity_the_session_can_no_longer_renew_closes_the_socket(self) -> None:
+        async def scenario() -> None:
+            for renew, code in (
+                (mock.AsyncMock(return_value=False), socket.SIGNED_OUT),
+                (mock.AsyncMock(side_effect=OSError), socket.UNAVAILABLE),
+            ):
+                session_socket = _socket(_gate(renew_session=renew))
+                with (
+                    mock.patch.object(budget, "RENEWALS", budget.SessionRenewals(30.0)),
+                    mock.patch.object(budget, "CALL_BUDGET", budget.SessionBudget(10)),
+                ):
+                    await session_socket._activity({"type": "activity"})
+                self.assertEqual(session_socket.close_code, code)
 
         asyncio.run(scenario())
 
@@ -196,10 +230,10 @@ class SessionSocketCheckTests(unittest.TestCase):
         def remaining(_cookies):
             if len(checks) == 1:
                 raise OSError("store unreadable")
-            return 0.0
+            return (0.0, 60.0)
 
         async def scenario() -> None:
-            session_socket = _socket(_gate(session_current=current, session_remaining=remaining))
+            session_socket = _socket(_gate(session_current=current, session_deadlines=remaining))
             await asyncio.wait_for(session_socket._expire(), timeout=2)
             await asyncio.sleep(0)
             self.assertEqual((len(checks), session_socket.close_code), (3, registry.SIGNED_OUT))
@@ -252,6 +286,7 @@ class WatcherReadTests(unittest.TestCase):
             lambda _topic: True,
             mock.AsyncMock(return_value=True),
             contextlib.nullcontext,
+            lambda: None,
         )
         watching = watcher.Watcher({"teams": watcher.Watched(60.0, failing)})
 
