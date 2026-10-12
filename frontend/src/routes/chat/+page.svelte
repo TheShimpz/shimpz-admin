@@ -1491,12 +1491,13 @@
       }
       resetProgress();
     };
-    // The session socket dropped: nothing of the turn stays live, and the channel attaches again when it reopens.
-    active.onclose = () => {
+    // The session socket dropped: nothing of the turn stays live, and the channel attaches again when it reopens. The
+    // shell alone says that Admin reconnects; only an attach Admin refused while the socket stays open is the chat's own.
+    active.onclose = (event) => {
       if (socket !== active || chatTeamId !== expectedTeamId) return;
       resetConnection();
       socket = active;
-      setError(copy.disconnected);
+      if (event?.code === 1011 && $adminSocket.phase === 'open') setError(copy.connectionFailed);
     };
   }
 

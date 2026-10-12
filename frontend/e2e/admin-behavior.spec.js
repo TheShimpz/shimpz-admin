@@ -2553,7 +2553,7 @@ test('a chat socket that opens and is closed again keeps backing off and then re
   });
   await freezeClock(page);
   await page.goto('/chat/?team=marketing');
-  const interrupted = page.getByText('The secure chat connection was interrupted. Reconnecting…');
+  const interrupted = page.getByText(messages.en.shell.reconnecting);
   const failed = page.getByText('The secure chat connection could not be established. Refresh this page to try again.');
   // Each step waits until the page saw the close, then runs its clock past the longest backoff.
   for (let step = 0; step < 40; step += 1) {
@@ -2666,8 +2666,10 @@ test('keeps reconnecting while Admin restarts for a release and recovers without
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await fillWhenReady(page, composer, 'List my DNS zones');
   await page.getByRole('button', { name: 'Send' }).click();
-  const reconnecting = page.getByText('The secure chat connection was interrupted. Reconnecting…');
+  // One condition, one message: the shell says that Admin reconnects, and the chat adds no notice of its own.
+  const reconnecting = page.getByText(messages.en.shell.reconnecting);
   await expect(reconnecting).toBeVisible();
+  await expect(page.getByText(messages.en.chatPage.disconnected)).toHaveCount(0);
 
   // Each probe advances virtual time one second through the app's growing reconnect delays (about 22 s over six
   // refusals); probing every 100 ms of real time, instead of backing off to a second between probes, lets those
@@ -2736,7 +2738,7 @@ test('resumes one prior capability objective after reconnect and installs its As
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await composer.fill('Lista minhas zonas DNS no Cloudflare');
   await page.getByRole('button', { name: 'Send' }).click();
-  await expect(page.getByText('The secure chat connection was interrupted. Reconnecting…')).toBeVisible();
+  await expect(page.getByText(messages.en.shell.reconnecting)).toBeVisible();
   await page.clock.runFor(1_000);
   await expect(composer).toBeEnabled();
 

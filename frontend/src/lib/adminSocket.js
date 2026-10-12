@@ -493,13 +493,14 @@ async function closed(socket, code) {
   clearTimeout(stableTimer);
   forgetSubscriptions();
   rejectPending(unavailable());
+  // A channel hears of the drop once the shell already shows that it reconnects, so a page never says it twice.
+  if (code !== SIGNED_OUT) setPhase('reconnecting');
   for (const channel of channels.values()) channel.dropped(code);
   // 4401 is Admin saying the session ended: every protected cache is cleared by the signed-out flow at once.
   if (code === SIGNED_OUT) {
     endSession();
     return;
   }
-  setPhase('reconnecting');
   // A refusal before the upgrade reaches the browser only as a failed connection, so every other close asks.
   const out = await signedOut();
   if (current !== generation || !options) return;
