@@ -451,7 +451,8 @@ class SessionMethodAnswerTests(SessionMethodCase):
         self.assertEqual(result["status"], 400)
         result = self._answers("assistants.summary", {**SAMPLES["assistants.summary"], "locale": "it"})
         self.assertEqual((result["status"], result["body"]), (422, {"detail": "Assistant summary locale is invalid"}))
-        result = self._answers("store.catalog", {"locale": "en", "cursor": "not-a-cursor"})
+        with mock.patch.object(self.methods.chat_assets.store_catalog.CATALOG, "get", return_value=()):
+            result = self._answers("store.catalog", {"locale": "en", "cursor": "not-a-cursor"})
         self.assertEqual((result["status"], result["body"]), (400, {"detail": "Assistant catalog cursor is invalid"}))
         self.assertEqual(self._answers("models.remove", {"provider": "unknown-provider"})["status"], 400)
         with mock.patch.object(self.methods.decision, "status", return_value={"configured": False}):
