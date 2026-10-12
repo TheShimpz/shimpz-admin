@@ -185,6 +185,7 @@
   let oauthFailedOnReturn = false;
   let composerInput = $state();
   let chatRoute = $state();
+  let inventoryRetry = $state();
   // Whether the focus was last inside this chat (or the chat was just opened); only then may it return to the composer.
   let chatOwnsFocus = true;
   let stopButton = $state();
@@ -1035,8 +1036,15 @@
     if (keySelection === selection) void focusComposer();
   }
 
-  function retryInventory() {
-    refreshTeamInventory(fetch).catch(() => {});
+  // The Retry leaves while the inventory is read, so the focus it held comes back: to the Retry when the read fails
+  // again, to the composer once it succeeds.
+  async function retryInventory() {
+    await refreshTeamInventory(fetch).catch(() => {});
+    await tick();
+    const focused = document.activeElement;
+    if (focused && focused !== document.body) return;
+    if ($teamContext.inventory === 'ready') void focusComposer();
+    else inventoryRetry?.focus();
   }
 
   function retryBrain() {
@@ -2545,6 +2553,7 @@
             {#if visibleErrorDetail}<code>{copy.technicalDetail}: {visibleErrorDetail}</code>{/if}
             {#if inventoryFailed}
               <Button
+                bind:element={inventoryRetry}
                 variant="secondary"
                 size="compact"
                 type="button"

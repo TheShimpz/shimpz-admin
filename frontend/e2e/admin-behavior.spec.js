@@ -4641,14 +4641,18 @@ test('a Team inventory that could not be read holds sending until it is read aga
   await composer.fill('Hello');
   await expect(send).toBeDisabled();
 
+  // The Retry leaves while the inventory is read; a read that fails again returns the focus to it, and one that
+  // succeeds hands the focus to the composer.
   failInventory = true;
   await retry.click();
   await expect(retry).toBeEnabled();
+  await expect(retry).toBeFocused();
   await expect(send).toBeDisabled();
   failInventory = false;
-  await retry.click();
+  await page.keyboard.press('Enter');
   await expect(retry).toHaveCount(0);
   await expect(send).toBeEnabled();
+  await expect(composer).toBeFocused();
 });
 
 test.describe('Team order', () => {
