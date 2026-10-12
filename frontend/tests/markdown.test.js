@@ -23,6 +23,21 @@ test('reads backslash escapes inside bold, emphasis, and link labels', () => {
   assert.equal(parseInline('**a\\** b').some((token) => token.type === 'strong'), false);
 });
 
+test('a link destination keeps its balanced parentheses and ends at its own closing one', () => {
+  assert.deepEqual(parseInline('See [Foo](https://en.wikipedia.org/wiki/Foo_(bar)) now'), [
+    { type: 'text', text: 'See ' },
+    { type: 'link', text: 'Foo', href: 'https://en.wikipedia.org/wiki/Foo_(bar)', host: 'en.wikipedia.org' },
+    { type: 'text', text: ' now' },
+  ]);
+  assert.deepEqual(parseInline('([docs](https://example.com/a))'), [
+    { type: 'text', text: '(' },
+    { type: 'link', text: 'docs', href: 'https://example.com/a', host: 'example.com' },
+    { type: 'text', text: ')' },
+  ]);
+  // A destination whose parentheses never balance is no link.
+  assert.deepEqual(parseInline('[a](https://example.com/(b'), [{ type: 'text', text: '[a](https://example.com/(b' }]);
+});
+
 test('parses the small supported Markdown surface into a closed AST', () => {
   const blocks = parseMarkdown(`# Weather Guide
 

@@ -65,6 +65,20 @@ function spellsAddress(plain, url) {
 }
 
 /** Parse a deliberately small inline Markdown subset into text-only display tokens. */
+// Where a link destination ends: its first `)` outside balanced parentheses (a URL such as
+// https://en.wikipedia.org/wiki/Foo_(bar) keeps its own), or -1 when it never closes.
+function destinationEnd(input, start) {
+  let depth = 0;
+  for (let index = start; index < input.length; index += 1) {
+    if (input[index] === '(') depth += 1;
+    else if (input[index] === ')') {
+      if (depth === 0) return index;
+      depth -= 1;
+    }
+  }
+  return -1;
+}
+
 export function parseInline(source) {
   const input = String(source ?? '');
   const tokens = [];
@@ -110,7 +124,7 @@ export function parseInline(source) {
 
     if (input[cursor] === '[') {
       const labelEnd = input.indexOf('](', cursor + 1);
-      const hrefEnd = labelEnd === -1 ? -1 : input.indexOf(')', labelEnd + 2);
+      const hrefEnd = labelEnd === -1 ? -1 : destinationEnd(input, labelEnd + 2);
       if (labelEnd > cursor + 1 && hrefEnd > labelEnd + 2) {
         const label = unescapeInline(input.slice(cursor + 1, labelEnd));
         const url = safeLink(input.slice(labelEnd + 2, hrefEnd).trim());
