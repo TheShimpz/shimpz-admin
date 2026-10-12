@@ -65,10 +65,10 @@ SAMPLES = {
     "snapshots.summary": {"image_id": IMAGE, "locale": "en"},
     "snapshots.details": {"image_id": IMAGE, "locale": "en"},
     "models.list": {},
-    "models.save": {"provider": "openai", "body": {"api_key": "test-api-key"}},
+    "models.save": {"provider": "openai", "body": {"api_key": "test-api-key-for-models"}},
     "models.remove": {"provider": "openai"},
     "decision.read": {},
-    "decision.save": {"body": {"api_key": "test-api-key"}},
+    "decision.save": {"body": {"api_key": "test-api-key-for-models"}},
     "decision.remove": {},
     "integrations.list": {"team_id": "team_1"},
     "integrations.authorize": {"team_id": "team_1", "challenge_id": CHALLENGE, "body": PAIR},
@@ -387,6 +387,70 @@ class SessionMethodTopicTests(SessionMethodCase):
                 result, raised = asyncio.run(self._changed_by(method, SAMPLES[method], topics))
                 self.assertNotEqual(result["status"], 200)
                 self.assertEqual(raised, set())
+
+    def test_every_key_save_and_removal_raises_its_space_topic_when_it_completes(self) -> None:
+        models = self.methods.models
+        for method, topic in (
+            ("models.save", "space/models"),
+            ("models.remove", "space/models"),
+            ("decision.save", "space/decision"),
+            ("decision.remove", "space/decision"),
+        ):
+            params = SAMPLES[method]
+            with (
+                self.subTest(method=method),
+                mock.patch.object(models, "probe_status", return_value=200),
+                mock.patch.object(models, "_validate_api_key"),
+            ):
+                result, raised = asyncio.run(self._changed_by(method, params, ["space/models", "space/decision"]))
+            self.assertEqual((result["status"], raised), (200, {topic}))
+        # Removing a key that is already gone changes nothing, so it raises nothing.
+        for method in ("models.remove", "decision.remove"):
+            with self.subTest(method=method, absent=True):
+                result, raised = asyncio.run(
+                    self._changed_by(method, SAMPLES[method], ["space/models", "space/decision"])
+                )
+            self.assertEqual((result["status"], raised), (200, set()))
+
+    def test_a_key_save_that_completes_after_its_socket_dropped_tells_the_reopened_socket(self) -> None:
+        import threading
+
+        started = threading.Event()
+        release = threading.Event()
+        real = self.methods.models.configure
+
+        def slow(provider, api_key):
+            started.set()
+            release.wait(5)
+            return real(provider, api_key)
+
+        async def scenario() -> dict:
+            first = await self._connect()
+            await first.call("models.save", SAMPLES["models.save"])
+            await chat_socket_fixtures.wait_for_thread(started)
+            await first.disconnect()
+            # The page reopens and reads the providers while the save still runs on its lane worker.
+            reopened = await self._connect()
+            await reopened.result("subscribe", {"topics": ["space/models"]})
+            before = await reopened.result("models.list", {})
+            release.set()
+            changed = await reopened.next_frame()
+            after = await reopened.result("models.list", {})
+            await reopened.disconnect()
+            return {"before": before, "changed": changed, "after": after}
+
+        with (
+            mock.patch.object(self.methods.models, "configure", side_effect=slow),
+            mock.patch.object(self.methods.models, "_validate_api_key"),
+        ):
+            frames = asyncio.run(scenario())
+        configured = {entry["id"]: entry["configured"] for entry in frames["after"]["body"]["providers"]}
+        self.assertFalse(
+            {entry["id"]: entry["configured"] for entry in frames["before"]["body"]["providers"]}["openai"]
+        )
+        self.assertEqual((frames["changed"]["type"], frames["changed"]["topic"]), ("changed", "space/models"))
+        self.assertTrue(configured["openai"])
+        self.assertEqual(frames["after"]["topic"], "space/models")
 
     def test_a_created_team_raises_the_team_list(self) -> None:
         created = self.team.TeamResponse(

@@ -807,6 +807,8 @@ def set_model_api_key(provider, api_key):
         }
 
     _mutate(set_key)
+    # Keys are the Space's: every page that shows a provider hears of the change, whichever page made it.
+    topics.changed("space/models")
 
 
 def delete_model_api_key(provider):
@@ -818,7 +820,10 @@ def delete_model_api_key(provider):
             raise RuntimeError(f"admin store {STORE_PATH} has invalid model credentials")
         return records.pop(provider, None) is not None
 
-    return bool(_mutate(delete_key, bool))
+    deleted = bool(_mutate(delete_key, bool))
+    if deleted:
+        topics.changed("space/models")
+    return deleted
 
 
 def decision_credential() -> dict[str, object] | None:
@@ -836,8 +841,10 @@ def set_decision_api_key(api_key: str) -> None:
         data["decision_credential"] = {"api_key": api_key, "verified_at": int(time.time())}
 
     _mutate(set_key)
+    topics.changed("space/decision")
 
 
 def delete_decision_api_key() -> None:
     """Delete the TypeSafe key without disturbing model keys or the Admin session."""
-    _mutate(lambda data: data.pop("decision_credential", None))
+    if _mutate(lambda data: data.pop("decision_credential", None) is not None, bool):
+        topics.changed("space/decision")

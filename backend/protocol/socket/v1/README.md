@@ -32,7 +32,8 @@ envelope included, at most 1 MiB.
   `team_id`, after `chat.attach {team_id, locale}`.
 
 Topics in this version: `teams`, `team/{id}/history`, `team/{id}/routines`, `team/{id}/inventory`,
-`team/{id}/inference`, `assistants/registry`, `local-assistants`, `space/resources`, `platform/release`,
+`team/{id}/inference`, `assistants/registry`, `local-assistants`, `space/resources`, `space/models` (model provider
+keys), `space/decision` (the decision provider key), `platform/release`,
 `security/summary`, and `session`.
 
 `store.catalog {locale, cursor?}` reads the public Store catalog in pages: each page's Assistants fit one result
