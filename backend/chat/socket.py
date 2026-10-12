@@ -845,10 +845,14 @@ class Channel:
         except WebSocketDisconnect:
             self.connection.closed = True
 
-    async def close(self) -> None:
-        """Stop the channel and every operation it runs, as a closed v7 socket did."""
+    def halt(self) -> None:
+        """Dispatch nothing more, at once: no waiting frame starts once the channel's socket is closing."""
         self.connection.closed = True
         self._task.cancel()
+
+    async def close(self) -> None:
+        """Stop the channel and every operation it runs, as a closed v7 socket did."""
+        self.halt()
         await asyncio.gather(self._task, return_exceptions=True)
         try:
             with self._scope():

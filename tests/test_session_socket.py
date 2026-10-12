@@ -908,6 +908,45 @@ class SessionSocketWaitingTests(SessionSocketCase):
         asyncio.run(scenario())
 
 
+class SessionSocketHaltTests(SessionSocketCase):
+    def test_a_closing_socket_dispatches_no_waiting_chat_frame_even_while_its_close_is_slow(self) -> None:
+        dispatched = []
+        release = asyncio.Event()
+
+        async def dispatch(_transport, _connection, _team_id, frame, _authenticate):
+            dispatched.append(frame["type"])
+            if len(dispatched) == 1:
+                await release.wait()
+
+        async def scenario() -> None:
+            websocket = await self._open()
+            socket = next(listener.__self__ for listener in self.topics._listeners)
+            close = socket.websocket.close
+            closing = asyncio.Event()
+
+            async def slow_close(*args, **kwargs):
+                closing.set()
+                await asyncio.sleep(0.3)
+                await close(*args, **kwargs)
+
+            with (
+                mock.patch.object(self.chat_socket, "_dispatch", side_effect=dispatch),
+                mock.patch.object(socket.websocket, "close", side_effect=slow_close),
+            ):
+                await websocket.send_json({"type": "stop"})
+                await websocket.send_json({"type": "stop"})
+                await asyncio.sleep(0.1)
+                await asyncio.to_thread(self.admin_app.state.revoke_sessions_for_logout, self.token)
+                await closing.wait()
+                release.set()
+                self.assertEqual(await self._closed(websocket), 4401)
+                await websocket.finish()
+            # The frame that was dispatching ends; the one waiting behind it never starts.
+            self.assertEqual(dispatched, ["stop"])
+
+        asyncio.run(scenario())
+
+
 class SessionSocketAuthorityTests(SessionSocketCase):
     def test_a_chat_frame_without_current_supervisor_authority_is_refused_and_the_channel_ends_cleanly(self) -> None:
         unavailable = self.admin_app.supervisor.SupervisorAuthorityError("signing key unreadable")

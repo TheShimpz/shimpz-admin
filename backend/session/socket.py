@@ -317,13 +317,17 @@ class SessionSocket:
         self.gate.revoke_tickets(self.step_up)
         for task in (*workers, *self.calls.values()):
             task.cancel()
+        # No chat frame dispatches any more, and each channel starts stopping its work before anything waits.
+        channels = list(self.channels.values())
+        self.channels.clear()
+        for channel in channels:
+            channel.halt()
+        closing = [asyncio.create_task(channel.close()) for channel in channels]
         with contextlib.suppress(RuntimeError, OSError):
             await self.websocket.close(code=self.close_code)
         await asyncio.gather(*workers, *self.calls.values(), return_exceptions=True)
         watcher.WATCHER.refresh()
-        channels = list(self.channels.values())
-        self.channels.clear()
-        await asyncio.gather(*(channel.close() for channel in channels), *self.detaching, return_exceptions=True)
+        await asyncio.gather(*closing, *self.detaching, return_exceptions=True)
 
 
 async def serve(websocket: WebSocket, gate: Gate) -> None:
