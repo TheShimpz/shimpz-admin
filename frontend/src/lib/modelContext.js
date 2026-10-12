@@ -129,11 +129,6 @@ export function clearModelContext() {
   providersValue.reset();
 }
 
-/** The providers are read with the first Team view the shell shows; nothing needs reading ahead of it. */
-export function preloadModelProviders() {
-  return Promise.resolve();
-}
-
 // Settles with the shown Team's context once it is ready, or fails with its error; a Team view that changed meanwhile
 // fails it as changed.
 function settled(teamId) {

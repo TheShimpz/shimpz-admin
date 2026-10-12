@@ -9,7 +9,6 @@
     clearModelContext,
     loadModelContext,
     modelContext,
-    preloadModelProviders,
   } from '#lib/modelContext.js';
   import { loadTeamContext, selectTeam, teamContext } from '#lib/teamContext.js';
   import { TEAM_ID_RE } from '#lib/validate.js';
@@ -68,7 +67,6 @@
   });
 
   onMount(() => {
-    preloadModelProviders().catch(() => {});
     if ($teamContext.phase === 'idle') {
       loadTeamContext(requestedTeamId).catch(() => {});
     }

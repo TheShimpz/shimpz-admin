@@ -9,7 +9,6 @@ import {
   configureModelContext,
   loadModelContext,
   modelContext,
-  preloadModelProviders,
   selectTeamBrain,
 } from '../src/lib/modelContext.js';
 import { RETRY_FIRST_MS } from '../src/lib/synced.js';
@@ -138,7 +137,6 @@ test('a shown Team opens on the selection Admin holds once its provider has a ke
     phase: 'ready', teamId: 'marketing', providers: catalog(), provider: 'openai', model: 'gpt-6.1-sol', ready: true, error: '',
   });
   assert.deepEqual(server.methods().sort(), ['inference.read', 'models.list']);
-  assert.equal(await preloadModelProviders(), undefined);
   stop();
 });
 
