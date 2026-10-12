@@ -5,13 +5,22 @@
 import { clockTime } from './chatDays.js';
 import { isLocale } from './locales.js';
 import { parseRunUsage } from './taskUsage.js';
-import { codePointLength, isActionId, isAssistantId, isIdentifier, isInstant, jsonObject, TEAM_ID_RE } from './validate.js';
+import {
+  codePointLength,
+  DIGEST_RE,
+  isActionId,
+  isAssistantId,
+  isIdentifier,
+  isInstant,
+  jsonObject,
+  OPAQUE_ID_RE,
+  TEAM_ID_RE,
+} from './validate.js';
 
 const ENCODER = new TextEncoder();
 
 const MAX_ASSISTANTS = 16;
 const FORBIDDEN_RE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\u2028\u2029]/u;
-const ID_RE = /^[0-9a-f]{32}$/;
 const TIME_RE = /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/;
 const TIMEZONE_RE = /^[A-Za-z][A-Za-z0-9_+-]{0,31}(?:\/[A-Za-z0-9][A-Za-z0-9_+-]{0,31}){0,2}$/;
 const SCHEDULE_FIELDS = {
@@ -97,7 +106,6 @@ function isAssistants(value, minimum) {
   );
 }
 
-const NONCE_RE = /^[0-9a-f]{32}$/;
 const MAX_ROUTINES = 8;
 // The unresolved incidents a Team holds at most (ADR-0092); each settles through its recovery card.
 const MAX_INCIDENTS = 32;
@@ -146,7 +154,7 @@ export function parseRoutineView(value) {
   ];
   return view(value, keys, (item) =>
     typeof item.routine_id === 'string' &&
-    ID_RE.test(item.routine_id) &&
+    OPAQUE_ID_RE.test(item.routine_id) &&
     isName(item.name) &&
     isSummary(item.plan) &&
     isDisposition(item.output, item.plan.steps) &&
@@ -173,7 +181,6 @@ const MAX_PAGE_STEPS = 64;
 const MAX_PAGE_BYTES = 96 * 1024;
 // A plan summary names its Actions as runs of consecutive equal Actions, at most this many.
 const MAX_SUMMARY_RUNS = 16;
-const PLAN_DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
 const POINTER_RE = /^(?:\/(?:[^/~]|~[01])*)*$/;
 const CLOCK_FORMATS = ['date'];
 const PLAN_UNSAFE_RE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/u;
@@ -270,7 +277,7 @@ export function isSummary(value) {
   const { actions: runs, more, steps: total } = value;
   return (
     whole(value.revision, 1, 2 ** 31 - 1) &&
-    typeof value.plan_digest === 'string' && PLAN_DIGEST_RE.test(value.plan_digest) &&
+    typeof value.plan_digest === 'string' && DIGEST_RE.test(value.plan_digest) &&
     whole(total, 1, MAX_ROUTINE_STEPS) &&
     Array.isArray(runs) && runs.length > 0 && runs.length <= MAX_SUMMARY_RUNS &&
     runs.every((run) => Array.isArray(run) && run.length === 3 && isAssistantId(run[0]) && isActionId(run[1]) &&
@@ -334,7 +341,6 @@ const RUN_STEP_STATUSES = ['done', 'recovered', 'failed', 'stopped', 'waiting'];
 const RUN_STEP_GAPS = ['not_run', 'unavailable'];
 const RUN_INPUT_SOURCES = ['literal', 'run_clock', 'step_output'];
 const RUN_STEP_KEYS = ['position', 'status', 'assistant_id', 'action', 'attempt', 'duration_ms', 'recorded_at', 'inputs'];
-const SNAPSHOT_RE = /^[0-9a-f]{32}$/;
 
 function isRunInput(value) {
   return exact(value, ['member', 'source', 'value']) && plain(value.member, 128) &&
@@ -403,9 +409,9 @@ export function pageBinding(page) {
 function isBinding(value) {
   if (!exact(value, ['routine_id', 'revision', 'plan_digest', 'total'])) return false;
   const { routine_id: routineId, revision, plan_digest: digest, total } = value;
-  const known = whole(revision, 1, 2 ** 31 - 1) && typeof digest === 'string' && PLAN_DIGEST_RE.test(digest) &&
+  const known = whole(revision, 1, 2 ** 31 - 1) && typeof digest === 'string' && DIGEST_RE.test(digest) &&
     whole(total, 1, MAX_ROUTINE_STEPS);
-  return typeof routineId === 'string' && ID_RE.test(routineId) &&
+  return typeof routineId === 'string' && OPAQUE_ID_RE.test(routineId) &&
     (known || (revision === null && digest === null && total === null));
 }
 
@@ -415,7 +421,7 @@ function isBinding(value) {
  * admitted only for exactly that snapshot, and Team refuses one whose records changed since (`routine-run-changed`).
  */
 export async function readRunSteps(call, teamId, runId, binding, snapshot, offset) {
-  if (!isBinding(binding) || (snapshot !== 'latest' && (typeof snapshot !== 'string' || !SNAPSHOT_RE.test(snapshot)))) {
+  if (!isBinding(binding) || (snapshot !== 'latest' && (typeof snapshot !== 'string' || !OPAQUE_ID_RE.test(snapshot)))) {
     throw new RoutineError('routine-request-invalid');
   }
   const body = await request(call, 'routines.run_steps', {
@@ -432,9 +438,9 @@ export async function readRunSteps(call, teamId, runId, binding, snapshot, offse
     item.team_id === teamId &&
     item.run_id === runId &&
     whole(item.revision, 1, 2 ** 31 - 1) &&
-    typeof item.plan_digest === 'string' && PLAN_DIGEST_RE.test(item.plan_digest) &&
+    typeof item.plan_digest === 'string' && DIGEST_RE.test(item.plan_digest) &&
     Object.entries(binding).every(([key, expected]) => expected === null || item[key] === expected) &&
-    typeof item.snapshot === 'string' && SNAPSHOT_RE.test(item.snapshot) &&
+    typeof item.snapshot === 'string' && OPAQUE_ID_RE.test(item.snapshot) &&
     (snapshot === 'latest' || item.snapshot === snapshot) &&
     typeof item.ended === 'boolean' &&
     item.offset === offset &&
@@ -548,9 +554,9 @@ export function parseRunView(value) {
       isCallPosition(item.position, item.steps);
     return (
       typeof item.run_id === 'string' &&
-      ID_RE.test(item.run_id) &&
+      OPAQUE_ID_RE.test(item.run_id) &&
       typeof item.routine_id === 'string' &&
-      ID_RE.test(item.routine_id) &&
+      OPAQUE_ID_RE.test(item.routine_id) &&
       isInstant(item.scheduled_at) &&
       ['leased', 'frozen', 'held'].includes(item.status) &&
       (item.status === 'frozen' ? frozen : request.every((part) => part === null))
@@ -569,9 +575,9 @@ export function parseIncidentView(value) {
   const keys = ['incident_id', 'routine_id', 'name', 'created_at', 'assistant_id', 'action', 'position', 'steps'];
   return view(value, keys, (item) =>
     typeof item.incident_id === 'string' &&
-    ID_RE.test(item.incident_id) &&
+    OPAQUE_ID_RE.test(item.incident_id) &&
     typeof item.routine_id === 'string' &&
-    ID_RE.test(item.routine_id) &&
+    OPAQUE_ID_RE.test(item.routine_id) &&
     isName(item.name) &&
     isInstant(item.created_at) &&
     isHeldStep(item));
@@ -601,7 +607,7 @@ function team(teamId) {
 }
 
 function opaque(value) {
-  if (typeof value !== 'string' || !ID_RE.test(value)) throw new RoutineError('routine-request-invalid');
+  if (typeof value !== 'string' || !OPAQUE_ID_RE.test(value)) throw new RoutineError('routine-request-invalid');
   return value;
 }
 
@@ -617,7 +623,7 @@ function deleted(body, teamId, routineId = null) {
     body.team_id !== teamId ||
     typeof body.deleted !== 'boolean' ||
     typeof body.routine_id !== 'string' ||
-    !ID_RE.test(body.routine_id) ||
+    !OPAQUE_ID_RE.test(body.routine_id) ||
     (routineId !== null && body.routine_id !== routineId)
   ) {
     throw new RoutineError('routine-response-invalid');
@@ -840,7 +846,7 @@ function parseCard(body, teamId, incidentId) {
     item.team_id === teamId &&
     item.incident_id === incidentId &&
     typeof item.routine_id === 'string' &&
-    ID_RE.test(item.routine_id) &&
+    OPAQUE_ID_RE.test(item.routine_id) &&
     Number.isInteger(item.revision) &&
     item.revision >= 1 &&
     isAssistantId(item.assistant_id) &&
@@ -848,7 +854,7 @@ function parseCard(body, teamId, incidentId) {
     isCallPosition(item.position, item.steps) &&
     isCardEvidence(item) &&
     typeof item.nonce === 'string' &&
-    NONCE_RE.test(item.nonce) &&
+    OPAQUE_ID_RE.test(item.nonce) &&
     item.expires_in === 300 &&
     Array.isArray(item.choices) &&
     item.choices.length === CARD_CHOICES.length &&
@@ -863,7 +869,7 @@ export async function openRoutineCard(call, teamId, incidentId) {
 
 /** Answer an open card with Rodar; returns what Team did. Excluir is the confirmed deletion instead. */
 export async function answerRoutineCard(call, teamId, incidentId, card, choice) {
-  if (!CARD_ANSWERS.includes(choice) || typeof card?.nonce !== 'string' || !NONCE_RE.test(card.nonce)) {
+  if (!CARD_ANSWERS.includes(choice) || typeof card?.nonce !== 'string' || !OPAQUE_ID_RE.test(card.nonce)) {
     throw new RoutineError('routine-request-invalid');
   }
   const body = await request(call, 'routines.card_answer', {
@@ -1101,10 +1107,10 @@ export function parseRoutineRunEntry(value) {
     value.kind !== 'routine-run' ||
     !rule ||
     typeof value.notice_id !== 'string' ||
-    !ID_RE.test(value.notice_id) ||
+    !OPAQUE_ID_RE.test(value.notice_id) ||
     value.id !== `${value.notice_id}:routine` ||
     typeof value.routine_id !== 'string' ||
-    !ID_RE.test(value.routine_id) ||
+    !OPAQUE_ID_RE.test(value.routine_id) ||
     !isName(value.name) ||
     (value.run_id !== null && value.run_id !== value.notice_id) ||
     (value.run_id === null) !== ROUTINE_OUTCOMES.includes(value.outcome) ||
@@ -1488,9 +1494,9 @@ export function parseRoutineProposal(value) {
     if (!Array.isArray(steps) || steps.length > MAX_ROUTINE_STEPS || !exact(output, ['mode'])) return false;
     const shown = SHOWN_MODES.includes(output.mode) ? steps.length : null;
     return (
-      typeof item.proposal_id === 'string' && ID_RE.test(item.proposal_id) &&
+      typeof item.proposal_id === 'string' && OPAQUE_ID_RE.test(item.proposal_id) &&
       isInstant(item.expires_at) &&
-      (item.replaces === null || (typeof item.replaces === 'string' && ID_RE.test(item.replaces))) &&
+      (item.replaces === null || (typeof item.replaces === 'string' && OPAQUE_ID_RE.test(item.replaces))) &&
       isName(item.name) &&
       isSchedule(item.schedule) &&
       isZoned(item.timezone, item.timezone_source) &&
@@ -1653,7 +1659,7 @@ function answered(body, teamId, proposalId, statuses) {
     !statuses.includes(body.status) ||
     (body.status === 'revoked'
       ? body.routine_id !== null
-      : typeof body.routine_id !== 'string' || !ID_RE.test(body.routine_id))
+      : typeof body.routine_id !== 'string' || !OPAQUE_ID_RE.test(body.routine_id))
   ) throw new RoutineError('routine-response-invalid');
   return { status: body.status, routineId: body.routine_id };
 }

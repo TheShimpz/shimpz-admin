@@ -3,6 +3,7 @@
 import { LocalApiError } from './localApi.js';
 import {
   codePointLength,
+  CONTROL_RE,
   exactKeys,
   isActionId,
   isAssistantId,
@@ -37,7 +38,6 @@ const MAX_RESTRICTED_ACTIONS_BYTES = 2048;
 
 const MEDIA_TYPE_RE = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
-const FILENAME_CONTROL_RE = /[\u0000-\u001f\u007f]/;
 const TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000e-\u001f\u007f]/;
 const UTF8_BOM = [0xef, 0xbb, 0xbf];
 const encoder = new TextEncoder();
@@ -136,7 +136,7 @@ function canonicalFilename(value) {
     value !== '..' &&
     !value.includes('/') &&
     !value.includes('\\') &&
-    !FILENAME_CONTROL_RE.test(value);
+    !CONTROL_RE.test(value);
 }
 
 function canonicalMediaType(value) {

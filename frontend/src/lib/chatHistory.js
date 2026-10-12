@@ -1,6 +1,6 @@
 import { parseFileReferences, parseRestrictedActions } from './attachments.js';
 import { parseClarification, renderClarification } from './clarification.js';
-import { parseRoutineReply } from './localChat.js';
+import { CHAT_TEXT_CONTROL_RE, parseRoutineReply } from './localChat.js';
 import { parseRoutineRunEntry } from './routine.js';
 import { parseTaskUsage } from './taskUsage.js';
 import { LocalApiError, safeApiError } from './localApi.js';
@@ -12,12 +12,12 @@ import {
   exactKeys,
   isInstant,
   jsonObject,
+  OPAQUE_ID_RE,
   PUBLIC_CREATOR_RE,
   SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
 } from './validate.js';
 
-const CHAT_TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const PUBLIC_TEXT_CONTROL_RE = /[\p{C}\p{Zl}\p{Zp}]/u;
 const ENTRY_ID_RE = /^([0-9a-f]{32}):(user|reply|install|uninstall|guidance|routine)$/;
 const HISTORY_CURSOR_RE = /^(?!A{11}$)[A-Za-z0-9_-]{10}[AEIMQUYcgkosw048]$/;
@@ -289,8 +289,6 @@ function historyCursor(value, status) {
   return value;
 }
 
-const ROUTINE_ID_RE = /^[0-9a-f]{32}$/;
-
 /**
  * Whether an entry belongs to the view it was read in: the chat's view holds, of a Team's Routine notices, only each
  * Routine's creation; a Routine's own view holds only that Routine's history.
@@ -311,7 +309,7 @@ export async function listChatHistory(read, teamId, before = null, { routine = n
     typeof teamId !== 'string' ||
     !TEAM_ID_RE.test(teamId) ||
     (before !== null && (typeof before !== 'string' || !HISTORY_CURSOR_RE.test(before))) ||
-    (routine !== null && (typeof routine !== 'string' || !ROUTINE_ID_RE.test(routine)))
+    (routine !== null && (typeof routine !== 'string' || !OPAQUE_ID_RE.test(routine)))
   ) throw new LocalApiError('Invalid Team chat history request.');
   const params = { team_id: teamId };
   if (before !== null) params.before = before;

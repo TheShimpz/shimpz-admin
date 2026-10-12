@@ -3,6 +3,7 @@ import {
   ASSISTANT_LIMIT_REACHED,
   codePointLength,
   CONTROL_RE,
+  DIGEST_RE,
   exactEnvelope,
   exactKeys,
   isAssistantId,
@@ -14,7 +15,7 @@ import {
   TEAM_ID_RE,
 } from './validate.js';
 import { socketReads } from './adminSocket.js';
-import { AssistantPageError, canonicalPageCopy } from './assistantPage.js';
+import { AssistantPageError, canonicalPageCopy, SUMMARY_CHARS } from './assistantPage.js';
 import { isLocale } from './locales.js';
 
 const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
@@ -27,8 +28,6 @@ const MAX_PUBLIC_ASSISTANTS = 1000;
 const MAX_CATALOG_RESTARTS = 2;
 const CATALOG_CURSOR_RE = /^[1-9][0-9]{0,3}\.[0-9a-f]{32}$/;
 // The Assistant summary is a short description of at most 80 characters, in every interface language.
-const ASSISTANT_SUMMARY_CHARS = 80;
-const SHA256_RE = /^sha256:[0-9a-f]{64}$/;
 const CREATED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const CREATOR_RE = /^@[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
 
@@ -166,15 +165,15 @@ export async function listPublicAssistantCatalog(locale, call = socketReads.call
       typeof entry.summary !== 'string' ||
       entry.summary !== entry.summary.trim() ||
       !entry.summary ||
-      codePointLength(entry.summary) > ASSISTANT_SUMMARY_CHARS ||
+      codePointLength(entry.summary) > SUMMARY_CHARS ||
       CONTROL_RE.test(entry.summary) ||
       !Array.isArray(entry.creators) ||
       entry.creators.length < 1 ||
       entry.creators.length > 16 ||
       entry.creators.some((creator) => typeof creator !== 'string' || !PUBLIC_CREATOR_RE.test(creator)) ||
       new Set(entry.creators).size !== entry.creators.length ||
-      !SHA256_RE.test(entry.source_digest) ||
-      !SHA256_RE.test(entry.icon_digest) ||
+      !DIGEST_RE.test(entry.source_digest) ||
+      !DIGEST_RE.test(entry.icon_digest) ||
       seen.has(entry.assistant_id)
     ) {
       throw new LocalApiError('The Assistant catalog is invalid.', status);
@@ -258,7 +257,7 @@ export async function installAssistant(teamId, assistantId, sourceDigest, { onPr
   if (typeof assistantId !== 'string' || assistantId.length > 80 || !ASSISTANT_ID_RE.test(assistantId)) {
     throw new LocalApiError('Invalid local Assistant request.');
   }
-  if (typeof sourceDigest !== 'string' || !SHA256_RE.test(sourceDigest)) {
+  if (typeof sourceDigest !== 'string' || !DIGEST_RE.test(sourceDigest)) {
     throw new LocalApiError('Invalid local Assistant request.');
   }
 
@@ -312,7 +311,7 @@ function unlabeledSnapshotValid(entry) {
     ]) &&
     entry.admission === 'inadmissible' &&
     isAssistantId(entry.assistant_id) &&
-    SHA256_RE.test(entry.image_id) &&
+    DIGEST_RE.test(entry.image_id) &&
     ['linux/amd64', 'linux/arm64'].includes(entry.platform) &&
     entry.provenance === 'local' &&
     entry.unpublished === true &&
@@ -376,7 +375,7 @@ export async function listLocalAssistantSnapshots(call = socketReads.call) {
       typeof entry.summary !== 'string' ||
       entry.summary !== entry.summary.trim() ||
       !entry.summary ||
-      codePointLength(entry.summary) > ASSISTANT_SUMMARY_CHARS ||
+      codePointLength(entry.summary) > SUMMARY_CHARS ||
       CONTROL_RE.test(entry.summary) ||
       !Array.isArray(entry.actions) ||
       entry.actions.length < 1 ||
@@ -397,7 +396,7 @@ export async function listLocalAssistantSnapshots(call = socketReads.call) {
       typeof entry.created_at !== 'string' ||
       !CREATED_AT_RE.test(entry.created_at) ||
       Number.isNaN(Date.parse(entry.created_at)) ||
-      !SHA256_RE.test(entry.image_id) ||
+      !DIGEST_RE.test(entry.image_id) ||
       !['linux/amd64', 'linux/arm64'].includes(entry.platform) ||
       entry.provenance !== 'local' ||
       entry.unpublished !== true ||
@@ -412,7 +411,7 @@ export async function listLocalAssistantSnapshots(call = socketReads.call) {
 
 /** Bind and run one exact unpublished snapshot in the selected Local Team; a long call, like `installAssistant`. */
 export async function installLocalAssistant(teamId, imageId, { onProgress } = {}) {
-  if (typeof teamId !== 'string' || !TEAM_ID_RE.test(teamId) || typeof imageId !== 'string' || !SHA256_RE.test(imageId)) {
+  if (typeof teamId !== 'string' || !TEAM_ID_RE.test(teamId) || typeof imageId !== 'string' || !DIGEST_RE.test(imageId)) {
     throw new LocalApiError('Invalid Local Assistant snapshot request.');
   }
   const response = await socketReads.call(

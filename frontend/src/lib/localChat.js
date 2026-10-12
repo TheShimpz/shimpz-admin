@@ -10,6 +10,7 @@ import {
   ASSISTANT_LIMIT_REACHED,
   codePointLength,
   CONTROL_RE,
+  DIGEST_RE,
   exactKeys,
   isActionId,
   isAssistantId,
@@ -21,7 +22,7 @@ import {
   TEAM_ID_RE,
 } from './validate.js';
 
-const CHAT_TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
+export const CHAT_TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const SECRET_CONTROL_RE = /[\p{C}\p{Zl}\p{Zp}]/u;
 const MAX_MESSAGE_CHARS = 16_000;
 const MAX_FILES = 8;
@@ -245,7 +246,6 @@ const MAX_MESSAGE_PARAMS = 8;
 const MAX_INTEGER_PARAM = 10 ** 15;
 const MAX_DNS_NAME_PARAM_CHARS = 253;
 const MAX_IDENTIFIER_PARAM_CHARS = 128;
-const PACK_DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
 const RENDERED_FIELD_CHARS = Object.freeze({ title: 80, description: 500, label: 80, placeholder: 120 });
 const RENDERED_OPTION_CHARS = Object.freeze({ label: 80, description: 160 });
 
@@ -1447,7 +1447,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       value.expires_in > 300 ||
       !isLocale(value.locale) ||
       typeof value.pack_digest !== 'string' ||
-      !PACK_DIGEST_RE.test(value.pack_digest)
+      !DIGEST_RE.test(value.pack_digest)
     ) throw new LocalApiError('The local chat response is invalid.');
     const request = canonicalHumanRequest(value.request);
     const storedInput = request.kind === 'input:password' && request.stored_input !== undefined;

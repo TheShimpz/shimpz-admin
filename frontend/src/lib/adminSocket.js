@@ -5,7 +5,7 @@
 // and the socket never stops reconnecting while the session lasts.
 import { derived, writable } from 'svelte/store';
 
-import { LocalApiError } from './validate.js';
+import { LocalApiError, TEAM_ID_RE } from './validate.js';
 
 // The protocol's own bounds (backend/protocol/socket/v1/frames.py), pinned by the Admin parity test.
 const ADMIN_SOCKET_PROTOCOL = 'shimpz.admin.v1';
@@ -17,7 +17,6 @@ const MAX_ATTACHED_TEAMS = 4;
 const EPOCH_RE = /^[0-9a-f]{32}$/;
 const CALL_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const TOPIC_RE = /^(?:teams|space\/(?:resources|models|decision)|platform\/release|security\/summary|session|assistants\/registry|local-assistants|team\/[a-z0-9_]{1,40}\/(?:routines|history|inventory|inference|integrations))$/;
-const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
 // The chat-channel frames a client sends; every one carries its Team's `team_id`.
 const CHAT_CLIENT_TYPES = new Set(['chat', 'resume-task', 'stop', 'sync', 'human-response']);
 // The `shimpz.chat.v7` server frames whose own shape names their Team; on every other frame `team_id` is the channel's.

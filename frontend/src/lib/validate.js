@@ -12,6 +12,8 @@ export const MAX_ASSISTANT_ID_CHARS = 40;
 export const MAX_IDENTIFIER_CHARS = 64;
 export const MAX_ACTION_ID_CHARS = 128;
 export const OPAQUE_ID_RE = /^[0-9a-f]{32}$/;
+// A content digest as Team and Developers name an image, an icon, a source, a plan, or a language pack.
+export const DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
 export const TRACE_ID_RE = OPAQUE_ID_RE;
 export const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 // Team's closed refusal of a fresh install beyond the Team's MAX_TEAM_ASSISTANTS (HTTP 409); Admin localizes it.

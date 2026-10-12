@@ -6,6 +6,7 @@ import {
   ASSISTANT_ID_RE,
   codePointLength,
   CONTROL_RE,
+  DIGEST_RE,
   exactKeys,
   jsonObject,
   PUBLIC_CREATOR_RE,
@@ -17,8 +18,6 @@ const MAX_CONCURRENT_ICONS = 2;
 const MAX_ICON_BYTES = 1024 * 1024;
 const MAX_BUSY_RETRIES = 2;
 const PUBLIC_BUSY_RETRY_MS = 50;
-const SHA256_RE = /^sha256:[0-9a-f]{64}$/;
-const MAX_SUMMARY_CHARS = 80;
 const DETAILS_KEYS = [
   'actions',
   'assistant_id',
@@ -189,7 +188,7 @@ function acceptedSummary(body, locale, status, invalid = 'The Local Assistant su
     !summary ||
     summary !== summary.trim() ||
     summary !== summary.normalize('NFC') ||
-    codePointLength(summary) > MAX_SUMMARY_CHARS ||
+    codePointLength(summary) > SUMMARY_CHARS ||
     CONTROL_RE.test(summary)
   ) {
     throw new LocalApiError(invalid, status);
@@ -291,7 +290,7 @@ export function loadLocalAssistantIcon(fetcher, imageId, options = {}) {
   const { delay = sleep, signal } = options;
   if (
     typeof fetcher !== 'function' ||
-    !SHA256_RE.test(imageId) ||
+    !DIGEST_RE.test(imageId) ||
     typeof delay !== 'function' ||
     (signal !== undefined && !(signal instanceof AbortSignal))
   ) {
@@ -311,7 +310,7 @@ export function loadPublicAssistantIcon(fetcher, assistantId, options = {}) {
     typeof assistantId !== 'string' ||
     !ASSISTANT_ID_RE.test(assistantId) ||
     typeof iconDigest !== 'string' ||
-    !SHA256_RE.test(iconDigest) ||
+    !DIGEST_RE.test(iconDigest) ||
     typeof delay !== 'function' ||
     (signal !== undefined && !(signal instanceof AbortSignal))
   ) {
@@ -327,7 +326,7 @@ export function loadPublicAssistantIcon(fetcher, assistantId, options = {}) {
 export function loadLocalAssistantSummary(imageId, locale, options = {}) {
   const { delay = sleep, signal, call = socketReads.call } = options;
   if (
-    !SHA256_RE.test(imageId) ||
+    !DIGEST_RE.test(imageId) ||
     !isLocale(locale) ||
     typeof delay !== 'function' ||
     typeof call !== 'function' ||
@@ -369,7 +368,7 @@ export function loadLocalAssistantDetails(imageId, assistantId, locale, options 
   const { delay = sleep, signal, call = socketReads.call } = options;
   if (
     typeof call !== 'function' ||
-    !SHA256_RE.test(imageId) ||
+    !DIGEST_RE.test(imageId) ||
     typeof assistantId !== 'string' ||
     !ASSISTANT_ID_RE.test(assistantId) ||
     !isLocale(locale) ||
