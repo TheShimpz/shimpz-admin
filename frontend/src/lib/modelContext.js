@@ -83,9 +83,10 @@ function compute(providersState, selectionStateNow, view) {
   );
   const shown = { ...base, providers, provider: provider.id, model: chosen.model, ready };
   if (view.saving) return { ...shown, phase: 'saving', ready: false };
+  // A refused read is shown even while an earlier value is known: what Admin holds now cannot be told.
+  if (failed) return { ...shown, phase: 'error', ready: false, error: failed.message, errorCode: failed.code ?? '' };
   if (ready) return { ...shown, phase: 'ready' };
   if (view.error) return { ...shown, phase: 'error', error: view.error, errorCode: view.errorCode };
-  if (failed) return { ...shown, phase: 'error', error: failed.message, errorCode: failed.code ?? '' };
   if (awaitingDefault(providers, selection, view)) return { ...shown, phase: 'loading' };
   return { ...shown, phase: 'ready' };
 }

@@ -336,3 +336,31 @@ test('showing the same Team again reads it again, and clearing it forgets what w
   });
   stop();
 });
+
+test('a refused selection read is shown even while an earlier selection is known', async () => {
+  const server = admin();
+  const { stop } = shown();
+  await loadModelContext('marketing');
+  assert.equal(get(modelContext).ready, true);
+  server.fail('inference.read', new LocalApiError('Team not found', 404));
+  server.announce('team/marketing/inference');
+  await flush();
+  assert.equal(get(modelContext).phase, 'error');
+  assert.equal(get(modelContext).ready, false);
+  assert.equal(get(modelContext).error, 'Team not found');
+  stop();
+});
+
+test('after the context was cleared, the next Team view reads the providers again and opens', async () => {
+  const server = admin({ selections: { marketing: { provider: 'openai', model: 'gpt-6.1-sol' }, support: { provider: 'openai', model: 'gpt-6-luna' } } });
+  const { stop } = shown();
+  await loadModelContext('marketing');
+  const before = server.methods().filter((method) => method === 'models.list').length;
+  // The last Team was deleted, and a new one is shown while the shell stays subscribed.
+  clearModelContext();
+  const context = await loadModelContext('support');
+  assert.equal(context.ready, true);
+  assert.equal(context.model, 'gpt-6-luna');
+  assert.equal(server.methods().filter((method) => method === 'models.list').length, before + 1);
+  stop();
+});

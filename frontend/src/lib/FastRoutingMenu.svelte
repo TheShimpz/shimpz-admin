@@ -27,11 +27,12 @@
 
   let copy = $derived($t('brainMenu').fast);
   let fast = $derived({
+    // A refused read is shown even while an earlier state is known.
     phase: changing
       ? 'saving'
-      : $decisionProvider.value
-        ? 'ready'
-        : $decisionProvider.status === 'error' ? 'unavailable' : 'loading',
+      : $decisionProvider.status === 'error'
+        ? 'unavailable'
+        : $decisionProvider.value ? 'ready' : 'loading',
     configured: $decisionProvider.value?.configured ?? false,
     masked: $decisionProvider.value?.masked ?? null,
     error,

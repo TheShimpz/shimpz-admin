@@ -456,3 +456,20 @@ test('a change stays disabled while Admin reconnects and is offered again once i
   refusing = false;
   await expect(install).toBeEnabled({ timeout: 20_000 });
 });
+
+test('a fast-routing key Admin refuses to read is said to be unavailable even after it was shown', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  let refused = false;
+  await routeRead(page, 'decision.read', () => (refused
+    ? { status: 404, json: { detail: 'not found' } }
+    : { status: 200, json: { provider: 'typesafe', configured: true, masked: '••••word' } }));
+  await page.goto('/chat/?team=marketing');
+  const trigger = page.getByRole('button', { name: /^Fast routing \(Jev\)/ });
+  await expect(trigger).toHaveAccessibleName(/••••word/);
+  refused = true;
+  await raiseTopic(page, 'space/decision');
+  await trigger.click();
+  const fast = page.getByRole('dialog', { name: 'Fast routing (Jev)' });
+  await expect(fast.getByRole('status')).toHaveText(messages.en.brainMenu.fast.unavailable);
+  await expect(trigger).not.toHaveAccessibleName(/••••word/);
+});
