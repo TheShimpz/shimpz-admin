@@ -1,5 +1,6 @@
 """Security contracts for local model API keys: masked status, validated saves, and no route that resolves a key."""
 
+import importlib
 import sys
 import unittest
 from pathlib import Path
@@ -18,6 +19,7 @@ class ModelProviderOperationTests(unittest.TestCase):
         root = app_import.temporary_root(cls)
         cls.admin_app = app_import.load_app(root)
         cls.models = __import__("models")
+        cls.methods = importlib.import_module("session.methods")
 
     def test_no_route_resolves_or_returns_a_model_key(self) -> None:
         routes = app_import.route_methods(self.admin_app)
@@ -31,7 +33,7 @@ class ModelProviderOperationTests(unittest.TestCase):
         secret = "sk-test-" + str(123456789).zfill(10)
         expected = {"id": "openai", "configured": True}
         with mock.patch.object(self.models, "configure", return_value=expected) as configure:
-            self.assertEqual(self.models.save("openai", {"api_key": secret}), expected)
+            self.assertEqual(self.methods.save_model_key("openai", {"api_key": secret}), expected)
         configure.assert_called_once_with("openai", secret)
 
     def test_a_save_maps_rejection_and_unavailability_without_disclosing_the_key(self) -> None:
@@ -46,7 +48,7 @@ class ModelProviderOperationTests(unittest.TestCase):
                 mock.patch.object(self.models, "configure", side_effect=error),
                 self.assertRaises(HTTPException) as caught,
             ):
-                self.models.save("openai", {"api_key": secret})
+                self.methods.save_model_key("openai", {"api_key": secret})
             self.assertEqual(caught.exception.status_code, expected_status)
             self.assertNotIn(secret, caught.exception.detail)
 
@@ -57,13 +59,13 @@ class ModelProviderOperationTests(unittest.TestCase):
                 mock.patch.object(self.models, "configure") as configure,
                 self.assertRaises(HTTPException) as caught,
             ):
-                self.models.save("openai", body)
+                self.methods.save_model_key("openai", body)
             self.assertEqual(caught.exception.status_code, 400)
             configure.assert_not_called()
 
     def test_a_removal_of_an_unknown_provider_is_a_bad_request(self) -> None:
         with self.assertRaises(HTTPException) as caught:
-            self.models.delete("unknown-provider")
+            self.methods.remove_model_key("unknown-provider")
         self.assertEqual(caught.exception.status_code, 400)
 
 

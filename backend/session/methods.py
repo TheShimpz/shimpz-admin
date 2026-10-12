@@ -6,6 +6,7 @@ again when its turn comes. A Team deletion confirms the Supervisor password firs
 lockout and journaled with the socket's bound Origin, exactly as its route did with the request's.
 """
 
+import sys
 from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING
 
@@ -59,6 +60,28 @@ def _team_call(owner: object, operation: str, *names: str) -> Method:
         return await lane.run(socket, handler, *(params.get(name) for name in names))
 
     return method
+
+
+# A model key the Supervisor stores: Admin validates it with its provider first. A rejected key is 400 and an
+# unreachable provider 503, as the route that saved keys answered.
+
+
+def save_model_key(provider: str, payload: dict) -> dict[str, object]:
+    if set(payload) != {"api_key"}:
+        raise HTTPException(status_code=400, detail="request body must contain only api_key")
+    try:
+        return models.configure(provider, payload["api_key"])
+    except models.ModelProviderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except models.ModelProviderUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+
+
+def remove_model_key(provider: str) -> dict[str, object]:
+    try:
+        return models.remove(provider)
+    except models.ModelProviderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 # The Space's and the session's state
@@ -196,8 +219,8 @@ METHODS: dict[str, Method] = {
     "snapshots.summary": _on_lane(team_snapshots, "local_assistant_summary", "image_id", "locale"),
     "snapshots.details": _on_lane(team_snapshots, "local_assistant_details", "image_id", "locale"),
     "models.list": _on_lane(models, "status"),
-    "models.save": _on_lane(models, "save", "provider", "body"),
-    "models.remove": _on_lane(models, "delete", "provider"),
+    "models.save": _on_lane(sys.modules[__name__], "save_model_key", "provider", "body"),
+    "models.remove": _on_lane(sys.modules[__name__], "remove_model_key", "provider"),
     "decision.read": _on_lane(decision, "status"),
     "decision.save": _on_lane(decision, "save", "body"),
     "decision.remove": _on_lane(decision, "remove"),
