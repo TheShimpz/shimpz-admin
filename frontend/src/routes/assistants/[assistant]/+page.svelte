@@ -237,8 +237,9 @@
     else {
       pin.url.then((url) => {
         if (shown) iconSrc = url;
-      }, (error) => {
-        if (shown && error?.name !== 'AbortError') iconFailed = true;
+      }, () => {
+        // An icon that failed, or whose load gave up, is unavailable while this target shows.
+        if (shown) iconFailed = true;
       });
     }
     return () => {

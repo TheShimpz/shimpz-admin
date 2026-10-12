@@ -480,3 +480,15 @@ test('this machine\'s staged Assistants are read again on their own after Team b
   await expect(catalog.getByRole('link', { name: /^Cloudflare/ })).toBeVisible({ timeout: 15_000 });
   await expect(catalog.getByRole('button', { name: messages.en.store.localRetry })).toHaveCount(0);
 });
+
+test('an icon that never arrives shows as unavailable once its load gives up', async ({ page }) => {
+  await routePage(page);
+  // The staged icon is asked for and never answered.
+  await page.route('**/api/local-assistants/*/icon', () => {});
+  await page.clock.install();
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  const icon = page.getByRole('article').locator('.shimpz-assistant-icon');
+  await expect(icon).toHaveAttribute('data-state', 'loading');
+  await page.clock.runFor(30_000);
+  await expect(icon).toHaveAttribute('data-state', 'failed');
+});
