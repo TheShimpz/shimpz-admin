@@ -198,6 +198,26 @@ class AuthRouteTests(unittest.TestCase):
             now[0] = 2 * auth.IDLE_SECONDS
             self.assertEqual(status(attended, background=False), 401)
 
+    def test_an_image_the_page_renders_never_keeps_an_idle_session_alive(self) -> None:
+        # An icon the page shows loads as the browser renders it, never as the person's own request.
+        auth = self.admin_app.auth
+        now = [0.0]
+
+        async def allowed(_request):
+            return PlainTextResponse("allowed")
+
+        def status(session: str, destination: bytes) -> int:
+            marks = (*ADMIN_PAGE, (b"sec-fetch-dest", destination))
+            request = self._request("/api/teams/team_1/assistants/a/icon", cookie=session, browser=marks)
+            return asyncio.run(through_gate(self.admin_app, request, allowed)).status_code
+
+        with mock.patch.object(auth, "SESSIONS", auth.SessionActivity(clock=lambda: now[0])):
+            session = self._cookie(self._configure("violet otter lantern quartz 92")[1], "shimpz_admin")
+            now[0] = auth.IDLE_SECONDS - 600
+            self.assertEqual(status(session, b"image"), 200)
+            now[0] = auth.IDLE_SECONDS + 1
+            self.assertEqual(status(session, b"empty"), 401)
+
     def test_another_page_on_the_site_may_read_but_never_renews_the_session(self) -> None:
         auth = self.admin_app.auth
         now = [0.0]

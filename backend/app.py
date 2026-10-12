@@ -262,14 +262,17 @@ def _session_remaining(cookies) -> float | None:
 
 
 def _supervisor_activity(request: Request) -> bool:
-    """A request from Admin's own page is Supervisor activity, except an automatic read, which marks itself background.
+    """A request from Admin's own page is Supervisor activity, except one the page makes on its own.
 
     Most automatic reads travel on the session socket as background calls; the HTTP reads the page still makes on its
-    own (a Team inventory refreshed after an install, for instance) carry `Shimpz-Activity: background`. Another page
-    on the same site may still read with the session cookie, but its requests never renew the session.
+    own (a Team inventory refreshed after an install, for instance) carry `Shimpz-Activity: background`, and an image
+    the page renders (an Assistant icon) is loaded by the browser, never asked for by the person. Another page on the
+    same site may still read with the session cookie, but its requests never renew the session.
     """
-    return request.headers.get(BACKGROUND_HEADER) != "background" and browser.from_admin_page(
-        request, _allowed_browser_origins
+    return (
+        request.headers.get(BACKGROUND_HEADER) != "background"
+        and request.headers.get("sec-fetch-dest") != "image"
+        and browser.from_admin_page(request, _allowed_browser_origins)
     )
 
 
