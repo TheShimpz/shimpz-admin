@@ -147,9 +147,10 @@
   let reading = 0;
 
   // The newest page of the Routine's own history starts the list again; its cursor reaches every older run.
-  async function readNewest(opened) {
+  // Opening the panel is the person's read; a refresh that starts the list again reads in the background.
+  async function readNewest(opened, read = call) {
     const marks = new Set();
-    const found = await routineRuns(call, teamId, routineId, { seen: marks });
+    const found = await routineRuns(read, teamId, routineId, { seen: marks });
     if (opened !== search) return;
     reading += 1;
     seen = marks;
@@ -185,7 +186,7 @@
         recent = merged;
         arrived += added;
       } else {
-        await readNewest(opened);
+        await readNewest(opened, backgroundCall);
       }
     } catch {
       // The next refresh tries again; the runs already listed stay.

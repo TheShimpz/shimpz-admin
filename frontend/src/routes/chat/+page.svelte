@@ -46,6 +46,7 @@
   import { configureModelContext, loadModelContext, modelContext } from '#lib/modelContext.js';
   import { sessionContext } from '#lib/sessionContext.js';
   import ShimpzThinking from '#lib/ShimpzThinking.svelte';
+  import { backgroundFetch } from '#lib/localApi.js';
   import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teamContext.js';
   import { ASSISTANT_LIMIT_REACHED } from '#lib/validate.js';
   import {
@@ -828,7 +829,8 @@
     const timer = setTimeout(() => controller.abort(), 2000);
     let captured = false;
     const source = `/api/teams/${encodeURIComponent(teamId)}/assistants/${encodeURIComponent(assistantId)}/icon`;
-    const promise = fetch(source, {
+    // The snapshot is the page's own read, kept for the card once the Assistant is gone: it never renews the session.
+    const promise = backgroundFetch(source, {
       cache: 'no-store',
       credentials: 'same-origin',
       signal: controller.signal,
@@ -962,8 +964,8 @@
     return incoming.state !== workingState;
   }
 
-  async function appendUninstallOutcome(incoming) {
-    const { installedAssistants } = await refreshTeamInventory(fetch);
+  async function appendUninstallOutcome(incoming, fetcher) {
+    const { installedAssistants } = await refreshTeamInventory(fetcher);
     if (
       lifecycleOutcomePending?.teamId !== incoming.team_id ||
       lifecycleOutcomePending?.proposalId !== incoming.proposal_id ||
@@ -1005,7 +1007,8 @@
   // the outcome deferred, with its error, until the chat's Retry reads the inventory again.
   let deferredUninstall = null;
 
-  function confirmUninstall(incoming) {
+  // The inventory read that confirms an uninstall is automatic, except when the person's Retry asks for it.
+  function confirmUninstall(incoming, fetcher = backgroundFetch) {
     deferredUninstall = null;
     lifecycleOutcomePending = {
       teamId: incoming.team_id,
@@ -1017,7 +1020,7 @@
       lifecycleOutcomePending?.teamId === incoming.team_id &&
       lifecycleOutcomePending?.proposalId === incoming.proposal_id
     );
-    return appendUninstallOutcome(incoming)
+    return appendUninstallOutcome(incoming, fetcher)
       .then(() => {
         if (current() && error === lifecycleMessages.refreshFailed) clearError();
       })
@@ -1090,7 +1093,7 @@
   async function retryInventory() {
     inventoryRetrying = true;
     try {
-      if (deferredUninstall?.team_id === chatTeamId) await confirmUninstall(deferredUninstall);
+      if (deferredUninstall?.team_id === chatTeamId) await confirmUninstall(deferredUninstall, fetch);
       else await refreshTeamInventory(fetch).catch(() => {});
       await tick();
     } finally {
@@ -1224,7 +1227,8 @@
     const epoch = turnEpoch;
     let installed = new Set();
     try {
-      const { installedAssistants } = await refreshTeamInventory(fetch);
+      // Admin's frame asked for this read, not the person: it never renews the session.
+      const { installedAssistants } = await refreshTeamInventory(backgroundFetch);
       installed = new Set(installedAssistants.map((assistant) => assistant.assistant));
     } catch {
       installed = new Set();
@@ -1401,7 +1405,7 @@
               for (const assistant of incoming.assistants) ids.add(assistant.id);
               turnInstalled = { teamId: chatTeamId, ids };
             }
-            void refreshTeamInventory(fetch).catch(() => undefined);
+            void refreshTeamInventory(backgroundFetch).catch(() => undefined);
             if (incoming.continuation === 'none') {
               capabilityObjective = null;
               busy = false;

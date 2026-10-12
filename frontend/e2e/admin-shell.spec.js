@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import { assistantDetails, PAGE_COPY, publicAssistant } from './assistantPages.js';
 import { accessibilityViolations } from './axe.js';
-import { raiseTopic, routeRead, routeScenario, sessionFrames } from './scenarioRoutes.js';
+import { laterCalls, raiseTopic, recordRequests, routeRead, routeScenario, sessionFrames } from './scenarioRoutes.js';
 import { recoveryCodeSet } from './securityScenarios.js';
 
 const ok = (json, status = 200) => ({ status, json });
@@ -460,6 +460,28 @@ test('reads a Team list change heard while the shell loads, and re-reads after a
   const routineLists = calls.filter((frame) => frame.method === 'routines.list');
   expect(routineLists.some((frame) => frame.params.team_id === 'research')).toBe(true);
   expect(routineLists.filter((frame) => frame.background !== true)).toEqual([]);
+});
+
+test('a selected Team removed elsewhere reloads the Team context without renewing the session', async ({ page }) => {
+  const scenario = await routeScenario(page);
+  const listed = (await scenario.call('teams.list', {})).json.teams;
+  let removed = false;
+  await routeRead(page, 'teams.list', () => (
+    removed ? ok({ teams: listed.filter((team) => team.team_id !== 'marketing') }) : undefined
+  ));
+  await page.goto('/chat/?team=marketing');
+  const navigation = page.locator('.shell-sidebar');
+  await expect(navigation.getByRole('link', { name: 'Marketing', exact: true })).toBeVisible();
+  await expect.poll(() => scenario.sessions.some((session) => session.subscribed('teams'))).toBe(true);
+
+  // Another tab deleted Marketing: the whole context loads again, and every read that causes is automatic.
+  const requests = recordRequests(page);
+  removed = true;
+  await raiseTopic(page, 'teams');
+  await expect(navigation.getByRole('link', { name: 'Marketing', exact: true })).toHaveCount(0);
+  await expect.poll(() => requests.length).toBeGreaterThan(0);
+  expect(requests.map((request) => request.background)).not.toContain(false);
+  expect(await laterCalls(page, 'teams.list')).not.toContain(false);
 });
 
 test('reads the Local release status at open and when Admin says it changed, never on a timer', async ({ page }) => {

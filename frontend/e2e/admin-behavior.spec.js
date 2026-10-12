@@ -9,8 +9,10 @@ import { accessibilityViolations } from './axe.js';
 import { localizedChallenge } from './localizedRequest.js';
 
 import {
+  laterCalls,
   raiseTopic,
   readsOf,
+  recordRequests,
   routeChat,
   routeConnect,
   routeRead,
@@ -2462,6 +2464,7 @@ test('a message after an install waits for the Team inventory and names the inst
     assistantPlanContinuation: 'none',
     holdPostInstallInventory: true,
   });
+  const requests = recordRequests(page);
   await page.goto('/chat/');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await fillWhenReady(page, composer, 'Install Cloudflare and WhatsApp');
@@ -2485,6 +2488,10 @@ test('a message after an install waits for the Team inventory and names the inst
     message: 'List my zones',
     assistant_ids: ['shimpz-cloudflare', 'whatsapp'],
   });
+  // The inventory read the install caused is automatic: it never renews the session.
+  const inventory = requests.filter((request) => request.path === '/api/teams/marketing/assistants');
+  expect(inventory.length).toBeGreaterThan(1);
+  expect(inventory.slice(1).map((request) => request.background)).not.toContain(false);
 });
 
 test('a chat socket that opens and is closed again keeps backing off and then reports the failure', async ({ page }) => {
@@ -2580,6 +2587,7 @@ test('does not trust an install-only plan for a later request from an Assistant 
     humanAssistantId: 'whatsapp',
     omitPlannedWhatsappFromInventory: true,
   });
+  const requests = recordRequests(page);
   await page.goto('/chat/');
 
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -2595,6 +2603,10 @@ test('does not trust an install-only plan for a later request from an Assistant 
 
   await expect(page.getByText('The secure chat response was invalid.')).toBeVisible();
   await expect(page.getByRole('dialog')).toHaveCount(0);
+  // The inventory reads the install and the Assistant's request caused are automatic: none renews the session.
+  const inventory = requests.filter((request) => request.path === '/api/teams/marketing/assistants');
+  expect(inventory.length).toBeGreaterThan(2);
+  expect(inventory.slice(1).map((request) => request.background)).not.toContain(false);
 });
 
 test('keeps reconnecting while Admin restarts for a release and recovers without a refresh', { tag: '@slow' }, async ({ page }) => {
@@ -2805,6 +2817,7 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
     holdAssistantUninstall: true,
     holdAssistantInventoryRefresh: true,
   });
+  const requests = recordRequests(page);
   // The page's own clock decides when an icon snapshot gives up (2 s), never how fast this runner acts.
   await freezeClock(page);
   await page.goto('/chat/');
@@ -2861,6 +2874,12 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
   chat.releaseAssistantInventory();
   await expect(task.locator('img')).toHaveAttribute('src', /^data:image\/png;base64,/);
   const completedIcon = await task.locator('img').getAttribute('src');
+  // The icon snapshots and the inventory read the uninstall caused are automatic: none renews the session.
+  const automatic = requests.filter((request) => (
+    request.path.endsWith('/icon') || request.path === '/api/teams/marketing/assistants'
+  )).slice(1);
+  expect(automatic.filter((request) => request.path.endsWith('/icon')).length).toBeGreaterThan(0);
+  expect(automatic.map((request) => request.background)).not.toContain(false);
   expect(await page.evaluate(async () => (
     await fetch('/api/teams/marketing/assistants/shimpz-cloudflare/icon')
   ).status)).toBe(404);
@@ -6563,6 +6582,10 @@ test.describe('Team Routines', () => {
       }
       await expect.poll(listed).toEqual(everyRun());
     }
+    // Opening the panel read its newest runs; every newest-page reading a refresh started again is automatic.
+    const newest = await laterCalls(page, 'history.page', (params) => params.routine && !params.before);
+    expect(newest.length).toBeGreaterThan(1);
+    expect(newest).not.toContain(false);
   });
 
   test("an older search that a newer reading of the panel's history overtook never hides that reading", async ({ page }, testInfo) => {

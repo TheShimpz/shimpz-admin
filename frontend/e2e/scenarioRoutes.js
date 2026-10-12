@@ -118,6 +118,32 @@ export async function raiseTopic(page, topic) {
   for (const session of (await sessionMock(page)).sessions) session.changed(topic);
 }
 
+/**
+ * Every API request the page's own scripts send from now on, in order: its method, its path, and whether it marked
+ * itself an automatic read (`Shimpz-Activity: background`), which never renews the session.
+ */
+export function recordRequests(page) {
+  const requests = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (!url.pathname.startsWith('/api/') || !['fetch', 'xhr'].includes(request.resourceType())) return;
+    requests.push({
+      method: request.method(),
+      path: url.pathname,
+      background: request.headers()['shimpz-activity'] === 'background',
+    });
+  });
+  return requests;
+}
+
+/** The session socket calls the page made after its first `skip` calls of `method`, and whether each was automatic. */
+export async function laterCalls(page, method, matches = () => true, skip = 1) {
+  const calls = (await sessionFrames(page)).filter((frame) => (
+    frame.type === 'call' && frame.method === method && matches(frame.params)
+  ));
+  return calls.slice(skip).map((frame) => frame.background === true);
+}
+
 /** The client frames the page's session sockets received, in order. */
 export async function sessionFrames(page) {
   return (await sessionMock(page)).sessions.flatMap((session) => session.frames);

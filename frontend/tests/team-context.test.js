@@ -1143,6 +1143,23 @@ test('a Team list change announced while the context loads is read once the load
   assert.equal(lists.length, 3);
 });
 
+test('a list re-read that finds the selected Team gone reloads the context with automatic reads only', async () => {
+  let teams = THREE_TEAMS;
+  const requests = [];
+  const { fetcher } = heldOrderFetcher({ list: () => teams });
+  const recorded = async (url, options = {}) => {
+    requests.push({ url, background: new Headers(options.headers).get('Shimpz-Activity') === 'background' || options.background === true });
+    return fetcher(url, options);
+  };
+  await loadTeamContext(recorded, 'support');
+  requests.length = 0;
+  teams = listedTeams(['sales', 'marketing']);
+  await reloadTeamList(recorded);
+  assert.equal(get(teamContext).selectedTeamId, 'sales');
+  assert.ok(requests.length > 2);
+  assert.deepEqual(requests.filter((request) => !request.background), []);
+});
+
 test('a reorder that is not an exact permutation of the listed Teams is refused before any request', async () => {
   const { fetcher, saves } = heldOrderFetcher();
   await loadTeamContext(fetcher);

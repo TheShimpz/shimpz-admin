@@ -1,7 +1,7 @@
 import { get, writable } from 'svelte/store';
 
 import { socketReads } from './adminSocket.js';
-import { listAssistantCatalog, listInstalledAssistants, LocalApiError, safeApiError } from './localApi.js';
+import { backgroundFetcher, listAssistantCatalog, listInstalledAssistants, LocalApiError, safeApiError } from './localApi.js';
 import {
   ASSISTANT_ID_RE,
   canonicalTeamName,
@@ -95,10 +95,11 @@ function preferredTeamId(value) {
 }
 
 // The Team list is read over the Admin session socket (ADR-0114); the rest of the context still over HTTP. A read Admin's
-// own change caused is `background`: it never renews the session's idle time.
+// own change caused is `background`, as is every read through a background fetcher: it never renews the session.
 async function listTeams(fetcher, { background = false } = {}) {
   requireFetcher(fetcher);
-  const response = await socketReads.call('teams.list', {}, { background });
+  const automatic = background || fetcher.background === true;
+  const response = await socketReads.call('teams.list', {}, { background: automatic });
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'The local Team inventory is unavailable.'), response.status);
@@ -534,7 +535,8 @@ export async function reloadTeamList(fetcher) {
     (current.phase === 'loading' && !current.teams.length)
   ) return;
   if (current.selectedTeamId && !listed.some((team) => team.id === current.selectedTeamId)) {
-    await loadTeamContext(fetcher, '');
+    // The selected Team is gone: the whole context loads again, every read of it automatic.
+    await loadTeamContext(backgroundFetcher(fetcher), '');
     return;
   }
   listVersion += 1;
