@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import { assistantDetails, PAGE_COPY, publicAssistant } from './assistantPages.js';
 import { accessibilityViolations } from './axe.js';
+import { routeScenario } from './scenarioRoutes.js';
 import { recoveryCodeSet } from './securityScenarios.js';
 
 function localSession(overrides = {}) {
@@ -310,6 +311,25 @@ test('shows the installed Admin version with the read-only Local release status'
   await expect(page.getByRole('menu')).toBeHidden();
   await expect(status).toBeVisible();
   await expect(page.getByRole('button', { name: 'Idioma: Português' })).toBeFocused();
+});
+
+test('Admin opens and changes its language where the browser refuses site storage', async ({ page }) => {
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(String(error)));
+  // A browser that blocks all site data throws on every use of localStorage.
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get() { throw new DOMException('Access is denied for this document.', 'SecurityError'); },
+    });
+  });
+  await routeScenario(page, 'ready');
+  await page.goto('/chat/?team=marketing');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Language: English' }).click();
+  await page.getByRole('menuitemradio', { name: /Português/ }).click();
+  await expect(page.getByRole('button', { name: 'Idioma: Português' })).toBeFocused();
+  expect(errors).toEqual([]);
 });
 
 test('names a developer release built on this host in the Local release status', async ({ page }) => {

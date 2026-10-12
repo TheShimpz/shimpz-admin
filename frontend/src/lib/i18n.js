@@ -16,9 +16,26 @@ async function load(code) {
   catalogs[code] ??= await loaders[`./messages/${code}.js`]();
 }
 
+// A browser that refuses site storage throws on any use of it; the language is then simply not remembered.
+function storedLocale() {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage.getItem('shimpz_lang') : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeLocale(code) {
+  try {
+    if (typeof localStorage !== 'undefined') localStorage.setItem('shimpz_lang', code);
+  } catch {
+    // Not remembered; the next visit detects the language again.
+  }
+}
+
 function detect() {
   if (typeof navigator === 'undefined') return 'en';
-  const stored = typeof localStorage !== 'undefined' && localStorage.getItem('shimpz_lang');
+  const stored = storedLocale();
   if (stored && CODES.has(stored)) return stored;
   for (const l of navigator.languages ?? [navigator.language ?? 'en']) {
     const base = l.toLowerCase().split('-')[0];
@@ -46,7 +63,7 @@ export async function setLocale(code) {
   // A later choice made while this language was arriving wins.
   if (requested !== code) return;
   locale.set(code);
-  if (typeof localStorage !== 'undefined') localStorage.setItem('shimpz_lang', code);
+  storeLocale(code);
   if (typeof document !== 'undefined') {
     const l = LOCALES.find((x) => x.code === code);
     document.documentElement.lang = code;
