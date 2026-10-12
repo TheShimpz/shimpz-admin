@@ -132,7 +132,7 @@ test("a question scenario asks Team's question in every language and answers the
   }
 });
 
-test('a paused Routine resumes and the chat socket answers a sync', () => {
+test('a paused Routine resumes and pauses again, and the chat socket answers a sync', () => {
   const scenario = createScenario('routines');
   const listed = scenario.call('routines.list', { team_id: 'marketing' }).json;
   assert.equal(listed.incidents.length, 1);
@@ -140,6 +140,8 @@ test('a paused Routine resumes and the chat socket answers a sync', () => {
   const resumed = scenario.call('routines.resume', { team_id: 'marketing', routine_id: ROUTINE });
   assert.equal(resumed.json.paused, false);
   assert.equal(scenario.call('routines.list', { team_id: 'marketing' }).json.routines[0].state, 'active');
+  assert.equal(scenario.call('routines.pause', { team_id: 'marketing', routine_id: ROUTINE }).json.paused, true);
+  assert.equal(scenario.call('routines.list', { team_id: 'marketing' }).json.routines[0].state, 'paused');
   assert.deepEqual(scenario.chat.message({ type: 'sync' }), [{ type: 'sync-empty' }]);
   assert.deepEqual(scenario.chat.message({ type: 'unknown' }), []);
 });

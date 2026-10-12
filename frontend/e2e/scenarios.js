@@ -356,9 +356,14 @@ function deleteRoutine(state, { routine_id: routineId, body }) {
   return ok({ team_id: 'marketing', routine_id: routineId, deleted: true });
 }
 
-function resumeRoutine(state, { routine_id: routineId }) {
-  state.routines = state.routines.map((item) => (item.routine_id === routineId ? { ...item, state: 'active' } : item));
-  return ok({ team_id: 'marketing', routine_id: routineId, paused: false });
+// Pause and Resume turn a Routine's dispatch off and on again.
+function pauseRoutine(paused) {
+  return (state, { routine_id: routineId }) => {
+    state.routines = state.routines.map((item) => (
+      item.routine_id === routineId ? { ...item, state: paused ? 'paused' : 'active' } : item
+    ));
+    return ok({ team_id: 'marketing', routine_id: routineId, paused });
+  };
 }
 
 // Marketing's Routine operations over the session socket (ADR-0114); every other listed Team has no Routine.
@@ -368,7 +373,8 @@ const MARKETING_ROUTINE_METHODS = Object.freeze({
   ...ROUTINE_PROPOSAL_METHODS,
   'routines.deletion': beginRoutineDeletion,
   'routines.delete': deleteRoutine,
-  'routines.resume': resumeRoutine,
+  'routines.pause': pauseRoutine(true),
+  'routines.resume': pauseRoutine(false),
 });
 
 // `routines.list`: Marketing's Routines, runs, and held incidents; every other listed Team has none.
