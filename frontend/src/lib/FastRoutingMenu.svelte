@@ -1,54 +1,54 @@
 <script>
-  import { onMount, tick } from 'svelte';
+  import { tick } from 'svelte';
   import { Button, StatusBadge, TextField, TextLink } from '@shimpz/frontend';
 
-  import { commandsReady, outcomeUnknown, watchTopic } from '#lib/adminSocket.js';
+  import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/composerPanel.js';
-  import {
-    knownDecisionProvider,
-    loadDecisionProvider,
-    removeDecisionKey,
-    saveDecisionKey,
-  } from '#lib/decisionProvider.js';
+  import { decisionProvider, removeDecisionKey, saveDecisionKey } from '#lib/decisionProvider.js';
   import { t } from '#lib/i18n.js';
 
   // The optional Jev key (ADR-0077) in its own composer control. Only Local Admin custodies it; the caller renders
-  // this control only there. Phase is idle, loading, ready, saving, or unavailable.
+  // this control only there. Its state is the one Admin holds, read over the session socket and again whenever Admin
+  // says it changed; a save or removal shows only that it is under way, and what it stored shows once read again.
+  // Phase is loading, ready, saving, or unavailable.
   let { disabled = false } = $props();
 
   let open = $state(false);
   let root = $state();
   let trigger = $state();
   let panel = $state();
-  let fast = $state({ phase: 'idle', configured: false, masked: null, error: '' });
+  let changing = $state(false);
+  let error = $state('');
   let fastKey = $state('');
   const panelId = $props.id();
-  // Each status read or write takes a ticket so an older answer never overwrites a newer one.
-  let fastTicket = 0;
 
   // TypeSafe's own key page (docs.typesafe.ai quickstart).
   const KEYS_URL = 'https://console.typesafe.ai/keys';
 
   let copy = $derived($t('brainMenu').fast);
+  let fast = $derived({
+    phase: changing
+      ? 'saving'
+      : $decisionProvider.value
+        ? 'ready'
+        : $decisionProvider.status === 'error' ? 'unavailable' : 'loading',
+    configured: $decisionProvider.value?.configured ?? false,
+    masked: $decisionProvider.value?.masked ?? null,
+    error,
+  });
   // A change is offered only while Admin is connected.
-  let saving = $derived(fast.phase === 'saving' || !$commandsReady);
+  let saving = $derived(changing || !$commandsReady);
   let status = $derived(fast.configured ? $t('brainMenu.fast.on', { masked: fast.masked }) : copy.off);
   let triggerLabel = $derived(fast.phase === 'ready' ? `${copy.label}: ${status}` : copy.label);
 
-  onMount(() => {
-    // A state this session already read shows at once; opening the control reads it again.
-    const known = knownDecisionProvider();
-    if (known) fast = { ...fast, phase: 'ready', ...known };
-    else void loadFast();
-    // The key changed elsewhere (another tab, or a save that finished after its socket dropped): it is read again,
-    // unless this control is saving, whose own answer is the newer one.
-    return watchTopic('space/decision', (_topic, cause) => {
-      if ((cause === 'changed' || cause === 'reopen') && fast.phase !== 'saving') void loadFast();
-    });
-  });
-
   $effect(() => {
     if (disabled && open) close();
+  });
+
+  // The panel follows its content as the state changes.
+  $effect(() => {
+    void fast;
+    if (open) void tick().then(() => { if (open) placePanel(trigger, panel); });
   });
 
   function close(restore = false) {
@@ -56,7 +56,7 @@
     open = false;
     // A typed key never outlives the open panel.
     fastKey = '';
-    fast.error = '';
+    error = '';
     if (restore) queueMicrotask(() => trigger?.focus());
   }
 
@@ -68,61 +68,35 @@
     if (disabled) return;
     open = true;
     openPanel(trigger, panel, () => panel?.querySelector('input, .fast-remove'));
-    // The key is Space-wide, so every opening re-reads it in case another session changed it.
-    if (!saving) void loadFast();
   }
 
-  async function settle(update) {
-    fast = { ...fast, ...update };
+  async function changeKey(action, failure, focus) {
+    changing = true;
+    error = '';
+    try {
+      await action();
+    } catch (failed) {
+      // A change whose answer was lost shows so; Admin's state is read again once it is back.
+      changing = false;
+      error = outcomeUnknown(failed) ? $t('shell.outcomeUnknown') : failure(failed);
+      return;
+    }
+    changing = false;
+    fastKey = '';
     await tick();
-    if (open) placePanel(trigger, panel);
+    panel?.querySelector(focus)?.focus();
   }
 
-  async function loadFast() {
-    const ticket = ++fastTicket;
-    if (fast.phase !== 'ready') await settle({ phase: 'loading', error: '' });
-    try {
-      const state = await loadDecisionProvider();
-      if (ticket === fastTicket) await settle({ phase: 'ready', ...state });
-    } catch {
-      if (ticket === fastTicket) await settle({ phase: 'unavailable' });
-    }
-  }
-
-  async function saveFast(event) {
+  function saveFast(event) {
     event.preventDefault();
-    if (fast.phase !== 'ready' || !fastKey.trim()) return;
-    const ticket = ++fastTicket;
-    await settle({ phase: 'saving', error: '' });
-    try {
-      const state = await saveDecisionKey(fastKey);
-      if (ticket !== fastTicket) return;
-      fastKey = '';
-      await settle({ phase: 'ready', ...state });
-      panel?.querySelector('.fast-remove')?.focus();
-    } catch (error) {
-      if (ticket !== fastTicket) return;
-      const failure = error?.status === 400 ? copy.rejected : copy.failed;
-      await settle({ phase: 'ready', error: outcomeUnknown(error) ? $t('shell.outcomeUnknown') : failure });
-      // A save whose answer was lost may have stored the key: the state is read again once Admin is back.
-      if (outcomeUnknown(error)) void loadFast();
-    }
+    if (fast.phase !== 'ready' || saving || !fastKey.trim()) return;
+    const key = fastKey;
+    void changeKey(() => saveDecisionKey(key), (failed) => (failed?.status === 400 ? copy.rejected : copy.failed), '.fast-remove');
   }
 
-  async function removeFast() {
-    if (fast.phase !== 'ready') return;
-    const ticket = ++fastTicket;
-    await settle({ phase: 'saving', error: '' });
-    try {
-      const state = await removeDecisionKey();
-      if (ticket !== fastTicket) return;
-      await settle({ phase: 'ready', ...state });
-      panel?.querySelector('input')?.focus();
-    } catch (error) {
-      if (ticket !== fastTicket) return;
-      await settle({ phase: 'ready', error: outcomeUnknown(error) ? $t('shell.outcomeUnknown') : copy.removeFailed });
-      if (outcomeUnknown(error)) void loadFast();
-    }
+  function removeFast() {
+    if (fast.phase !== 'ready' || saving) return;
+    void changeKey(removeDecisionKey, () => copy.removeFailed, 'input');
   }
 </script>
 

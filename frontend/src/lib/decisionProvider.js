@@ -1,5 +1,6 @@
 import { socketReads } from './adminSocket.js';
 import { LocalApiError, safeApiError } from './localApi.js';
+import { synced } from './synced.js';
 import { exactKeys, jsonObject } from './validate.js';
 
 // The Supervisor's optional TypeSafe key for the Jev intent fast path (ADR-0077). Only masked metadata crosses here.
@@ -16,72 +17,45 @@ function validState(body) {
   );
 }
 
-// The state this session last read or saved. The key is Space-wide and changes only through this module, so the
-// composer control shows it again without asking; it still reads it each time it opens. The session's end forgets it,
-// and an answer to a request made before that is never remembered. A save or removal outranks every read that overlaps
-// it, and among saves the later one wins, so a read never overwrites what a save just stored.
-let remembered = null;
-let rememberedOrder = 0;
-let order = 0;
-let epoch = 0;
-let pendingChanges = 0;
-let changes = 0;
-
-/** The decision provider state this session last read or saved, or null. */
-export function knownDecisionProvider() {
-  return remembered;
+async function answered(response, fallback) {
+  const body = await jsonObject(response);
+  if (!response.ok) throw new LocalApiError(safeApiError(body, fallback), response.status);
+  if (!validState(body)) throw new LocalApiError('Decision provider settings are invalid.', response.status);
+  return { configured: body.configured, masked: body.masked };
 }
 
-/** Forget the remembered state when the Supervisor session ends. */
+/** Read whether a TypeSafe key is configured, with `call`. A response carrying any extra field fails closed. */
+export async function loadDecisionProvider(call = socketReads.call) {
+  return answered(await call('decision.read', {}), 'Fast routing settings are unavailable.');
+}
+
+// The key's state as every screen shows it: read over the session socket and again whenever Admin says it changed,
+// in this tab or another, or once a save whose answer was lost finished. A save never writes it itself.
+const decisionValue = synced('space/decision', loadDecisionProvider);
+
+/** The decision provider's synced state, `{ status, value: { configured, masked } | null, error }`. */
+export const decisionProvider = { subscribe: decisionValue.subscribe };
+
+/** Forget the state when the Supervisor session ends. */
 export function forgetDecisionProvider() {
-  epoch += 1;
-  remembered = null;
-  rememberedOrder = 0;
+  decisionValue.reset();
 }
 
-async function request(method, params, fallback, change = false) {
-  const started = epoch;
-  const changesBefore = changes;
-  order += 1;
-  const position = order;
-  if (change) pendingChanges += 1;
-  try {
-    const response = await socketReads.call(method, params);
-    const body = await jsonObject(response);
-    if (!response.ok) throw new LocalApiError(safeApiError(body, fallback), response.status);
-    if (!validState(body)) throw new LocalApiError('Decision provider settings are invalid.', response.status);
-    const state = { configured: body.configured, masked: body.masked };
-    const current = started === epoch && (change
-      ? position > rememberedOrder
-      : pendingChanges === 0 && changesBefore === changes && position > rememberedOrder);
-    if (current) {
-      remembered = state;
-      rememberedOrder = position;
-    }
-    if (change) changes += 1;
-    return state;
-  } finally {
-    if (change) pendingChanges -= 1;
-  }
+// A change is checked against Admin's answer; what shows afterwards is the state read once Admin announced it.
+async function change(method, params, fallback, configured) {
+  const state = await answered(await socketReads.call(method, params), fallback);
+  if (state.configured !== configured) throw new LocalApiError('Decision provider settings are invalid.');
+  await decisionValue.refresh();
 }
 
-/** Read whether a TypeSafe key is configured. A response carrying any extra field fails closed. */
-export function loadDecisionProvider() {
-  return request('decision.read', {}, 'Fast routing settings are unavailable.');
-}
-
-/** Admin validates the key with TypeSafe before storing it; the response carries only the masked suffix. */
+/** Admin validates the key with TypeSafe before storing it; the answer carries only the masked suffix. */
 export async function saveDecisionKey(apiKey) {
   const key = typeof apiKey === 'string' ? apiKey.trim() : '';
   if (key.length < 16 || key.length > 8192) throw new LocalApiError('Enter a valid TypeSafe API key.');
-  const state = await request('decision.save', { body: { api_key: key } }, 'The TypeSafe key could not be saved.', true);
-  if (!state.configured) throw new LocalApiError('Decision provider settings are invalid.');
-  return state;
+  await change('decision.save', { body: { api_key: key } }, 'The TypeSafe key could not be saved.', true);
 }
 
 /** Remove the key; intent classification then runs only the LLM route. */
 export async function removeDecisionKey() {
-  const state = await request('decision.remove', {}, 'The TypeSafe key could not be removed.', true);
-  if (state.configured) throw new LocalApiError('Decision provider settings are invalid.');
-  return state;
+  await change('decision.remove', {}, 'The TypeSafe key could not be removed.', false);
 }

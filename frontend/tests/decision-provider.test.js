@@ -1,16 +1,23 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+import { get } from 'svelte/store';
+
+import { socketReads } from '../src/lib/adminSocket.js';
 import {
+  decisionProvider,
   forgetDecisionProvider,
-  knownDecisionProvider,
   loadDecisionProvider,
   removeDecisionKey,
   saveDecisionKey,
 } from '../src/lib/decisionProvider.js';
-import { held, recorder, response, via } from './socketStub.js';
+import { recorder, response, via } from './socketStub.js';
 
-const KEY = 'tsk-browser-contract-0123456789';
+const KEY = 'test-typesafe-key-word';
+const EPOCH = 'a'.repeat(32);
+const flush = async () => {
+  for (let turn = 0; turn < 6; turn += 1) await new Promise((resolve) => setImmediate(resolve));
+};
 
 test('loads only the closed masked TypeSafe state', async () => {
   const off = recorder(200, { provider: 'typesafe', configured: false, masked: null });
@@ -18,7 +25,7 @@ test('loads only the closed masked TypeSafe state', async () => {
   assert.deepEqual(off.calls, [{ method: 'decision.read', params: {} }]);
 
   const on = recorder(200, { provider: 'typesafe', configured: true, masked: '••••cdef' });
-  assert.deepEqual(await via(on.call, loadDecisionProvider), { configured: true, masked: '••••cdef' });
+  assert.deepEqual(await loadDecisionProvider(on.call), { configured: true, masked: '••••cdef' });
 
   for (const body of [
     { provider: 'typesafe', configured: true, masked: '••••cdef', api_key: KEY },
@@ -29,99 +36,103 @@ test('loads only the closed masked TypeSafe state', async () => {
     { provider: 'typesafe', configured: 'yes', masked: null },
     [],
   ]) {
-    await assert.rejects(via(recorder(200, body).call, loadDecisionProvider), /invalid/, JSON.stringify(body));
+    await assert.rejects(loadDecisionProvider(recorder(200, body).call), /invalid/, JSON.stringify(body));
   }
-  await assert.rejects(
-    via(recorder(503, { detail: 'down' }).call, loadDecisionProvider),
-    (error) => error.status === 503,
-  );
+  await assert.rejects(loadDecisionProvider(recorder(503, { detail: 'down' }).call), (error) => error.status === 503);
 });
 
-test('saves a trimmed key once and accepts only a configured masked answer', async () => {
-  const saved = recorder(200, { provider: 'typesafe', configured: true, masked: '••••6789' });
-  assert.deepEqual(await via(saved.call, () => saveDecisionKey(` ${KEY} `)), { configured: true, masked: '••••6789' });
-  assert.deepEqual(saved.calls, [{ method: 'decision.save', params: { body: { api_key: KEY } } }]);
+/**
+ * Admin as the decision key's screens see it: the key's state, which a save or removal changes and announces on
+ * `space/decision` as Admin does, and each change's answer the test may hold back.
+ */
+function admin() {
+  const state = { configured: false };
+  const listeners = new Set();
+  let revision = 0;
+  const calls = [];
+  let gate = null;
+  const announce = () => {
+    revision += 1;
+    for (const listener of [...listeners]) listener('space/decision', 'changed', { epoch: EPOCH, revision });
+  };
+  const body = () => ({ provider: 'typesafe', configured: state.configured, masked: state.configured ? '••••word' : null });
+  socketReads.watch = (topic, listener) => {
+    listeners.add(listener);
+    queueMicrotask(() => listener(topic, 'open', { epoch: EPOCH, revision }));
+    return () => listeners.delete(listener);
+  };
+  socketReads.call = async (method, params) => {
+    calls.push({ method, params });
+    if (method === 'decision.read') return response(200, body());
+    state.configured = method === 'decision.save';
+    announce();
+    const answer = body();
+    if (gate) await gate;
+    return response(200, answer);
+  };
+  return {
+    state,
+    calls,
+    announce,
+    hold() {
+      let release;
+      gate = new Promise((resolve) => { release = resolve; });
+      return () => {
+        gate = null;
+        release();
+      };
+    },
+  };
+}
 
+test('the key shown is the one Admin holds, read again after a save and a removal', async () => {
+  const server = admin();
+  const stop = decisionProvider.subscribe(() => {});
+  await flush();
+  assert.deepEqual(get(decisionProvider).value, { configured: false, masked: null });
+  await saveDecisionKey(` ${KEY} `);
+  assert.deepEqual(server.calls.filter((entry) => entry.method === 'decision.save'), [
+    { method: 'decision.save', params: { body: { api_key: KEY } } },
+  ]);
+  assert.deepEqual(get(decisionProvider).value, { configured: true, masked: '••••word' });
+  await removeDecisionKey();
+  assert.deepEqual(get(decisionProvider).value, { configured: false, masked: null });
   for (const key of ['', 'short', 'x'.repeat(8193), null]) {
-    const unused = recorder(200, {});
-    await assert.rejects(via(unused.call, () => saveDecisionKey(key)), /valid TypeSafe/);
-    assert.equal(unused.calls.length, 0);
+    await assert.rejects(saveDecisionKey(key), /valid TypeSafe/);
   }
-  await assert.rejects(
-    via(recorder(200, { provider: 'typesafe', configured: false, masked: null }).call, () => saveDecisionKey(KEY)),
-    /invalid/,
-  );
-  await assert.rejects(
-    via(recorder(400, { detail: 'TypeSafe rejected API key' }).call, () => saveDecisionKey(KEY)),
-    (error) => error.status === 400 && error.message === 'TypeSafe rejected API key',
-  );
-});
-
-test('removal must answer an unconfigured state', async () => {
-  const removed = recorder(200, { provider: 'typesafe', configured: false, masked: null });
-  assert.deepEqual(await via(removed.call, removeDecisionKey), { configured: false, masked: null });
-  assert.deepEqual(removed.calls, [{ method: 'decision.remove', params: {} }]);
-  await assert.rejects(
-    via(recorder(200, { provider: 'typesafe', configured: true, masked: '••••cdef' }).call, removeDecisionKey),
-    /invalid/,
-  );
-});
-
-test('the session remembers the state it last read or saved, and forgets it when the session ends', async () => {
+  stop();
   forgetDecisionProvider();
-  assert.equal(knownDecisionProvider(), null);
-  await via(recorder(200, { provider: 'typesafe', configured: false, masked: null }).call, loadDecisionProvider);
-  assert.deepEqual(knownDecisionProvider(), { configured: false, masked: null });
-  await via(recorder(200, { provider: 'typesafe', configured: true, masked: '••••6789' }).call, () => saveDecisionKey(KEY));
-  assert.deepEqual(knownDecisionProvider(), { configured: true, masked: '••••6789' });
-  await assert.rejects(via(recorder(503, { detail: 'down' }).call, loadDecisionProvider));
-  assert.deepEqual(knownDecisionProvider(), { configured: true, masked: '••••6789' });
-
-  const slow = held();
-  const late = via(slow.call, loadDecisionProvider);
-  forgetDecisionProvider();
-  slow.answer(response(200, { provider: 'typesafe', configured: true, masked: '••••cdef' }));
-  assert.deepEqual(await late, { configured: true, masked: '••••cdef' });
-  assert.equal(knownDecisionProvider(), null);
+  assert.equal(get(decisionProvider).value, null);
 });
 
-test('a read that started before a save never overwrites the saved state', async () => {
+test('a change announced while a save runs is read, and the save answered last never overwrites it', async () => {
+  const server = admin();
+  const stop = decisionProvider.subscribe(() => {});
+  await flush();
+  const release = server.hold();
+  const saving = saveDecisionKey(KEY);
+  await flush();
+  // Admin stored the key and announced it before its answer: the key shows from the read.
+  assert.deepEqual(get(decisionProvider).value, { configured: true, masked: '••••word' });
+  // Another tab removes it before the save's answer arrives; the late answer still says configured.
+  server.state.configured = false;
+  server.announce();
+  await flush();
+  release();
+  await saving;
+  assert.deepEqual(get(decisionProvider).value, { configured: false, masked: null });
+  stop();
   forgetDecisionProvider();
-  const slow = held();
-  const slowRead = via(slow.call, loadDecisionProvider);
-  await via(recorder(200, { provider: 'typesafe', configured: true, masked: '••••6789' }).call, () => saveDecisionKey(KEY));
-  slow.answer(response(200, { provider: 'typesafe', configured: false, masked: null }));
-  assert.deepEqual(await slowRead, { configured: false, masked: null });
-  assert.deepEqual(knownDecisionProvider(), { configured: true, masked: '••••6789' });
 });
 
-test('a read that overlaps a save or removal never overwrites what it stored, whichever finishes first', async () => {
-  const configured = { provider: 'typesafe', configured: true, masked: '••••6789' };
-  const unconfigured = { provider: 'typesafe', configured: false, masked: null };
-  for (const [change, stored, replaced] of [
-    [() => saveDecisionKey(KEY), configured, unconfigured],
-    [() => removeDecisionKey(), unconfigured, configured],
+test('a change Admin refused, or answered with the wrong state, fails and stores nothing it shows', async () => {
+  for (const [answer, check] of [
+    [response(400, { detail: 'TypeSafe rejected API key' }), (error) => error.status === 400],
+    [response(200, { provider: 'typesafe', configured: false, masked: null }), /invalid/],
   ]) {
-    forgetDecisionProvider();
-    const slow = held();
-    const pending = via(slow.call, change);
-    // A read that starts after the change and answers first, with the state the change replaces.
-    await via(recorder(200, replaced).call, loadDecisionProvider);
-    slow.answer(response(200, stored));
-    await pending;
-    assert.deepEqual(knownDecisionProvider(), { configured: stored.configured, masked: stored.masked });
+    socketReads.call = async () => answer;
+    await assert.rejects(saveDecisionKey(KEY), check);
   }
-});
-
-test('a read that a change completed under never overwrites what the change stored', async () => {
-  forgetDecisionProvider();
-  const saving = held();
-  const reading = held();
-  const save = via(saving.call, () => saveDecisionKey(KEY));
-  const read = via(reading.call, loadDecisionProvider);
-  saving.answer(response(200, { provider: 'typesafe', configured: true, masked: '••••6789' }));
-  await save;
-  reading.answer(response(200, { provider: 'typesafe', configured: false, masked: null }));
-  await read;
-  assert.deepEqual(knownDecisionProvider(), { configured: true, masked: '••••6789' });
+  socketReads.call = async () => response(200, { provider: 'typesafe', configured: true, masked: '••••cdef' });
+  await assert.rejects(removeDecisionKey(), /invalid/);
 });
