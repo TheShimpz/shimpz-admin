@@ -19,6 +19,12 @@ class SessionSocketCase(ChatWebSocketCase):
         self.calls = __import__("session.calls", fromlist=["calls"])
         self.methods = __import__("session.methods", fromlist=["methods"])
         self.lane = __import__("session.lane", fromlist=["lane"])
+        # The real watcher's first samples would announce their topics to any test that subscribes to them; a test of
+        # the watcher installs its own.
+        watcher = __import__("session.watcher", fromlist=["watcher"])
+        quiet = mock.patch.object(watcher, "WATCHER", watcher.Watcher({}))
+        quiet.start()
+        self.addCleanup(quiet.stop)
         # Each test starts with fresh session budgets, so one test's opens and calls never spend another's.
         for name in ("OPENS", "CALL_BUDGET", "CHANGE_BUDGET"):
             patch = mock.patch.object(

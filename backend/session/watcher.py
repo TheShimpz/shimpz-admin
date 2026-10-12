@@ -4,7 +4,7 @@ Teams made by the CLI, Assistant snapshots the CLI stages, the Space's resources
 without passing through Admin. While
 at least one open socket subscribes to such a topic, and only then, the watcher reads it no more often than the page
 used to poll it, under the current Supervisor authority of a socket whose session is still current (never renewing
-it), and raises the topic only when the value changed.
+it), and raises the topic when its first sample is taken and afterwards only when the value changed.
 """
 
 import asyncio
@@ -120,7 +120,9 @@ class Watcher:
         except (team.TeamRequestError, supervisor.SupervisorAuthorityError, HTTPException, OSError) as exc:
             log.warning("session watcher could not read %s (%s)", topic, type(exc).__name__)
             return
-        if topic in self._values and self._values[topic] != value:
+        # The first sample is announced too: a change made after a page's own read and before this sample would
+        # otherwise become the silent baseline, and the page would keep showing the older value.
+        if topic not in self._values or self._values[topic] != value:
             topics.changed(topic)
         self._values[topic] = value
 

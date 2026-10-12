@@ -633,8 +633,13 @@ class SessionSocketWatcherTests(SessionSocketCase):
             self.assertEqual(self.reads, [])
             with mock.patch.object(auth.SESSIONS, "current", wraps=auth.SESSIONS.current) as current:
                 await websocket.result("subscribe", {"topics": ["space/resources"]})
+                # The first sample is no silent baseline: a change made before it, after the page's own read, is
+                # announced, so the page reads the value the watcher compares against.
+                first = await websocket.next_frame()
+                self.assertEqual((first["type"], first["topic"]), ("changed", "space/resources"))
                 frame = await websocket.next_frame()
                 self.assertEqual((frame["type"], frame["topic"]), ("changed", "space/resources"))
+                self.assertEqual(frame["revision"], first["revision"] + 1)
                 # The value changed once (1 -> 2); later identical reads raise nothing.
                 with self.assertRaises(TimeoutError):
                     await websocket.next_frame(0.3)
