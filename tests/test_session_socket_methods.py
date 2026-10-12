@@ -501,7 +501,31 @@ class SessionMethodTopicTests(SessionMethodCase):
                 api_key="test-api-key-for-models",
                 progress=lambda _event: None,
             )
-        self.assertEqual(heard, [("team_1", "integrations"), ("team_1", "integrations")])
+        # An answer that sealed its Input and paused again for the next request changed state too.
+        with (
+            mock.patch.object(self.topics, "team_changed", side_effect=lambda *args: heard.append(args)),
+            mock.patch.object(self.team, "_call_stream", return_value=self.team.TeamResponse(428, {})),
+        ):
+            self.team.resume_chat_human(
+                "team_1",
+                {"challenge_id": "a" * 32, "decision": "deny"},
+                provider="openai",
+                api_key="test-api-key-for-models",
+                progress=lambda _event: None,
+            )
+        # A refused answer changed nothing.
+        with (
+            mock.patch.object(self.topics, "team_changed", side_effect=lambda *args: heard.append(args)),
+            mock.patch.object(self.team, "_call_stream", return_value=self.team.TeamResponse(409, {})),
+        ):
+            self.team.resume_chat_human(
+                "team_1",
+                {"challenge_id": "a" * 32, "decision": "deny"},
+                provider="openai",
+                api_key="test-api-key-for-models",
+                progress=lambda _event: None,
+            )
+        self.assertEqual(heard, [("team_1", "integrations")] * 3)
 
     def test_a_created_team_raises_the_team_list(self) -> None:
         created = self.team.TeamResponse(

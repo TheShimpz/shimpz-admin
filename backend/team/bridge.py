@@ -499,7 +499,11 @@ def resume_chat_human(
         ),
         progress=progress,
     )
-    # An answer may have stored an Input for the Team's Assistants.
+    # An admitted answer may have stored an Input for the Team's Assistants, also one that paused again for the next
+    # request (428) after sealing it.
+    if is_team_response(response) and response.status == 428:
+        topics.team_changed(canonical_id, "integrations")
+        return response
     return _changed(response, canonical_id, "integrations")
 
 
