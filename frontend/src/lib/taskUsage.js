@@ -1,6 +1,7 @@
 // What one chat task cost: the model tokens every Brain call of the turn used and how long the turn took. Cost is an
 // estimate from the reviewed catalog prices; a model the catalog does not price contributes tokens but no cost.
 import MODEL_CATALOG from './modelCatalog.json' with { type: 'json' };
+import { isCount } from './validate.js';
 
 const MAX_DURATION_MS = 24 * 60 * 60 * 1000;
 const MAX_TOKENS = 1_000_000_000;
@@ -15,10 +16,6 @@ const PRICES = new Map(
     { title: model.title, input: model.input_usd_per_million_cents, output: model.output_usd_per_million_cents },
   ])),
 );
-
-function count(value, maximum) {
-  return Number.isSafeInteger(value) && value >= 0 && value <= maximum;
-}
 
 function exactRecord(value, keys) {
   return (
@@ -58,7 +55,7 @@ export function parseRunUsage(value) {
 function parseUsage(value, minimum) {
   if (
     !exactRecord(value, USAGE_KEYS) ||
-    !count(value.duration_ms, MAX_DURATION_MS) ||
+    !isCount(value.duration_ms, MAX_DURATION_MS) ||
     !Array.isArray(value.models) ||
     value.models.length < minimum ||
     value.models.length > MAX_MODELS
@@ -69,8 +66,8 @@ function parseUsage(value, minimum) {
       !exactRecord(entry, MODEL_KEYS) ||
       !identifier(entry.provider) ||
       !identifier(entry.model) ||
-      !count(entry.input_tokens, MAX_TOKENS) ||
-      !count(entry.output_tokens, MAX_TOKENS)
+      !isCount(entry.input_tokens, MAX_TOKENS) ||
+      !isCount(entry.output_tokens, MAX_TOKENS)
     ) throw invalid();
     // Strictly ascending by provider, then model: distinct and in the one canonical order.
     if (

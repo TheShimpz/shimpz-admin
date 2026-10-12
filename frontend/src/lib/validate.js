@@ -33,6 +33,11 @@ export function isActionId(value) {
   return typeof value === 'string' && value.length <= MAX_ACTION_ID_CHARS && ACTION_ID_RE.test(value);
 }
 
+/** A whole count from zero to `maximum`. */
+export function isCount(value, maximum) {
+  return Number.isSafeInteger(value) && value >= 0 && value <= maximum;
+}
+
 /** Producers bound text in Unicode code points (Python len(), JSON Schema maxLength), not UTF-16 code units. */
 export function codePointLength(value) {
   return [...value].length;

@@ -1,4 +1,4 @@
-import { exactKeys, jsonObject } from './validate.js';
+import { exactKeys, isCount, jsonObject } from './validate.js';
 
 // The Team protocol's resource signal (`resources.canonical_space_resources`): its closed fields and bounds.
 const FIELDS = [
@@ -12,14 +12,10 @@ const FIELDS = [
 const MAX_SERVICES = 32;
 const GIB = 2 ** 30;
 
-function count(value, maximum) {
-  return Number.isSafeInteger(value) && value >= 0 && value <= maximum;
-}
-
 // Both null, or a used and a positive total byte count; `within` also bounds the use by the total.
 function pair(used, total, within) {
   if (used === null && total === null) return true;
-  return count(used, Number.MAX_SAFE_INTEGER) && count(total, Number.MAX_SAFE_INTEGER) && total > 0
+  return isCount(used, Number.MAX_SAFE_INTEGER) && isCount(total, Number.MAX_SAFE_INTEGER) && total > 0
     && (!within || used <= total);
 }
 
@@ -30,9 +26,9 @@ export async function fetchSpaceResources(read) {
   const body = await jsonObject(response);
   if (
     !exactKeys(body, FIELDS)
-    || !count(body.services_total, MAX_SERVICES)
+    || !isCount(body.services_total, MAX_SERVICES)
     || body.services_total < 1
-    || !count(body.services_running, body.services_total)
+    || !isCount(body.services_running, body.services_total)
     || !pair(body.memory_used_bytes, body.memory_total_bytes, false)
     || !pair(body.storage_used_bytes, body.storage_total_bytes, true)
   ) return null;
