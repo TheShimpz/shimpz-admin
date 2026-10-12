@@ -172,29 +172,27 @@ class AuthRouteTests(unittest.TestCase):
                 self.assertEqual(guarded.status_code, 401)
                 self.assertNotIn("set-cookie", guarded.headers)
 
-    def test_background_refreshes_never_keep_an_idle_session_alive(self) -> None:
+    def test_a_request_from_admins_own_page_renews_the_idle_session(self) -> None:
+        # Automatic reads travel on the session socket (ADR-0114), where they never renew; an HTTP request from Admin's
+        # own page is always the Supervisor's.
         auth = self.admin_app.auth
         now = [0.0]
 
         async def allowed(_request):
             return PlainTextResponse("allowed")
 
-        def status(session: str, *, background: bool) -> int:
-            marks = (*ADMIN_PAGE, (b"shimpz-activity", b"background")) if background else ADMIN_PAGE
-            request = self._request("/api/model-providers", cookie=session, browser=marks)
+        def status(session: str) -> int:
+            request = self._request("/api/model-providers", cookie=session, browser=ADMIN_PAGE)
             return asyncio.run(through_gate(self.admin_app, request, allowed)).status_code
 
         with mock.patch.object(auth, "SESSIONS", auth.SessionActivity(clock=lambda: now[0])):
-            _setup, confirmed = self._configure("violet otter lantern quartz 92")
-            polled = self._cookie(confirmed, "shimpz_admin")
-            attended = auth.issue_session(self.admin_app.state.get()["session_secret"], "totp")
+            session = self._cookie(self._configure("violet otter lantern quartz 92")[1], "shimpz_admin")
             now[0] = auth.IDLE_SECONDS - 600
-            self.assertEqual((status(polled, background=True), status(attended, background=False)), (200, 200))
+            self.assertEqual(status(session), 200)
             now[0] = auth.IDLE_SECONDS + 1
-            self.assertEqual(status(polled, background=True), 401)
-            self.assertEqual(status(attended, background=True), 200)
-            now[0] = 2 * auth.IDLE_SECONDS
-            self.assertEqual(status(attended, background=False), 401)
+            self.assertEqual(status(session), 200)
+            now[0] = 3 * auth.IDLE_SECONDS
+            self.assertEqual(status(session), 401)
 
     def test_another_page_on_the_site_may_read_but_never_renews_the_session(self) -> None:
         auth = self.admin_app.auth

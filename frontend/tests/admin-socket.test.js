@@ -1,0 +1,294 @@
+import assert from 'node:assert/strict';
+import test, { mock } from 'node:test';
+import { get } from 'svelte/store';
+
+class FakeSocket {
+  static CONNECTING = 0;
+  static OPEN = 1;
+  static CLOSING = 2;
+  static CLOSED = 3;
+  static opened = [];
+
+  constructor(url, protocol) {
+    this.url = url;
+    this.protocol = protocol;
+    this.readyState = FakeSocket.CONNECTING;
+    this.sent = [];
+    this.closedWith = null;
+    FakeSocket.opened.push(this);
+  }
+
+  send(text) {
+    if (this.failSend) throw new Error('closed');
+    this.sent.push(JSON.parse(text));
+  }
+
+  close(code = 1005) {
+    this.closedWith = code;
+    this.readyState = FakeSocket.CLOSED;
+  }
+
+  open(protocol = this.protocol) {
+    this.protocol = protocol;
+    this.readyState = FakeSocket.OPEN;
+    this.onopen?.();
+  }
+
+  frame(value) {
+    this.onmessage?.({ data: typeof value === 'string' ? value : JSON.stringify(value) });
+  }
+
+  drop(code) {
+    this.readyState = FakeSocket.CLOSED;
+    this.onclose?.({ code });
+  }
+
+  // Answer the newest call to `method` with `body`.
+  answer(method, body, status = 200, extra = {}) {
+    const call = this.sent.findLast((frame) => frame.type === 'call' && frame.method === method);
+    assert.ok(call, `no ${method} call`);
+    this.frame({ type: 'result', id: call.id, status, body, ...extra });
+    return call;
+  }
+}
+
+globalThis.WebSocket = FakeSocket;
+globalThis.location = { protocol: 'http:', host: '127.0.0.1:7777' };
+let sessionAnswer = { authenticated: true };
+globalThis.fetch = async () => ({ ok: true, json: async () => sessionAnswer });
+
+const socketModule = await import('../src/lib/adminSocket.js');
+const {
+  adminSocket,
+  call,
+  connectAdminSocket,
+  disconnectAdminSocket,
+  openChatChannel,
+  topicValue,
+  watchTopic,
+} = socketModule;
+
+const EPOCH = 'a'.repeat(32);
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+function connected(onSignedOut = () => {}) {
+  FakeSocket.opened.length = 0;
+  connectAdminSocket({ onSignedOut });
+  const socket = FakeSocket.opened.at(-1);
+  socket.open();
+  return socket;
+}
+
+test.afterEach(() => {
+  disconnectAdminSocket();
+  sessionAnswer = { authenticated: true };
+});
+
+test('the shell opens one socket at the session path with the exact protocol', () => {
+  const socket = connected();
+  assert.equal(socket.url, 'ws://127.0.0.1:7777/api/session/ws');
+  assert.equal(socket.protocol, 'shimpz.admin.v1');
+  assert.equal(get(adminSocket).phase, 'open');
+  disconnectAdminSocket();
+  assert.equal(socket.closedWith, 1000);
+  assert.equal(get(adminSocket).phase, 'idle');
+});
+
+test('a socket that does not speak the protocol is closed', () => {
+  FakeSocket.opened.length = 0;
+  connectAdminSocket({ onSignedOut() {} });
+  FakeSocket.opened[0].open('shimpz.chat.v7');
+  assert.equal(FakeSocket.opened[0].closedWith, 1002);
+});
+
+test('a call answers like a response, and fails at once while the socket is not open', async () => {
+  await assert.rejects(call('teams.list'), (error) => error.code === 'socket-unavailable');
+  const socket = connected();
+  const pending = call('teams.list', {}, { background: true });
+  const sent = socket.answer('teams.list', { teams: [] }, 200, { topic: 'teams', epoch: EPOCH, revision: 2 });
+  assert.deepEqual(sent, { type: 'call', id: sent.id, method: 'teams.list', params: {}, background: true });
+  const response = await pending;
+  assert.equal(response.ok, true);
+  assert.deepEqual(await response.json(), { teams: [] });
+  assert.deepEqual(response.revision, { topic: 'teams', epoch: EPOCH, revision: 2 });
+  const refused = call('history.page', { team_id: 'marketing' });
+  assert.equal(socket.sent.at(-1).background, undefined);
+  socket.answer('history.page', { detail: 'Team not found' }, 404);
+  assert.equal((await refused).status, 404);
+});
+
+test('a call made while the first open is under way waits for it, and fails if it never opens', async () => {
+  FakeSocket.opened.length = 0;
+  connectAdminSocket({ onSignedOut() {} });
+  const waiting = call('teams.list');
+  FakeSocket.opened[0].open();
+  await flush();
+  FakeSocket.opened[0].answer('teams.list', { teams: [] });
+  assert.equal((await waiting).status, 200);
+
+  disconnectAdminSocket();
+  connectAdminSocket({ onSignedOut() {} });
+  const abandoned = call('teams.list');
+  disconnectAdminSocket();
+  await assert.rejects(abandoned, (error) => error.code === 'socket-unavailable');
+});
+
+test('at most sixteen calls wait, and a close fails every pending call', async () => {
+  const socket = connected();
+  const calls = Array.from({ length: 16 }, () => call('teams.list'));
+  await flush();
+  await assert.rejects(call('teams.list'), (error) => error.status === 429);
+  socket.drop(1006);
+  for (const pending of calls) await assert.rejects(pending, (error) => error.code === 'socket-unavailable');
+});
+
+test('a malformed, unknown, or unexpected frame closes the socket', () => {
+  for (const frame of [
+    'not json',
+    '[]',
+    { type: 'result', id: 'x1', status: 200, body: {} },
+    { type: 'result', id: 'bad id', status: 200, body: {} },
+    { type: 'changed', topic: 'team/Marketing/history', epoch: EPOCH, revision: 1 },
+    { type: 'changed', topic: 'teams', epoch: EPOCH, revision: 1, extra: true },
+    { type: 'sync-empty' },
+  ]) {
+    const socket = connected();
+    socket.frame(frame);
+    assert.equal(socket.closedWith, 1002, JSON.stringify(frame));
+    disconnectAdminSocket();
+  }
+});
+
+test('a watched topic is subscribed, re-read on each newer change and after a reopen, and unsubscribed', async () => {
+  const socket = connected();
+  const heard = [];
+  const stop = watchTopic('team/marketing/history', (topic) => heard.push(topic));
+  socket.answer('subscribe', { epoch: EPOCH, topics: { 'team/marketing/history': 3 } });
+  await flush();
+  socket.frame({ type: 'changed', topic: 'team/marketing/history', epoch: EPOCH, revision: 3 });
+  assert.deepEqual(heard, []);
+  socket.frame({ type: 'changed', topic: 'team/marketing/history', epoch: EPOCH, revision: 4 });
+  socket.frame({ type: 'changed', topic: 'teams', epoch: EPOCH, revision: 9 });
+  assert.deepEqual(heard, ['team/marketing/history']);
+  // A new Admin process re-reads everything shown.
+  socket.frame({ type: 'changed', topic: 'teams', epoch: 'b'.repeat(32), revision: 1 });
+  assert.equal(heard.length, 2);
+  assert.throws(() => watchTopic('team/marketing/inventory', () => {}), /Invalid Admin topic/);
+  stop();
+  assert.deepEqual(socket.sent.at(-1).params, { topics: ['team/marketing/history'] });
+  assert.equal(socket.sent.at(-1).method, 'unsubscribe');
+});
+
+test('a topic value reads when shown, at a change, and once more when a change lands during a read', async () => {
+  const socket = connected();
+  let reads = 0;
+  let release;
+  const value = topicValue('space/resources', () => {
+    reads += 1;
+    return new Promise((resolve) => { release = () => resolve(reads); });
+  }, 'none');
+  const seen = [];
+  const stop = value.subscribe((current) => seen.push(current));
+  assert.equal(reads, 1);
+  socket.frame({ type: 'changed', topic: 'space/resources', epoch: EPOCH, revision: 1 });
+  release();
+  await flush();
+  assert.equal(reads, 2);
+  release();
+  await flush();
+  assert.deepEqual(seen, ['none', 1, 2]);
+  stop();
+});
+
+test('a close asks Admin about the session: signed out ends it, signed in reconnects and re-reads', async () => {
+  const ended = mock.fn();
+  let socket = connected(ended);
+  const heard = [];
+  watchTopic('teams', () => heard.push('teams'));
+  sessionAnswer = { authenticated: true };
+  socket.drop(1006);
+  await flush();
+  assert.equal(get(adminSocket).phase, 'reconnecting');
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  socket = FakeSocket.opened.at(-1);
+  socket.open();
+  await flush();
+  assert.equal(get(adminSocket).phase, 'open');
+  assert.ok(heard.includes('teams'));
+  assert.equal(socket.sent[0].method, 'subscribe');
+
+  sessionAnswer = { authenticated: false };
+  socket.drop(1006);
+  await flush();
+  assert.equal(ended.mock.callCount(), 1);
+  assert.equal(get(adminSocket).phase, 'idle');
+});
+
+test('Admin closing the socket as signed out ends the session at once', async () => {
+  const ended = mock.fn();
+  const socket = connected(ended);
+  socket.drop(4401);
+  await flush();
+  assert.equal(ended.mock.callCount(), 1);
+});
+
+test('a chat channel attaches, carries its Team on every frame, reattaches after a reopen, and detaches', async () => {
+  const socket = connected();
+  const channel = openChatChannel('marketing', 'en');
+  await flush();
+  const opened = mock.fn();
+  const received = [];
+  const closed = mock.fn();
+  channel.onopen = opened;
+  channel.onmessage = (event) => received.push(JSON.parse(event.data));
+  channel.onclose = closed;
+  assert.deepEqual(socket.answer('chat.attach', { team_id: 'marketing' }).params, { team_id: 'marketing', locale: 'en' });
+  await flush();
+  assert.equal(opened.mock.callCount(), 1);
+  socket.frame({ type: 'sync-empty', team_id: 'marketing' });
+  socket.frame({ type: 'done', team_id: 'marketing', team_name: 'Marketing', reply: 'Hi', clarification: null });
+  // A frame for a Team this page no longer has a channel for is Admin's late frame after a detach: it is dropped.
+  socket.frame({ type: 'stopped', team_id: 'sales' });
+  assert.deepEqual(received, [
+    { type: 'sync-empty' },
+    { type: 'done', team_id: 'marketing', team_name: 'Marketing', reply: 'Hi', clarification: null },
+  ]);
+  channel.send(JSON.stringify({ type: 'stop' }));
+  assert.deepEqual(socket.sent.at(-1), { type: 'stop', team_id: 'marketing' });
+  assert.throws(() => channel.send(JSON.stringify({ type: 'call' })), /Invalid local chat request/);
+  assert.throws(() => openChatChannel('marketing', 'en'), /Invalid local chat request/);
+  assert.throws(() => openChatChannel('Bad Team', 'en'), /Invalid local chat request/);
+
+  socket.drop(1006);
+  await flush();
+  assert.equal(closed.mock.callCount(), 1);
+  assert.throws(() => channel.send(JSON.stringify({ type: 'stop' })), /reconnecting/);
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  const reopened = FakeSocket.opened.at(-1);
+  reopened.open();
+  await flush();
+  reopened.answer('chat.attach', { team_id: 'marketing' });
+  await flush();
+  assert.equal(opened.mock.callCount(), 2);
+  channel.close();
+  assert.deepEqual(reopened.sent.at(-1).params, { team_id: 'marketing' });
+  assert.equal(reopened.sent.at(-1).method, 'chat.detach');
+});
+
+test('a channel closed while it attached is detached again, and a refused attach closes it', async () => {
+  const socket = connected();
+  const early = openChatChannel('marketing', 'en');
+  await flush();
+  early.close();
+  socket.answer('chat.attach', { team_id: 'marketing' });
+  await flush();
+  assert.equal(socket.sent.at(-1).method, 'chat.detach');
+
+  const refused = openChatChannel('sales', 'en');
+  const closed = mock.fn();
+  refused.onclose = closed;
+  await flush();
+  socket.answer('chat.attach', { detail: 'full' }, 409);
+  await flush();
+  assert.equal(closed.mock.callCount(), 1);
+});

@@ -73,7 +73,6 @@ TEAM_CREDENTIALS_ENABLED = os.environ.get("SHIMPZ_TEAM_CREDENTIALS_ENABLED", "1"
 UI_DIR = Path(__file__).resolve().parent.parent / "frontend" / "build"
 COOKIE = "shimpz_admin"
 OAUTH_COOKIE = "shimpz_oauth_binding"
-BACKGROUND_HEADER = "shimpz-activity"
 OAUTH_COOKIE_PATH = "/api/oauth/cloudflare"
 OAUTH_COOKIE_TTL = 300
 OAUTH_START_PATH = "/api/oauth/cloudflare/start"
@@ -261,13 +260,11 @@ def _session_remaining(cookies) -> float | None:
 
 
 def _supervisor_activity(request: Request) -> bool:
-    """A request from Admin's own page is Supervisor activity, except the page's background refresh, which marks itself.
+    """A request from Admin's own page is Supervisor activity; its automatic reads travel on the session socket.
 
     Another page on the same site may still read with the session cookie, but its requests never renew the session.
     """
-    return request.headers.get(BACKGROUND_HEADER) != "background" and browser.from_admin_page(
-        request, _allowed_browser_origins
-    )
+    return browser.from_admin_page(request, _allowed_browser_origins)
 
 
 def _team_session_scope(cookies, *, authority_kind: str = "session"):

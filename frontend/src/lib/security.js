@@ -1,11 +1,10 @@
 import { writable } from 'svelte/store';
 
-import { backgroundFetch, LocalApiError, safeApiError } from './localApi.js';
+import { LocalApiError, safeApiError } from './localApi.js';
 import { exactKeys, isInstant, jsonObject } from './validate.js';
 
 // The Supervisor's own sign-in security (ADR-0051): the refused second-factor attempts a sign-in reported, kept until
 // the Supervisor acknowledges them, and the single-use recovery codes left.
-const SUMMARY = '/api/admin/security';
 const FAILURES = '/api/admin/security/failures';
 const RECOVERY_CODES = '/api/admin/recovery-codes';
 const MAX_COUNT = 1_000_000;
@@ -60,10 +59,9 @@ function summary(response, body) {
   };
 }
 
-async function send(fetcher, url, init, fallback) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid sign-in security request.');
+async function published(answer, fallback) {
   const epoch = summaryEpoch;
-  const response = await fetcher(url, { cache: 'no-store', ...init });
+  const response = await answer;
   const body = await jsonObject(response);
   if (!response.ok) throw new LocalApiError(safeApiError(body, fallback), response.status);
   const result = summary(response, body);
@@ -71,9 +69,15 @@ async function send(fetcher, url, init, fallback) {
   return result;
 }
 
-/** Read the summary when the signed-in page opens; the page asks on its own, so it is no Supervisor activity. */
-export function loadSecuritySummary(fetcher = backgroundFetch) {
-  return send(fetcher, SUMMARY, { headers: { Accept: 'application/json' } }, 'The sign-in security summary is unavailable.');
+function send(fetcher, url, init, fallback) {
+  if (typeof fetcher !== 'function') return Promise.reject(new LocalApiError('Invalid sign-in security request.'));
+  return published(fetcher(url, { cache: 'no-store', ...init }), fallback);
+}
+
+/** Read the summary over the session socket; the page reads it on its own, so it is no Supervisor activity. */
+export function loadSecuritySummary(read) {
+  if (typeof read !== 'function') return Promise.reject(new LocalApiError('Invalid sign-in security request.'));
+  return published(read('security.summary', {}), 'The sign-in security summary is unavailable.');
 }
 
 /** Acknowledge exactly the failed attempts the Supervisor saw; any reported since stay. */

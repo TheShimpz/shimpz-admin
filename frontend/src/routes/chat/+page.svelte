@@ -1,5 +1,5 @@
 <script>
-  import { flushSync, getContext, onMount, tick } from 'svelte';
+  import { flushSync, onMount, tick } from 'svelte';
   import { AssistantIcon, Button, ChatTask, EmptyState, FileInput, Message, Notice, ScrollArea, TextAreaField, TextField, Toolbar } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '#lib/AssistantHumanRequestDialog.svelte';
   import AttachmentChip from '#lib/AttachmentChip.svelte';
@@ -30,7 +30,7 @@
   import { calendarDay, clockTime, exchangeDays, instantValue, turnInstants, untilNextDay } from '#lib/chatDays.js';
   import { newerRoutineEntries, questionWords, refusalWords } from '#lib/routine.js';
   import { loadTeamRoutines } from '#lib/routineContext.js';
-  import { backgroundFetch } from '#lib/localApi.js';
+  import { adminSocket, backgroundCall, call, openChatChannel, watchTopic } from '#lib/adminSocket.js';
   import ExecutionReceipt from '#lib/ExecutionReceipt.svelte';
   import {
     createExecutionProjection,
@@ -44,16 +44,14 @@
   import { CLARIFICATION_LABELS } from '#lib/clarificationLabels.js';
   import { routineQuestionMessages } from '#lib/routineQuestionMessages.js';
   import { configureModelContext, loadModelContext, modelContext } from '#lib/modelContext.js';
-  import { SESSION_ENDED, sessionContext } from '#lib/sessionContext.js';
+  import { sessionContext } from '#lib/sessionContext.js';
   import ShimpzThinking from '#lib/ShimpzThinking.svelte';
   import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teamContext.js';
   import { ASSISTANT_LIMIT_REACHED } from '#lib/validate.js';
   import {
-    CHAT_WS_PROTOCOL,
     authorizeAssistantIntegration,
     capabilityContinuation,
     cancelAssistantIntegrationAuthorization,
-    chatSocketUrl,
     clearAssistantStoredInput,
     completeAssistantIntegration,
     createChatFrame,
@@ -114,7 +112,6 @@
   // challenge, or lifecycle card of it stays live. A reconnect may restore another turn; one this page still waits on
   // keeps only what it observes from then on.
   function resetConnection() {
-    clearTimeout(stableTimer);
     forgetSegments();
     socket = null;
     socketReady = false;
@@ -145,28 +142,13 @@
   let lifecycleDecisionPending = $state(false);
   let error = $state('');
   let errorDetail = $state('');
+  // The selected Team's chat channel on the Admin session socket (ADR-0114). The shell's socket reconnects on its own
+  // and asks Admin whether the session still holds; the channel attaches again when it reopens, and Admin then
+  // synchronizes the Team, so this page only reflects whether its channel is open.
   let socket = $state(null);
   let socketReady = $state(false);
-  let reconnectTimer;
-  let stableTimer;
   const lifecycleExpiryTimers = new Map();
   const lifecycleIconCaptures = new Map();
-  let reconnectAttempt = 0;
-  let reconnectSince = 0;
-  // A Local release swap restarts Admin and Team for about half a minute, so a dropped socket keeps reconnecting with
-  // a capped backoff for long enough to cover it before the page asks for a refresh. Admin refuses an expired session
-  // before it accepts the upgrade, which the browser reports only as a failed connection, so a socket that never
-  // opened asks Admin whether the session is still valid before the next attempt. A confirmed signed-out session
-  // returns to the sign-in flow, and Admin's session refusal of an open socket is final either way.
-  const RECONNECT_WINDOW_MS = 150_000;
-  const MAX_RECONNECT_DELAY_MS = 10_000;
-  // Only a connection that stayed open this long restores the reconnect budget; one Admin accepts and then closes
-  // (its session check unavailable, a refusal after accept) keeps backing off and ends in the reported failure.
-  const STABLE_CONNECTION_MS = 10_000;
-  const SESSION_PROBE_TIMEOUT_MS = 5_000;
-  const SESSION_REFUSED_CLOSE_CODE = 4401;
-  const sessionEnded = getContext(SESSION_ENDED);
-  let sessionProbe = 0;
   let integrationsOpen = $state(false);
   let integrationsButton = $state();
   let integrationsDialogOpen = $state(false);
@@ -561,7 +543,7 @@
 
   async function hydrateHistory(teamId, generation) {
     try {
-      const page = await listChatHistory(fetch, teamId);
+      const page = await listChatHistory(call, teamId);
       if (generation !== historyGeneration || chatTeamId !== teamId) return;
       const team = $teamContext.teams.find((entry) => entry.id === teamId);
       if (!team) throw new Error(copy.loadFailed);
@@ -590,7 +572,7 @@
     historyWorking = true;
     const generation = historyGeneration;
     try {
-      const page = await listChatHistory(fetch, teamId, before);
+      const page = await listChatHistory(call, teamId, before);
       if (generation !== historyGeneration || chatTeamId !== teamId) return;
       // An older page must move the cursor, or automatic loading would request the same page forever.
       if (page.before === before || (page.entries.length === 0 && page.before !== null)) {
@@ -635,18 +617,19 @@
     void loadOlderHistory();
   }
 
-  // Admin delivers Routine notices on its own schedule (ADR-0086), so while a Local Team's conversation is open and the
-  // page is visible, that Team's Routine list and the history written since it was last read are re-read at a modest
-  // interval and when the page becomes visible again: pages newest first, back to the newest row already read. The
-  // chat's view of the history holds, of the Routine notices, only each Routine's creation; its runs are its own
+  // Admin delivers Routine notices on its own schedule (ADR-0086) and says so on the session socket (ADR-0114): while a
+  // Local Team's conversation is open, a change of that Team's Routines reads its Routine list again, and a change of its
+  // history reads the history written since it was last read: pages newest first, back to the newest row already read.
+  // The chat's view of the history holds, of the Routine notices, only each Routine's creation; its runs are its own
   // history, which its panel reads. Only Routine rows merge into the transcript, by identity and version: a new row,
   // or a newer version of a shown one, moves to the end as a reload would show it. The rest of the conversation, the
-  // draft, and the reader's place stay as they are; a reader already at the end follows the new row. When more was written than one refresh reads (a page
-  // hidden for long), the transcript starts again from what it read, as a reload shows it, and earlier history
-  // continues from where the refresh stopped, through every row written in between.
-  const ROUTINE_REFRESH_MS = 15_000;
+  // draft, and the reader's place stay as they are; a reader already at the end follows the new row. When more was
+  // written than one refresh reads, the transcript starts again from what it read, as a reload shows it, and earlier
+  // history continues from where the refresh stopped, through every row written in between. A change that arrives
+  // while a turn or history is in motion is read once the conversation is idle again.
   const FOLLOW_SLACK = 48;
   let routineRefreshing = false;
+  let historyChanged = $state(false);
 
   // A row is never added under a message still waiting for its reply, or while history or a turn is in motion.
   function routineMergeIdle() {
@@ -654,14 +637,21 @@
   }
 
   async function refreshRoutineNotices(teamId) {
-    if (routineRefreshing || document.visibilityState !== 'visible' || chatTeamId !== teamId) return;
+    if (chatTeamId !== teamId) return;
+    if (routineRefreshing || !routineMergeIdle()) {
+      historyChanged = true;
+      return;
+    }
+    historyChanged = false;
     routineRefreshing = true;
     const generation = historyGeneration;
     try {
-      loadTeamRoutines(backgroundFetch, teamId).catch(() => {});
-      if (!routineMergeIdle()) return;
-      const since = await historySince(backgroundFetch, teamId, historySeen);
-      if (generation !== historyGeneration || chatTeamId !== teamId || !routineMergeIdle()) return;
+      const since = await historySince(backgroundCall, teamId, historySeen);
+      if (generation !== historyGeneration || chatTeamId !== teamId) return;
+      if (!routineMergeIdle()) {
+        historyChanged = true;
+        return;
+      }
       const team = $teamContext.teams.find((entry) => entry.id === teamId);
       if (!team) return;
       if (since.before !== null) {
@@ -687,7 +677,7 @@
       ];
       if (following) await revealLatestExchange();
     } catch {
-      // The next refresh tries again; the open conversation stays as it is.
+      // The next change or reconnect reads again; the open conversation stays as it is.
     } finally {
       routineRefreshing = false;
     }
@@ -696,16 +686,25 @@
   $effect(() => {
     const teamId = chatTeamId;
     if (!mounted || !teamId) return;
-    const refresh = () => void refreshRoutineNotices(teamId);
-    const shown = () => {
-      if (document.visibilityState === 'visible') refresh();
-    };
-    const timer = setInterval(refresh, ROUTINE_REFRESH_MS);
-    document.addEventListener('visibilitychange', shown);
+    const stopRoutines = watchTopic(`team/${teamId}/routines`, () => {
+      loadTeamRoutines(backgroundCall, teamId).catch(() => {});
+    });
+    const stopHistory = watchTopic(`team/${teamId}/history`, () => void refreshRoutineNotices(teamId));
     return () => {
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', shown);
+      stopRoutines();
+      stopHistory();
+      historyChanged = false;
     };
+  });
+
+  // A history change held back while the conversation was in motion is read once it is idle again.
+  $effect(() => {
+    if (historyChanged && chatTeamId && !historyHydrating && routineMergeIdle()) void refreshRoutineNotices(chatTeamId);
+  });
+
+  // The shell's socket gave up reconnecting: the conversation stays readable, and a reload is the way back.
+  $effect(() => {
+    if ($adminSocket.phase === 'failed' && chatTeamId) setError(copy.connectionFailed);
   });
 
   $effect(() => {
@@ -1176,12 +1175,6 @@
   }
 
   function closeSocket() {
-    sessionProbe += 1;
-    clearTimeout(stableTimer);
-    if (reconnectTimer) {
-      clearTimeout(reconnectTimer);
-      reconnectTimer = undefined;
-    }
     const current = socket;
     socket = null;
     socketReady = false;
@@ -1259,48 +1252,6 @@
     resetProgress();
   }
 
-  function scheduleReconnect(expectedTeamId) {
-    if (reconnectTimer || !mounted || chatTeamId !== expectedTeamId) return;
-    const now = performance.now();
-    if (reconnectAttempt === 0) reconnectSince = now;
-    if (now - reconnectSince >= RECONNECT_WINDOW_MS) {
-      setError(copy.connectionFailed);
-      return;
-    }
-    const delay = Math.min(400 * (2 ** Math.min(reconnectAttempt, 5)), MAX_RECONNECT_DELAY_MS);
-    reconnectAttempt += 1;
-    reconnectTimer = setTimeout(() => {
-      reconnectTimer = undefined;
-      if (mounted && chatTeamId === expectedTeamId) connectSocket(expectedTeamId);
-    }, delay);
-  }
-
-  // Only an answered session check that reports no authentication ends the reconnect loop; an unreachable or failing
-  // Admin is the transient outage the loop exists to ride out.
-  async function sessionSignedOut() {
-    try {
-      const response = await fetch('/api/session', {
-        method: 'POST',
-        cache: 'no-store',
-        signal: AbortSignal.timeout(SESSION_PROBE_TIMEOUT_MS),
-      });
-      if (!response.ok) return false;
-      const session = await response.json();
-      return session?.authenticated === false;
-    } catch {
-      return false;
-    }
-  }
-
-  async function continueAfterSessionCheck(expectedTeamId, sessionRefused) {
-    const probe = ++sessionProbe;
-    const signedOut = await sessionSignedOut();
-    if (probe !== sessionProbe || socket || !mounted || chatTeamId !== expectedTeamId) return;
-    if (signedOut) sessionEnded();
-    else if (sessionRefused) setError(copy.connectionFailed);
-    else scheduleReconnect(expectedTeamId);
-  }
-
   function connectSocket(expectedTeamId) {
     closeSocket();
     if (!mounted || !expectedTeamId || chatTeamId !== expectedTeamId) return;
@@ -1310,39 +1261,20 @@
 
     let active;
     try {
-      active = new WebSocket(chatSocketUrl(location, expectedTeamId), CHAT_WS_PROTOCOL);
+      active = openChatChannel(expectedTeamId, $locale);
     } catch {
       setError(copy.protocolError);
       return;
     }
     socket = active;
-    let opened = false;
 
+    // Attaching synchronizes the Team: Admin restores a pending request or answers that nothing is pending.
     active.onopen = () => {
       if (socket !== active || chatTeamId !== expectedTeamId) return;
-      opened = true;
-      if (active.protocol !== CHAT_WS_PROTOCOL) {
-        socket = null;
-        active.close(1002, 'Protocol required');
-        setError(copy.protocolError);
-        return;
-      }
-      clearTimeout(stableTimer);
-      stableTimer = setTimeout(() => {
-        if (socket === active) reconnectAttempt = 0;
-      }, STABLE_CONNECTION_MS);
       socketReady = true;
       syncing = true;
       resetProgress();
-      try {
-        active.send(JSON.stringify(createSyncFrame(expectedTeamId, $locale)));
-      } catch {
-        resetConnection();
-        setError(copy.disconnected);
-        active.close();
-        return;
-      }
-      if (error === copy.disconnected) clearError();
+      if (error === copy.disconnected || error === copy.connectionFailed) clearError();
     };
     active.onmessage = (event) => {
       if (socket !== active || chatTeamId !== expectedTeamId) return;
@@ -1544,16 +1476,12 @@
       }
       resetProgress();
     };
-    active.onclose = (event) => {
+    // The session socket dropped: nothing of the turn stays live, and the channel attaches again when it reopens.
+    active.onclose = () => {
       if (socket !== active || chatTeamId !== expectedTeamId) return;
       resetConnection();
-      if (event.code === SESSION_REFUSED_CLOSE_CODE) {
-        void continueAfterSessionCheck(expectedTeamId, true);
-        return;
-      }
+      socket = active;
       setError(copy.disconnected);
-      if (opened) scheduleReconnect(expectedTeamId);
-      else void continueAfterSessionCheck(expectedTeamId, false);
     };
   }
 
@@ -1567,7 +1495,6 @@
     capabilityObjective = null;
     liveAnswers = new Map();
     socketTeamId = nextTeamId;
-    reconnectAttempt = 0;
     stopping = false;
     lifecycleOutcomePending = null;
     deferredUninstall = null;

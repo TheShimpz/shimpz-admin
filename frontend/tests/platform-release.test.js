@@ -10,9 +10,9 @@ function response(status, body) {
 }
 
 test('admits only the closed Local platform release status', async () => {
-  const status = await fetchPlatformRelease(async (url, options) => {
-    assert.equal(url, '/api/platform-release');
-    assert.deepEqual(options, { cache: 'no-store' });
+  const status = await fetchPlatformRelease(async (method, params) => {
+    assert.equal(method, 'platform.release');
+    assert.deepEqual(params, {});
     return response(200, {
       release,
       ordinal: 42,

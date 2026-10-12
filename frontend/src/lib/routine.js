@@ -576,6 +576,11 @@ async function request(fetcher, path, init = {}) {
     ...init,
     headers: { Accept: 'application/json', ...(init.body ? { 'Content-Type': 'application/json' } : {}) },
   });
+  return admitted(response);
+}
+
+// Admin's answer, an HTTP response or a session socket result: its body, or the refusal it names.
+async function admitted(response) {
   const body = await jsonObject(response);
   if (!response.ok) {
     const code = typeof body.code === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(body.code) ? body.code : 'routine-request-failed';
@@ -615,8 +620,10 @@ function deleted(body, teamId, routineId = null) {
   return { deleted: body.deleted };
 }
 
-export async function listRoutines(fetcher, teamId) {
-  const body = await request(fetcher, teamPath(teamId));
+export async function listRoutines(read, teamId) {
+  if (typeof read !== 'function') throw new RoutineError('routine-request-invalid');
+  teamPath(teamId);
+  const body = await admitted(await read('routines.list', { team_id: teamId }));
   if (
     !exact(body, ['team_id', 'routines', 'runs', 'incidents']) ||
     body.team_id !== teamId ||

@@ -72,7 +72,6 @@ const MAX_CHAT_PROGRESS_ELAPSED_MS = 24 * 60 * 60 * 1000;
 const CLOUDFLARE_SCOPES = new Set(['dns.read', 'dns.write', 'offline_access', 'zone.read']);
 const OAUTH_SCOPE_RE = /^[A-Za-z0-9._:-]{1,128}$/;
 
-export const CHAT_WS_PROTOCOL = 'shimpz.chat.v7';
 export const HUMAN_REQUEST_KINDS = Object.freeze([
   'approval',
   'input:text',
@@ -1071,15 +1070,6 @@ export async function cancelAssistantIntegrationAuthorization(fetcher, teamId, c
   if (response.status !== 204) {
     throw new LocalApiError('The Assistant cancellation response is invalid.', response.status);
   }
-}
-
-export function chatSocketUrl(locationValue, teamId) {
-  requireTeam(teamId);
-  if (!locationValue || typeof locationValue.host !== 'string') {
-    throw new LocalApiError('Invalid local chat request.');
-  }
-  const scheme = locationValue.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${scheme}//${locationValue.host}/api/teams/${teamId}/chat/ws`;
 }
 
 function canonicalInstallPlanAssistant(value) {

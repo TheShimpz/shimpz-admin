@@ -67,6 +67,8 @@ export default {
     languageCurrent: 'Sprache: {name}',
     languageMenu: 'Sprache',
     platformRollback: 'Aktualisierung zurückgesetzt',
+    reconnecting: 'Verbindung zu Admin wird wiederhergestellt… Was Sie sehen, ist womöglich veraltet, und Aktionen warten, bis die Verbindung zurück ist.',
+    reconnectFailed: 'Admin ist weiterhin nicht erreichbar. Laden Sie diese Seite neu, um sich wieder zu verbinden.',
     platformOrdinal: 'Lokale Plattformversion {ordinal}',
     platformDeveloper: 'Entwicklungs-Build auf der lokalen Plattformversion {ordinal}',
     resourceServices: 'Dienste',

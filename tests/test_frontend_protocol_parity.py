@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from protocol.http.v1 import challenge as team_challenge
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import turn as turn_contract
+from protocol.socket.v1 import frames as socket_frames
 
 LOCAL_CHAT = ROOT / "frontend" / "src" / "lib" / "localChat.js"
 VALIDATE = ROOT / "frontend" / "src" / "lib" / "validate.js"
@@ -163,6 +164,37 @@ class FrontendIdentifierParityTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(int(exported(name)), getattr(team_contract, name))
         self.assertEqual(team_contract.IDENTIFIER_RE.pattern, team_contract.ASSISTANT_ID_PATTERN)
+
+
+class FrontendSessionSocketParityTests(unittest.TestCase):
+    """The browser's copies of the session socket protocol stay the Admin-owned protocol's (ADR-0114)."""
+
+    def test_the_browser_session_socket_bounds_and_topics_are_the_protocol_s(self) -> None:
+        source = (LIB / "adminSocket.js").read_text(encoding="utf-8")
+
+        def constant(name: str) -> str:
+            match = re.search(rf"^(?:export )?const {name} = (.+);$", source, re.MULTILINE)
+            if match is None:
+                raise AssertionError(f"{name} is missing from the browser session socket")
+            return match[1]
+
+        self.assertEqual(constant("ADMIN_SOCKET_PROTOCOL"), f"'{socket_frames.SUBPROTOCOL}'")
+        self.assertEqual(constant("ADMIN_SOCKET_PATH"), f"'{socket_frames.PATH}'")
+        self.assertEqual(constant("MAX_INBOUND_BYTES"), "1024 * 1024")
+        self.assertEqual(1024 * 1024, socket_frames.MAX_OUTBOUND_BYTES)
+        for name in ("MAX_IN_FLIGHT", "MAX_SUBSCRIPTIONS", "MAX_ATTACHED_TEAMS"):
+            with self.subTest(name=name):
+                self.assertEqual(int(constant(name)), getattr(socket_frames, name))
+        self.assertEqual(constant("CALL_ID_RE"), "/^" + socket_frames.CALL_ID_RE.pattern.removesuffix(r"\Z") + "$/")
+        self.assertEqual(constant("EPOCH_RE"), "/^" + socket_frames.EPOCH_RE.pattern.removesuffix(r"\Z") + "$/")
+        topic = socket_frames.TOPIC_RE.pattern.removesuffix(r"\Z").replace("/", r"\/")
+        self.assertEqual(constant("TOPIC_RE"), f"/^{topic}$/")
+        self.assertEqual(
+            constant("CHAT_CLIENT_TYPES"), "new Set([" + ", ".join(
+                f"'{kind}'" for kind in ("chat", "resume-task", "stop", "sync", "human-response")
+            ) + "])"
+        )
+        self.assertEqual(socket_frames.CHAT_TYPES, {"chat", "resume-task", "stop", "sync", "human-response"})
 
 
 if __name__ == "__main__":

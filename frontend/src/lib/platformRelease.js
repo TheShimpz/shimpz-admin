@@ -5,8 +5,8 @@ const RELEASE = /^(?:ghcr\.io\/theshimpz|localhost)\/shimpz-local-release@sha256
 const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const OUTCOMES = new Set(['current', 'updated', 'rollback-needed']);
 
-export async function fetchPlatformRelease(fetcher = fetch) {
-  const response = await fetcher('/api/platform-release', { cache: 'no-store' });
+export async function fetchPlatformRelease(read) {
+  const response = await read('platform.release', {});
   if (!response.ok) return null;
   const body = await jsonObject(response);
   if (

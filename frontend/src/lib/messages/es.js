@@ -67,6 +67,8 @@ export default {
     languageCurrent: 'Idioma: {name}',
     languageMenu: 'Idioma',
     platformRollback: 'Actualización revertida',
+    reconnecting: 'Reconectando con Admin… Lo que ves puede estar desactualizado, y las acciones esperan hasta que vuelva la conexión.',
+    reconnectFailed: 'No se pudo volver a contactar con Admin. Actualiza esta página para reconectar.',
     platformOrdinal: 'Versión local de la plataforma {ordinal}',
     platformDeveloper: 'Compilación de desarrollo sobre la versión local de la plataforma {ordinal}',
     resourceServices: 'Servicios',

@@ -31,6 +31,14 @@ const routineMessages = Object.fromEntries(Object.entries(messages).map(([code, 
 
 const ROUTINES = '/api/teams/marketing/routines';
 
+// A session socket read answered from the scenario, as the preview's socket answers it (ADR-0114).
+function reader(scenario) {
+  return async (method, params) => {
+    const answer = scenario.call(method, params);
+    return { ok: answer.status < 300, status: answer.status, async json() { return answer.json; } };
+  };
+}
+
 // A fetch that answers from the scenario, as the preview installs it in the browser.
 function adapter(scenario) {
   return async (target, init = {}) => {
@@ -52,20 +60,22 @@ test('a scenario answers only what it declares and fails closed otherwise', () =
     assert.equal(scenario.respond({ method: 'GET', path: '/api/space/reset' }), null);
     assert.equal(scenario.respond({ method: 'DELETE', path: '/api/teams/marketing' }), null);
   }
-  assert.equal(createScenario('setup').respond({ method: 'GET', path: '/api/teams' }), null);
-  assert.equal(createScenario('empty').respond({ method: 'GET', path: ROUTINES }), null);
+  assert.equal(createScenario('setup').call('teams.list', {}), null);
+  assert.equal(createScenario('empty').call('routines.list', { team_id: 'marketing' }), null);
+  // A read moved to the session socket is no HTTP route of any scenario.
+  assert.equal(createScenario('ready').respond({ method: 'GET', path: '/api/teams' }), null);
   assert.throws(() => createScenario('production'), /unknown scenario/);
 });
 
 test('scenarios never share state, and a caller cannot mutate one through a response', () => {
   const first = createScenario('routines');
   const second = createScenario('routines');
-  first.respond({ method: 'GET', path: ROUTINES }).json.routines[0].name = 'changed';
+  first.call('routines.list', { team_id: 'marketing' }).json.routines[0].name = 'changed';
   first.respond({ method: 'DELETE', path: `${ROUTINES}/${'a'.repeat(32)}`, body: { code: '123456' } });
-  const untouched = second.respond({ method: 'GET', path: ROUTINES }).json;
+  const untouched = second.call('routines.list', { team_id: 'marketing' }).json;
   assert.equal(untouched.routines.length, 2);
   assert.notEqual(untouched.routines[0].name, 'changed');
-  assert.equal(first.respond({ method: 'GET', path: ROUTINES }).json.routines.length, 1);
+  assert.equal(first.call('routines.list', { team_id: 'marketing' }).json.routines.length, 1);
 });
 
 test('a recording turn carries the Cloudflare card; Criar rotina creates its Routine and Cancelar creates nothing', async () => {
@@ -79,12 +89,12 @@ test('a recording turn carries the Cloudflare card; Criar rotina creates its Rou
   assert.deepEqual(card.steps[1].inputs[0].where, { member: 'name', value_json: '"shimpz.com"' });
   assert.equal(card.steps[1].inputs[0].item, '/id');
   // Nothing is created until the person confirms.
-  assert.deepEqual(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines, []);
+  assert.deepEqual(scenario.call('routines.list', { team_id: 'marketing' }).json.routines, []);
   assert.deepEqual(await confirmRoutineProposal(adapter(scenario), 'marketing', card.proposal_id), {
     status: 'created',
-    routineId: scenario.respond({ method: 'GET', path: ROUTINES }).json.routines[0].routine_id,
+    routineId: scenario.call('routines.list', { team_id: 'marketing' }).json.routines[0].routine_id,
   });
-  const [routine] = (await listRoutines(adapter(scenario), 'marketing')).routines;
+  const [routine] = (await listRoutines(reader(scenario), 'marketing')).routines;
   assert.equal(routine.name, card.name);
   // A used card answers once; a second confirmation is refused as expired.
   await assert.rejects(
@@ -94,9 +104,9 @@ test('a recording turn carries the Cloudflare card; Criar rotina creates its Rou
   const [second] = scenario.chat.message(frame(ROUTINE_TEXT.pt.request));
   const revoked = parseChatEvent(second, 'marketing', 'Marketing').routine_proposal;
   assert.equal((await revokeRoutineProposal(adapter(scenario), 'marketing', revoked.proposal_id)).status, 'revoked');
-  assert.equal((await listRoutines(adapter(scenario), 'marketing')).routines.length, 1);
+  assert.equal((await listRoutines(reader(scenario), 'marketing')).routines.length, 1);
   // The transcript keeps each card with its reply, and the created notice names the Routine.
-  const { entries } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json;
+  const { entries } = scenario.call('history.page', { team_id: 'marketing' }).json;
   assert.equal(entries.filter((entry) => entry.routine_proposal).length, 2);
   const created = entries.filter((entry) => entry.kind === 'routine-run').map(parseRoutineRunEntry);
   assert.deepEqual(created.map((notice) => [notice.outcome, notice.name]), [['created', card.name]]);
@@ -104,7 +114,7 @@ test('a recording turn carries the Cloudflare card; Criar rotina creates its Rou
   const plain = createScenario('ready');
   const [reply] = plain.chat.message(frame('Every day at 9, list my DNS zones'));
   assert.equal(Object.hasOwn(reply, 'routine_proposal'), false);
-  assert.deepEqual(plain.respond({ method: 'GET', path: ROUTINES }).json.routines, []);
+  assert.deepEqual(plain.call('routines.list', { team_id: 'marketing' }).json.routines, []);
 });
 
 test("a refused recording says in the person's language that no Routine was created", () => {
@@ -113,7 +123,7 @@ test("a refused recording says in the person's language that no Routine was crea
     const [reply] = scenario.chat.message({ type: 'chat', message: ROUTINE_TEXT[locale].refusalRequest, files: [], assistant_ids: [] });
     const { routine_refusal: refusal } = parseChatEvent(reply, 'marketing', 'Marketing');
     assert.equal(refusalWords(refusal, routineMessages[locale].proposal), routineMessages[locale].proposal.refusals.secret, locale);
-    assert.deepEqual(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines, [], locale);
+    assert.deepEqual(scenario.call('routines.list', { team_id: 'marketing' }).json.routines, [], locale);
   }
 });
 
@@ -139,12 +149,12 @@ test("a question scenario asks Team's question in every language and answers the
 
 test('a paused Routine resumes and the chat socket answers a sync', () => {
   const scenario = createScenario('routines');
-  const listed = scenario.respond({ method: 'GET', path: ROUTINES }).json;
+  const listed = scenario.call('routines.list', { team_id: 'marketing' }).json;
   assert.equal(listed.incidents.length, 1);
   assert.equal(listed.routines[0].state, 'paused');
   const resumed = scenario.respond({ method: 'POST', path: `${ROUTINES}/${'a'.repeat(32)}/resume`, body: {} });
   assert.equal(resumed.json.paused, false);
-  assert.equal(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines[0].state, 'active');
+  assert.equal(scenario.call('routines.list', { team_id: 'marketing' }).json.routines[0].state, 'active');
   assert.deepEqual(scenario.chat.message({ type: 'sync' }), [{ type: 'sync-empty' }]);
   assert.deepEqual(scenario.chat.message({ type: 'unknown' }), []);
 });
@@ -213,7 +223,7 @@ test('a human request names an Assistant its Team inventory lists, so Admin open
 
 test('the Team order is saved only as an exact permutation of the listed Teams', () => {
   const scenario = createScenario('ready');
-  const ids = () => scenario.respond({ method: 'GET', path: '/api/teams' }).json.teams.map((team) => team.team_id);
+  const ids = () => scenario.call('teams.list', {}).json.teams.map((team) => team.team_id);
   const put = (body) => scenario.respond({ method: 'PUT', path: '/api/teams/order', body });
   const listed = ids();
   assert.deepEqual(listed, ['marketing', 'trinity', 'cypher', 'morpheus', 'neo', 'smith']);
@@ -240,7 +250,7 @@ test('the Team order is saved only as an exact permutation of the listed Teams',
 
 test('the reorder failure scenarios fail one save, then save normally', () => {
   const unavailable = createScenario('reorder-unavailable');
-  const order = (scenario) => scenario.respond({ method: 'GET', path: '/api/teams' }).json.teams.map((team) => team.team_id);
+  const order = (scenario) => scenario.call('teams.list', {}).json.teams.map((team) => team.team_id);
   const reversed = order(unavailable).reverse();
   assert.equal(unavailable.respond({ method: 'PUT', path: '/api/teams/order', body: { team_ids: reversed } }).status, 503);
   assert.equal(unavailable.respond({ method: 'PUT', path: '/api/teams/order', body: { team_ids: reversed } }).status, 200);
@@ -254,20 +264,23 @@ test('the reorder failure scenarios fail one save, then save normally', () => {
 
 test('every listed Team answers its read-only views, and an unlisted one fails closed', () => {
   const scenario = createScenario('ready');
-  for (const view of ['assistants', 'files', 'chat/history', 'inference', 'assistant-integrations', 'assistant-stored-inputs', 'routines']) {
+  for (const view of ['assistants', 'files', 'inference', 'assistant-integrations', 'assistant-stored-inputs']) {
     assert.equal(scenario.respond({ method: 'GET', path: `/api/teams/neo/${view}` }).status, 200, view);
     assert.equal(scenario.respond({ method: 'GET', path: `/api/teams/oracle/${view}` }), null, view);
+  }
+  for (const method of ['history.page', 'routines.list']) {
+    assert.equal(scenario.call(method, { team_id: 'neo' }).status, 200, method);
+    assert.equal(scenario.call(method, { team_id: 'oracle' }), null, method);
   }
   assert.equal(scenario.respond({ method: 'GET', path: '/api/teams/neo/unknown' }), null);
   assert.equal(scenario.respond({ method: 'POST', path: '/api/teams/neo/routines', body: {} }), null);
 });
 
-test('every listed Team answers its chat with a reply the parser admits, and an unlisted one has no socket', () => {
+test('every listed Team answers its chat with a reply the parser admits, and an unlisted one never attaches', () => {
   const scenario = createScenario('ready');
-  assert.equal(scenario.chat.team('/api/teams/neo/chat/ws'), 'neo');
-  assert.equal(scenario.chat.team('/api/teams/marketing/chat/ws'), 'marketing');
-  assert.equal(scenario.chat.team('/api/teams/oracle/chat/ws'), null);
-  assert.equal(scenario.chat.team('/api/teams/neo/chat'), null);
+  assert.equal(scenario.attachable('neo'), true);
+  assert.equal(scenario.attachable('marketing'), true);
+  assert.equal(scenario.attachable('oracle'), false);
   const [done] = scenario.chat.message({ type: 'chat', message: 'Hello', files: [], assistant_ids: [] }, 'neo');
   const parsed = parseChatEvent(done, 'neo', 'Neo');
   assert.equal(parsed.team_name, 'Neo');
@@ -316,7 +329,7 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
   const entries = routineLifecycleStart('en').history;
   const outcomes = entries.map((entry) => parseRoutineRunEntry(entry).outcome);
   // The chat's view of them holds only each Routine's creation.
-  const chat = scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json.entries;
+  const chat = scenario.call('history.page', { team_id: 'marketing' }).json.entries;
   assert.ok(chat.length > 0);
   assert.ok(chat.every((entry) => parseRoutineRunEntry(entry).outcome === 'created'));
   for (const outcome of ['created', 'changed', 'done', 'healthy', 'recovered', 'user-skipped', 'failed', 'held', 'paused', 'deleted']) {
@@ -329,7 +342,7 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
   assert.ok(notices.some((notice) => notice.usage?.models.length === 0));
   assert.ok(notices.some((notice) => notice.usage?.models.length > 0));
   assert.ok(notices.some((notice) => notice.protectionLost));
-  const listed = await listRoutines(adapter(scenario), 'marketing');
+  const listed = await listRoutines(reader(scenario), 'marketing');
   assert.ok(listed.routines.some((routine) => routine.schedule.kind === 'continuous'));
   assert.ok(listed.routines.some((routine) => routine.state === 'paused'));
   const [held, paused] = listed.incidents;
@@ -340,12 +353,8 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
   assert.equal(failureCause((await openRoutineCard(adapter(scenario), 'marketing', paused.incident_id)).diagnostic), 'auth');
   // Rodar sets the weekly one's held run aside.
   assert.equal((await answerRoutineCard(adapter(scenario), 'marketing', held.incident_id, card, 'run')).status, 'requested');
-  assert.equal((await listRoutines(adapter(scenario), 'marketing')).incidents.length, 1);
-  const rows = scenario.respond({
-    method: 'GET',
-    path: '/api/teams/marketing/chat/history',
-    query: new URLSearchParams({ routine: held.routine_id }),
-  }).json.entries;
+  assert.equal((await listRoutines(reader(scenario), 'marketing')).incidents.length, 1);
+  const rows = scenario.call('history.page', { team_id: 'marketing', routine: held.routine_id }).json.entries;
   const setAside = parseRoutineRunEntry(rows.find((entry) => entry.run_id === held.incident_id));
   assert.deepEqual([setAside.outcome, setAside.detail.choice], ['user-skipped', 'run']);
   const failed = entries.find((entry) => entry.outcome === 'failed');
@@ -396,7 +405,7 @@ test('the Routine lifecycle preview spans the day before it opened and that day,
 test("every locale's Routine preview names its Routines and its card in that language, through the real parsers", async () => {
   for (const locale of Object.keys(ROUTINE_TEXT)) {
     const scenario = createScenario('routine-lifecycle', locale);
-    const { routines } = await listRoutines(adapter(scenario), 'marketing');
+    const { routines } = await listRoutines(reader(scenario), 'marketing');
     assert.deepEqual(routines.map((routine) => routine.name), ROUTINE_TEXT[locale].names.slice(0, 4), locale);
     for (const entry of routineLifecycleStart(locale).history) {
       assert.ok(ROUTINE_TEXT[locale].names.includes(parseRoutineRunEntry(entry).name), locale);
@@ -466,9 +475,9 @@ test('the preview confirms a Routine deletion with a password and a code, and re
   });
   assert.equal(scenario.respond({ method: 'DELETE', path: routine, body: { code: '000000' } }).json.code, 'code-incorrect');
   assert.equal(scenario.respond({ method: 'DELETE', path: routine }).json.code, 'authentication-expired');
-  assert.equal(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines.length, 2);
+  assert.equal(scenario.call('routines.list', { team_id: 'marketing' }).json.routines.length, 2);
   assert.equal(scenario.respond({ method: 'DELETE', path: routine, body: { code: '123456' } }).json.deleted, true);
-  assert.equal(scenario.respond({ method: 'GET', path: ROUTINES }).json.routines.length, 1);
+  assert.equal(scenario.call('routines.list', { team_id: 'marketing' }).json.routines.length, 1);
 });
 
 test("the catalog scenario's Assistants and pages pass Admin's own admission in each language", async () => {

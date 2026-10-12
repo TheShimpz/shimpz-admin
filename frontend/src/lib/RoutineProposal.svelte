@@ -3,6 +3,7 @@
 
   import { assistantNames } from '#lib/assistantNames.js';
   import { loadTeamRoutines } from '#lib/routineContext.js';
+  import { call } from '#lib/adminSocket.js';
   import {
     confirmRoutineProposal,
     displayZone,
@@ -49,7 +50,7 @@
     try {
       const result = await action(fetch, teamId, proposal.proposal_id);
       answer = result.status;
-      if (result.status !== 'revoked') await loadTeamRoutines(fetch, teamId).catch(() => {});
+      if (result.status !== 'revoked') await loadTeamRoutines(call, teamId).catch(() => {});
     } catch (failure) {
       error = routineErrorMessage(failure, copy.errors);
     } finally {

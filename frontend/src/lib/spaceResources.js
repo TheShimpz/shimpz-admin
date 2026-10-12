@@ -24,8 +24,8 @@ function pair(used, total, within) {
 }
 
 /** The Space's resource signal Team measured now, or null when it is unavailable or leaves its closed shape. */
-export async function fetchSpaceResources(fetcher) {
-  const response = await fetcher('/api/space/resources', { cache: 'no-store' });
+export async function fetchSpaceResources(read) {
+  const response = await read('space.resources', {});
   if (!response.ok) return null;
   const body = await jsonObject(response);
   if (

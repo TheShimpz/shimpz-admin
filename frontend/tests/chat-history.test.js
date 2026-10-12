@@ -73,28 +73,25 @@ test('loads one exact bounded Team chat history page', async () => {
     ],
     before: CURSOR,
   };
-  const result = await listChatHistory(async (url, options) => {
-    calls.push({ url, options });
+  const result = await listChatHistory(async (method, params) => {
+    calls.push({ method, params });
     return response(200, body);
   }, 'marketing');
 
   assert.deepEqual(result, { entries: body.entries.map(restored), before: CURSOR });
-  assert.deepEqual(calls, [{
-    url: '/api/teams/marketing/chat/history',
-    options: { cache: 'no-store', headers: { Accept: 'application/json' } },
-  }]);
+  assert.deepEqual(calls, [{ method: 'history.page', params: { team_id: 'marketing' } }]);
   assert.notEqual(result.entries, body.entries);
   assert.notEqual(result.entries[1].assistants, body.entries[1].assistants);
 });
 
 test('loads older Team chat history with only an opaque cursor', async () => {
   const calls = [];
-  await listChatHistory(async (url, options) => {
-    calls.push({ url, options });
+  await listChatHistory(async (method, params) => {
+    calls.push({ method, params });
     return response(200, { entries: [], before: null });
   }, 'marketing', CURSOR);
 
-  assert.equal(calls[0].url, `/api/teams/marketing/chat/history?before=${CURSOR}`);
+  assert.deepEqual(calls[0], { method: 'history.page', params: { team_id: 'marketing', before: CURSOR } });
   for (const cursor of ['', '1', 'AAAAAAAAAAA=', '../other-team', 'x'.repeat(17)]) {
     await assert.rejects(
       listChatHistory(async () => response(200, {}), 'marketing', cursor),
@@ -351,10 +348,10 @@ test("a Routine's history is read from its own view, newest first, a page at a t
     AAAAAAAAAMg: { entries: [run('0')], before: null },
   };
   const requested = [];
-  const fetcher = async (url) => {
-    const { searchParams } = new URL(url, 'http://admin');
-    requested.push([searchParams.get('before'), searchParams.get('routine')]);
-    return response(200, pages[searchParams.get('before')]);
+  const fetcher = async (method, params) => {
+    assert.equal(method, 'history.page');
+    requested.push([params.before ?? null, params.routine ?? null]);
+    return response(200, pages[params.before ?? null]);
   };
   const seen = new Set();
   const found = await routineRuns(fetcher, 'marketing', routine, { seen });
@@ -401,10 +398,10 @@ test('a refresh reads back only to the newest row it already read, and a newer v
     AAAAAAAAAMg: { entries: [run('2'), known, run('3')], before: 'AAAAAAAAAGQ' },
   };
   const requested = [];
-  const fetcher = async (url) => {
-    const { searchParams } = new URL(url, 'http://admin');
-    requested.push([searchParams.get('before'), searchParams.get('routine')]);
-    return response(200, pages[searchParams.get('before')]);
+  const fetcher = async (method, params) => {
+    assert.equal(method, 'history.page');
+    requested.push([params.before ?? null, params.routine ?? null]);
+    return response(200, pages[params.before ?? null]);
   };
   const seen = new Set([run('2'), known, run('3')].map((entry) => historyMark(restored(entry))));
   const since = await historySince(fetcher, 'marketing', seen, { routine });

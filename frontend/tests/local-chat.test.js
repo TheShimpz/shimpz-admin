@@ -5,11 +5,9 @@ import { localizedChallenge } from '../e2e/localizedRequest.js';
 import { browserTimezone } from '../src/lib/routine.js';
 
 import {
-  CHAT_WS_PROTOCOL,
   authorizeAssistantIntegration,
   capabilityContinuation,
   cancelAssistantIntegrationAuthorization,
-  chatSocketUrl,
   clearAssistantStoredInput,
   completeAssistantIntegration,
   createChatFrame,
@@ -98,15 +96,6 @@ test('chat builds only the versioned WebSocket contract', () => {
   assert.deepEqual(createStopFrame('team_1'), { type: 'stop' });
   assert.deepEqual(createSyncFrame('team_1', 'pt'), { type: 'sync', locale: 'pt' });
   assert.throws(() => createSyncFrame('team_1'), /Invalid local chat request/);
-  assert.equal(CHAT_WS_PROTOCOL, 'shimpz.chat.v7');
-  assert.equal(
-    chatSocketUrl({ protocol: 'http:', host: '127.0.0.1:7777' }, 'team_1'),
-    'ws://127.0.0.1:7777/api/teams/team_1/chat/ws',
-  );
-  assert.equal(
-    chatSocketUrl({ protocol: 'https:', host: 'shimpz.com' }, 'team_1'),
-    'wss://shimpz.com/api/teams/team_1/chat/ws',
-  );
 });
 
 test('chat resumes only one exact prior capability objective', () => {

@@ -1,14 +1,13 @@
 <script>
-  import { onMount } from 'svelte';
   import { locale, t } from '#lib/i18n.js';
-  import { backgroundFetch } from '#lib/localApi.js';
+  import { backgroundCall, topicValue } from '#lib/adminSocket.js';
   import { fetchSpaceResources, resourceSegments, resourceStatus } from '#lib/spaceResources.js';
 
   // What leads the status line, such as the Admin version; it shows even while the status is unknown.
   let { lead } = $props();
-  const INTERVAL_MS = 30_000;
-  let resources = $state(null);
-  let pending = false;
+  // Admin's watcher reads the Space's resources while this line is shown and says when they changed (ADR-0114).
+  const signal = topicValue('space/resources', () => fetchSpaceResources(backgroundCall));
+  let resources = $derived($signal);
   let status = $derived(resources ? resourceStatus(resources) : null);
   // The numbers behind the status, read on hover: services, memory, and storage.
   let details = $derived(
@@ -16,29 +15,6 @@
       ? resourceSegments(resources, $locale, $t).map((segment) => `${segment.label} ${segment.value ?? '—'}`).join(' · ')
       : '',
   );
-
-  // One read at a time and only while the page is visible: a hidden page or a read still pending skips its turn.
-  async function refresh() {
-    if (pending || document.visibilityState !== 'visible') return;
-    pending = true;
-    try {
-      resources = await fetchSpaceResources(backgroundFetch);
-    } catch {
-      resources = null;
-    } finally {
-      pending = false;
-    }
-  }
-
-  onMount(() => {
-    refresh();
-    const timer = setInterval(refresh, INTERVAL_MS);
-    document.addEventListener('visibilitychange', refresh);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', refresh);
-    };
-  });
 </script>
 
 <div class="space-status {status?.level ?? 'unknown'}" title={details || undefined}>

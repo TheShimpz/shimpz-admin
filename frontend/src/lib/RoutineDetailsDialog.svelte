@@ -30,7 +30,7 @@
     untilWords,
   } from '#lib/routine.js';
   import { dropTeamRoutine, loadTeamRoutines } from '#lib/routineContext.js';
-  import { backgroundFetch } from '#lib/localApi.js';
+  import { backgroundCall, call } from '#lib/adminSocket.js';
   import RoutineDecision from '#lib/RoutineDecision.svelte';
   import RoutineDeletion from '#lib/RoutineDeletion.svelte';
   import RoutinePlan from '#lib/RoutinePlan.svelte';
@@ -114,7 +114,7 @@
     if (heldAgain) round += 1;
     else dismissed = decisionKey;
     page = 'summary';
-    await loadTeamRoutines(fetch, teamId).catch(() => {});
+    await loadTeamRoutines(call, teamId).catch(() => {});
   }
 
   $effect(() => {
@@ -149,7 +149,7 @@
   // The newest page of the Routine's own history starts the list again; its cursor reaches every older run.
   async function readNewest(opened) {
     const marks = new Set();
-    const found = await routineRuns(fetch, teamId, routineId, { seen: marks });
+    const found = await routineRuns(call, teamId, routineId, { seen: marks });
     if (opened !== search) return;
     reading += 1;
     seen = marks;
@@ -176,7 +176,7 @@
     refreshing = true;
     const opened = search;
     try {
-      const since = await historySince(backgroundFetch, teamId, seen, { routine: routineId });
+      const since = await historySince(backgroundCall, teamId, seen, { routine: routineId });
       if (opened !== search || searchingOlder) return;
       const merged = mergedRoutineRuns(recent, since.entries, routineId);
       const added = merged.length - recent.length;
@@ -204,7 +204,7 @@
     searchingOlder = true;
     const from = reading;
     try {
-      const found = await routineRuns(fetch, teamId, routineId, { before: olderRuns });
+      const found = await routineRuns(call, teamId, routineId, { before: olderRuns });
       if (from !== reading) return;
       recent = [...recent, ...found.runs];
       olderRuns = found.before;
@@ -254,7 +254,7 @@
     error = '';
     try {
       await action();
-      await loadTeamRoutines(fetch, teamId);
+      await loadTeamRoutines(call, teamId);
     } catch (failure) {
       error = routineErrorMessage(failure, copy.errors);
     } finally {
@@ -271,7 +271,7 @@
     }
     // A run is still ending: Team keeps the Routine as being deleted until it has.
     confirming = false;
-    await loadTeamRoutines(fetch, teamId).catch(() => {});
+    await loadTeamRoutines(call, teamId).catch(() => {});
   }
 
   // Canceling returns to the panel, or to the decision it was opened from, with focus on the Delete it came from.
@@ -371,7 +371,7 @@
           <RoutineDecision {teamId} {teamName} runId={pending.runId}
             outcome={pending.outcome} detail={pending.detail} {copy} onsettled={settled}
             ondelete={() => (confirming = true)}
-            onunavailable={() => loadTeamRoutines(fetch, teamId).catch(() => {})} />
+            onunavailable={() => loadTeamRoutines(call, teamId).catch(() => {})} />
         {/key}
       </div>
     {:else if !confirming}
@@ -391,7 +391,7 @@
         {/if}
       {:else if page === 'steps'}
         <RoutinePlan {teamId} {routine} {copy} names={$assistantNames} locale={$locale}
-          onchanged={() => loadTeamRoutines(fetch, teamId).catch(() => {})} />
+          onchanged={() => loadTeamRoutines(call, teamId).catch(() => {})} />
       {:else}
         <ul class="runs" aria-label={copy.panel.runs}>
           {#each live as run (run.run_id)}

@@ -67,6 +67,8 @@ export default {
     languageCurrent: '语言：{name}',
     languageMenu: '语言',
     platformRollback: '更新已回滚',
+    reconnecting: '正在重新连接 Admin… 您看到的内容可能已过时，操作将等待连接恢复。',
+    reconnectFailed: '无法再次连接 Admin。请刷新此页面以重新连接。',
     platformOrdinal: '本地平台版本 {ordinal}',
     platformDeveloper: '基于本地平台版本 {ordinal} 的开发构建',
     resourceServices: '服务',

@@ -3,19 +3,32 @@ import test from 'node:test';
 
 import { get } from 'svelte/store';
 
-import {
-  clearTeamContext,
-  createTeam,
-  deleteTeam,
-  loadTeamContext,
-  refreshTeamInventory,
-  reloadTeamList,
-  renameTeam,
-  reorderTeams,
-  selectTeam,
-  teamContext,
-} from '../src/lib/teamContext.js';
+import * as context from '../src/lib/teamContext.js';
+import { socketReads } from '../src/lib/adminSocket.js';
 import { LocalApiError } from '../src/lib/localApi.js';
+
+const { clearTeamContext, refreshTeamInventory, renameTeam, teamContext } = context;
+
+// The Team list is the session socket's `teams.list` read (ADR-0114). Each test's fixture answers it under the key
+// `/api/teams` with no method, beside the HTTP requests the context still makes, so one fixture states a whole Space.
+let fixture = null;
+socketReads.call = async (method, params) => {
+  assert.equal(method, 'teams.list');
+  assert.deepEqual(params, {});
+  return fixture('/api/teams', { cache: 'no-store', headers: { Accept: 'application/json' } });
+};
+function using(operation) {
+  return (fetcher, ...args) => {
+    fixture = fetcher;
+    return operation(fetcher, ...args);
+  };
+}
+const createTeam = using(context.createTeam);
+const deleteTeam = using(context.deleteTeam);
+const loadTeamContext = using(context.loadTeamContext);
+const reloadTeamList = using(context.reloadTeamList);
+const reorderTeams = using(context.reorderTeams);
+const selectTeam = using(context.selectTeam);
 
 const LOCAL_TEAM_RESIDUES = [
   'action_checkpoints',

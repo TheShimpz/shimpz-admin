@@ -567,10 +567,11 @@ function fetcher(responses) {
   return { fetch, calls };
 }
 
-test('Routine requests go to exact Admin routes and admit only exact answers', async () => {
+test('Routine requests go to exact Admin operations and admit only exact answers', async () => {
   let api = fetcher([[200, { team_id: 'team_1', routines: [ROUTINE], runs: [FROZEN], incidents: [INCIDENT] }]]);
   assert.deepEqual(await listRoutines(api.fetch, 'team_1'), { routines: [ROUTINE], runs: [FROZEN], incidents: [INCIDENT] });
-  assert.equal(api.calls[0].init.headers['Content-Type'], undefined);
+  // The list is the session socket's `routines.list` read (ADR-0114).
+  assert.deepEqual(api.calls, [{ path: 'routines.list', init: { team_id: 'team_1' } }]);
 
   const CODE = { code: '123456' };
   api = fetcher([[200, { team_id: 'team_1', routine_id: ROUTINE.routine_id, deleted: true }]]);
@@ -877,9 +878,11 @@ test("the chat's view admits only a Routine's creation, and a Routine's view onl
   }
   // The view travels as the Routine id, which must be one; nothing is requested otherwise.
   const requested = [];
-  const fetcher = async (url) => { requested.push(url); return page([])(); };
+  const fetcher = async (method, params) => { requested.push([method, params]); return page([])(); };
   await listChatHistory(fetcher, 'marketing', 'AAAAAAAAAMg', own);
-  assert.deepEqual(requested, [`/api/teams/marketing/chat/history?before=AAAAAAAAAMg&routine=${RUN_ENTRY.routine_id}`]);
+  assert.deepEqual(requested, [
+    ['history.page', { team_id: 'marketing', before: 'AAAAAAAAAMg', routine: RUN_ENTRY.routine_id }],
+  ]);
   for (const routine of ['A'.repeat(32), '../x', 7]) {
     await assert.rejects(listChatHistory(fetcher, 'marketing', null, { routine }), LocalApiError);
   }

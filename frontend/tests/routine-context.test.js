@@ -60,9 +60,11 @@ const FAILURE = Symbol('failure');
 
 function deferredFetcher() {
   const pending = [];
-  const fetch = (path) => new Promise((resolve) => {
+  // The session socket's `routines.list` read (ADR-0114), answered when the test releases it.
+  const fetch = (method, params) => new Promise((resolve) => {
+    assert.equal(method, 'routines.list');
     pending.push((routines, runs = [], incidents = []) => {
-      const team = decodeURIComponent(path.split('/')[3]);
+      const team = params.team_id;
       if (routines === FAILURE) {
         resolve({ ok: false, status: 503, async json() { return { code: 'routine-unavailable' }; } });
         return;

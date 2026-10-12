@@ -28,11 +28,11 @@ const NOTHING_LISTED = Object.freeze({ routines: [], runs: [], incidents: [] });
  * Load one Team's Routines. A failure keeps that Team's last known lists, marks them as failed until a listing
  * succeeds, and is reported to the caller.
  */
-export async function loadTeamRoutines(fetcher, teamId) {
+export async function loadTeamRoutines(read, teamId) {
   const ticket = issue(teamId);
   let listed;
   try {
-    listed = await listRoutines(fetcher, teamId);
+    listed = await listRoutines(read, teamId);
   } catch (error) {
     if (latest.get(teamId) === ticket) {
       routineContext.update((current) => new Map(current).set(teamId, {

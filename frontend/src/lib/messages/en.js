@@ -65,6 +65,8 @@ export default {
     languageCurrent: 'Language: {name}',
     languageMenu: 'Language',
     platformRollback: 'Update rolled back',
+    reconnecting: 'Reconnecting to Admin… What you see may be out of date, and actions wait until the connection is back.',
+    reconnectFailed: 'Admin could not be reached again. Refresh this page to reconnect.',
     platformOrdinal: 'Local platform release {ordinal}',
     platformDeveloper: 'Developer build on Local platform release {ordinal}',
     resourceServices: 'Services',

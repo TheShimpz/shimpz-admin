@@ -1,36 +1,13 @@
 <script>
-  import { onMount } from 'svelte';
   import packageMetadata from '../../package.json';
   import { t } from '#lib/i18n.js';
-  import { backgroundFetch } from '#lib/localApi.js';
+  import { backgroundCall, topicValue } from '#lib/adminSocket.js';
   import { fetchPlatformRelease, isDeveloperRelease } from '#lib/platformRelease.js';
 
-  let status = $state(null);
-  let pending = false;
+  // Admin's watcher reads the release file while this status is shown and says when it changed (ADR-0114).
+  const release = topicValue('platform/release', () => fetchPlatformRelease(backgroundCall));
+  let status = $derived($release);
   const adminVersion = packageMetadata.version;
-
-  // One read at a time and only while the page is visible: a hidden page or a read still pending skips its turn.
-  async function refresh() {
-    if (pending || document.visibilityState !== 'visible') return;
-    pending = true;
-    try {
-      status = await fetchPlatformRelease(backgroundFetch);
-    } catch {
-      status = null;
-    } finally {
-      pending = false;
-    }
-  }
-
-  onMount(() => {
-    refresh();
-    const timer = setInterval(refresh, 60_000);
-    document.addEventListener('visibilitychange', refresh);
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', refresh);
-    };
-  });
 </script>
 
 <div

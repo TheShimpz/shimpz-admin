@@ -17,10 +17,10 @@ function response(status, body) {
   return { ok: status >= 200 && status < 300, async json() { return body; } };
 }
 
-test('reads exactly the closed resource signal without caching', async () => {
-  const read = await fetchSpaceResources(async (url, options) => {
-    assert.equal(url, '/api/space/resources');
-    assert.deepEqual(options, { cache: 'no-store' });
+test('reads exactly the closed resource signal over the session socket', async () => {
+  const read = await fetchSpaceResources(async (method, params) => {
+    assert.equal(method, 'space.resources');
+    assert.deepEqual(params, {});
     return response(200, signal);
   });
   assert.deepEqual(read, signal);

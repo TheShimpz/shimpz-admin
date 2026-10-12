@@ -67,6 +67,8 @@ export default {
     languageCurrent: 'اللغة: {name}',
     languageMenu: 'اللغة',
     platformRollback: 'تم التراجع عن التحديث',
+    reconnecting: 'جارٍ إعادة الاتصال بـ Admin… قد يكون ما تراه قديمًا، وتنتظر الإجراءات حتى يعود الاتصال.',
+    reconnectFailed: 'تعذّر الوصول إلى Admin مجددًا. حدّث هذه الصفحة لإعادة الاتصال.',
     platformOrdinal: 'إصدار المنصة المحلية {ordinal}',
     platformDeveloper: 'إصدار تطويري مبني على إصدار المنصة المحلية {ordinal}',
     resourceServices: 'الخدمات',

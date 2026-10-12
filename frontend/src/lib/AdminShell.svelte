@@ -1,14 +1,18 @@
 <script>
   import { Button, Modal, ShimpzBrand, WorkspaceShell } from '@shimpz/frontend';
-  import { onMount } from 'svelte';
+  import { getContext, onDestroy, onMount, untrack } from 'svelte';
+  import { get } from 'svelte/store';
   import AdminNotice from '#lib/AdminNotice.svelte';
+  import { adminSocket, connectAdminSocket, watchTopic } from '#lib/adminSocket.js';
   import { t } from '#lib/i18n.js';
   import LocaleMenu from '#lib/LocaleMenu.svelte';
   import PlatformReleaseStatus from '#lib/PlatformReleaseStatus.svelte';
   import SecurityAlert from '#lib/SecurityAlert.svelte';
   import SecurityDialog from '#lib/SecurityDialog.svelte';
   import SpaceResources from '#lib/SpaceResources.svelte';
+  import { SESSION_ENDED, setSessionContext } from '#lib/sessionContext.js';
   import SupervisorMenu from '#lib/SupervisorMenu.svelte';
+  import { reloadTeamList, teamContext } from '#lib/teamContext.js';
   import TeamDialogs from '#lib/TeamDialogs.svelte';
   import TeamNavigation from '#lib/TeamNavigation.svelte';
   import TeamSidebar from '#lib/TeamSidebar.svelte';
@@ -50,6 +54,38 @@
     query.addEventListener('change', update);
     return () => query.removeEventListener('change', update);
   });
+
+  // The signed-in shell owns the tab's one session socket (ADR-0114): every screen reads through it, and Admin closing
+  // it as signed out hands the page back to the sign-in flow, which clears every protected cache.
+  const sessionEnded = getContext(SESSION_ENDED);
+  let reconnecting = $derived(['reconnecting', 'failed'].includes($adminSocket.phase));
+
+  // What the session bootstrap answers changed (an admitted origin, for instance): read it again over HTTP.
+  async function refreshSession() {
+    try {
+      const response = await fetch('/api/session', { method: 'POST', cache: 'no-store' });
+      const session = response.ok ? await response.json() : null;
+      if (session?.authenticated === false) sessionEnded?.();
+      else if (session?.authenticated === true) setSessionContext(session);
+    } catch {
+      // The next change or reconnect asks again.
+    }
+  }
+
+  // Teams made or removed elsewhere (another tab, the CLI) change the list; a reopened socket reads it again too.
+  function refreshTeams() {
+    if (['ready', 'error'].includes(get(teamContext).phase)) reloadTeamList(fetch).catch(() => {});
+  }
+
+  // Opened as the shell starts, before any screen inside it reads, and closed with it.
+  if (untrack(() => authenticated)) {
+    const disconnect = connectAdminSocket({ onSignedOut: () => sessionEnded?.() });
+    const stops = [watchTopic('teams', refreshTeams), watchTopic('session', refreshSession)];
+    onDestroy(() => {
+      for (const stop of stops) stop();
+      disconnect();
+    });
+  }
 </script>
 
 {#snippet securityButton()}
@@ -150,7 +186,14 @@
       </Modal>
     {/if}
     <div class:chat-layout={chat} class="authenticated-content">
-      <div class="admin-notice-region"><SecurityAlert /><AdminNotice /></div>
+      <div class="admin-notice-region">
+        {#if reconnecting}
+          <p class="socket-status" role="status">
+            {$t($adminSocket.phase === 'failed' ? 'shell.reconnectFailed' : 'shell.reconnecting')}
+          </p>
+        {/if}
+        <SecurityAlert /><AdminNotice />
+      </div>
       {#if mobile}<div class="mobile-team-region"><TeamSidebar {active} /></div>{/if}
       <div class="authenticated-page">{@render children()}</div>
     </div>
@@ -164,6 +207,7 @@
   .authenticated-page { min-width: 0; }
   .authenticated-content { min-height: 100%; container-type: inline-size; }
   .admin-notice-region { width: 100%; }
+  .socket-status { margin: 0; padding: var(--gap-item) var(--gap-group); border-block-end: 1px solid var(--shimpz-color-border); color: var(--shimpz-color-text-muted); font-size: 0.8rem; }
   .admin-notice-region :global(.admin-toast) { margin-block-end: 0; border: 0; }
   .authenticated-page {
     width: min(

@@ -67,6 +67,8 @@ export default {
     languageCurrent: 'Langue : {name}',
     languageMenu: 'Langue',
     platformRollback: 'Mise à jour annulée',
+    reconnecting: 'Reconnexion à Admin… Ce que vous voyez peut être obsolète, et les actions attendent le retour de la connexion.',
+    reconnectFailed: 'Admin est toujours injoignable. Actualisez cette page pour vous reconnecter.',
     platformOrdinal: 'Version locale de la plateforme {ordinal}',
     platformDeveloper: 'Build de développement sur la version locale de la plateforme {ordinal}',
     resourceServices: 'Services',

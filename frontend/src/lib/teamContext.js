@@ -1,5 +1,6 @@
 import { get, writable } from 'svelte/store';
 
+import { socketReads } from './adminSocket.js';
 import { listAssistantCatalog, listInstalledAssistants, LocalApiError, safeApiError } from './localApi.js';
 import {
   ASSISTANT_ID_RE,
@@ -93,12 +94,10 @@ function preferredTeamId(value) {
   return value;
 }
 
+// The Team list is read over the Admin session socket (ADR-0114); the rest of the context still over HTTP.
 async function listTeams(fetcher) {
   requireFetcher(fetcher);
-  const response = await fetcher('/api/teams', {
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
+  const response = await socketReads.call('teams.list', {});
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'The local Team inventory is unavailable.'), response.status);
@@ -106,7 +105,7 @@ async function listTeams(fetcher) {
   return parseTeamList(body, response.status);
 }
 
-// GET /api/teams and PUT /api/teams/order answer the same closed list, already in the Supervisor's display order.
+// `teams.list` and PUT /api/teams/order answer the same closed list, already in the Supervisor's display order.
 function parseTeamList(body, status) {
   if (
     !hasExactEnvelopeKeys(body, ['teams']) ||

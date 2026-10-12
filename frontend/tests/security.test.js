@@ -40,8 +40,8 @@ test('the summary reads the failed attempts a sign-in reported', async () => {
 
   assert.deepEqual(await loadSecuritySummary(fetcher), expected);
   assert.deepEqual(get(securitySummary), expected);
-  assert.equal(calls[0].url, '/api/admin/security');
-  assert.equal(calls[0].init.cache, 'no-store');
+  // The summary is the session socket's `security.summary` read (ADR-0114).
+  assert.deepEqual(calls[0], { url: 'security.summary', init: {} });
   clearSecuritySummary();
   assert.equal(get(securitySummary), null);
 });
