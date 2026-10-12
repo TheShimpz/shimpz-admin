@@ -2,9 +2,10 @@
 
 The socket is admitted exactly as Admin's own page is: one canonical admitted Origin, Fetch Metadata that says the page
 itself opened it, the exact subprotocol, and a current Supervisor session. It stays bound to that Origin and session.
-Before every frame it acts on, Admin checks again that the Origin is still admitted and the session still current, and
-closes the socket when either is not (4403, 4401). A person's own frame renews the session's idle time; an automatic
-read (`background`) and the page's own sync never do. The receive loop never waits for a call or a write.
+Before every frame it acts on, and again when a waiting chat frame's turn to run comes, Admin checks that the Origin is
+still admitted and the session still current, and closes the socket when either is not (4403, 4401). A person's own
+frame renews the session's idle time; an automatic read (`background`) and the page's own sync never do. The receive
+loop never waits for a call or a write.
 """
 
 import asyncio
@@ -191,6 +192,7 @@ class SessionSocket:
             team_id,
             request_scope=lambda: self.gate.request_scope(self.cookies),
             authenticate=self.gate.authenticate,
+            authorized=lambda: self._authorized(activity=False),
         )
         self.channels[team_id] = channel
         # Today's sync, after the attach result: the pending gate, an Integration resume, or `sync-empty`.

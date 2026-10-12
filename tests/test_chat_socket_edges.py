@@ -714,6 +714,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
                 "team_1",
                 request_scope=contextlib.nullcontext,
                 authenticate=mock.AsyncMock(return_value=human.AuthenticationResult("verified")),
+                authorized=mock.AsyncMock(return_value=True),
             )
             channel.connection.active = socket._Turn(future, "chat")
             await channel.close()

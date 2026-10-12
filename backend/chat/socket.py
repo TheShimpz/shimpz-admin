@@ -802,8 +802,9 @@ class Channel:
     """One Team's logical chat connection on a session socket, with today's per-connection state (ADR-0114).
 
     Frames run in arrival order, one at a time, under the current Supervisor authority bound again for each frame, so
-    a long dispatch never holds the session socket's receive loop. Closing the channel stops its active work exactly as
-    a closed v7 socket did.
+    a long dispatch never holds the session socket's receive loop. A waiting frame runs only if its socket's bound
+    Origin and session are still current when its turn comes; otherwise the socket closes and nothing more runs.
+    Closing the channel stops its active work exactly as a closed v7 socket did.
     """
 
     def __init__(
@@ -813,11 +814,13 @@ class Channel:
         *,
         request_scope: Callable[[], contextlib.AbstractContextManager[None]],
         authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
+        authorized: Callable[[], Awaitable[bool]],
     ) -> None:
         self.transport = transport
         self.team_id = team_id
         self.connection = _Connection()
         self._scope = request_scope
+        self._authorized = authorized
         self._authenticate = authenticate
         self._frames: asyncio.Queue[dict[str, object]] = asyncio.Queue()
         self._task = asyncio.create_task(self._run())
@@ -835,6 +838,10 @@ class Channel:
         try:
             while True:
                 frame = await self._frames.get()
+                if not await self._authorized():
+                    # The socket closes for its refused Origin or session: no waiting frame runs any more.
+                    self.connection.closed = True
+                    return
                 try:
                     with self._scope():
                         await _dispatch(self.transport, self.connection, self.team_id, frame, self._authenticate)

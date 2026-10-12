@@ -946,6 +946,32 @@ class SessionSocketHaltTests(SessionSocketCase):
 
         asyncio.run(scenario())
 
+    def test_a_waiting_chat_frame_dispatches_only_while_its_origin_and_session_are_still_current(self) -> None:
+        external = "https://developer.example.test"
+        dispatched = []
+        release = asyncio.Event()
+
+        async def dispatch(_transport, _connection, _team_id, frame, _authenticate):
+            dispatched.append(frame["type"])
+            if len(dispatched) == 1:
+                await release.wait()
+
+        async def scenario() -> None:
+            self.assertEqual(self.admin_app.state.bind_browser_origin(external), "learned")
+            websocket = await self._open(origin=external)
+            with mock.patch.object(self.chat_socket, "_dispatch", side_effect=dispatch):
+                await websocket.send_json({"type": "stop"})
+                await websocket.send_json(chat_socket_fixtures.chat_frame("admitted while the origin was"))
+                await asyncio.sleep(0.1)
+                # The admitted origin is replaced while the second frame waits: it must never run under it.
+                self.assertEqual(self.admin_app.state.bind_browser_origin("https://next.example.test"), "replaced")
+                release.set()
+                self.assertEqual(await self._closed(websocket), 4403)
+                await websocket.finish()
+            self.assertEqual(dispatched, ["stop"])
+
+        asyncio.run(scenario())
+
 
 class SessionSocketAuthorityTests(SessionSocketCase):
     def test_a_chat_frame_without_current_supervisor_authority_is_refused_and_the_channel_ends_cleanly(self) -> None:
