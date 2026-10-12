@@ -17,6 +17,7 @@
   import DialogAction from '#lib/DialogAction.svelte';
   import AssistantIntegrationsDialog from '#lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '#lib/AssistantIntegrationsDrawer.svelte';
+  import { catalogIconUrl, installedIconUrl } from '#lib/assistants/icons.js';
   import { historyHead, listChatHistory } from '#lib/chatHistory.js';
   import BrainMenu from '#lib/BrainMenu.svelte';
   import FastRoutingMenu from '#lib/FastRoutingMenu.svelte';
@@ -428,10 +429,9 @@
   }
 
   function lifecycleIconSource(lifecycle) {
-    const assistantId = encodeURIComponent(lifecycle.assistant.id);
     if (lifecycle.state === 'uninstalled') return lifecycle.iconSnapshot;
     if (!chatTeamId) return undefined;
-    return `/api/teams/${encodeURIComponent(chatTeamId)}/assistants/${assistantId}/icon`;
+    return installedIconUrl(chatTeamId, lifecycle.assistant.id);
   }
 
   function installPlanVisualState(status) {
@@ -452,12 +452,9 @@
   }
 
   function installPlanIconSource(assistant) {
-    const assistantId = encodeURIComponent(assistant.id);
-    if (assistant.status === 'installed' && chatTeamId) {
-      return `/api/teams/${encodeURIComponent(chatTeamId)}/assistants/${assistantId}/icon`;
-    }
+    if (assistant.status === 'installed' && chatTeamId) return installedIconUrl(chatTeamId, assistant.id);
     if (assistant.provenance === 'local') return undefined;
-    return `/api/assistants/${assistantId}/catalog-icon`;
+    return catalogIconUrl(assistant.id);
   }
 
   // A Local snapshot has no catalog icon; its icon appears only once installed, so a settled plan without one failed.
@@ -839,7 +836,7 @@
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 2000);
     let captured = false;
-    const source = `/api/teams/${encodeURIComponent(teamId)}/assistants/${encodeURIComponent(assistantId)}/icon`;
+    const source = installedIconUrl(teamId, assistantId);
     const promise = fetch(source, {
       cache: 'no-store',
       credentials: 'same-origin',

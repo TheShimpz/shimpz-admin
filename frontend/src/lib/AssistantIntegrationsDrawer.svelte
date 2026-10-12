@@ -11,6 +11,7 @@
   } from '@shimpz/frontend';
   import { untrack } from 'svelte';
   import { commandsReady } from '#lib/adminSocket.js';
+  import { installedIconUrl } from '#lib/assistants/icons.js';
   import { installedSummary } from '#lib/assistantSources.js';
   import { locale, t } from '#lib/i18n.js';
   import { assistantIntegrationProviderLabel } from '#lib/localChat.js';
@@ -48,7 +49,7 @@
   // The Team's own installed-icon route; sources exist only while the drawer is open so a closed drawer fetches none.
   function iconSource(assistantId) {
     if (!open || !teamId) return undefined;
-    return `/api/teams/${encodeURIComponent(teamId)}/assistants/${encodeURIComponent(assistantId)}/icon`;
+    return installedIconUrl(teamId, assistantId);
   }
 
   // The expanded Assistant's summary in the interface language, read by Team from its binding's pack (ADR-0091) as a

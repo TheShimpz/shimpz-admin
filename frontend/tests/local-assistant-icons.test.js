@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import test from 'node:test';
 
+import { catalogIconUrl, installedIconUrl } from '../src/lib/assistants/icons.js';
 import {
   isInadmissibleLocalPreview,
   loadAssistantSummary,
@@ -326,4 +327,11 @@ test('carries only a bounded Team refusal code and recognizes an inadmissible st
   const unbounded = await loadLocalAssistantIcon(refused('Local Assistant <preview>'), IMAGE_ID).catch((value) => value);
   assert.equal(unbounded.code, '');
   assert.equal(isInadmissibleLocalPreview(new Error('local-assistant-preview-invalid')), false);
+});
+
+test('names an installed Assistant\'s icon by its Team and a publication\'s by its catalog entry, each part encoded', () => {
+  assert.equal(installedIconUrl('marketing', 'shimpz-cloudflare'), '/api/teams/marketing/assistants/shimpz-cloudflare/icon');
+  assert.equal(catalogIconUrl('hello-pulse'), '/api/assistants/hello-pulse/catalog-icon');
+  assert.equal(installedIconUrl('a/b', 'c?d'), '/api/teams/a%2Fb/assistants/c%3Fd/icon');
+  assert.equal(catalogIconUrl('../x'), '/api/assistants/..%2Fx/catalog-icon');
 });

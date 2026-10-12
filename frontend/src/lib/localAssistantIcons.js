@@ -1,5 +1,6 @@
 import { socketReads } from './adminSocket.js';
 import { AssistantPageError, canonicalPageCopy, isDisplayText, SUMMARY_CHARS } from './assistantPage.js';
+import { catalogIconUrl } from './assistants/icons.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import { isLocale } from './locales.js';
 import {
@@ -266,7 +267,7 @@ async function sameDigest(icon, iconDigest) {
 
 async function fetchPublicIcon(fetcher, assistantId, iconDigest, delay, signal) {
   for (let attempt = 0; attempt <= MAX_BUSY_RETRIES; attempt += 1) {
-    const response = await fetcher(`/api/assistants/${encodeURIComponent(assistantId)}/catalog-icon`, {
+    const response = await fetcher(catalogIconUrl(assistantId), {
       cache: 'no-store',
       headers: { Accept: 'image/png' },
       signal,

@@ -10,6 +10,7 @@
   import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import AssistantActionDialog from '#lib/AssistantActionDialog.svelte';
   import { acquireIcon, localIcon, publicIcon } from '#lib/assistantIconCache.js';
+  import { installedIconUrl } from '#lib/assistants/icons.js';
   import { actionGroups, continuingText, pageTarget } from '#lib/assistantPage.js';
   import { installedDetails, publicCatalog, snapshotDetails, stagedSnapshots } from '#lib/assistantSources.js';
   import { CREATOR_LINK_ICONS, CREATOR_LINK_NAMES } from '#lib/creatorLinkIcons.js';
@@ -224,7 +225,7 @@
     iconFailed = false;
     iconSrc = '';
     if (current.mode === 'installed') {
-      iconSrc = `/api/teams/${encodeURIComponent(team.id)}/assistants/${encodeURIComponent(assistantId)}/icon`;
+      iconSrc = installedIconUrl(team.id, assistantId);
       return undefined;
     }
     const icon = current.mode === 'local'
