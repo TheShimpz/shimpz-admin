@@ -1,5 +1,6 @@
 <script>
-  import { flushSync, onMount, tick } from 'svelte';
+  import { flushSync, getContext, onMount, tick } from 'svelte';
+  import { readable } from 'svelte/store';
   import { AssistantIcon, Button, ChatTask, EmptyState, FileInput, Message, Notice, ScrollArea, TextAreaField, TextField, Toolbar } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '#lib/AssistantHumanRequestDialog.svelte';
   import AttachmentChip from '#lib/AttachmentChip.svelte';
@@ -41,6 +42,7 @@
   import Markdown from '#lib/Markdown.svelte';
   import { escapeMarkdownText } from '#lib/markdown.js';
   import { locale, t } from '#lib/i18n.js';
+  import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
   import { CLARIFICATION_LABELS } from '#lib/clarificationLabels.js';
   import { routineQuestionMessages } from '#lib/routineQuestionMessages.js';
   import { configureModelContext, loadModelContext, modelContext } from '#lib/modelContext.js';
@@ -66,6 +68,7 @@
   } from '#lib/localChat.js';
 
 
+  const booting = getContext(INITIAL_VIEW_READINESS)?.booting ?? readable(false);
   let mounted = $state(false);
   let socketTeamId = $state('');
   let draft = $state('');
@@ -2194,10 +2197,11 @@
     providerKey = '';
   });
 
-  // The conversation is inert while its history hydrates, so the key field takes focus once it is usable.
+  // The conversation is inert while its history hydrates, and the whole view while the boot screen covers it, so the key
+  // field takes focus once it is usable.
   $effect(() => {
     void keySelection;
-    if (!mounted || !keyRequired || historyHydrating || integrationsOpen) return;
+    if (!mounted || $booting || !keyRequired || historyHydrating || integrationsOpen) return;
     void tick().then(() => {
       if (document.querySelector('dialog[open], :popover-open')) return;
       document.getElementById('chat-provider-key')?.focus({ preventScroll: true });

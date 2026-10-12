@@ -4,6 +4,7 @@
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
   import { onMount, setContext, tick } from 'svelte';
+  import { writable } from 'svelte/store';
   import AdminShell from '#lib/AdminShell.svelte';
   import AuthScreen from '#lib/AuthScreen.svelte';
   import { adminSocket } from '#lib/adminSocket.js';
@@ -36,10 +37,13 @@
   let assistantsViewSettled = $state(false);
   let assistantsViewDeadlineReached = $state(false);
 
+  // Whether the first view is still behind the boot screen (inert): a page moves the focus only once it is not.
+  const booting = writable(true);
   setContext(INITIAL_VIEW_READINESS, {
     settleAssistants() {
       assistantsViewSettled = true;
     },
+    booting: { subscribe: booting.subscribe },
   });
   setContext(SESSION_ENDED, () => checkSession());
 
@@ -79,6 +83,7 @@
 
   $effect(() => {
     if (initialBoot && initialStateSettled) initialBoot = false;
+    booting.set(initialBoot);
   });
 
   function clearCredentials() {
