@@ -3077,6 +3077,22 @@ test('renders and clears a persistent Action input without exposing its value', 
   expect(chat.storedInputClears()).toBe(1);
 });
 
+test('a cleared Stored Input shows what Admin reads afterwards, never the clear\'s own answer', async ({ page }) => {
+  await routeReadyChat(page, { whatsappInstalled: true, storedInputStatus: 'stored' });
+  // Admin answers the clear but still holds the input when the drawer reads it again.
+  await routeRead(page, 'stored_inputs.clear', () => ok({ cleared: true }));
+  await page.goto('/chat/');
+  await page.getByRole('button', { name: 'Assistant integrations' }).click();
+  const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
+  const storedInputs = drawer.getByRole('region', { name: 'Stored Action inputs' });
+  await expect(storedInputs.getByRole('button', { name: 'Clear', exact: true })).toBeVisible();
+  const reads = (await readsOf(page, 'stored_inputs.list')).length;
+  await storedInputs.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect.poll(async () => (await readsOf(page, 'stored_inputs.list')).length).toBeGreaterThan(reads);
+  await expect(storedInputs.getByText('Stored securely. Future Actions reuse it.', { exact: true })).toBeVisible();
+  await expect(storedInputs.getByRole('button', { name: 'Clear', exact: true })).toBeEnabled();
+});
+
 test('toggles an Assistant integration through its unavailable icon', async ({ page }) => {
   await routeReadyChat(page);
   await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare/icon', (route) => route.fulfill({ status: 404 }));

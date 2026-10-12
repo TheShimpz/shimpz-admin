@@ -855,9 +855,9 @@ export function createHumanResponseFrame(teamId, challengeId, decision, value) {
   };
 }
 
-export async function listAssistantIntegrations(teamId) {
+export async function listAssistantIntegrations(teamId, call = socketReads.call) {
   requireTeam(teamId);
-  const response = await socketReads.call('integrations.list', { team_id: teamId });
+  const response = await call('integrations.list', { team_id: teamId });
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'Assistant integrations are unavailable.'), response.status);
@@ -910,9 +910,9 @@ function canonicalStoredInputMetadata(value) {
   }
 }
 
-export async function listAssistantStoredInputs(teamId) {
+export async function listAssistantStoredInputs(teamId, call = socketReads.call) {
   requireTeam(teamId);
-  const response = await socketReads.call('stored_inputs.list', { team_id: teamId });
+  const response = await call('stored_inputs.list', { team_id: teamId });
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'Assistant Stored Inputs are unavailable.'), response.status);

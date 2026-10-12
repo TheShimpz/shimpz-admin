@@ -344,7 +344,7 @@ test('a fast-routing key that Admin stores only after the connection dropped sho
   expect(await readsOf(page, 'decision.save')).toHaveLength(1);
 });
 
-test('an open Integrations drawer reads its Integrations again once Admin is back', async ({ page }) => {
+test('an open Integrations drawer reads its Integrations again once Admin is back if they changed meanwhile', async ({ page }) => {
   await routeScenario(page, 'ready');
   let refusing = false;
   await refuseWhile(page, () => refusing);
@@ -357,6 +357,8 @@ test('an open Integrations drawer reads its Integrations again once Admin is bac
   refusing = true;
   await dropSessions(page);
   await expect(page.getByText(shell.reconnecting)).toBeVisible();
+  // Another tab connects an Integration while this one cannot hear it.
+  await raiseTopic(page, 'team/marketing/integrations');
   refusing = false;
   await expect.poll(async () => (await readsOf(page, 'integrations.list')).length, { timeout: 20_000 })
     .toBeGreaterThan(reads);
@@ -395,6 +397,9 @@ test('an open Integrations drawer shows an Assistant installed during an outage 
   await dropSessions(page);
   await expect(page.getByText(shell.reconnecting)).toBeVisible();
   installed = true;
+  // Admin announces both as it installs; this tab hears of them once it is back.
+  await raiseTopic(page, 'team/marketing/inventory');
+  await raiseTopic(page, 'team/marketing/integrations');
   refusing = false;
 
   const drawer = page.locator('#assistant-integrations-drawer');
