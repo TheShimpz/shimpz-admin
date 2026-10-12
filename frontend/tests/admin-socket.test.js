@@ -284,6 +284,27 @@ test('a refused unsubscription is asked for again, so a forgotten topic never ke
   await flush();
 });
 
+test('a subscription change never names more topics than Admin admits in one call', async () => {
+  const socket = connected();
+  const topics = Array.from({ length: 65 }, (_, index) => `team/t${index}/routines`);
+  // Two rounds of watched topics, each forgotten and refused by Admin before any retry.
+  for (const round of [topics.slice(0, 40), topics.slice(40)]) {
+    const stops = round.map((topic) => watchTopic(topic, () => {}));
+    await flush();
+    socket.answer('subscribe', { epoch: EPOCH, topics: {} });
+    await flush();
+    for (const stop of stops) stop();
+    await flush();
+    socket.answer('unsubscribe', { detail: 'session call budget reached' }, 429);
+    await flush();
+  }
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+  const retried = socket.sent.filter((frame) => frame.method === 'unsubscribe').slice(2);
+  assert.ok(retried.length >= 2);
+  assert.ok(retried.every((frame) => frame.params.topics.length <= 64));
+  assert.deepEqual(new Set(retried.flatMap((frame) => frame.params.topics)), new Set(topics));
+});
+
 test('a subscription refused after a reopen is asked for again, and its readers read once it is in place', async () => {
   const socket = connected();
   const heard = [];

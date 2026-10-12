@@ -170,6 +170,13 @@ function queueSubscription(method, topic, kept = false) {
 // refused unsubscription is asked for again the same way.
 function sendSubscription(method, topics, { announce = true } = {}) {
   if (!topics.length || adminSnapshot().phase !== 'open') return;
+  // One call names at most as many topics as a socket may hold; Admin closes the socket over a larger one.
+  if (topics.length > MAX_SUBSCRIPTIONS) {
+    for (let start = 0; start < topics.length; start += MAX_SUBSCRIPTIONS) {
+      sendSubscription(method, topics.slice(start, start + MAX_SUBSCRIPTIONS), { announce });
+    }
+    return;
+  }
   const socket = connection;
   const subscribing = method === 'subscribe';
   const entries = () => topics.map((topic) => [topic, watched.get(topic)]).filter(([, entry]) => entry);
