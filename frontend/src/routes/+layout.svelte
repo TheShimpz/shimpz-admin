@@ -386,14 +386,26 @@
     }
   }
 
+  // A page the browser restored from its back-forward cache shows nothing it held until the session is checked again,
+  // which forgets every protected value and reads them anew.
+  function restored(event) {
+    if (!event.persisted) return;
+    initialBoot = true;
+    void checkSession();
+  }
+
   onMount(() => {
     const unsubscribe = locale.subscribe((selectedLocale) => {
       const selected = LOCALES.find((item) => item.code === selectedLocale);
       document.documentElement.lang = selectedLocale;
       document.documentElement.dir = selected?.dir ?? 'ltr';
     });
+    window.addEventListener('pageshow', restored);
     checkSession();
-    return unsubscribe;
+    return () => {
+      window.removeEventListener('pageshow', restored);
+      unsubscribe();
+    };
   });
 </script>
 
