@@ -29,8 +29,16 @@ let providerCatalogCache = null;
 let providerCatalogRequest = null;
 // The active Team view's persisted inference, as last loaded or saved by that view; null when it has none.
 let persisted = null;
+// A key save whose answer was lost may have stored the key. Keys are the Space's, not a Team view's, so whichever view
+// shows next reads the providers again, instead of the cached state the lost save may have changed.
+let providersUncertain = false;
 
 function cachedModelProviders() {
+  if (providersUncertain) {
+    providersUncertain = false;
+    providerCatalogCache = null;
+    providerCatalogRequest = null;
+  }
   if (providerCatalogCache) return Promise.resolve(providerCatalogCache);
   if (providerCatalogRequest) return providerCatalogRequest;
   const request = listModelProviders()
@@ -106,6 +114,7 @@ export function clearModelContext() {
   sessionEpoch += 1;
   providerCatalogCache = null;
   providerCatalogRequest = null;
+  providersUncertain = false;
   persisted = null;
   modelContext.set(emptyContext());
 }
@@ -196,6 +205,7 @@ async function persist(teamId, apiKey = '') {
     const saved = error?.providerState;
     const providers = saved ? withProviderState(saving.providers, saved) : saving.providers;
     if (saved) publishProviderState(epoch, saved);
+    else if (apiKey && error?.code === 'outcome-unknown' && epoch === sessionEpoch) providersUncertain = true;
     throw fail(attempt, error, { ...saving, providers });
   }
 }
@@ -225,15 +235,10 @@ export async function configureModelContext(teamId, apiKey = '') {
 export async function refreshInference(teamId) {
   requireRequest(teamId);
   const shown = get(modelContext);
-  // A save whose outcome was lost, or a load that failed, reads the whole context again; after a lost save the
-  // providers are read again too, since its key may have been stored. Nothing is sent again.
-  if (shown.teamId === teamId && shown.phase === 'error') {
-    if (shown.errorCode === 'outcome-unknown') {
-      providerCatalogCache = null;
-      providerCatalogRequest = null;
-    }
-    return loadModelContext(teamId);
-  }
+  // A save whose outcome was lost, or a load that failed, reads the whole context again, and so does a shown Team after
+  // a key save whose answer was lost in any Team's view: the providers are read again then. Nothing is sent again.
+  const uncertain = shown.teamId === teamId && providersUncertain && shown.phase === 'ready';
+  if ((shown.teamId === teamId && shown.phase === 'error') || uncertain) return loadModelContext(teamId);
   const attempt = generation;
   if (!settledFor(shown, teamId)) return shown;
   const inference = await loadInference(teamId);

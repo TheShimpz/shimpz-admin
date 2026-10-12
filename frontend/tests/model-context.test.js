@@ -528,3 +528,40 @@ test('a key save whose answer was lost reads the providers again on recovery and
   assert.equal(get(modelContext).providers.find((entry) => entry.id === 'anthropic').configured, true);
   assert.equal(saves.length, 1);
 });
+
+test('a key save whose answer was lost after a Team switch reads the providers again for the Team shown', async () => {
+  let keySaved = false;
+  let providerReads = 0;
+  let lose;
+  const marketing = fixtureFetcher('marketing', { provider: 'anthropic', model: 'claude-sonnet-5-5' });
+  const support = fixtureFetcher('support', { provider: 'anthropic', model: 'claude-sonnet-5-5' });
+  const fetcher = async (method, params = {}) => {
+    if (method === 'models.list') {
+      providerReads += 1;
+      return response(200, { providers: providers.map((entry) => (
+        entry.id === 'anthropic' && keySaved ? { ...entry, configured: true, masked: '••••test' } : entry
+      )) });
+    }
+    if (method === 'models.save') {
+      keySaved = true;
+      return new Promise((_resolve, reject) => {
+        lose = () => reject(new LocalApiError('Admin disconnected before it answered.', 0, 'outcome-unknown'));
+      });
+    }
+    return params.team_id === 'support' ? support(method, params) : marketing(method, params);
+  };
+  await load(fetcher, 'marketing');
+  const saving = configure(fetcher, 'marketing', 'sk-ant-test-0123456789');
+  await load(fetcher, 'support');
+  assert.equal(get(modelContext).ready, false);
+  lose();
+  await assert.rejects(saving, (error) => error.code === 'outcome-unknown');
+  // The support view never saw the lost save, yet its providers are read again when Admin says what changed.
+  assert.equal(get(modelContext).phase, 'ready');
+  await via(fetcher, () => refreshInference('support'));
+  assert.equal(providerReads, 2);
+  assert.equal(get(modelContext).ready, true);
+  // Once read again, the providers are trusted until another save's answer is lost.
+  await via(fetcher, () => refreshInference('support'));
+  assert.equal(providerReads, 2);
+});
