@@ -83,10 +83,38 @@
 
   // The selected Team's Assistants and the Assistant registry change through Admin (a chat install, another tab) and
   // after a reconnect anything may have: the Team context reads its inventory again then. It reads them itself as it
-  // loads, so a subscription or the first open reads nothing more.
+  // loads, so a subscription or the first open reads nothing more. One read serves both topics: what they announce
+  // within a short window (a reopen, an install that changes both) is read once, and what they announce while that
+  // read runs is read once more after it.
+  const INVENTORY_WINDOW_MS = 100;
+  const inventoryRead = { timer: undefined, running: false, again: false };
+
   function refreshInventory(_topic, cause) {
-    if (cause === 'changed' || cause === 'reopen') refreshTeamInventory().catch(() => {});
+    if (cause !== 'changed' && cause !== 'reopen') return;
+    if (inventoryRead.running) {
+      inventoryRead.again = true;
+      return;
+    }
+    if (inventoryRead.timer === undefined) inventoryRead.timer = setTimeout(readInventory, INVENTORY_WINDOW_MS);
   }
+
+  async function readInventory() {
+    inventoryRead.timer = undefined;
+    inventoryRead.running = true;
+    try {
+      await refreshTeamInventory();
+    } catch {
+      // The next change or reopen reads again.
+    } finally {
+      inventoryRead.running = false;
+    }
+    if (inventoryRead.again) {
+      inventoryRead.again = false;
+      refreshInventory(null, 'changed');
+    }
+  }
+
+  onDestroy(() => clearTimeout(inventoryRead.timer));
 
   // The selected Team's model selection changed elsewhere: the shown one follows it.
   function inferenceChanged(teamId) {

@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test';
 
 import { publicAssistant } from './assistantPages.js';
 import { messages } from '../src/lib/messages.js';
-import { dropSessions, readsOf, routeConnect, routeRead, routeScenario, waitForRead } from './scenarioRoutes.js';
+import { dropSessions, raiseTopic, readsOf, routeConnect, routeRead, routeScenario, waitForRead } from './scenarioRoutes.js';
 
 const shell = messages.en.shell;
 const chatPage = messages.en.chatPage;
@@ -192,6 +192,39 @@ test('an open Integrations drawer reads its Integrations again once Admin is bac
   await expect.poll(async () => (await readsOf(page, 'integrations.list')).length, { timeout: 20_000 })
     .toBeGreaterThan(reads);
   await expect.poll(async () => (await readsOf(page, 'stored_inputs.list')).length).toBeGreaterThan(reads);
+});
+
+test('a reopened socket, and an install that changes the inventory and the registry at once, read each of them once', async ({ page }) => {
+  const scenario = await routeScenario(page, 'ready');
+  const subscribed = (topic) => scenario.sessions.at(-1)?.subscribed(topic) ?? false;
+  let refusing = false;
+  await refuseWhile(page, () => refusing);
+  await page.goto('/assistants/?team=marketing');
+  await expect(page.getByRole('region', { name: messages.en.store.frameTitle })).toBeVisible();
+  await expect.poll(() => subscribed('team/marketing/inventory') && subscribed('assistants/registry')).toBe(true);
+  const count = async (method) => (await readsOf(page, method)).length;
+  const settled = () => page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 500)));
+  await settled();
+  let registry = await count('assistants.registry');
+  let inventory = await count('assistants.list');
+
+  refusing = true;
+  await dropSessions(page);
+  await expect(page.getByText(shell.reconnecting)).toBeVisible();
+  refusing = false;
+  await expect(page.getByText(shell.reconnecting)).toHaveCount(0, { timeout: 20_000 });
+  await settled();
+  expect(await count('assistants.registry')).toBe(registry + 1);
+  expect(await count('assistants.list')).toBe(inventory + 1);
+
+  // An install raises both topics: the shell reads both once.
+  registry = await count('assistants.registry');
+  inventory = await count('assistants.list');
+  await raiseTopic(page, 'team/marketing/inventory');
+  await raiseTopic(page, 'assistants/registry');
+  await settled();
+  expect(await count('assistants.registry')).toBe(registry + 1);
+  expect(await count('assistants.list')).toBe(inventory + 1);
 });
 
 test('a change stays disabled while Admin reconnects and is offered again once it is back', async ({ page }) => {
