@@ -125,6 +125,16 @@ test('a call answers like a response, and fails at once while no session socket 
   assert.equal((await refused).status, 404);
 });
 
+test('a result says how many UTF-8 bytes the frame that carried it held', async () => {
+  const socket = connected();
+  const pending = call('teams.list', {});
+  const sent = socket.sent.findLast((frame) => frame.method === 'teams.list');
+  // ASCII, two-byte, three-byte, and four-byte (surrogate pair) characters, each counted as UTF-8 encodes them.
+  const text = JSON.stringify({ type: 'result', id: sent.id, status: 200, body: { name: 'aé界😀' } });
+  socket.frame(text);
+  assert.equal((await pending).bytes, new TextEncoder().encode(text).length);
+});
+
 test('a call made while the first open is under way waits for it, and fails if it never opens', async () => {
   FakeSocket.opened.length = 0;
   connectAdminSocket({ onSignedOut() {} });

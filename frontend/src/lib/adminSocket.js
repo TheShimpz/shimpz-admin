@@ -75,14 +75,37 @@ function socketUrl() {
   return `${scheme}//${location.host}${ADMIN_SOCKET_PATH}`;
 }
 
-/** A call's answer as a fetch Response would give it, so every reader keeps its own validation unchanged. */
-function answer(frame) {
+// The UTF-8 length of a received frame, counted without encoding it: a surrogate pair is one four-byte character.
+function utf8Length(text) {
+  let bytes = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    const code = text.charCodeAt(index);
+    if (code < 0x80) bytes += 1;
+    else if (code < 0x800) bytes += 2;
+    else if (code >= 0xd800 && code <= 0xdbff && index + 1 < text.length) {
+      bytes += 4;
+      index += 1;
+    } else bytes += 3;
+  }
+  return bytes;
+}
+
+/**
+ * A call's answer as a fetch Response would give it, so every reader keeps its own validation unchanged; `bytes` is the
+ * UTF-8 size of the frame that carried it, as a value kept for the session counts what it holds.
+ */
+function answer(frame, text) {
   const body = frame.body;
+  let bytes;
   return {
     ok: frame.status >= 200 && frame.status < 300,
     status: frame.status,
     json: async () => structuredClone(body),
     revision: 'revision' in frame ? { topic: frame.topic, epoch: frame.epoch, revision: frame.revision } : null,
+    get bytes() {
+      bytes ??= utf8Length(text);
+      return bytes;
+    },
   };
 }
 
@@ -423,7 +446,7 @@ function receive(text) {
     const waiting = pending.get(frame.id);
     if (!waiting) throw new Error('unexpected result');
     pending.delete(frame.id);
-    waiting.resolve(answer(frame));
+    waiting.resolve(answer(frame, text));
     return;
   }
   // A long call's own progress names its call; a chat channel's progress frame names its Team instead.

@@ -42,10 +42,19 @@ export function transientFailure(error) {
  * `loading` until the first read ends, `ready` with the newest value, or `error` with the last value kept and the
  * failure of a read that will not succeed by itself (a refusal). A transient failure keeps the status and retries;
  * `failing` names it meanwhile (an outage of Admin's own connection is the shell's to say, so it never does).
+ *
+ * A value read for the session (`retain: { maxAgeMs }`) keeps what it read when the last screen leaves, so the next
+ * screen shows it at once: it drops only the reads under way and its retry, and stops watching its topic. Shown again,
+ * it reads again only when it may be older than Admin's: its topic's revision moved since its read (Admin's revision is
+ * in the subscription's acknowledgment), or it is older than `maxAgeMs`. `reset()` forgets it, as a session that ended
+ * must; `size()` is the UTF-8 size of the answers its value was read from.
  */
-export function synced(topic, read, { initial = null } = {}) {
+export function synced(topic, read, { initial = null, retain = null } = {}) {
   let value = initial;
   let has = false;
+  // When the value was read (the page's clock) and the size of the answers it was read from.
+  let readAt = 0;
+  let size = 0;
   // The revision the value reflects, and the newest one Admin announced for the topic: the value is stale while older.
   let reflects = { epoch: '', revision: -1 };
   let known = { epoch: '', revision: -1 };
@@ -97,10 +106,12 @@ export function synced(topic, read, { initial = null } = {}) {
     again = false;
     const before = { ...known };
     const seen = [];
+    let bytes = 0;
     const call = async (method, params) => {
       const response = await socketReads.call(method, params);
       const revision = response?.revision;
       if (topic && revision?.topic === topic) seen.push({ epoch: revision.epoch, revision: revision.revision });
+      bytes += response?.bytes ?? 0;
       return response;
     };
     try {
@@ -108,6 +119,8 @@ export function synced(topic, read, { initial = null } = {}) {
       if (owner !== era) return;
       value = next;
       has = true;
+      readAt = performance.now();
+      size = bytes;
       // The oldest revision any of its results reflects; a read whose results carry none reflects what was known as
       // it started, since Admin announces every later change.
       reflects = seen.length
@@ -163,11 +176,32 @@ export function synced(topic, read, { initial = null } = {}) {
     return run();
   }
 
+  // Older than a value read for the session may be shown without reading it again.
+  function aged() {
+    return Boolean(retain) && performance.now() - readAt >= retain.maxAgeMs;
+  }
+
+  // Drop the reads under way and the retry: an older era neither publishes nor reads again.
+  function drop() {
+    era += 1;
+    again = false;
+    reading = null;
+    retryAttempt = 0;
+    clearTimeout(retryTimer);
+    failing = null;
+    subscribed = false;
+    waiting?.resolve();
+    waiting = null;
+    markFailing(token, false);
+  }
+
   // Forget everything read: the value, what it reflects, the reads under way, and the retry.
   function forget() {
     era += 1;
     value = initial;
     has = false;
+    readAt = 0;
+    size = 0;
     reflects = { epoch: '', revision: -1 };
     known = { epoch: '', revision: -1 };
     again = false;
@@ -182,16 +216,25 @@ export function synced(topic, read, { initial = null } = {}) {
     markFailing(token, false);
   }
 
+  // The last screen left: what it showed is protected data no other screen may see later without reading it again,
+  // unless it is read for the session and was read cleanly, which it then keeps.
+  function leave(set) {
+    stopped = true;
+    if (retain && has && !refusal) {
+      drop();
+      set({ status: 'ready', value, error: null, failing: null });
+      return;
+    }
+    forget();
+    set(empty());
+  }
+
   const store = writable(empty(), (set) => {
     stopped = false;
     publish = set;
     if (!topic) {
-      void refresh();
-      return () => {
-        stopped = true;
-        forget();
-        set(empty());
-      };
+      if (!has || aged()) void refresh();
+      return () => leave(set);
     }
     let first = true;
     const stop = socketReads.watch(topic, (_topic, cause, knownNow) => {
@@ -199,20 +242,19 @@ export function synced(topic, read, { initial = null } = {}) {
       subscribed = true;
       const asked = waiting;
       waiting = null;
-      // A change always reads, and so does the first subscription and anything asked for before it; a later
-      // subscription or reopen reads only what may be older than Admin's revision.
-      if (cause === 'changed' || first || asked || stale()) {
-        first = false;
+      // A change always reads, and so does the first subscription (unless it shows a value kept for the session that is
+      // neither stale nor too old) and anything asked for before it; a later subscription or reopen reads only what
+      // may be older than Admin's revision.
+      const opening = first;
+      first = false;
+      if (cause === 'changed' || (opening && (!has || aged())) || asked || stale()) {
         const done = refresh();
         if (asked) void done.then(asked.resolve, asked.resolve);
       }
     });
     return () => {
-      // The last screen left: what it showed is protected data no other screen may see later without reading it again.
-      stopped = true;
       stop();
-      forget();
-      set(empty());
+      leave(set);
     };
   });
 
@@ -226,5 +268,5 @@ export function synced(topic, read, { initial = null } = {}) {
     if (!stopped) void refresh();
   }
 
-  return { subscribe: store.subscribe, refresh, reset };
+  return { subscribe: store.subscribe, refresh, reset, size: () => size };
 }

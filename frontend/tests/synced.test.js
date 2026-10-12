@@ -391,3 +391,102 @@ test('a refusal stays shown through later transient failures, until a read succe
     mock.timers.reset();
   }
 });
+
+// A value read for the session (`retain`) outlives the screens that show it, until its revision moves or it ages.
+test('a value kept for the session shows at once to the next screen and reads again only when stale or aged', async () => {
+  const socket = harness();
+  const value = synced('local-assistants', snapshots, { retain: { maxAgeMs: Infinity } });
+  const first = shown(value);
+  socket.announce('subscribed', 4);
+  const answered = response(200, { assistants: ['one'] });
+  answered.revision = { topic: 'local-assistants', epoch: EPOCH, revision: 4 };
+  Object.defineProperty(answered, 'bytes', { value: 1234 });
+  socket.calls[0].resolve(answered);
+  await flush();
+  assert.equal(value.size(), 1234);
+  first.stop();
+  // The next screen sees the value in its first state, and Admin still at that revision means no read.
+  const second = shown(value);
+  assert.deepEqual(second.seen[0], { status: 'ready', value: ['one'], error: null, failing: null });
+  socket.announce('subscribed', 4);
+  assert.equal(socket.calls.length, 1);
+  second.stop();
+  // A revision that moved while no screen watched it is read again, the kept value showing meanwhile.
+  const third = shown(value);
+  socket.announce('subscribed', 5);
+  assert.equal(socket.calls.length, 2);
+  assert.equal(get(value).status, 'ready');
+  socket.answer(1, { assistants: ['two'] }, 5);
+  await flush();
+  assert.deepEqual(get(value).value, ['two']);
+  third.stop();
+  // The session ends: the value is forgotten, and the next screen reads it from the start.
+  value.reset();
+  assert.equal(get(value).status, 'loading');
+  assert.equal(value.size(), 0);
+});
+
+test('a value kept for the session with no allowed age reads again whenever a screen shows it', async () => {
+  const socket = harness();
+  const value = synced('local-assistants', snapshots, { retain: { maxAgeMs: 0 } });
+  let screen = shown(value);
+  socket.announce('subscribed', 1);
+  socket.answer(0, { assistants: ['one'] }, 1);
+  await flush();
+  screen.stop();
+  screen = shown(value);
+  socket.announce('subscribed', 1);
+  assert.equal(socket.calls.length, 2);
+  assert.deepEqual(screen.seen[0].value, ['one']);
+  screen.stop();
+});
+
+test('leaving drops a kept value\'s read under way and its retry, and a refusal is never kept', async () => {
+  const socket = harness();
+  const value = synced('local-assistants', snapshots, { retain: { maxAgeMs: Infinity } });
+  let screen = shown(value);
+  socket.announce('subscribed', 1);
+  socket.answer(0, { assistants: ['one'] }, 1);
+  await flush();
+  socket.announce('changed', 2);
+  assert.equal(socket.calls.length, 2);
+  screen.stop();
+  // The answer of the read the screen left is never shown, and a failure of it never retries.
+  socket.answer(1, { assistants: ['late'] }, 2);
+  await flush();
+  assert.deepEqual(get(value).value, ['one']);
+  // Shown again, the revision it missed is read.
+  screen = shown(value);
+  socket.announce('subscribed', 2);
+  assert.equal(socket.calls.length, 3);
+  socket.calls[2].resolve(response(403, { detail: 'refused' }));
+  await flush();
+  assert.equal(get(value).status, 'error');
+  screen.stop();
+  assert.equal(get(value).status, 'loading');
+  assert.equal(get(value).value, null);
+});
+
+test('data no topic announces, kept for the session, is read again only once it is older than allowed', async () => {
+  const socket = harness();
+  let now = 1_000;
+  const clock = mock.method(performance, 'now', () => now);
+  try {
+    const value = synced(null, snapshots, { retain: { maxAgeMs: 60_000 } });
+    let screen = shown(value);
+    socket.answer(0, { assistants: ['catalog'] });
+    await flush();
+    screen.stop();
+    now += 59_000;
+    screen = shown(value);
+    assert.equal(socket.calls.length, 1);
+    assert.deepEqual(screen.seen[0].value, ['catalog']);
+    screen.stop();
+    now += 2_000;
+    screen = shown(value);
+    assert.equal(socket.calls.length, 2);
+    screen.stop();
+  } finally {
+    clock.mock.restore();
+  }
+});
