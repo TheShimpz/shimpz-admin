@@ -491,6 +491,28 @@ test('a selected Team removed elsewhere reloads the Team context without renewin
   expect((await histories()).map((frame) => frame.background === true)).not.toContain(false);
 });
 
+test('an Assistant page whose Team was removed elsewhere reads the page for the Team chosen in its place automatically', async ({ page }) => {
+  const scenario = await routeScenario(page);
+  const listed = (await scenario.call('teams.list', {})).json.teams;
+  let removed = false;
+  await routeRead(page, 'teams.list', () => (
+    removed ? ok({ teams: listed.filter((team) => team.team_id !== 'marketing') }) : undefined
+  ));
+  // The Team chosen in Marketing's place runs the same Assistant, so the page reads its page copy for that Team.
+  const inventory = scenario.respond({ method: 'GET', path: '/api/teams/marketing/assistants', query: new URLSearchParams() });
+  await page.route('**/api/teams/trinity/assistants', (route) => route.fulfill({ json: inventory.json }));
+  await page.goto('/assistants/shimpz-cloudflare');
+  await expect(page.getByRole('article')).toBeVisible();
+  await expect.poll(() => scenario.sessions.some((session) => session.subscribed('teams'))).toBe(true);
+  const requests = recordRequests(page);
+  removed = true;
+  await raiseTopic(page, 'teams');
+  // The page reads the Assistant's page copy again for the Team the page selected in Marketing's place.
+  await expect.poll(() => requests.some((request) => request.path === '/api/teams/trinity/assistants/shimpz-cloudflare/details')).toBe(true);
+  expect(requests.map((request) => `${request.path} ${request.background}`).filter((entry) => entry.endsWith(' false')))
+    .toEqual([]);
+});
+
 test('reads the Local release status at open and when Admin says it changed, never on a timer', async ({ page }) => {
   await page.clock.install();
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
