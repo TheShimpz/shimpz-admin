@@ -85,6 +85,12 @@ test('a session about to idle out warns first, and staying signed in renews it',
   await expect(warning).toBeVisible();
   const stay = warning.getByRole('button', { name: 'Stay signed in' });
   await expect(stay).toBeFocused();
+  // The visible title counts the seconds down from Admin's deadline; the dialog's name stays fixed.
+  const seconds = async () => Number((await warning.locator('h2 [aria-hidden="true"]').textContent()).match(/\d+/)[0]);
+  const before = await seconds();
+  await page.clock.fastForward(3_000);
+  await expect.poll(seconds).toBeLessThan(before);
+  await expect(warning).toHaveAccessibleName('Your session is about to end');
   await stay.click();
   await expect(warning).toBeHidden();
   await expect.poll(() => activityReports(page)).toBe(1);

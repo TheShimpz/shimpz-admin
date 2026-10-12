@@ -7,7 +7,7 @@
   import { Button, Modal } from '@shimpz/frontend';
 
   import { sessionDeadlines } from '#lib/adminSocket.js';
-  import { t } from '#lib/i18n.js';
+  import { locale, t } from '#lib/i18n.js';
 
   // Only the person's own input keeps the session alive (ADR-0114): a turn under way or a request waiting for them does
   // not. Shortly before it idles out, timed from Admin's clock, the person is asked; answering is their own input, which
@@ -17,6 +17,15 @@
   const id = $props.id();
   let dialog = $state();
   let warning = $state(false);
+  let now = $state(performance.now());
+  // The seconds left before the session idles out, in the visible title; the dialog is named by its fixed title, so the
+  // countdown is never announced every second.
+  let remaining = $derived(
+    $sessionDeadlines ? Math.max(0, Math.ceil(($sessionDeadlines.idleAt - now) / 1000)) : 0,
+  );
+  let countdown = $derived(
+    new Intl.NumberFormat($locale, { style: 'unit', unit: 'second', unitDisplay: 'narrow' }).format(remaining),
+  );
 
   $effect(() => {
     const deadlines = $sessionDeadlines;
@@ -26,6 +35,15 @@
       warning = true;
     }, Math.max(0, deadlines.idleAt - WARNING_MS - performance.now()));
     return () => clearTimeout(timer);
+  });
+
+  $effect(() => {
+    if (!warning) return;
+    now = performance.now();
+    const timer = setInterval(() => {
+      now = performance.now();
+    }, 1000);
+    return () => clearInterval(timer);
   });
 
   $effect(() => {
@@ -45,7 +63,10 @@
 <Modal bind:element={dialog} class="session-expiry" size="sm" labelledBy={`${id}-title`} role="alertdialog"
   aria-describedby={`${id}-body`} oncancel={cancel}>
   <div class="frame">
-    <h2 id={`${id}-title`}>{$t('shell.sessionExpiring.title')}</h2>
+    <h2>
+      <span class="sr-only" id={`${id}-title`}>{$t('shell.sessionExpiring.title')}</span>
+      <span aria-hidden="true">{$t('shell.sessionExpiring.countdown', { time: countdown })}</span>
+    </h2>
     <p id={`${id}-body`}>{$t('shell.sessionExpiring.body')}</p>
     <Button type="button" onclick={stay}>{$t('shell.sessionExpiring.stay')}</Button>
   </div>
@@ -62,4 +83,5 @@
   h2 { margin: 0; font-size: 1.05rem; }
   p { margin: 0; color: var(--shimpz-color-text-muted); }
   .frame :global(.shimpz-button) { justify-self: end; }
+  h2 { font-variant-numeric: tabular-nums; }
 </style>

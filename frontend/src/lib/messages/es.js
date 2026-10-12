@@ -71,6 +71,7 @@ export default {
     reconnectFailed: 'No se pudo volver a contactar con Admin. Actualiza esta página para reconectar.',
     sessionExpiring: {
       title: 'Tu sesión está a punto de terminar',
+      countdown: 'Tu sesión está a punto de terminar en {time}',
       body: 'Se cerrará tu sesión en unos dos minutos porque no ha habido actividad.',
       stay: 'Seguir conectado',
     },

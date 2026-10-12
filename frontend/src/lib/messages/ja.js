@@ -71,6 +71,7 @@ export default {
     reconnectFailed: 'Admin に再接続できませんでした。このページを再読み込みして再接続してください。',
     sessionExpiring: {
       title: 'まもなくセッションが終了します',
+      countdown: 'セッションはあと{time}で終了します',
       body: '操作がないため、約 2 分後にサインアウトされます。',
       stay: 'サインインしたままにする',
     },

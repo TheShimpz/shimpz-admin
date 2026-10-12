@@ -71,6 +71,7 @@ export default {
     reconnectFailed: 'Admin ist weiterhin nicht erreichbar. Laden Sie diese Seite neu, um sich wieder zu verbinden.',
     sessionExpiring: {
       title: 'Ihre Sitzung endet gleich',
+      countdown: 'Ihre Sitzung endet in {time}',
       body: 'Sie werden in etwa zwei Minuten abgemeldet, weil keine Aktivität erkannt wurde.',
       stay: 'Angemeldet bleiben',
     },

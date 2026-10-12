@@ -71,6 +71,7 @@ export default {
     reconnectFailed: 'Admin est toujours injoignable. Actualisez cette page pour vous reconnecter.',
     sessionExpiring: {
       title: 'Votre session va bientôt se terminer',
+      countdown: 'Votre session va se terminer dans {time}',
       body: 'Vous serez déconnecté dans environ deux minutes, faute d’activité.',
       stay: 'Rester connecté',
     },

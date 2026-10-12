@@ -69,6 +69,7 @@ export default {
     reconnectFailed: 'Admin could not be reached again. Refresh this page to reconnect.',
     sessionExpiring: {
       title: 'Your session is about to end',
+      countdown: 'Your session is about to end in {time}',
       body: 'You will be signed out in about two minutes because there has been no activity.',
       stay: 'Stay signed in',
     },

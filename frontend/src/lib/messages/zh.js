@@ -71,6 +71,7 @@ export default {
     reconnectFailed: '无法再次连接 Admin。请刷新此页面以重新连接。',
     sessionExpiring: {
       title: '会话即将结束',
+      countdown: '会话将在{time}后结束',
       body: '由于没有任何操作，你将在大约两分钟后退出登录。',
       stay: '保持登录',
     },
