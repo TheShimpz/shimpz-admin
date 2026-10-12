@@ -4,7 +4,7 @@
 </script>
 
 <script>
-  import { Button, Modal } from '@shimpz/frontend';
+  import { Button, DialogFrame, Modal } from '@shimpz/frontend';
 
   import { sessionDeadlines } from '#lib/adminSocket.js';
   import { locale, t } from '#lib/i18n.js';
@@ -60,28 +60,22 @@
   }
 </script>
 
-<Modal bind:element={dialog} class="session-expiry" size="sm" labelledBy={`${id}-title`} role="alertdialog"
+<Modal bind:element={dialog} class="session-expiry" labelledBy={`${id}-title`} role="alertdialog"
   aria-describedby={`${id}-body`} oncancel={cancel}>
-  <div class="frame">
-    <h2>
-      <span class="sr-only" id={`${id}-title`}>{$t('shell.sessionExpiring.title')}</span>
-      <span aria-hidden="true">{$t('shell.sessionExpiring.countdown', { time: countdown })}</span>
-    </h2>
+  <!-- The shared dialog frame gives the warning the same chamfered geometry and line as every other dialog. -->
+  <DialogFrame title={$t('shell.sessionExpiring.title')} titleId={`${id}-title`}>
+    {#snippet titleContent()}
+      <span class="sr-only">{$t('shell.sessionExpiring.title')}</span>
+      <span class="countdown" aria-hidden="true">{$t('shell.sessionExpiring.countdown', { time: countdown })}</span>
+    {/snippet}
     <p id={`${id}-body`}>{$t('shell.sessionExpiring.body')}</p>
-    <Button type="button" onclick={stay}>{$t('shell.sessionExpiring.stay')}</Button>
-  </div>
+    {#snippet footer()}
+      <Button type="button" onclick={stay}>{$t('shell.sessionExpiring.stay')}</Button>
+    {/snippet}
+  </DialogFrame>
 </Modal>
 
 <style>
-  .frame {
-    display: grid;
-    gap: var(--shimpz-space-3, 0.75rem);
-    padding: var(--shimpz-space-5, 1.25rem);
-    background: var(--shimpz-color-surface);
-    border: 1px solid var(--shimpz-color-border);
-  }
-  h2 { margin: 0; font-size: 1.05rem; }
   p { margin: 0; color: var(--shimpz-color-text-muted); }
-  .frame :global(.shimpz-button) { justify-self: end; }
-  h2 { font-variant-numeric: tabular-nums; }
+  .countdown { font-variant-numeric: tabular-nums; }
 </style>
