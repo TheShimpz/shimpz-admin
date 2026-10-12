@@ -10,8 +10,9 @@ const installLocalAssistant = (stub, ...args) => via(stub, () => api.installLoca
 const installAssistant = (stub, ...args) => via(stub, () => api.installAssistant(...args));
 const listAssistantCatalog = (stub) => via(stub, () => api.listAssistantCatalog());
 const listInstalledAssistants = (stub, ...args) => via(stub, () => api.listInstalledAssistants(...args));
-const listLocalAssistantSnapshots = (stub, ...args) => via(stub, () => api.listLocalAssistantSnapshots(...args));
-const listPublicAssistantCatalog = (stub, ...args) => via(stub, () => api.listPublicAssistantCatalog(...args));
+// The two catalog reads take the call a synced value's read passes them.
+const listLocalAssistantSnapshots = (stub) => api.listLocalAssistantSnapshots(stub);
+const listPublicAssistantCatalog = (stub, locale) => api.listPublicAssistantCatalog(locale, stub);
 const uninstallAssistant = (stub, ...args) => via(stub, () => api.uninstallAssistant(...args));
 
 const SOURCE_DIGEST = `sha256:${'a'.repeat(64)}`;
@@ -152,7 +153,6 @@ test('uninstalls through the exact Team route and accepts idempotent absence', a
 });
 
 test('lists and installs only exact unpublished Local Assistant snapshots', async () => {
-  const controller = new AbortController();
   const snapshot = {
     assistant_id: 'hello-pulse',
     assistant_version: '1.2.3',
@@ -188,7 +188,7 @@ test('lists and installs only exact unpublished Local Assistant snapshots', asyn
     });
   };
 
-  assert.deepEqual(await listLocalAssistantSnapshots(fetcher, controller.signal), [snapshot]);
+  assert.deepEqual(await listLocalAssistantSnapshots(fetcher), [snapshot]);
   assert.deepEqual(await installLocalAssistant(fetcher, 'team_1', LOCAL_IMAGE_ID), {
     assistant: 'hello-pulse',
     image_id: LOCAL_IMAGE_ID,
@@ -199,9 +199,6 @@ test('lists and installs only exact unpublished Local Assistant snapshots', asyn
     { method: 'snapshots.list', params: {} },
     { method: 'assistants.install_local', params: { team_id: 'team_1', body: { image_id: LOCAL_IMAGE_ID } } },
   ]);
-  // An inventory whose request was aborted before or while it was read is dropped.
-  controller.abort();
-  await assert.rejects(listLocalAssistantSnapshots(fetcher, controller.signal), (error) => error.name === 'AbortError');
 });
 
 test('keeps the Team admission verdict and refuses a verdict outside the closed contract', async () => {
@@ -455,7 +452,6 @@ test('projects only bounded display identities from the local Assistant catalog'
 });
 
 test('projects the strict public Assistant catalog used by native cards', async () => {
-  const controller = new AbortController();
   const assistant = {
     assistant_id: 'shimpz-cloudflare',
     assistant_version: '0.4.5',
@@ -472,7 +468,7 @@ test('projects the strict public Assistant catalog used by native cards', async 
   };
 
   assert.deepEqual(
-    await listPublicAssistantCatalog(fetcher, 'pt', controller.signal),
+    await listPublicAssistantCatalog(fetcher, 'pt'),
     [{ ...assistant, page: projectedPage() }],
   );
 });
@@ -780,10 +776,4 @@ test('refuses a page that names a next page without Assistants or with a malform
     listPublicAssistantCatalog(async () => response(200, { version: 1, locale: 'en', assistants: [], next: `1.${'c'.repeat(32)}` }), 'en'),
     (error) => error instanceof LocalApiError && error.message === 'The Assistant catalog is invalid.',
   );
-  const controller = new AbortController();
-  const aborting = async (method, params) => {
-    controller.abort();
-    return pagedCatalog([publication(0)], 1).call(method, params);
-  };
-  await assert.rejects(listPublicAssistantCatalog(aborting, 'en', controller.signal), (error) => error.name === 'AbortError');
 });

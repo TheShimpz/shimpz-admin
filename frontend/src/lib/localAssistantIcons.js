@@ -93,10 +93,11 @@ function schedule(queue, task, signal) {
   });
 }
 
-// A socket call cannot be withdrawn once sent: an answer that arrives after its request was aborted is dropped.
-async function read(method, params, signal) {
+// A socket call cannot be withdrawn once sent: an answer that arrives after its request was aborted is dropped. `call`
+// asks Admin, as a synced value's read passes it.
+async function read(call, method, params, signal) {
   if (signal?.aborted) throw abortError();
-  const response = await socketReads.call(method, params);
+  const response = await call(method, params);
   if (signal?.aborted) throw abortError();
   return response;
 }
@@ -196,9 +197,9 @@ function acceptedSummary(body, locale, status, invalid = 'The Local Assistant su
   return summary;
 }
 
-async function fetchLocalSummary(imageId, locale, delay, signal) {
+async function fetchLocalSummary(call, imageId, locale, delay, signal) {
   for (let attempt = 0; ; attempt += 1) {
-    const response = await read('snapshots.summary', { image_id: imageId, locale }, signal);
+    const response = await read(call, 'snapshots.summary', { image_id: imageId, locale }, signal);
     if (response.ok) return acceptedSummary(await jsonObject(response), locale, response.status);
     const retryAfter = await localBusyRetry(response);
     if (retryAfter === null || attempt >= MAX_BUSY_RETRIES) {
@@ -245,9 +246,9 @@ function acceptedDetails(body, expected, status) {
   }
 }
 
-async function fetchLocalDetails(imageId, expected, delay, signal) {
+async function fetchLocalDetails(call, imageId, expected, delay, signal) {
   for (let attempt = 0; ; attempt += 1) {
-    const response = await read('snapshots.details', { image_id: imageId, locale: expected.locale }, signal);
+    const response = await read(call, 'snapshots.details', { image_id: imageId, locale: expected.locale }, signal);
     if (response.ok) return acceptedDetails(await jsonObject(response), expected, response.status);
     const retryAfter = await localBusyRetry(response);
     if (retryAfter === null || attempt >= MAX_BUSY_RETRIES) {
@@ -310,16 +311,17 @@ export function loadPublicAssistantIcon(fetcher, assistantId, options = {}) {
  * (ADR-0091), through the same two-slot queue as its icon because both share Team's bounded preview.
  */
 export function loadLocalAssistantSummary(imageId, locale, options = {}) {
-  const { delay = sleep, signal } = options;
+  const { delay = sleep, signal, call = socketReads.call } = options;
   if (
     !SHA256_RE.test(imageId) ||
     !isLocale(locale) ||
     typeof delay !== 'function' ||
+    typeof call !== 'function' ||
     (signal !== undefined && !(signal instanceof AbortSignal))
   ) {
     return Promise.reject(new LocalApiError('Invalid Local Assistant summary request.'));
   }
-  return schedule(localQueue, () => fetchLocalSummary(imageId, locale, delay, signal), signal);
+  return schedule(localQueue, () => fetchLocalSummary(call, imageId, locale, delay, signal), signal);
 }
 
 /**
@@ -327,8 +329,9 @@ export function loadLocalAssistantSummary(imageId, locale, options = {}) {
  * pack (ADR-0091). The answer must be exactly that language; there is no English fallback.
  */
 export async function loadAssistantSummary(teamId, assistantId, locale, options = {}) {
-  const { signal } = options;
+  const { signal, call = socketReads.call } = options;
   if (
+    typeof call !== 'function' ||
     typeof teamId !== 'string' ||
     !TEAM_ID_RE.test(teamId) ||
     typeof assistantId !== 'string' ||
@@ -338,7 +341,8 @@ export async function loadAssistantSummary(teamId, assistantId, locale, options 
   ) {
     throw new LocalApiError('Invalid Assistant summary request.');
   }
-  const response = await read('assistants.summary', { team_id: teamId, assistant_id: assistantId, locale }, signal);
+  const params = { team_id: teamId, assistant_id: assistantId, locale };
+  const response = await read(call, 'assistants.summary', params, signal);
   if (!response.ok) throw await responseError(response, 'The Assistant summary is unavailable.');
   return acceptedSummary(await jsonObject(response), locale, response.status, 'The Assistant summary is invalid.');
 }
@@ -348,8 +352,9 @@ export async function loadAssistantSummary(teamId, assistantId, locale, options 
  * and own language pack (ADR-0091), through the same two-slot queue as its icon because both share Team's preview.
  */
 export function loadLocalAssistantDetails(imageId, assistantId, locale, options = {}) {
-  const { delay = sleep, signal } = options;
+  const { delay = sleep, signal, call = socketReads.call } = options;
   if (
+    typeof call !== 'function' ||
     !SHA256_RE.test(imageId) ||
     typeof assistantId !== 'string' ||
     !ASSISTANT_ID_RE.test(assistantId) ||
@@ -360,7 +365,7 @@ export function loadLocalAssistantDetails(imageId, assistantId, locale, options 
     return Promise.reject(new LocalApiError('Invalid Local Assistant details request.'));
   }
   const expected = { assistantId, locale, maxCreators: 4 };
-  return schedule(localQueue, () => fetchLocalDetails(imageId, expected, delay, signal), signal);
+  return schedule(localQueue, () => fetchLocalDetails(call, imageId, expected, delay, signal), signal);
 }
 
 /**
@@ -368,8 +373,9 @@ export function loadLocalAssistantDetails(imageId, assistantId, locale, options 
  * binding's own language pack (ADR-0091). There is no English fallback and no substitute from discovery.
  */
 export async function loadAssistantDetails(teamId, assistantId, locale, options = {}) {
-  const { signal } = options;
+  const { signal, call = socketReads.call } = options;
   if (
+    typeof call !== 'function' ||
     typeof teamId !== 'string' ||
     !TEAM_ID_RE.test(teamId) ||
     typeof assistantId !== 'string' ||
@@ -379,7 +385,8 @@ export async function loadAssistantDetails(teamId, assistantId, locale, options 
   ) {
     throw new LocalApiError('Invalid Assistant details request.');
   }
-  const response = await read('assistants.details', { team_id: teamId, assistant_id: assistantId, locale }, signal);
+  const params = { team_id: teamId, assistant_id: assistantId, locale };
+  const response = await read(call, 'assistants.details', params, signal);
   if (!response.ok) throw await responseError(response, 'The Assistant details are unavailable.');
   return acceptedDetails(await jsonObject(response), { assistantId, locale, maxCreators: 16 }, response.status);
 }

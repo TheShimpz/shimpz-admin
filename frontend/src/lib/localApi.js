@@ -81,15 +81,9 @@ export async function listAssistantCatalog(call = socketReads.call) {
   });
 }
 
-function aborted(signal) {
-  if (signal?.aborted) throw new DOMException('The Assistant catalog request was aborted.', 'AbortError');
-}
-
 /** One bounded page of the public catalog, or `changed` when it changed since the first page was read. */
-async function catalogPage(locale, cursor, signal) {
-  aborted(signal);
-  const response = await socketReads.call('store.catalog', cursor ? { locale, cursor } : { locale });
-  aborted(signal);
+async function catalogPage(locale, cursor, call) {
+  const response = await call('store.catalog', cursor ? { locale, cursor } : { locale });
   const body = await jsonObject(response);
   if (response.status === 409 && body.code === 'catalog-changed' && cursor) return { changed: true };
   if (!response.ok) {
@@ -110,14 +104,14 @@ async function catalogPage(locale, cursor, signal) {
 }
 
 /** Every page of one catalog, joined; a catalog that changed between pages is read again from the start. */
-async function catalogPages(locale, signal) {
+async function catalogPages(locale, call) {
   for (let attempt = 0; attempt <= MAX_CATALOG_RESTARTS; attempt += 1) {
     const assistants = [];
     let cursor = null;
     let status = 200;
     let changed = false;
     do {
-      const page = await catalogPage(locale, cursor, signal);
+      const page = await catalogPage(locale, cursor, call);
       if (page.changed) {
         changed = true;
         break;
@@ -137,11 +131,11 @@ async function catalogPages(locale, signal) {
  * Read the exact bounded public Store projection used by the native Admin catalog and Assistant pages in one interface
  * language, joined from its bounded pages. Only the display copy (summary, description, Action descriptions, and
  * Stored Input labels) is localized, from the publication's own language pack; a catalog in any other language is
- * refused.
+ * refused. `call` asks Admin for each page, as a synced value's read passes it.
  */
-export async function listPublicAssistantCatalog(locale, signal) {
+export async function listPublicAssistantCatalog(locale, call = socketReads.call) {
   if (!isLocale(locale)) throw new LocalApiError('Invalid Assistant catalog request.');
-  const { assistants, status } = await catalogPages(locale, signal);
+  const { assistants, status } = await catalogPages(locale, call);
   const seen = new Set();
   return assistants.map((entry) => {
     if (
@@ -326,11 +320,12 @@ function unlabeledSnapshotValid(entry) {
   );
 }
 
-/** List bounded unpublished snapshots with explicitly unverified display declarations and Team's verdict. */
-export async function listLocalAssistantSnapshots(signal) {
-  aborted(signal);
-  const response = await socketReads.call('snapshots.list', {});
-  aborted(signal);
+/**
+ * List bounded unpublished snapshots with explicitly unverified display declarations and Team's verdict; `call` asks
+ * Admin, as a synced value's read passes it.
+ */
+export async function listLocalAssistantSnapshots(call = socketReads.call) {
+  const response = await call('snapshots.list', {});
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(
