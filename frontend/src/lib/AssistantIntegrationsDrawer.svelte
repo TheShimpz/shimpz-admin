@@ -9,9 +9,10 @@
     ScrollArea,
     Toolbar,
   } from '@shimpz/frontend';
+  import { untrack } from 'svelte';
   import { commandsReady } from '#lib/adminSocket.js';
+  import { installedSummary } from '#lib/assistantSources.js';
   import { locale, t } from '#lib/i18n.js';
-  import { loadAssistantSummary } from '#lib/localAssistantIcons.js';
   import { assistantIntegrationProviderLabel } from '#lib/localChat.js';
 
   let {
@@ -30,8 +31,6 @@
 
   let closeButton = $state();
   let expandedAssistantId = $state('');
-  // Each installed Assistant's summary per interface language, read by Team from its binding's pack (ADR-0091).
-  let summaries = $state({});
   let copy = $derived($t('assistantIntegrations'));
   let groups = $derived.by(() => {
     const grouped = new Map();
@@ -52,9 +51,16 @@
     return `/api/teams/${encodeURIComponent(teamId)}/assistants/${encodeURIComponent(assistantId)}/icon`;
   }
 
-  function summaryKey(assistantId, language) {
-    return `${teamId}\u0000${assistantId}\u0000${language}`;
-  }
+  // The expanded Assistant's summary in the interface language, read by Team from its binding's pack (ADR-0091) as a
+  // synced value of that Team's inventory; one that cannot be read in that language stays empty rather than showing
+  // another language. A closed drawer reads none.
+  const NO_SUMMARY = { subscribe: (run) => { run({ status: 'loading', value: null, error: null }); return () => {}; } };
+  let summaryKey = $derived(open && teamId && expandedAssistantId ? `${teamId}|${expandedAssistantId}|${$locale}` : '');
+  let summarySource = $derived.by(() => {
+    const key = summaryKey;
+    return untrack(() => (key ? installedSummary(teamId, expandedAssistantId, $locale) : NO_SUMMARY));
+  });
+  let expandedSummary = $derived($summarySource.value ?? '');
 
   function toggleAssistant(assistantId) {
     expandedAssistantId = expandedAssistantId === assistantId ? '' : assistantId;
@@ -90,30 +96,6 @@
     }
     const button = closeButton;
     queueMicrotask(() => button?.focus());
-  });
-
-  // An expanded Assistant reads its summary in the current interface language; a summary that cannot be read in that
-  // language stays empty rather than showing another language. Closing the drawer forgets every summary.
-  $effect(() => {
-    if (!open) {
-      summaries = {};
-      return;
-    }
-    const assistantId = expandedAssistantId;
-    const language = $locale;
-    if (!assistantId || !teamId) return;
-    const key = summaryKey(assistantId, language);
-    if (Object.hasOwn(summaries, key)) return;
-    const controller = new AbortController();
-    loadAssistantSummary(teamId, assistantId, language, { signal: controller.signal }).then(
-      (summary) => {
-        summaries = { ...summaries, [key]: summary };
-      },
-      () => {
-        if (!controller.signal.aborted) summaries = { ...summaries, [key]: '' };
-      },
-    );
-    return () => controller.abort();
   });
 </script>
 
@@ -206,7 +188,7 @@
             {header}
             {action}
           >
-            {@const summary = summaries[summaryKey(assistant.id, $locale)]}
+            {@const summary = assistant.id === expandedAssistantId ? expandedSummary : ''}
             <div id={detailsId} class="assistant-details" hidden={!expanded}>
               {#if summary}<p>{summary}</p>{/if}
             </div>

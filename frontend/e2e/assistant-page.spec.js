@@ -289,33 +289,27 @@ test('never shows a page read for the previous language once the language change
   const portugueseToken = { ...STAGED_PAGE.stored_inputs[0], label: 'Token da API da Cloudflare', description: portugueseHelp };
   let releaseEnglish;
   const englishHeld = new Promise((resolve) => { releaseEnglish = resolve; });
-  let releaseListing;
-  const listingHeld = new Promise((resolve) => { releaseListing = resolve; });
-  let listings = 0;
   await routePage(page, {
     // Only the English reply names the second Creator, so its copy is recognizable wherever it would appear.
     stagedPage: (locale) => (locale === 'pt'
       ? { ...STAGED_PAGE, creators: ['@shimpz'], summary: portuguese, stored_inputs: [portugueseToken] }
       : STAGED_PAGE),
     detailsGate: (locale) => (locale === 'en' ? englishHeld.then(() => { englishAnswered = true; }) : undefined),
-    stagedGate: () => ((listings += 1) === 2 ? listingHeld : undefined),
   });
   let englishAnswered = false;
   await page.goto('/assistants/shimpz-cloudflare?team=marketing');
   await waitForRead(page, 'snapshots.details', (params) => params.locale === 'en');
 
-  // The language changes while the English page is still being read and before the sources are read again.
+  // The language changes while the English page is still being read.
   await page.getByRole('button', { name: 'Language: English' }).click();
   await page.getByRole('menuitemradio', { name: /Português/ }).click();
-  await expect.poll(() => listings).toBe(2);
+  await waitForRead(page, 'snapshots.details', (params) => params.locale === 'pt');
   // The English answer arrives after the change; the page drops it.
   releaseEnglish();
   await expect.poll(() => englishAnswered).toBe(true);
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const sheet = page.getByRole('article');
   await expect(sheet.getByText('@roxygens', { exact: true })).toHaveCount(0);
-
-  releaseListing();
   await expect(sheet.getByRole('heading', { level: 2 })).toHaveText(portuguese);
   await expect(sheet.getByText('@roxygens', { exact: true })).toHaveCount(0);
   // A credential's help follows the interface language too, and keeps its one help link.
@@ -415,4 +409,74 @@ test('a snapshot staged elsewhere appears once Admin says the staged Assistants 
   staged.push(stagedSnapshot({ assistant_id: 'shimpz-exa', name: 'Exa Search', image_id: `sha256:${'c'.repeat(64)}` }));
   await raiseTopic(page, 'local-assistants');
   await expect(catalog.getByRole('link', { name: /^Exa Search/ })).toBeVisible();
+});
+
+test('the catalog recovers from a Store catalog that was briefly unavailable without a reload', async ({ page }) => {
+  await routePage(page, { staged: [] });
+  let unavailable = true;
+  await routeRead(page, 'store.catalog', ({ locale }) => (unavailable
+    ? { status: 502, json: { detail: 'Assistant catalog is unavailable' } }
+    : { status: 200, json: { version: 1, locale, assistants: [publicAssistant()], next: null } }));
+  await page.goto('/assistants/?team=marketing');
+  const catalog = page.getByRole('region', { name: messages.en.store.frameTitle });
+  await expect(catalog.getByText('Assistant catalog is unavailable', { exact: true })).toBeVisible();
+  unavailable = false;
+  // The catalog is read again on its own, and the failure leaves with it.
+  await expect(catalog.getByRole('link', { name: /^Shimpz Cloudflare/ })).toBeVisible({ timeout: 15_000 });
+  await expect(catalog.getByText('Assistant catalog is unavailable', { exact: true })).toHaveCount(0);
+});
+
+test('a change Admin announces while the staged Assistants are read reads them once more, after that read', async ({ page }) => {
+  const staged = [stagedSnapshot({ name: 'Cloudflare' })];
+  let release;
+  let held = false;
+  await routePage(page, {
+    staged,
+    stagedGate: () => (held ? new Promise((resolve) => { release = resolve; }) : undefined),
+  });
+  await page.goto('/assistants/?team=marketing');
+  const catalog = page.getByRole('region', { name: messages.en.store.frameTitle });
+  await expect(catalog.getByRole('link', { name: /^Cloudflare/ })).toBeVisible();
+  const before = (await readsOf(page, 'snapshots.list')).length;
+
+  // A first change starts a read Admin holds; a second change lands while it runs.
+  held = true;
+  await raiseTopic(page, 'local-assistants');
+  await expect.poll(async () => (await readsOf(page, 'snapshots.list')).length).toBe(before + 1);
+  held = false;
+  staged.push(stagedSnapshot({ assistant_id: 'shimpz-exa', name: 'Exa Search', image_id: `sha256:${'c'.repeat(64)}` }));
+  await raiseTopic(page, 'local-assistants');
+  release();
+  await expect(catalog.getByRole('link', { name: /^Exa Search/ })).toBeVisible();
+  // Exactly one more read follows the held one.
+  await expect.poll(async () => (await readsOf(page, 'snapshots.list')).length).toBe(before + 2);
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 300)));
+  expect(await readsOf(page, 'snapshots.list')).toHaveLength(before + 2);
+});
+
+test('an Assistant staged elsewhere opens on its own page once Admin says the staged Assistants changed', async ({ page }) => {
+  const staged = [];
+  await routePage(page, { staged });
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  const sheet = page.getByRole('article');
+  await expect(sheet.getByText(messages.en.assistantPage.notFound)).toBeVisible();
+  staged.push(stagedSnapshot({ name: 'Cloudflare' }));
+  await raiseTopic(page, 'local-assistants');
+  await expect(sheet.getByRole('heading', { level: 2 })).toHaveText(STAGED_PAGE.summary);
+  await expect(sheet.getByRole('button', { name: 'Install', exact: true })).toBeEnabled();
+});
+
+test('this machine\'s staged Assistants are read again on their own after Team briefly could not list them', async ({ page }) => {
+  let status = 503;
+  await routePage(page, { published: [publicAssistant({ assistant_id: 'shimpz-exa', name: 'Exa Search' })] });
+  await routeRead(page, 'snapshots.list', () => (status === 503
+    ? { status: 503, json: { error: 'unavailable', code: 'local-assistant-snapshots-unavailable' } }
+    : undefined));
+  await page.goto('/assistants/?team=marketing');
+  const catalog = page.getByRole('region', { name: messages.en.store.frameTitle });
+  await expect(catalog.getByRole('button', { name: messages.en.store.localRetry })).toBeVisible();
+  await expect(catalog.getByRole('link', { name: /^Exa Search/ })).toBeVisible();
+  status = 200;
+  await expect(catalog.getByRole('link', { name: /^Cloudflare/ })).toBeVisible({ timeout: 15_000 });
+  await expect(catalog.getByRole('button', { name: messages.en.store.localRetry })).toHaveCount(0);
 });

@@ -2,16 +2,11 @@
   import { page } from '$app/state';
   import { getContext, onMount, tick, untrack } from 'svelte';
   import { Button, Notice, Skeleton, Toolbar } from '@shimpz/frontend';
-  import { watchTopic } from '#lib/adminSocket.js';
   import AssistantRow from '#lib/AssistantRow.svelte';
+  import { publicCatalog, snapshotSummary, stagedSnapshots, syncedFamily } from '#lib/assistantSources.js';
   import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
-  import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from '#lib/localApi.js';
   import { locale, t } from '#lib/i18n.js';
-  import {
-    loadLocalAssistantIcon,
-    loadLocalAssistantSummary,
-    loadPublicAssistantIcon,
-  } from '#lib/localAssistantIcons.js';
+  import { loadLocalAssistantIcon, loadPublicAssistantIcon } from '#lib/localAssistantIcons.js';
   import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '#lib/localSnapshots.js';
   import { teamContext } from '#lib/teamContext.js';
   import { TEAM_ID_RE } from '#lib/validate.js';
@@ -21,41 +16,46 @@
   // never answers does not hold its connection forever.
   const ICON_REQUEST_LIMIT_MS = 30_000;
 
-  let publicAssistants = $state([]);
-  // The interface language the presented public catalog was read in; its summaries show only while it is selected.
-  let publicCatalogLocale = $state('');
-  let publicCatalogPhase = $state('loading');
-  let publicCatalogError = $state('');
-  let localSnapshots = $state([]);
-  let localSnapshotPhase = $state('idle');
-  let localSnapshotSettled = $state(false);
-  let localSnapshotError = $state('');
+  // The staged snapshots and the public catalog in the interface language, each a synced value (ADR-0114): read while
+  // the page shows them, again whenever one is staged or removed, and again after a failure that clears by itself.
+  const snapshots = stagedSnapshots();
+  let catalog = $derived(publicCatalog($locale));
   // A staged snapshot's summary per interface language, read by Team from the snapshot's own pack (ADR-0091).
-  let localSummaries = $state({});
+  const summaryFamily = syncedFamily((key) => {
+    const [language, imageId] = key.split('|');
+    return snapshotSummary(imageId, language);
+  });
+  // The catalog last read, with its language: switching the language keeps it on screen until the new one is read.
+  let shownCatalog = $state(null);
+  $effect(() => {
+    if ($catalog.status === 'ready') shownCatalog = { locale: $locale, assistants: $catalog.value };
+  });
+
   let catalogIconUrls = $state({});
-  // Keys whose icon could not be presented in this load; their cards stop showing a loading face.
+  // Keys whose icon could not be presented; their cards stop showing a loading face.
   let catalogIconFailures = $state({});
-  let catalogPresentationSettled = $state(false);
-  let catalogRefreshing = $state(false);
-  let catalogPresentationRequest = 0;
-  let catalogPresentationController = null;
   const initialViewReadiness = getContext(INITIAL_VIEW_READINESS);
   let copy = $derived($t('assistantStore'));
   let localCopy = $derived($t('store'));
   let pageCopy = $derived($t('assistantPage'));
   let runningTeams = $derived($teamContext.teams.filter((team) => team.status === 'running'));
-  let localSnapshotGroups = $derived(groupLocalAssistantSnapshots(localSnapshots));
-  let visiblePublicAssistants = $derived(
-    projectPublishedAssistants(
-      publicAssistants,
-      localSnapshotGroups,
-      localSnapshotSettled,
-    ),
+  // Unknown until read. A failure is said once it happens, while the value keeps reading again on its own (a failure
+  // that clears by itself) or until the person asks (a refusal); the page never waits on a failed source.
+  let localFailure = $derived($snapshots.status === 'error' ? $snapshots.error : $snapshots.status === 'loading' ? $snapshots.failing : null);
+  let publicFailure = $derived($catalog.status === 'error' ? $catalog.error : $catalog.status === 'loading' ? $catalog.failing : null);
+  let localSettled = $derived($snapshots.status === 'ready' || Boolean(localFailure));
+  let publicSettled = $derived(shownCatalog !== null || Boolean(publicFailure));
+  let localSnapshotGroups = $derived(groupLocalAssistantSnapshots($snapshots.value ?? []));
+  let publicAssistants = $derived(shownCatalog?.assistants ?? []);
+  let visiblePublicAssistants = $derived(projectPublishedAssistants(publicAssistants, localSnapshotGroups, localSettled));
+  let catalogPresentationPending = $derived(!localSettled || !publicSettled);
+  let catalogBusy = $derived(catalogPresentationPending || $snapshots.status === 'loading' || $catalog.status === 'loading');
+  let localSnapshotError = $derived(localFailure ? boundedFailure(localFailure, localCopy.localFailure) : '');
+  let publicCatalogError = $derived(publicFailure ? boundedFailure(publicFailure, copy.genericFailure) : '');
+  let summaryKeys = $derived(
+    $locale === 'en' ? [] : localSnapshotGroups.map((group) => summaryKey($locale, group.primary)),
   );
-  let catalogPresentationPending = $derived(
-    !catalogPresentationSettled,
-  );
-  let catalogBusy = $derived(catalogPresentationPending || catalogRefreshing);
+  let summaryStates = $derived(summaryFamily.of(summaryKeys));
   let requestedTeamId = $derived.by(() => {
     const candidate = page.url.searchParams.get('team') ?? '';
     return TEAM_ID_RE.test(candidate) ? candidate : '';
@@ -79,33 +79,26 @@
   let installedCount = $derived(
     [...localSnapshotGroups, ...visiblePublicAssistants].filter((entry) => installedIds.has(entry.assistant_id)).length,
   );
+  // Every icon the shown rows need, keyed by exactly what it shows.
+  let iconEntries = $derived(catalogPresentationPending ? [] : [
+    ...localSnapshotGroups.map((group) => ({ key: localIconKey(group.primary), local: group.primary.image_id })),
+    ...visiblePublicAssistants.map((assistant) => ({ key: publicIconKey(assistant), public: assistant.assistant_id })),
+  ]);
 
   // Each row opens its Assistant's page for the Team this catalog acts for.
   function assistantHref(assistantId) {
     const team = activeTeamRecord?.id;
     return `/assistants/${assistantId}${team ? `?team=${encodeURIComponent(team)}` : ''}`;
   }
-  function localSummaryKey(language, snapshot) {
-    return `${language}:${snapshot.image_id}`;
+
+  function summaryKey(language, snapshot) {
+    return `${language}|${snapshot.image_id}`;
   }
 
   // English is the snapshot's catalog summary itself; any other language shows only its pack translation.
   function localSnapshotSummary(snapshot) {
-    return $locale === 'en' ? snapshot.summary : localSummaries[localSummaryKey($locale, snapshot)] ?? '';
-  }
-
-  async function loadLocalSummaries(snapshots, language, request, signal) {
-    if (language === 'en') return;
-    await Promise.allSettled(snapshots.map(async (snapshot) => {
-      const key = localSummaryKey(language, snapshot);
-      if (localSummaries[key]) return;
-      try {
-        const summary = await loadLocalAssistantSummary(snapshot.image_id, language, { signal });
-        if (request === catalogPresentationRequest) localSummaries[key] = summary;
-      } catch {
-        // An unavailable translation leaves the summary empty rather than showing another language.
-      }
-    }));
+    if ($locale === 'en') return snapshot.summary;
+    return $summaryStates[summaryKey($locale, snapshot)]?.value ?? '';
   }
 
   function localIconKey(snapshot) {
@@ -152,152 +145,81 @@
     }
   }
 
-  function releaseCatalogIconUrls() {
-    for (const url of Object.values(catalogIconUrls)) URL.revokeObjectURL(url);
-    catalogIconUrls = {};
-    catalogIconFailures = {};
-  }
-
-  function releaseObsoleteIconUrls(previousUrls, nextUrls) {
-    for (const [key, url] of Object.entries(previousUrls)) {
-      if (nextUrls[key] !== url) URL.revokeObjectURL(url);
-    }
-  }
-
   function nextPaint() {
     return new Promise((resolve) => requestAnimationFrame(() => resolve()));
   }
 
-  async function loadCatalogPresentation() {
-    const request = ++catalogPresentationRequest;
-    const language = $locale;
-    catalogPresentationController?.abort();
-    const controller = new AbortController();
-    catalogPresentationController = controller;
-    catalogRefreshing = true;
-    publicCatalogError = '';
-    if (!catalogPresentationSettled) publicCatalogPhase = 'loading';
-    localSnapshotError = '';
-    if (!catalogPresentationSettled) localSnapshotPhase = 'loading';
+  // Icons are images, read over HTTP once per key the rows show. A key no longer shown releases its image and drops an
+  // icon still on its way; past the presentation budget an icon still on its way shows as unavailable, never as a
+  // substitute mark, and one that arrives late replaces that mark.
+  const iconRequests = new Map();
+  const iconBudgets = new Set();
+  $effect(() => {
+    const entries = iconEntries;
+    untrack(() => presentIcons(entries));
+  });
 
-    try {
-      const [publicResult, localResult] = await Promise.allSettled([
-        listPublicAssistantCatalog(language, controller.signal),
-        listLocalAssistantSnapshots(controller.signal),
-      ]);
-      if (request !== catalogPresentationRequest) return;
-
-      const nextPublicAssistants = publicResult.status === 'fulfilled' ? publicResult.value : [];
-      const nextPublicPhase = publicResult.status === 'fulfilled' ? 'ready' : 'error';
-      const nextPublicError = publicResult.status === 'fulfilled'
-        ? ''
-        : boundedFailure(publicResult.reason, copy.genericFailure);
-
-      const nextLocalSnapshots = localResult.status === 'fulfilled' ? localResult.value : [];
-      const nextLocalPhase = localResult.status === 'fulfilled' ? 'ready' : 'error';
-      const nextLocalError = localResult.status === 'fulfilled'
-        ? ''
-        : boundedFailure(localResult.reason, localCopy.localFailure);
-
-      const groups = groupLocalAssistantSnapshots(nextLocalSnapshots);
-      const published = projectPublishedAssistants(nextPublicAssistants, groups, true);
-      const iconController = new AbortController();
-      const abortIcons = () => iconController.abort();
-      controller.signal.addEventListener('abort', abortIcons, { once: true });
-      const entries = [
-        ...groups.map((group) => ({
-          key: localIconKey(group.primary),
-          load: () => loadLocalAssistantIcon(fetch, group.primary.image_id, {
-            signal: iconController.signal,
-          }),
-        })),
-        ...published.map((assistant) => ({
-          key: publicIconKey(assistant),
-          load: () => loadPublicAssistantIcon(fetch, assistant.assistant_id, {
-            signal: iconController.signal,
-          }),
-        })),
-      ];
-      const previousUrls = catalogIconUrls;
-      const nextUrls = {};
-      for (const entry of entries) {
-        if (previousUrls[entry.key]) nextUrls[entry.key] = previousUrls[entry.key];
+  function presentIcons(entries) {
+    const wanted = new Set(entries.map((entry) => entry.key));
+    for (const [key, controller] of iconRequests) {
+      if (wanted.has(key)) continue;
+      controller.abort();
+      iconRequests.delete(key);
+    }
+    for (const [key, url] of Object.entries(catalogIconUrls)) {
+      if (wanted.has(key)) continue;
+      URL.revokeObjectURL(url);
+      delete catalogIconUrls[key];
+      delete catalogIconFailures[key];
+    }
+    const missing = entries.filter((entry) => !catalogIconUrls[entry.key] && !iconRequests.has(entry.key));
+    if (!missing.length) return;
+    for (const entry of missing) void loadIcon(entry);
+    const budget = globalThis.setTimeout(() => {
+      iconBudgets.delete(budget);
+      for (const entry of missing) {
+        if (!catalogIconUrls[entry.key] && iconRequests.has(entry.key)) catalogIconFailures[entry.key] = true;
       }
+    }, ICON_PRESENTATION_BUDGET_MS);
+    iconBudgets.add(budget);
+  }
 
-      publicAssistants = nextPublicAssistants;
-      publicCatalogLocale = language;
-      publicCatalogPhase = nextPublicPhase;
-      publicCatalogError = nextPublicError;
-      localSnapshots = nextLocalSnapshots;
-      localSnapshotPhase = nextLocalPhase;
-      localSnapshotError = nextLocalError;
-      localSnapshotSettled = true;
-      catalogIconUrls = nextUrls;
-      catalogIconFailures = {};
-      catalogPresentationSettled = true;
-      catalogRefreshing = false;
-      await tick();
-      await nextPaint();
-      releaseObsoleteIconUrls(previousUrls, nextUrls);
-      if (request !== catalogPresentationRequest) return;
-      initialViewReadiness?.settleAssistants?.();
-
-      const summaries = loadLocalSummaries(
-        groups.map((group) => group.primary),
-        language,
-        request,
-        controller.signal,
-      );
-      // Past the presentation budget an icon still on its way is shown as unavailable, never as a substitute mark, and
-      // never as loading forever. Its request still completes, and an icon that arrives late replaces that mark.
-      const iconBudget = globalThis.setTimeout(() => {
-        if (request !== catalogPresentationRequest) return;
-        for (const entry of entries) {
-          if (!catalogIconUrls[entry.key]) catalogIconFailures[entry.key] = true;
-        }
-      }, ICON_PRESENTATION_BUDGET_MS);
-      const iconLimit = globalThis.setTimeout(() => iconController.abort(), ICON_REQUEST_LIMIT_MS);
-      await Promise.allSettled(entries.map(async (entry) => {
-        if (catalogIconUrls[entry.key]) return;
-        try {
-          const url = await decodedIconUrl(await entry.load(), iconController.signal);
-          if (request !== catalogPresentationRequest) {
-            URL.revokeObjectURL(url);
-            return;
-          }
-          catalogIconUrls[entry.key] = url;
-          delete catalogIconFailures[entry.key];
-        } catch {
-          if (request === catalogPresentationRequest) catalogIconFailures[entry.key] = true;
-        }
-      }));
-      globalThis.clearTimeout(iconBudget);
-      globalThis.clearTimeout(iconLimit);
-      controller.signal.removeEventListener('abort', abortIcons);
-      await summaries;
+  async function loadIcon(entry) {
+    const controller = new AbortController();
+    iconRequests.set(entry.key, controller);
+    const limit = globalThis.setTimeout(() => controller.abort(), ICON_REQUEST_LIMIT_MS);
+    try {
+      const icon = entry.local
+        ? await loadLocalAssistantIcon(fetch, entry.local, { signal: controller.signal })
+        : await loadPublicAssistantIcon(fetch, entry.public, { signal: controller.signal });
+      const url = await decodedIconUrl(icon, controller.signal);
+      if (iconRequests.get(entry.key) !== controller) {
+        URL.revokeObjectURL(url);
+        return;
+      }
+      catalogIconUrls[entry.key] = url;
+      delete catalogIconFailures[entry.key];
+    } catch {
+      if (iconRequests.get(entry.key) === controller) catalogIconFailures[entry.key] = true;
     } finally {
-      if (request === catalogPresentationRequest) catalogRefreshing = false;
+      globalThis.clearTimeout(limit);
+      if (iconRequests.get(entry.key) === controller) iconRequests.delete(entry.key);
     }
   }
 
-  // The catalog and staged snapshot summaries follow the interface language and reload when it changes.
+  // The first view settles once the catalog is presented and painted.
+  let viewSettled = false;
   $effect(() => {
-    void $locale;
-    untrack(() => { void loadCatalogPresentation(); });
+    if (catalogPresentationPending || viewSettled) return;
+    viewSettled = true;
+    void tick().then(nextPaint).then(() => initialViewReadiness?.settleAssistants?.());
   });
 
-  onMount(() => {
-    // A snapshot staged or removed elsewhere (the CLI) changes the catalog: it is read again then, and after Admin
-    // reconnects. The first read is the language effect's.
-    const stopWatching = watchTopic('local-assistants', (_topic, cause) => {
-      if (cause === 'changed' || cause === 'reopen') void loadCatalogPresentation();
-    });
-    return () => {
-      stopWatching();
-      catalogPresentationRequest += 1;
-      catalogPresentationController?.abort();
-      releaseCatalogIconUrls();
-    };
+  onMount(() => () => {
+    for (const budget of iconBudgets) globalThis.clearTimeout(budget);
+    for (const controller of iconRequests.values()) controller.abort();
+    iconRequests.clear();
+    for (const url of Object.values(catalogIconUrls)) URL.revokeObjectURL(url);
   });
 </script>
 
@@ -358,7 +280,7 @@
           id={`assistant-${assistant.assistant_id}`}
           href={assistantHref(assistant.assistant_id)}
           name={assistant.name}
-          summary={publicCatalogLocale === $locale ? assistant.summary : ''}
+          summary={shownCatalog?.locale === $locale ? assistant.summary : ''}
           iconSrc={catalogIconUrls[publicIconKey(assistant)]}
           iconStatus={catalogIconFailures[publicIconKey(assistant)] ? 'failed' : 'loading'}
           badge={localCopy.publicBadge}
@@ -369,13 +291,13 @@
     {/if}
   </div>
 
-  {#if localSnapshotPhase === 'error' || publicCatalogPhase === 'error'}
+  {#if localSnapshotError || publicCatalogError}
     <Toolbar class="catalog-actions">
-      {#if localSnapshotPhase === 'error'}
-        <Button variant="secondary" type="button" onclick={loadCatalogPresentation}>{localCopy.localRetry}</Button>
+      {#if localSnapshotError}
+        <Button variant="secondary" type="button" onclick={() => snapshots.refresh()}>{localCopy.localRetry}</Button>
       {/if}
-      {#if publicCatalogPhase === 'error'}
-        <Button variant="secondary" type="button" onclick={loadCatalogPresentation}>{copy.retryStore}</Button>
+      {#if publicCatalogError}
+        <Button variant="secondary" type="button" onclick={() => catalog.refresh()}>{copy.retryStore}</Button>
       {/if}
     </Toolbar>
   {/if}

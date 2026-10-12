@@ -7,24 +7,17 @@
   import { getContext, onMount, untrack } from 'svelte';
   import { ActionLink, AssistantIcon, Button, Disclosure, Notice, Skeleton, TextLink } from '@shimpz/frontend';
   import { showAdminNotice } from '#lib/adminNotice.js';
-  import { commandsReady, outcomeUnknown, watchTopic } from '#lib/adminSocket.js';
+  import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import AssistantActionDialog from '#lib/AssistantActionDialog.svelte';
   import { actionGroups, continuingText, pageTarget } from '#lib/assistantPage.js';
+  import { installedDetails, publicCatalog, snapshotDetails, stagedSnapshots } from '#lib/assistantSources.js';
   import { CREATOR_LINK_ICONS, CREATOR_LINK_NAMES } from '#lib/creatorLinkIcons.js';
   import { locale, t } from '#lib/i18n.js';
   import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
   import LocalAssistantInstallDialog from '#lib/LocalAssistantInstallDialog.svelte';
-  import {
-    installAssistant,
-    installLocalAssistant,
-    listLocalAssistantSnapshots,
-    listPublicAssistantCatalog,
-    uninstallAssistant,
-  } from '#lib/localApi.js';
+  import { installAssistant, installLocalAssistant, uninstallAssistant } from '#lib/localApi.js';
   import {
     isInadmissibleLocalPreview,
-    loadAssistantDetails,
-    loadLocalAssistantDetails,
     loadLocalAssistantIcon,
     loadPublicAssistantIcon,
   } from '#lib/localAssistantIcons.js';
@@ -34,22 +27,18 @@
 
   const initialViewReadiness = getContext(INITIAL_VIEW_READINESS);
 
-  // The sources this page may show: this machine's staged snapshot of the Assistant and its public publication.
-  let sourcesPhase = $state('loading');
-  let sourcesLocale = $state('');
-  let localGroup = $state(null);
-  let publication = $state(null);
-  let localKnown = $state(true);
-  let publicKnown = $state(true);
-  // The page copy of the current target, read for the interface language it was asked in.
-  let details = $state(null);
-  let detailsKey = $state('');
-  let detailsPhase = $state('idle');
+  // The sources this page may show, each a synced value (ADR-0114): this machine's staged snapshots, read again
+  // whenever one is staged or removed, and the public catalog in the interface language. A failure that clears by
+  // itself keeps the page loading; only a refusal leaves a source unknown.
+  const snapshots = stagedSnapshots();
+  let catalog = $derived(publicCatalog($locale));
+  // The catalog last read, with its language: switching the language keeps it until the new one is read.
+  let shownCatalog = $state(null);
+  $effect(() => {
+    if ($catalog.status === 'ready') shownCatalog = { locale: $locale, assistants: $catalog.value };
+  });
   let iconSrc = $state('');
   let iconFailed = $state(false);
-  let sourcesRequest = 0;
-  let detailsRequest = 0;
-  let detailsController = null;
   let blobIcon = '';
 
   // Install and uninstall, each frozen to the Team and target its dialog opened for.
@@ -87,7 +76,58 @@
   let installed = $derived(
     activeTeam ? $teamContext.installedAssistants.find((entry) => entry.assistant === assistantId) ?? null : null,
   );
+  // A source that failed is unknown, said while it keeps reading again on its own or until the person asks.
+  let localKnown = $derived($snapshots.status === 'ready');
+  let publicKnown = $derived(shownCatalog?.locale === $locale);
+  let sourcesSettled = $derived(
+    (localKnown || $snapshots.status === 'error' || Boolean($snapshots.failing))
+      && (publicKnown || $catalog.status === 'error' || Boolean($catalog.failing)),
+  );
+  let localGroup = $derived(
+    groupLocalAssistantSnapshots($snapshots.value ?? []).find((group) => group.assistant_id === assistantId) ?? null,
+  );
+  let publication = $derived(
+    publicKnown ? shownCatalog.assistants.find((entry) => entry.assistant_id === assistantId) ?? null : null,
+  );
   let target = $derived(pageTarget({ installed, localGroup, publication, localKnown, publicKnown }));
+  // The page copy of exactly the shown target: the installed binding, the staged image, or the publication, in the
+  // interface language. Each target has its own synced value, so another Assistant, Team, binding, build, or language
+  // never shows what was read for this one.
+  // Read only once the sources and the Team are known, so the page never reads a target it would replace at once.
+  let detailsKey = $derived(loading ? '' : targetKey(target, activeTeam, $locale));
+  let detailsSource = $derived.by(() => {
+    const key = detailsKey;
+    return untrack(() => detailsSourceFor(key, target, activeTeam, $locale));
+  });
+  let detailsState = $derived($detailsSource);
+  let detailsPhase = $derived.by(() => {
+    if (!detailsKey) return 'idle';
+    if (target.mode === 'public') return 'ready';
+    if (!['installed', 'local'].includes(target.mode)) return 'idle';
+    // Team answers for the binding it runs now; a page for another version is not this entry's page.
+    if (detailsState.status === 'ready') {
+      const stale = target.mode === 'installed' && detailsState.value.assistant_version !== target.installed.assistant_version;
+      return stale ? 'error' : 'ready';
+    }
+    if (detailsState.status === 'error') {
+      return target.mode === 'local' && isInadmissibleLocalPreview(detailsState.error) ? 'refused' : 'error';
+    }
+    // A preview that failed in a way that clears by itself says so while it reads again on its own.
+    return detailsState.failing ? 'error' : 'loading';
+  });
+  let details = $derived.by(() => {
+    if (target.mode === 'public' && detailsKey) {
+      const entry = target.publication;
+      return {
+        assistant_version: entry.assistant_version,
+        name: entry.name,
+        creators: entry.creators,
+        summary: entry.summary,
+        page: entry.page,
+      };
+    }
+    return detailsPhase === 'ready' ? detailsState.value : null;
+  });
   let pageCopyReady = $derived(detailsPhase === 'ready' && details !== null);
   let groups = $derived(pageCopyReady ? actionGroups(details.page.actions) : { read: [], write: [] });
   // An Integration and a Stored Input may share an id, so each row is keyed by its kind as well.
@@ -112,7 +152,7 @@
   let shownVersion = $derived(details?.assistant_version ?? installed?.assistant_version ?? '');
   let isLocal = $derived(target.mode === 'local' || (target.mode === 'installed' && installed?.provenance === 'local'));
   let refused = $derived(target.mode === 'local' && detailsPhase === 'refused');
-  let loading = $derived(sourcesPhase === 'loading' || $teamContext.phase === 'idle' || $teamContext.phase === 'loading');
+  let loading = $derived(!sourcesSettled || $teamContext.phase === 'idle' || $teamContext.phase === 'loading');
 
   let dialogTitle = $derived(
     dialogAction === 'uninstall'
@@ -153,29 +193,9 @@
     initialViewReadiness?.settleAssistants?.();
   }
 
-  // Read both sources in the interface language; a staged snapshot shadows the publication of the same Assistant.
-  async function loadSources() {
-    const request = ++sourcesRequest;
-    const language = $locale;
-    const [publicResult, localResult] = await Promise.allSettled([
-      listPublicAssistantCatalog(language),
-      listLocalAssistantSnapshots(),
-    ]);
-    if (request !== sourcesRequest) return;
-    const groups = localResult.status === 'fulfilled' ? groupLocalAssistantSnapshots(localResult.value) : [];
-    localGroup = groups.find((group) => group.assistant_id === assistantId) ?? null;
-    publication = publicResult.status === 'fulfilled'
-      ? publicResult.value.find((entry) => entry.assistant_id === assistantId) ?? null
-      : null;
-    localKnown = localResult.status === 'fulfilled';
-    publicKnown = publicResult.status === 'fulfilled';
-    sourcesLocale = language;
-    sourcesPhase = 'ready';
-  }
-
   function reloadSources() {
-    sourcesPhase = 'loading';
-    void loadSources();
+    if (!localKnown) void snapshots.refresh();
+    if (!publicKnown) void catalog.refresh();
   }
 
   function releaseIcon() {
@@ -194,125 +214,55 @@
     return `${current.mode}:${subject}`;
   }
 
-  // Forget the shown page copy and refuse every reply still in flight for it.
-  function clearDetails() {
-    detailsRequest += 1;
-    detailsController?.abort();
-    detailsController = null;
-    detailsKey = '';
-    details = null;
-    detailsPhase = 'idle';
+  // The synced page copy of one target; a publication's copy comes with the catalog, so it reads nothing more.
+  const NO_DETAILS = { subscribe: (run) => { run({ status: 'loading', value: null, error: null }); return () => {}; } };
+  function detailsSourceFor(key, current, team, language) {
+    if (!key) return NO_DETAILS;
+    if (current.mode === 'installed') return installedDetails(team.id, assistantId, language);
+    if (current.mode === 'local') return snapshotDetails(current.group.primary.image_id, assistantId, language);
+    return NO_DETAILS;
+  }
+
+  // The icon of exactly the shown target, read over HTTP as an image.
+  $effect(() => {
+    const key = detailsKey;
+    if (!key) return undefined;
+    const current = untrack(() => target);
+    const team = untrack(() => activeTeam);
+    const controller = new AbortController();
     iconFailed = false;
     releaseIcon();
     iconSrc = '';
-  }
-
-  // Read the page copy of exactly the shown target: the installed binding, the staged image, or the publication.
-  async function loadDetails(current, team, language) {
-    clearDetails();
-    const request = detailsRequest;
-    const controller = new AbortController();
-    detailsController = controller;
-    detailsKey = targetKey(current, team, language);
-    const reads = ['installed', 'local', 'public'].includes(current.mode);
-    detailsPhase = reads ? 'loading' : 'idle';
-    if (!reads) {
-      settleInitialView();
-      return;
+    if (current.mode === 'installed') {
+      iconSrc = `/api/teams/${encodeURIComponent(team.id)}/assistants/${encodeURIComponent(assistantId)}/icon`;
+    } else if (current.mode === 'local') {
+      const imageId = current.group.primary.image_id;
+      void loadIcon(() => loadLocalAssistantIcon(fetch, imageId, { signal: controller.signal }), controller);
+    } else if (current.mode === 'public') {
+      const id = assistantId;
+      void loadIcon(() => loadPublicAssistantIcon(fetch, id, { signal: controller.signal }), controller);
     }
-    // A reply counts only for the request, Assistant, Team, and language it was read for. A reply for the current
-    // request that arrives while that scope is unsettled (an inventory refresh) is dropped and its key forgotten, so the
-    // page reads again once the scope settles.
-    const subject = assistantId;
-    const stale = () => {
-      if (request !== detailsRequest) return true;
-      if (subject === assistantId && team?.id === activeTeam?.id && language === $locale) return false;
-      detailsKey = '';
-      return true;
-    };
-    try {
-      if (current.mode === 'installed') {
-        iconSrc = `/api/teams/${encodeURIComponent(team.id)}/assistants/${encodeURIComponent(assistantId)}/icon`;
-        const loaded = await loadAssistantDetails(team.id, assistantId, language, { signal: controller.signal });
-        if (stale()) return;
-        // Team answers for the binding it runs now; a page for another version is not this entry's page.
-        if (loaded.assistant_version !== current.installed.assistant_version) throw new Error('stale binding');
-        details = loaded;
-      } else if (current.mode === 'local') {
-        const imageId = current.group.primary.image_id;
-        void loadIcon(() => loadLocalAssistantIcon(fetch, imageId, { signal: controller.signal }), request);
-        const loaded = await loadLocalAssistantDetails(imageId, assistantId, language, {
-          signal: controller.signal,
-        });
-        if (stale()) return;
-        details = loaded;
-      } else {
-        const entry = current.publication;
-        void loadIcon(() => loadPublicAssistantIcon(fetch, assistantId, { signal: controller.signal }), request);
-        details = {
-          assistant_version: entry.assistant_version,
-          name: entry.name,
-          creators: entry.creators,
-          summary: entry.summary,
-          page: entry.page,
-        };
-      }
-      detailsPhase = 'ready';
-    } catch (error) {
-      if (stale() || error?.name === 'AbortError') return;
-      detailsPhase = current.mode === 'local' && isInadmissibleLocalPreview(error) ? 'refused' : 'error';
-    } finally {
-      if (!stale()) settleInitialView();
-    }
-  }
+    return () => controller.abort();
+  });
 
-  async function loadIcon(load, request) {
+  async function loadIcon(load, controller) {
     try {
       const icon = await load();
-      if (request !== detailsRequest) return;
+      if (controller.signal.aborted) return;
       blobIcon = URL.createObjectURL(icon);
       iconSrc = blobIcon;
     } catch (error) {
-      if (request === detailsRequest && error?.name !== 'AbortError') iconFailed = true;
+      if (!controller.signal.aborted && error?.name !== 'AbortError') iconFailed = true;
     }
   }
 
-  // The sources follow the interface language; the page copy follows the target, its Team, and the language.
+  // The first view settles once the page knows what it shows: its copy, or why it has none.
   $effect(() => {
-    void $locale;
-    void assistantId;
-    untrack(() => {
-      clearDetails();
-      sourcesPhase = 'loading';
-      void loadSources();
-    });
+    if (!validAssistant || $teamContext.phase === 'error') settleInitialView();
+    else if (!loading && detailsPhase !== 'loading') settleInitialView();
   });
 
-  $effect(() => {
-    if (loading || sourcesLocale !== $locale) return;
-    const current = target;
-    const team = activeTeam;
-    const language = $locale;
-    if (targetKey(current, team, language) === untrack(() => detailsKey)) return;
-    untrack(() => { void loadDetails(current, team, language); });
-  });
-
-  $effect(() => {
-    if (!validAssistant || sourcesPhase === 'error' || $teamContext.phase === 'error') settleInitialView();
-  });
-
-  // A snapshot staged or removed elsewhere (the CLI) changes what this page may show: its sources are read again then,
-  // and after Admin reconnects. The page's own first read is the one above.
-  onMount(() => watchTopic('local-assistants', (_topic, cause) => {
-    if (cause === 'changed' || cause === 'reopen') void loadSources();
-  }));
-
-  onMount(() => () => {
-    sourcesRequest += 1;
-    detailsRequest += 1;
-    detailsController?.abort();
-    releaseIcon();
-  });
+  onMount(() => () => releaseIcon());
 
   // The Team's installed Assistants read again from Team, or null when that exact Team's inventory could not be read.
   async function readInventory(team) {
@@ -498,8 +448,7 @@
   }
 
   function retryDetails() {
-    detailsKey = '';
-    void loadDetails(target, activeTeam, $locale);
+    void detailsSource.refresh?.();
   }
 
   // A dialog belongs to the page it opened on: leaving that Assistant's page closes it unless a change is running,
