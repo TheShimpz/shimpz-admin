@@ -23,6 +23,8 @@ def installed_event() -> dict[str, object]:
                 "id": "shimpz-cloudflare",
                 "name": "Shimpz Cloudflare",
                 "summary": "Manage DNS records.",
+                "creator": "@shimpz",
+                "version": "0.4.5",
                 "providers": ["cloudflare"],
                 "provenance": "local",
                 "status": "installed",
@@ -42,6 +44,8 @@ def uninstall_assistant() -> dict[str, str]:
         "id": "shimpz-cloudflare",
         "name": "Shimpz Cloudflare",
         "version": "0.4.5",
+        "creator": "@shimpz",
+        "provenance": "local",
     }
 
 

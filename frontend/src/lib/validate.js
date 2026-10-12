@@ -3,6 +3,10 @@ export const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
 // Assistant id and an Integration, provider, or Stored Input identifier share the Developers grammar with two bounds,
 // and an Action id has Team's wider grammar.
 export const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+// A canonical semantic version, as Assistant publications and stage labels carry it.
+export const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
+// One public Creator handle, as the Store catalog and Team's stage labels admit it.
+export const PUBLIC_CREATOR_RE = /^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 export const ACTION_ID_RE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
 export const MAX_ASSISTANT_ID_CHARS = 40;
 export const MAX_IDENTIFIER_CHARS = 64;

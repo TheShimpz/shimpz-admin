@@ -28,10 +28,14 @@ class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
                 ("list-zones",),
             ),
             "0.4.4",
+            "published",
         )
 
+    def _uninstall_target(self):
+        return self.chat_socket.lifecycle.assistant_proposal.UninstallTarget(self._uninstall_candidate(), "@shimpz")
+
     def _uninstall_result(self):
-        return self.assistant_route.Result("assistant-uninstall", uninstall=self._uninstall_candidate())
+        return self.assistant_route.Result("assistant-uninstall", uninstall=self._uninstall_target())
 
     def test_explicit_uninstall_uses_one_socket_scoped_proposal_and_team_result(self) -> None:
         async def scenario() -> None:
@@ -64,7 +68,13 @@ class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
                 self.assertEqual(proposed["expires_in"], 120)
                 self.assertEqual(
                     proposed["assistant"],
-                    {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "version": "0.4.4"},
+                    {
+                        "id": "shimpz-cloudflare",
+                        "name": "Shimpz Cloudflare",
+                        "version": "0.4.4",
+                        "creator": "@shimpz",
+                        "provenance": "published",
+                    },
                 )
                 self.assertNotIn("source_digest", json.dumps(proposed))
                 # The registry summary is Team's English catalog text and the proposal never shows it.
@@ -215,6 +225,8 @@ class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
                 icon_digest="sha256:" + ("e" * 64),
                 integrations=(),
                 actions=("list-zones",),
+                assistant_version="1.0.0",
+                creators=("@shimpz",),
             )
             plan = assistant_plan.Plan(
                 "f" * 32,
@@ -424,7 +436,7 @@ class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
                     delivery.Connection(),
                     delivery.Turn(None, "assistant-route"),
                     "team_1",
-                    self._uninstall_candidate(),
+                    self._uninstall_target(),
                 )
             self.assertEqual(malformed["status"], 503)
 
@@ -440,7 +452,7 @@ class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
                     detached,
                     detached_turn,
                     "team_1",
-                    self._uninstall_candidate(),
+                    self._uninstall_target(),
                 )
             terminal.assert_awaited_once()
 

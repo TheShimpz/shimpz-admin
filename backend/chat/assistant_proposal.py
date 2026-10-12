@@ -142,6 +142,15 @@ def reference_from_item(value: object) -> AssistantReference | None:
 class UninstallCandidate:
     assistant: Capability
     version: str
+    provenance: str
+
+
+@dataclass(frozen=True, slots=True)
+class UninstallTarget:
+    """The one installed Assistant an uninstall request selected, and the Creator its exact binding declares."""
+
+    candidate: UninstallCandidate
+    creator: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,6 +159,8 @@ class UninstallProposal:
     team_id: str
     assistant: Capability
     assistant_version: str
+    provenance: str
+    creator: str
     locale: str | None
     expires_at: float
 
@@ -394,18 +405,21 @@ def _proposal_id(team_id: str, now: float, proposal_id_factory: Callable[[], str
 
 def create_uninstall_proposal(
     team_id: str,
-    candidate: UninstallCandidate,
+    target: UninstallTarget,
     *,
     locale: object,
     now: float,
     proposal_id_factory: Callable[[], str] = lambda: secrets.token_hex(16),
 ) -> UninstallProposal:
     proposal_id = _proposal_id(team_id, now, proposal_id_factory)
+    candidate = target.candidate
     return UninstallProposal(
         proposal_id=proposal_id,
         team_id=team_id,
         assistant=candidate.assistant,
         assistant_version=candidate.version,
+        provenance=candidate.provenance,
+        creator=target.creator,
         locale=team_contract.canonical_locale(locale),
         expires_at=now + UNINSTALL_PROPOSAL_TTL_SECONDS,
     )

@@ -8,6 +8,8 @@ import {
   CONTROL_RE,
   exactKeys,
   jsonObject,
+  PUBLIC_CREATOR_RE,
+  SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
 } from './validate.js';
 
@@ -17,8 +19,6 @@ const MAX_BUSY_RETRIES = 2;
 const PUBLIC_BUSY_RETRY_MS = 50;
 const SHA256_RE = /^sha256:[0-9a-f]{64}$/;
 const MAX_SUMMARY_CHARS = 80;
-const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
-const PUBLIC_CREATOR_RE = /^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 const DETAILS_KEYS = [
   'actions',
   'assistant_id',

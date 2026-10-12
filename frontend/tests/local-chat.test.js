@@ -444,6 +444,8 @@ test('chat admits only the exact aggregate Assistant installation plan lifecycle
       id: 'shimpz-cloudflare',
       name: 'Shimpz Cloudflare',
       summary: 'Manage Cloudflare zones and DNS records.',
+      creator: '@shimpz',
+      version: '0.4.5',
       providers: ['cloudflare'],
       provenance: 'local',
     },
@@ -451,6 +453,8 @@ test('chat admits only the exact aggregate Assistant installation plan lifecycle
       id: 'whatsapp',
       name: 'WhatsApp',
       summary: 'Send reviewed WhatsApp messages.',
+      creator: '@Meta-Labs',
+      version: '12.0.3',
       providers: ['meta', 'whatsapp'],
       provenance: 'published',
     },
@@ -498,6 +502,8 @@ test('chat rejects widened, cross-Team, duplicated, or malformed installation pl
     id: 'shimpz-cloudflare',
     name: 'Shimpz Cloudflare',
     summary: 'Manage Cloudflare zones and DNS records.',
+    creator: '@shimpz',
+    version: '0.4.5',
     providers: ['cloudflare'],
     provenance: 'local',
     status: 'pending',
@@ -506,6 +512,8 @@ test('chat rejects widened, cross-Team, duplicated, or malformed installation pl
     id: 'whatsapp',
     name: 'WhatsApp',
     summary: 'Send reviewed WhatsApp messages.',
+    creator: '@meta',
+    version: '1.0.0',
     providers: ['meta', 'whatsapp'],
     provenance: 'published',
     status: 'pending',
@@ -526,6 +534,13 @@ test('chat rejects widened, cross-Team, duplicated, or malformed installation pl
     { ...planned, assistants: [] },
     { ...planned, assistants: Array.from({ length: 5 }, (_, index) => ({ ...cloudflare, id: `item-${index}` })) },
     { ...planned, assistants: [{ ...cloudflare, provenance: 'private' }, whatsapp] },
+    // Each card's Creator is one public handle and its version one canonical semantic version.
+    ...[
+      { creator: 'shimpz' }, { creator: '@-shimpz' }, { creator: `@${'a'.repeat(40)}` }, { creator: ['@shimpz'] },
+      { version: 'v0.4.5' }, { version: '0.04.5' }, { version: '1.0' }, { version: 1 },
+    ].map((change) => ({ ...planned, assistants: [{ ...cloudflare, ...change }, whatsapp] })),
+    { ...planned, assistants: [(({ creator: _creator, ...rest }) => rest)(cloudflare), whatsapp] },
+    { ...planned, assistants: [(({ version: _version, ...rest }) => rest)(cloudflare), whatsapp] },
     { ...planned, assistants: [{ ...cloudflare, providers: ['x', 'cloudflare'] }, whatsapp] },
     { ...planned, assistants: [{ ...cloudflare, providers: ['cloudflare', 'cloudflare'] }, whatsapp] },
     { ...planned, assistants: [{ ...cloudflare, status: 'installing' }, whatsapp] },
@@ -597,12 +612,25 @@ test('chat admits only the exact conversational Assistant uninstall lifecycle', 
       id: 'shimpz-cloudflare',
       name: 'Shimpz Cloudflare',
       version: '0.4.4',
+      creator: '@shimpz',
+      provenance: 'local',
     },
   };
   assert.deepEqual(parseChatEvent(proposed, 'team_1', 'Marketing'), {
     ...proposed,
     team_name: 'Marketing',
   });
+  // The proposal names its binding's Creator, version, and provenance exactly, and nothing else.
+  for (const change of [
+    { creator: 'shimpz' }, { creator: null }, { version: '0.4' }, { provenance: 'store' }, { summary: 'Extra.' },
+  ]) assert.throws(
+    () => parseChatEvent({ ...proposed, assistant: { ...proposed.assistant, ...change } }, 'team_1', 'Marketing'),
+    /response is invalid/,
+  );
+  for (const key of ['creator', 'provenance']) {
+    const { [key]: _omitted, ...assistant } = proposed.assistant;
+    assert.throws(() => parseChatEvent({ ...proposed, assistant }, 'team_1', 'Marketing'), /response is invalid/);
+  }
   for (const event of [
     {
       type: 'assistant-uninstall', state: 'uninstalling', proposal_id: proposalId,
@@ -1083,7 +1111,7 @@ test('chat text is bounded by Unicode code points, as its producers count it', (
     team_id: 'team_1',
     reply,
     expires_in: 120,
-    assistant: { id: 'shimpz-cloudflare', name, version: '0.4.4' },
+    assistant: { id: 'shimpz-cloudflare', name, version: '0.4.4', creator: '@shimpz', provenance: 'published' },
   }, 'team_1', 'Marketing');
   for (const character of ['界', '😀']) {
     const text = (length) => character.repeat(length);

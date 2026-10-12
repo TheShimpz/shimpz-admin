@@ -76,8 +76,8 @@ class ChatHistoryTests(ChatHistoryCase):
             ],
         )
         with contextlib.closing(sqlite3.connect(self.path)) as database:
-            self.assertEqual(database.execute("PRAGMA user_version").fetchone()[0], 9)
-        self.assertEqual(history.SCHEMA_VERSION, 9)
+            self.assertEqual(database.execute("PRAGMA user_version").fetchone()[0], 10)
+        self.assertEqual(history.SCHEMA_VERSION, 10)
 
     def test_a_malformed_row_time_fails_closed(self) -> None:
         history.append_user("marketing", history.new_turn_id(), "Private")
@@ -196,6 +196,8 @@ class ChatHistoryTests(ChatHistoryCase):
             "id": "shimpz-cloudflare",
             "name": "Shimpz Cloudflare",
             "version": "0.4.5",
+            "creator": "@shimpz",
+            "provenance": "local",
         }
         guidance = self._admitted()
         removed = self._admitted()
@@ -470,6 +472,18 @@ class ChatHistoryTests(ChatHistoryCase):
             ),
             (
                 history._install_assistant,
+                ({**installed_event()["assistants"][0], "creator": "shimpz"},),
+            ),
+            (
+                history._install_assistant,
+                ({**installed_event()["assistants"][0], "creator": None},),
+            ),
+            (
+                history._install_assistant,
+                ({**installed_event()["assistants"][0], "version": "v1.0"},),
+            ),
+            (
+                history._install_assistant,
                 ({**installed_event()["assistants"][0], "status": "working"},),
             ),
             (
@@ -582,6 +596,8 @@ class ChatHistoryTests(ChatHistoryCase):
             (history._uninstall_assistant, ({**assistant, "id": "Invalid"},)),
             (history._uninstall_assistant, ({**assistant, "version": 1},)),
             (history._uninstall_assistant, ({**assistant, "version": "latest"},)),
+            (history._uninstall_assistant, ({**assistant, "creator": "@-bad"},)),
+            (history._uninstall_assistant, ({**assistant, "provenance": "store"},)),
             (history._uninstall_payload, (None, "marketing", assistant)),
             (history._uninstall_payload, ({**base_event, "type": "other"}, "marketing", assistant)),
             (

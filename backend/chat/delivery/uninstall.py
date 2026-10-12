@@ -12,12 +12,12 @@ def _matched_event(
     connection: Connection,
     turn: Turn,
     team_id: str,
-    candidate: assistant_proposal.UninstallCandidate,
+    target: assistant_proposal.UninstallTarget,
 ) -> dict[str, object]:
     try:
         proposal, event = lifecycle.create_proposal(
             team_id,
-            candidate,
+            target,
             turn.locale,
         )
     except ValueError:
@@ -32,8 +32,8 @@ async def deliver_candidate(
     connection: Connection,
     turn: Turn,
     team_id: str,
-    candidate: assistant_proposal.UninstallCandidate,
+    target: assistant_proposal.UninstallTarget,
 ) -> None:
     """Deliver one already-resolved uninstall target without another discovery lane."""
-    event = _matched_event(connection, turn, team_id, candidate)
+    event = _matched_event(connection, turn, team_id, target)
     await terminal_delivery.turn(websocket, connection, turn, event)

@@ -12,6 +12,8 @@ import {
   exactKeys,
   isInstant,
   jsonObject,
+  PUBLIC_CREATOR_RE,
+  SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
 } from './validate.js';
 
@@ -19,7 +21,6 @@ const CHAT_TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const PUBLIC_TEXT_CONTROL_RE = /[\p{C}\p{Zl}\p{Zp}]/u;
 const ENTRY_ID_RE = /^([0-9a-f]{32}):(user|reply|install|uninstall|guidance|routine)$/;
 const HISTORY_CURSOR_RE = /^(?!A{11}$)[A-Za-z0-9_-]{10}[AEIMQUYcgkosw048]$/;
-const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 const MAX_PAGE_ENTRIES = 64;
 const MAX_MESSAGE_CHARS = 16_000;
 const MAX_REPLY_CHARS = 60_000;
@@ -55,22 +56,34 @@ function assistantId(value, status) {
 }
 
 function publicAssistant(value, status) {
-  if (!exactKeys(value, ['id', 'name', 'version'])) throw invalidHistory(status);
-  if (typeof value.version !== 'string' || !SEMANTIC_VERSION_RE.test(value.version)) {
+  if (!exactKeys(value, ['creator', 'id', 'name', 'provenance', 'version'])) throw invalidHistory(status);
+  if (
+    typeof value.version !== 'string' ||
+    !SEMANTIC_VERSION_RE.test(value.version) ||
+    typeof value.creator !== 'string' ||
+    !PUBLIC_CREATOR_RE.test(value.creator) ||
+    !['local', 'published'].includes(value.provenance)
+  ) {
     throw invalidHistory(status);
   }
   return {
     id: assistantId(value.id, status),
     name: publicText(value.name, 80, status),
     version: value.version,
+    creator: value.creator,
+    provenance: value.provenance,
   };
 }
 
 function installAssistant(value, status) {
-  if (!exactKeys(value, ['id', 'name', 'providers', 'provenance', 'status', 'summary'])) {
+  if (!exactKeys(value, ['creator', 'id', 'name', 'providers', 'provenance', 'status', 'summary', 'version'])) {
     throw invalidHistory(status);
   }
   if (
+    typeof value.creator !== 'string' ||
+    !PUBLIC_CREATOR_RE.test(value.creator) ||
+    typeof value.version !== 'string' ||
+    !SEMANTIC_VERSION_RE.test(value.version) ||
     !Array.isArray(value.providers) ||
     value.providers.length > MAX_PROVIDERS ||
     !['local', 'published'].includes(value.provenance) ||
@@ -84,6 +97,8 @@ function installAssistant(value, status) {
     id: assistantId(value.id, status),
     name: publicText(value.name, 80, status),
     summary: publicText(value.summary, 80, status),
+    creator: value.creator,
+    version: value.version,
     providers,
     provenance: value.provenance,
     status: value.status,

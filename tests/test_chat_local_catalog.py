@@ -59,6 +59,8 @@ class LocalCatalogTests(unittest.TestCase):
         self.assertEqual(candidates[0].image_id, "sha256:" + ("b" * 64))
         self.assertEqual(candidates[0].actions, ("list-zones",))
         self.assertEqual(tuple(item.provider for item in candidates[0].integrations), ("cloudflare",))
+        # A card names the snapshot's first declared Creator beside its version.
+        self.assertEqual((candidates[0].creator, candidates[0].assistant_version), ("@shimpz", "0.4.5"))
 
     def test_equal_creation_time_uses_image_id_as_the_tie_breaker(self) -> None:
         response = team.TeamResponse(

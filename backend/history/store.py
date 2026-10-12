@@ -26,8 +26,8 @@ from protocol.http.v1 import turn as turn_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 STORE_PATH = Path(os.environ.get("SHIMPZ_CHAT_HISTORY_STORE") or "/data/chat-history.sqlite3")
-# Version 9 keeps Routine notices and cards without the retired decision members (ADR-0101 amendment, 2026-10-07).
-SCHEMA_VERSION = 9
+# Version 10 keeps each Assistant card's Creator and version, and its provenance for an uninstall.
+SCHEMA_VERSION = 10
 # A row's provenance is server-owned: `attached` marks every row of a turn whose message carried attachments, which
 # never enters a conversation projection (ADR-0093); every other row is `plain`. An attached user row keeps the
 # references of the files its message carried, exactly what the transcript shows of them and never their content.
@@ -150,7 +150,7 @@ def _initialize(database: sqlite3.Connection) -> None:
             team_id TEXT PRIMARY KEY,
             turn_id TEXT NOT NULL UNIQUE
         );
-        PRAGMA user_version = 9;
+        PRAGMA user_version = 10;
         """
     )
 
@@ -385,8 +385,17 @@ def append_reply(team_id: object, turn_id: object, event: object) -> bool:
     )
 
 
+def _creator(value: object) -> bool:
+    """One Creator handle in the public grammar the Store catalog and Team's stage labels both admit."""
+    return isinstance(value, str) and store_catalog.CREATOR_RE.fullmatch(value) is not None
+
+
+def _version(value: object) -> bool:
+    return isinstance(value, str) and store_catalog.VERSION_RE.fullmatch(value) is not None
+
+
 def _install_assistant(value: object) -> dict[str, object]:
-    expected = {"id", "name", "summary", "providers", "provenance", "status"}
+    expected = {"id", "name", "summary", "creator", "version", "providers", "provenance", "status"}
     if not isinstance(value, Mapping) or set(value) != expected:
         raise ValueError("chat history Assistant install item is invalid")
     assistant_id = team_contract.canonical_assistant_id(value["id"])
@@ -398,6 +407,8 @@ def _install_assistant(value: object) -> dict[str, object]:
         or len(providers) > 32
         or value["provenance"] not in {"local", "published"}
         or value["status"] not in {"pending", "installed", "failed"}
+        or not _creator(value["creator"])
+        or not _version(value["version"])
     ):
         raise ValueError("chat history Assistant install item is invalid")
     canonical_providers = [team_contract.canonical_identifier(provider) for provider in providers]
@@ -409,6 +420,8 @@ def _install_assistant(value: object) -> dict[str, object]:
         "id": assistant_id,
         "name": chat_ws_common.public_text(value["name"], 80, field="Assistant name"),
         "summary": chat_ws_common.public_text(value["summary"], 80, field="Assistant summary"),
+        "creator": value["creator"],
+        "version": value["version"],
         "providers": canonical_providers,
         "provenance": value["provenance"],
         "status": value["status"],
@@ -496,18 +509,23 @@ def append_guidance(team_id: object, turn_id: object, code: object, reply: objec
 
 
 def _uninstall_assistant(value: object) -> dict[str, str]:
-    if not isinstance(value, Mapping) or set(value) != {"id", "name", "version"}:
+    if not isinstance(value, Mapping) or set(value) != {"id", "name", "version", "creator", "provenance"}:
         raise ValueError("chat history uninstall Assistant is invalid")
     assistant_id = team_contract.canonical_assistant_id(value["id"])
-    version = value["version"]
-    if assistant_id is None or assistant_id != value["id"] or not isinstance(version, str):
-        raise ValueError("chat history uninstall Assistant is invalid")
-    if store_catalog.VERSION_RE.fullmatch(version) is None:
+    if (
+        assistant_id is None
+        or assistant_id != value["id"]
+        or not _version(value["version"])
+        or not _creator(value["creator"])
+        or value["provenance"] not in {"local", "published"}
+    ):
         raise ValueError("chat history uninstall Assistant is invalid")
     return {
         "id": assistant_id,
         "name": chat_ws_common.public_text(value["name"], 80, field="Assistant name"),
-        "version": version,
+        "version": value["version"],
+        "creator": value["creator"],
+        "provenance": value["provenance"],
     }
 
 

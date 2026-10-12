@@ -338,6 +338,17 @@ def _already_installed(
     shown = _shown_or_none(selected, catalog, locale)
     if shown is None:
         return Preparation(error_status=502)
+    # What runs may not be what the catalog or a staged build offers now: its card shows the running binding's own
+    # Creator and version, read from Team.
+    try:
+        creators = {
+            assistant.assistant_id: assistant_inventory.binding_creator(
+                team_id, assistant.assistant_id, installed[assistant.assistant_id].version
+            )
+            for assistant in shown
+        }
+    except ValueError, team.TeamRequestError:
+        return Preparation(error_status=502)
     return Preparation(
         already_installed=AlreadyInstalled(
             plan_id=secrets.token_hex(16),
@@ -347,6 +358,8 @@ def _already_installed(
                     "id": assistant.assistant_id,
                     "name": assistant.name,
                     "summary": assistant.summary,
+                    "creator": creators[assistant.assistant_id],
+                    "version": installed[assistant.assistant_id].version,
                     "providers": sorted({integration.provider for integration in assistant.integrations}),
                     "provenance": installed[assistant.assistant_id].provenance,
                     "status": "installed",
@@ -403,12 +416,19 @@ def prepare_install(
     return _shown_preparation(prepared, catalog, locale)
 
 
+def creator(assistant: store_catalog.CatalogAssistant | local_catalog.LocalAssistant) -> str:
+    """The Creator a card shows: a staged snapshot's first declared one, or a publication's first catalog Creator."""
+    return assistant.creator if isinstance(assistant, local_catalog.LocalAssistant) else assistant.creators[0]
+
+
 def _items(plan: Plan, states: dict[str, str]) -> tuple[dict[str, object], ...]:
     return tuple(
         {
             "id": assistant.assistant_id,
             "name": assistant.name,
             "summary": assistant.summary,
+            "creator": creator(assistant),
+            "version": assistant.assistant_version,
             "providers": sorted({integration.provider for integration in assistant.integrations}),
             "provenance": "local" if isinstance(assistant, local_catalog.LocalAssistant) else "published",
             "status": states[assistant.assistant_id],

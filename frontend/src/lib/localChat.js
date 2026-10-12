@@ -16,12 +16,13 @@ import {
   isIdentifier,
   jsonObject,
   OPAQUE_ID_RE,
+  PUBLIC_CREATOR_RE,
+  SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
 } from './validate.js';
 
 const CHAT_TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const SECRET_CONTROL_RE = /[\p{C}\p{Zl}\p{Zp}]/u;
-const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 const MAX_MESSAGE_CHARS = 16_000;
 const MAX_FILES = 8;
 const MAX_ASSISTANTS = 16;
@@ -1019,7 +1020,11 @@ function canonicalInstallPlanAssistant(value) {
     !value ||
     typeof value !== 'object' ||
     Array.isArray(value) ||
-    !exactKeys(value, ['id', 'name', 'summary', 'providers', 'provenance', 'status']) ||
+    !exactKeys(value, ['id', 'name', 'summary', 'creator', 'version', 'providers', 'provenance', 'status']) ||
+    typeof value.creator !== 'string' ||
+    !PUBLIC_CREATOR_RE.test(value.creator) ||
+    typeof value.version !== 'string' ||
+    !SEMANTIC_VERSION_RE.test(value.version) ||
     !Array.isArray(value.providers) ||
     value.providers.length > MAX_INSTALL_PROVIDERS ||
     !['local', 'published'].includes(value.provenance) ||
@@ -1034,6 +1039,8 @@ function canonicalInstallPlanAssistant(value) {
     id: canonicalId(value.id),
     name: canonicalPublicText(value.name, 80),
     summary: canonicalPublicText(value.summary, 80),
+    creator: value.creator,
+    version: value.version,
     providers,
     provenance: value.provenance,
     status: value.status,
@@ -1045,14 +1052,19 @@ function canonicalUninstallAssistant(value) {
     !value ||
     typeof value !== 'object' ||
     Array.isArray(value) ||
-    !exactKeys(value, ['id', 'name', 'version']) ||
+    !exactKeys(value, ['id', 'name', 'version', 'creator', 'provenance']) ||
     typeof value.version !== 'string' ||
-    !SEMANTIC_VERSION_RE.test(value.version)
+    !SEMANTIC_VERSION_RE.test(value.version) ||
+    typeof value.creator !== 'string' ||
+    !PUBLIC_CREATOR_RE.test(value.creator) ||
+    !['local', 'published'].includes(value.provenance)
   ) throw new LocalApiError('The local chat response is invalid.');
   return {
     id: canonicalId(value.id),
     name: canonicalPublicText(value.name, 80),
     version: value.version,
+    creator: value.creator,
+    provenance: value.provenance,
   };
 }
 

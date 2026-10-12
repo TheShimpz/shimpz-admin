@@ -36,7 +36,7 @@ MAX_CACHED_ICONS = 256
 # Catalogs above this admitted byte budget intentionally retain only their most-recently-used subset.
 MAX_CACHED_ICON_BYTES = 8 * 1024 * 1024
 VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
-_CREATOR = re.compile(r"^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
+CREATOR_RE = re.compile(r"^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
 _GITHUB = re.compile(
     r"^https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/"
     r"[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,98}[A-Za-z0-9])?$"
@@ -145,8 +145,8 @@ class CatalogAssistant:
     icon_digest: str
     integrations: tuple[CatalogIntegration, ...]
     actions: tuple[str, ...]
-    assistant_version: str = ""
-    creators: tuple[str, ...] = ()
+    assistant_version: str
+    creators: tuple[str, ...]
     page: CatalogPage | None = None
 
 
@@ -281,7 +281,7 @@ def _assistant(value: object) -> CatalogAssistant:
     if not isinstance(value["github"], str) or _GITHUB.fullmatch(value["github"]) is None:
         raise ValueError("catalog repository is invalid")
     creators = _strings(value["creators"], 16, 39)
-    if not creators or any(_CREATOR.fullmatch(creator) is None for creator in creators):
+    if not creators or any(CREATOR_RE.fullmatch(creator) is None for creator in creators):
         raise ValueError("catalog Creators are invalid")
     allowed_hosts = _strings(value["allowed_hosts"], 32, 253)
     if any(host != host.lower() or "/" in host or ":" in host for host in allowed_hosts):

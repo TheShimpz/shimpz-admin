@@ -639,6 +639,8 @@ async function routeReadyChat(page, {
               id: 'shimpz-cloudflare',
               name: 'Shimpz Cloudflare',
               summary: assistantSummary,
+              creator: '@shimpz',
+              version: '0.4.5',
               providers: [],
               provenance: 'local',
               status: 'installed',
@@ -664,6 +666,8 @@ async function routeReadyChat(page, {
               id: 'shimpz-cloudflare',
               name: 'Shimpz Cloudflare',
               summary: assistantSummary,
+              creator: '@shimpz',
+              version: '0.4.5',
               providers: ['cloudflare'],
               provenance: 'local',
             },
@@ -671,6 +675,8 @@ async function routeReadyChat(page, {
               id: 'whatsapp',
               name: 'WhatsApp',
               summary: 'Send reviewed WhatsApp messages.',
+              creator: '@meta',
+              version: '2.1.0',
               providers: ['whatsapp'],
               provenance: 'published',
             },
@@ -755,7 +761,9 @@ async function routeReadyChat(page, {
               team_id: 'marketing',
               reply: 'Shimpz Cloudflare is installed. Should I uninstall it from this Team?',
               expires_in: 120,
-              assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+              assistant: {
+                id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1', creator: '@shimpz', provenance: 'local',
+              },
             }));
             if (holdUninstallProposal) releaseUninstallProposal = propose;
             else propose();
@@ -1715,6 +1723,8 @@ test('restores durable Team history, terminal Assistant cards and older prompts 
             id: 'shimpz-cloudflare',
             name: 'Shimpz Cloudflare',
             summary: 'Safely manage Cloudflare DNS records through OAuth.',
+            creator: '@shimpz',
+            version: '0.4.5',
             providers: ['cloudflare'],
             provenance: 'local',
             status: 'installed',
@@ -2032,6 +2042,8 @@ test('restores the installed Assistant card after a successful OAuth return @bro
             id: 'shimpz-cloudflare',
             name: 'Shimpz Cloudflare',
             summary: 'Safely manage Cloudflare DNS records through OAuth.',
+            creator: '@shimpz',
+            version: '0.4.5',
             providers: ['cloudflare'],
             provenance: 'local',
             status: 'installed',
@@ -2084,6 +2096,8 @@ test('restores an already-installed Assistant result from durable history', asyn
             id: 'shimpz-cloudflare',
             name: 'Shimpz Cloudflare',
             summary: 'Safely manage Cloudflare DNS records through OAuth.',
+            creator: '@shimpz',
+            version: '0.4.5',
             providers: [],
             provenance: 'local',
             status: 'installed',
@@ -2117,6 +2131,8 @@ test('settles a failed Local install plan icon as unavailable instead of loading
             id: 'shimpz-cloudflare',
             name: 'Shimpz Cloudflare',
             summary: 'Safely manage Cloudflare DNS records through OAuth.',
+            creator: '@shimpz',
+            version: '0.4.5',
             providers: [],
             provenance: 'local',
             status: 'failed',
@@ -2170,7 +2186,9 @@ test('restores the terminal uninstall outcome from durable history', async ({ pa
           created_at: HISTORY_AT,
           kind: 'assistant-uninstall',
           state: 'uninstalled',
-          assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+          assistant: {
+            id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1', creator: '@shimpz', provenance: 'local',
+          },
           uninstalled: true,
         },
       ],
@@ -2209,7 +2227,10 @@ test('installs a composed Assistant plan automatically and continues the origina
   await expect(tasks.nth(1)).toContainText('WhatsApp');
   await expect(tasks.nth(1)).toHaveAttribute('data-state', 'pending');
   await expect(tasks.nth(0).locator('img')).toHaveCount(0);
-  await expect(tasks.nth(0)).toContainText('Local');
+  // Beside each name: Local only for a staged build, then the Creator and version Admin sent for it.
+  const meta = tasks.locator('[data-slot="chat-task-meta"]');
+  await expect(meta.nth(0)).toHaveText(/^Local.*@shimpz.*v0\.4\.5$/);
+  await expect(meta.nth(1)).toHaveText(/^@meta.*v2\.1\.0$/);
   await expect(tasks.nth(1).locator('img')).toHaveAttribute(
     'src',
     '/api/assistants/whatsapp/catalog-icon',
@@ -2836,8 +2857,11 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
   await expect(task).toContainText('Assistant uninstall');
   await expect(task).toContainText('Confirmation required');
   await expect(task).toContainText(
-    'This removes the running Assistant, its Integration authorizations, and any pending work for it in this Team. If it is a Local build, its snapshot remains staged on this machine so it can be installed again. To delete that snapshot permanently, run shimpz assistant unstage from its project.',
+    'The Assistant leaves this Team, along with the accounts connected to it and any tasks in progress.',
   );
+  await expect(task.locator('[data-slot="chat-task-meta"]')).toHaveText(/^Local.*@shimpz.*v0\.4\.1$/);
+  // The proposal's decision is its two actions alone.
+  await expect(task.locator('[data-slot="chat-task-details"]')).toHaveText(/^\s*Cancel\s*Uninstall\s*$/);
   const icon = task.locator('img');
   await expect(icon).toHaveAttribute(
     'src',

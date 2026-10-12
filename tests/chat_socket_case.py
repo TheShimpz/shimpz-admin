@@ -70,6 +70,8 @@ class ChatWebSocketCase(unittest.TestCase):
             icon_digest="sha256:" + ("e" * 64),
             integrations=(self.chat_socket.lifecycle.store_catalog.CatalogIntegration("cloudflare", ("zone.read",)),),
             actions=("list-zones",),
+            assistant_version="1.0.0",
+            creators=("@shimpz",),
         )
 
     def _whatsapp_candidate(self):
@@ -83,6 +85,8 @@ class ChatWebSocketCase(unittest.TestCase):
                 self.chat_socket.lifecycle.store_catalog.CatalogIntegration("whatsapp", ("messages.write",)),
             ),
             actions=("send-message",),
+            assistant_version="1.0.0",
+            creators=("@shimpz",),
         )
 
     def _automatic_plan(self):

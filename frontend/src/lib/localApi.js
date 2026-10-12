@@ -8,6 +8,8 @@ import {
   isIdentifier,
   jsonObject,
   LocalApiError,
+  PUBLIC_CREATOR_RE,
+  SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
   TRACE_ID_RE,
 } from './validate.js';
@@ -16,7 +18,6 @@ import { AssistantPageError, canonicalPageCopy } from './assistantPage.js';
 import { isLocale } from './locales.js';
 
 const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
-const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 const MAX_INSTALLED_ASSISTANTS = 128;
 const MAX_LOCAL_ASSISTANTS = 50;
 const LOCAL_ADMISSION_REASONS = Object.freeze(['declaration-invalid', 'image-inconsistent', 'labels-invalid']);
@@ -30,7 +31,6 @@ const ASSISTANT_SUMMARY_CHARS = 80;
 const SHA256_RE = /^sha256:[0-9a-f]{64}$/;
 const CREATED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const CREATOR_RE = /^@[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
-const PUBLIC_CREATOR_RE = /^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 
 export { LocalApiError };
 

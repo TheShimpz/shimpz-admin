@@ -116,6 +116,8 @@ class CatalogPageTests(unittest.TestCase):
             icon_digest="sha256:" + ("b" * 64),
             integrations=(),
             actions=("list-zones",),
+            assistant_version="1.0.0",
+            creators=("@shimpz",),
         )
         with _catalog(assistant), self.assertRaises(assets.HTTPException) as caught:
             assets.catalog_page("en")

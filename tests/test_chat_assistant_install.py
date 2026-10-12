@@ -22,6 +22,8 @@ def _candidate() -> store_catalog.CatalogAssistant:
         icon_digest="sha256:" + ("b" * 64),
         integrations=(store_catalog.CatalogIntegration("cloudflare", ("zone.read",)),),
         actions=("list-zones",),
+        assistant_version="1.0.0",
+        creators=("@shimpz",),
     )
 
 
@@ -34,6 +36,7 @@ def _local_candidate() -> local_catalog.LocalAssistant:
         integrations=(store_catalog.CatalogIntegration("cloudflare", ()),),
         actions=("list-zones",),
         assistant_version="0.4.5",
+        creator="@shimpz",
         created_at=datetime(2026, 9, 15, tzinfo=UTC),
     )
 

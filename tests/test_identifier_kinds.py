@@ -54,6 +54,8 @@ class TeamIdentifierKindTests(unittest.TestCase):
             "id": "helper",
             "name": "Helper",
             "summary": "Helps.",
+            "creator": "@shimpz",
+            "version": "1.0.0",
             "providers": ["p" * 64],
             "provenance": "published",
             "status": "installed",

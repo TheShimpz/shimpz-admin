@@ -118,7 +118,7 @@ class Guidance:
 class Result:
     intent: Intent
     preparation: assistant_plan.Preparation | None = None
-    uninstall: assistant_proposal.UninstallCandidate | None = None
+    uninstall: assistant_proposal.UninstallTarget | None = None
     guidance: Guidance | None = None
     error_status: int | None = None
 
@@ -270,7 +270,12 @@ def _prepare_uninstall(
     matches = tuple(candidate for candidate in shortlist if candidate.assistant.assistant_id in selection.assistant_ids)
     if len(matches) != 1:
         raise RouteError(502)
-    return Result("assistant-uninstall", uninstall=matches[0])
+    match = matches[0]
+    try:
+        creator = assistant_inventory.binding_creator(team_id, match.assistant.assistant_id, match.version)
+    except ValueError, team.TeamRequestError:
+        raise RouteError(502) from None
+    return Result("assistant-uninstall", uninstall=assistant_proposal.UninstallTarget(match, creator))
 
 
 def _classified_install(

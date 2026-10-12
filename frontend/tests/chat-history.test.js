@@ -42,10 +42,24 @@ function installedEntry() {
       id: 'shimpz-cloudflare',
       name: 'Shimpz Cloudflare',
       summary: 'Safely manage Cloudflare DNS records through OAuth.',
+      creator: '@shimpz',
+      version: '0.4.5',
       providers: ['cloudflare'],
       provenance: 'local',
       status: 'installed',
     }],
+  };
+}
+
+function uninstalledEntry() {
+  return {
+    id: `${TURN_A}:uninstall`,
+    created_at: AT,
+    kind: 'assistant-uninstall',
+    state: 'cancelled',
+    assistant: {
+      id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.5', creator: '@shimpz', provenance: 'local',
+    },
   };
 }
 
@@ -124,6 +138,12 @@ test('loads the exact already-installed terminal outcome', async () => {
   assert.deepEqual(result.entries, [restored(entry)]);
 });
 
+test('loads a stored uninstall card with its Creator, version, and provenance', async () => {
+  const entry = uninstalledEntry();
+  const result = await listChatHistory(async () => response(200, { entries: [entry], before: null }), 'marketing');
+  assert.deepEqual(result.entries, [restored(entry)]);
+});
+
 test('loads a failed install that Team refused at its Assistant limit, and only that code', async () => {
   const failed = {
     ...installedEntry(),
@@ -156,8 +176,15 @@ test('fails closed on malformed or secret-bearing chat history', async () => {
       kind: 'assistant-uninstall',
       state: 'failed',
       status: 200,
-      assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.5' },
+      assistant: uninstalledEntry().assistant,
     },
+    // A card's Creator, version, and provenance are exact: one public handle, one semantic version, a closed provenance.
+    ...[{ creator: 'shimpz' }, { version: '0.4' }, { creator: undefined }].map((change) => (
+      { ...installedEntry(), assistants: [{ ...installedEntry().assistants[0], ...change }] }
+    )),
+    ...[{ creator: '@-x' }, { version: 'latest' }, { provenance: 'store' }, { provenance: undefined }].map((change) => (
+      { ...uninstalledEntry(), assistant: { ...uninstalledEntry().assistant, ...change } }
+    )),
     // Team's English registry summary is never stored or shown with an uninstall.
     {
       id: `${TURN_A}:uninstall`,
@@ -168,7 +195,7 @@ test('fails closed on malformed or secret-bearing chat history', async () => {
         id: 'shimpz-cloudflare',
         name: 'Shimpz Cloudflare',
         summary: 'Safely manage Cloudflare DNS records through OAuth.',
-        version: '0.4.5',
+        ...uninstalledEntry().assistant,
       },
     },
   ];

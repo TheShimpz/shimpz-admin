@@ -13,8 +13,8 @@ importers:
   .:
     dependencies:
       '@shimpz/frontend':
-        specifier: https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/051c81d2120982c28c3f9767faf288f4f6798e8e
-        version: https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/051c81d2120982c28c3f9767faf288f4f6798e8e(svelte@5.57.2)
+        specifier: https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/c9593e186e4db8398d0f4611c1638c2aa8113e55
+        version: https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/c9593e186e4db8398d0f4611c1638c2aa8113e55(svelte@5.57.2)
       qrcode:
         specifier: 1.5.4
         version: 1.5.4
@@ -195,8 +195,8 @@ packages:
   '@rolldown/pluginutils@1.0.1':
     resolution: {integrity: sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw==}
 
-  '@shimpz/frontend@https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/051c81d2120982c28c3f9767faf288f4f6798e8e':
-    resolution: {gitHosted: true, integrity: sha512-DYtzIeV5jzT32xhPiWhMYa0o9yWGvb2hEEN9t//xtKQOWVx5wbQmUhLBf1VS4DibFcFJLJcuTPuLSlByguPccA==, tarball: https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/051c81d2120982c28c3f9767faf288f4f6798e8e}
+  '@shimpz/frontend@https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/c9593e186e4db8398d0f4611c1638c2aa8113e55':
+    resolution: {gitHosted: true, integrity: sha512-vViJNLJzmSggh1WFSqJm9HGuG0/L+UHMVFtP74lxVSllvdW/8d1P+ua0SepXrBI7X1r7TLSXk1CKb4UGfQHhOQ==, tarball: https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/c9593e186e4db8398d0f4611c1638c2aa8113e55}
     version: 0.5.3
     engines: {node: 26.x}
     peerDependencies:
@@ -745,7 +745,7 @@ snapshots:
 
   '@rolldown/pluginutils@1.0.1': {}
 
-  '@shimpz/frontend@https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/051c81d2120982c28c3f9767faf288f4f6798e8e(svelte@5.57.2)':
+  '@shimpz/frontend@https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/c9593e186e4db8398d0f4611c1638c2aa8113e55(svelte@5.57.2)':
     dependencies:
       '@fontsource-variable/inter': 5.3.0
       '@fontsource/ibm-plex-mono': 5.3.0

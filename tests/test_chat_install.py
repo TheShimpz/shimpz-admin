@@ -32,10 +32,11 @@ def _proposal() -> assistant_proposal.UninstallProposal:
             ("list-zones",),
         ),
         "0.4.4",
+        "published",
     )
     return assistant_proposal.create_uninstall_proposal(
         "team_1",
-        candidate,
+        assistant_proposal.UninstallTarget(candidate, "@shimpz"),
         locale="pt",
         now=1.0,
         proposal_id_factory=lambda: "c" * 32,
@@ -105,7 +106,13 @@ class ChatLifecycleTests(unittest.TestCase):
                 "reply": "Assistant uninstall requires confirmation.",
                 "expires_in": 120,
                 # The registry summary is Team's English catalog text and is never shown with the proposal.
-                "assistant": {"id": "shimpz-cloudflare", "name": "Shimpz Cloudflare", "version": "0.4.4"},
+                "assistant": {
+                    "id": "shimpz-cloudflare",
+                    "name": "Shimpz Cloudflare",
+                    "version": "0.4.4",
+                    "creator": "@shimpz",
+                    "provenance": "published",
+                },
             },
         )
         self.assertEqual(

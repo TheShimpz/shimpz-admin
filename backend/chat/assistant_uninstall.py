@@ -20,7 +20,7 @@ def candidates(team_id: str) -> tuple[assistant_proposal.UninstallCandidate, ...
     if any(assistant_id not in registry for assistant_id in installed):
         raise ValueError("installed Assistant scope is not authoritative")
     return tuple(
-        assistant_proposal.UninstallCandidate(registry[assistant_id], item.version)
+        assistant_proposal.UninstallCandidate(registry[assistant_id], item.version, item.provenance)
         for assistant_id, item in sorted(installed.items())
     )
 

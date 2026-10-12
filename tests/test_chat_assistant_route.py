@@ -71,6 +71,8 @@ def cloudflare() -> store_catalog.CatalogAssistant:
         DIGEST,
         (),
         ("list-zones",),
+        assistant_version="1.0.0",
+        creators=("@shimpz",),
     )
 
 
@@ -336,11 +338,37 @@ class AssistantRouteTests(unittest.TestCase):
         with (
             _selected_route("assistant-install", assistant.assistant_id),
             mock.patch.object(assistant_route, "_catalog_state", return_value=(installed, (assistant,))),
+            mock.patch.object(
+                assistant_route.assistant_plan.assistant_inventory, "binding_creator", return_value="@builder"
+            ) as creator,
         ):
             result = assistant_route.prepare("team_1", payload("instale o cloudflare"), mock.sentinel.catalog)
 
         self.assertIsNone(result.preparation.plan)
-        self.assertEqual(result.preparation.already_installed.assistants[0]["status"], "installed")
+        shown = result.preparation.already_installed.assistants[0]
+        self.assertEqual(shown["status"], "installed")
+        # The card names what runs: the binding's own Creator and the installed version, not the catalog entry's.
+        self.assertEqual((shown["creator"], shown["version"]), ("@builder", "0.4.5"))
+        creator.assert_called_once_with("team_1", assistant.assistant_id, "0.4.5")
+
+    def test_repeated_install_fails_closed_when_the_binding_cannot_be_described(self) -> None:
+        assistant = cloudflare()
+        installed = {
+            assistant.assistant_id: assistant_inventory.InstalledAssistant(
+                assistant.assistant_id, "0.4.5", "local", "running"
+            )
+        }
+        for failure in (ValueError("invalid"), assistant_plan.team.TeamRequestError("unavailable")):
+            with (
+                self.subTest(failure=type(failure).__name__),
+                _selected_route("assistant-install", assistant.assistant_id),
+                mock.patch.object(assistant_route, "_catalog_state", return_value=(installed, (assistant,))),
+                mock.patch.object(
+                    assistant_route.assistant_plan.assistant_inventory, "binding_creator", side_effect=failure
+                ),
+            ):
+                result = assistant_route.prepare("team_1", payload("instale o cloudflare"), mock.sentinel.catalog)
+            self.assertEqual(result.preparation.error_status, 502)
 
     def test_install_without_a_resolved_target_returns_guidance(self) -> None:
         with (
@@ -401,14 +429,20 @@ class AssistantRouteTests(unittest.TestCase):
                 ("must-not-cross",),
             ),
             "0.4.5",
+            "published",
         )
         with (
             _selected_route("assistant-uninstall", candidate.assistant.assistant_id) as route,
             mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=(candidate,)),
+            mock.patch.object(
+                assistant_route.assistant_inventory, "binding_creator", return_value="@shimpz"
+            ) as creator,
         ):
             result = assistant_route.prepare("team_1", payload("retire o cloudflare"), mock.sentinel.catalog)
 
-        self.assertEqual(result.uninstall, candidate)
+        self.assertEqual(result.uninstall, assistant_proposal.UninstallTarget(candidate, "@shimpz"))
+        # Only the one selected binding is described, by Team, for exactly its installed version.
+        creator.assert_called_once_with("team_1", "shimpz-cloudflare", "0.4.5")
         self.assertEqual(route.call_args_list[1].args[1], "cloudflare")
         self.assertEqual(
             route.call_args_list[1].args[3],
@@ -419,6 +453,7 @@ class AssistantRouteTests(unittest.TestCase):
         candidate = assistant_proposal.UninstallCandidate(
             assistant_proposal.Capability("shimpz-cloudflare", "Shimpz Cloudflare", "", ()),
             "0.4.5",
+            "published",
         )
         context = assistant_route.Context(
             conversation=(
@@ -429,6 +464,7 @@ class AssistantRouteTests(unittest.TestCase):
         with (
             _selected_route("assistant-uninstall", "shimpz-cloudflare") as route,
             mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=(candidate,)),
+            mock.patch.object(assistant_route.assistant_inventory, "binding_creator", return_value="@shimpz"),
         ):
             result = assistant_route.prepare(
                 "team_1",
@@ -437,7 +473,7 @@ class AssistantRouteTests(unittest.TestCase):
                 context,
             )
 
-        self.assertEqual(result.uninstall, candidate)
+        self.assertEqual(result.uninstall, assistant_proposal.UninstallTarget(candidate, "@shimpz"))
         self.assertEqual(route.call_args_list[0].args[1], "desinstala esse então")
         self.assertEqual(route.call_args_list[0].args[4].conversation, context.conversation)
         self.assertEqual(route.call_args_list[0].args[4].locale, "en")
@@ -450,6 +486,7 @@ class AssistantRouteTests(unittest.TestCase):
         candidate = assistant_proposal.UninstallCandidate(
             assistant_proposal.Capability("shimpz-cloudflare", "Shimpz Cloudflare", "", ()),
             "0.4.5",
+            "published",
         )
         cases = (
             (response("assistant-uninstall"), (candidate,), None),
@@ -482,6 +519,7 @@ class AssistantRouteTests(unittest.TestCase):
         candidate = assistant_proposal.UninstallCandidate(
             assistant_proposal.Capability("shimpz-cloudflare", "Shimpz Cloudflare", "", ()),
             "0.4.5",
+            "published",
         )
         with (
             _selected_route("assistant-uninstall", "different"),
@@ -489,6 +527,23 @@ class AssistantRouteTests(unittest.TestCase):
             self.assertRaises(assistant_route.RouteError),
         ):
             assistant_route.prepare("team_1", payload("desinstale cloudflare"), mock.sentinel.catalog)
+
+    def test_an_uninstall_target_its_team_cannot_describe_fails_closed(self) -> None:
+        candidate = assistant_proposal.UninstallCandidate(
+            assistant_proposal.Capability("shimpz-cloudflare", "Shimpz Cloudflare", "", ()),
+            "0.4.5",
+            "local",
+        )
+        for failure in (ValueError("invalid"), assistant_plan.team.TeamRequestError("unavailable")):
+            with (
+                self.subTest(failure=type(failure).__name__),
+                _selected_route("assistant-uninstall", "shimpz-cloudflare"),
+                mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=(candidate,)),
+                mock.patch.object(assistant_route.assistant_inventory, "binding_creator", side_effect=failure),
+                self.assertRaises(assistant_route.RouteError) as raised,
+            ):
+                assistant_route.prepare("team_1", payload("desinstale cloudflare"), mock.sentinel.catalog)
+            self.assertEqual(raised.exception.status, 502)
 
     def test_lifecycle_request_with_files_gets_localized_guidance_before_directories_open(self) -> None:
         attached = {**payload("instale o cloudflare"), "files": ["a" * 32], "locale": "pt"}

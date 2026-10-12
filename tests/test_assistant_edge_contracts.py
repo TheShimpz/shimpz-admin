@@ -32,6 +32,8 @@ def _catalog_assistant(assistant_id: str, *, provider: str = "provider") -> stor
         digest,
         (store_catalog.CatalogIntegration(provider, ("scope",)),),
         ("send-message",),
+        assistant_version="1.0.0",
+        creators=("@shimpz",),
     )
 
 
@@ -137,6 +139,45 @@ class AssistantInventoryEdges(unittest.TestCase):
         installed = assistant_inventory.installed(response)
 
         self.assertEqual(installed["valid"].provenance, "local")
+
+    def test_a_binding_creator_is_the_first_one_teams_exact_binding_declares(self) -> None:
+        page = {
+            "locale": "en",
+            "assistant_id": "shimpz-cloudflare",
+            "assistant_version": "1.4.0",
+            "name": "Shimpz Cloudflare",
+            "creators": ["@builder", "@shimpz"],
+            "summary": "Publishes DNS changes safely.",
+            "description": "Reviews Cloudflare zones and publishes records only after approval.",
+            "links": {},
+            "actions": [{"id": "list-zones", "effect": "read_only", "description": "Lists the zones."}],
+            "integrations": [],
+            "stored_inputs": [],
+            "trace_id": "a" * 32,
+        }
+        with mock.patch.object(
+            assistant_inventory.team, "assistant_details", return_value=team.TeamResponse(200, page)
+        ) as details:
+            creator = assistant_inventory.binding_creator("team_1", "shimpz-cloudflare", "1.4.0")
+        self.assertEqual(creator, "@builder")
+        details.assert_called_once_with("team_1", "shimpz-cloudflare", "en")
+        # Another binding, version, language, or shape than the one installed, or a Team failure, is refused.
+        refused = (
+            team.TeamResponse(503, {"detail": "unavailable"}),
+            team.TeamResponse(200, ["not", "an", "object"]),
+            team.TeamResponse(200, {**page, "assistant_id": "other"}),
+            team.TeamResponse(200, {**page, "assistant_version": "1.4.1"}),
+            team.TeamResponse(200, {**page, "locale": "pt"}),
+            team.TeamResponse(200, {**page, "creators": ["builder"]}),
+            mock.sentinel.not_a_response,
+        )
+        for response in refused:
+            with (
+                self.subTest(response=response),
+                mock.patch.object(assistant_inventory.team, "assistant_details", return_value=response),
+                self.assertRaises(ValueError),
+            ):
+                assistant_inventory.binding_creator("team_1", "shimpz-cloudflare", "1.4.0")
 
     def test_registry_admits_the_producer_action_count_and_no_more(self) -> None:
         # Developers' install protocol and Team admit up to 128 Actions per Assistant.
@@ -249,6 +290,7 @@ class AssistantProposalEdges(unittest.TestCase):
                     assistant_proposal.UninstallCandidate(
                         assistant_proposal.Capability("whatsapp", "WhatsApp", "", ()),
                         "1.0.0",
+                        "published",
                     ),
                 ),
             ),

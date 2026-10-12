@@ -72,7 +72,13 @@ def retain_history(connection: Connection, history_id: str | None, event: Mappin
 def _assistant_identity(proposal: assistant_proposal.UninstallProposal) -> dict[str, object]:
     """The displayed identity only: the registry summary is Team's English catalog text and is never shown."""
     assistant = proposal.assistant
-    return {"id": assistant.assistant_id, "name": assistant.name, "version": proposal.assistant_version}
+    return {
+        "id": assistant.assistant_id,
+        "name": assistant.name,
+        "version": proposal.assistant_version,
+        "creator": proposal.creator,
+        "provenance": proposal.provenance,
+    }
 
 
 def _proposal_event(
@@ -121,13 +127,13 @@ def submit_route(
 
 def create_proposal(
     team_id: str,
-    candidate: assistant_proposal.UninstallCandidate,
+    target: assistant_proposal.UninstallTarget,
     locale: object,
 ) -> tuple[assistant_proposal.UninstallProposal, dict[str, object]]:
     """Create one socket-bound proposal and its deterministic public event."""
     proposal = assistant_proposal.create_uninstall_proposal(
         team_id,
-        candidate,
+        target,
         locale=locale,
         now=monotonic(),
     )

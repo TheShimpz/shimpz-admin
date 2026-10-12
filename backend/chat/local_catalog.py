@@ -20,6 +20,8 @@ class LocalAssistant:
     integrations: tuple[store_catalog.CatalogIntegration, ...]
     actions: tuple[str, ...]
     assistant_version: str
+    # The first Creator the snapshot's stage labels declare, as the chat cards show it beside the version.
+    creator: str
     created_at: datetime
 
 
@@ -50,6 +52,7 @@ def _assistant(entry: dict[str, object]) -> tuple[LocalAssistant, bool]:
         integrations=tuple(store_catalog.CatalogIntegration(provider, ()) for provider in entry["integrations"]),
         actions=tuple(entry["actions"]),
         assistant_version=str(entry["assistant_version"]),
+        creator=str(entry["declared_creators"][0]),
         created_at=_created_at(str(entry["created_at"])),
     )
     return assistant, entry["admission"] == "admissible"

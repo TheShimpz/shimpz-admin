@@ -2295,6 +2295,10 @@
             <span class="turn-at">{copy.timeAt}</span>
             <time class="turn-time" datetime={instantValue(instant)}>{clockTime(instant, $locale)}</time>
           {/snippet}
+          <!-- An Assistant's provenance, Creator and version beside its name: Local in the Store's yellow. -->
+          {#snippet assistantMeta(local, creator, version)}
+            {#if local}<span class="assistant-meta-local">{storeCopy.localBadge}</span><span class="assistant-meta-separator" aria-hidden="true">·</span>{/if}{creator}<span class="assistant-meta-separator" aria-hidden="true">·</span>v{version}
+          {/snippet}
           {#each exchanges as exchange, index (exchange.key)}
             {@const userTurn = exchange.user}
             {@const assistantTurn = exchange.assistant}
@@ -2380,10 +2384,8 @@
                             size={44}
                           />
                         {/snippet}
+                        {#snippet planMeta()}{@render assistantMeta(assistant.provenance === 'local', assistant.creator, assistant.version)}{/snippet}
                         {#snippet planDetails()}
-                          {#if assistant.provenance === 'local'}
-                            <span class="assistant-lifecycle-provenance">{storeCopy.localBadge}</span>
-                          {/if}
                           {#if assistant.status === 'failed' && assistantTurn.installPlan.status}
                             <span class="assistant-lifecycle-detail-copy">
                               HTTP {assistantTurn.installPlan.status}
@@ -2394,6 +2396,7 @@
                           class="assistant-lifecycle-task"
                           label={copy.install.label}
                           title={assistant.name}
+                          meta={planMeta}
                           description={assistant.summary}
                           state={installPlanVisualState(assistant.status)}
                           status={installPlanStatus(
@@ -2401,9 +2404,7 @@
                             assistantTurn.installPlan.outcome,
                           )}
                           media={planMedia}
-                          details={assistant.provenance === 'local' || assistant.status === 'failed'
-                            ? planDetails
-                            : undefined}
+                          details={assistant.status === 'failed' ? planDetails : undefined}
                         />
                       {/each}
                     </div>
@@ -2419,12 +2420,10 @@
                         size={44}
                       />
                     {/snippet}
+                    {#snippet lifecycleMeta()}{@render assistantMeta(lifecycle.assistant.provenance === 'local', lifecycle.assistant.creator, lifecycle.assistant.version)}{/snippet}
                     {#snippet lifecycleDetails()}
                       <div class="assistant-lifecycle-details">
                         {#if lifecycle.state === 'proposed'}
-                          <span class="assistant-lifecycle-detail-copy assistant-lifecycle-confirm-copy">
-                            {lifecycleMessages.confirm}
-                          </span>
                           <div class="assistant-lifecycle-actions">
                             <DialogAction
                               kind="cancel"
@@ -2458,10 +2457,11 @@
                       </div>
                     {/snippet}
                     <ChatTask
-                      class="assistant-lifecycle-task"
+                      class={['assistant-lifecycle-task', lifecycle.state === 'proposed' && 'assistant-uninstall-proposed']}
                       id={`assistant-lifecycle-${lifecycle.proposal_id}`}
                       label={lifecycleMessages.label}
                       title={lifecycle.assistant.name}
+                      meta={lifecycleMeta}
                       description={lifecycleMessages.consequences}
                       state={lifecycleVisualState(lifecycle.state)}
                       status={lifecycleStatus(lifecycle)}
@@ -2976,18 +2976,28 @@
     display: block;
   }
 
-  :global(.assistant-lifecycle-task .assistant-lifecycle-provenance) {
-    display: inline-block;
-    padding: var(--gap-inside) var(--gap-item);
+  /* The Assistant install and uninstall cards run their details on from the description, without a divider. */
+  :global(.shimpz-chat-task.assistant-lifecycle-task [data-slot="chat-task-details"]) {
+    border-top: 0;
+    padding-top: 0;
+  }
+  :global(.assistant-meta-separator) { margin-inline: 0.45em; }
+  :global(.assistant-meta-local) {
     color: var(--shimpz-color-yellow);
     font-weight: 700;
-    letter-spacing: 0.08em;
+    font-size: 0.6rem;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    border: 1px solid color-mix(in srgb, var(--shimpz-color-yellow) 72%, transparent);
   }
-
-  :global(.assistant-lifecycle-task .assistant-lifecycle-confirm-copy) {
-    text-align: right;
+  /* An uninstall waiting for the person's decision is framed in the danger colour, like its Uninstall action. */
+  :global(.shimpz-chat-task.assistant-lifecycle-task.assistant-uninstall-proposed) {
+    --task-color: var(--shimpz-color-danger);
+    border-color: color-mix(in srgb, var(--shimpz-color-danger) 30%, transparent);
+  }
+  /* Its Cancel reads neutral white beside the red Uninstall. */
+  :global(.assistant-uninstall-proposed .assistant-lifecycle-actions .shimpz-button.shimpz-button--secondary) {
+    --button-color: var(--shimpz-color-text);
+    --button-border: color-mix(in srgb, var(--shimpz-color-text) 30%, transparent) !important;
   }
 
   :global(.assistant-lifecycle-task .assistant-lifecycle-details) {
@@ -3000,7 +3010,7 @@
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: var(--gap-group);
-    margin-block-start: var(--gap-group);
+    margin-block-start: var(--gap-item);
   }
 
   /* The chat's own notices only: other components' `.error` text keeps its own layout. */

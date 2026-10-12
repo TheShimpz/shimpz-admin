@@ -23,6 +23,7 @@ class ChatInstallStateTests(ChatWebSocketCase):
                     integrations=assistant.integrations,
                     actions=assistant.actions,
                     assistant_version="0.4.5",
+                    creator="@shimpz",
                     created_at=datetime(2026, 9, 19, tzinfo=UTC),
                 )
             plan = self.assistant_plan.Plan(
@@ -84,6 +85,8 @@ class ChatInstallStateTests(ChatWebSocketCase):
                         "id": "shimpz-cloudflare",
                         "name": "Shimpz Cloudflare",
                         "summary": "Manage Cloudflare zones and DNS records.",
+                        "creator": "@shimpz",
+                        "version": "0.4.5",
                         "providers": [],
                         "provenance": "local",
                         "status": "installed",

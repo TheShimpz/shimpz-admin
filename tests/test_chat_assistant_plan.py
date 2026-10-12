@@ -27,6 +27,8 @@ def _candidate(
         icon_digest="sha256:" + (assistant_id[-1] * 64),
         integrations=(store_catalog.CatalogIntegration(provider, ("messages.write",)),),
         actions=(action,),
+        assistant_version="1.0.0",
+        creators=("@shimpz",),
     )
 
 
@@ -127,6 +129,12 @@ def _local_inventory(
 
 
 class AssistantPlanPreparationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        # An already-installed Assistant's card names its running binding's Creator, which Team describes.
+        creator = mock.patch.object(assistant_plan.assistant_inventory, "binding_creator", return_value="@builder")
+        self.binding_creator = creator.start()
+        self.addCleanup(creator.stop)
+
     def _prepare(
         self,
         message: str,
@@ -180,6 +188,8 @@ class AssistantPlanPreparationTests(unittest.TestCase):
             icon_digest="sha256:" + ("f" * 64),
             integrations=(),
             actions=("read-pages", "search-web"),
+            assistant_version="1.0.0",
+            creators=("@shimpz",),
         )
         objective = "quero fazer websearch, pesquisa pra mim as noticias de IA mais hypadas da semana"
         result, planner = self._prepare(
@@ -560,6 +570,10 @@ class AssistantPlanPreparationTests(unittest.TestCase):
             "team_1", payload, ("cloudflare",), running, (CLOUDFLARE,), ENGLISH_ONLY, task_follows=True
         )
         self.assertEqual(confirmed.already_installed.dispatch_ids, ("cloudflare", "whatsapp"))
+        # The confirmation shows what runs: the binding's Creator and installed version, not the catalog entry's.
+        shown = confirmed.already_installed.assistants[0]
+        self.assertEqual((shown["creator"], shown["version"]), ("@builder", "1.0.0"))
+        self.binding_creator.assert_called_with("team_1", "cloudflare", "1.0.0")
         self.assertEqual(
             assistant_plan.already_installed_event(confirmed.already_installed)["continuation"], "dispatch"
         )
@@ -645,6 +659,12 @@ class LocalizedPlanSummaryTests(unittest.TestCase):
     """A person reads each planned summary in the turn's language while planning stays on English (ADR-0091)."""
 
     PORTUGUESE = replace(CLOUDFLARE, summary="Automação revisada do Cloudflare.")
+
+    def setUp(self) -> None:
+        # An already-installed Assistant's card names its running binding's Creator, which Team describes.
+        creator = mock.patch.object(assistant_plan.assistant_inventory, "binding_creator", return_value="@builder")
+        self.binding_creator = creator.start()
+        self.addCleanup(creator.stop)
 
     @staticmethod
     def _store(localized: tuple[store_catalog.CatalogAssistant, ...] | Exception) -> mock.Mock:
@@ -964,6 +984,10 @@ class AssistantPlanExecutionTests(unittest.TestCase):
         items = assistant_plan.initial_items(plan)
 
         self.assertEqual([item["provenance"] for item in items], ["published", "local"])
+        # Each card names its Creator and version: the publication's first catalog Creator, the snapshot's first label.
+        self.assertEqual(
+            [(item["creator"], item["version"]) for item in items], [("@shimpz", "1.0.0"), ("@shimpz", "0.4.5")]
+        )
         self.assertNotIn("image_id", repr(items))
         self.assertNotIn("source_digest", repr(items))
 

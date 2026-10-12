@@ -14,6 +14,7 @@ DIGEST = "sha256:" + ("a" * 64)
 CLOUDFLARE_UNINSTALL = assistant_proposal.UninstallCandidate(
     assistant_proposal.Capability("shimpz-cloudflare", "Shimpz Cloudflare", "Manage DNS records.", ("list-zones",)),
     "0.4.4",
+    "published",
 )
 
 
@@ -26,7 +27,17 @@ def _candidate(
     actions: tuple[str, ...] = ("list-zones", "list-dns-records"),
 ) -> store_catalog.CatalogAssistant:
     integrations = () if not provider else (store_catalog.CatalogIntegration(provider, ("zone.read",)),)
-    return store_catalog.CatalogAssistant(assistant_id, name, summary, DIGEST, DIGEST, integrations, actions)
+    return store_catalog.CatalogAssistant(
+        assistant_id,
+        name,
+        summary,
+        DIGEST,
+        DIGEST,
+        integrations,
+        actions,
+        assistant_version="1.0.0",
+        creators=("@shimpz",),
+    )
 
 
 class AssistantProposalTests(unittest.TestCase):
@@ -57,11 +68,12 @@ class AssistantProposalTests(unittest.TestCase):
 
     def test_lexically_ranked_directories_satisfy_the_team_selection_contract(self) -> None:
         exa = assistant_proposal.UninstallCandidate(
-            assistant_proposal.Capability("shimpz-exa", "Exa", "Search the web.", ("search-web",)), "0.1.1"
+            assistant_proposal.Capability("shimpz-exa", "Exa", "Search the web.", ("search-web",)), "0.1.1", "published"
         )
         cloudflare = assistant_proposal.UninstallCandidate(
             assistant_proposal.Capability("shimpz-cloudflare", "Shimpz Cloudflare", "Manage DNS.", ("list-zones",)),
             "0.4.1",
+            "published",
         )
         uninstall = assistant_proposal.uninstall_shortlist("desinstala o exa", (exa, cloudflare))
         directory = [
@@ -187,7 +199,7 @@ class AssistantProposalTests(unittest.TestCase):
         exa = _candidate("shimpz-exa", name="Exa", summary="Search the web.", provider="", actions=("search-web",))
         cloudflare = _candidate()
         uninstall = assistant_proposal.UninstallCandidate(
-            assistant_proposal.Capability(exa.assistant_id, exa.name, exa.summary, exa.actions), "0.1.1"
+            assistant_proposal.Capability(exa.assistant_id, exa.name, exa.summary, exa.actions), "0.1.1", "published"
         )
         objectives = {
             "zh": "帮我搜索本周最热门的人工智能新闻",
@@ -318,6 +330,7 @@ class AssistantProposalTests(unittest.TestCase):
                 ("remove-dns-record",),
             ),
             "0.4.4",
+            "published",
         )
         other = assistant_proposal.UninstallCandidate(
             assistant_proposal.Capability(
@@ -327,6 +340,7 @@ class AssistantProposalTests(unittest.TestCase):
                 ("list-dns-records",),
             ),
             "1.0.0",
+            "published",
         )
         self.assertEqual(
             assistant_proposal.uninstall_shortlist("shimpz cloudflare", (other, cloudflare)),
@@ -341,7 +355,7 @@ class AssistantProposalTests(unittest.TestCase):
     def test_uninstall_proposal_is_version_bound_and_short_lived(self) -> None:
         proposal = assistant_proposal.create_uninstall_proposal(
             "team_1",
-            CLOUDFLARE_UNINSTALL,
+            assistant_proposal.UninstallTarget(CLOUDFLARE_UNINSTALL, "@shimpz"),
             locale="pt",
             now=10.0,
             proposal_id_factory=lambda: "c" * 32,
@@ -353,7 +367,7 @@ class AssistantProposalTests(unittest.TestCase):
         self.assertEqual(proposal.locale, "pt")
         retired = assistant_proposal.create_uninstall_proposal(
             "team_1",
-            CLOUDFLARE_UNINSTALL,
+            assistant_proposal.UninstallTarget(CLOUDFLARE_UNINSTALL, "@shimpz"),
             locale="Desinstale o Assistant",
             now=10.0,
             proposal_id_factory=lambda: "c" * 32,
@@ -364,7 +378,7 @@ class AssistantProposalTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             assistant_proposal.create_uninstall_proposal(
                 "Bad",
-                CLOUDFLARE_UNINSTALL,
+                assistant_proposal.UninstallTarget(CLOUDFLARE_UNINSTALL, "@shimpz"),
                 locale="pt",
                 now=10.0,
                 proposal_id_factory=lambda: "b" * 32,

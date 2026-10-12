@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from team import bridge as team
 
 from chat import assistant_proposal, store_catalog
+from protocol.http.v1 import payload as team_contract
 
 MAX_ASSISTANTS = 128
 # Team admits the Developers install protocol's 128 Actions per Assistant.
@@ -59,6 +60,28 @@ def installed(response: object) -> dict[str, InstalledAssistant]:
             raise ValueError("installed Assistant identity is invalid")
         result[assistant_id] = InstalledAssistant(assistant_id, version, provenance, status)
     return result
+
+
+def binding_creator(team_id: str, assistant_id: str, version: str) -> str:
+    """The first Creator the exact binding a Team runs declares, as its chat card shows it beside the version.
+
+    Team answers for the binding it runs, so the identity and version it returns must be the installed ones; anything
+    else, or a Team failure, is refused.
+    """
+    response = team.assistant_details(team_id, assistant_id, store_catalog.PLANNING_LOCALE)
+    if not team.is_team_response(response) or response.status != 200 or not isinstance(response.body, dict):
+        raise ValueError("installed Assistant details are unavailable")
+    details = team_contract.canonical_assistant_details(
+        {key: value for key, value in response.body.items() if key != "trace_id"}
+    )
+    if (
+        details is None
+        or details["locale"] != store_catalog.PLANNING_LOCALE
+        or details["assistant_id"] != assistant_id
+        or details["assistant_version"] != version
+    ):
+        raise ValueError("installed Assistant details are invalid")
+    return details["creators"][0]
 
 
 def registry(response: object) -> dict[str, assistant_proposal.Capability]:
