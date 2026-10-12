@@ -5,7 +5,7 @@ import { HELP_URL_PATTERN } from './localChat.js';
 import { codePointLength, exactKeys, isIdentifier } from './validate.js';
 
 // The Creator's link kinds in their display order.
-export const LINK_KINDS = ['site', 'github', 'x', 'youtube', 'linkedin', 'instagram'];
+const LINK_KINDS = ['site', 'github', 'x', 'youtube', 'linkedin', 'instagram'];
 const LINK_ORIGINS = {
   site: ['https://'],
   github: ['https://github.com/'],
@@ -20,8 +20,8 @@ const MAX_HELP_URL_CHARS = 2048;
 // Built on first use: this module and the chat module that owns the key-page grammar import one another indirectly.
 let linkPattern = null;
 export const SUMMARY_CHARS = 80;
-export const DESCRIPTION_CHARS = 500;
-export const LINE_CHARS = 120;
+const DESCRIPTION_CHARS = 500;
+const LINE_CHARS = 120;
 const MAX_ACTIONS = 128;
 const MAX_INTEGRATIONS = 16;
 const MAX_STORED_INPUTS = 8;

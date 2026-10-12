@@ -9,7 +9,7 @@ import { exactKeys, isInstant, jsonObject } from './validate.js';
 // the Supervisor acknowledges them, and the single-use recovery codes left. Every read and change goes over the Admin
 // session socket (ADR-0114); a change it lost before Admin answered rejects with `outcome-unknown`, never replayed.
 const MAX_COUNT = 1_000_000;
-export const RECOVERY_CODE_COUNT = 10;
+const RECOVERY_CODE_COUNT = 10;
 const RECOVERY_CODE_RE = /^[0-9a-hjkmnp-tv-z]{4}-[0-9a-hjkmnp-tv-z]{4}-[0-9a-hjkmnp-tv-z]{4}$/;
 const REFUSAL_RE = /^[a-z][a-z0-9-]{0,63}$/;
 

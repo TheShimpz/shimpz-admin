@@ -17,9 +17,9 @@ const MIB = 1024 * KIB;
 // One message selects at most this many files, each within the upload bound and all within the message's original
 // bytes (Team prepare/limits.py). Team reads at most four images and a bounded amount of text per message.
 export const MAX_ATTACHMENTS = 8;
-export const MAX_UPLOAD_BYTES = 25 * MIB;
-export const MAX_MESSAGE_BYTES = 32 * MIB;
-export const MAX_MESSAGE_IMAGES = 4;
+const MAX_UPLOAD_BYTES = 25 * MIB;
+const MAX_MESSAGE_BYTES = 32 * MIB;
+const MAX_MESSAGE_IMAGES = 4;
 const MAX_MESSAGE_TEXT_CHARACTERS = 131_072;
 const MAX_MESSAGE_TEXT_BYTES = 512 * KIB;
 const MAX_IMAGE_BYTES = 8 * MIB;

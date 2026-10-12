@@ -74,7 +74,7 @@ const MAX_CHAT_PROGRESS_ELAPSED_MS = 24 * 60 * 60 * 1000;
 const CLOUDFLARE_SCOPES = new Set(['dns.read', 'dns.write', 'offline_access', 'zone.read']);
 const OAUTH_SCOPE_RE = /^[A-Za-z0-9._:-]{1,128}$/;
 
-export const HUMAN_REQUEST_KINDS = Object.freeze([
+const HUMAN_REQUEST_KINDS = Object.freeze([
   'approval',
   'input:text',
   'input:textarea',
@@ -153,17 +153,6 @@ function canonicalSemanticVersion(value) {
     throw new LocalApiError('The Assistant integration inventory is invalid.');
   }
   return value;
-}
-
-function canonicalIds(values, maximum) {
-  if (!Array.isArray(values) || !values.length || values.length > maximum) {
-    throw new LocalApiError('The local chat response is invalid.');
-  }
-  const canonical = values.map((value) => canonicalId(value));
-  if (new Set(canonical).size !== canonical.length) {
-    throw new LocalApiError('The local chat response is invalid.');
-  }
-  return canonical;
 }
 
 function canonicalOptionalPublicText(value, maximum) {
@@ -464,7 +453,7 @@ function codePointOrder(left, right) {
  * The rows of an Action's validated input an authorization card shows (ADR-0115): at most 16 `{name, value, truncated}`
  * rows of literal escaped text in strictly ascending name order, and the count of arguments past the last row.
  */
-export function canonicalInputProjection(value) {
+function canonicalInputProjection(value) {
   if (
     !exactKeys(value, ['fields', 'omitted']) ||
     !Array.isArray(value.fields) ||

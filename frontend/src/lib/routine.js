@@ -9,7 +9,7 @@ import { codePointLength, isActionId, isAssistantId, isIdentifier, isInstant, js
 
 const ENCODER = new TextEncoder();
 
-export const MAX_ASSISTANTS = 16;
+const MAX_ASSISTANTS = 16;
 const FORBIDDEN_RE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\u2028\u2029]/u;
 const ID_RE = /^[0-9a-f]{32}$/;
 const TIME_RE = /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/;
@@ -58,7 +58,7 @@ export function isTimezone(value) {
 
 // Where a Routine's timezone came from (ADR-0101): the person's browser, a zone the person wrote, or none, when the
 // Routine needs no zone and stores UTC only by convention, which Admin never shows as the person's zone.
-export const TIMEZONE_SOURCES = ['browser', 'person', 'none'];
+const TIMEZONE_SOURCES = ['browser', 'person', 'none'];
 const CONVENTIONAL_TIMEZONE = 'UTC';
 
 /**
@@ -98,14 +98,14 @@ function isAssistants(value, minimum) {
 }
 
 const NONCE_RE = /^[0-9a-f]{32}$/;
-export const MAX_ROUTINES = 8;
+const MAX_ROUTINES = 8;
 // The unresolved incidents a Team holds at most (ADR-0092); each settles through its recovery card.
-export const MAX_INCIDENTS = 32;
+const MAX_INCIDENTS = 32;
 const DAY_SECONDS = 86400;
-export const MIN_CONTINUOUS_GAP_SECONDS = 5;
-export const MAX_CONTINUOUS_GAP_SECONDS = 86400;
+const MIN_CONTINUOUS_GAP_SECONDS = 5;
+const MAX_CONTINUOUS_GAP_SECONDS = 86400;
 // Runs start their gap apart, but one after an overrun or a confirmed change starts at once: one a second.
-export const MAX_ROLLUP_RUNS = 60;
+const MAX_ROLLUP_RUNS = 60;
 
 /** A failed Routine request, named by the safe code Admin forwards. */
 export class RoutineError extends Error {
@@ -124,7 +124,7 @@ function view(value, keys, valid) {
 }
 
 // A Routine's state (ADR-0101): it runs, or a person paused it.
-export const ROUTINE_STATES = ['active', 'paused'];
+const ROUTINE_STATES = ['active', 'paused'];
 // The Actions a Routine may call at most in its lifetime: every replayed step's.
 const MAX_PERMITTED = 256;
 
@@ -209,7 +209,7 @@ function isPointer(value) {
 }
 
 /** A selector constant as Team shows it: its JSON text with every control or invisible character escaped. */
-export function whereText(constant) {
+function whereText(constant) {
   return escapedText(JSON.stringify(constant));
 }
 
@@ -342,7 +342,7 @@ function isRunInput(value) {
 }
 
 /** Whether a value is a call's position: a replay step among `steps`, `{phase: "replay", step}`. */
-export function isCallPosition(value, steps) {
+function isCallPosition(value, steps) {
   if (!whole(steps, 0, MAX_ROUTINE_STEPS)) return false;
   return exact(value, ['phase', 'step']) && value.phase === 'replay' && isPosition(value.step, steps);
 }
@@ -534,7 +534,7 @@ function isActions(value) {
 }
 
 // What a frozen run waits for: a person's answer or an Integration.
-export const REQUEST_KINDS = ['human', 'integrations'];
+const REQUEST_KINDS = ['human', 'integrations'];
 
 /** One live run: a frozen run names its request and its call's position; a leased or held one only that it is live. */
 export function parseRunView(value) {
@@ -765,7 +765,7 @@ export function pointerWords(pointer, copy) {
 const UNSAFE_TEXT_RE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ud800-\udfff\ufeff]/gu;
 
 /** Text with every character in Team's unsafe set written back as its JSON unicode escape, as Team writes it. */
-export function escapedText(text) {
+function escapedText(text) {
   return text.replace(UNSAFE_TEXT_RE, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`);
 }
 
@@ -786,7 +786,7 @@ export function literalWords(preview) {
  * A selector's constant in words: a string reads without its quotes, every unsafe character Team escaped escaped
  * again; an integer reads as its digits.
  */
-export function whereWords(where) {
+function whereWords(where) {
   return literalWords(where.value_json);
 }
 
@@ -813,8 +813,8 @@ export function inputWords(input, copy) {
 
 // A held run's recovery card (ADR-0092 section 7, ADR-0101): exactly Rodar and Excluir, in this order, none
 // recommended. Team answers Rodar; Excluir is the Routine's own confirmed deletion.
-export const CARD_CHOICES = ['run', 'delete'];
-export const CARD_ANSWERS = ['run'];
+const CARD_CHOICES = ['run', 'delete'];
+const CARD_ANSWERS = ['run'];
 const CARD_STATUSES = { run: 'requested' };
 const CARD_EVIDENCE = ['recorded', 'absent', 'unavailable'];
 

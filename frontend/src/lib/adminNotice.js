@@ -1,8 +1,8 @@
 import { writable } from 'svelte/store';
 
 export const DEFAULT_ADMIN_NOTICE_DURATION_MS = 10_000;
-export const MIN_ADMIN_NOTICE_DURATION_MS = 1_000;
-export const MAX_ADMIN_NOTICE_DURATION_MS = 120_000;
+const MIN_ADMIN_NOTICE_DURATION_MS = 1_000;
+const MAX_ADMIN_NOTICE_DURATION_MS = 120_000;
 
 const TONES = new Set(['error', 'info', 'success']);
 let nextId = 0;

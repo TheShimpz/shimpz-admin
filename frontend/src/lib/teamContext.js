@@ -16,7 +16,6 @@ import {
 
 const MAX_TEAMS = 128;
 const MAX_PASSWORD_CHARS = 4096;
-const MAX_INSTALLED_ASSISTANTS = 128;
 const MAX_TEAM_RESIDUE_CLASSES = 32;
 const TEAM_RESIDUE_CLASS_RE = /^[a-z][a-z0-9_]{0,63}$/;
 // The most Assistants one Team may have installed (Team's MAX_TEAM_ASSISTANTS); a turn may name every one of them.

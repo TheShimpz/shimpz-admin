@@ -8,7 +8,7 @@ import { loadLocalAssistantIcon, loadPublicAssistantIcon } from './localAssistan
 
 export const MAX_CACHED_ICONS = 48;
 // A canonical icon is 1024 by 1024 pixels, about 4 MiB decoded: the bound keeps 48 of them.
-export const MAX_DECODED_BYTES = 192 * 1024 * 1024;
+const MAX_DECODED_BYTES = 192 * 1024 * 1024;
 // How long one icon load may take before it is given up: a slow host still delivers it, a request that never answers
 // does not hold its connection forever.
 const ICON_REQUEST_LIMIT_MS = 30_000;

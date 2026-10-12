@@ -11,7 +11,7 @@ import { socketReads } from './adminSocket.js';
 import { LocalApiError } from './validate.js';
 
 export const RETRY_FIRST_MS = 1_000;
-export const RETRY_MAX_MS = 30_000;
+const RETRY_MAX_MS = 30_000;
 
 // The shown synced values whose reads keep failing in a way that clears by itself: the shell says so once, for all.
 const failingValues = writable(new Set());

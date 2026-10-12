@@ -412,7 +412,7 @@
     }
     if (lifecycle.state === 'cancelled') return lifecycleMessages.cancelled;
     if (lifecycle.state === 'expired') return lifecycleMessages.expired;
-    if (lifecycle.state === 'unknown') return lifecycleMessages.unknown ?? copy.disconnected;
+    if (lifecycle.state === 'unknown') return lifecycleMessages.unknown;
     return lifecycleMessages.failed;
   }
 

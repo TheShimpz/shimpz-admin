@@ -8,8 +8,8 @@ import { derived, writable } from 'svelte/store';
 import { LocalApiError } from './validate.js';
 
 // The protocol's own bounds (backend/protocol/socket/v1/frames.py), pinned by the Admin parity test.
-export const ADMIN_SOCKET_PROTOCOL = 'shimpz.admin.v1';
-export const ADMIN_SOCKET_PATH = '/api/session/ws';
+const ADMIN_SOCKET_PROTOCOL = 'shimpz.admin.v1';
+const ADMIN_SOCKET_PATH = '/api/session/ws';
 const MAX_INBOUND_BYTES = 1024 * 1024;
 const MAX_IN_FLIGHT = 16;
 const MAX_SUBSCRIPTIONS = 64;
@@ -26,7 +26,7 @@ const NATIVE_UNINSTALL_STATES = new Set(['proposed', 'uninstalled']);
 // A dropped socket reconnects for as long as the session lasts, with a jittered exponential backoff from 0.4 s up to
 // 30 s, and at once when the browser comes online or the tab becomes visible; only a connection that stayed open
 // restores the backoff. Past the time a Local release swap takes, the shell says Admin cannot be reached (`failed`).
-export const RECONNECT_WINDOW_MS = 150_000;
+const RECONNECT_WINDOW_MS = 150_000;
 const FIRST_RECONNECT_DELAY_MS = 400;
 const MAX_RECONNECT_DELAY_MS = 30_000;
 const STABLE_CONNECTION_MS = 10_000;

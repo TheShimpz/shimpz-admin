@@ -3,9 +3,9 @@
 
 import { codePointLength } from './validate.js';
 
-export const MAX_QUESTION_CHARS = 240;
-export const MAX_LABEL_CHARS = 80;
-export const MAX_DESCRIPTION_CHARS = 160;
+const MAX_QUESTION_CHARS = 240;
+const MAX_LABEL_CHARS = 80;
+const MAX_DESCRIPTION_CHARS = 160;
 export const MAX_COMPOSED_CHARS = 16000;
 const FORBIDDEN_RE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\u2028\u2029]/u;
 
