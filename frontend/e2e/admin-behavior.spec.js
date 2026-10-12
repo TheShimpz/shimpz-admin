@@ -257,6 +257,7 @@ async function routeReadyChat(page, {
   let releaseProgressStart = () => {};
   let releaseProgressFinish = () => {};
   let sendProgressEvent = () => {};
+  let closeChatSocket = () => {};
   let releaseInferenceWrite;
   const inferenceWriteHold = new Promise((resolve) => {
     releaseInferenceWrite = resolve;
@@ -543,6 +544,7 @@ async function routeReadyChat(page, {
       return;
     }
     sendProgressEvent = (event) => socket.send(JSON.stringify(event));
+    closeChatSocket = () => socket.close({ code: 1011, reason: 'Synthetic interrupted connection' });
     const connection = chatConnections;
     chatConnections += 1;
 
@@ -909,6 +911,7 @@ async function routeReadyChat(page, {
     releaseProgressStart: () => releaseProgressStart(),
     releaseProgressFinish: () => releaseProgressFinish(),
     sendProgressEvent: (event) => sendProgressEvent(event),
+    closeChatSocket: () => closeChatSocket(),
     storedInputClears: () => storedInputClears,
     syncFrames: () => syncFrames,
   };
@@ -2756,6 +2759,44 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
   await expect(page.getByText('Rendered answer', { exact: true })).toBeVisible();
   expect(chat.chatFrames().at(-1).assistant_ids).toEqual([]);
 });
+
+// An approval waits for the uninstall icon snapshot; it answers only the proposal it was given for, on the connection
+// that proposed it, so an expiry or a reconnect during that wait sends nothing.
+for (const [interruption, interrupt] of [
+  ['the proposal expires', async (page) => {
+    await page.clock.runFor(2100);
+  }],
+  ['the connection drops', async (page, chat) => {
+    chat.closeChatSocket();
+    await page.clock.runFor(500);
+    await expect.poll(() => chat.syncFrames()).toBe(2);
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+    await page.clock.runFor(2100);
+  }],
+]) {
+  test(`an uninstall approval sends nothing when ${interruption} while its icon is captured`, async ({ page }) => {
+    const chat = await routeReadyChat(page, { assistantUninstall: true, holdAssistantIcon: true });
+    await freezeClock(page);
+    await page.goto('/chat/');
+    const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+    await expect.poll(() => chat.syncFrames()).toBe(1);
+    await fillWhenReady(page, composer, 'Uninstall the Cloudflare Assistant');
+    await page.getByRole('button', { name: 'Send' }).click();
+    const task = page.locator('[data-slot="chat-task"]');
+    const uninstall = task.getByRole('button', { name: 'Uninstall Shimpz Cloudflare' });
+    await expect(uninstall).toBeEnabled();
+    // The snapshot started with the proposal gives up, and the proposal (120 s) nears its expiry.
+    await page.clock.runFor(2100);
+    await page.clock.runFor(116_000);
+    await uninstall.click();
+    await interrupt(page, chat);
+    chat.releaseAssistantIcon();
+
+    await expect(task).toHaveAttribute('data-state', 'cancelled');
+    await page.clock.runFor(1000);
+    expect(chat.chatFrames().map((frame) => frame.message)).toEqual(['Uninstall the Cloudflare Assistant']);
+  });
+}
 
 test('never falls back to the Store icon when model context leaves an uninstall card', async ({ page }) => {
   const chat = await routeReadyChat(page, {

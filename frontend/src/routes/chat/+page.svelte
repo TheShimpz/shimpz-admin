@@ -1946,6 +1946,10 @@
     }
   }
 
+  function proposedLifecycle(proposalId) {
+    return turns.some((turn) => turn.lifecycle?.proposal_id === proposalId && turn.lifecycle.state === 'proposed');
+  }
+
   async function submitLifecycleDecision(decision) {
     if (lifecycleDecisionPending) return false;
     lifecycleDecisionPending = true;
@@ -1954,11 +1958,20 @@
         turn.lifecycle?.state === 'proposed'
       ))?.lifecycle;
       if (decision === 'yes' && pendingUninstall && chatTeamId) {
+        const teamId = chatTeamId;
+        const active = socket;
         await captureUninstallIcon(
           pendingUninstall.proposal_id,
           pendingUninstall.assistant.id,
-          chatTeamId,
+          teamId,
         );
+        // The approval answers only the proposal it was given for, on the connection that proposed it: a Team change,
+        // a reconnect, or an expiry while the icon was captured leaves nothing to approve.
+        if (
+          chatTeamId !== teamId ||
+          socket !== active ||
+          !proposedLifecycle(pendingUninstall.proposal_id)
+        ) return false;
       }
       return submitMessage(decision, {
         focusActiveTurn: false,
