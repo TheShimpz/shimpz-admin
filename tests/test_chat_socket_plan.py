@@ -106,9 +106,11 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 self.assertEqual(route.call_count, 1)
                 turn.assert_not_called()
 
+                # A Stop that crossed the guidance finds no turn to stop and answers nothing.
                 await websocket.send_json({"type": "stop"})
                 await websocket.send_json({"type": "stop"})
-                self.assertEqual((await websocket.next_json())["status"], 409)
+                with self.assertRaises(TimeoutError):
+                    await websocket.next_message(wait_seconds=0.05)
                 await websocket.send_json(chat_socket_fixtures.chat_frame("ok"))
                 self.assertEqual((await websocket.next_json())["type"], "done")
                 turn.assert_called_once()

@@ -77,11 +77,9 @@ async def _deliver_result(
         await operations.finish_turn(websocket, connection, turn, {"type": "stopped"})
         return
     if result.guidance is not None:
-        connection.ignore_idle_stop_once = True
         await _deliver_guidance(websocket, connection, turn, team_id, result.guidance, operations)
         return
     if result.error_status is not None or result.intent == "unresolved":
-        connection.ignore_idle_stop_once = True
         await operations.finish_turn(
             websocket,
             connection,

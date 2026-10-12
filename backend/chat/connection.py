@@ -42,7 +42,6 @@ class Connection:
     lifecycle_proposal: UninstallProposal | None = None
     lifecycle: Operation | None = None
     assistant_reference: AssistantReference | None = None
-    ignore_idle_stop_once: bool = False
     closed: bool = False
     admitted_history_id: str | None = field(default=None, repr=False)
     pending_history_id: str | None = field(default=None, repr=False)

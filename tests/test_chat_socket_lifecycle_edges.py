@@ -87,45 +87,6 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
 
         asyncio.run(scenario())
 
-    def test_non_stop_frame_clears_target_guidance_stop_suppression(self) -> None:
-        async def scenario() -> None:
-            websocket = mock.AsyncMock()
-            connection = socket._Connection()
-            with (
-                mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
-                mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)),
-                mock.patch.object(
-                    socket.lifecycle,
-                    "submit_route",
-                    return_value=uninstall_guidance_route(),
-                ),
-            ):
-                await socket._dispatch_chat(
-                    websocket,
-                    connection,
-                    "team_1",
-                    chat_socket_fixtures.chat_frame("desinstale"),
-                )
-                delivery = connection.active.delivery
-                await delivery
-            self.assertTrue(connection.ignore_idle_stop_once)
-
-            with mock.patch.object(socket, "_dispatch_chat", new=mock.AsyncMock()):
-                await socket._dispatch(
-                    websocket,
-                    connection,
-                    "team_1",
-                    chat_socket_fixtures.chat_frame("olá"),
-                    mock.AsyncMock(),
-                )
-            self.assertFalse(connection.ignore_idle_stop_once)
-
-            with mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)) as send:
-                await socket._dispatch_stop(websocket, connection, "team_1")
-            self.assertEqual(send.await_args.args[-1]["status"], 409)
-
-        asyncio.run(scenario())
-
     def test_guidance_for_a_noncanonical_message_remains_a_normal_question(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()

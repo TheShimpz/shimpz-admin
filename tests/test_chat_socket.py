@@ -264,6 +264,31 @@ class ChatWebSocketTests(ChatWebSocketCase):
 
         asyncio.run(scenario())
 
+    def test_a_stop_that_crosses_the_reply_ends_nothing_a_second_time(self) -> None:
+        # The browser sends Stop while the reply is already on its way: the turn has ended, so nothing answers it.
+        async def scenario() -> None:
+            def turn(_team_id, _payload, _conversation, _request, progress):
+                _emit_measured_progress(progress)
+                return chat_socket_fixtures.completed_turn("reply")
+
+            with (
+                mock.patch.object(self.chat_socket.local, "turn", side_effect=turn) as turn_mock,
+                mock.patch.object(self.chat_socket.local, "stop") as stop_mock,
+            ):
+                websocket = await self._open()
+                for message in ("first", "next"):
+                    await websocket.send_json(chat_socket_fixtures.chat_frame(message))
+                    self.assertEqual([await websocket.next_json() for _index in range(4)], _progress_frames())
+                    self.assertEqual((await websocket.next_json())["type"], "done")
+                    await websocket.send_json({"type": "stop"})
+                    with self.assertRaises(TimeoutError):
+                        await websocket.next_message(wait_seconds=0.05)
+                self.assertEqual(turn_mock.call_count, 2)
+                stop_mock.assert_not_called()
+                await websocket.disconnect()
+
+        asyncio.run(scenario())
+
     def test_one_active_turn_and_stop_emit_exactly_one_terminal(self) -> None:
         async def scenario() -> None:
             started = threading.Event()

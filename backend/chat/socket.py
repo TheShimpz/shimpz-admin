@@ -660,7 +660,6 @@ async def _dispatch_chat(
     try:
         preparation = lifecycle.submit_route(team_id, payload, route_context)
     except ExecutorSaturatedError:
-        connection.ignore_idle_stop_once = True
         await _send_event(websocket, _error_terminal(429, "Assistant routing capacity reached"))
         return
     turn = _Turn(
@@ -707,10 +706,7 @@ async def _dispatch_stop(websocket: WebSocket, connection: _Connection, team_id:
             raise WebSocketDisconnect(1008)
         return
     if connection.active is None and connection.pending_challenge_id is None:
-        if connection.ignore_idle_stop_once:
-            connection.ignore_idle_stop_once = False
-            return
-        await _send_event(websocket, _error_terminal(409, "no active chat turn"))
+        # A Stop that crossed its turn's terminal finds nothing to stop; that turn already ended exactly once.
         return
     if connection.active is None:
         history_id = connection.pending_history_id
@@ -739,8 +735,6 @@ async def _dispatch(
     authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
 ) -> None:
     frame_type = frame.get("type")
-    if frame_type != "stop":
-        connection.ignore_idle_stop_once = False
     if connection.lifecycle is not None:
         await _send_event(websocket, _error_terminal(409, "an Assistant lifecycle operation is already active"))
         return
