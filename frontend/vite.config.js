@@ -8,8 +8,9 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     adminPreview(),
     sveltekit({
-      // SPA: everything falls back to index.html; FastAPI serves the build dir and owns /api.
-      adapter: adapter({ fallback: 'index.html' }),
+      // SPA: everything falls back to index.html; FastAPI serves the build dir and owns /api. Each text file also gets
+      // its brotli and gzip siblings, which Admin sends in its place to a browser that accepts them.
+      adapter: adapter({ fallback: 'index.html', precompress: true }),
       // The build is bound to the release epoch, and nothing reads `updated`, so the client never polls for a release.
       version: { name: process.env.SOURCE_DATE_EPOCH || '0', pollInterval: 0 },
     }),

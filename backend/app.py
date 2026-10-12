@@ -10,6 +10,7 @@ process holds no Docker socket and has no host configuration write surface.
 
 import asyncio
 import logging
+import mimetypes
 import os
 import sys
 from contextlib import asynccontextmanager, suppress
@@ -964,14 +965,21 @@ if UI_DIR.is_dir():
     # (StaticFiles(html=True) 404s nested routes). The explicit /api/* fallback above prevents API
     # typos or retired endpoints from being answered with the SPA shell.
     @app.get("/{path:path}")
-    def spa(path: str):
-        # Only a relative path can name an asset, and its real path, symlinks resolved, must stay inside the UI root.
+    def spa(path: str, request: Request):
+        # Only a relative path can name an asset, and its real path, symlinks resolved, must stay inside the UI root. A
+        # precompressed sibling is never an asset of its own: it answers only for its file, in that file's type.
         ui_root = os.path.realpath(UI_DIR)
-        if not Path(path).is_absolute():
+        asset = Path(ui_root, "index.html")
+        if not Path(path).is_absolute() and not path.endswith(browser.ENCODED_SUFFIXES):
             candidate = os.path.realpath(Path(ui_root, path))
             if candidate.startswith(ui_root + os.sep) and Path(candidate).is_file():
-                return FileResponse(candidate)
-        return FileResponse(Path(ui_root, "index.html"))
+                asset = Path(candidate)
+        sent, coding = browser.static_representation(asset, ui_root, request.headers.get("accept-encoding", ""))
+        response = FileResponse(sent, media_type=mimetypes.guess_type(asset)[0] or "text/plain")
+        if coding is not None:
+            response.headers["Content-Encoding"] = coding
+        response.headers.add_vary_header("Accept-Encoding")
+        return response
 else:
 
     @app.get("/")

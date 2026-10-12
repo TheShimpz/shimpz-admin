@@ -2,6 +2,7 @@
 
 import base64
 import hashlib
+import os
 from collections.abc import Callable
 from html.parser import HTMLParser
 from pathlib import Path
@@ -50,6 +51,47 @@ def spa_script_sources(ui_dir: Path) -> tuple[str, ...]:
         "'sha256-" + base64.b64encode(hashlib.sha256(script.encode()).digest()).decode() + "'"
         for script in collector.scripts
     )
+
+
+# The build's precompressed siblings of its static files (adapter-static `precompress`), in Admin's order of preference.
+STATIC_ENCODINGS = (("br", ".br"), ("gzip", ".gz"))
+ENCODED_SUFFIXES = tuple(suffix for _, suffix in STATIC_ENCODINGS)
+
+
+def accepted_encodings(header: str) -> frozenset[str]:
+    """The content codings an Accept-Encoding value admits: each one named with a quality above zero (RFC 9110)."""
+    accepted = set()
+    for item in header.split(","):
+        coding, _, parameters = item.partition(";")
+        quality = 1.0
+        for parameter in parameters.split(";"):
+            name, _, value = parameter.partition("=")
+            if name.strip().lower() == "q":
+                try:
+                    quality = float(value)
+                except ValueError:
+                    quality = 0.0
+        if coding.strip() and quality > 0:
+            accepted.add(coding.strip().lower())
+    return frozenset(accepted)
+
+
+def static_representation(asset: Path, root: str, accept_encoding: str) -> tuple[Path, str | None]:
+    """Choose the file that answers one static build file inside ``root``, and its content coding.
+
+    A precompressed sibling answers only when the request accepts its coding, its real path is a regular file inside the
+    build, and it is smaller than the file itself; otherwise the file answers as it is. Only the compiled build's own
+    files reach here, never an API, error, or authenticated response.
+    """
+    accepted = accepted_encodings(accept_encoding)
+    size = asset.stat().st_size
+    for coding, suffix in STATIC_ENCODINGS:
+        if coding not in accepted:
+            continue
+        sibling = Path(os.path.realpath(f"{asset}{suffix}"))
+        if str(sibling).startswith(root + os.sep) and sibling.is_file() and sibling.stat().st_size < size:
+            return sibling, coding
+    return asset, None
 
 
 def _socket_source(origin: str) -> str:
