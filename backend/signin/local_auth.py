@@ -671,11 +671,8 @@ def _confirmed(
     try:
         ticket = context.ticket_store.consume(confirmation.token, "operation", subject, asker.binding)
     except tickets.TicketError:
-        # A ticket refused for another operation or socket is spent, and so is its passkey challenge.
-        _discard_challenge(confirmation.token, context)
         raise OperationRefusedError(401, "authentication-expired") from None
     if ticket.origin != asker.origin or state.factor_generation() != ticket.generation:
-        _discard_challenge(confirmation.token, context)
         raise OperationRefusedError(401, "authentication-expired")
     _operation_second_factor(confirmation.method, confirmation.value, confirmation.token, ticket, context)
     session = auth.verify_session(state.get().get("session_secret", ""), asker.session)
@@ -699,7 +696,11 @@ def confirm_operation[T](
     """
     try:
         _confirmed(asker, context, subject, confirmation, current)
-    except _STATE_FAILURES:
+    except (OperationRefusedError, *_STATE_FAILURES) as exc:
+        # A refused or failed completion spends the ticket's passkey challenge too, which nothing can use any more.
+        _discard_challenge(confirmation.token, context)
+        if isinstance(exc, OperationRefusedError):
+            raise
         raise _unavailable() from None
     log.info("Supervisor operation confirmed with %s", "TOTP" if confirmation.method == "totp" else "a passkey")
     return dispatch()

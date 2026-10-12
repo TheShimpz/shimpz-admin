@@ -153,8 +153,15 @@ class RoutineDeletionTests(StepUpCase):
             # A ticket presented for another operation, or with factors changed since it was offered.
             another = asyncio.run(scenario(_delete({"code": "123456"}, OTHER)))
             changed = asyncio.run(scenario(_delete({"code": "123456"}), bump))
+            # Reading the factor generation fails after the ticket was spent.
+            with (
+                mock.patch.object(self.state, "factor_generation", side_effect=[1, OSError("unreadable")]),
+                self.assertLogs("shimpz-admin", level="WARNING"),
+            ):
+                unreadable = asyncio.run(scenario(_delete({"code": "123456"})))
         self.assertEqual(another, ([202, 401], 0, 0))
         self.assertEqual(changed, ([202, 401], 0, 0))
+        self.assertEqual(unreadable, ([202, 503], 0, 0))
         # An offer that could not be made after its challenge was issued.
         with (
             mock.patch.object(self.local_auth, "passkey_registered", return_value=True),
