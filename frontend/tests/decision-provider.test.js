@@ -108,3 +108,21 @@ test('a read that started before a save never overwrites the saved state', async
   assert.deepEqual(await slowRead, { configured: false, masked: null });
   assert.deepEqual(knownDecisionProvider(), { configured: true, masked: '••••6789' });
 });
+
+test('a read that overlaps a save or removal never overwrites what it stored, whichever finishes first', async () => {
+  const configured = { provider: 'typesafe', configured: true, masked: '••••6789' };
+  const unconfigured = { provider: 'typesafe', configured: false, masked: null };
+  for (const [change, stored, replaced] of [
+    [(fetcher) => saveDecisionKey(fetcher, KEY), configured, unconfigured],
+    [(fetcher) => removeDecisionKey(fetcher), unconfigured, configured],
+  ]) {
+    forgetDecisionProvider();
+    let finish;
+    const pending = change(async () => new Promise((resolve) => { finish = resolve; }));
+    // A read that starts after the change and answers first, with the state the change replaces.
+    await loadDecisionProvider(recorder(200, replaced).fetcher);
+    finish(response(200, stored));
+    await pending;
+    assert.deepEqual(knownDecisionProvider(), { configured: stored.configured, masked: stored.masked });
+  }
+});

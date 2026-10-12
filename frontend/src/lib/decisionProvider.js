@@ -18,12 +18,14 @@ function validState(body) {
 
 // The state this session last read or saved. The key is Space-wide and changes only through this module, so the
 // composer control shows it again without asking; it still reads it each time it opens. The session's end forgets it,
-// and an answer to a request made before that is never remembered; nor is one to a request older than the remembered
-// state's, so a slow read never overwrites a later save.
+// and an answer to a request made before that is never remembered. A save or removal outranks every read that overlaps
+// it, and among saves the later one wins, so a read never overwrites what a save just stored.
 let remembered = null;
 let rememberedOrder = 0;
 let order = 0;
 let epoch = 0;
+let pendingChanges = 0;
+let changes = 0;
 
 /** The decision provider state this session last read or saved, or null. */
 export function knownDecisionProvider() {
@@ -37,21 +39,31 @@ export function forgetDecisionProvider() {
   rememberedOrder = 0;
 }
 
-async function request(fetcher, init, fallback) {
+async function request(fetcher, init, fallback, change = false) {
   if (typeof fetcher !== 'function') throw new LocalApiError('Invalid decision provider request.');
   const started = epoch;
+  const changesBefore = changes;
   order += 1;
   const position = order;
-  const response = await fetcher(ENDPOINT, { cache: 'no-store', ...init });
-  const body = await jsonObject(response);
-  if (!response.ok) throw new LocalApiError(safeApiError(body, fallback), response.status);
-  if (!validState(body)) throw new LocalApiError('Decision provider settings are invalid.', response.status);
-  const state = { configured: body.configured, masked: body.masked };
-  if (started === epoch && position > rememberedOrder) {
-    remembered = state;
-    rememberedOrder = position;
+  if (change) pendingChanges += 1;
+  try {
+    const response = await fetcher(ENDPOINT, { cache: 'no-store', ...init });
+    const body = await jsonObject(response);
+    if (!response.ok) throw new LocalApiError(safeApiError(body, fallback), response.status);
+    if (!validState(body)) throw new LocalApiError('Decision provider settings are invalid.', response.status);
+    const state = { configured: body.configured, masked: body.masked };
+    const current = started === epoch && (change
+      ? position > rememberedOrder
+      : pendingChanges === 0 && changesBefore === changes && position > rememberedOrder);
+    if (current) {
+      remembered = state;
+      rememberedOrder = position;
+    }
+    if (change) changes += 1;
+    return state;
+  } finally {
+    if (change) pendingChanges -= 1;
   }
-  return state;
 }
 
 /** Read whether a TypeSafe key is configured. A response carrying any extra field fails closed. */
@@ -71,6 +83,7 @@ export async function saveDecisionKey(fetcher, apiKey) {
       body: JSON.stringify({ api_key: key }),
     },
     'The TypeSafe key could not be saved.',
+    true,
   );
   if (!state.configured) throw new LocalApiError('Decision provider settings are invalid.');
   return state;
@@ -82,6 +95,7 @@ export async function removeDecisionKey(fetcher) {
     fetcher,
     { method: 'DELETE', headers: { Accept: 'application/json' } },
     'The TypeSafe key could not be removed.',
+    true,
   );
   if (state.configured) throw new LocalApiError('Decision provider settings are invalid.');
   return state;
