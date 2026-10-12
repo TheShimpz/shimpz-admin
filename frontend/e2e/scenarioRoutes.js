@@ -3,7 +3,7 @@
 import { expect } from '@playwright/test';
 
 import { createScenario } from './scenarios.js';
-import { scenarioHandlers, serveSession, SESSION_SOCKET_PATH } from './sessionSocket.js';
+import { raise, scenarioHandlers, serveSession, SESSION_SOCKET_PATH } from './sessionSocket.js';
 
 // A JSON body as the scenario reads it, or a multipart upload as its one `file` part's name, type, and size.
 async function requestBody(request) {
@@ -63,7 +63,7 @@ const sessionMocks = new WeakMap();
 async function sessionMock(page) {
   let mock = sessionMocks.get(page);
   if (mock) return mock;
-  mock = { reads: new Map(), chats: new Map(), connect: null, fallback: null, sessions: [], calls: [] };
+  mock = { reads: new Map(), chats: new Map(), connect: null, fallback: null, sessions: [], calls: [], revisions: new Map() };
   sessionMocks.set(page, mock);
   await page.routeWebSocket(/\/api(?:\/|$)/, (socket) => socket.close({ code: 1008, reason: 'Not in this scenario.' }));
   await page.routeWebSocket(`**${SESSION_SOCKET_PATH}`, (socket) => {
@@ -82,6 +82,7 @@ async function sessionMock(page) {
         },
         chat: (teamId) => mock.chats.get(teamId) ?? mock.fallback?.chat(teamId),
       },
+      mock.revisions,
     );
     mock.sessions.push(session);
     socket.onMessage((message) => void session.receive(message));
@@ -120,7 +121,8 @@ export async function dropSessions(page, code = 1011) {
 
 /** Raise one topic on every open session socket of the page, as Admin does when it learns of a change. */
 export async function raiseTopic(page, topic) {
-  for (const session of (await sessionMock(page)).sessions) session.changed(topic);
+  const mock = await sessionMock(page);
+  raise(mock.revisions, mock.sessions, topic);
 }
 
 /** Every API request the page's own scripts send from now on, in order: its method and its path. */

@@ -25,8 +25,10 @@ function channelFrame(teamId, event) {
  * renewed deadlines, `{ idle_seconds, absolute_seconds }`.
  * `frames` records every client frame in order.
  */
-export function serveSession(transport, handlers) {
-  const topics = new Map();
+export function serveSession(transport, handlers, revisions = new Map()) {
+  // The topics this socket subscribes to; their revisions are `revisions`, which Admin keeps for the whole process, so
+  // a reopened socket of the same page sees the revisions a change raised while it was closed.
+  const topics = new Set();
   const channels = new Map();
   const frames = [];
   let closed = false;
@@ -73,10 +75,13 @@ export function serveSession(transport, handlers) {
     const { id, method, params } = frame;
     if (method === 'subscribe' || method === 'unsubscribe') {
       for (const topic of params.topics) {
-        if (method === 'subscribe') topics.set(topic, topics.get(topic) ?? 0);
+        if (method === 'subscribe') topics.add(topic);
         else topics.delete(topic);
       }
-      return { status: 200, json: { epoch: EPOCH, topics: Object.fromEntries(topics) } };
+      return {
+        status: 200,
+        json: { epoch: EPOCH, topics: Object.fromEntries([...topics].map((topic) => [topic, revisions.get(topic) ?? 0])) },
+      };
     }
     if (method === 'chat.attach') {
       const synchronize = attach(params.team_id, params.locale);
@@ -119,12 +124,9 @@ export function serveSession(transport, handlers) {
     frames,
     receive,
     close,
-    // Admin raised a topic: a subscribed socket hears of it.
+    // Admin raised a topic (its revision already advanced, see `raise`): a subscribed socket hears of it.
     changed(topic) {
-      if (!topics.has(topic)) return;
-      const revision = topics.get(topic) + 1;
-      topics.set(topic, revision);
-      send({ type: 'changed', topic, epoch: EPOCH, revision });
+      if (topics.has(topic)) send({ type: 'changed', topic, epoch: EPOCH, revision: revisions.get(topic) ?? 0 });
     },
     // Admin told the page the session's deadlines, in whole seconds from now.
     deadlines(idleSeconds, absoluteSeconds) {
@@ -146,4 +148,10 @@ export function scenarioHandlers(scenario) {
       });
     }),
   };
+}
+
+/** Admin changed one topic: its revision advances once, and every socket of the page that subscribes hears of it. */
+export function raise(revisions, sessions, topic) {
+  revisions.set(topic, (revisions.get(topic) ?? 0) + 1);
+  for (const session of sessions) session.changed(topic);
 }

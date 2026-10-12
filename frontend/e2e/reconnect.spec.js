@@ -51,6 +51,32 @@ test('a chat opened while Admin is unreachable shows no page error or empty stat
   for (const error of pageConnectivityErrors(page)) await expect(error).toHaveCount(0);
 });
 
+test('a change Admin announced while the socket was closed is read once it reopens, and nothing else is', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  let renamed = false;
+  await routeRead(page, 'teams.list', () => (renamed
+    ? { status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Growth', status: 'running' }] } }
+    : undefined));
+  let refusing = false;
+  await refuseWhile(page, () => refusing);
+  await page.goto('/chat/?team=marketing');
+  await expect(page.getByRole('textbox', { name: chatPage.send, exact: true })).toBeEnabled();
+  const navigation = page.locator('.shell-sidebar');
+  const listReads = (await readsOf(page, 'teams.list')).length;
+  const releaseReads = (await readsOf(page, 'platform.release')).length;
+  refusing = true;
+  await dropSessions(page);
+  await expect(page.getByText(shell.reconnecting)).toBeVisible();
+  // Another tab renames the Team while this one cannot hear it: Admin's revision of the list advances.
+  renamed = true;
+  await raiseTopic(page, 'teams');
+  refusing = false;
+  await expect(navigation.getByRole('link', { name: 'Growth', exact: true })).toBeVisible({ timeout: 20_000 });
+  expect((await readsOf(page, 'teams.list')).length).toBe(listReads + 1);
+  // A topic whose revision did not move is not read again.
+  expect((await readsOf(page, 'platform.release')).length).toBe(releaseReads);
+});
+
 test('a long outage keeps reconnecting, says Admin cannot be reached, and recovers without a refresh', { tag: '@slow' }, async ({ page }) => {
   test.slow();
   await page.clock.install();

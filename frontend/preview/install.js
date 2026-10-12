@@ -140,6 +140,9 @@ const SESSION_EXPIRING = PREVIEW_PARAMS.get('session') === 'expiring';
 const SOCKET_RECONNECTING = PREVIEW_PARAMS.get('socket') === 'reconnecting';
 const PREVIEW_STARTED = Date.now();
 
+// Admin keeps topic revisions for its whole process: every scripted socket of the page shares them.
+const PREVIEW_REVISIONS = new Map();
+
 class SessionSocket extends EventTarget {
   static CONNECTING = 0;
   static OPEN = 1;
@@ -158,7 +161,7 @@ class SessionSocket extends EventTarget {
     this.session = serveSession({
       send: (text) => setTimeout(() => this.#emit('message', new MessageEvent('message', { data: text })), 0),
       close: (code, reason) => this.close(code, reason),
-    }, { call: previewCall, chat: previewChat });
+    }, { call: previewCall, chat: previewChat }, PREVIEW_REVISIONS);
     const refused = SOCKET_RECONNECTING && Date.now() - PREVIEW_STARTED > 1000 && Date.now() - PREVIEW_STARTED < 23000;
     setTimeout(() => {
       if (refused) {
