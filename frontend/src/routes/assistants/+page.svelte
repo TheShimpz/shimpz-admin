@@ -102,8 +102,8 @@
       }
       publish();
     }, { rootMargin: `${NEAR_SCREEN_PX}px 0px` });
-    // Each row is observed as it renders; the rows already on screen are known at once, so their icons show in the
-    // first frame rather than after the observer's first report.
+    // Each row is observed as it renders or changes its icon; the rows already on screen are known at once, so their
+    // icons show in the first frame rather than after the observer's first report.
     const observe = () => {
       intersections.disconnect();
       near.clear();
@@ -116,8 +116,11 @@
       publish();
     };
     observe();
-    const rows = new MutationObserver(observe);
-    rows.observe(grid, { childList: true });
+    const rows = new MutationObserver((records) => {
+      if (records.some((record) => record.type === 'attributes' || record.target === grid)) observe();
+    });
+    // A row added, removed, or showing another build's icon (a staged Assistant built again keeps its row) is seen.
+    rows.observe(grid, { childList: true, subtree: true, attributeFilter: ['data-icon-key'] });
     return () => {
       rows.disconnect();
       intersections.disconnect();

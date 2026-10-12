@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 
 import { assistantDetails, PAGE_COPY, publicAssistant } from './assistantPages.js';
 import { accessibilityViolations } from './axe.js';
+import { catalogSnapshots } from './catalogScenario.js';
 import {
   activityReports,
   raiseTopic,
@@ -1330,4 +1331,35 @@ test('a catalog longer than the icon budget pins only the icons on or near the s
   await expect(last.locator('img')).toHaveAttribute('src', /^blob:/);
   expect(await shownIcons.count()).toBeLessThanOrEqual(48);
   await expect(catalog.getByRole('link', { name: /^Bulk 000/ }).locator('img')).toHaveCount(0);
+});
+
+test('a staged Assistant built again shows its new icon in place, without scrolling', async ({ page }) => {
+  await routeScenario(page, 'catalog');
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  );
+  const rebuilt = `sha256:${'9'.repeat(64)}`;
+  let restaged = false;
+  await routeRead(page, 'snapshots.list', () => {
+    const [first, ...rest] = catalogSnapshots();
+    const current = restaged ? { ...first, image_id: rebuilt, created_at: '2026-10-09T07:00:00Z' } : first;
+    return { status: 200, json: { assistants: [current, ...rest], trace_id: 'c'.repeat(32) } };
+  });
+  const iconPaths = [];
+  await page.route('**/api/local-assistants/*/icon', (route) => {
+    iconPaths.push(new URL(route.request().url()).pathname);
+    return route.fulfill({ contentType: 'image/png', body: png });
+  });
+  await page.goto('/assistants/?team=marketing');
+  const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
+  const row = catalog.locator(`#assistant-${catalogSnapshots()[0].assistant_id}`);
+  await expect(row.locator('img')).toHaveAttribute('src', /^blob:/);
+  const before = await row.locator('img').getAttribute('src');
+  // The CLI stages the same Assistant again: its row stays, with the new build's icon.
+  restaged = true;
+  await raiseTopic(page, 'local-assistants');
+  await expect.poll(() => iconPaths).toContain(`/api/local-assistants/${'9'.repeat(64)}/icon`);
+  await expect(row.locator('img')).toHaveAttribute('src', /^blob:/);
+  await expect(row.locator('img')).not.toHaveAttribute('src', before);
 });
