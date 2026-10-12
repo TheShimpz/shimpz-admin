@@ -2991,12 +2991,22 @@ test('an uninstall whose inventory could not be confirmed completes once the cha
   const outcome = page.getByText('Shimpz Cloudflare v0.4.1 was uninstalled from Team Marketing.', { exact: true });
   await expect(outcome).toHaveCount(0);
 
+  // A keyboard user retries while the read keeps failing: the focus stays on the Retry each time.
+  const retry = page.getByRole('button', { name: 'Retry local data' });
+  await retry.focus();
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await page.keyboard.press('Enter');
+    await expect(retry).toBeEnabled();
+    await expect(retry).toBeFocused();
+    await expect(unconfirmed).toBeVisible();
+  }
   failInventory = false;
-  await page.getByRole('button', { name: 'Retry local data' }).click();
+  await page.keyboard.press('Enter');
   await expect(outcome).toBeVisible();
   await expect(unconfirmed).toHaveCount(0);
-  await expect(page.getByRole('button', { name: 'Retry local data' })).toHaveCount(0);
+  await expect(retry).toHaveCount(0);
   await expect(composer).toBeEnabled();
+  await expect(composer).toBeFocused();
   await expect(outcome).toHaveCount(1);
 });
 

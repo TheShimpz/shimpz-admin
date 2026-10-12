@@ -1039,6 +1039,7 @@
       keyRequired ||
       composerBusy ||
       integrationsOpen ||
+      inventoryRetrying ||
       !chatOwnsFocus ||
       (focused && focused !== document.body) ||
       document.querySelector('dialog[open], :popover-open')
@@ -1068,10 +1069,19 @@
 
   // The Retry leaves while the inventory is read, so the focus it held comes back: to the Retry when the read fails
   // again, to the composer once it succeeds.
+  // While it runs, the Retry alone decides where the focus goes: the composer turning usable in between (an uninstall
+  // outcome no longer pending) must not take it first.
+  let inventoryRetrying = false;
+
   async function retryInventory() {
-    if (deferredUninstall?.team_id === chatTeamId) await confirmUninstall(deferredUninstall);
-    else await refreshTeamInventory(fetch).catch(() => {});
-    await tick();
+    inventoryRetrying = true;
+    try {
+      if (deferredUninstall?.team_id === chatTeamId) await confirmUninstall(deferredUninstall);
+      else await refreshTeamInventory(fetch).catch(() => {});
+      await tick();
+    } finally {
+      inventoryRetrying = false;
+    }
     const focused = document.activeElement;
     if (focused && focused !== document.body) return;
     if ($teamContext.inventory === 'ready') void focusComposer();
