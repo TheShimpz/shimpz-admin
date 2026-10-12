@@ -10,7 +10,7 @@
 // forgets every one of them, with the session's icons, when the session ends.
 import { derived, readable } from 'svelte/store';
 
-import { clearIconCache, localIcon, preloadIcons, publicIcon } from './assistantIconCache.js';
+import { clearIconCache, localIcon, MAX_CACHED_ICONS, preloadIcons, publicIcon } from './assistantIconCache.js';
 import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from './localApi.js';
 import {
   loadAssistantDetails,
@@ -157,10 +157,11 @@ export function warmAssistantSources(locale) {
     if (warming !== stop || !local || !published) return;
     if (!pending) {
       const groups = groupLocalAssistantSnapshots(local);
+      // The rows the Store shows first, as many as the session's icon budget holds.
       preloadIcons([
         ...groups.map((group) => localIcon(group.primary)),
         ...projectPublishedAssistants(published, groups, true).map((assistant) => publicIcon(assistant)),
-      ]);
+      ].slice(0, MAX_CACHED_ICONS));
       // English shows each snapshot's own catalog summary; another language shows its pack's translation.
       pending = new Set(locale === 'en' ? [] : groups.map((group) => group.primary.image_id));
       for (const imageId of [...pending]) {

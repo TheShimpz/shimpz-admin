@@ -3,7 +3,7 @@
   import { getContext, onMount, tick, untrack } from 'svelte';
   import { Button, Notice, Skeleton, Toolbar } from '@shimpz/frontend';
   import AssistantRow from '#lib/AssistantRow.svelte';
-  import { acquireIcon, localIcon, publicIcon } from '#lib/assistantIconCache.js';
+  import { acquireIcon, localIcon, MAX_CACHED_ICONS, publicIcon } from '#lib/assistantIconCache.js';
   import { publicCatalog, snapshotSummary, stagedSnapshots, syncedFamily } from '#lib/assistantSources.js';
   import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
   import { locale, t } from '#lib/i18n.js';
@@ -12,6 +12,8 @@
   import { TEAM_ID_RE } from '#lib/validate.js';
 
   const ICON_PRESENTATION_BUDGET_MS = 1500;
+  // How far beyond the screen a row's icon is already shown, so scrolling meets icons that are ready.
+  const NEAR_SCREEN_PX = 400;
 
   // The staged snapshots and the public catalog in the interface language, each a synced value the session keeps
   // (ADR-0114): shown at once when read before, read again whenever they may be stale, one is staged or removed, or a
@@ -77,11 +79,50 @@
   let installedCount = $derived(
     [...localSnapshotGroups, ...visiblePublicAssistants].filter((entry) => installedIds.has(entry.assistant_id)).length,
   );
-  // Every icon the shown rows need, keyed by exactly what it shows.
-  let iconEntries = $derived(catalogPresentationPending ? [] : [
+  // Every row's icon, keyed by exactly what it shows, in the order the rows show.
+  let rowIcons = $derived(catalogPresentationPending ? [] : [
     ...localSnapshotGroups.map((group) => localIcon(group.primary)),
     ...visiblePublicAssistants.map((assistant) => publicIcon(assistant)),
   ]);
+  // The rows on or near the screen, by icon key: only their icons are shown, and never more than the session's icon
+  // budget holds, so a long catalog decodes its icons as they scroll in and never holds more than the budget allows.
+  let nearRows = $state(new Set());
+  let iconEntries = $derived(rowIcons.filter((icon) => nearRows.has(icon.key)).slice(0, MAX_CACHED_ICONS));
+  let grid = $state();
+  $effect(() => {
+    if (!grid) return undefined;
+    const near = new Set();
+    const publish = () => {
+      nearRows = new Set(near);
+    };
+    const intersections = new IntersectionObserver((records) => {
+      for (const record of records) {
+        if (record.isIntersecting) near.add(record.target.dataset.iconKey);
+        else near.delete(record.target.dataset.iconKey);
+      }
+      publish();
+    }, { rootMargin: `${NEAR_SCREEN_PX}px 0px` });
+    // Each row is observed as it renders; the rows already on screen are known at once, so their icons show in the
+    // first frame rather than after the observer's first report.
+    const observe = () => {
+      intersections.disconnect();
+      near.clear();
+      const bottom = window.innerHeight + NEAR_SCREEN_PX;
+      for (const row of grid.querySelectorAll('a.assistant-row')) {
+        intersections.observe(row);
+        const box = row.getBoundingClientRect();
+        if (box.bottom >= -NEAR_SCREEN_PX && box.top <= bottom) near.add(row.dataset.iconKey);
+      }
+      publish();
+    };
+    observe();
+    const rows = new MutationObserver(observe);
+    rows.observe(grid, { childList: true });
+    return () => {
+      rows.disconnect();
+      intersections.disconnect();
+    };
+  });
 
   // Each row opens its Assistant's page for the Team this catalog acts for.
   function assistantHref(assistantId) {
@@ -204,7 +245,7 @@
       </p>
     </header>
   {/if}
-  <div class="assistant-grid">
+  <div class="assistant-grid" bind:this={grid}>
     {#if catalogPresentationPending}
       <Skeleton class="assistant-catalog-loading" height="18rem" />
     {:else}
@@ -214,6 +255,7 @@
           href={assistantHref(group.assistant_id)}
           name={group.primary.name}
           summary={localSnapshotSummary(group.primary)}
+          data-icon-key={localIcon(group.primary).key}
           iconSrc={catalogIconUrls[localIcon(group.primary).key]}
           iconStatus={catalogIconFailures[localIcon(group.primary).key] ? 'failed' : 'loading'}
           badge={localCopy.localBadge}
@@ -229,6 +271,7 @@
           href={assistantHref(assistant.assistant_id)}
           name={assistant.name}
           summary={shownCatalog?.locale === $locale ? assistant.summary : ''}
+          data-icon-key={publicIcon(assistant).key}
           iconSrc={catalogIconUrls[publicIcon(assistant).key]}
           iconStatus={catalogIconFailures[publicIcon(assistant).key] ? 'failed' : 'loading'}
           badge={localCopy.publicBadge}

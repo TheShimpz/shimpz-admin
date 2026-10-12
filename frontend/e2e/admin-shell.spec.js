@@ -1298,3 +1298,36 @@ test('the Store shows its rows and icons at once when opened, and again when the
   await open();
   expect(iconRequests).toBe(read);
 });
+
+test('a catalog longer than the icon budget pins only the icons on or near the screen', { tag: '@mobile' }, async ({ page }) => {
+  await routeScenario(page, 'catalog');
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  );
+  const digest = `sha256:${createHash('sha256').update(png).digest('hex')}`;
+  const count = 120;
+  await routeRead(page, 'store.catalog', ({ locale }) => ({ status: 200, json: {
+    version: 1, locale, next: null,
+    assistants: Array.from({ length: count }, (_, index) => publicAssistant({
+      assistant_id: `bulk-${String(index).padStart(3, '0')}`,
+      name: `Bulk ${String(index).padStart(3, '0')}`,
+      icon_digest: digest,
+    })),
+  } }));
+  await page.route('**/api/{assistants/*/catalog-icon,local-assistants/*/icon}', (route) => (
+    route.fulfill({ contentType: 'image/png', body: png })
+  ));
+  await page.goto('/assistants/?team=marketing');
+  const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
+  const shownIcons = catalog.locator('a.assistant-row img[src^="blob:"]');
+  // The rows on screen show their icons, while the session never holds more than its 48-icon budget.
+  await expect(catalog.getByRole('link', { name: /^Bulk 000/ }).locator('img')).toHaveAttribute('src', /^blob:/);
+  expect(await shownIcons.count()).toBeLessThanOrEqual(48);
+  // Rows scrolled into view show theirs in turn, still within the budget.
+  const last = catalog.getByRole('link', { name: /^Bulk 119/ });
+  await last.scrollIntoViewIfNeeded();
+  await expect(last.locator('img')).toHaveAttribute('src', /^blob:/);
+  expect(await shownIcons.count()).toBeLessThanOrEqual(48);
+  await expect(catalog.getByRole('link', { name: /^Bulk 000/ }).locator('img')).toHaveCount(0);
+});
