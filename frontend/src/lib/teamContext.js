@@ -28,6 +28,9 @@ function emptyContext() {
     catalog: [],
     installedAssistants: [],
     activeAssistantIds: [],
+    // Whether the selected Team's inventory is current: `loading` while it is read, `failed` when that read failed
+    // (the inventory is then empty), `ready` once read. Other Team operations failing never change it.
+    inventory: 'idle',
     error: '',
   };
 }
@@ -149,6 +152,7 @@ function markFailure(attempt, error, fallback, clearAuthority) {
       phase: 'error',
       installedAssistants: [],
       activeAssistantIds: [],
+      inventory: 'failed',
       error: safe.message,
     }));
   }
@@ -194,6 +198,7 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
       teamContext.set({
         phase: 'ready',
         ...snapshot,
+        inventory: 'ready',
         error: '',
       });
     }
@@ -213,6 +218,7 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
       catalog,
       ...inventory,
       ...scope,
+      inventory: 'ready',
       error: '',
     });
   }
@@ -229,7 +235,7 @@ async function loadContext(fetcher, preferredId) {
   const previousId = get(teamContext).selectedTeamId;
   const attempt = ++generation;
   listVersion += 1;
-  teamContext.set({ ...emptyContext(), phase: 'loading' });
+  teamContext.set({ ...emptyContext(), phase: 'loading', inventory: 'loading' });
   try {
     return await hydrate(fetcher, canonicalPreferredId, attempt, previousId);
   } catch (error) {
@@ -255,6 +261,7 @@ async function select(fetcher, id) {
     selectedTeamId: canonicalId,
     installedAssistants: [],
     activeAssistantIds: [],
+    inventory: 'loading',
     error: '',
   });
   try {
@@ -273,6 +280,7 @@ async function select(fetcher, id) {
         catalog,
         ...inventory,
         ...scope,
+        inventory: 'ready',
         error: '',
       });
     }
@@ -286,6 +294,7 @@ async function select(fetcher, id) {
         phase: 'error',
         installedAssistants: [],
         activeAssistantIds: [],
+        inventory: 'failed',
         error: safe.message,
       });
     }
@@ -310,6 +319,7 @@ export async function refreshTeamInventory(fetcher) {
       phase: 'ready',
       installedAssistants: [],
       activeAssistantIds: [],
+      inventory: 'ready',
       error: '',
     });
     return { installedAssistants: [] };
@@ -322,6 +332,7 @@ export async function refreshTeamInventory(fetcher) {
   teamContext.set({
     ...current,
     phase: 'loading',
+    inventory: 'loading',
     error: '',
   });
   try {
@@ -339,6 +350,7 @@ export async function refreshTeamInventory(fetcher) {
         catalog,
         ...inventory,
         ...scope,
+        inventory: 'ready',
         error: '',
       });
     }
@@ -370,11 +382,11 @@ async function create(fetcher, name) {
 
   const attempt = ++generation;
   const current = get(teamContext);
+  // The selected Team and its inventory stay as they are until the new Team's context is published.
   teamContext.set({
     ...current,
     phase: 'loading',
     error: '',
-    activeAssistantIds: [],
   });
   let created;
   try {
@@ -400,7 +412,10 @@ async function create(fetcher, name) {
     canonicalTeamName(body.team_name, 'The Team creation returned an invalid response.');
     created = { created: body.created, id: body.team_id, name: body.team_name, status: body.status };
   } catch (error) {
-    throw markFailure(attempt, error, 'The Team could not be created.', false);
+    // Nothing was created: the selected Team keeps its inventory.
+    const safe = publicError(error, 'The Team could not be created.');
+    if (attempt === generation) teamContext.update((state) => ({ ...state, phase: 'error', error: safe.message }));
+    throw safe;
   }
 
   try {

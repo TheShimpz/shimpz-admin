@@ -2524,6 +2524,27 @@ test('a protocol violation ends the install it interrupts like a dropped connect
   await expect(page.locator('.assistant-install-plan [data-slot="chat-task"][data-state="working"]')).toHaveCount(0);
 });
 
+test('a Team that could not be created leaves the chat able to send to the selected Team', async ({ page }) => {
+  const chat = await routeReadyChat(page);
+  await page.route('**/api/teams', (route) => (route.request().method() === 'POST'
+    ? route.fulfill({ status: 503, json: { detail: 'Team is unavailable' } })
+    : route.fallback()));
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await expect(composer).toBeEnabled();
+  await page.locator('.shell-sidebar').getByRole('button', { name: 'New Team' }).click();
+  const create = page.getByRole('dialog', { name: 'Create a Team' });
+  await create.getByLabel('Team name').fill('Growth');
+  await create.getByRole('button', { name: 'Create Team' }).click();
+  await expect(create.getByText('The Team could not be created.')).toBeVisible();
+  await create.getByRole('button', { name: 'Cancel' }).click();
+
+  await fillWhenReady(page, composer, 'List my zones');
+  await composer.press('Enter');
+  await expect.poll(() => chat.chatFrames()).toHaveLength(1);
+  expect(chat.chatFrames()[0].assistant_ids).toEqual(['shimpz-cloudflare']);
+});
+
 test('shows the continued task execution stages after an explicit install', async ({ page }) => {
   const chat = await routeReadyChat(page, { assistantPlan: true, progressAfterPlan: true });
   await page.goto('/chat/');
@@ -4543,6 +4564,35 @@ test('a Team that fails to open leaves the chat on the previous Team and later T
   expect(inventoryReads).toContain('/api/teams/trinity/assistants');
   // The failed Team was asked for once, not again while the address returned.
   expect(inventoryReads.filter((path) => path === '/api/teams/neo/assistants')).toHaveLength(1);
+});
+
+test('a Team inventory that could not be read holds sending until it is read again', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  let failInventory = false;
+  await page.route('**/api/teams/marketing/assistants', (route) => (failInventory
+    ? route.fulfill({ status: 503, json: { detail: 'unavailable' } })
+    : route.fallback()));
+  await page.route('**/api/teams/neo/assistants', (route) => route.fulfill({ status: 503, json: { detail: 'unavailable' } }));
+  await page.goto('/chat/?team=marketing');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  const send = page.getByRole('button', { name: 'Send', exact: true });
+  await expect(composer).toBeEnabled();
+  // A Team that failed to open leaves the previous Team selected, without the inventory a message names.
+  await page.locator('.shell-sidebar').getByRole('link', { name: 'Neo', exact: true }).click();
+  await expect(page).toHaveURL(/team=marketing/);
+  const retry = page.getByRole('button', { name: 'Retry local data' });
+  await expect(retry).toBeVisible();
+  await composer.fill('Hello');
+  await expect(send).toBeDisabled();
+
+  failInventory = true;
+  await retry.click();
+  await expect(retry).toBeEnabled();
+  await expect(send).toBeDisabled();
+  failInventory = false;
+  await retry.click();
+  await expect(retry).toHaveCount(0);
+  await expect(send).toBeEnabled();
 });
 
 test.describe('Team order', () => {

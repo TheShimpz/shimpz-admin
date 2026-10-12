@@ -256,7 +256,9 @@
   let brainSaving = $derived($modelContext.phase === 'saving');
   // A message names the Team's running Assistants, so it waits while their inventory is being read again (after an
   // install, for instance); the inventory shown meanwhile is for display only.
-  let inventoryReady = $derived($teamContext.phase === 'ready');
+  let inventoryReady = $derived($teamContext.inventory === 'ready');
+  // A read of it that failed holds sending until the Supervisor reads it again from the chat's notice.
+  let inventoryFailed = $derived(Boolean(chatTeamId) && $teamContext.inventory === 'failed');
   // A question answer or a retry sends at once, so it is offered only when a message could be sent now.
   let sendUnavailable = $derived(
     composerBusy || brainSaving || !$modelContext.ready || !socketReady || !inventoryReady,
@@ -1031,6 +1033,10 @@
       return;
     }
     if (keySelection === selection) void focusComposer();
+  }
+
+  function retryInventory() {
+    refreshTeamInventory(fetch).catch(() => {});
   }
 
   function retryBrain() {
@@ -2536,6 +2542,17 @@
           <Notice class="chat-error" variant="error">
             <strong>{visibleError}</strong>
             {#if visibleErrorDetail}<code>{copy.technicalDetail}: {visibleErrorDetail}</code>{/if}
+            {#if inventoryFailed}
+              <Button
+                variant="secondary"
+                size="compact"
+                type="button"
+                onclick={retryInventory}
+                disabled={$teamContext.phase === 'loading'}
+              >
+                {$t('teamSidebar.retry')}
+              </Button>
+            {/if}
           </Notice>
         {/if}
 
@@ -2979,6 +2996,7 @@
 
   .conversation :global(.chat-error) {
     grid-row: 2;
+    justify-items: start;
     width: min(
       calc(100% - (2 * var(--chat-rail-gutter))),
       var(--chat-rail-width)

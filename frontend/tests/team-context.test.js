@@ -92,6 +92,7 @@ test('loads one authoritative Team context and honors a valid preferred Team', a
     ],
     installedAssistants: [installedAssistant('hello-pulse')],
     activeAssistantIds: ['hello-pulse'],
+    inventory: 'ready',
     error: '',
   });
 });
@@ -196,6 +197,7 @@ test('a confirmed empty inventory retains the catalog while malformed Team data 
     ],
     installedAssistants: [],
     activeAssistantIds: [],
+    inventory: 'ready',
     error: '',
   });
   assert.equal(catalogRequests, 1);
@@ -382,6 +384,18 @@ test('a refresh waiting on a Team operation when the session ends publishes noth
   await reading;
   assert.equal(get(teamContext).phase, 'idle');
   assert.deepEqual(get(teamContext).teams, []);
+});
+
+test('a Team that could not be created leaves the selected Team and its current inventory', async () => {
+  await loadTeamContext(fixtureFetcher(), 'marketing');
+  await assert.rejects(createTeam(fixtureFetcher({
+    '/api/teams': async (options) => (options.method === 'POST' ? response(503, { detail: 'unavailable' }) : null),
+  }), 'Growth'), (error) => error instanceof LocalApiError);
+
+  assert.equal(get(teamContext).phase, 'error');
+  assert.equal(get(teamContext).selectedTeamId, 'marketing');
+  assert.equal(get(teamContext).inventory, 'ready');
+  assert.deepEqual(get(teamContext).activeAssistantIds, ['salesnator']);
 });
 
 test('creates a Team with the exact payload, validates the response, and refreshes its inventory', async () => {
@@ -641,6 +655,7 @@ test('deleting the last Team rehydrates an authoritative empty context', async (
     ],
     installedAssistants: [],
     activeAssistantIds: [],
+    inventory: 'ready',
     error: '',
   });
 });
@@ -682,6 +697,7 @@ test('clear invalidates a late context response', async () => {
     catalog: [],
     installedAssistants: [],
     activeAssistantIds: [],
+    inventory: 'idle',
     error: '',
   });
 });
