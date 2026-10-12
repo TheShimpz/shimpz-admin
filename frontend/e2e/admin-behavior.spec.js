@@ -2971,6 +2971,35 @@ test('a Stop that crosses an uninstall proposal leaves the proposal to answer', 
   expect(chat.chatConnections()).toBe(1);
 });
 
+test('an uninstall whose inventory could not be confirmed completes once the chat reads it again', async ({ page }) => {
+  await routeReadyChat(page, { assistantUninstall: true });
+  let failInventory = false;
+  await page.route('**/api/teams/marketing/assistants', (route) => (failInventory
+    ? route.fulfill({ status: 503, json: { detail: 'inventory unavailable' } })
+    : route.fallback()));
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'Uninstall the Cloudflare Assistant');
+  await composer.press('Enter');
+  const task = page.locator('[data-slot="chat-task"]');
+  failInventory = true;
+  await task.getByRole('button', { name: 'Uninstall Shimpz Cloudflare' }).click();
+  const unconfirmed = page.getByText(
+    'The Assistant uninstall completed, but its absence from the Team inventory could not be confirmed.',
+  );
+  await expect(unconfirmed).toBeVisible();
+  const outcome = page.getByText('Shimpz Cloudflare v0.4.1 was uninstalled from Team Marketing.', { exact: true });
+  await expect(outcome).toHaveCount(0);
+
+  failInventory = false;
+  await page.getByRole('button', { name: 'Retry local data' }).click();
+  await expect(outcome).toBeVisible();
+  await expect(unconfirmed).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Retry local data' })).toHaveCount(0);
+  await expect(composer).toBeEnabled();
+  await expect(outcome).toHaveCount(1);
+});
+
 test('never falls back to the Store icon when model context leaves an uninstall card', async ({ page }) => {
   const chat = await routeReadyChat(page, {
     assistantUninstall: true,

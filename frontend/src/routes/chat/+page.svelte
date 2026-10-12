@@ -987,6 +987,36 @@
     void revealLatestExchange();
   }
 
+  // An uninstall's outcome is announced once Team's inventory confirms the Assistant is gone. A read that fails keeps
+  // the outcome deferred, with its error, until the chat's Retry reads the inventory again.
+  let deferredUninstall = null;
+
+  function confirmUninstall(incoming) {
+    deferredUninstall = null;
+    lifecycleOutcomePending = {
+      teamId: incoming.team_id,
+      proposalId: incoming.proposal_id,
+      assistantId: incoming.assistant_id,
+    };
+    const lifecycleMessages = copy.uninstall;
+    const current = () => (
+      lifecycleOutcomePending?.teamId === incoming.team_id &&
+      lifecycleOutcomePending?.proposalId === incoming.proposal_id
+    );
+    return appendUninstallOutcome(incoming)
+      .then(() => {
+        if (current() && error === lifecycleMessages.refreshFailed) clearError();
+      })
+      .catch(() => {
+        if (!current()) return;
+        deferredUninstall = incoming;
+        setError(lifecycleMessages.refreshFailed);
+      })
+      .finally(() => {
+        if (current()) lifecycleOutcomePending = null;
+      });
+  }
+
   function clearError() {
     error = '';
     errorDetail = '';
@@ -1039,7 +1069,8 @@
   // The Retry leaves while the inventory is read, so the focus it held comes back: to the Retry when the read fails
   // again, to the composer once it succeeds.
   async function retryInventory() {
-    await refreshTeamInventory(fetch).catch(() => {});
+    if (deferredUninstall?.team_id === chatTeamId) await confirmUninstall(deferredUninstall);
+    else await refreshTeamInventory(fetch).catch(() => {});
     await tick();
     const focused = document.activeElement;
     if (focused && focused !== document.body) return;
@@ -1464,27 +1495,7 @@
           }
           busy = false;
           clearError();
-          if (incoming.state === 'uninstalled') {
-            lifecycleOutcomePending = {
-              teamId: incoming.team_id,
-              proposalId: incoming.proposal_id,
-              assistantId: incoming.assistant_id,
-            };
-            const lifecycleMessages = copy.uninstall;
-            void appendUninstallOutcome(incoming)
-              .catch(() => {
-                if (
-                  lifecycleOutcomePending?.teamId === incoming.team_id &&
-                  lifecycleOutcomePending?.proposalId === incoming.proposal_id
-                ) setError(lifecycleMessages.refreshFailed);
-              })
-              .finally(() => {
-                if (
-                  lifecycleOutcomePending?.teamId === incoming.team_id &&
-                  lifecycleOutcomePending?.proposalId === incoming.proposal_id
-                ) lifecycleOutcomePending = null;
-              });
-          }
+          if (incoming.state === 'uninstalled') void confirmUninstall(incoming);
           return;
         }
         if (!busy && !stopping && !syncing) throw new Error('unexpected terminal frame');
@@ -1549,6 +1560,7 @@
     reconnectAttempt = 0;
     stopping = false;
     lifecycleOutcomePending = null;
+    deferredUninstall = null;
     if (nextTeamId && draftTeamId && draftTeamId !== nextTeamId) draft = '';
     if (nextTeamId) draftTeamId = nextTeamId;
     promptHistoryIndex = -1;
