@@ -29,10 +29,10 @@ EPOCH_RE = re.compile(r"[0-9a-f]{32}\Z")
 TOPIC_RE = re.compile(
     r"(?:teams|space/(?:resources|models|decision)|platform/release|security/summary|session|assistants/registry"
     r"|local-assistants"
-    r"|team/[a-z0-9_]{1,40}/(?:routines|history|inventory|inference))\Z"
+    r"|team/[a-z0-9_]{1,40}/(?:routines|history|inventory|inference|integrations))\Z"
 )
 # The Team's own topics a client may name; every other topic is the Space's or the session's.
-TEAM_TOPICS = ("routines", "history", "inventory", "inference")
+TEAM_TOPICS = ("routines", "history", "inventory", "inference", "integrations")
 MAX_PARAM_CHARS = 128
 KIB = 1024
 
@@ -129,6 +129,8 @@ READ_TOPICS = {
     "snapshots.details": lambda _params: "local-assistants",
     "models.list": lambda _params: "space/models",
     "decision.read": lambda _params: "space/decision",
+    "integrations.list": _team_topic("integrations"),
+    "stored_inputs.list": _team_topic("integrations"),
 }
 # Calls that change what the socket holds count against the session's change budget.
 CHANGE_METHODS = frozenset({"subscribe", "unsubscribe", "chat.attach", "chat.detach"})

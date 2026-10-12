@@ -487,7 +487,7 @@ def resume_chat_human(
             raise TeamRequestError("human assurance does not match the continuation")
     else:
         canonical_assurance = None
-    return _call_stream(
+    response = _call_stream(
         "POST",
         f"/v1/teams/{canonical_id}/chat/human",
         body,
@@ -499,6 +499,8 @@ def resume_chat_human(
         ),
         progress=progress,
     )
+    # An answer may have stored an Input for the Team's Assistants.
+    return _changed(response, canonical_id, "integrations")
 
 
 def list_assistants() -> TeamResponse:
@@ -597,7 +599,7 @@ def install_assistant(team_id: object, payload: object) -> TeamResponse:
         {"assistant_id": assistant_id, "source_digest": source_digest},
         timeout=ASSISTANT_INSTALL_TIMEOUT_SECONDS,
     )
-    return _changed(response, canonical_team_id(team_id), "inventory", registry=True)
+    return _changed(response, canonical_team_id(team_id), "inventory", "integrations", registry=True)
 
 
 def _install_local(team_id: object, payload: object, route: str) -> TeamResponse:
@@ -610,7 +612,7 @@ def _install_local(team_id: object, payload: object, route: str) -> TeamResponse
         {"image_id": image_id},
         timeout=ASSISTANT_INSTALL_TIMEOUT_SECONDS,
     )
-    return _changed(response, canonical_team_id(team_id), "inventory", registry=True)
+    return _changed(response, canonical_team_id(team_id), "inventory", "integrations", registry=True)
 
 
 def install_local_assistant(team_id: object, payload: object) -> TeamResponse:
@@ -623,7 +625,7 @@ def install_fresh_local_assistant(team_id: object, payload: object) -> TeamRespo
 
 def uninstall_assistant(team_id: object, assistant_id: object) -> TeamResponse:
     response = _call("DELETE", _assistant_path(team_id, assistant_id))
-    return _changed(response, canonical_team_id(team_id), "inventory", registry=True)
+    return _changed(response, canonical_team_id(team_id), "inventory", "integrations", registry=True)
 
 
 def _files_path(team_id: object, file_id: object | None = None) -> str:

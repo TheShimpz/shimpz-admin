@@ -452,6 +452,57 @@ class SessionMethodTopicTests(SessionMethodCase):
         self.assertTrue(configured["openai"])
         self.assertEqual(frames["after"]["topic"], "space/models")
 
+    def test_every_change_to_a_teams_integrations_or_stored_inputs_raises_its_topic(self) -> None:
+        topics = ["team/team_1/integrations"]
+        cleared = {
+            "team_id": "team_1",
+            "assistant_id": "whatsapp",
+            "stored_input_id": "whatsapp-token",
+            "cleared": True,
+            "trace_id": TRACE,
+        }
+        for method, answer, status in (
+            ("stored_inputs.clear", cleared, 200),
+            ("integrations.disconnect", {"disconnected": True, "trace_id": TRACE}, 204),
+        ):
+            transport = self.methods.integrations.transport
+            answered = self.team.TeamResponse(200, answer)
+            with self.subTest(method=method), mock.patch.object(transport, "_call", return_value=answered):
+                result, raised = asyncio.run(self._changed_by(method, SAMPLES[method], topics))
+            self.assertEqual((result["status"], raised), (status, set(topics)))
+            # A refused change raises nothing.
+            with self.subTest(method=method, refused=True):
+                result, raised = asyncio.run(self._changed_by(method, SAMPLES[method], topics))
+            self.assertEqual(raised, set())
+
+    def test_a_completed_authorization_and_a_human_answer_raise_the_teams_integrations(self) -> None:
+        integrations = self.methods.integrations
+        connected = {
+            "connected": True,
+            "team_id": "team_1",
+            "assistant_id": "shimpz-cloudflare",
+            "integration_id": "cloudflare",
+            "trace_id": TRACE,
+        }
+        heard = []
+        with (
+            mock.patch.object(self.topics, "team_changed", side_effect=lambda *args: heard.append(args)),
+            mock.patch.object(integrations.transport, "_call", return_value=self.team.TeamResponse(200, connected)),
+        ):
+            integrations.complete_cloudflare_oauth_callback(state="b" * 43, claim="a" * 64, session_binding="c" * 43)
+        with (
+            mock.patch.object(self.topics, "team_changed", side_effect=lambda *args: heard.append(args)),
+            mock.patch.object(self.team, "_call_stream", return_value=self.team.TeamResponse(200, {})),
+        ):
+            self.team.resume_chat_human(
+                "team_1",
+                {"challenge_id": "a" * 32, "decision": "deny"},
+                provider="openai",
+                api_key="test-api-key-for-models",
+                progress=lambda _event: None,
+            )
+        self.assertEqual(heard, [("team_1", "integrations"), ("team_1", "integrations")])
+
     def test_a_created_team_raises_the_team_list(self) -> None:
         created = self.team.TeamResponse(
             200, {"team_id": "growth", "team_name": "Growth", "status": "running", "created": True}

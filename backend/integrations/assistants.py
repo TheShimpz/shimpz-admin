@@ -4,6 +4,7 @@ import logging
 import re
 from datetime import datetime
 
+from session import topics
 from team import transport
 
 from chat import payloads, store_catalog
@@ -248,6 +249,7 @@ def disconnect_assistant_integration(
     ):
         log.warning("team returned an invalid OAuth disconnect response")
         return TeamResponse(502, {"detail": "OAuth disconnect response is invalid."})
+    topics.team_changed(canonical_id, "integrations")
     return TeamResponse(204, {})
 
 
@@ -276,4 +278,6 @@ def complete_cloudflare_oauth_callback(*, state: object, claim: object, session_
     except KeyError, TypeError, ValueError, TeamRequestError:
         log.warning("team returned an invalid OAuth callback response")
         return TeamResponse(502, {"detail": "OAuth callback response is invalid."})
+    # Whichever page or tab completed it, a connected Integration changes what its Team's pages show.
+    topics.team_changed(body["team_id"], "integrations")
     return TeamResponse(200, body)

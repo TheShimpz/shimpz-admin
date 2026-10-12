@@ -2,6 +2,7 @@
 
 import logging
 
+from session import topics
 from team import transport
 
 from chat import payloads
@@ -93,4 +94,5 @@ def clear_assistant_stored_input(
     ):
         log.warning("team returned an invalid Stored Input clear response")
         return TeamResponse(502, {"detail": "Assistant Stored Input clear response is invalid."})
+    topics.team_changed(canonical, "integrations")
     return TeamResponse(200, {"cleared": response.body["cleared"]})
