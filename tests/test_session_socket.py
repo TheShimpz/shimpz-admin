@@ -855,6 +855,59 @@ class SessionSocketChatChannelTests(SessionSocketCase):
         asyncio.run(scenario())
 
 
+class SessionSocketWaitingTests(SessionSocketCase):
+    def test_a_channel_holds_a_bounded_number_of_waiting_frames_stop_included(self) -> None:
+        release = asyncio.Event()
+
+        async def held(*_args):
+            await release.wait()
+
+        async def scenario() -> None:
+            websocket = await self._open()
+            with mock.patch.object(self.chat_socket, "_dispatch", side_effect=held):
+                # One frame dispatches and blocks; eight more wait; one more beyond the bound closes the socket.
+                for _ in range(1 + self.chat_socket.MAX_WAITING_FRAMES):
+                    await websocket.send_json({"type": "stop"})
+                await asyncio.sleep(0.1)
+                await websocket.send_json({"type": "stop"})
+                self.assertEqual(await self._closed(websocket), 1008)
+                release.set()
+            await websocket.finish()
+
+        asyncio.run(scenario())
+
+    def test_a_closing_socket_ends_its_authority_before_its_channels_finish_stopping(self) -> None:
+        started = __import__("threading").Event()
+        release = __import__("threading").Event()
+        observed = {}
+
+        def turn(*_args, **_kwargs):
+            started.set()
+            release.wait(5)
+            return chat_socket_fixtures.completed_turn("late")
+
+        def stop(_team_id):
+            # Team is slow to answer the Stop: the socket's binding and close already happened.
+            observed["live"] = self.registry.REGISTRY.handles()
+            release.set()
+            return self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
+
+        async def scenario() -> None:
+            with (
+                mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
+                mock.patch.object(self.chat_socket.local, "stop", side_effect=stop),
+            ):
+                websocket = await self._open()
+                await websocket.send_json(chat_socket_fixtures.chat_frame("work"))
+                await chat_socket_fixtures.wait_for_thread(started)
+                await asyncio.to_thread(self.admin_app.state.revoke_sessions_for_logout, self.token)
+                self.assertEqual(await self._closed(websocket), 4401)
+                await websocket.finish()
+            self.assertEqual(observed["live"], ())
+
+        asyncio.run(scenario())
+
+
 class SessionSocketAuthorityTests(SessionSocketCase):
     def test_a_chat_frame_without_current_supervisor_authority_is_refused_and_the_channel_ends_cleanly(self) -> None:
         unavailable = self.admin_app.supervisor.SupervisorAuthorityError("signing key unreadable")

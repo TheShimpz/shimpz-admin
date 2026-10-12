@@ -244,7 +244,8 @@ class SessionSocket:
         if chat != {"type": "stop"} and not budget.CALL_BUDGET.admit(self.session):
             self.send(frames.chat_event(team_id, chat_channel.error_terminal(429, "session call budget reached")))
             return
-        channel.submit(chat)
+        if not channel.submit(chat):
+            raise frames.ProtocolError("too many chat frames are waiting")
 
     async def _receive(self) -> dict[str, object] | None:
         """The next client frame, or None once the socket closed from either side."""
@@ -307,19 +308,22 @@ class SessionSocket:
             await self._shutdown(workers)
 
     async def _shutdown(self, workers: list[asyncio.Task]) -> None:
-        """Stop protected work: cancel calls, close every chat channel as a closed v7 socket did, and close."""
+        """End the socket's authority at once, tell the browser, then stop its work as a closed v7 socket did.
+
+        The registry binding and every step-up ticket of the socket end before anything waits, and the close reaches
+        the browser before a slow Stop of a chat channel can delay it.
+        """
+        registry.REGISTRY.remove(self.handle)
+        self.gate.revoke_tickets(self.step_up)
         for task in (*workers, *self.calls.values()):
             task.cancel()
+        with contextlib.suppress(RuntimeError, OSError):
+            await self.websocket.close(code=self.close_code)
         await asyncio.gather(*workers, *self.calls.values(), return_exceptions=True)
+        watcher.WATCHER.refresh()
         channels = list(self.channels.values())
         self.channels.clear()
         await asyncio.gather(*(channel.close() for channel in channels), *self.detaching, return_exceptions=True)
-        registry.REGISTRY.remove(self.handle)
-        # A step-up ticket issued over this socket dies with it.
-        self.gate.revoke_tickets(self.step_up)
-        watcher.WATCHER.refresh()
-        with contextlib.suppress(RuntimeError, OSError):
-            await self.websocket.close(code=self.close_code)
 
 
 async def serve(websocket: WebSocket, gate: Gate) -> None:

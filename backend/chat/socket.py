@@ -39,6 +39,8 @@ from protocol.http.v1 import websocket as chat_ws_common
 
 MAX_PUBLIC_ERROR_CHARS = projection.MAX_PUBLIC_ERROR_CHARS
 STOP_RESULT_WAIT_SECONDS = 15
+# The frames one Team's channel may hold while an earlier one dispatches; a page sends one at a time, and Stop.
+MAX_WAITING_FRAMES = 8
 FrameError = chat_ws_common.FrameError
 log = logging.getLogger("shimpz-admin")
 
@@ -820,10 +822,14 @@ class Channel:
         self._frames: asyncio.Queue[dict[str, object]] = asyncio.Queue()
         self._task = asyncio.create_task(self._run())
 
-    def submit(self, frame: dict[str, object]) -> None:
-        """Queue one admitted v7 frame for this Team, in arrival order."""
-        if not self.connection.closed:
-            self._frames.put_nowait(frame)
+    def submit(self, frame: dict[str, object]) -> bool:
+        """Queue one admitted v7 frame for this Team in arrival order; refuse one beyond the waiting bound."""
+        if self.connection.closed:
+            return True
+        if self._frames.qsize() >= MAX_WAITING_FRAMES:
+            return False
+        self._frames.put_nowait(frame)
+        return True
 
     async def _run(self) -> None:
         try:

@@ -683,19 +683,34 @@
     }
   }
 
-  $effect(() => {
-    const teamId = chatTeamId;
-    if (!mounted || !teamId) return;
+  // The Team's history and Routines are subscribed as the Team opens, and the history is first read once its
+  // subscription is in place, so a Routine notice written meanwhile is never missed; the Routines are read again then
+  // too, since the Team list read them before (ADR-0114).
+  let stopTeamTopics = () => {};
+
+  function watchTeam(teamId, generation) {
+    stopTeamTopics();
+    stopTeamTopics = () => {};
+    historyChanged = false;
+    if (!teamId) return;
+    let hydrated = false;
+    const stopHistory = watchTopic(`team/${teamId}/history`, () => {
+      if (generation !== historyGeneration) return;
+      if (hydrated) {
+        void refreshRoutineNotices(teamId);
+        return;
+      }
+      hydrated = true;
+      void hydrateHistory(teamId, generation);
+    });
     const stopRoutines = watchTopic(`team/${teamId}/routines`, () => {
       loadTeamRoutines(backgroundCall, teamId).catch(() => {});
     });
-    const stopHistory = watchTopic(`team/${teamId}/history`, () => void refreshRoutineNotices(teamId));
-    return () => {
-      stopRoutines();
+    stopTeamTopics = () => {
       stopHistory();
-      historyChanged = false;
+      stopRoutines();
     };
-  });
+  }
 
   // A history change held back while the conversation was in motion is read once it is idle again.
   $effect(() => {
@@ -1515,7 +1530,7 @@
     integrationsOpen = false;
     resetChallengeState({ includeInventory: true });
     clearError();
-    if (nextTeamId) void hydrateHistory(nextTeamId, generation);
+    watchTeam(nextTeamId, generation);
   }
 
   function closeIntegrations() {
@@ -2183,6 +2198,7 @@
       document.removeEventListener('focusin', trackFocus);
       mounted = false;
       historyGeneration += 1;
+      stopTeamTopics();
       closeSocket();
       clearLifecycleIconCaptures();
       // Files belong to the message being written here; leaving the chat stops their uploads.

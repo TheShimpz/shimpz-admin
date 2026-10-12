@@ -171,6 +171,8 @@ test('a watched topic is subscribed, re-read on each newer change and after a re
   ]);
   socket.answer('subscribe', { epoch: EPOCH, topics: { 'team/marketing/history': 3 } });
   await flush();
+  // The listener reads once its subscription is in place, then only on a newer change.
+  assert.deepEqual(heard.splice(0), ['subscribed']);
   socket.frame({ type: 'changed', topic: 'team/marketing/history', epoch: EPOCH, revision: 3 });
   assert.deepEqual(heard, []);
   socket.frame({ type: 'changed', topic: 'team/marketing/history', epoch: EPOCH, revision: 4 });
@@ -190,9 +192,20 @@ test('a watched topic is subscribed, re-read on each newer change and after a re
   watchTopic('session', () => {})();
   await flush();
   assert.equal(socket.sent.length, sent);
+  // One forgotten and watched again in the same turn keeps the subscription Admin holds, and reads at once.
+  const kept = [];
+  const stopKept = watchTopic('security/summary', () => {});
+  await flush();
+  socket.answer('subscribe', { epoch: EPOCH, topics: { 'security/summary': 0 } });
+  await flush();
+  stopKept();
+  watchTopic('security/summary', (_topic, cause) => kept.push(cause));
+  await flush();
+  assert.deepEqual(kept, ['subscribed']);
+  assert.equal(socket.sent.at(-1).method, 'subscribe');
 });
 
-test('a topic value reads when shown, at a change, and once more when a change lands during a read', async () => {
+test('a topic value reads once its subscription is in place, at a change, and once more after a change mid-read', async () => {
   const socket = connected();
   let reads = 0;
   let release;
@@ -202,14 +215,25 @@ test('a topic value reads when shown, at a change, and once more when a change l
   }, 'none');
   const seen = [];
   const stop = value.subscribe((current) => seen.push(current));
+  await flush();
+  // Nothing is read before the subscription answers, so no change can fall between a read and the subscription.
+  assert.equal(reads, 0);
+  socket.answer('subscribe', { epoch: EPOCH, topics: { 'space/resources': 4 } });
+  await flush();
   assert.equal(reads, 1);
-  socket.frame({ type: 'changed', topic: 'space/resources', epoch: EPOCH, revision: 1 });
+  socket.frame({ type: 'changed', topic: 'space/resources', epoch: EPOCH, revision: 5 });
   release();
   await flush();
   assert.equal(reads, 2);
   release();
   await flush();
   assert.deepEqual(seen, ['none', 1, 2]);
+  // A second reader of a subscribed topic reads at once, after what is already on its way.
+  const heard = [];
+  const stopSecond = watchTopic('space/resources', (_topic, cause) => heard.push(cause));
+  await flush();
+  assert.deepEqual(heard, ['subscribed']);
+  stopSecond();
   stop();
 });
 

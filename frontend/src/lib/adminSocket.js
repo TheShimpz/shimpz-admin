@@ -137,32 +137,46 @@ function notify(topic, cause = 'changed') {
   for (const listener of entry.listeners) listener(topic, cause);
 }
 
-// Topics watched or forgotten in one turn of the page share one subscription change.
-const queued = { subscribe: new Set(), unsubscribe: new Set(), scheduled: false };
+// Topics watched or forgotten in one turn of the page share one subscription change. A topic forgotten and watched
+// again in the same turn keeps the subscription Admin already holds (`kept` says whether it was in place).
+const queued = { subscribe: new Set(), unsubscribe: new Map(), scheduled: false };
 
-function queueSubscription(method, topic) {
-  const other = method === 'subscribe' ? 'unsubscribe' : 'subscribe';
-  if (!queued[other].delete(topic)) queued[method].add(topic);
-  if (queued.scheduled) return;
+function queueSubscription(method, topic, kept = false) {
+  if (method === 'subscribe' && queued.unsubscribe.has(topic)) {
+    const active = queued.unsubscribe.get(topic);
+    queued.unsubscribe.delete(topic);
+    if (active) return true;
+  } else if (method === 'unsubscribe' && queued.subscribe.delete(topic)) {
+    return false;
+  }
+  if (method === 'subscribe') queued.subscribe.add(topic);
+  else queued.unsubscribe.set(topic, kept);
+  if (queued.scheduled) return false;
   queued.scheduled = true;
   queueMicrotask(() => {
     queued.scheduled = false;
     for (const change of ['unsubscribe', 'subscribe']) {
-      sendSubscription(change, [...queued[change]]);
+      sendSubscription(change, [...queued[change].keys()]);
       queued[change].clear();
     }
   });
+  return false;
 }
 
-function sendSubscription(method, topics) {
+// A topic subscribed while the socket is open is read once its subscription is in place (`subscribed`), never before:
+// a change that lands between an earlier read and the subscription would otherwise never be heard of.
+function sendSubscription(method, topics, { announce = true } = {}) {
   if (!topics.length || adminSnapshot().phase !== 'open') return;
   backgroundCall(method, { topics }).then(async (response) => {
-    if (!response.ok || method !== 'subscribe') return;
-    const body = await response.json();
+    if (method !== 'subscribe') return;
+    const body = response.ok ? await response.json() : null;
     if (!epoch && EPOCH_RE.test(body?.epoch)) epoch = body.epoch;
     for (const topic of topics) {
       const entry = watched.get(topic);
-      if (entry && Number.isSafeInteger(body?.topics?.[topic])) entry.revision = Math.max(entry.revision, body.topics[topic]);
+      if (!entry) continue;
+      if (Number.isSafeInteger(body?.topics?.[topic])) entry.revision = Math.max(entry.revision, body.topics[topic]);
+      entry.active = true;
+      if (announce) notify(topic, 'subscribed');
     }
   }).catch(() => {});
 }
@@ -177,31 +191,39 @@ function adminSnapshot() {
 }
 
 /**
- * Hear every change of one topic, and once when the socket opens and whenever it reopens. The listener reads the topic
- * again, `(topic, cause)` with the cause `changed`, `open`, or `reopen`; returns the function that stops listening.
+ * Hear every change of one topic, once its subscription is in place, and once when the socket opens and whenever it
+ * reopens. The listener reads the topic again, `(topic, cause)` with the cause `changed`, `subscribed`, `open`, or
+ * `reopen`; returns the function that stops listening.
  */
 export function watchTopic(topic, listener) {
   if (!TOPIC_RE.test(topic)) throw new LocalApiError('Invalid Admin topic.');
   let entry = watched.get(topic);
   if (!entry) {
     if (watched.size >= MAX_SUBSCRIPTIONS) throw new LocalApiError('Too many Admin topics.');
-    entry = { listeners: new Set(), revision: 0 };
+    entry = { listeners: new Set(), revision: 0, active: false };
     watched.set(topic, entry);
-    queueSubscription('subscribe', topic);
+    // A subscription Admin still holds from a moment ago is in place already.
+    entry.active = queueSubscription('subscribe', topic);
+  }
+  if (entry.active && adminSnapshot().phase === 'open') {
+    // The topic is already subscribed: this listener reads at once, after any frame already on its way.
+    queueMicrotask(() => {
+      if (entry.listeners.has(listener)) listener(topic, 'subscribed');
+    });
   }
   entry.listeners.add(listener);
   return () => {
     entry.listeners.delete(listener);
     if (entry.listeners.size || watched.get(topic) !== entry) return;
     watched.delete(topic);
-    queueSubscription('unsubscribe', topic);
+    queueSubscription('unsubscribe', topic, entry.active);
   };
 }
 
 /**
- * A readable value of one topic: `read` runs when the first screen shows it, at every change, and after a reopen. A
- * change that arrives while a read runs reads again once it ends, so the value is never older than the last change.
- * The last value stays while the socket reconnects or a read fails.
+ * A readable value of one topic: `read` runs once the topic is subscribed when the first screen shows it, at every
+ * change, and after a reopen. A change that arrives while a read runs reads again once it ends, so the value is never
+ * older than the last change. The last value stays while the socket reconnects or a read fails.
  */
 export function topicValue(topic, read, initial = null) {
   const store = writable(initial, (set) => {
@@ -229,7 +251,6 @@ export function topicValue(topic, read, initial = null) {
       }
     }
     const stop = watchTopic(topic, refresh);
-    if (adminSnapshot().phase === 'open') void refresh();
     return () => {
       stopped = true;
       stop();
@@ -350,6 +371,7 @@ async function closed(socket, code) {
   opened = false;
   clearTimeout(stableTimer);
   rejectPending(unavailable());
+  for (const entry of watched.values()) entry.active = false;
   for (const channel of channels.values()) channel.dropped(code);
   // 4401 is Admin saying the session ended: every protected cache is cleared by the signed-out flow at once.
   if (code === SIGNED_OUT) {
@@ -389,7 +411,9 @@ function open() {
     }, STABLE_CONNECTION_MS);
     setPhase('open');
     const topics = [...watched.keys()];
-    if (topics.length) sendSubscription('subscribe', topics);
+    // The whole subscription goes first, so each read below follows it: a later change is always heard of.
+    if (topics.length) sendSubscription('subscribe', topics, { announce: false });
+    for (const topic of topics) watched.get(topic).active = true;
     for (const channel of channels.values()) channel.attach();
     // Every topic shown is read now: for the first time, or again since anything may have changed while it was closed.
     for (const topic of topics) notify(topic, cause);
@@ -430,6 +454,7 @@ export function disconnectAdminSocket() {
   connection = null;
   opened = false;
   rejectPending(unavailable());
+  for (const entry of watched.values()) entry.active = false;
   for (const channel of [...channels.values()]) channel.dropped(1000);
   channels.clear();
   epoch = '';
