@@ -78,4 +78,6 @@
 <style>
   p { margin: 0; color: var(--shimpz-color-text-muted); }
   .countdown { font-variant-numeric: tabular-nums; }
+  /* The countdown title stays on one line at the default dialog width in every interface language. */
+  :global(.session-expiry .shimpz-dialog-frame h2) { font-size: 1.05rem; letter-spacing: -0.02em; }
 </style>
