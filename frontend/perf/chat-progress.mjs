@@ -44,7 +44,7 @@ if (!['reduce', 'no-preference'].includes(motion)) {
 }
 
 // Closed fixtures for the current Admin client contracts, shaped like e2e/scenarios.js: the session socket's reads by
-// method, and the HTTP requests by method and path. Anything else is recorded as unexpected and fails the trial.
+// method, and the session bootstrap over HTTP. Anything else is recorded as unexpected and fails the trial.
 const reads = {
   'teams.list': () => ({ teams: [team] }),
   'history.page': () => ({ entries: [], before: null }),
@@ -61,6 +61,15 @@ const reads = {
     release: 'ghcr.io/theshimpz/shimpz-local-release@sha256:' + 'd'.repeat(64),
     ordinal: 1, checked_at: '2026-09-23T00:00:00Z', outcome: 'current',
   }),
+  'assistants.registry': () => ({ assistants: [] }),
+  'models.list': () => ({ providers: models }),
+  'decision.read': () => ({ provider: 'typesafe', configured: false, masked: null }),
+  'store.catalog': () => ({ version: 1, locale: 'en', assistants: [], next: null }),
+  'snapshots.list': () => ({ assistants: [], trace_id: 'c'.repeat(32) }),
+  'assistants.list': () => ({ assistants: [] }),
+  'integrations.list': () => ({ integrations: [] }),
+  'stored_inputs.list': () => ({ stored_inputs: [] }),
+  'inference.read': () => ({ team_id: team.team_id, provider: provider.id, model: provider.default_model }),
 };
 
 function fixture(method, path) {
@@ -71,17 +80,6 @@ function fixture(method, path) {
       origin_admitted: true, passkey_enrollment_available: false,
       passkey_registered: false, oauth_completion_mode: 'automatic',
       features: { teamCredentials: true },
-    }),
-    'GET /api/assistants': () => ({ assistants: [] }),
-    'GET /api/model-providers': () => ({ providers: models }),
-    'GET /api/decision-provider': () => ({ provider: 'typesafe', configured: false, masked: null }),
-    'GET /api/assistant-catalog': () => ({ version: 1, locale: 'en', assistants: [] }),
-    'GET /api/local-assistants': () => ({ assistants: [], trace_id: 'c'.repeat(32) }),
-    'GET /api/teams/perf_team/assistants': () => ({ assistants: [] }),
-    'GET /api/teams/perf_team/assistant-integrations': () => ({ integrations: [] }),
-    'GET /api/teams/perf_team/assistant-stored-inputs': () => ({ stored_inputs: [] }),
-    'GET /api/teams/perf_team/inference': () => ({
-      team_id: team.team_id, provider: provider.id, model: provider.default_model,
     }),
   };
   return answers[`${method} ${path}`]?.() ?? null;
