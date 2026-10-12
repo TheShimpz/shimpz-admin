@@ -213,6 +213,19 @@ test('renders a resumed partial stream without inventing an absolute round', () 
   assert.equal(second, 'action \u2068Helper\u2069/\u2068Lookup\u2069');
 });
 
+test('a narrative shows an Assistant name exactly as written, isolated, whatever characters it holds', () => {
+  const [step] = executionSteps([{
+    seq: 1, origin: 'team', phase: 'action', state: 'started', assistant_id: 'helper',
+    action: 'lookup', index: 1, total: 1,
+  }]);
+  const assistantNames = new Map([['helper', 'Cash $& {action} $1 Co']]);
+
+  assert.equal(
+    localizedStepLabel(step, TEST_NARRATIVE, { teamName: 'Research', assistantNames }),
+    'action \u2068Cash $& {action} $1 Co\u2069/\u2068Lookup\u2069',
+  );
+});
+
 test('narrates the final context check truthfully for a Brain-only turn', () => {
   const steps = executionSteps([
     { seq: 1, origin: 'team', phase: 'team-context', state: 'started' },

@@ -4423,6 +4423,25 @@ test('a Local Team is renamed in place: Enter saves by id, Escape keeps the name
   await expect(again).toHaveValue('Sales');
 });
 
+test('a Team name is shown exactly as written in every label that names it', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  await page.route('**/api/teams/marketing', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    return route.fulfill({ json: { team_id: 'marketing', team_name: route.request().postDataJSON().team_name } });
+  });
+  await page.goto('/chat/?team=marketing');
+  const navigation = page.locator('.shell-sidebar');
+  await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+  await page.getByRole('menuitem', { name: 'Rename' }).click();
+  // Replacement patterns and placeholder names are ordinary characters of a name.
+  const name = 'Cash $& {total} Co';
+  await navigation.getByRole('textbox', { name: 'Name for Marketing' }).fill(name);
+  await page.keyboard.press('Enter');
+  await expect(navigation.getByRole('link', { name, exact: true })).toBeVisible();
+  await expect(navigation.getByRole('button', { name: `Actions for ${name}`, exact: true })).toBeVisible();
+  await expect(navigation.getByRole('link', { name: `Open the Store for ${name}`, exact: true })).toBeVisible();
+});
+
 test('a chat that keeps reconnecting never takes the focus from a Team name being edited', async ({ page }) => {
   await routeScenario(page, 'ready');
   const renames = [];

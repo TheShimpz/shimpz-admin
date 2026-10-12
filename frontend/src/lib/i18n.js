@@ -83,10 +83,11 @@ function resolve(code, key) {
   return en !== undefined ? en : key;
 }
 
+// One pass over the template: a value is inserted as written, never read for placeholders or replacement patterns.
 export const t = derived(locale, ($locale) => (key, params) => {
-  let s = resolve($locale, key);
-  if (typeof s === 'string' && params) {
-    for (const [k, val] of Object.entries(params)) s = s.replaceAll(`{${k}}`, val);
-  }
-  return s;
+  const s = resolve($locale, key);
+  if (typeof s !== 'string' || !params) return s;
+  return s.replace(/\{([a-zA-Z]+)\}/g, (placeholder, name) => (
+    Object.hasOwn(params, name) ? String(params[name]) : placeholder
+  ));
 });

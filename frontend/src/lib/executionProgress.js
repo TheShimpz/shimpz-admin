@@ -123,11 +123,11 @@ function isolate(value) {
   return `\u2068${value}\u2069`;
 }
 
+// One pass over the template: each value is inserted isolated and as written, never read for placeholders.
 function fillNarrative(template, values) {
-  return Object.entries(values).reduce(
-    (copy, [key, value]) => copy.replaceAll(`{${key}}`, isolate(String(value))),
-    template,
-  );
+  return template.replace(/\{([a-zA-Z]+)\}/g, (placeholder, name) => (
+    Object.hasOwn(values, name) ? isolate(String(values[name])) : placeholder
+  ));
 }
 
 function displayAssistant(step, context) {
