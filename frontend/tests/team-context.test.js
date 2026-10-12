@@ -160,7 +160,13 @@ test('a Team that refuses to open returns the selection to the Team selected bef
     (error) => error instanceof LocalApiError && error.status === 404,
   );
   await flush();
+  // It says so, without the inventory a message names, until that inventory is read again.
   assert.equal(get(teamContext).selectedTeamId, 'marketing');
+  assert.equal(get(teamContext).phase, 'error');
+  assert.equal(get(teamContext).error, 'Team not found');
+  assert.equal(get(teamContext).inventory, 'failed');
+  assert.deepEqual(get(teamContext).installedAssistants, []);
+  await refreshTeamInventory(fixtureFetcher());
   assert.equal(get(teamContext).phase, 'ready');
   assert.deepEqual(get(teamContext).installedAssistants, [installedAssistant('salesnator')]);
   await assert.rejects(selectTeam(fixtureFetcher(), 'unknown'), /Invalid local Team request/);

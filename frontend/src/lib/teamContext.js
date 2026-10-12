@@ -126,6 +126,9 @@ const local = {
   awaitingCreated: false,
   selected: '',
   selecting: null,
+  // A Team that refused to open: the Team selected before shows again, without the inventory a message names, until
+  // its inventory is read again or another Team is selected.
+  refusal: null,
   pending: 0,
   refreshing: 0,
   overlay: null,
@@ -185,11 +188,13 @@ function compose() {
     ? 'ready'
     : !shown || shown.status === 'loading' || local.refreshing
       ? 'loading'
-      : shown.status === 'error' ? 'failed' : 'ready';
+      : shown.status === 'error' || local.refusal ? 'failed' : 'ready';
   const installedAssistants = inventoryState === 'failed' || !shown?.value ? [] : shown.value;
   const contextError = (!teamsState.value && failure(teamsState, 'The local Team context is unavailable.')) ||
     (!registryState.value && failure(registryState, 'The local Team context is unavailable.')) ||
-    (inventoryState === 'failed' ? failure(shown, 'The selected Team is unavailable.') : '');
+    (inventoryState === 'failed'
+      ? local.refusal?.message || failure(shown, 'The selected Team is unavailable.')
+      : '');
   const known = Boolean(teamsState.value && registryState.value);
   const busy = local.pending > 0 || local.refreshing > 0 || inventoryState === 'loading';
   teamContext.set({
@@ -232,6 +237,7 @@ function inventoryChanged() {
     if (inventory.state.status === 'error') {
       const refused = publicError(inventory.state.error, 'The selected Team is unavailable.');
       local.selected = selecting.previous;
+      local.refusal = selecting.previous ? refused : null;
       inventoryOf(local.selected);
       selecting.reject(refused);
     } else {
@@ -275,6 +281,7 @@ function settledContext() {
 export async function loadTeamContext(preferredId = '') {
   const preferred = preferredTeamId(preferredId);
   if (preferred) local.preferred = preferred;
+  local.refusal = null;
   if (!local.active) {
     start();
   } else {
@@ -307,6 +314,7 @@ export function selectTeam(id) {
   }
   local.selecting?.reject(new LocalApiError('Another Team was selected.'));
   const previous = local.selecting?.previous ?? local.selected;
+  local.refusal = null;
   return new Promise((resolve, reject) => {
     local.selecting = { teamId, previous, resolve, reject };
     local.selected = teamId;
@@ -333,6 +341,10 @@ export async function refreshTeamInventory() {
   }
   if (inventory !== entry) throw new LocalApiError('The local Team context changed.');
   if (entry.state.status === 'error') throw publicError(entry.state.error, 'The selected Team is unavailable.');
+  if (local.refusal) {
+    local.refusal = null;
+    compose();
+  }
   return { installedAssistants: entry.state.value ?? [] };
 }
 
@@ -347,6 +359,7 @@ export function clearTeamContext() {
     awaitingCreated: false,
     selected: '',
     selecting: null,
+    refusal: null,
     pending: 0,
     refreshing: 0,
     overlay: null,
