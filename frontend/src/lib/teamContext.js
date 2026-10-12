@@ -364,7 +364,44 @@ export async function refreshTeamInventory() {
   }
 }
 
+// Announced changes of the selected Team's inventory and of the Assistant registry share one read: requests within a
+// short window (a reopen, an install that changes both) are read once, and those made while that read runs are read
+// once more after it. Each request settles once a read that began after it has ended, whatever its outcome.
+const INVENTORY_WINDOW_MS = 100;
+const inventoryRead = { timer: undefined, running: false, again: false, waiters: [] };
+
+/** Read the selected Team's inventory again soon, together with every other request; settles once it was read. */
+export function requestInventoryRefresh() {
+  return new Promise((resolve) => {
+    inventoryRead.waiters.push(resolve);
+    if (inventoryRead.running) inventoryRead.again = true;
+    else if (inventoryRead.timer === undefined) inventoryRead.timer = setTimeout(readInventory, INVENTORY_WINDOW_MS);
+  });
+}
+
+async function readInventory() {
+  inventoryRead.timer = undefined;
+  inventoryRead.running = true;
+  const waiters = inventoryRead.waiters.splice(0);
+  try {
+    await refreshTeamInventory();
+  } catch {
+    // The next change or reopen reads again; whoever waited reads what the context now holds.
+  } finally {
+    inventoryRead.running = false;
+  }
+  for (const settle of waiters) settle();
+  if (inventoryRead.again) {
+    inventoryRead.again = false;
+    inventoryRead.timer = setTimeout(readInventory, 0);
+  }
+}
+
 export function clearTeamContext() {
+  clearTimeout(inventoryRead.timer);
+  inventoryRead.timer = undefined;
+  inventoryRead.again = false;
+  for (const settle of inventoryRead.waiters.splice(0)) settle();
   generation += 1;
   contextEpoch += 1;
   listVersion += 1;

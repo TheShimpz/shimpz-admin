@@ -233,6 +233,45 @@ test('an open Integrations drawer reads its Integrations again once Admin is bac
   await expect.poll(async () => (await readsOf(page, 'stored_inputs.list')).length).toBeGreaterThan(reads);
 });
 
+test('an open Integrations drawer shows an Assistant installed during an outage once Admin is back', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  const cloudflare = { assistant: 'shimpz-cloudflare', assistant_version: '0.4.1', status: 'running', provenance: 'published' };
+  const slack = { assistant: 'shimpz-slack', assistant_version: '1.2.3', status: 'running', provenance: 'published' };
+  let installed = false;
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing'
+    ? { status: 200, json: { assistants: installed ? [cloudflare, slack] : [cloudflare] } }
+    : undefined));
+  await routeRead(page, 'integrations.list', () => ({ status: 200, json: { integrations: installed ? [{
+    assistant_id: 'shimpz-slack',
+    assistant_name: 'Shimpz Slack',
+    assistant_version: '1.2.3',
+    id: 'slack',
+    provider: 'slack',
+    name: 'Slack workspace',
+    scopes: ['chat:write'],
+    status: 'connected',
+    integration: { id: 'account-2', name: 'Shimpz', username: null },
+    expires_at: '2026-08-31T12:00:00.000Z',
+  }] : [] } }));
+  let refusing = false;
+  await refuseWhile(page, () => refusing);
+  await page.goto('/chat/?team=marketing');
+  await expect(page.getByRole('textbox', { name: chatPage.send, exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Assistant integrations' }).click();
+  await waitForRead(page, 'integrations.list');
+
+  // Slack is installed in Marketing while Admin cannot be reached.
+  refusing = true;
+  await dropSessions(page);
+  await expect(page.getByText(shell.reconnecting)).toBeVisible();
+  installed = true;
+  refusing = false;
+
+  const drawer = page.locator('#assistant-integrations-drawer');
+  await expect(drawer.getByRole('region', { name: 'Shimpz Slack' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(messages.en.assistantIntegrations.inventoryFailed)).toHaveCount(0);
+});
+
 test('a reopened socket, and an install that changes the inventory and the registry at once, read each of them once', async ({ page }) => {
   const scenario = await routeScenario(page, 'ready');
   const subscribed = (topic) => scenario.sessions.at(-1)?.subscribed(topic) ?? false;

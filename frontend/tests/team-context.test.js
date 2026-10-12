@@ -29,6 +29,7 @@ const reloadTeamList = using(context.reloadTeamList);
 const renameTeam = using(context.renameTeam);
 const teamListChanged = using(context.teamListChanged);
 const reorderTeams = using(context.reorderTeams);
+const requestInventoryRefresh = using(context.requestInventoryRefresh);
 const selectTeam = using(context.selectTeam);
 
 const LOCAL_TEAM_RESIDUES = [
@@ -1243,3 +1244,38 @@ for (const reloadFirst of [false, true]) {
     assert.equal(get(teamContext).selectedTeamId, 'marketing');
   });
 }
+
+test('requests for the inventory share one read, and one made while it runs gets one more read after it', async () => {
+  let reads = 0;
+  let hold = null;
+  const fetcher = fixtureFetcher({
+    'assistants.list marketing': async () => {
+      reads += 1;
+      if (hold) await hold.promise;
+      return response(200, { assistants: [installedAssistant('salesnator')] });
+    },
+  });
+  await loadTeamContext(fetcher, 'marketing');
+  reads = 0;
+  // Two requests within the window: one read, after which both settle.
+  await Promise.all([requestInventoryRefresh(fetcher), requestInventoryRefresh(fetcher)]);
+  assert.equal(reads, 1);
+
+  // A request made while a read runs waits for one more read after it.
+  hold = deferred();
+  const first = requestInventoryRefresh(fetcher);
+  while (reads < 2) await new Promise((resolve) => setTimeout(resolve, 20));
+  const second = requestInventoryRefresh(fetcher);
+  const released = hold;
+  hold = null;
+  released.resolve();
+  await first;
+  await second;
+  assert.equal(reads, 3);
+
+  // Clearing the context settles a request still waiting for its read, which then never runs.
+  const waiting = requestInventoryRefresh(fetcher);
+  clearTeamContext();
+  await waiting;
+  assert.equal(reads, 3);
+});

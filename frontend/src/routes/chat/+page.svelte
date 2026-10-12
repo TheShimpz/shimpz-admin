@@ -46,7 +46,7 @@
   import { configureModelContext, loadModelContext, modelContext } from '#lib/modelContext.js';
   import { sessionContext } from '#lib/sessionContext.js';
   import ShimpzThinking from '#lib/ShimpzThinking.svelte';
-  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teamContext.js';
+  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, requestInventoryRefresh, teamContext } from '#lib/teamContext.js';
   import { ASSISTANT_LIMIT_REACHED } from '#lib/validate.js';
   import {
     authorizeAssistantIntegration,
@@ -1287,8 +1287,9 @@
       if (socket !== active || chatTeamId !== expectedTeamId) return;
       socketReady = true;
       syncing = true;
-      // An open Integrations drawer shows the Team's Integrations as they are once Admin is back.
-      if (integrationsOpen) void refreshIntegrations(expectedTeamId);
+      // An open Integrations drawer shows the Team's Integrations as they are once Admin is back, read after the Team's
+      // inventory that admits them, which may have gained an Assistant meanwhile.
+      if (integrationsOpen) void recoverIntegrations(expectedTeamId);
       resetProgress();
       if (error === copy.disconnected || error === copy.connectionFailed) clearError();
     };
@@ -1542,6 +1543,11 @@
 
   function closeIntegrationsDialog() {
     integrationsDialogOpen = false;
+  }
+
+  async function recoverIntegrations(teamId) {
+    await requestInventoryRefresh();
+    if (integrationsOpen && chatTeamId === teamId) await refreshIntegrations(teamId);
   }
 
   async function refreshIntegrations(teamId) {
