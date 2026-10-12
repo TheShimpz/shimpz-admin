@@ -583,7 +583,7 @@ async def unknown_api(path: str):
 
 if UI_DIR.is_dir():
     # SPA serve: return a real asset if the path maps to one, else fall back to index.html so a
-    # client-routed view (e.g. /teams) works on a direct load / refresh — not just via in-app nav
+    # client-routed view (e.g. /assistants) works on a direct load / refresh — not just via in-app nav
     # (StaticFiles(html=True) 404s nested routes). The explicit /api/* fallback above prevents API
     # typos or retired endpoints from being answered with the SPA shell.
     @app.get("/{path:path}")

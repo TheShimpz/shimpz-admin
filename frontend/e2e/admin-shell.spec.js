@@ -794,7 +794,7 @@ test('renders Assistant identities immediately during in-app icon hydration', as
     await route.fulfill({ contentType: 'image/png', body: localIcon });
   });
 
-  await page.goto('/teams/');
+  await page.goto('/chat/');
   await expect(page.locator('[data-slot="boot-screen"]')).toHaveCount(0);
   if (page.viewportSize().width <= 820) await page.getByRole('button', { name: 'Open the Team list' }).click();
   await page.getByRole('link', { name: /^Open the Store for / }).first().click();
