@@ -114,6 +114,58 @@ const PREVIEW_PROGRESS = Object.freeze([
   { type: 'progress', seq: index * 2 + 2, origin, phase, state: 'finished', elapsed_ms: elapsed, ...(action ?? {}) },
 ]));
 
+// Preview only: the Assistant install and uninstall cards. Asking to uninstall proposes Exa's removal, each time with a
+// fresh proposal id so a new card shows, and answering no cancels it; asking to install plans a Local Exa build and a
+// published WhatsApp and installs them one after the other, while the turn is still running, as Admin reports them.
+const UNINSTALL_RE = /desinstal|uninstall|deinstall|désinstall|アンインストール|卸载|إزالة/i;
+const INSTALL_RE = /instal|インストール|安装|تثبيت/i;
+const CANCEL_RE = /^(no|não|nao|cancel|cancelar)$/i;
+const PREVIEW_INSTALLS = Object.freeze([
+  {
+    id: 'shimpz-exa', name: 'Exa', summary: 'Searches the web and reads the pages it finds.', creator: '@shimpz',
+    version: '0.3.0', providers: [], provenance: 'local',
+  },
+  {
+    id: 'whatsapp', name: 'WhatsApp', summary: 'Sends reviewed WhatsApp messages.', creator: '@meta',
+    version: '1.2.0', providers: ['whatsapp'], provenance: 'published',
+  },
+]);
+let previewProposal = '';
+
+function previewId() {
+  return [...crypto.getRandomValues(new Uint8Array(16))].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function lifecycleFrames(frame, teamId) {
+  const message = (frame.type === 'chat' ? frame.message ?? '' : '').trim();
+  if (UNINSTALL_RE.test(message)) {
+    previewProposal = previewId();
+    return [{
+      type: 'assistant-uninstall', state: 'proposed', proposal_id: previewProposal, team_id: teamId,
+      reply: 'Exa is installed. Should I uninstall it from this Team?', expires_in: 120,
+      assistant: { id: 'shimpz-exa', name: 'Exa', version: '0.3.0', creator: '@shimpz', provenance: 'local' },
+    }];
+  }
+  if (previewProposal && CANCEL_RE.test(message)) {
+    const proposal = previewProposal;
+    previewProposal = '';
+    return [{ type: 'assistant-uninstall', state: 'cancelled', proposal_id: proposal, assistant_id: 'shimpz-exa' }];
+  }
+  if (!INSTALL_RE.test(message)) return null;
+  const planId = previewId();
+  const plan = (state, statuses, extra = {}) => ({
+    type: 'assistant-install-plan', state, plan_id: planId, team_id: teamId,
+    assistants: PREVIEW_INSTALLS.map((assistant, index) => ({ ...assistant, status: statuses[index] })),
+    ...extra,
+  });
+  return [
+    plan('planned', ['pending', 'pending']),
+    plan('installing', ['installing', 'pending']),
+    plan('installing', ['installed', 'installing']),
+    plan('installed', ['installed', 'installed'], { continuation: 'none' }),
+  ];
+}
+
 // The scripted Admin session socket (ADR-0114): it accepts the session protocol and answers every read and chat frame
 // from the scenario. A finished reply arrives after the execution stages a real turn reports, so its trace can be
 // reviewed, and Stop cancels the replies still on their way and answers like Team: the turn stopped.
@@ -125,6 +177,11 @@ function previewChat(teamId) {
       if (frame.type === 'stop') {
         pending.splice(0).forEach(clearTimeout);
         setTimeout(() => channel.send({ type: 'stopped' }), 0);
+        return;
+      }
+      const lifecycle = lifecycleFrames(frame, teamId);
+      if (lifecycle) {
+        lifecycle.forEach((item, index) => pending.push(setTimeout(() => channel.send(item), 300 + index * 1200)));
         return;
       }
       for (const reply of scenario.chat.message(frame, teamId)) {
