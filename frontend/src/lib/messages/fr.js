@@ -69,6 +69,11 @@ export default {
     platformRollback: 'Mise à jour annulée',
     reconnecting: 'Reconnexion à Admin… Ce que vous voyez peut être obsolète, et les actions attendent le retour de la connexion.',
     reconnectFailed: 'Admin est toujours injoignable. Actualisez cette page pour vous reconnecter.',
+    sessionExpiring: {
+      title: 'Votre session va bientôt se terminer',
+      body: 'Vous serez déconnecté dans environ deux minutes, faute d’activité.',
+      stay: 'Rester connecté',
+    },
     platformOrdinal: 'Version locale de la plateforme {ordinal}',
     platformDeveloper: 'Build de développement sur la version locale de la plateforme {ordinal}',
     resourceServices: 'Services',

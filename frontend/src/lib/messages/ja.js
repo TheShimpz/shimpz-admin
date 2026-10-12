@@ -69,6 +69,11 @@ export default {
     platformRollback: '更新をロールバックしました',
     reconnecting: 'Admin に再接続しています… 表示内容が古い可能性があり、操作は接続が戻るまで待機します。',
     reconnectFailed: 'Admin に再接続できませんでした。このページを再読み込みして再接続してください。',
+    sessionExpiring: {
+      title: 'まもなくセッションが終了します',
+      body: '操作がないため、約 2 分後にサインアウトされます。',
+      stay: 'サインインしたままにする',
+    },
     platformOrdinal: 'ローカルプラットフォーム版 {ordinal}',
     platformDeveloper: 'ローカルプラットフォーム版 {ordinal} の開発ビルド',
     resourceServices: 'サービス',

@@ -9,6 +9,7 @@
   import SecurityAlert from '#lib/SecurityAlert.svelte';
   import SecurityDialog from '#lib/SecurityDialog.svelte';
   import SpaceResources from '#lib/SpaceResources.svelte';
+  import SessionExpiryWarning from '#lib/SessionExpiryWarning.svelte';
   import { SESSION_ENDED, setSessionContext } from '#lib/sessionContext.js';
   import SupervisorMenu from '#lib/SupervisorMenu.svelte';
   import { teamListChanged } from '#lib/teamContext.js';
@@ -197,6 +198,7 @@
         {/if}
         <SecurityAlert /><AdminNotice />
       </div>
+      <SessionExpiryWarning />
       {#if mobile}<div class="mobile-team-region"><TeamSidebar {active} /></div>{/if}
       <div class="authenticated-page">{@render children()}</div>
     </div>

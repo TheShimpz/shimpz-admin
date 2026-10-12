@@ -69,6 +69,11 @@ export default {
     platformRollback: 'تم التراجع عن التحديث',
     reconnecting: 'جارٍ إعادة الاتصال بـ Admin… قد يكون ما تراه قديمًا، وتنتظر الإجراءات حتى يعود الاتصال.',
     reconnectFailed: 'تعذّر الوصول إلى Admin مجددًا. حدّث هذه الصفحة لإعادة الاتصال.',
+    sessionExpiring: {
+      title: 'جلستك على وشك الانتهاء',
+      body: 'سيتم تسجيل خروجك خلال دقيقتين تقريبًا لعدم وجود أي نشاط.',
+      stay: 'البقاء مسجّلًا للدخول',
+    },
     platformOrdinal: 'إصدار المنصة المحلية {ordinal}',
     platformDeveloper: 'إصدار تطويري مبني على إصدار المنصة المحلية {ordinal}',
     resourceServices: 'الخدمات',

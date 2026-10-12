@@ -69,6 +69,11 @@ export default {
     platformRollback: 'Actualización revertida',
     reconnecting: 'Reconectando con Admin… Lo que ves puede estar desactualizado, y las acciones esperan hasta que vuelva la conexión.',
     reconnectFailed: 'No se pudo volver a contactar con Admin. Actualiza esta página para reconectar.',
+    sessionExpiring: {
+      title: 'Tu sesión está a punto de terminar',
+      body: 'Se cerrará tu sesión en unos dos minutos porque no ha habido actividad.',
+      stay: 'Seguir conectado',
+    },
     platformOrdinal: 'Versión local de la plataforma {ordinal}',
     platformDeveloper: 'Compilación de desarrollo sobre la versión local de la plataforma {ordinal}',
     resourceServices: 'Servicios',

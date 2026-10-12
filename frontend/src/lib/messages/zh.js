@@ -69,6 +69,11 @@ export default {
     platformRollback: '更新已回滚',
     reconnecting: '正在重新连接 Admin… 您看到的内容可能已过时，操作将等待连接恢复。',
     reconnectFailed: '无法再次连接 Admin。请刷新此页面以重新连接。',
+    sessionExpiring: {
+      title: '会话即将结束',
+      body: '由于没有任何操作，你将在大约两分钟后退出登录。',
+      stay: '保持登录',
+    },
     platformOrdinal: '本地平台版本 {ordinal}',
     platformDeveloper: '基于本地平台版本 {ordinal} 的开发构建',
     resourceServices: '服务',

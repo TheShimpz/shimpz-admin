@@ -67,6 +67,11 @@ export default {
     platformRollback: 'Update rolled back',
     reconnecting: 'Reconnecting to Admin… What you see may be out of date, and actions wait until the connection is back.',
     reconnectFailed: 'Admin could not be reached again. Refresh this page to reconnect.',
+    sessionExpiring: {
+      title: 'Your session is about to end',
+      body: 'You will be signed out in about two minutes because there has been no activity.',
+      stay: 'Stay signed in',
+    },
     platformOrdinal: 'Local platform release {ordinal}',
     platformDeveloper: 'Developer build on Local platform release {ordinal}',
     resourceServices: 'Services',
