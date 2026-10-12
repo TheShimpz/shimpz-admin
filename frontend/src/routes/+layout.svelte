@@ -8,6 +8,7 @@
   import AuthScreen from '#lib/AuthScreen.svelte';
   import BootScreen from '#lib/BootScreen.svelte';
   import { clearAdminNotice } from '#lib/adminNotice.js';
+  import { forgetDecisionProvider } from '#lib/decisionProvider.js';
   import { locale, LOCALES, t } from '#lib/i18n.js';
   import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
   import { clearModelContext, modelContext } from '#lib/modelContext.js';
@@ -114,6 +115,7 @@
     clearTeamContext();
     clearTeamRoutines();
     clearSecuritySummary();
+    forgetDecisionProvider();
     phase = 'checking';
     error = '';
 

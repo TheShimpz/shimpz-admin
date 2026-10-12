@@ -16,13 +16,33 @@ function validState(body) {
   );
 }
 
+// The state this session last read or saved. The key is Space-wide and changes only through this module, so the
+// composer control shows it again without asking; it still reads it each time it opens. The session's end forgets it,
+// and an answer to a request made before that is never remembered.
+let remembered = null;
+let epoch = 0;
+
+/** The decision provider state this session last read or saved, or null. */
+export function knownDecisionProvider() {
+  return remembered;
+}
+
+/** Forget the remembered state when the Supervisor session ends. */
+export function forgetDecisionProvider() {
+  epoch += 1;
+  remembered = null;
+}
+
 async function request(fetcher, init, fallback) {
   if (typeof fetcher !== 'function') throw new LocalApiError('Invalid decision provider request.');
+  const started = epoch;
   const response = await fetcher(ENDPOINT, { cache: 'no-store', ...init });
   const body = await jsonObject(response);
   if (!response.ok) throw new LocalApiError(safeApiError(body, fallback), response.status);
   if (!validState(body)) throw new LocalApiError('Decision provider settings are invalid.', response.status);
-  return { configured: body.configured, masked: body.masked };
+  const state = { configured: body.configured, masked: body.masked };
+  if (started === epoch) remembered = state;
+  return state;
 }
 
 /** Read whether a TypeSafe key is configured. A response carrying any extra field fails closed. */

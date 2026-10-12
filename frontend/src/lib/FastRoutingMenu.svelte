@@ -3,7 +3,12 @@
   import { Button, StatusBadge, TextField, TextLink } from '@shimpz/frontend';
 
   import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/composerPanel.js';
-  import { loadDecisionProvider, removeDecisionKey, saveDecisionKey } from '#lib/decisionProvider.js';
+  import {
+    knownDecisionProvider,
+    loadDecisionProvider,
+    removeDecisionKey,
+    saveDecisionKey,
+  } from '#lib/decisionProvider.js';
   import { t } from '#lib/i18n.js';
 
   // The optional Jev key (ADR-0077) in its own composer control. Only Local Admin custodies it; the caller renders
@@ -29,7 +34,10 @@
   let triggerLabel = $derived(fast.phase === 'ready' ? `${copy.label}: ${status}` : copy.label);
 
   onMount(() => {
-    void loadFast();
+    // A state this session already read shows at once; opening the control reads it again.
+    const known = knownDecisionProvider();
+    if (known) fast = { ...fast, phase: 'ready', ...known };
+    else void loadFast();
   });
 
   $effect(() => {

@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { loadDecisionProvider, removeDecisionKey, saveDecisionKey } from '../src/lib/decisionProvider.js';
+import {
+  forgetDecisionProvider,
+  knownDecisionProvider,
+  loadDecisionProvider,
+  removeDecisionKey,
+  saveDecisionKey,
+} from '../src/lib/decisionProvider.js';
 
 const KEY = 'tsk-browser-contract-0123456789';
 
@@ -73,4 +79,22 @@ test('removal must answer an unconfigured state', async () => {
     removeDecisionKey(recorder(200, { provider: 'typesafe', configured: true, masked: '••••cdef' }).fetcher),
     /invalid/,
   );
+});
+
+test('the session remembers the state it last read or saved, and forgets it when the session ends', async () => {
+  forgetDecisionProvider();
+  assert.equal(knownDecisionProvider(), null);
+  await loadDecisionProvider(recorder(200, { provider: 'typesafe', configured: false, masked: null }).fetcher);
+  assert.deepEqual(knownDecisionProvider(), { configured: false, masked: null });
+  await saveDecisionKey(recorder(200, { provider: 'typesafe', configured: true, masked: '••••6789' }).fetcher, KEY);
+  assert.deepEqual(knownDecisionProvider(), { configured: true, masked: '••••6789' });
+  await assert.rejects(loadDecisionProvider(recorder(503, { detail: 'down' }).fetcher));
+  assert.deepEqual(knownDecisionProvider(), { configured: true, masked: '••••6789' });
+
+  let answer;
+  const late = loadDecisionProvider(async () => new Promise((resolve) => { answer = resolve; }));
+  forgetDecisionProvider();
+  answer(response(200, { provider: 'typesafe', configured: true, masked: '••••cdef' }));
+  assert.deepEqual(await late, { configured: true, masked: '••••cdef' });
+  assert.equal(knownDecisionProvider(), null);
 });
