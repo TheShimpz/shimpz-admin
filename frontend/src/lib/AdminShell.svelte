@@ -212,8 +212,9 @@
   .authenticated-page { min-width: 0; }
   .authenticated-content { min-height: 100%; container-type: inline-size; }
   .admin-notice-region { width: 100%; }
-  /* Reconnecting reads as a warning in the design system's yellow; a reconnect that gave up, in its danger colour. */
-  .socket-status { margin: 0; padding: var(--gap-item) var(--gap-group); color: var(--shimpz-color-yellow); background: color-mix(in srgb, var(--shimpz-color-yellow) 12%, var(--shimpz-color-bg)); font-size: 0.8rem; text-align: center; }
+  /* Reconnecting reads as a square full-width warning in the design system's yellow; a reconnect that gave up, in its
+     danger colour. */
+  .socket-status { margin: 0; padding: var(--gap-item) var(--gap-group); color: var(--shimpz-color-yellow); background: color-mix(in srgb, var(--shimpz-color-yellow) 12%, var(--shimpz-color-bg)); font-size: 0.8rem; text-align: center; border-radius: 0; }
   .socket-status.failed { color: var(--shimpz-color-danger); background: color-mix(in srgb, var(--shimpz-color-danger) 14%, var(--shimpz-color-bg)); }
   .admin-notice-region :global(.admin-toast) { margin-block-end: 0; border: 0; }
   .authenticated-page {
