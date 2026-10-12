@@ -97,3 +97,44 @@ credential-bearing diagnostics; it reports the failed run and owned cleanup stat
 
 For a static UI-only run, build `frontend/` with Node.js 26 and run `node perf/assistant-catalog.mjs` there without
 `SHIMPZ_PERF_ISOLATED_AUTH`. That mode uses a mocked session and the Vite preview server.
+
+## Admin screens measurement
+
+`screens.mjs` measures the main screens of the built UI the way `first-load.mjs` serves it: `e2e/serveBuild.mjs` on
+port 4173 with Admin's enforced policy and no compression, and the shared e2e scenarios answering every API call and
+socket. Team, Brain, and provider timing are excluded. Every sample is a fresh browser context (1440×1000, en-US), and
+each measurement prints one JSON line with p50 and nearest-rank p95 over `SHIMPZ_PERF_SAMPLES` samples (default 5).
+`SHIMPZ_PERF_PARTS` selects a comma-separated subset of its four parts:
+
+- `loads`: a cold load of sign-in, an empty chat, a chat with 64 history entries, the Assistants catalog, an
+  Assistant page, and the Routines scenario's chat. It reports the time to the screen's key element (`readyMs`),
+  FCP, LCP, long tasks (count, total, longest), blocking time over 50 ms per long task after FCP (`tbtMs`), Chromium
+  main-thread task time, and DOM elements, all read after a 1.2 s settle window. `apiCounts` is the median count of
+  each `METHOD /path` the load made, and `unanswered` lists the calls the scenario does not answer (it fails them
+  closed with 503).
+- `team-switch`: five sidebar switches between the `ready` scenario's Teams, from the click to the next Team's
+  composer, with the task time, layouts, and API calls until the switch settles. `apiCountsAway` and `apiCountsBack`
+  are the calls of the first switch away from Marketing and the switch back.
+- `typing`: 73 keys typed into the composer 30 ms apart on an empty chat and on transcripts of 64 and 256 entries.
+  It reports each key's input-to-next-animation-frame latency, pooled over the samples, and the task, script, style,
+  and layout time per key.
+- `scroll`: 60 wheel steps of 240 px down a 64- and a 256-entry transcript, from its oldest entry. Frame time is the
+  interval between animation-frame callbacks, pooled over the samples, with the count above 50 ms, the wall time, and
+  main-thread task and layout time.
+
+Chromium runs headless with software compositing in this container, so frame times are worst-case absolutes; compare
+them only with runs in the same environment. An animation-frame callback precedes paint, so its timings are lower
+bounds on when an update could become visible.
+
+## All offline benchmarks in one run
+
+With the image and dependencies from the first section (`CHAT_PERF_USER`, `CHAT_PERF_DIR`, `CHAT_PERF_IMAGE`), this
+builds `frontend/` and runs every benchmark that needs no Admin, Team, or provider: `first-load.mjs`,
+`chat-progress.mjs`, `chat-history-prepend.mjs`, `assistant-catalog.mjs` in its static UI-only mode, and
+`screens.mjs`, five samples each. Each script's JSON lines go to `<script>.jsonl` in `CHAT_PERF_OUT`, and the run
+stops at the first failing script. `local-provider-turn.mjs` and the isolated `isolated_admin.py` run are separate.
+
+```sh
+export CHAT_PERF_OUT="$(mktemp -d)"
+sg docker -c 'docker run --rm --network none --cpus 2 --memory 2g --shm-size 512m --user "$CHAT_PERF_USER" -v "$CHAT_PERF_DIR":/work -v "$CHAT_PERF_OUT":/out -w /work -e HOME=/tmp -e SHIMPZ_PERF_SAMPLES=5 -e SHIMPZ_PROGRESS_CASES=10,36,128 -e SHIMPZ_PROGRESS_GAP_MS=25 "$CHAT_PERF_IMAGE" sh -ceu "node_modules/.bin/vite build > /dev/null; for script in first-load chat-progress chat-history-prepend assistant-catalog screens; do node perf/\$script.mjs > /out/\$script.jsonl; done"'
+```
