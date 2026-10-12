@@ -11,8 +11,9 @@
 
   // Only the person's own input keeps the session alive (ADR-0114): a turn under way or a request waiting for them does
   // not. Shortly before it idles out, timed from Admin's clock, the person is asked; answering is their own input, which
-  // the shell reports, so Admin restarts the idle time and tells the page its new deadline, which withdraws the warning.
-  // A session about to reach its absolute expiry is not asked about: staying cannot extend it.
+  // the shell reports, so Admin restarts the idle time and tells the page its new deadline. Only that confirmation
+  // withdraws the warning: one Admin did not renew stays in front of the person. A session about to reach its absolute
+  // expiry is not asked about: staying cannot extend it.
   const id = $props.id();
   let dialog = $state();
   let warning = $state(false);
@@ -33,13 +34,11 @@
     else if (!warning && dialog.open) dialog.close();
   });
 
-  function stay() {
-    warning = false;
-  }
+  // Pressing the button, like Escape, is the person's input the shell reports; the renewed deadline closes the warning.
+  function stay() {}
 
   function cancel(event) {
     event.preventDefault();
-    stay();
   }
 </script>
 

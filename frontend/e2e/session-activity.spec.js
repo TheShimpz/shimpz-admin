@@ -93,6 +93,23 @@ test('a session about to idle out warns first, and staying signed in renews it',
   await expect(warning).toHaveCount(0);
 });
 
+test('the warning stays until Admin confirms the session was renewed', async ({ page }) => {
+  const scenario = await openChat(page);
+  const [session] = scenario.sessions;
+  // Admin does not renew the session this time (another tab's report just did, or its budget is spent).
+  session.onActivity = () => null;
+  session.deadlines(100, 80_000);
+  const warning = page.getByRole('alertdialog', { name: 'Your session is about to end' });
+  await expect(warning).toBeVisible();
+  await warning.getByRole('button', { name: 'Stay signed in' }).click();
+  await expect.poll(() => activityReports(page)).toBe(1);
+  await page.clock.fastForward(1_000);
+  await expect(warning).toBeVisible();
+  // Once Admin tells the page the renewed deadline, the warning withdraws.
+  session.deadlines(3600, 80_000);
+  await expect(warning).toBeHidden();
+});
+
 test('the warning answers the keyboard alone', async ({ page }) => {
   const scenario = await openChat(page);
   const [session] = scenario.sessions;
