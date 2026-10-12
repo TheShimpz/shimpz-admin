@@ -265,10 +265,13 @@ async function select(fetcher, id) {
     error: '',
   });
   try {
-    const [catalog, inventory] = await Promise.all([
-      listAssistantCatalog(fetcher),
-      inventorySnapshot(fetcher, canonicalId),
-    ]);
+    const inventory = await inventorySnapshot(fetcher, canonicalId);
+    // The catalog is the Space's, not the Team's: a switch keeps the one this session last read, and reads it again
+    // only when the selected Team has an Assistant that catalog does not name yet.
+    const known = new Set(current.catalog.map((assistant) => assistant.id));
+    const catalog = inventory.installedAssistants.every((entry) => known.has(entry.assistant))
+      ? current.catalog
+      : await listAssistantCatalog(fetcher);
     const scope = chatScope(inventory.installedAssistants);
     if (attempt === generation) {
       teamContext.set({

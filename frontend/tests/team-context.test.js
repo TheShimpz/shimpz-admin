@@ -130,6 +130,40 @@ test('a failed Team switch keeps the last verified Team selected', async () => {
   assert.deepEqual(get(teamContext).installedAssistants, []);
 });
 
+test('a Team switch keeps the Space catalog it read, and reads it again only for an Assistant it does not name', async () => {
+  await loadTeamContext(fixtureFetcher(), 'marketing');
+  const catalog = get(teamContext).catalog;
+  let catalogRequests = 0;
+  await selectTeam(fixtureFetcher({
+    '/api/assistants': async () => {
+      catalogRequests += 1;
+      return response(503, {});
+    },
+  }), 'support');
+  assert.equal(catalogRequests, 0);
+  assert.equal(get(teamContext).catalog, catalog);
+  assert.deepEqual(get(teamContext).installedAssistants, [installedAssistant('hello-pulse')]);
+
+  await selectTeam(fixtureFetcher({
+    '/api/teams/marketing/assistants': async () => response(200, {
+      assistants: [installedAssistant('salesnator'), installedAssistant('newcomer')],
+    }),
+    '/api/assistants': async () => {
+      catalogRequests += 1;
+      return response(200, {
+        assistants: [
+          { id: 'hello-pulse', title: 'Hello Pulse' },
+          { id: 'newcomer', title: 'Newcomer' },
+          { id: 'salesnator', title: 'Salesnator' },
+        ],
+      });
+    },
+  }), 'marketing');
+  assert.equal(catalogRequests, 1);
+  assert.deepEqual(get(teamContext).catalog.map((assistant) => assistant.name), ['Hello Pulse', 'Newcomer', 'Salesnator']);
+  assert.deepEqual(get(teamContext).activeAssistantIds, ['salesnator', 'newcomer']);
+});
+
 test('Team and Assistant catalogs load in parallel and each context load refreshes the catalog', async () => {
   let releaseTeams;
   let releaseCatalog;
