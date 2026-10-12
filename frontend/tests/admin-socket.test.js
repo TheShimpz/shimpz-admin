@@ -208,8 +208,10 @@ test('a watched topic is subscribed, re-read on each newer change and after a re
 test('a new Admin process starts every topic again: its revisions are never compared with the last one', async () => {
   const socket = connected();
   const heard = [];
-  watchTopic('teams', (_topic, cause) => heard.push(cause));
-  watchTopic('session', (_topic, cause) => heard.push(cause));
+  const stops = [
+    watchTopic('teams', (_topic, cause) => heard.push(cause)),
+    watchTopic('session', (_topic, cause) => heard.push(cause)),
+  ];
   await flush();
   socket.answer('subscribe', { epoch: EPOCH, topics: { teams: 10, session: 4 } });
   await flush();
@@ -233,6 +235,56 @@ test('a new Admin process starts every topic again: its revisions are never comp
   heard.length = 0;
   reopened.frame({ type: 'changed', topic: 'teams', epoch: 'c'.repeat(32), revision: 1 });
   assert.deepEqual(heard, ['changed']);
+  for (const stop of stops) stop();
+});
+
+test('a refused subscription is not in place: nothing is announced, and it is asked for again later', async () => {
+  const socket = connected();
+  const heard = [];
+  const stop = watchTopic('teams', (_topic, cause) => heard.push(cause));
+  await flush();
+  socket.answer('subscribe', { detail: 'session change budget reached' }, 429);
+  await flush();
+  assert.deepEqual(heard, []);
+  // A second reader of a topic that is not subscribed waits for it too.
+  const second = [];
+  const stopSecond = watchTopic('teams', (_topic, cause) => second.push(cause));
+  await flush();
+  assert.deepEqual(second, []);
+  const asked = socket.sent.filter((frame) => frame.method === 'subscribe').length;
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+  const again = socket.sent.filter((frame) => frame.method === 'subscribe');
+  assert.equal(again.length, asked + 1);
+  assert.deepEqual(again.at(-1).params, { topics: ['teams'] });
+  assert.equal(again.at(-1).background, true);
+  socket.answer('subscribe', { epoch: EPOCH, topics: { teams: 0 } });
+  await flush();
+  assert.deepEqual(heard, ['subscribed']);
+  assert.deepEqual(second, ['subscribed']);
+  stop();
+  stopSecond();
+});
+
+test('a subscription refused after a reopen is asked for again, and its readers read once it is in place', async () => {
+  const socket = connected();
+  const heard = [];
+  const stop = watchTopic('session', (_topic, cause) => heard.push(cause));
+  await flush();
+  socket.answer('subscribe', { epoch: EPOCH, topics: { session: 0 } });
+  await flush();
+  socket.drop(1012);
+  await flush();
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  const reopened = FakeSocket.opened.at(-1);
+  reopened.open();
+  reopened.answer('subscribe', { detail: 'session change budget reached' }, 429);
+  await flush();
+  assert.deepEqual(heard, ['subscribed', 'reopen']);
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+  reopened.answer('subscribe', { epoch: EPOCH, topics: { session: 0 } });
+  await flush();
+  assert.deepEqual(heard, ['subscribed', 'reopen', 'subscribed']);
+  stop();
 });
 
 test('a topic value reads once its subscription is in place, at a change, and once more after a change mid-read', async () => {
