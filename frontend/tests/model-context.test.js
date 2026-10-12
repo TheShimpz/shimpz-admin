@@ -25,6 +25,7 @@ const load = (stub, teamId) => via(stub, () => loadModelContext(teamId));
 const preload = (stub) => via(stub, () => preloadModelProviders());
 const select = (stub, ...args) => via(stub, () => selectTeamBrain(...args));
 const configure = (stub, ...args) => via(stub, () => configureModelContext(...args));
+const refresh = (stub, teamId) => via(stub, () => refreshInference(teamId));
 
 const providers = [
   {
@@ -605,4 +606,46 @@ test('a key save whose answer is lost while the next Team still loads reads the 
   assert.equal(get(modelContext).phase, 'ready');
   assert.equal(get(modelContext).ready, true);
   assert.equal(providerReads, 2);
+});
+
+test('of two concurrent selection reads, the newest answer wins even when the older one arrives last', async () => {
+  await load(fixtureFetcher(), 'marketing');
+  const answers = [];
+  const stub = async (method, params = {}) => {
+    if (method !== 'inference.read') throw new Error(`Unexpected request: ${operation(method, params)}`);
+    return new Promise((resolve) => answers.push(resolve));
+  };
+  const older = refresh(stub, 'marketing');
+  const newer = refresh(stub, 'marketing');
+  answers[1](response(200, { team_id: 'marketing', provider: 'openai', model: 'gpt-6-luna' }));
+  await newer;
+  answers[0](response(200, { team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol' }));
+  await older;
+  assert.equal(get(modelContext).model, 'gpt-6-luna');
+});
+
+test('a selection change announced while the Team loads is read once the load ends', async () => {
+  let model = 'gpt-6.1-sol';
+  let release;
+  const reads = [];
+  const stub = async (method, params = {}) => {
+    if (method === 'models.list') return response(200, { providers });
+    if (method === 'inference.read') {
+      reads.push(model);
+      if (reads.length === 1) await new Promise((resolve) => { release = resolve; });
+      return response(200, { team_id: 'marketing', provider: 'openai', model: reads.at(-1) });
+    }
+    throw new Error(`Unexpected request: ${operation(method, params)}`);
+  };
+  const loading = load(stub, 'marketing');
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  // Another tab changes the selection while this view's first read is on its way, and Admin announces it.
+  model = 'gpt-6-luna';
+  await refresh(stub, 'marketing');
+  release();
+  await loading;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(get(modelContext).model, 'gpt-6-luna');
+  assert.deepEqual(reads, ['gpt-6.1-sol', 'gpt-6-luna']);
 });

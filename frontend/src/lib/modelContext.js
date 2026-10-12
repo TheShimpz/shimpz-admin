@@ -32,6 +32,8 @@ let persisted = null;
 // A key save whose answer was lost may have stored the key. Keys are the Space's, not a Team view's, so whichever view
 // shows next reads the providers again, instead of the cached state the lost save may have changed.
 let providersUncertain = false;
+// Each selection read takes a number, so the newest one's answer alone is shown.
+let inferenceReads = 0;
 
 function cachedModelProviders() {
   if (providersUncertain) {
@@ -96,6 +98,7 @@ function settle(attempt, snapshot, saved) {
   }
   const settled = reconcile(snapshot);
   modelContext.set(settled);
+  replayAnnounced(settled.teamId);
   return settled;
 }
 
@@ -105,12 +108,24 @@ function fail(attempt, error, state) {
   const safe = publicError(error, 'The Team model settings are unavailable.');
   if (attempt === generation) {
     modelContext.set({ ...state, phase: 'error', ready: false, error: safe.message, errorCode: safe.code ?? '' });
+    replayAnnounced(state.teamId);
   }
   return safe;
 }
 
+// A selection change Admin announced while the view loaded or saved is read once it has settled, so it is never lost.
+let announcedWhileBusy = '';
+
+function replayAnnounced(teamId) {
+  if (!announcedWhileBusy || announcedWhileBusy !== teamId) return;
+  announcedWhileBusy = '';
+  queueMicrotask(() => refreshInference(teamId).catch(() => {}));
+}
+
 export function clearModelContext() {
   generation += 1;
+  announcedWhileBusy = '';
+  inferenceReads += 1;
   sessionEpoch += 1;
   providerCatalogCache = null;
   providerCatalogRequest = null;
@@ -242,10 +257,16 @@ export async function refreshInference(teamId) {
   const uncertain = shown.teamId === teamId && providersUncertain && shown.phase === 'ready';
   if ((shown.teamId === teamId && shown.phase === 'error') || uncertain) return loadModelContext(teamId);
   const attempt = generation;
-  if (!settledFor(shown, teamId)) return shown;
+  if (!settledFor(shown, teamId)) {
+    // A view still loading or saving reads it again once it settles.
+    if (shown.teamId === teamId && (shown.phase === 'loading' || shown.phase === 'saving')) announcedWhileBusy = teamId;
+    return shown;
+  }
+  // Of concurrent reads, only the newest may change the view: an older answer arriving last never overwrites it.
+  const read = ++inferenceReads;
   const inference = await loadInference(teamId);
   const current = get(modelContext);
-  if (attempt !== generation || !settledFor(current, teamId) || !inference) return current;
+  if (read !== inferenceReads || attempt !== generation || !settledFor(current, teamId) || !inference) return current;
   if (current.provider === inference.provider && current.model === inference.model) return current;
   const selected = providerFrom(current, inference.provider);
   if (!selected || !selectedModel(selected, inference.model)) return current;
@@ -253,6 +274,30 @@ export async function refreshInference(teamId) {
   const snapshot = { ...current, provider: selected.id, model: inference.model, ready: selected.configured, error: '' };
   modelContext.set(snapshot);
   return snapshot;
+}
+
+/**
+ * Admin says a provider key of the Space changed (this tab, another one, or a save that finished after its socket
+ * dropped): the providers are read again. A view that is loading reads them as it ends, and a saving view publishes its
+ * own answer. A Team whose selection was never stored opens through a whole load, which stores the selection a newly
+ * configured provider allows.
+ */
+export async function refreshProviders() {
+  providersUncertain = true;
+  const shown = get(modelContext);
+  if (shown.phase !== 'ready' || !shown.teamId) return shown;
+  const attempt = generation;
+  await cachedModelProviders();
+  const current = get(modelContext);
+  if (attempt !== generation || current.phase !== 'ready') return current;
+  const selected = providerCatalogCache?.find((entry) => entry.id === current.provider);
+  if (selected?.configured && !current.ready && persisted?.teamId !== current.teamId) {
+    return loadModelContext(current.teamId);
+  }
+  const settled = reconcile(current);
+  const refreshed = { ...settled, ready: Boolean(selected?.configured) && settled.ready };
+  modelContext.set(refreshed);
+  return refreshed;
 }
 
 function settledFor(state, teamId) {
