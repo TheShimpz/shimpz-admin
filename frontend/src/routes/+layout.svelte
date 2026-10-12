@@ -11,6 +11,7 @@
   import { dataUnavailable } from '#lib/synced.js';
   import BootScreen from '#lib/BootScreen.svelte';
   import { clearAdminNotice } from '#lib/adminNotice.js';
+  import { clearAssistantSources } from '#lib/assistantSources.js';
   import { forgetDecisionProvider } from '#lib/decisionProvider.js';
   import { locale, LOCALES, t } from '#lib/i18n.js';
   import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
@@ -127,6 +128,7 @@
     clearTeamRoutines();
     clearSecuritySummary();
     forgetDecisionProvider();
+    clearAssistantSources();
     phase = 'checking';
     error = '';
 

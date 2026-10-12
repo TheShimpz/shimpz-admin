@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict';
-import test from 'node:test';
+import test, { afterEach, beforeEach } from 'node:test';
 
 import { get } from 'svelte/store';
 
 import { socketReads } from '../src/lib/adminSocket.js';
 import {
+  clearAssistantSources,
   installedDetails,
   installedSummary,
   publicCatalog,
@@ -12,6 +13,7 @@ import {
   snapshotSummary,
   stagedSnapshots,
   syncedFamily,
+  warmAssistantSources,
 } from '../src/lib/assistantSources.js';
 import { response } from './socketStub.js';
 
@@ -66,6 +68,10 @@ function harness() {
 function show(store) {
   return store.subscribe(() => {});
 }
+
+// Every test is a session of its own: nothing a previous one read is kept, and nothing it starts outlives it.
+beforeEach(() => clearAssistantSources());
+afterEach(() => clearAssistantSources());
 
 test('a stale snapshot list is never taken as current because a newer summary of the same topic was read', async () => {
   const socket = harness();
@@ -129,4 +135,75 @@ test('a family keeps the value of a key asked for again and forgets one no longe
   get(family.of(['b']));
   get(family.of(['a', 'b']));
   assert.deepEqual(made, ['a', 'b', 'a']);
+});
+
+const CATALOG_PAGE = (locale) => ({ version: 1, locale, assistants: [], next: null });
+
+test('the Store\'s values belong to the session: every screen shares them and a later one shows them at once', async () => {
+  const socket = harness();
+  assert.equal(stagedSnapshots(), stagedSnapshots());
+  assert.equal(publicCatalog('pt'), publicCatalog('pt'));
+  assert.equal(snapshotSummary(IMAGE_ID, 'pt'), snapshotSummary(IMAGE_ID, 'pt'));
+  let stop = show(publicCatalog('pt'));
+  socket.answer('store.catalog', CATALOG_PAGE('pt'));
+  await flush();
+  stop();
+  stop = show(publicCatalog('pt'));
+  assert.deepEqual(get(publicCatalog('pt')), { status: 'ready', value: [], error: null, failing: null });
+  assert.equal(socket.calls.length, 1);
+  stop();
+  // The session ends: nothing it read shows again, and the next screen reads anew.
+  clearAssistantSources();
+  stop = show(publicCatalog('pt'));
+  assert.equal(get(publicCatalog('pt')).status, 'loading');
+  assert.equal(socket.calls.length, 2);
+  stop();
+});
+
+test('catalogs no screen shows are kept for two languages at most, the least recently shown going first', async () => {
+  const socket = harness();
+  for (const locale of ['pt', 'es', 'fr']) {
+    const stop = show(publicCatalog(locale));
+    socket.answer('store.catalog', CATALOG_PAGE(locale));
+    await flush();
+    stop();
+  }
+  // Portuguese was evicted; Spanish and French show at once.
+  assert.equal(get(publicCatalog('es')).status, 'ready');
+  assert.equal(get(publicCatalog('fr')).status, 'ready');
+  const stop = show(publicCatalog('pt'));
+  assert.equal(get(publicCatalog('pt')).status, 'loading');
+  stop();
+});
+
+test('the warm-up reads what the Store shows, then lets go of it, and the session keeps it', async () => {
+  const socket = harness();
+  warmAssistantSources('pt');
+  assert.deepEqual(socket.calls.map((item) => item.method), ['store.catalog']);
+  socket.announce('local-assistants', 'open', 1);
+  socket.answer('snapshots.list', { assistants: [SNAPSHOT], trace_id: 'c'.repeat(32) }, 'local-assistants', 1);
+  socket.answer('store.catalog', CATALOG_PAGE('pt'));
+  await flush();
+  // The summary the Store shows in Portuguese is read too, once its subscription is in place, before the warm-up lets go.
+  socket.announce('local-assistants', 'subscribed', 1);
+  await flush();
+  assert.deepEqual(socket.calls.at(-1).params, { image_id: IMAGE_ID, locale: 'pt' });
+  assert.equal(socket.listeners.get('local-assistants').size, 2);
+  socket.answer('snapshots.summary', { locale: 'pt', summary: 'Diz olá.' }, 'local-assistants', 1);
+  await flush();
+  await flush();
+  assert.equal(socket.listeners.get('local-assistants').size, 0);
+  assert.equal(get(snapshotSummary(IMAGE_ID, 'pt')).value, 'Diz olá.');
+});
+
+test('the session ending stops a warm-up under way', async () => {
+  const socket = harness();
+  warmAssistantSources('en');
+  assert.equal(socket.listeners.get('local-assistants').size, 1);
+  clearAssistantSources();
+  assert.equal(socket.listeners.get('local-assistants').size, 0);
+  // A second warm-up replaces the first.
+  warmAssistantSources('en');
+  warmAssistantSources('en');
+  assert.equal(socket.listeners.get('local-assistants').size, 1);
 });

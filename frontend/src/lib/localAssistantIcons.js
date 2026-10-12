@@ -258,7 +258,14 @@ async function fetchLocalDetails(call, imageId, expected, delay, signal) {
   }
 }
 
-async function fetchPublicIcon(fetcher, assistantId, delay, signal) {
+// Admin serves the icon of its current catalog entry: only bytes whose digest is the one the shown entry names are its icon.
+async function sameDigest(icon, iconDigest) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', await icon.arrayBuffer()));
+  const hex = [...digest].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  return `sha256:${hex}` === iconDigest;
+}
+
+async function fetchPublicIcon(fetcher, assistantId, iconDigest, delay, signal) {
   for (let attempt = 0; attempt <= MAX_BUSY_RETRIES; attempt += 1) {
     const response = await fetcher(`/api/assistants/${encodeURIComponent(assistantId)}/catalog-icon`, {
       cache: 'no-store',
@@ -272,7 +279,9 @@ async function fetchPublicIcon(fetcher, assistantId, delay, signal) {
       }
       throw await responseError(response, 'The Assistant icon is unavailable.');
     }
-    return acceptedPng(response);
+    const icon = await acceptedPng(response);
+    if (!await sameDigest(icon, iconDigest)) throw new LocalApiError('The Assistant icon changed.', response.status);
+    return icon;
   }
   throw new LocalApiError('The Assistant icon is unavailable.');
 }
@@ -291,19 +300,24 @@ export function loadLocalAssistantIcon(fetcher, imageId, options = {}) {
   return schedule(localQueue, () => fetchLocalIcon(fetcher, imageId, delay, signal), signal);
 }
 
-/** Fetch one public catalog icon through a queue matching Admin's bounded backend executor. */
+/**
+ * Fetch one public catalog icon through a queue matching Admin's bounded backend executor; `iconDigest` is the digest
+ * the shown catalog entry names, which the bytes must have.
+ */
 export function loadPublicAssistantIcon(fetcher, assistantId, options = {}) {
-  const { delay = sleep, signal } = options;
+  const { delay = sleep, signal, iconDigest } = options;
   if (
     typeof fetcher !== 'function' ||
     typeof assistantId !== 'string' ||
     !ASSISTANT_ID_RE.test(assistantId) ||
+    typeof iconDigest !== 'string' ||
+    !SHA256_RE.test(iconDigest) ||
     typeof delay !== 'function' ||
     (signal !== undefined && !(signal instanceof AbortSignal))
   ) {
     return Promise.reject(new LocalApiError('Invalid Assistant icon request.'));
   }
-  return schedule(publicQueue, () => fetchPublicIcon(fetcher, assistantId, delay, signal), signal);
+  return schedule(publicQueue, () => fetchPublicIcon(fetcher, assistantId, iconDigest, delay, signal), signal);
 }
 
 /**

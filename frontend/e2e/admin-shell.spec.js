@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 
 import { assistantDetails, PAGE_COPY, publicAssistant } from './assistantPages.js';
@@ -822,7 +823,7 @@ test('shows the first Assistants view before a public icon finishes loading', as
   await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
   await routeRead(page, 'store.catalog', ({ locale }) => ({ status: 200, json: { version: 1, next: null, locale: 'en', assistants: [{
         assistant_id: 'hello-pulse', assistant_version: '1.0.0', creators: ['@creator'],
-        icon_digest: `sha256:${'b'.repeat(64)}`, name: 'Hello Pulse',
+        icon_digest: `sha256:${createHash('sha256').update(icon).digest('hex')}`, name: 'Hello Pulse',
         source_digest: `sha256:${'a'.repeat(64)}`, summary: 'A measured public Assistant.',
         ...structuredClone(PAGE_COPY),
       }] } }));

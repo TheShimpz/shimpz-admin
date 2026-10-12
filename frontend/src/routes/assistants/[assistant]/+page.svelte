@@ -4,11 +4,12 @@
   // Team. An installed Assistant always shows its exact binding; otherwise the staged snapshot or the publication it
   // would install, once every source that could name it has been read.
   import { page } from '$app/state';
-  import { getContext, onMount, untrack } from 'svelte';
+  import { getContext, untrack } from 'svelte';
   import { ActionLink, AssistantIcon, Button, Disclosure, Notice, Skeleton, TextLink } from '@shimpz/frontend';
   import { showAdminNotice } from '#lib/adminNotice.js';
   import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import AssistantActionDialog from '#lib/AssistantActionDialog.svelte';
+  import { acquireIcon, localIcon, publicIcon } from '#lib/assistantIconCache.js';
   import { actionGroups, continuingText, pageTarget } from '#lib/assistantPage.js';
   import { installedDetails, publicCatalog, snapshotDetails, stagedSnapshots } from '#lib/assistantSources.js';
   import { CREATOR_LINK_ICONS, CREATOR_LINK_NAMES } from '#lib/creatorLinkIcons.js';
@@ -16,11 +17,7 @@
   import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
   import LocalAssistantInstallDialog from '#lib/LocalAssistantInstallDialog.svelte';
   import { installAssistant, installLocalAssistant, uninstallAssistant } from '#lib/localApi.js';
-  import {
-    isInadmissibleLocalPreview,
-    loadLocalAssistantIcon,
-    loadPublicAssistantIcon,
-  } from '#lib/localAssistantIcons.js';
+  import { isInadmissibleLocalPreview } from '#lib/localAssistantIcons.js';
   import { groupLocalAssistantSnapshots } from '#lib/localSnapshots.js';
   import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teamContext.js';
   import { ASSISTANT_ID_RE, ASSISTANT_LIMIT_REACHED, TEAM_ID_RE } from '#lib/validate.js';
@@ -39,7 +36,6 @@
   });
   let iconSrc = $state('');
   let iconFailed = $state(false);
-  let blobIcon = '';
 
   // Install and uninstall, each frozen to the Team and target its dialog opened for.
   let busy = $state(false);
@@ -198,11 +194,6 @@
     if (!publicKnown) void catalog.refresh();
   }
 
-  function releaseIcon() {
-    if (blobIcon) URL.revokeObjectURL(blobIcon);
-    blobIcon = '';
-  }
-
   // The full identity of what the page reads, so another Assistant, Team, binding, build, or language never reuses it.
   function targetKey(current, team, language) {
     const subject = `${team?.id ?? ''}:${assistantId}:${language}`;
@@ -223,38 +214,38 @@
     return NO_DETAILS;
   }
 
-  // The icon of exactly the shown target, read over HTTP as an image.
+  // The icon of exactly the shown target: an installed one over HTTP as an image, a staged or published one from the
+  // session's icon cache, pinned while this target shows.
   $effect(() => {
     const key = detailsKey;
     if (!key) return undefined;
     const current = untrack(() => target);
     const team = untrack(() => activeTeam);
-    const controller = new AbortController();
     iconFailed = false;
-    releaseIcon();
     iconSrc = '';
     if (current.mode === 'installed') {
       iconSrc = `/api/teams/${encodeURIComponent(team.id)}/assistants/${encodeURIComponent(assistantId)}/icon`;
-    } else if (current.mode === 'local') {
-      const imageId = current.group.primary.image_id;
-      void loadIcon(() => loadLocalAssistantIcon(fetch, imageId, { signal: controller.signal }), controller);
-    } else if (current.mode === 'public') {
-      const id = assistantId;
-      void loadIcon(() => loadPublicAssistantIcon(fetch, id, { signal: controller.signal }), controller);
+      return undefined;
     }
-    return () => controller.abort();
+    const icon = current.mode === 'local'
+      ? localIcon(current.group.primary)
+      : current.mode === 'public' ? publicIcon(current.publication) : null;
+    if (!icon) return undefined;
+    const pin = acquireIcon(icon);
+    let shown = true;
+    if (pin.cached) iconSrc = pin.cached;
+    else {
+      pin.url.then((url) => {
+        if (shown) iconSrc = url;
+      }, (error) => {
+        if (shown && error?.name !== 'AbortError') iconFailed = true;
+      });
+    }
+    return () => {
+      shown = false;
+      pin.release();
+    };
   });
-
-  async function loadIcon(load, controller) {
-    try {
-      const icon = await load();
-      if (controller.signal.aborted) return;
-      blobIcon = URL.createObjectURL(icon);
-      iconSrc = blobIcon;
-    } catch (error) {
-      if (!controller.signal.aborted && error?.name !== 'AbortError') iconFailed = true;
-    }
-  }
 
   // The first view settles once the page knows what it shows: its copy, or why it has none.
   $effect(() => {
@@ -262,7 +253,6 @@
     else if (!loading && detailsPhase !== 'loading') settleInitialView();
   });
 
-  onMount(() => () => releaseIcon());
 
   // The Team's installed Assistants read again from Team, or null when that exact Team's inventory could not be read.
   async function readInventory(team) {

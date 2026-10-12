@@ -3,8 +3,11 @@
   import { getContext, onDestroy, onMount, untrack } from 'svelte';
   import AdminNotice from '#lib/AdminNotice.svelte';
   import { adminSocket, connectAdminSocket, trackActivity, watchTopic } from '#lib/adminSocket.js';
+  import { warmAssistantSources } from '#lib/assistantSources.js';
+  import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
+  import { teamContext } from '#lib/teamContext.js';
   import { dataUnavailable } from '#lib/synced.js';
-  import { t } from '#lib/i18n.js';
+  import { locale, t } from '#lib/i18n.js';
   import LocaleMenu from '#lib/LocaleMenu.svelte';
   import PlatformReleaseStatus from '#lib/PlatformReleaseStatus.svelte';
   import SecurityAlert from '#lib/SecurityAlert.svelte';
@@ -96,6 +99,24 @@
       disconnect();
     });
   }
+
+  // Once the first view is up and the Team context is ready, the Store's data and icons are read while the browser is
+  // idle, so opening the Store shows them at once; the session's end drops what this reads (clearAssistantSources).
+  const booting = getContext(INITIAL_VIEW_READINESS)?.booting;
+  const warmUp = { started: false, idle: null, stop: null };
+  $effect(() => {
+    if (!authenticated || warmUp.started || ($booting ?? false) || $teamContext.phase !== 'ready') return;
+    warmUp.started = true;
+    const whenIdle = globalThis.requestIdleCallback ?? ((run) => globalThis.setTimeout(run, 200));
+    warmUp.idle = whenIdle(() => {
+      warmUp.idle = null;
+      warmUp.stop = warmAssistantSources(untrack(() => $locale));
+    }, { timeout: 2000 });
+  });
+  onDestroy(() => {
+    if (warmUp.idle !== null) (globalThis.cancelIdleCallback ?? globalThis.clearTimeout)(warmUp.idle);
+    warmUp.stop?.();
+  });
 </script>
 
 {#snippet securityButton()}

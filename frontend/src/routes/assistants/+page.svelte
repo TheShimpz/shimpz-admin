@@ -3,21 +3,19 @@
   import { getContext, onMount, tick, untrack } from 'svelte';
   import { Button, Notice, Skeleton, Toolbar } from '@shimpz/frontend';
   import AssistantRow from '#lib/AssistantRow.svelte';
+  import { acquireIcon, localIcon, publicIcon } from '#lib/assistantIconCache.js';
   import { publicCatalog, snapshotSummary, stagedSnapshots, syncedFamily } from '#lib/assistantSources.js';
   import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
   import { locale, t } from '#lib/i18n.js';
-  import { loadLocalAssistantIcon, loadPublicAssistantIcon } from '#lib/localAssistantIcons.js';
   import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '#lib/localSnapshots.js';
   import { teamContext } from '#lib/teamContext.js';
   import { TEAM_ID_RE } from '#lib/validate.js';
 
   const ICON_PRESENTATION_BUDGET_MS = 1500;
-  // How long an icon request may stay open after its presentation budget: a slow host still delivers it, a request that
-  // never answers does not hold its connection forever.
-  const ICON_REQUEST_LIMIT_MS = 30_000;
 
-  // The staged snapshots and the public catalog in the interface language, each a synced value (ADR-0114): read while
-  // the page shows them, again whenever one is staged or removed, and again after a failure that clears by itself.
+  // The staged snapshots and the public catalog in the interface language, each a synced value the session keeps
+  // (ADR-0114): shown at once when read before, read again whenever they may be stale, one is staged or removed, or a
+  // failure clears by itself.
   const snapshots = stagedSnapshots();
   let catalog = $derived(publicCatalog($locale));
   // A staged snapshot's summary per interface language, read by Team from the snapshot's own pack (ADR-0091).
@@ -81,8 +79,8 @@
   );
   // Every icon the shown rows need, keyed by exactly what it shows.
   let iconEntries = $derived(catalogPresentationPending ? [] : [
-    ...localSnapshotGroups.map((group) => ({ key: localIconKey(group.primary), local: group.primary.image_id })),
-    ...visiblePublicAssistants.map((assistant) => ({ key: publicIconKey(assistant), public: assistant.assistant_id })),
+    ...localSnapshotGroups.map((group) => localIcon(group.primary)),
+    ...visiblePublicAssistants.map((assistant) => publicIcon(assistant)),
   ]);
 
   // Each row opens its Assistant's page for the Team this catalog acts for.
@@ -101,58 +99,18 @@
     return $summaryStates[summaryKey($locale, snapshot)]?.value ?? '';
   }
 
-  function localIconKey(snapshot) {
-    return `local:${snapshot.image_id}`;
-  }
-
-  function publicIconKey(assistant) {
-    return `public:${assistant.assistant_id}:${assistant.icon_digest}`;
-  }
-
   function boundedFailure(error, fallback) {
     return error instanceof Error && error.name !== 'AbortError' ? error.message : fallback;
-  }
-
-  function decodeImage(image, signal) {
-    return new Promise((resolve, reject) => {
-      if (signal.aborted) {
-        reject(new DOMException('The Assistant icon request was aborted.', 'AbortError'));
-        return;
-      }
-      const abort = () => {
-        reject(new DOMException('The Assistant icon request was aborted.', 'AbortError'));
-      };
-      signal.addEventListener('abort', abort, { once: true });
-      image.decode().then(resolve, reject).finally(() => {
-        signal.removeEventListener('abort', abort);
-      });
-    });
-  }
-
-  async function decodedIconUrl(icon, signal) {
-    const url = URL.createObjectURL(icon);
-    const image = new Image();
-    image.decoding = 'async';
-    image.src = url;
-    try {
-      await decodeImage(image, signal);
-      if (signal.aborted) throw new DOMException('The Assistant icon request was aborted.', 'AbortError');
-      return url;
-    } catch (error) {
-      image.src = '';
-      URL.revokeObjectURL(url);
-      throw error;
-    }
   }
 
   function nextPaint() {
     return new Promise((resolve) => requestAnimationFrame(() => resolve()));
   }
 
-  // Icons are images, read over HTTP once per key the rows show. A key no longer shown releases its image and drops an
-  // icon still on its way; past the presentation budget an icon still on its way shows as unavailable, never as a
-  // substitute mark, and one that arrives late replaces that mark.
-  const iconRequests = new Map();
+  // Each icon the rows show is pinned in the session's icon cache, which shows one it holds at once and loads and decodes
+  // any other; a row no longer shown unpins its icon and stops waiting for it. Past the presentation budget an icon still
+  // on its way shows as unavailable, never as a substitute mark, and one that arrives late replaces that mark.
+  const iconPins = new Map();
   const iconBudgets = new Set();
   $effect(() => {
     const entries = iconEntries;
@@ -161,50 +119,40 @@
 
   function presentIcons(entries) {
     const wanted = new Set(entries.map((entry) => entry.key));
-    for (const [key, controller] of iconRequests) {
+    for (const [key, pin] of iconPins) {
       if (wanted.has(key)) continue;
-      controller.abort();
-      iconRequests.delete(key);
-    }
-    for (const [key, url] of Object.entries(catalogIconUrls)) {
-      if (wanted.has(key)) continue;
-      URL.revokeObjectURL(url);
+      pin.release();
+      iconPins.delete(key);
       delete catalogIconUrls[key];
       delete catalogIconFailures[key];
     }
-    const missing = entries.filter((entry) => !catalogIconUrls[entry.key] && !iconRequests.has(entry.key));
+    const missing = entries.filter((entry) => !iconPins.has(entry.key));
     if (!missing.length) return;
-    for (const entry of missing) void loadIcon(entry);
+    for (const entry of missing) showIcon(entry);
+    if (missing.every((entry) => catalogIconUrls[entry.key])) return;
     const budget = globalThis.setTimeout(() => {
       iconBudgets.delete(budget);
       for (const entry of missing) {
-        if (!catalogIconUrls[entry.key] && iconRequests.has(entry.key)) catalogIconFailures[entry.key] = true;
+        if (!catalogIconUrls[entry.key] && iconPins.has(entry.key)) catalogIconFailures[entry.key] = true;
       }
     }, ICON_PRESENTATION_BUDGET_MS);
     iconBudgets.add(budget);
   }
 
-  async function loadIcon(entry) {
-    const controller = new AbortController();
-    iconRequests.set(entry.key, controller);
-    const limit = globalThis.setTimeout(() => controller.abort(), ICON_REQUEST_LIMIT_MS);
-    try {
-      const icon = entry.local
-        ? await loadLocalAssistantIcon(fetch, entry.local, { signal: controller.signal })
-        : await loadPublicAssistantIcon(fetch, entry.public, { signal: controller.signal });
-      const url = await decodedIconUrl(icon, controller.signal);
-      if (iconRequests.get(entry.key) !== controller) {
-        URL.revokeObjectURL(url);
-        return;
-      }
-      catalogIconUrls[entry.key] = url;
-      delete catalogIconFailures[entry.key];
-    } catch {
-      if (iconRequests.get(entry.key) === controller) catalogIconFailures[entry.key] = true;
-    } finally {
-      globalThis.clearTimeout(limit);
-      if (iconRequests.get(entry.key) === controller) iconRequests.delete(entry.key);
+  function showIcon(icon) {
+    const pin = acquireIcon(icon);
+    iconPins.set(icon.key, pin);
+    if (pin.cached) {
+      catalogIconUrls[icon.key] = pin.cached;
+      return;
     }
+    pin.url.then((url) => {
+      if (iconPins.get(icon.key) !== pin) return;
+      catalogIconUrls[icon.key] = url;
+      delete catalogIconFailures[icon.key];
+    }, () => {
+      if (iconPins.get(icon.key) === pin) catalogIconFailures[icon.key] = true;
+    });
   }
 
   // The first view settles once the catalog is presented and painted.
@@ -215,11 +163,11 @@
     void tick().then(nextPaint).then(() => initialViewReadiness?.settleAssistants?.());
   });
 
+  // Leaving unpins every icon: the session's cache keeps them for the next visit.
   onMount(() => () => {
     for (const budget of iconBudgets) globalThis.clearTimeout(budget);
-    for (const controller of iconRequests.values()) controller.abort();
-    iconRequests.clear();
-    for (const url of Object.values(catalogIconUrls)) URL.revokeObjectURL(url);
+    for (const pin of iconPins.values()) pin.release();
+    iconPins.clear();
   });
 </script>
 
@@ -266,8 +214,8 @@
           href={assistantHref(group.assistant_id)}
           name={group.primary.name}
           summary={localSnapshotSummary(group.primary)}
-          iconSrc={catalogIconUrls[localIconKey(group.primary)]}
-          iconStatus={catalogIconFailures[localIconKey(group.primary)] ? 'failed' : 'loading'}
+          iconSrc={catalogIconUrls[localIcon(group.primary).key]}
+          iconStatus={catalogIconFailures[localIcon(group.primary).key] ? 'failed' : 'loading'}
           badge={localCopy.localBadge}
           badgeTone="local"
           installed={installedIds.has(group.assistant_id)}
@@ -281,8 +229,8 @@
           href={assistantHref(assistant.assistant_id)}
           name={assistant.name}
           summary={shownCatalog?.locale === $locale ? assistant.summary : ''}
-          iconSrc={catalogIconUrls[publicIconKey(assistant)]}
-          iconStatus={catalogIconFailures[publicIconKey(assistant)] ? 'failed' : 'loading'}
+          iconSrc={catalogIconUrls[publicIcon(assistant).key]}
+          iconStatus={catalogIconFailures[publicIcon(assistant).key] ? 'failed' : 'loading'}
           badge={localCopy.publicBadge}
           installed={installedIds.has(assistant.assistant_id)}
           installedLabel={pageCopy.installedState}

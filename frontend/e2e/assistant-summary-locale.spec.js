@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 import { LOCALES } from '../src/lib/locales.js';
 import { messages } from '../src/lib/messages.js';
@@ -48,7 +49,7 @@ async function routeAssistants(page, { catalogLocale = (locale) => locale, catal
     await catalogGate(locale);
     return ok({ version: 1, locale: catalogLocale(locale), next: null, assistants: [{
       assistant_id: 'dns-publisher', assistant_version: '1.0.0', creators: ['@creator'],
-      icon_digest: `sha256:${'d'.repeat(64)}`, name: 'DNS Publisher',
+      icon_digest: `sha256:${createHash('sha256').update(ICON).digest('hex')}`, name: 'DNS Publisher',
       source_digest: `sha256:${'c'.repeat(64)}`, summary: PUBLISHED[locale] ?? PUBLISHED.en,
       ...localizedCopy(locale),
     }] });

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 
 import {
@@ -8,6 +9,7 @@ import {
   loadLocalAssistantSummary,
   loadPublicAssistantIcon,
 } from '../src/lib/localAssistantIcons.js';
+import { LocalApiError } from '../src/lib/validate.js';
 import { via } from './socketStub.js';
 
 // Summaries are read over the session socket; a stub answers each call as the call result Admin sends.
@@ -15,6 +17,8 @@ const localSummary = (stub, ...args) => via(stub, () => loadLocalAssistantSummar
 const assistantSummary = (stub, ...args) => via(stub, () => loadAssistantSummary(...args));
 
 const IMAGE_ID = `sha256:${'a'.repeat(64)}`;
+// The digest of the bytes pngResponse() serves, as the catalog entry of a public icon names it.
+const PNG_DIGEST = `sha256:${createHash('sha256').update(new Uint8Array([137, 80, 78, 71])).digest('hex')}`;
 
 function pngResponse() {
   return new Response(new Blob([new Uint8Array([137, 80, 78, 71])], { type: 'image/png' }), {
@@ -100,14 +104,29 @@ test('bounds public icon requests and retries transient executor pressure', asyn
   await Promise.all([
     loadPublicAssistantIcon(fetcher, 'first-assistant', {
       delay: async (delay) => delays.push(delay),
+      iconDigest: PNG_DIGEST,
     }),
-    loadPublicAssistantIcon(fetcher, 'second-assistant'),
-    loadPublicAssistantIcon(fetcher, 'third-assistant'),
+    loadPublicAssistantIcon(fetcher, 'second-assistant', { iconDigest: PNG_DIGEST }),
+    loadPublicAssistantIcon(fetcher, 'third-assistant', { iconDigest: PNG_DIGEST }),
   ]);
 
   assert.equal(maximum, 2);
   assert.equal(calls, 4);
   assert.deepEqual(delays, [50]);
+});
+
+test('admits a public icon only with the digest its catalog entry names', async () => {
+  // Admin serves its current catalog entry's icon: bytes of another publication's icon are not this one.
+  await assert.rejects(
+    loadPublicAssistantIcon(async () => pngResponse(), 'first-assistant', { iconDigest: `sha256:${'b'.repeat(64)}` }),
+    (error) => error instanceof LocalApiError && /changed/.test(error.message),
+  );
+  for (const iconDigest of [undefined, 'b'.repeat(64)]) {
+    await assert.rejects(
+      loadPublicAssistantIcon(async () => pngResponse(), 'first-assistant', { iconDigest }),
+      /Invalid Assistant icon request/,
+    );
+  }
 });
 
 test('aborts active and queued icon work without starving the queue', async () => {
