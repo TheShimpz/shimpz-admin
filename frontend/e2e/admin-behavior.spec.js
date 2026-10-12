@@ -4327,6 +4327,39 @@ test('a Local Team is renamed in place: Enter saves by id, Escape keeps the name
   await expect(again).toHaveValue('Sales');
 });
 
+test('a chat that keeps reconnecting never takes the focus from a Team name being edited', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  const renames = [];
+  await page.route('**/api/teams/neo', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    renames.push(route.request().postDataJSON());
+    return route.fulfill({ json: { team_id: 'neo', team_name: route.request().postDataJSON().team_name } });
+  });
+  // Neo's chat socket is accepted and then closed, so its composer turns busy and idle again while the name is typed.
+  let connections = 0;
+  await page.routeWebSocket('**/api/teams/neo/chat/ws', (socket) => {
+    connections += 1;
+    setTimeout(() => socket.close({ code: 1011, reason: 'Synthetic interrupted connection' }), 50);
+  });
+  await page.goto('/chat/?team=neo');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeVisible();
+  const navigation = page.locator('.shell-sidebar');
+  await navigation.getByRole('button', { name: 'Actions for Neo' }).click();
+  await page.getByRole('menuitem', { name: 'Rename' }).click();
+  const field = navigation.getByRole('textbox', { name: 'Name for Neo' });
+  await expect(field).toBeFocused();
+  await field.fill('Ne');
+  const typed = connections;
+  await expect.poll(() => connections).toBeGreaterThan(typed + 1);
+  await page.keyboard.type('w name');
+
+  await expect(field).toBeFocused();
+  await expect(field).toHaveValue('New name');
+  expect(renames).toEqual([]);
+  await page.keyboard.press('Enter');
+  await expect.poll(() => renames).toEqual([{ team_name: 'New name' }]);
+});
+
 test.describe('Team order', () => {
   const READY_ORDER = ['Marketing', 'Trinity', 'Cypher', 'Morpheus', 'Neo', 'Smith'];
   const ID = (name) => name.toLowerCase();

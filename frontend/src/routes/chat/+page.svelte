@@ -163,6 +163,9 @@
   let storedInputWorking = $state('');
   let oauthFailedOnReturn = false;
   let composerInput = $state();
+  let chatRoute = $state();
+  // Whether the focus was last inside this chat (or the chat was just opened); only then may it return to the composer.
+  let chatOwnsFocus = true;
   let stopButton = $state();
   let turnsViewport = $state();
   let scrollRequest = 0;
@@ -963,19 +966,27 @@
     errorDetail = detail;
   }
 
+  // The composer takes the focus back only when the chat owned it and the control holding it went away (a Stop that
+  // became Send, a composer that turned read-only while reconnecting): focus in another region, or on a control the
+  // Supervisor chose, stays where it is.
   async function focusComposer() {
     await tick();
+    const focused = document.activeElement;
     if (
       !mounted ||
       !chatTeamId ||
       keyRequired ||
       composerBusy ||
       integrationsOpen ||
-      document.querySelector('dialog[open], :popover-open') ||
-      // Escape from a composer control returns focus to its trigger; a finished save must not take it away.
-      document.activeElement?.closest('.brain-menu, .fast-menu')
+      !chatOwnsFocus ||
+      (focused && focused !== document.body) ||
+      document.querySelector('dialog[open], :popover-open')
     ) return;
     composerInput?.focus({ preventScroll: true });
+  }
+
+  function trackFocus(event) {
+    chatOwnsFocus = Boolean(chatRoute?.contains(event.target));
   }
 
   async function saveProviderKey(event) {
@@ -1486,6 +1497,7 @@
   }
 
   function activateTeam(nextTeamId) {
+    chatOwnsFocus = true;
     forgetSegments();
     if (attachmentTeamId !== nextTeamId) clearAttachments();
     closeSocket();
@@ -2158,6 +2170,7 @@
 
   onMount(() => {
     mounted = true;
+    document.addEventListener('focusin', trackFocus);
     oauthFailedOnReturn = oauthReturnFailure(location.href);
     const initialTeamId = chatTeamId;
     if (initialTeamId !== socketTeamId) activateTeam(initialTeamId);
@@ -2169,6 +2182,7 @@
       setError(integrationsCopy.authorizationFailed);
     }
     return () => {
+      document.removeEventListener('focusin', trackFocus);
       mounted = false;
       historyGeneration += 1;
       closeSocket();
@@ -2179,7 +2193,7 @@
 
 <svelte:head><title>{teamName} — Shimpz Admin</title></svelte:head>
 
-<div class="chat-route">
+<div class="chat-route" bind:this={chatRoute}>
   <h1 class="sr-only">{copy.title}</h1>
   {#if activeTeam}
     {#if chatTeamId}
