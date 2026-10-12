@@ -109,7 +109,9 @@ each measurement prints one JSON line with p50 and nearest-rank p95 over `SHIMPZ
 - `loads`: a cold load of sign-in, an empty chat, a chat with 64 history entries, the Assistants catalog, an
   Assistant page, and the Routines scenario's chat. It reports the time to the screen's key element (`readyMs`),
   FCP, LCP, long tasks (count, total, longest), blocking time over 50 ms per long task after FCP (`tbtMs`), Chromium
-  main-thread task time, and DOM elements, all read after a 1.2 s settle window. `apiCounts` is the median count of
+  main-thread task time, DOM elements, and the script files and their bytes the load fetched (`scriptFiles`,
+  `scriptBytes`; served uncompressed, so transferred and parsed bytes are equal), all read after a 1.2 s settle
+  window. `apiCounts` is the median count of
   each `METHOD /path` the load made, and `unanswered` lists the calls the scenario does not answer (it fails them
   closed with 503).
 - `team-switch`: five sidebar switches between the `ready` scenario's Teams, from the click to the next Team's

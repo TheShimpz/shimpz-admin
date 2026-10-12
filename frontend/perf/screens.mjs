@@ -215,6 +215,9 @@ async function loadSample(browser, screen) {
     await settle(page, 1200);
     const observed = await page.evaluate(() => ({
       ...window.__screenPerf, domElements: document.getElementsByTagName('*').length,
+      // The scripts the load fetched, as served: their bytes are what was transferred and what the browser parsed.
+      scripts: performance.getEntriesByType('resource')
+        .filter((entry) => new URL(entry.name).pathname.endsWith('.js')).map((entry) => entry.decodedBodySize),
     }));
     const tasks = observed.longTasks;
     return {
@@ -227,6 +230,8 @@ async function loadSample(browser, screen) {
         .reduce((sum, task) => sum + Math.max(0, task.duration - 50), 0),
       taskMs: (await chromiumMetrics(cdp)).TaskDuration * 1000,
       domElements: observed.domElements,
+      scriptFiles: observed.scripts.length,
+      scriptBytes: observed.scripts.reduce((sum, bytes) => sum + bytes, 0),
       ...apiSummary(log),
     };
   });
@@ -356,7 +361,7 @@ try {
       const rows = await repeat(() => loadSample(browser, definition));
       print({ part: 'load', screen, ...summarize(rows, [
         'readyMs', 'fcpMs', 'lcpMs', 'longTasks', 'longTaskMs', 'maxLongTaskMs', 'tbtMs', 'taskMs', 'domElements',
-        'apiCalls',
+        'scriptFiles', 'scriptBytes', 'apiCalls',
       ]), apiCounts: medianCounts(rows), unanswered: [...new Set(rows.flatMap((row) => row.unanswered))].sort() });
     }
   }
