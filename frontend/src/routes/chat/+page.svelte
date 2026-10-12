@@ -46,7 +46,7 @@
   import { configureModelContext, loadModelContext, modelContext } from '#lib/modelContext.js';
   import { sessionContext } from '#lib/sessionContext.js';
   import ShimpzThinking from '#lib/ShimpzThinking.svelte';
-  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, requestInventoryRefresh, teamContext } from '#lib/teamContext.js';
+  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teamContext.js';
   import { ASSISTANT_LIMIT_REACHED } from '#lib/validate.js';
   import {
     authorizeAssistantIntegration,
@@ -1546,7 +1546,7 @@
   }
 
   async function recoverIntegrations(teamId) {
-    await requestInventoryRefresh();
+    await refreshTeamInventory().catch(() => {});
     if (integrationsOpen && chatTeamId === teamId) await refreshIntegrations(teamId);
   }
 

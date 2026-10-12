@@ -5,7 +5,14 @@ import { get } from 'svelte/store';
 
 import { assistantNames } from '../src/lib/assistantNames.js';
 import { clearTeamContext, loadTeamContext, refreshTeamInventory } from '../src/lib/teamContext.js';
+import { socketReads } from '../src/lib/adminSocket.js';
 import { response, via } from './socketStub.js';
+
+// Every topic the Team context watches is subscribed at once.
+socketReads.watch = (topic, listener) => {
+  queueMicrotask(() => listener(topic, 'open', { epoch: 'a'.repeat(32), revision: 0 }));
+  return () => {};
+};
 
 // The Team context reads the Team list, the registry, and the selected Team's inventory over the session socket.
 function spaceWith(catalog) {

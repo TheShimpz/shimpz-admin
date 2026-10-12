@@ -13,7 +13,7 @@
   import { SESSION_ENDED, setSessionContext } from '#lib/sessionContext.js';
   import SupervisorMenu from '#lib/SupervisorMenu.svelte';
   import { refreshInference, refreshProviders } from '#lib/modelContext.js';
-  import { requestInventoryRefresh, teamContext, teamListChanged } from '#lib/teamContext.js';
+  import { teamContext } from '#lib/teamContext.js';
   import TeamDialogs from '#lib/TeamDialogs.svelte';
   import TeamNavigation from '#lib/TeamNavigation.svelte';
   import TeamSidebar from '#lib/TeamSidebar.svelte';
@@ -75,19 +75,6 @@
     }
   }
 
-  // Teams made or removed elsewhere (another tab, the CLI) change the list; a reopened socket reads it again too. The
-  // Team context reads it itself as the shell first opens, and reads a change announced while it loads once it is done.
-  function refreshTeams(_topic, cause) {
-    if (cause !== 'open') teamListChanged();
-  }
-
-  // The selected Team's Assistants and the Assistant registry change through Admin (a chat install, another tab) and
-  // after a reconnect anything may have: the Team context reads its inventory again then, once for both topics. It
-  // reads them itself as it loads, so a subscription or the first open reads nothing more.
-  function refreshInventory(_topic, cause) {
-    if (cause === 'changed' || cause === 'reopen') void requestInventoryRefresh();
-  }
-
   // The selected Team's model selection changed elsewhere: the shown one follows it.
   function inferenceChanged(teamId) {
     return (_topic, cause) => {
@@ -107,7 +94,6 @@
     const teamId = watchedTeam;
     if (!teamId) return undefined;
     const stops = [
-      watchTopic(`team/${teamId}/inventory`, refreshInventory),
       watchTopic(`team/${teamId}/inference`, inferenceChanged(teamId)),
     ];
     return () => {
@@ -120,9 +106,7 @@
     const disconnect = connectAdminSocket({ onSignedOut: () => sessionEnded?.() });
     // The person's own input, and nothing the page does on its own, keeps the session alive.
     const stops = [
-      watchTopic('teams', refreshTeams),
       watchTopic('session', refreshSession),
-      watchTopic('assistants/registry', refreshInventory),
       watchTopic('space/models', providersChanged),
       trackActivity(),
     ];

@@ -2,6 +2,7 @@ import { get, writable } from 'svelte/store';
 
 import { socketReads } from './adminSocket.js';
 import { listAssistantCatalog, listInstalledAssistants, LocalApiError, safeApiError } from './localApi.js';
+import { synced } from './synced.js';
 import {
   ASSISTANT_ID_RE,
   canonicalTeamName,
@@ -36,29 +37,12 @@ function emptyContext() {
   };
 }
 
+/**
+ * The Team context every screen shows (ADR-0114): the Team list, the Assistant registry, and the selected Team's
+ * inventory are synced values, each read over the session socket and again whenever Admin says it changed; this store
+ * is derived from them and the local selection. A change made here never writes them: the next read does.
+ */
 export const teamContext = writable(emptyContext());
-
-let generation = 0;
-// The Team list operation in flight (a load, a selection, a creation, or a deletion). It publishes a fresh inventory
-// of the Team it selects, so an inventory refresh started meanwhile waits for it instead of discarding its list.
-let listOperation = null;
-
-function listing(operation) {
-  const tracked = operation.finally(() => {
-    if (listOperation === tracked) listOperation = null;
-  });
-  listOperation = tracked;
-  return tracked;
-}
-function chatScope(installedAssistants) {
-  // Every running Assistant joins the chat in inventory order; a Team never has more than one turn may name.
-  return {
-    activeAssistantIds: installedAssistants
-      .filter((entry) => entry.status === 'running')
-      .map((entry) => entry.assistant),
-  };
-}
-
 function hasExactEnvelopeKeys(value, expected) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const keys = Object.keys(value);
@@ -91,8 +75,8 @@ function preferredTeamId(value) {
 }
 
 // The Team context is read and changed over the Admin session socket (ADR-0114).
-async function listTeams() {
-  const response = await socketReads.call('teams.list', {});
+async function listTeams(call) {
+  const response = await call('teams.list', {});
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'The local Team inventory is unavailable.'), response.status);
@@ -127,379 +111,44 @@ function parseTeamList(body, status) {
   });
 }
 
-function selectAvailableTeam(teams, preferredId, previousId) {
-  if (preferredId && teams.some((team) => team.id === preferredId)) return preferredId;
-  if (previousId && teams.some((team) => team.id === previousId)) return previousId;
-  return teams[0]?.id ?? '';
+function selectAvailableTeam(teams, ...preferred) {
+  return preferred.find((id) => id && teams.some((team) => team.id === id)) ?? teams[0]?.id ?? '';
 }
 
-async function inventorySnapshot(teamId) {
-  if (!teamId) return { installedAssistants: [] };
-  return { installedAssistants: await listInstalledAssistants(teamId) };
-}
+// What Admin holds, as last read, and what this page holds: whether a context was asked for, the Team asked for (by
+// the address or a creation) until the list shows it, the selected Team, a selection under way, the changes in flight,
+// and the order a reorder shows until its save is read back.
+const teamsValue = synced('teams', listTeams);
+const registryValue = synced('assistants/registry', (call) => listAssistantCatalog(call));
+const local = {
+  active: false,
+  preferred: '',
+  awaitingCreated: false,
+  selected: '',
+  selecting: null,
+  pending: 0,
+  refreshing: 0,
+  overlay: null,
+  stops: [],
+};
+let teamsState = { status: 'loading', value: null, error: null };
+let registryState = { status: 'loading', value: null, error: null };
+// The selected Team's inventory: its synced value, the Team it belongs to, and its last state.
+let inventory = null;
 
-function markFailure(attempt, error, fallback, clearAuthority) {
-  const safe = publicError(error, fallback);
-  if (attempt === generation) {
-    teamContext.update((state) => ({
-      ...(clearAuthority ? emptyContext() : state),
-      phase: 'error',
-      installedAssistants: [],
-      activeAssistantIds: [],
-      inventory: 'failed',
-      error: safe.message,
-    }));
-  }
-  return safe;
-}
-
-// A rename confirmed after a Team list read started wins over that read's older name. A rename answered after the
-// context was cleared belongs to an earlier session and never publishes.
-let renameClock = 0;
-let contextEpoch = 0;
-const renamedAt = new Map();
-// Every Team list read from Admin advances this, so a failed reorder never rolls back over a newer list.
-let listVersion = 0;
-// Every admitted reorder and every order published from a save advances this, so a list re-read that began before
-// either never publishes an older order or membership over it.
-let orderRevision = 0;
-// Team list reads are numbered as they begin; `listBarrier` is the newest read published, or the read a context load or
-// clear began after. A re-read publishes only when it began after that, so of concurrent reads the newest one wins.
-let listReads = 0;
-let listBarrier = 0;
-// A Team list change Admin announced while the context loads is read once the load ends, so it is never dropped.
-let listChangedWhileLoading = null;
-
-function withRenames(teams, since) {
-  return teams.map((team) => {
-    const renamed = renamedAt.get(team.id);
-    return renamed && renamed.clock > since ? { ...team, name: renamed.name } : team;
+function inventoryOf(teamId) {
+  if (inventory?.teamId === teamId) return inventory;
+  inventory?.stop();
+  inventory = null;
+  if (!teamId) return null;
+  const value = synced(`team/${teamId}/inventory`, (call) => listInstalledAssistants(teamId, call));
+  const entry = { teamId, value, state: { status: 'loading', value: null, error: null }, stop: () => {} };
+  inventory = entry;
+  entry.stop = value.subscribe((state) => {
+    entry.state = state;
+    if (inventory === entry) inventoryChanged();
   });
-}
-
-async function hydrate(preferredId, attempt, previousId = '') {
-  const since = renameClock;
-  const read = ++listReads;
-  const [listed, catalog] = await Promise.all([
-    listTeams(),
-    listAssistantCatalog(),
-  ]);
-  const teams = withRenames(listed, since);
-  const selectedTeamId = selectAvailableTeam(teams, preferredId, previousId);
-  if (!selectedTeamId) {
-    const snapshot = {
-      teams,
-      selectedTeamId: '',
-      catalog,
-      installedAssistants: [],
-      activeAssistantIds: [],
-    };
-    if (attempt === generation) {
-      listVersion += 1;
-      listBarrier = Math.max(listBarrier, read);
-      teamContext.set({
-        phase: 'ready',
-        ...snapshot,
-        inventory: 'ready',
-        error: '',
-      });
-    }
-    return snapshot;
-  }
-
-  const inventory = await inventorySnapshot(selectedTeamId);
-  const scope = chatScope(inventory.installedAssistants);
-  // Re-apply renames at publication: one may have been confirmed while the inventory was loading.
-  const published = withRenames(listed, since);
-  if (attempt === generation) {
-    listVersion += 1;
-    listBarrier = Math.max(listBarrier, read);
-    teamContext.set({
-      phase: 'ready',
-      teams: published,
-      selectedTeamId,
-      catalog,
-      ...inventory,
-      ...scope,
-      inventory: 'ready',
-      error: '',
-    });
-  }
-  return { teams: published, selectedTeamId, catalog, ...inventory, ...scope };
-}
-
-export function loadTeamContext(preferredId = '') {
-  return listing(loadContext(preferredId));
-}
-
-async function loadContext(preferredId) {
-  const canonicalPreferredId = preferredTeamId(preferredId);
-  const previousId = get(teamContext).selectedTeamId;
-  const attempt = ++generation;
-  listVersion += 1;
-  listBarrier = ++listReads;
-  teamContext.set({ ...emptyContext(), phase: 'loading', inventory: 'loading' });
-  try {
-    return await hydrate(canonicalPreferredId, attempt, previousId);
-  } catch (error) {
-    throw markFailure(attempt, error, 'The local Team context is unavailable.', true);
-  }
-}
-
-export function selectTeam(id) {
-  return listing(select(id));
-}
-
-async function select(id) {
-  const canonicalId = preferredTeamId(id);
-  const current = get(teamContext);
-  if (!canonicalId || !current.teams.some((team) => team.id === canonicalId)) {
-    throw new LocalApiError('Invalid local Team request.');
-  }
-  const attempt = ++generation;
-  teamContext.set({
-    ...current,
-    phase: 'loading',
-    selectedTeamId: canonicalId,
-    installedAssistants: [],
-    activeAssistantIds: [],
-    inventory: 'loading',
-    error: '',
-  });
-  try {
-    const inventory = await inventorySnapshot(canonicalId);
-    // The catalog is the Space's, not the Team's: a switch keeps the one this session last read, and reads it again
-    // only when the selected Team has an Assistant that catalog does not name yet.
-    const known = new Set(current.catalog.map((assistant) => assistant.id));
-    const catalog = inventory.installedAssistants.every((entry) => known.has(entry.assistant))
-      ? current.catalog
-      : await listAssistantCatalog();
-    const scope = chatScope(inventory.installedAssistants);
-    if (attempt === generation) {
-      teamContext.set({
-        ...current,
-        // A rename that finished during this selection already updated the list; keep it.
-        teams: get(teamContext).teams,
-        phase: 'ready',
-        selectedTeamId: canonicalId,
-        catalog,
-        ...inventory,
-        ...scope,
-        inventory: 'ready',
-        error: '',
-      });
-    }
-    return inventory;
-  } catch (error) {
-    const safe = publicError(error, 'The selected Team is unavailable.');
-    if (attempt === generation) {
-      teamContext.set({
-        ...current,
-        teams: get(teamContext).teams,
-        phase: 'error',
-        installedAssistants: [],
-        activeAssistantIds: [],
-        inventory: 'failed',
-        error: safe.message,
-      });
-    }
-    throw safe;
-  }
-}
-
-/**
- * Re-read the selected Team's inventory. The last one stays on display meanwhile, with the context `loading`: what
- * depends on the inventory (a message's Assistants, admitting an Assistant's request) waits for the fresh one.
- */
-export async function refreshTeamInventory() {
-  const epoch = contextEpoch;
-  if (listOperation) await listOperation.catch(() => {});
-  // A session that ended meanwhile cleared the context; the next one loads its own, so nothing is published into it.
-  if (epoch !== contextEpoch) throw new LocalApiError('The local Team context changed.');
-  const current = get(teamContext);
-  if (!current.selectedTeamId) {
-    teamContext.set({
-      ...current,
-      phase: 'ready',
-      installedAssistants: [],
-      activeAssistantIds: [],
-      inventory: 'ready',
-      error: '',
-    });
-    return { installedAssistants: [] };
-  }
-  if (!current.teams.some((team) => team.id === current.selectedTeamId)) {
-    throw new LocalApiError('Invalid local Team request.');
-  }
-
-  const attempt = ++generation;
-  teamContext.set({
-    ...current,
-    phase: 'loading',
-    inventory: 'loading',
-    error: '',
-  });
-  try {
-    const [catalog, inventory] = await Promise.all([
-      listAssistantCatalog(),
-      inventorySnapshot(current.selectedTeamId),
-    ]);
-    const scope = chatScope(inventory.installedAssistants);
-    if (attempt === generation) {
-      teamContext.set({
-        ...current,
-        // A rename that finished during this refresh already updated the list; keep it.
-        teams: get(teamContext).teams,
-        phase: 'ready',
-        catalog,
-        ...inventory,
-        ...scope,
-        inventory: 'ready',
-        error: '',
-      });
-    }
-    return inventory;
-  } catch (error) {
-    throw markFailure(attempt, error, 'The selected Team is unavailable.', false);
-  }
-}
-
-// Announced changes of the selected Team's inventory and of the Assistant registry share one read: requests within a
-// short window (a reopen, an install that changes both) are read once, and those made while that read runs are read
-// once more after it. Each request settles once a read that began after it has ended, whatever its outcome.
-const INVENTORY_WINDOW_MS = 100;
-const inventoryRead = { timer: undefined, running: false, again: false, waiters: [] };
-
-/** Read the selected Team's inventory again soon, together with every other request; settles once it was read. */
-export function requestInventoryRefresh() {
-  return new Promise((resolve) => {
-    inventoryRead.waiters.push(resolve);
-    if (inventoryRead.running) inventoryRead.again = true;
-    else if (inventoryRead.timer === undefined) inventoryRead.timer = setTimeout(readInventory, INVENTORY_WINDOW_MS);
-  });
-}
-
-async function readInventory() {
-  inventoryRead.timer = undefined;
-  inventoryRead.running = true;
-  const waiters = inventoryRead.waiters.splice(0);
-  try {
-    await refreshTeamInventory();
-  } catch {
-    // The next change or reopen reads again; whoever waited reads what the context now holds.
-  } finally {
-    inventoryRead.running = false;
-  }
-  for (const settle of waiters) settle();
-  if (inventoryRead.again) {
-    inventoryRead.again = false;
-    inventoryRead.timer = setTimeout(readInventory, 0);
-  }
-}
-
-export function clearTeamContext() {
-  clearTimeout(inventoryRead.timer);
-  inventoryRead.timer = undefined;
-  inventoryRead.again = false;
-  for (const settle of inventoryRead.waiters.splice(0)) settle();
-  generation += 1;
-  contextEpoch += 1;
-  listVersion += 1;
-  listBarrier = ++listReads;
-  listChangedWhileLoading = null;
-  renamedAt.clear();
-  reorder.desired = null;
-  reorder.baseline = null;
-  teamContext.set(emptyContext());
-}
-
-export function createTeam(name) {
-  return listing(create(name));
-}
-
-async function create(name) {
-  // Team admits names in NFC; normalize before sending and before comparing its answer (ADR-0088).
-  const canonicalName = typeof name === 'string' ? name.trim().normalize('NFC') : name;
-  canonicalTeamName(canonicalName, 'Enter a valid Team name.');
-
-  const attempt = ++generation;
-  const current = get(teamContext);
-  // The selected Team and its inventory stay as they are until the new Team's context is published.
-  teamContext.set({
-    ...current,
-    phase: 'loading',
-    error: '',
-  });
-  let created;
-  try {
-    const response = await socketReads.call('teams.create', { body: { team_name: canonicalName } });
-    const body = await jsonObject(response);
-    if (!response.ok) {
-      throw new LocalApiError(safeApiError(body, 'The Team could not be created.'), response.status);
-    }
-    if (
-      !hasExactEnvelopeKeys(body, ['created', 'status', 'team_id', 'team_name']) ||
-      typeof body.created !== 'boolean' ||
-      typeof body.team_id !== 'string' ||
-      !TEAM_ID_RE.test(body.team_id) ||
-      body.team_name !== canonicalName ||
-      body.status !== 'running'
-    ) {
-      throw new LocalApiError('The Team creation returned an invalid response.', response.status);
-    }
-    canonicalTeamName(body.team_name, 'The Team creation returned an invalid response.');
-    created = { created: body.created, id: body.team_id, name: body.team_name, status: body.status };
-  } catch (error) {
-    // Nothing was created: the selected Team keeps its inventory.
-    const safe = publicError(error, 'The Team could not be created.');
-    if (attempt === generation) teamContext.update((state) => ({ ...state, phase: 'error', error: safe.message }));
-    throw safe;
-  }
-
-  try {
-    await hydrate(created.id, attempt, created.id);
-  } catch (error) {
-    markFailure(attempt, error, 'The Team was created, but its local context could not be refreshed.', false);
-  }
-  return created;
-}
-
-/**
- * Rename a Team (ADR-0088): only its display name changes; its id and every Team-scoped state stay as they are. The
- * confirmed name is applied by id to whatever context is current, so a newer context keeps it and a cleared one ignores
- * it; inventory refreshes keep the latest Team list rather than the one they started from.
- */
-export async function renameTeam(id, name) {
-  const canonicalId = preferredTeamId(id);
-  const canonicalName = typeof name === 'string' ? name.trim().normalize('NFC') : name;
-  canonicalTeamName(canonicalName, 'Enter a valid Team name.');
-  const current = get(teamContext);
-  const target = current.teams.find((team) => team.id === canonicalId);
-  // A Team the list shows can be renamed while an inventory or selection read runs; a whole-context load shows none.
-  if (!target) throw new LocalApiError('Invalid local Team request.');
-  if (target.name === canonicalName) return target;
-  const epoch = contextEpoch;
-  const response = await socketReads.call('teams.rename', { team_id: canonicalId, body: { team_name: canonicalName } });
-  const body = await jsonObject(response);
-  if (!response.ok) {
-    throw new LocalApiError(safeApiError(body, 'The Team could not be renamed.'), response.status);
-  }
-  if (
-    !hasExactEnvelopeKeys(body, ['team_id', 'team_name']) ||
-    body.team_id !== canonicalId ||
-    body.team_name !== canonicalName
-  ) {
-    throw new LocalApiError('The Team rename returned an invalid response.', response.status);
-  }
-  const renamed = { ...target, name: body.team_name };
-  if (epoch !== contextEpoch) return renamed;
-  renameClock += 1;
-  renamedAt.set(canonicalId, { clock: renameClock, name: body.team_name });
-  teamContext.update((state) => ({
-    ...state,
-    teams: state.teams.map((team) => (team.id === canonicalId ? { ...team, name: body.team_name } : team)),
-  }));
-  return renamed;
+  return entry;
 }
 
 function sameMembers(ids, teams) {
@@ -513,8 +162,278 @@ function arranged(teams, ids) {
   return ids.map((id) => byId.get(id));
 }
 
-function applyOrder(ids) {
-  teamContext.update((state) => (sameMembers(ids, state.teams) ? { ...state, teams: arranged(state.teams, ids) } : state));
+function chatScope(installedAssistants) {
+  // Every running Assistant joins the chat in inventory order; a Team never has more than one turn may name.
+  return installedAssistants.filter((entry) => entry.status === 'running').map((entry) => entry.assistant);
+}
+
+function failure(state, fallback) {
+  return state.status === 'error' ? publicError(state.error, fallback).message : '';
+}
+
+// The context as screens see it, derived from the synced values and this page's own state.
+function compose() {
+  if (!local.active) {
+    teamContext.set(emptyContext());
+    return;
+  }
+  const listed = teamsState.value ?? [];
+  const overlaid = local.overlay && sameMembers(local.overlay, listed) ? arranged(listed, local.overlay) : listed;
+  const selectedTeamId = local.selected;
+  const shown = inventory?.teamId === selectedTeamId ? inventory.state : null;
+  const inventoryState = !selectedTeamId
+    ? 'ready'
+    : !shown || shown.status === 'loading' || local.refreshing
+      ? 'loading'
+      : shown.status === 'error' ? 'failed' : 'ready';
+  const installedAssistants = inventoryState === 'failed' || !shown?.value ? [] : shown.value;
+  const contextError = (!teamsState.value && failure(teamsState, 'The local Team context is unavailable.')) ||
+    (!registryState.value && failure(registryState, 'The local Team context is unavailable.')) ||
+    (inventoryState === 'failed' ? failure(shown, 'The selected Team is unavailable.') : '');
+  const known = Boolean(teamsState.value && registryState.value);
+  const busy = local.pending > 0 || local.refreshing > 0 || inventoryState === 'loading';
+  teamContext.set({
+    phase: contextError ? 'error' : !known || busy ? 'loading' : 'ready',
+    teams: overlaid,
+    selectedTeamId,
+    catalog: registryState.value ?? [],
+    installedAssistants,
+    activeAssistantIds: chatScope(installedAssistants),
+    inventory: inventoryState,
+    error: contextError,
+  });
+}
+
+// The Team list was read: the Team asked for is selected when it shows, and a selected Team that is gone gives way to
+// the first.
+function teamsChanged(state) {
+  teamsState = state;
+  if (state.value) {
+    const teams = state.value;
+    if (!teams.some((team) => team.id === local.selected) || teams.some((team) => team.id === local.preferred)) {
+      local.selected = selectAvailableTeam(teams, local.preferred, local.selected);
+    }
+    // A Team the address asked for is decided by the first list read; a created one waits until a read shows it.
+    if (!local.awaitingCreated || teams.some((team) => team.id === local.preferred)) {
+      local.preferred = '';
+      local.awaitingCreated = false;
+    }
+    inventoryOf(local.selected);
+  }
+  compose();
+}
+
+// The selected Team's inventory was read: a selection under way settles, and one that failed returns to the Team it
+// was made from.
+function inventoryChanged() {
+  const selecting = local.selecting;
+  if (selecting && inventory?.teamId === selecting.teamId && inventory.state.status !== 'loading') {
+    local.selecting = null;
+    if (inventory.state.status === 'error') {
+      const refused = publicError(inventory.state.error, 'The selected Team is unavailable.');
+      local.selected = selecting.previous;
+      inventoryOf(local.selected);
+      selecting.reject(refused);
+    } else {
+      selecting.resolve({ installedAssistants: inventory.state.value });
+    }
+  }
+  compose();
+}
+
+function start() {
+  local.active = true;
+  local.stops = [
+    teamsValue.subscribe(teamsChanged),
+    registryValue.subscribe((state) => {
+      registryState = state;
+      compose();
+    }),
+  ];
+}
+
+// The context once it settled: ready, or why it failed. A context cleared meanwhile settles as failed.
+function settledContext() {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    let stop = () => {};
+    stop = teamContext.subscribe((state) => {
+      if (done || state.phase === 'loading') return;
+      done = true;
+      queueMicrotask(() => stop());
+      if (state.phase === 'ready') resolve(state);
+      else reject(new LocalApiError(state.error || 'The local Team context changed.'));
+    });
+    if (done) stop();
+  });
+}
+
+/**
+ * Show the Team context, selecting `preferredId` once the list shows it. Asked for again (a retry), every value is
+ * read again. Settles once the context is ready, or with why it failed.
+ */
+export async function loadTeamContext(preferredId = '') {
+  const preferred = preferredTeamId(preferredId);
+  if (preferred) local.preferred = preferred;
+  if (!local.active) {
+    start();
+  } else {
+    if (preferred && get(teamContext).teams.some((team) => team.id === preferred)) {
+      local.selected = preferred;
+      local.preferred = '';
+      inventoryOf(preferred);
+    }
+    local.refreshing += 1;
+    compose();
+    try {
+      await Promise.all([teamsValue.refresh(), registryValue.refresh(), inventory?.value.refresh()]);
+    } finally {
+      local.refreshing -= 1;
+      compose();
+    }
+  }
+  return settledContext();
+}
+
+/** Select one listed Team; settles with its inventory, or returns to the Team selected before when it fails. */
+export function selectTeam(id) {
+  const teamId = preferredTeamId(id);
+  const current = get(teamContext);
+  if (!teamId || !current.teams.some((team) => team.id === teamId)) {
+    return Promise.reject(new LocalApiError('Invalid local Team request.'));
+  }
+  if (teamId === local.selected && inventory?.state.status === 'ready') {
+    return Promise.resolve({ installedAssistants: inventory.state.value });
+  }
+  local.selecting?.reject(new LocalApiError('Another Team was selected.'));
+  const previous = local.selecting?.previous ?? local.selected;
+  return new Promise((resolve, reject) => {
+    local.selecting = { teamId, previous, resolve, reject };
+    local.selected = teamId;
+    inventoryOf(teamId);
+    inventoryChanged();
+  });
+}
+
+/**
+ * Read the selected Team's inventory and the Assistant registry again now: what depends on the inventory (a message's
+ * Assistants, admitting an Assistant's request) waits, with the context `loading`, for the fresh one.
+ */
+export async function refreshTeamInventory() {
+  if (!local.active) throw new LocalApiError('The local Team context changed.');
+  const entry = inventory?.teamId === local.selected ? inventory : null;
+  if (!entry) return { installedAssistants: [] };
+  local.refreshing += 1;
+  compose();
+  try {
+    await Promise.all([entry.value.refresh(), registryValue.refresh()]);
+  } finally {
+    local.refreshing -= 1;
+    compose();
+  }
+  if (inventory !== entry) throw new LocalApiError('The local Team context changed.');
+  if (entry.state.status === 'error') throw publicError(entry.state.error, 'The selected Team is unavailable.');
+  return { installedAssistants: entry.state.value ?? [] };
+}
+
+export function clearTeamContext() {
+  for (const stop of local.stops) stop();
+  inventory?.stop();
+  inventory = null;
+  local.selecting?.reject(new LocalApiError('The local Team context changed.'));
+  Object.assign(local, {
+    active: false,
+    preferred: '',
+    awaitingCreated: false,
+    selected: '',
+    selecting: null,
+    pending: 0,
+    refreshing: 0,
+    overlay: null,
+    stops: [],
+  });
+  reorder.desired = null;
+  teamsValue.reset();
+  registryValue.reset();
+  teamsState = { status: 'loading', value: null, error: null };
+  registryState = { status: 'loading', value: null, error: null };
+  compose();
+}
+
+// A change in flight shows the context as loading; what it changed shows once the Team list is read after it.
+async function changing(operation) {
+  local.pending += 1;
+  compose();
+  try {
+    return await operation();
+  } finally {
+    local.pending -= 1;
+    compose();
+  }
+}
+
+/** Create a Team; once the Team list read after it shows the Team, it is selected. */
+export async function createTeam(name) {
+  // Team admits names in NFC; normalize before sending and before comparing its answer (ADR-0088).
+  const canonicalName = typeof name === 'string' ? name.trim().normalize('NFC') : name;
+  canonicalTeamName(canonicalName, 'Enter a valid Team name.');
+  return changing(async () => {
+    let created;
+    try {
+      const response = await socketReads.call('teams.create', { body: { team_name: canonicalName } });
+      const body = await jsonObject(response);
+      if (!response.ok) {
+        throw new LocalApiError(safeApiError(body, 'The Team could not be created.'), response.status);
+      }
+      if (
+        !hasExactEnvelopeKeys(body, ['created', 'status', 'team_id', 'team_name']) ||
+        typeof body.created !== 'boolean' ||
+        typeof body.team_id !== 'string' ||
+        !TEAM_ID_RE.test(body.team_id) ||
+        body.team_name !== canonicalName ||
+        body.status !== 'running'
+      ) {
+        throw new LocalApiError('The Team creation returned an invalid response.', response.status);
+      }
+      canonicalTeamName(body.team_name, 'The Team creation returned an invalid response.');
+      created = { created: body.created, id: body.team_id, name: body.team_name, status: body.status };
+    } catch (error) {
+      // Nothing was created, or what happened is unknown: the Team list read next says which.
+      throw publicError(error, 'The Team could not be created.');
+    }
+    local.preferred = created.id;
+    local.awaitingCreated = true;
+    await teamsValue.refresh();
+    return created;
+  });
+}
+
+/**
+ * Rename a Team (ADR-0088): only its display name changes; its id and every Team-scoped state stay as they are. The
+ * name shown is the one the Team list read after the rename holds.
+ */
+export async function renameTeam(id, name) {
+  const canonicalId = preferredTeamId(id);
+  const canonicalName = typeof name === 'string' ? name.trim().normalize('NFC') : name;
+  canonicalTeamName(canonicalName, 'Enter a valid Team name.');
+  const target = get(teamContext).teams.find((team) => team.id === canonicalId);
+  // A Team the list shows can be renamed while an inventory or selection read runs; a whole-context load shows none.
+  if (!target) throw new LocalApiError('Invalid local Team request.');
+  if (target.name === canonicalName) return target;
+  const response = await socketReads.call('teams.rename', { team_id: canonicalId, body: { team_name: canonicalName } });
+  const body = await jsonObject(response);
+  if (!response.ok) {
+    throw new LocalApiError(safeApiError(body, 'The Team could not be renamed.'), response.status);
+  }
+  if (
+    !hasExactEnvelopeKeys(body, ['team_id', 'team_name']) ||
+    body.team_id !== canonicalId ||
+    body.team_name !== canonicalName
+  ) {
+    throw new LocalApiError('The Team rename returned an invalid response.', response.status);
+  }
+  await teamsValue.refresh();
+  return get(teamContext).teams.find((team) => team.id === canonicalId) ?? { ...target, name: body.team_name };
 }
 
 async function putTeamOrder(ids) {
@@ -523,96 +442,33 @@ async function putTeamOrder(ids) {
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'The Team order could not be saved.'), response.status);
   }
-  const teams = parseTeamList(body, response.status);
-  if (!sameMembers(ids, teams)) throw new LocalApiError('The Team order returned an invalid response.', response.status);
-  return teams.map((team) => team.id);
-}
-
-/**
- * Re-read only the Team list after Admin changed it or refused an order for stale membership: the selection, catalog,
- * and inventory stay as they are unless the selected Team itself is gone, which reloads the whole context.
- */
-export async function reloadTeamList() {
-  const since = renameClock;
-  const epoch = contextEpoch;
-  const read = ++listReads;
-  const revision = orderRevision;
-  const listed = await listTeams();
-  const current = get(teamContext);
-  if (
-    epoch !== contextEpoch ||
-    read < listBarrier ||
-    revision !== orderRevision ||
-    (current.phase === 'loading' && !current.teams.length)
-  ) return;
-  // The selected Team is gone, or none was selected and a Team now exists (one made elsewhere, or one whose creation
-  // answer was lost): the whole context loads again and opens an available Team.
-  const selectedGone = current.selectedTeamId && !listed.some((team) => team.id === current.selectedTeamId);
-  if (selectedGone || (!current.selectedTeamId && listed.length)) {
-    await loadTeamContext('');
-    return;
+  if (!sameMembers(ids, parseTeamList(body, response.status))) {
+    throw new LocalApiError('The Team order returned an invalid response.', response.status);
   }
-  listVersion += 1;
-  listBarrier = read;
-  teamContext.set({ ...current, teams: withRenames(listed, since) });
 }
 
-function settled(phase) {
-  return phase === 'ready' || phase === 'error';
-}
-
-/** Admin announced that the Team list changed: read it again now, or once the context has finished loading. */
-export function teamListChanged() {
-  if (!settled(get(teamContext).phase)) {
-    listChangedWhileLoading = true;
-    return;
-  }
-  reloadTeamList().catch(() => {});
-}
-
-teamContext.subscribe((state) => {
-  if (!listChangedWhileLoading || !settled(state.phase)) return;
-  listChangedWhileLoading = null;
-  reloadTeamList().catch(() => {});
-});
-
-// Reordering is optimistic and serialized: the list moves at once, one save runs at a time, and moves made during a
-// save are coalesced into the next one. `baseline` is the last order Admin confirmed, the one a failure restores.
-const reorder = { desired: null, baseline: null, running: null };
+// Reordering shows the moved order at once and saves it behind: one save runs at a time, and moves made during a save
+// are coalesced into the next one. The moved order shows until the Team list read after the last save holds it; a
+// refused save shows the list as Admin holds it.
+const reorder = { desired: null, running: null };
 
 async function drainTeamOrder() {
-  while (reorder.desired) {
-    const ids = reorder.desired;
-    reorder.desired = null;
-    const epoch = contextEpoch;
-    const version = listVersion;
-    try {
-      const saved = await putTeamOrder(ids);
-      // A save answered after the context cleared never publishes; an order queued since then still gets saved.
-      if (epoch !== contextEpoch) continue;
-      reorder.baseline = saved;
-      // Admin's answer is the committed order; a move made meanwhile is applied by the next save instead.
-      if (!reorder.desired) {
-        orderRevision += 1;
-        applyOrder(saved);
-      }
-    } catch (error) {
-      if (epoch !== contextEpoch) continue;
+  try {
+    while (reorder.desired) {
+      const ids = reorder.desired;
       reorder.desired = null;
-      // Only the order rolls back, and never over a Team list read after this save began.
-      if (version === listVersion && reorder.baseline) {
-        orderRevision += 1;
-        applyOrder(reorder.baseline);
-      }
-      reorder.baseline = null;
-      const safe = publicError(error, 'The Team order could not be saved.');
-      // Teams were added or removed since this list was read: read it again. Not awaited, so no move made meanwhile
-      // can be queued behind a save that has already given up.
-      if (safe.status === 409) reloadTeamList().catch(() => {});
-      throw safe;
+      await putTeamOrder(ids);
+      await teamsValue.refresh();
     }
+  } catch (error) {
+    reorder.desired = null;
+    // Teams were added or removed since this list was read, or the answer was lost: the list read next shows Admin's.
+    void teamsValue.refresh();
+    throw publicError(error, 'The Team order could not be saved.');
+  } finally {
+    local.overlay = null;
+    compose();
   }
-  reorder.baseline = null;
 }
 
 /** Show the Teams in `ids` order now and save it; the promise settles when every queued order has been saved. */
@@ -626,11 +482,9 @@ export function reorderTeams(ids) {
   ) {
     return Promise.reject(new LocalApiError('Invalid local Team request.'));
   }
-  // The order a failure restores: the list as shown before the first queued move, also after a cleared context.
-  if (!reorder.running || !reorder.baseline) reorder.baseline = current.teams.map((team) => team.id);
   reorder.desired = [...ids];
-  orderRevision += 1;
-  teamContext.set({ ...current, teams: arranged(current.teams, ids) });
+  local.overlay = [...ids];
+  compose();
   if (!reorder.running) {
     reorder.running = drainTeamOrder().finally(() => {
       reorder.running = null;
@@ -639,11 +493,8 @@ export function reorderTeams(ids) {
   return reorder.running;
 }
 
-export function deleteTeam(id, name, password) {
-  return listing(remove(id, name, password));
-}
-
-async function remove(id, name, password) {
+/** Delete a Team after its exact name and the Supervisor password; the Team list read after it says what remains. */
+export async function deleteTeam(id, name, password) {
   const canonicalId = preferredTeamId(id);
   const current = get(teamContext);
   const target = current.teams.find((team) => team.id === canonicalId);
@@ -656,52 +507,42 @@ async function remove(id, name, password) {
   if (typeof password !== 'string' || !password || codePointLength(password) > MAX_PASSWORD_CHARS) {
     throw new LocalApiError('Enter the current Supervisor password.');
   }
-
-  const attempt = ++generation;
-  teamContext.set({ ...current, phase: 'loading', error: '' });
-  let result;
-  try {
-    const response = await socketReads.call('teams.delete', { team_id: canonicalId, body: { team_name: name, password } });
-    const body = await jsonObject(response);
-    if (!response.ok) {
-      throw new LocalApiError(safeApiError(body, 'The Team could not be deleted.'), response.status);
+  return changing(async () => {
+    let result;
+    try {
+      const response = await socketReads.call('teams.delete', {
+        team_id: canonicalId,
+        body: { team_name: name, password },
+      });
+      const body = await jsonObject(response);
+      if (!response.ok) {
+        throw new LocalApiError(safeApiError(body, 'The Team could not be deleted.'), response.status);
+      }
+      if (
+        !hasExactEnvelopeKeys(
+          body,
+          ['assistants_removed', 'destroyed', 'residue_absent', 'storage_removed', 'team_id'],
+        ) ||
+        body.team_id !== canonicalId ||
+        typeof body.destroyed !== 'boolean' ||
+        !Number.isSafeInteger(body.assistants_removed) ||
+        body.assistants_removed < 0 ||
+        typeof body.storage_removed !== 'boolean' ||
+        !validTeamResidueProof(body.residue_absent)
+      ) {
+        throw new LocalApiError('The Team deletion returned an invalid response.', response.status);
+      }
+      result = {
+        teamId: body.team_id,
+        destroyed: body.destroyed,
+        assistantsRemoved: body.assistants_removed,
+        residueAbsent: [...body.residue_absent],
+        storageRemoved: body.storage_removed,
+      };
+    } catch (error) {
+      throw publicError(error, 'The Team could not be deleted.');
     }
-    if (
-      !hasExactEnvelopeKeys(
-        body,
-        ['assistants_removed', 'destroyed', 'residue_absent', 'storage_removed', 'team_id'],
-      ) ||
-      body.team_id !== canonicalId ||
-      typeof body.destroyed !== 'boolean' ||
-      !Number.isSafeInteger(body.assistants_removed) ||
-      body.assistants_removed < 0 ||
-      typeof body.storage_removed !== 'boolean' ||
-      !validTeamResidueProof(body.residue_absent)
-    ) {
-      throw new LocalApiError('The Team deletion returned an invalid response.', response.status);
-    }
-    result = {
-      teamId: body.team_id,
-      destroyed: body.destroyed,
-      assistantsRemoved: body.assistants_removed,
-      residueAbsent: [...body.residue_absent],
-      storageRemoved: body.storage_removed,
-    };
-  } catch (error) {
-    const safe = publicError(error, 'The Team could not be deleted.');
-    if (attempt === generation) teamContext.set({ ...current, phase: 'ready', error: '' });
-    throw safe;
-  }
-  const preferredId = current.selectedTeamId === canonicalId ? '' : current.selectedTeamId;
-  try {
-    await hydrate(preferredId, attempt, '');
-  } catch (error) {
-    throw markFailure(
-      attempt,
-      error,
-      'The Team was deleted, but the remaining Team context could not be refreshed.',
-      true,
-    );
-  }
-  return result;
+    await teamsValue.refresh();
+    return result;
+  });
 }

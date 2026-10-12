@@ -41,10 +41,11 @@ export function safeApiError(body, fallback) {
 
 /**
  * Project the controller-owned registry onto display-only Assistant identities. Admin sends only each identity and
- * name: Team's registry summary is the canonical English text it plans with, never shown in the interface.
+ * name: Team's registry summary is the canonical English text it plans with, never shown in the interface. `call` is
+ * the synced value's own, which records the revision its answer reflects.
  */
-export async function listAssistantCatalog() {
-  const response = await socketReads.call('assistants.registry', {});
+export async function listAssistantCatalog(call = socketReads.call) {
+  const response = await call('assistants.registry', {});
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(
@@ -206,12 +207,12 @@ export async function listPublicAssistantCatalog(locale, signal) {
 }
 
 /** Read the controller-owned runtime inventory; never turn an invalid response into an empty list. */
-export async function listInstalledAssistants(teamId) {
+export async function listInstalledAssistants(teamId, call = socketReads.call) {
   if (typeof teamId !== 'string' || !TEAM_ID_RE.test(teamId)) {
     throw new LocalApiError('Invalid local Assistant request.');
   }
 
-  const response = await socketReads.call('assistants.list', { team_id: teamId });
+  const response = await call('assistants.list', { team_id: teamId });
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(
