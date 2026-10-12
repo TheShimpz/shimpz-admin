@@ -35,6 +35,17 @@ function emptyContext() {
 export const teamContext = writable(emptyContext());
 
 let generation = 0;
+// The Team list operation in flight (a load, a selection, a creation, or a deletion). It publishes a fresh inventory
+// of the Team it selects, so an inventory refresh started meanwhile waits for it instead of discarding its list.
+let listOperation = null;
+
+function listing(operation) {
+  const tracked = operation.finally(() => {
+    if (listOperation === tracked) listOperation = null;
+  });
+  listOperation = tracked;
+  return tracked;
+}
 function chatScope(installedAssistants) {
   // Every running Assistant joins the chat in inventory order; a Team never has more than one turn may name.
   return {
@@ -208,7 +219,11 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
   return { teams: published, selectedTeamId, catalog, ...inventory, ...scope };
 }
 
-export async function loadTeamContext(fetcher, preferredId = '') {
+export function loadTeamContext(fetcher, preferredId = '') {
+  return listing(loadContext(fetcher, preferredId));
+}
+
+async function loadContext(fetcher, preferredId) {
   requireFetcher(fetcher);
   const canonicalPreferredId = preferredTeamId(preferredId);
   const previousId = get(teamContext).selectedTeamId;
@@ -222,7 +237,11 @@ export async function loadTeamContext(fetcher, preferredId = '') {
   }
 }
 
-export async function selectTeam(fetcher, id) {
+export function selectTeam(fetcher, id) {
+  return listing(select(fetcher, id));
+}
+
+async function select(fetcher, id) {
   requireFetcher(fetcher);
   const canonicalId = preferredTeamId(id);
   const current = get(teamContext);
@@ -276,6 +295,7 @@ export async function selectTeam(fetcher, id) {
 
 export async function refreshTeamInventory(fetcher) {
   requireFetcher(fetcher);
+  if (listOperation) await listOperation.catch(() => {});
   const current = get(teamContext);
   if (!current.selectedTeamId) {
     teamContext.set({
@@ -333,7 +353,11 @@ export function clearTeamContext() {
   teamContext.set(emptyContext());
 }
 
-export async function createTeam(fetcher, name) {
+export function createTeam(fetcher, name) {
+  return listing(create(fetcher, name));
+}
+
+async function create(fetcher, name) {
   requireFetcher(fetcher);
   // Team admits names in NFC; normalize before sending and before comparing its answer (ADR-0088).
   const canonicalName = typeof name === 'string' ? name.trim().normalize('NFC') : name;
@@ -545,7 +569,11 @@ export function reorderTeams(fetcher, ids) {
   return reorder.running;
 }
 
-export async function deleteTeam(fetcher, id, name, password) {
+export function deleteTeam(fetcher, id, name, password) {
+  return listing(remove(fetcher, id, name, password));
+}
+
+async function remove(fetcher, id, name, password) {
   requireFetcher(fetcher);
   const canonicalId = preferredTeamId(id);
   const current = get(teamContext);

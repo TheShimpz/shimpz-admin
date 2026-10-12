@@ -288,6 +288,51 @@ test('refresh exposes a first install and its newly projected display metadata t
   ]);
 });
 
+for (const operation of ['create', 'delete']) {
+  test(`an inventory refresh during a Team ${operation} never drops the Team list it publishes`, async () => {
+    await loadTeamContext(fixtureFetcher(), 'marketing');
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    const listed = operation === 'create'
+      ? [
+        { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
+        { team_id: 'support', team_name: 'Support', status: 'running' },
+        { team_id: 'growth', team_name: 'Growth', status: 'running' },
+      ]
+      : [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }];
+    const fetcher = fixtureFetcher({
+      '/api/teams': async (options) => {
+        if (options.method === 'POST') {
+          await held;
+          return response(201, { created: true, team_id: 'growth', team_name: 'Growth', status: 'running' });
+        }
+        return response(200, { teams: listed });
+      },
+      '/api/teams/support': async () => {
+        await held;
+        return response(200, {
+          team_id: 'support',
+          destroyed: true,
+          assistants_removed: 1,
+          storage_removed: true,
+          residue_absent: LOCAL_TEAM_RESIDUES,
+        });
+      },
+      '/api/teams/growth/assistants': async () => response(200, { assistants: [] }),
+    });
+    const changing = operation === 'create'
+      ? createTeam(fetcher, 'Growth')
+      : deleteTeam(fetcher, 'support', 'Support', 'test-password');
+    const refreshing = refreshTeamInventory(fetcher);
+    release();
+    await Promise.all([changing, refreshing]);
+
+    assert.equal(get(teamContext).phase, 'ready');
+    assert.deepEqual(get(teamContext).teams.map((team) => team.id), listed.map((team) => team.team_id));
+    assert.equal(get(teamContext).selectedTeamId, operation === 'create' ? 'growth' : 'marketing');
+  });
+}
+
 test('creates a Team with the exact payload, validates the response, and refreshes its inventory', async () => {
   const calls = [];
   const fetcher = fixtureFetcher({
