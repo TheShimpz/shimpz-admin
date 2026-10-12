@@ -1,5 +1,5 @@
 <script>
-  import { assistantNames, loadAssistantNames } from '#lib/assistantNames.js';
+  import { assistantNames } from '#lib/assistantNames.js';
   import { locale } from '#lib/i18n.js';
   import RoutineModal from '#lib/RoutineModal.svelte';
   import RoutineResult from '#lib/RoutineResult.svelte';
@@ -49,7 +49,6 @@
   let badge = $derived(TAGS[tone] ?? TAGS.neutral);
   let label = $derived(status.charAt(0).toLocaleUpperCase($locale) + status.slice(1));
 
-  $effect(() => { void loadAssistantNames(fetch); });
 
   $effect(() => {
     const runId = entry.runId;

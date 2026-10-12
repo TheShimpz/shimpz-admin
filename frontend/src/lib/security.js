@@ -14,6 +14,8 @@ const RECOVERY_CODE_RE = /^[0-9a-hjkmnp-tv-z]{4}-[0-9a-hjkmnp-tv-z]{4}-[0-9a-hjk
 const REFUSAL_RE = /^[a-z][a-z0-9-]{0,63}$/;
 
 export const securitySummary = writable(null);
+// Advances whenever the summary is cleared (with the session), so a read that answers afterwards is never shown.
+let summaryEpoch = 0;
 
 function count(value) {
   return Number.isSafeInteger(value) && value >= 0 && value <= MAX_COUNT;
@@ -60,11 +62,12 @@ function summary(response, body) {
 
 async function send(fetcher, url, init, fallback) {
   if (typeof fetcher !== 'function') throw new LocalApiError('Invalid sign-in security request.');
+  const epoch = summaryEpoch;
   const response = await fetcher(url, { cache: 'no-store', ...init });
   const body = await jsonObject(response);
   if (!response.ok) throw new LocalApiError(safeApiError(body, fallback), response.status);
   const result = summary(response, body);
-  securitySummary.set(result);
+  if (epoch === summaryEpoch) securitySummary.set(result);
   return result;
 }
 
@@ -91,6 +94,7 @@ export function acknowledgeFailedAttempts(fetcher, seen) {
 }
 
 export function clearSecuritySummary() {
+  summaryEpoch += 1;
   securitySummary.set(null);
 }
 

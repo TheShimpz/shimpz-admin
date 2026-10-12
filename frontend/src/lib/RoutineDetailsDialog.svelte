@@ -10,7 +10,7 @@
     routineRuns,
   } from '#lib/chatHistory.js';
   import { locale, t } from '#lib/i18n.js';
-  import { assistantNames, loadAssistantNames } from '#lib/assistantNames.js';
+  import { assistantNames } from '#lib/assistantNames.js';
   import {
     ATTENTION_STATUSES,
     clockWords,
@@ -159,11 +159,10 @@
     recentFailed = false;
   }
 
-  // Assistant names and this Routine's recent runs are read when the panel opens; neither is ever required.
+  // This Routine's recent runs are read when the panel opens; they are never required.
   $effect(() => {
     const opened = ++search;
     seen = new Set();
-    void loadAssistantNames(fetch);
     readNewest(opened).catch(() => { if (opened === search) recentFailed = true; });
     return () => { search += 1; };
   });

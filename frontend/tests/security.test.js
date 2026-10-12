@@ -46,6 +46,21 @@ test('the summary reads the failed attempts a sign-in reported', async () => {
   assert.equal(get(securitySummary), null);
 });
 
+test('a summary that answers after the session changed is never shown in the next one', async () => {
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const loading = loadSecuritySummary(async () => {
+    await held;
+    return new Response(JSON.stringify({
+      failed_second_factor_attempts: 3, recovery_codes_remaining: 9, sign_in_history: HISTORY,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  });
+  clearSecuritySummary();
+  release();
+  await loading;
+  assert.equal(get(securitySummary), null);
+});
+
 test('an acknowledgment names exactly the attempts the Supervisor saw', async () => {
   const { calls, fetcher } = answer(200, {
     failed_second_factor_attempts: 1, recovery_codes_remaining: 10, sign_in_history: null,

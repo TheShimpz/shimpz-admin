@@ -3,7 +3,7 @@
   import { onMount } from 'svelte';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n.js';
-  import { acknowledgeFailedAttempts, clearSecuritySummary, loadSecuritySummary, securitySummary } from '#lib/security.js';
+  import { acknowledgeFailedAttempts, loadSecuritySummary, securitySummary } from '#lib/security.js';
 
   // The second-factor attempts refused since the previous sign-in (ADR-0051). The report stays on every page until the
   // Supervisor acknowledges the exact count it shows; one refused meanwhile keeps it on screen.
@@ -25,9 +25,8 @@
   }
 
   onMount(() => {
-    // Without a summary there is nothing to report; the next sign-in reads it again.
+    // Without a summary there is nothing to report; the next sign-in reads it again. The session clears it.
     loadSecuritySummary().catch(() => {});
-    return clearSecuritySummary;
   });
 </script>
 

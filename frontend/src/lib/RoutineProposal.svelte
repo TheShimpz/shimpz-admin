@@ -1,7 +1,7 @@
 <script>
   import { Button } from '@shimpz/frontend';
 
-  import { assistantNames, loadAssistantNames } from '#lib/assistantNames.js';
+  import { assistantNames } from '#lib/assistantNames.js';
   import { loadTeamRoutines } from '#lib/routineContext.js';
   import {
     confirmRoutineProposal,
@@ -34,7 +34,6 @@
 
   const assistantName = (id) => $assistantNames[id] ?? humanizeId(id);
 
-  $effect(() => { void loadAssistantNames(fetch); });
 
   // A card expires on its own; an idle page withdraws its buttons then.
   $effect(() => {

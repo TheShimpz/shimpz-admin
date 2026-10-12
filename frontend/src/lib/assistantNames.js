@@ -1,18 +1,13 @@
-// Display names of the Local Assistant catalog, read once and shared: Routine plans and notices name an Assistant by
-// its title, and by its humanized id while the catalog is unread or unavailable. Display only; never authority.
-import { writable } from 'svelte/store';
+// Display names of the Local Assistant catalog, as the Team context last read it: Routine plans and notices name an
+// Assistant by its title, and by its humanized id while the catalog is unread or unavailable. The context reads the
+// catalog again with every Team load, selection, and inventory refresh, and clears it with the session. Display only;
+// never authority.
+import { derived } from 'svelte/store';
 
-import { listAssistantCatalog } from './localApi.js';
+import { teamContext } from './teamContext.js';
 
 /** Assistant id -> display name; empty until the catalog is read. */
-export const assistantNames = writable({});
-
-let loading = null;
-
-/** Read the catalog once per page; a failure leaves the names empty and lets a later call try again. */
-export function loadAssistantNames(fetcher) {
-  loading ??= listAssistantCatalog(fetcher)
-    .then((catalog) => assistantNames.set(Object.fromEntries(catalog.map((item) => [item.id, item.name]))))
-    .catch(() => { loading = null; });
-  return loading;
-}
+export const assistantNames = derived(
+  teamContext,
+  ($context) => Object.fromEntries($context.catalog.map((item) => [item.id, item.name])),
+);

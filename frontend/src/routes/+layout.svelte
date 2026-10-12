@@ -13,7 +13,7 @@
   import { clearModelContext, modelContext } from '#lib/modelContext.js';
   import { authenticateWithPasskey, passkeyFailure, registerPasskey } from '#lib/passkey.js';
   import { clearTeamRoutines } from '#lib/routineContext.js';
-  import { recoveryCodes as validRecoveryCodes } from '#lib/security.js';
+  import { clearSecuritySummary, recoveryCodes as validRecoveryCodes } from '#lib/security.js';
   import { clearSessionContext, SESSION_ENDED, setSessionContext } from '#lib/sessionContext.js';
   import { clearTeamContext, teamContext } from '#lib/teamContext.js';
 
@@ -109,6 +109,7 @@
     clearSessionContext();
     clearTeamContext();
     clearTeamRoutines();
+    clearSecuritySummary();
     phase = 'checking';
     error = '';
 
