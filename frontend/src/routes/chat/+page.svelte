@@ -30,7 +30,7 @@
   import { calendarDay, clockTime, exchangeDays, instantValue, turnInstants, untilNextDay } from '#lib/chatDays.js';
   import { newerRoutineEntries, questionWords, refusalWords } from '#lib/routine.js';
   import { loadTeamRoutines } from '#lib/routineContext.js';
-  import { adminSocket, call, openChatChannel, outcomeUnknown, watchTopic } from '#lib/adminSocket.js';
+  import { adminSocket, call, commandsReady, openChatChannel, outcomeUnknown, watchTopic } from '#lib/adminSocket.js';
   import ExecutionReceipt from '#lib/ExecutionReceipt.svelte';
   import {
     createExecutionProjection,
@@ -1063,8 +1063,9 @@
     const teamId = chatTeamId;
     const selection = keySelection;
     const apiKey = providerKey;
+    // While Admin reconnects the key stays in its field, unsent, until it can be saved.
+    if (!teamId || !keyRequired || brainSaving || !$commandsReady || apiKey.trim().length < 16) return;
     providerKey = '';
-    if (!teamId || !keyRequired || brainSaving || apiKey.trim().length < 16) return;
     try {
       await configureModelContext(teamId, apiKey);
     } catch {
@@ -1097,7 +1098,7 @@
 
   function retryBrain() {
     const teamId = chatTeamId;
-    if (!teamId || brainSaving) return;
+    if (!teamId || brainSaving || !$commandsReady) return;
     // A configured selection only needs its save repeated; an unreadable catalog or selection is reloaded.
     const retry = brainProvider?.configured && brainModel
       ? configureModelContext(teamId, '')
@@ -2544,7 +2545,7 @@
               <Notice class="chat-brain-error" variant="error">
                 <strong>{$modelContext.errorCode === 'outcome-unknown' ? $t('shell.outcomeUnknown') : $modelContext.error}</strong>
                 {#if brainUnavailable}
-                  <Button variant="secondary" size="compact" type="button" onclick={retryBrain} disabled={brainSaving}>
+                  <Button variant="secondary" size="compact" type="button" onclick={retryBrain} disabled={brainSaving || !$commandsReady}>
                     {keyCopy.retry}
                   </Button>
                 {/if}
@@ -2660,7 +2661,7 @@
                   <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"></path></svg>
                 </Button>
               {:else if keyRequired}
-                <Button type="submit" disabled={brainSaving || providerKey.trim().length < 16}>
+                <Button type="submit" disabled={brainSaving || !$commandsReady || providerKey.trim().length < 16}>
                   {brainSaving ? keyCopy.validating : keyCopy.saveKey}
                 </Button>
               {:else}

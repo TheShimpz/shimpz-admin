@@ -106,6 +106,42 @@ test('an offline browser says so, and reconnects as soon as it is online again',
   await expect(page.getByText(shell.offline)).toHaveCount(0);
 });
 
+test('a provider key typed while Admin reconnects stays in its field and is saved only once Admin is back', async ({ page }) => {
+  const scenario = await routeScenario(page, 'ready');
+  // OpenAI, the Team's provider, has no key yet, so the composer asks for one.
+  const providers = scenario.call('models.list', {}).json.providers;
+  await routeRead(page, 'models.list', () => ({
+    status: 200, json: { providers: providers.map((entry) => ({ ...entry, configured: false, masked: null })) },
+  }));
+  const saves = [];
+  await routeRead(page, 'models.save', ({ provider, body }) => {
+    saves.push(provider);
+    const saved = providers.find((entry) => entry.id === provider);
+    return { status: 200, json: { ...saved, configured: true, masked: `••••${body.api_key.slice(-4)}` } };
+  });
+  let refusing = false;
+  await refuseWhile(page, () => refusing);
+  await page.goto('/chat/?team=marketing');
+  const key = page.getByLabel(messages.en.providerSetup.key);
+  const save = page.getByRole('button', { name: messages.en.providerSetup.saveKey });
+  await expect(key).toBeVisible();
+
+  refusing = true;
+  await dropSessions(page);
+  await expect(page.getByText(shell.reconnecting)).toBeVisible();
+  await key.fill('test-provider-key-word');
+  await expect(save).toBeDisabled();
+  await key.press('Enter');
+  await expect(key).toHaveValue('test-provider-key-word');
+  expect(saves).toEqual([]);
+
+  refusing = false;
+  await expect(save).toBeEnabled({ timeout: 20_000 });
+  await expect(key).toHaveValue('test-provider-key-word');
+  await save.click();
+  await expect.poll(() => saves).toEqual(['openai']);
+});
+
 test('a change stays disabled while Admin reconnects and is offered again once it is back', async ({ page }) => {
   await routeScenario(page, 'catalog');
   await routeRead(page, 'store.catalog', ({ locale }) => ({
