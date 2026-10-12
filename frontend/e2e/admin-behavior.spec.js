@@ -223,6 +223,8 @@ async function routeReadyChat(page, {
   olderHistory = null,
   rejectDecisionKey = false,
   clarification = null,
+  // A second Team, Support, with no Assistants and an empty conversation, for switching away from Marketing.
+  secondTeam = false,
   reply,
   usage,
 } = {}) {
@@ -300,8 +302,24 @@ async function routeReadyChat(page, {
   });
   await page.route('**/api/teams', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }),
+    body: JSON.stringify({ teams: [
+      { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
+      ...(secondTeam ? [{ team_id: 'support', team_name: 'Support', status: 'running' }] : []),
+    ] }),
   }));
+  const supportFrames = [];
+  if (secondTeam) {
+    await page.route('**/api/teams/support/assistants', (route) => route.fulfill({ json: { assistants: [] } }));
+    await page.route('**/api/teams/support/inference', (route) => route.fulfill({
+      json: { team_id: 'support', provider: 'openai', model: 'gpt-6.1-sol' },
+    }));
+    await page.route('**/api/teams/support/chat/history**', (route) => route.fulfill({ json: { entries: [], before: null } }));
+    await page.routeWebSocket('**/api/teams/support/chat/ws', (socket) => socket.onMessage((message) => {
+      const frame = JSON.parse(message);
+      supportFrames.push(frame);
+      if (frame.type === 'sync') socket.send(JSON.stringify({ type: 'sync-empty' }));
+    }));
+  }
   await page.route('**/api/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({
@@ -917,6 +935,7 @@ async function routeReadyChat(page, {
     releaseProgressFinish: () => releaseProgressFinish(),
     sendProgressEvent: (event) => sendProgressEvent(event),
     closeChatSocket: () => closeChatSocket(),
+    supportFrames: () => supportFrames,
     storedInputClears: () => storedInputClears,
     syncFrames: () => syncFrames,
   };
@@ -2883,10 +2902,11 @@ test('uninstalls an Assistant from the inline proposal and confirms Team absence
 });
 
 // An approval waits for the uninstall icon snapshot; it answers only the proposal it was given for, on the connection
-// that proposed it, so an expiry or a reconnect during that wait sends nothing.
+// that proposed it, so an expiry, a reconnect, or a Team change during that wait sends nothing.
 for (const [interruption, interrupt] of [
   ['the proposal expires', async (page) => {
     await page.clock.runFor(2100);
+    await expect(page.locator('[data-slot="chat-task"]')).toHaveAttribute('data-state', 'cancelled');
   }],
   ['the connection drops', async (page, chat) => {
     chat.closeChatSocket();
@@ -2894,10 +2914,21 @@ for (const [interruption, interrupt] of [
     await expect.poll(() => chat.syncFrames()).toBe(2);
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     await page.clock.runFor(2100);
+    await expect(page.locator('[data-slot="chat-task"]')).toHaveAttribute('data-state', 'cancelled');
+  }],
+  ['the Team changes', async (page, chat) => {
+    await page.locator('.shell-sidebar').getByRole('link', { name: 'Support', exact: true }).click();
+    // The page's paused clock moves in short steps, well inside the snapshot's two seconds, while Support opens.
+    await expect.poll(async () => {
+      await page.clock.runFor(20);
+      return chat.supportFrames().some((frame) => frame.type === 'sync');
+    }).toBe(true);
+    await expect(page).toHaveURL(/team=support/);
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
   }],
 ]) {
   test(`an uninstall approval sends nothing when ${interruption} while its icon is captured`, async ({ page }) => {
-    const chat = await routeReadyChat(page, { assistantUninstall: true, holdAssistantIcon: true });
+    const chat = await routeReadyChat(page, { assistantUninstall: true, holdAssistantIcon: true, secondTeam: true });
     await freezeClock(page);
     await page.goto('/chat/');
     const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -2914,9 +2945,9 @@ for (const [interruption, interrupt] of [
     await interrupt(page, chat);
     chat.releaseAssistantIcon();
 
-    await expect(task).toHaveAttribute('data-state', 'cancelled');
     await page.clock.runFor(1000);
     expect(chat.chatFrames().map((frame) => frame.message)).toEqual(['Uninstall the Cloudflare Assistant']);
+    expect(chat.supportFrames().filter((frame) => frame.type !== 'sync')).toEqual([]);
   });
 }
 
