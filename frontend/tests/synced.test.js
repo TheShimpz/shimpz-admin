@@ -361,3 +361,33 @@ test('the shell hears that some shown data keeps failing, and that it no longer 
     mock.timers.reset();
   }
 });
+
+test('a refusal stays shown through later transient failures, until a read succeeds', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const socket = harness();
+    const value = synced('local-assistants', snapshots);
+    const { stop } = shown(value);
+    socket.announce('open', 1);
+    socket.answer(0, { assistants: ['cached'] }, 1);
+    await flush();
+    socket.announce('changed', 2);
+    socket.calls[1].resolve(response(403, { detail: 'refused' }));
+    await flush();
+    assert.equal(get(value).status, 'error');
+    socket.announce('changed', 3);
+    socket.calls[2].resolve(response(503, { detail: 'Team is unavailable' }));
+    await flush();
+    // The outage says nothing about whether the refusal still holds: it stays shown, beside the failure.
+    assert.equal(get(value).status, 'error');
+    assert.equal(get(value).error.status, 403);
+    assert.equal(get(value).failing.status, 503);
+    mock.timers.tick(RETRY_FIRST_MS);
+    socket.answer(3, { assistants: ['back'] }, 3);
+    await flush();
+    assert.deepEqual(get(value), { status: 'ready', value: ['back'], error: null, failing: null });
+    stop();
+  } finally {
+    mock.timers.reset();
+  }
+});

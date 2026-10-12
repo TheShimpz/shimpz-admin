@@ -62,6 +62,8 @@ export function synced(topic, read, { initial = null } = {}) {
   let retryAttempt = 0;
   let publish = () => {};
   let failing = null;
+  // The last refusal, shown until a read succeeds: a transient failure since says nothing about whether it still holds.
+  let refusal = null;
   const empty = () => ({ status: 'loading', value: initial, error: null, failing: null });
   const token = {};
   // Every state published says whether this value is failing, so the shell's one message follows it.
@@ -114,17 +116,19 @@ export function synced(topic, read, { initial = null } = {}) {
       retryAttempt = 0;
       clearTimeout(retryTimer);
       failing = null;
+      refusal = null;
       show({ status: 'ready', value, error: null, failing });
       if (stale()) again = true;
     } catch (error) {
       if (owner !== era) return;
       if (transientFailure(error)) {
         failing = error instanceof LocalApiError && error.status === 0 ? failing : error;
-        show({ status: has ? 'ready' : 'loading', value, error: null, failing });
+        show({ status: refusal ? 'error' : has ? 'ready' : 'loading', value, error: refusal, failing });
         scheduleRetry();
         return;
       }
       failing = null;
+      refusal = error;
       show({ status: 'error', value, error, failing });
     }
   }
@@ -171,6 +175,7 @@ export function synced(topic, read, { initial = null } = {}) {
     retryAttempt = 0;
     clearTimeout(retryTimer);
     failing = null;
+    refusal = null;
     subscribed = false;
     waiting?.resolve();
     waiting = null;
