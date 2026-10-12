@@ -70,7 +70,8 @@ async function routePage(page, {
   });
   await routeRead(page, 'assistants.list', async ({ team_id: teamId }) => {
     if (teamId !== 'marketing') return undefined;
-    if (inventory() === null) return ok({ detail: 'Team is unavailable' }, 503);
+    // A read that fails is refused (an outage would only be read again until it answers).
+    if (inventory() === null) return ok({ assistants: 'unreadable' });
     await inventoryGate();
     return ok({ assistants: inventory() });
   });

@@ -172,9 +172,10 @@ test('releases to the final Chat error when Team hydration fails', async ({ page
   await routeSession(page, {
     body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
   });
+  // Team refuses the read: a failure of a working connection, which an outage (only read again) is not.
   await routeRead(page, 'teams.list', async () => {
     await teamGate.promise;
-    return { status: 503, json: { detail: 'Team catalog unavailable.' } };
+    return { status: 400, json: { detail: 'Team catalog unavailable.' } };
   });
   await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
 

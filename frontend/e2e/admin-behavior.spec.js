@@ -2960,8 +2960,9 @@ test('a Stop that crosses an uninstall proposal leaves the proposal to answer', 
 test('an uninstall whose inventory could not be confirmed completes once the chat reads it again', async ({ page }) => {
   await routeReadyChat(page, { assistantUninstall: true });
   let failInventory = false;
+  // A refused read, not an outage, which would only be read again until it answers.
   await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (
-    failInventory && teamId === 'marketing' ? ok({ detail: 'inventory unavailable' }, 503) : undefined
+    failInventory && teamId === 'marketing' ? ok({ assistants: 'unreadable' }) : undefined
   ));
   await page.goto('/chat/');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
@@ -4025,8 +4026,9 @@ test('reports a committed uninstall when the Team inventory cannot refresh', asy
     committed = true;
     return ok({ assistant: 'shimpz-cloudflare', uninstalled: true });
   });
+  // The inventory read after it is refused; an outage would only be read again until it answers.
   await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (
-    committed && teamId === 'marketing' ? ok({ detail: 'inventory unavailable' }, 503) : undefined
+    committed && teamId === 'marketing' ? ok({ assistants: 'unreadable' }) : undefined
   ));
 
   await page.goto('/assistants/shimpz-cloudflare?team=marketing');
@@ -4410,11 +4412,12 @@ test('a Local Team is renamed in place: Enter saves by id, Escape keeps the name
   await routeScenario(page, 'ready');
   const renames = [];
   let refuse = false;
+  // Each rename reaches the scenario's Team list, which the page reads after it; a refusal changes nothing.
   await routeRead(page, 'teams.rename', ({ team_id: teamId, body }) => {
     if (teamId !== 'marketing') return undefined;
     renames.push(body);
     if (refuse) return ok({ detail: 'Another Team already has this name.' }, 409);
-    return ok({ team_id: 'marketing', team_name: body.team_name });
+    return undefined;
   });
   await page.goto('/chat/?team=marketing');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
@@ -4491,9 +4494,6 @@ test('a Team name that cannot be saved is explained in the interface language an
 
 test('a Team name is shown exactly as written in every label that names it', async ({ page }) => {
   await routeScenario(page, 'ready');
-  await routeRead(page, 'teams.rename', ({ team_id: teamId, body }) => (
-    teamId === 'marketing' ? ok({ team_id: 'marketing', team_name: body.team_name }) : undefined
-  ));
   await page.goto('/chat/?team=marketing');
   const navigation = page.locator('.shell-sidebar');
   await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
@@ -4558,7 +4558,7 @@ test('a Team that fails to open leaves the chat on the previous Team and later T
   const inventoryReads = [];
   await routeRead(page, 'assistants.list', ({ team_id: teamId }) => {
     inventoryReads.push(teamId);
-    return teamId === 'neo' ? ok({ detail: 'unavailable' }, 503) : undefined;
+    return teamId === 'neo' ? ok({ detail: 'Team not found' }, 404) : undefined;
   });
   await page.goto('/chat/?team=marketing');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeVisible();
@@ -4578,9 +4578,12 @@ test('a Team that fails to open leaves the chat on the previous Team and later T
 test('a Team inventory that could not be read holds sending until it is read again', async ({ page }) => {
   await routeScenario(page, 'ready');
   let failInventory = false;
-  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (
-    teamId === 'neo' || (failInventory && teamId === 'marketing') ? ok({ detail: 'unavailable' }, 503) : undefined
-  ));
+  // Neo refuses to open, and Marketing's inventory is refused while `failInventory` holds; an outage would only be
+  // read again until it answers.
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => {
+    if (teamId === 'neo') return ok({ detail: 'Team not found' }, 404);
+    return failInventory && teamId === 'marketing' ? ok({ assistants: 'unreadable' }) : undefined;
+  });
   await page.goto('/chat/?team=marketing');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   const send = page.getByRole('button', { name: 'Send', exact: true });

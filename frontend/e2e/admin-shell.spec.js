@@ -40,6 +40,15 @@ function authenticatedLocalSession(overrides = {}) {
 }
 
 // A person taps on a touch screen and clicks with a pointer; each touch-project run proves the control works by touch.
+// A Space with one Team and no Assistant: the shell's Team context reads it, so the screen under test settles.
+async function answerQuietSpace(page) {
+  await routeRead(page, 'teams.list', () => ({
+    status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] },
+  }));
+  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
+  await routeRead(page, 'assistants.list', () => ({ status: 200, json: { assistants: [] } }));
+}
+
 async function press(control, testInfo) {
   if (testInfo.project.use.hasTouch) await control.tap();
   else await control.click();
@@ -299,6 +308,7 @@ test('shows the installed Admin version with the read-only Local release status'
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
+  await answerQuietSpace(page);
   await routeRead(page, 'platform.release', () => ({ status: 200, json: {
       release: `ghcr.io/theshimpz/shimpz-local-release@sha256:${'a'.repeat(64)}`,
       ordinal: 42,
@@ -345,6 +355,7 @@ test('names a developer release built on this host in the Local release status',
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
+  await answerQuietSpace(page);
   await routeRead(page, 'platform.release', () => ({ status: 200, json: {
       release: `localhost/shimpz-local-release@sha256:${'b'.repeat(64)}`,
       ordinal: 42,
@@ -364,6 +375,7 @@ test('still shows the installed Admin version when Local release status is unava
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
+  await answerQuietSpace(page);
 
   await page.goto('/assistants/');
 
@@ -376,6 +388,7 @@ test('reports a Local rollback as a localized warning', async ({ page }) => {
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
+  await answerQuietSpace(page);
   await routeRead(page, 'platform.release', () => ({ status: 200, json: {
       release: `ghcr.io/theshimpz/shimpz-local-release@sha256:${'a'.repeat(64)}`,
       ordinal: 42,
@@ -398,6 +411,7 @@ test('reads the Space resources when Admin says they changed, one read at a time
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
+  await answerQuietSpace(page);
   // Each read waits until the test answers it.
   const reads = [];
   await routeRead(page, 'space.resources', () => new Promise((resolve) => reads.push(resolve)));
@@ -533,6 +547,7 @@ test('reads the Local release status at open and when Admin says it changed, nev
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
+  await answerQuietSpace(page);
   let reads = 0;
   let outcome = 'current';
   await routeRead(page, 'platform.release', () => {
@@ -567,6 +582,7 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
+  await answerQuietSpace(page);
   await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [
     { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
     { team_id: 'gestao', team_name: 'Gestão', status: 'running' },
@@ -638,6 +654,7 @@ test('never renders a matching publication while Local snapshots are settling', 
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
+  await answerQuietSpace(page);
   await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
   await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
   await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [{
@@ -744,6 +761,7 @@ test('renders Assistant identities immediately during in-app icon hydration', as
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
+  await answerQuietSpace(page);
   await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
   await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
   await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
@@ -916,6 +934,7 @@ test('keeps public discovery available when Local snapshot enumeration fails', a
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
+  await answerQuietSpace(page);
   await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
   await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
   await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: { version: 1, next: null, locale: 'en', assistants: [{
@@ -961,6 +980,7 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
+  await answerQuietSpace(page);
   await routeRead(page, 'teams.list', () => ok({ teams: [
       { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
     ] }));
@@ -1130,6 +1150,7 @@ test('removes an installed publication before its staged build is installed', as
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
+  await answerQuietSpace(page);
   await routeRead(page, 'teams.list', () => ok({ teams: [
       { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
     ] }));
@@ -1227,6 +1248,7 @@ test('asks for the first Team from the Store when no Team exists', async ({ page
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
+  await answerQuietSpace(page);
   await routeRead(page, 'teams.list', () => ok({ teams: [] }));
   await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
   await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: { version: 1, next: null, locale: 'en', assistants: [] } } : undefined));

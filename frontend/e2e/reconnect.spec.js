@@ -376,7 +376,7 @@ test('an open Integrations drawer shows an Assistant installed during an outage 
   await expect(page.getByText(messages.en.assistantIntegrations.inventoryFailed)).toHaveCount(0);
 });
 
-test('a reopened socket, and an install that changes the inventory and the registry at once, read each of them once', async ({ page }) => {
+test('a reopened socket reads only what changed meanwhile, and a change of the inventory and the registry reads each once', async ({ page }) => {
   const scenario = await routeScenario(page, 'ready');
   const subscribed = (topic) => scenario.sessions.at(-1)?.subscribed(topic) ?? false;
   let refusing = false;
@@ -390,16 +390,18 @@ test('a reopened socket, and an install that changes the inventory and the regis
   let registry = await count('assistants.registry');
   let inventory = await count('assistants.list');
 
+  // Admin answers the reopened socket's subscription at the revisions already read: nothing changed, nothing is read.
   refusing = true;
   await dropSessions(page);
   await expect(page.getByText(shell.reconnecting)).toBeVisible();
   refusing = false;
   await expect(page.getByText(shell.reconnecting)).toHaveCount(0, { timeout: 20_000 });
+  await expect.poll(() => subscribed('team/marketing/inventory') && subscribed('assistants/registry')).toBe(true);
   await settled();
-  expect(await count('assistants.registry')).toBe(registry + 1);
-  expect(await count('assistants.list')).toBe(inventory + 1);
+  expect(await count('assistants.registry')).toBe(registry);
+  expect(await count('assistants.list')).toBe(inventory);
 
-  // An install raises both topics: the shell reads both once.
+  // An install raises both topics: each is read once.
   registry = await count('assistants.registry');
   inventory = await count('assistants.list');
   await raiseTopic(page, 'team/marketing/inventory');
