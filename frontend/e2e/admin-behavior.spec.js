@@ -4521,7 +4521,10 @@ test('a chat that keeps reconnecting never takes the focus from a Team name bein
   let dropping = true;
   await routeChat(page, 'neo', (socket) => {
     connections += 1;
-    if (dropping) setTimeout(() => socket.close({ code: 1011, reason: 'Synthetic interrupted connection' }), 50);
+    // Decided when the close is due, so a channel that attached just before Admin became reachable stays open.
+    setTimeout(() => {
+      if (dropping) socket.close({ code: 1011, reason: 'Synthetic interrupted connection' });
+    }, 50);
   });
   await page.goto('/chat/?team=neo');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeVisible();
@@ -4538,9 +4541,11 @@ test('a chat that keeps reconnecting never takes the focus from a Team name bein
   await expect(field).toBeFocused();
   await expect(field).toHaveValue('New name');
   expect(renames).toEqual([]);
-  // Once Admin is reachable again, the name is saved.
+  // Once Admin is reachable again, the name is saved. The browser coming online retries at once, without waiting out a
+  // backoff the repeated drops grew.
   dropping = false;
   const dropped = connections;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
   await expect.poll(() => connections, { timeout: 30_000 }).toBeGreaterThan(dropped);
   await expect(page.getByText(messages.en.shell.reconnecting)).toHaveCount(0);
   await expect(field).toBeFocused();
