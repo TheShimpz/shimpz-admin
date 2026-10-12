@@ -266,3 +266,33 @@ test('releases to retry when the session check reaches an error', async ({ page 
   await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
 });
 
+
+test('only the newest session check decides what opens', async ({ page }) => {
+  await page.route('**/api/**', (route) => json(route, { detail: 'Unavailable outside this boot contract.' }, 503));
+  const olderAnswer = deferred();
+  let checks = 0;
+  await page.route('**/api/session', async (route) => {
+    checks += 1;
+    if (checks === 1) return json(route, { detail: 'Unavailable' }, 503);
+    // The older of two checks answers last, from before the session ended.
+    if (checks === 2) {
+      await olderAnswer.promise;
+      return json(route, authenticatedLocalSession());
+    }
+    return json(route, localSession({ initialized: true, authentication_state: 'configured' }));
+  });
+  await page.goto('/');
+  const retry = page.getByRole('button', { name: 'Retry' });
+  await expect(retry).toBeVisible();
+  // A double activation starts two checks before the screen changes.
+  await retry.evaluate((button) => {
+    button.click();
+    button.click();
+  });
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+  olderAnswer.resolve();
+  await expect.poll(() => checks).toBe(3);
+  await page.waitForLoadState('networkidle');
+  await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
+  await expect(page).toHaveURL(/127\.0\.0\.1:4173\/$/);
+});

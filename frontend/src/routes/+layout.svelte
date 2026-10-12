@@ -96,12 +96,16 @@
     enrollment = { secret, qr };
   }
 
-  async function enterReady(redirectToChat) {
+  // Every session check advances this; only the newest one publishes what it found, also after a navigation.
+  let sessionCheck = 0;
+
+  async function enterReady(redirectToChat, check = sessionCheck) {
     if (redirectToChat || page.url.pathname === '/') await goto('/chat/', { replace: true });
-    phase = 'ready';
+    if (check === sessionCheck) phase = 'ready';
   }
 
   async function checkSession(options = {}) {
+    const check = ++sessionCheck;
     const redirectToChat = options.redirectToChat === true;
     const skipPasskeyOffer = options.skipPasskeyOffer === true;
     clearAdminNotice();
@@ -117,6 +121,7 @@
       const response = await fetch('/api/session', { method: 'POST', cache: 'no-store' });
       if (!response.ok) throw new Error('session unavailable');
       const session = await response.json();
+      if (check !== sessionCheck) return;
       if (session?.profile !== 'local') throw new Error('invalid session profile');
       const authenticationState = session?.authentication_state;
       if (!['uninitialized', 'enrollment-required', 'configured', 'recovery-required'].includes(authenticationState)) {
@@ -140,7 +145,7 @@
           redirectAfterAuthentication = redirectToChat;
           phase = 'passkey-offer';
         } else {
-          await enterReady(redirectToChat);
+          await enterReady(redirectToChat, check);
         }
         return;
       }
@@ -158,7 +163,7 @@
       }
       throw new Error('invalid local session');
     } catch {
-      error = $t('auth.unreachable');
+      if (check === sessionCheck) error = $t('auth.unreachable');
     }
   }
 
