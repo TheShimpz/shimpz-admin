@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { assistantDetails, publicAssistant, stagedSnapshot } from './assistantPages.js';
 import { accessibilityViolations } from './axe.js';
 import { messages } from '../src/lib/messages.js';
-import { routeRead } from './scenarioRoutes.js';
+import { dropSessions, nextRead, raiseTopic, readsOf, routeRead, waitForRead } from './scenarioRoutes.js';
 
 // One Assistant's own page (ADR-0087 functional coverage): it reads the exact target for the Team its link names,
 // shows its copy, Actions, credentials, and Creator links, and installs or removes it only for that Team.
@@ -52,49 +52,51 @@ async function routePage(page, {
   inventoryGate = () => undefined,
   installRefusal = false,
 } = {}) {
-  await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } }));
+  const ok = (json, status = 200) => ({ status, json });
+  await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
+  await routeRead(page, 'assistants.registry', () => ok({ assistants: [] }));
+  await routeRead(page, 'store.catalog', ({ locale }) => ok({ version: 1, locale, assistants: published, next: null }));
+  await routeRead(page, 'snapshots.list', async () => {
+    await stagedGate();
+    if (stagedStatus !== 200) {
+      return ok({ error: 'unavailable', code: 'local-assistant-snapshots-unavailable' }, stagedStatus);
+    }
+    return ok({ assistants: staged, trace_id: 'c'.repeat(32) });
+  });
+  await routeRead(page, 'snapshots.details', async ({ locale }) => {
+    await detailsGate(locale);
+    const copy = typeof stagedPage === 'function' ? stagedPage(locale) : stagedPage;
+    return ok({ ...copy, locale });
+  });
+  await routeRead(page, 'assistants.list', async ({ team_id: teamId }) => {
+    if (teamId !== 'marketing') return undefined;
+    if (inventory() === null) return ok({ detail: 'Team is unavailable' }, 503);
+    await inventoryGate();
+    return ok({ assistants: inventory() });
+  });
+  await routeRead(page, 'assistants.details', async ({ team_id: teamId, assistant_id: assistantId, locale }) => {
+    if (teamId !== 'marketing' || assistantId !== 'shimpz-cloudflare') return undefined;
+    await detailsGate(locale);
+    const installed = inventory().find((entry) => entry.assistant === 'shimpz-cloudflare');
+    return ok({ ...STAGED_PAGE, locale, assistant_version: installed.assistant_version });
+  });
+  await routeRead(page, 'assistants.uninstall', ({ team_id: teamId, assistant_id: assistantId }) => {
+    if (teamId !== 'marketing' || assistantId !== 'shimpz-cloudflare') return undefined;
+    deletes.push(assistantId);
+    if (deleteStatus !== 200) return ok({ detail: 'Team refused the request' }, deleteStatus);
+    return ok({ assistant: 'shimpz-cloudflare', uninstalled: true });
+  });
+  for (const method of ['assistants.install', 'assistants.install_local']) {
+    await routeRead(page, method, () => (installRefusal
+      ? ok({ detail: 'Team is full', code: 'assistant_limit_reached' }, 409)
+      : undefined));
+  }
   await page.route('**/api/**', async (route) => {
-    const request = route.request();
-    const url = new URL(request.url());
-    const locale = url.searchParams.get('locale');
+    const url = new URL(route.request().url());
     if (url.pathname.endsWith('/icon') || url.pathname.endsWith('/catalog-icon')) {
       return route.fulfill({ contentType: 'image/png', body: ICON });
     }
-    if (/^\/api\/local-assistants\/[0-9a-f]{64}\/details$/.test(url.pathname)) {
-      await detailsGate(locale);
-      const copy = typeof stagedPage === 'function' ? stagedPage(locale) : stagedPage;
-      // A held reply may answer a request the page has already abandoned.
-      return route.fulfill({ json: { ...copy, locale } }).catch(() => {});
-    }
-    if (url.pathname === '/api/teams/marketing/assistants/shimpz-cloudflare/details') {
-      await detailsGate(locale);
-      const installed = inventory().find((entry) => entry.assistant === 'shimpz-cloudflare');
-      return route.fulfill({ json: { ...STAGED_PAGE, locale, assistant_version: installed.assistant_version } });
-    }
-    if (url.pathname === '/api/teams/marketing/assistants/shimpz-cloudflare' && request.method() === 'DELETE') {
-      deletes.push(url.pathname);
-      if (deleteStatus !== 200) return route.fulfill({ status: deleteStatus, json: { detail: 'Team refused the request' } });
-      return route.fulfill({ json: { assistant: 'shimpz-cloudflare', uninstalled: true } });
-    }
-    if (installRefusal && request.method() === 'POST' && url.pathname.startsWith('/api/teams/marketing/assistants')) {
-      return route.fulfill({ status: 409, json: { detail: 'Team is full', code: 'assistant_limit_reached' } });
-    }
-    if (url.pathname === '/api/teams/marketing/assistants' && inventory() === null) {
-      return route.fulfill({ status: 503, json: { detail: 'Team is unavailable' } });
-    }
-    if (url.pathname === '/api/local-assistants') await stagedGate();
-    if (url.pathname === '/api/teams/marketing/assistants') await inventoryGate();
-    if (url.pathname === '/api/local-assistants' && stagedStatus !== 200) {
-      return route.fulfill({ status: stagedStatus, json: { error: 'unavailable', code: 'local-assistant-snapshots-unavailable' } });
-    }
-    const body = {
-      '/api/session': SESSION,
-      '/api/assistants': { assistants: [] },
-      '/api/teams/marketing/assistants': { assistants: inventory() },
-      '/api/teams/marketing/files': { files: [] },
-      '/api/assistant-catalog': { version: 1, locale, assistants: published },
-      '/api/local-assistants': { assistants: staged, trace_id: 'c'.repeat(32) },
-    }[url.pathname];
+    const body = { '/api/session': SESSION }[url.pathname];
     return route.fulfill({ status: body ? 200 : 503, json: body ?? {} });
   });
 }
@@ -294,26 +296,20 @@ test('never shows a page read for the previous language once the language change
     stagedPage: (locale) => (locale === 'pt'
       ? { ...STAGED_PAGE, creators: ['@shimpz'], summary: portuguese, stored_inputs: [portugueseToken] }
       : STAGED_PAGE),
-    detailsGate: (locale) => (locale === 'en' ? englishHeld : undefined),
+    detailsGate: (locale) => (locale === 'en' ? englishHeld.then(() => { englishAnswered = true; }) : undefined),
     stagedGate: () => ((listings += 1) === 2 ? listingHeld : undefined),
   });
-  const englishRequested = page.waitForRequest((request) => request.url().includes('/details?locale=en'));
+  let englishAnswered = false;
   await page.goto('/assistants/shimpz-cloudflare?team=marketing');
-  await englishRequested;
-
-  // The English read ends either answered or abandoned by the page; both are awaited before the change can cause either.
-  const english = (request) => request.url().includes('/details?locale=en');
-  const englishSettled = Promise.race([
-    page.waitForResponse((response) => english(response.request())),
-    page.waitForEvent('requestfailed', english),
-  ]);
+  await waitForRead(page, 'snapshots.details', (params) => params.locale === 'en');
 
   // The language changes while the English page is still being read and before the sources are read again.
   await page.getByRole('button', { name: 'Language: English' }).click();
   await page.getByRole('menuitemradio', { name: /Português/ }).click();
   await expect.poll(() => listings).toBe(2);
+  // The English answer arrives after the change; the page drops it.
   releaseEnglish();
-  await englishSettled;
+  await expect.poll(() => englishAnswered).toBe(true);
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   const sheet = page.getByRole('article');
   await expect(sheet.getByText('@roxygens', { exact: true })).toHaveCount(0);
@@ -339,25 +335,23 @@ test('reads an installed Assistant page again when its reply arrived during an i
     inventory: () => [{ assistant: 'shimpz-cloudflare', assistant_version: '0.5.2', status: 'running', provenance: 'local' }],
     deletes,
     deleteStatus: 500,
-    detailsGate: () => (holdDetails ? detailsHeld : undefined),
+    detailsGate: () => (holdDetails ? detailsHeld.then(() => { detailsServed = true; }) : undefined),
     inventoryGate: () => inventoryHeld,
   });
-  const installedPage = (url) => url.includes('/api/teams/marketing/assistants/shimpz-cloudflare/details');
-  const detailsRequested = page.waitForRequest((request) => installedPage(request.url()));
+  let detailsServed = false;
   await page.goto('/assistants/shimpz-cloudflare?team=marketing');
-  await detailsRequested;
+  await waitForRead(page, 'assistants.details', (params) => params.assistant_id === 'shimpz-cloudflare');
   const sheet = page.getByRole('article');
   await sheet.getByRole('button', { name: 'Uninstall', exact: true }).click();
 
   // The Team inventory is read again right before the uninstall; the page's reply lands during that read.
   inventoryHeld = new Promise((resolve) => { releaseInventory = resolve; });
-  const inventoryRequested = page.waitForRequest((request) => new URL(request.url()).pathname === '/api/teams/marketing/assistants');
+  const inventoryRequested = nextRead(page, 'assistants.list');
   await page.getByRole('dialog').getByRole('button', { name: 'Uninstall Assistant' }).click();
   await inventoryRequested;
   holdDetails = false;
-  const detailsServed = page.waitForResponse((response) => installedPage(response.url()));
   releaseDetails();
-  await detailsServed;
+  await expect.poll(() => detailsServed).toBe(true);
   await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   inventoryHeld = undefined;
   releaseInventory();
@@ -366,4 +360,58 @@ test('reads an installed Assistant page again when its reply arrived during an i
   await expect(page.getByRole('dialog').getByRole('alert')).toHaveText('Team did not confirm the removal.');
   expect(deletes).toHaveLength(1);
   await expect(sheet.getByRole('heading', { level: 2 })).toHaveText(STAGED_PAGE.summary);
+});
+
+test('an install whose answer is lost with the connection says its outcome is unknown and reads the Team again', async ({ page }) => {
+  await routePage(page, { staged: [], published: [publicAssistant()] });
+  // Team takes the install, and Admin's connection drops before it answers.
+  await routeRead(page, 'assistants.install', () => new Promise(() => {}));
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  await page.getByRole('article').getByRole('button', { name: 'Install', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: messages.en.assistantStore.confirm, exact: true }).click();
+  await waitForRead(page, 'assistants.install');
+  const inventoryReads = (await readsOf(page, 'assistants.list')).length;
+  await dropSessions(page);
+
+  await expect(dialog.getByRole('alert')).toHaveText(messages.en.shell.outcomeUnknown);
+  // The install is never sent again; the Team's Assistants are read again once Admin is back.
+  await expect.poll(async () => (await readsOf(page, 'assistants.list')).length).toBeGreaterThan(inventoryReads);
+  expect(await readsOf(page, 'assistants.install')).toHaveLength(1);
+});
+
+test('the Store catalog is read in its bounded pages and every page is shown', async ({ page }) => {
+  await routePage(page, { staged: [] });
+  const assistants = ['alpha', 'bravo', 'charlie', 'delta', 'echo'].map((name) => publicAssistant({
+    assistant_id: `shimpz-${name}`,
+    name: `Shimpz ${name[0].toUpperCase()}${name.slice(1)}`,
+  }));
+  const digest = 'c'.repeat(32);
+  await routeRead(page, 'store.catalog', ({ locale, cursor }) => {
+    const start = cursor ? Number(cursor.split('.')[0]) : 0;
+    const end = Math.min(start + 2, assistants.length);
+    return { status: 200, json: {
+      version: 1, locale, assistants: assistants.slice(start, end), next: end < assistants.length ? `${end}.${digest}` : null,
+    } };
+  });
+  await page.goto('/assistants/?team=marketing');
+  const catalog = page.getByRole('region', { name: messages.en.store.frameTitle });
+  for (const assistant of assistants) {
+    await expect(catalog.getByRole('link', { name: new RegExp(`^${assistant.name}`) })).toBeVisible();
+  }
+  expect((await readsOf(page, 'store.catalog')).map((params) => params.cursor ?? null))
+    .toEqual([null, `2.${digest}`, `4.${digest}`]);
+});
+
+test('a snapshot staged elsewhere appears once Admin says the staged Assistants changed', async ({ page }) => {
+  const staged = [stagedSnapshot({ name: 'Cloudflare' })];
+  await routePage(page, { staged });
+  await page.goto('/assistants/?team=marketing');
+  const catalog = page.getByRole('region', { name: messages.en.store.frameTitle });
+  await expect(catalog.getByRole('link', { name: /^Cloudflare/ })).toBeVisible();
+  await expect(catalog.getByRole('link', { name: /^Exa Search/ })).toHaveCount(0);
+
+  staged.push(stagedSnapshot({ assistant_id: 'shimpz-exa', name: 'Exa Search', image_id: `sha256:${'c'.repeat(64)}` }));
+  await raiseTopic(page, 'local-assistants');
+  await expect(catalog.getByRole('link', { name: /^Exa Search/ })).toBeVisible();
 });

@@ -4,37 +4,31 @@ import test from 'node:test';
 import { get } from 'svelte/store';
 
 import { assistantNames } from '../src/lib/assistantNames.js';
-import { socketReads } from '../src/lib/adminSocket.js';
 import { clearTeamContext, loadTeamContext, refreshTeamInventory } from '../src/lib/teamContext.js';
+import { response, via } from './socketStub.js';
 
-function response(status, body) {
-  return { ok: status >= 200 && status < 300, status, async json() { return body; } };
-}
-
-// The Team list is the session socket's `teams.list` read (ADR-0114).
-socketReads.call = async (method) => {
-  assert.equal(method, 'teams.list');
-  return response(200, { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] });
-};
-
-function fetcherWith(catalog) {
-  return async (url) => {
-    if (url === '/api/assistants') return response(200, { assistants: catalog });
-    if (url === '/api/teams/marketing/assistants') return response(200, { assistants: [] });
-    throw new Error(`Unexpected request: ${url}`);
+// The Team context reads the Team list, the registry, and the selected Team's inventory over the session socket.
+function spaceWith(catalog) {
+  return async (method) => {
+    if (method === 'teams.list') {
+      return response(200, { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] });
+    }
+    if (method === 'assistants.registry') return response(200, { assistants: catalog });
+    if (method === 'assistants.list') return response(200, { assistants: [] });
+    throw new Error(`Unexpected request: ${method}`);
   };
 }
 
 test('Assistant names follow the catalog the Team context reads, and a cleared context names none', async () => {
   clearTeamContext();
-  await loadTeamContext(fetcherWith([{ id: 'hello-pulse', title: 'Hello Pulse' }]), 'marketing');
+  await via(spaceWith([{ id: 'hello-pulse', title: 'Hello Pulse' }]), () => loadTeamContext('marketing'));
   assert.deepEqual(get(assistantNames), { 'hello-pulse': 'Hello Pulse' });
 
   // An Assistant published since the first read is named once the catalog is read again, after an install.
-  await refreshTeamInventory(fetcherWith([
+  await via(spaceWith([
     { id: 'hello-pulse', title: 'Hello Pulse' },
     { id: 'salesnator', title: 'Salesnator' },
-  ]));
+  ]), refreshTeamInventory);
   assert.deepEqual(get(assistantNames), { 'hello-pulse': 'Hello Pulse', salesnator: 'Salesnator' });
 
   // Another session reads its own catalog.

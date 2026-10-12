@@ -1,3 +1,4 @@
+import { socketReads } from './adminSocket.js';
 import { parseFileDisclosure, parseRestrictedActions } from './attachments.js';
 import { parseClarification, renderClarification } from './clarification.js';
 import { parseTaskUsage } from './taskUsage.js';
@@ -854,13 +855,9 @@ export function createHumanResponseFrame(teamId, challengeId, decision, value) {
   };
 }
 
-export async function listAssistantIntegrations(fetcher, teamId) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant integration request.');
+export async function listAssistantIntegrations(teamId) {
   requireTeam(teamId);
-  const response = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/assistant-integrations`, {
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
+  const response = await socketReads.call('integrations.list', { team_id: teamId });
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'Assistant integrations are unavailable.'), response.status);
@@ -913,13 +910,9 @@ function canonicalStoredInputMetadata(value) {
   }
 }
 
-export async function listAssistantStoredInputs(fetcher, teamId) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant Stored Input request.');
+export async function listAssistantStoredInputs(teamId) {
   requireTeam(teamId);
-  const response = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/assistant-stored-inputs`, {
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
+  const response = await socketReads.call('stored_inputs.list', { team_id: teamId });
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'Assistant Stored Inputs are unavailable.'), response.status);
@@ -938,8 +931,7 @@ export async function listAssistantStoredInputs(fetcher, teamId) {
   return { stored_inputs: storedInputs };
 }
 
-export async function clearAssistantStoredInput(fetcher, teamId, assistantId, storedInputId) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant Stored Input request.');
+export async function clearAssistantStoredInput(teamId, assistantId, storedInputId) {
   requireTeam(teamId);
   let assistant;
   let storedInput;
@@ -949,13 +941,9 @@ export async function clearAssistantStoredInput(fetcher, teamId, assistantId, st
   } catch {
     throw new LocalApiError('Invalid Assistant Stored Input request.');
   }
-  const response = await fetcher(
-    `/api/teams/${encodeURIComponent(teamId)}/assistant-stored-inputs/`
-      + `${encodeURIComponent(assistant)}/${encodeURIComponent(storedInput)}`,
-    {
-      method: 'DELETE',
-      headers: { Accept: 'application/json' },
-    },
+  const response = await socketReads.call(
+    'stored_inputs.clear',
+    { team_id: teamId, assistant_id: assistant, stored_input_id: storedInput },
   );
   const body = await jsonObject(response);
   if (!response.ok) {
@@ -967,14 +955,7 @@ export async function clearAssistantStoredInput(fetcher, teamId, assistantId, st
   return body.cleared;
 }
 
-export async function authorizeAssistantIntegration(
-  fetcher,
-  teamId,
-  challengeId,
-  assistantId,
-  integrationId,
-) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant authorization request.');
+export async function authorizeAssistantIntegration(teamId, challengeId, assistantId, integrationId) {
   requireTeam(teamId);
   if (typeof challengeId !== 'string' || !OPAQUE_ID_RE.test(challengeId)) {
     throw new LocalApiError('Invalid Assistant authorization request.');
@@ -987,14 +968,11 @@ export async function authorizeAssistantIntegration(
   } catch {
     throw new LocalApiError('Invalid Assistant authorization request.');
   }
-  const response = await fetcher(
-    `/api/teams/${encodeURIComponent(teamId)}/assistant-integrations/challenges/${challengeId}/authorize`,
-    {
-      method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ assistant_id: assistant, integration_id: integration }),
-    },
-  );
+  const response = await socketReads.call('integrations.authorize', {
+    team_id: teamId,
+    challenge_id: challengeId,
+    body: { assistant_id: assistant, integration_id: integration },
+  });
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'Assistant authorization could not start.'), response.status);
@@ -1011,8 +989,7 @@ export async function authorizeAssistantIntegration(
   };
 }
 
-export async function completeAssistantIntegration(fetcher, teamId, challengeId, completionCode) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant authorization request.');
+export async function completeAssistantIntegration(teamId, challengeId, completionCode) {
   requireTeam(teamId);
   if (
     typeof challengeId !== 'string' ||
@@ -1022,14 +999,11 @@ export async function completeAssistantIntegration(fetcher, teamId, challengeId,
   ) {
     throw new LocalApiError('Invalid Assistant completion code.');
   }
-  const response = await fetcher(
-    `/api/teams/${encodeURIComponent(teamId)}/assistant-integrations/challenges/${challengeId}/complete`,
-    {
-      method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ completion_code: completionCode }),
-    },
-  );
+  const response = await socketReads.call('integrations.complete', {
+    team_id: teamId,
+    challenge_id: challengeId,
+    body: { completion_code: completionCode },
+  });
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'Assistant authorization could not finish.'), response.status);
@@ -1049,20 +1023,12 @@ export async function completeAssistantIntegration(fetcher, teamId, challengeId,
   };
 }
 
-export async function cancelAssistantIntegrationAuthorization(fetcher, teamId, challengeId) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Assistant authorization request.');
+export async function cancelAssistantIntegrationAuthorization(teamId, challengeId) {
   requireTeam(teamId);
   if (typeof challengeId !== 'string' || !OPAQUE_ID_RE.test(challengeId)) {
     throw new LocalApiError('Invalid Assistant authorization request.');
   }
-  const response = await fetcher(
-    `/api/teams/${encodeURIComponent(teamId)}/assistant-integrations/challenges/${challengeId}/authorize`,
-    {
-      method: 'DELETE',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: '{}',
-    },
-  );
+  const response = await socketReads.call('integrations.cancel', { team_id: teamId, challenge_id: challengeId });
   if (!response.ok) {
     const body = await jsonObject(response);
     throw new LocalApiError(safeApiError(body, 'Assistant authorization could not be cancelled.'), response.status);

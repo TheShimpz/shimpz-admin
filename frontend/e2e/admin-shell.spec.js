@@ -2,7 +2,15 @@ import { expect, test } from '@playwright/test';
 
 import { assistantDetails, PAGE_COPY, publicAssistant } from './assistantPages.js';
 import { accessibilityViolations } from './axe.js';
-import { activityReports, raiseTopic, recordRequests, routeRead, routeScenario, sessionFrames } from './scenarioRoutes.js';
+import {
+  activityReports,
+  raiseTopic,
+  readsOf,
+  routeRead,
+  routeScenario,
+  sessionFrames,
+  waitForRead,
+} from './scenarioRoutes.js';
 import { recoveryCodeSet } from './securityScenarios.js';
 
 const ok = (json, status = 200) => ({ status, json });
@@ -467,20 +475,20 @@ test('a selected Team removed and made again elsewhere reloads the Team context 
     removed ? ok({ teams: listed.filter((team) => team.team_id !== 'marketing') }) : undefined
   ));
   // The fast routing state cannot be read, so the composer's menu reads it again whenever it is shown.
-  await page.route('**/api/decision-provider', (route) => route.fulfill({ status: 503, json: { detail: 'unavailable' } }));
+  await routeRead(page, 'decision.read', () => ({ status: 503, json: { detail: 'unavailable' } }));
   await page.goto('/chat/?team=marketing');
   const navigation = page.locator('.shell-sidebar');
   await expect(navigation.getByRole('link', { name: 'Marketing', exact: true })).toBeVisible();
   await expect.poll(() => scenario.sessions.some((session) => session.subscribed('teams'))).toBe(true);
 
   // Another tab deleted Marketing: the whole context loads again.
-  const requests = recordRequests(page);
+  const inferenceReads = async () => (await readsOf(page, 'inference.read')).map((params) => params.team_id);
+  const marketingReads = (await inferenceReads()).filter((teamId) => teamId === 'marketing').length;
   removed = true;
   await raiseTopic(page, 'teams');
   await expect(navigation.getByRole('link', { name: 'Marketing', exact: true })).toHaveCount(0);
   // The Team selected in its place opens: its model settings and its chat history are read.
-  const replacement = (path) => /^\/api\/teams\/(?!marketing\/)[a-z0-9_]+\/inference$/.test(path);
-  await expect.poll(() => requests.some((request) => replacement(request.path))).toBe(true);
+  await expect.poll(async () => (await inferenceReads()).some((teamId) => teamId !== 'marketing')).toBe(true);
   const histories = async () => (await sessionFrames(page)).filter((frame) => (
     frame.type === 'call' && frame.method === 'history.page' && frame.params.team_id !== 'marketing'
   ));
@@ -489,7 +497,8 @@ test('a selected Team removed and made again elsewhere reloads the Team context 
   // Marketing is made again elsewhere: the address still names it, so the page selects it again, on its own.
   removed = false;
   await raiseTopic(page, 'teams');
-  await expect.poll(() => requests.some((request) => request.path === '/api/teams/marketing/inference')).toBe(true);
+  await expect.poll(async () => (await inferenceReads()).filter((teamId) => teamId === 'marketing').length)
+    .toBeGreaterThan(marketingReads);
   await expect(navigation.getByRole('link', { name: 'Marketing', exact: true })).toBeVisible();
   // Nobody touched the page: none of this kept the session alive.
   expect(await activityReports(page)).toBe(0);
@@ -503,16 +512,17 @@ test('an Assistant page whose Team was removed elsewhere reads the page for the 
     removed ? ok({ teams: listed.filter((team) => team.team_id !== 'marketing') }) : undefined
   ));
   // The Team chosen in Marketing's place runs the same Assistant, so the page reads its page copy for that Team.
-  const inventory = scenario.respond({ method: 'GET', path: '/api/teams/marketing/assistants', query: new URLSearchParams() });
-  await page.route('**/api/teams/trinity/assistants', (route) => route.fulfill({ json: inventory.json }));
+  const inventory = scenario.call('assistants.list', { team_id: 'marketing' });
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'trinity' ? { status: 200, json: inventory.json } : undefined));
   await page.goto('/assistants/shimpz-cloudflare');
   await expect(page.getByRole('article')).toBeVisible();
   await expect.poll(() => scenario.sessions.some((session) => session.subscribed('teams'))).toBe(true);
-  const requests = recordRequests(page);
   removed = true;
   await raiseTopic(page, 'teams');
   // The page reads the Assistant's page copy again for the Team the page selected in Marketing's place.
-  await expect.poll(() => requests.some((request) => request.path === '/api/teams/trinity/assistants/shimpz-cloudflare/details')).toBe(true);
+  await waitForRead(page, 'assistants.details', (params) => (
+    params.team_id === 'trinity' && params.assistant_id === 'shimpz-cloudflare'
+  ));
   expect(await activityReports(page)).toBe(0);
 });
 
@@ -561,14 +571,9 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
     { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
     { team_id: 'gestao', team_name: 'Gestão', status: 'running' },
   ] } }));
-  await page.route('**/api/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [] }),
-  }));
-  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
-      version: 1, locale: 'en',
+  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
+  await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: {
+      version: 1, next: null, locale: 'en',
       assistants: [{
         assistant_id: 'shimpz-cloudflare',
         assistant_version: '0.4.5',
@@ -579,20 +584,9 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
         summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
         ...structuredClone(PAGE_COPY),
       }],
-    }),
-  }));
-  await page.route('**/api/local-assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [], trace_id: 'c'.repeat(32) }),
-  }));
-  await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [] }),
-  }));
-  await page.route('**/api/teams/marketing/files', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ files: [] }),
-  }));
+    } } : undefined));
+  await routeRead(page, 'snapshots.list', () => ({ status: 200, json: { assistants: [], trace_id: 'c'.repeat(32) } }));
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
   // The sidebar's status, with memory nearly full, is part of the scanned screen.
   await routeRead(page, 'space.resources', () => ({
     status: 200,
@@ -645,23 +639,15 @@ test('never renders a matching publication while Local snapshots are settling', 
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
   await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
-  await page.route('**/api/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [] }),
-  }));
-  await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [{
+  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [{
       assistant: 'shimpz-cloudflare',
       assistant_version: '0.4.5',
       status: 'running',
       provenance: 'local',
-    }] }),
-  }));
-  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
-      version: 1, locale: 'en',
+    }] } } : undefined));
+  await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: {
+      version: 1, next: null, locale: 'en',
       assistants: [
         {
           assistant_id: 'another-assistant',
@@ -684,13 +670,10 @@ test('never renders a matching publication while Local snapshots are settling', 
           ...structuredClone(PAGE_COPY),
         },
       ],
-    }),
-  }));
-  await page.route('**/api/local-assistants', async (route) => {
+    } } : undefined));
+  await routeRead(page, 'snapshots.list', async () => {
     await localInventoryGate;
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
+    return ok({
         assistants: [{
           assistant_id: 'shimpz-cloudflare',
           assistant_version: '0.4.5',
@@ -708,7 +691,6 @@ test('never renders a matching publication while Local snapshots are settling', 
           reason: null,
         }],
         trace_id: 'c'.repeat(32),
-      }),
     });
   });
   await page.route('**/api/local-assistants/*/icon', (route) => route.fulfill({
@@ -716,9 +698,7 @@ test('never renders a matching publication while Local snapshots are settling', 
     body: localIcon,
   }));
 
-  const publicInventory = page.waitForResponse((response) => (
-    new URL(response.url()).pathname === '/api/assistant-catalog'
-  ));
+  const publicInventory = waitForRead(page, 'store.catalog');
   // The page's clock stands still while Local snapshots settle, so the boot screen's own one-second deadline cannot
   // end the settling view before this test has looked at it.
   const start = new Date('2026-10-01T12:00:00Z');
@@ -765,21 +745,10 @@ test('renders Assistant identities immediately during in-app icon hydration', as
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
   await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
-  await page.route('**/api/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [] }),
-  }));
-  await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [] }),
-  }));
-  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ version: 1, locale: 'en', assistants: [] }),
-  }));
-  await page.route('**/api/local-assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
+  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
+  await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: { version: 1, next: null, locale: 'en', assistants: [] } } : undefined));
+  await routeRead(page, 'snapshots.list', () => ({ status: 200, json: {
       assistants: [{
         assistant_id: 'shimpz-cloudflare',
         assistant_version: '0.4.5',
@@ -797,8 +766,7 @@ test('renders Assistant identities immediately during in-app icon hydration', as
         reason: null,
       }],
       trace_id: 'c'.repeat(32),
-    }),
-  }));
+    } }));
   await page.route('**/api/local-assistants/*/icon', async (route) => {
     markIconRequested();
     await iconGate;
@@ -831,6 +799,15 @@ test('shows the first Assistants view before a public icon finishes loading', as
   const iconGate = new Promise((resolve) => { releaseIcon = resolve; });
   const iconRequested = new Promise((resolve) => { markIconRequested = resolve; });
   await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } }));
+  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
+  await routeRead(page, 'store.catalog', ({ locale }) => ({ status: 200, json: { version: 1, next: null, locale: 'en', assistants: [{
+        assistant_id: 'hello-pulse', assistant_version: '1.0.0', creators: ['@creator'],
+        icon_digest: `sha256:${'b'.repeat(64)}`, name: 'Hello Pulse',
+        source_digest: `sha256:${'a'.repeat(64)}`, summary: 'A measured public Assistant.',
+        ...structuredClone(PAGE_COPY),
+      }] } }));
+  await routeRead(page, 'snapshots.list', () => ({ status: 200, json: { assistants: [], trace_id: 'c'.repeat(32) } }));
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/assistants/hello-pulse/catalog-icon') {
@@ -841,15 +818,6 @@ test('shows the first Assistants view before a public icon finishes loading', as
     }
     const body = {
       '/api/session': authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
-      '/api/assistants': { assistants: [] },
-      '/api/teams/marketing/assistants': { assistants: [] },
-      '/api/assistant-catalog': { version: 1, locale: 'en', assistants: [{
-        assistant_id: 'hello-pulse', assistant_version: '1.0.0', creators: ['@creator'],
-        icon_digest: `sha256:${'b'.repeat(64)}`, name: 'Hello Pulse',
-        source_digest: `sha256:${'a'.repeat(64)}`, summary: 'A measured public Assistant.',
-        ...structuredClone(PAGE_COPY),
-      }] },
-      '/api/local-assistants': { assistants: [], trace_id: 'c'.repeat(32) },
     }[path];
     await route.fulfill({
       status: body ? 200 : 503,
@@ -892,21 +860,21 @@ test('shows the first Assistants view before a public icon finishes loading', as
 
 test('shows an over-budget public icon as unavailable instead of loading forever', async ({ page }) => {
   await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } }));
+  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
+  await routeRead(page, 'store.catalog', ({ locale }) => ({ status: 200, json: { version: 1, next: null, locale: 'en', assistants: [{
+        assistant_id: 'hello-pulse', assistant_version: '1.0.0', creators: ['@creator'],
+        icon_digest: `sha256:${'b'.repeat(64)}`, name: 'Hello Pulse',
+        source_digest: `sha256:${'a'.repeat(64)}`, summary: 'A measured public Assistant.',
+        ...structuredClone(PAGE_COPY),
+      }] } }));
+  await routeRead(page, 'snapshots.list', () => ({ status: 200, json: { assistants: [], trace_id: 'c'.repeat(32) } }));
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     // The icon never answers within ICON_PRESENTATION_BUDGET_MS, so the catalog gives up on it.
     if (path === '/api/assistants/hello-pulse/catalog-icon') return;
     const body = {
       '/api/session': authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
-      '/api/assistants': { assistants: [] },
-      '/api/teams/marketing/assistants': { assistants: [] },
-      '/api/assistant-catalog': { version: 1, locale: 'en', assistants: [{
-        assistant_id: 'hello-pulse', assistant_version: '1.0.0', creators: ['@creator'],
-        icon_digest: `sha256:${'b'.repeat(64)}`, name: 'Hello Pulse',
-        source_digest: `sha256:${'a'.repeat(64)}`, summary: 'A measured public Assistant.',
-        ...structuredClone(PAGE_COPY),
-      }] },
-      '/api/local-assistants': { assistants: [], trace_id: 'c'.repeat(32) },
     }[path];
     await route.fulfill({
       status: body ? 200 : 503,
@@ -949,13 +917,8 @@ test('keeps public discovery available when Local snapshot enumeration fails', a
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
   await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
-  await page.route('**/api/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [] }),
-  }));
-  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ version: 1, locale: 'en', assistants: [{
+  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
+  await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: { version: 1, next: null, locale: 'en', assistants: [{
       assistant_id: 'published-helper',
       assistant_version: '1.0.0',
       creators: ['@creator'],
@@ -964,29 +927,15 @@ test('keeps public discovery available when Local snapshot enumeration fails', a
       source_digest: `sha256:${'f'.repeat(64)}`,
       summary: 'Public discovery remains available after an explicit Local inventory failure.',
       ...structuredClone(PAGE_COPY),
-    }] }),
-  }));
-  await page.route('**/api/local-assistants', (route) => route.fulfill({
-    status: 503,
-    contentType: 'application/json',
-    body: JSON.stringify({
+    }] } } : undefined));
+  await routeRead(page, 'snapshots.list', () => ({ status: 503, json: {
       error: 'Local Assistant snapshots are unavailable',
       code: 'local-assistant-snapshots-unavailable',
       trace_id: 'c'.repeat(32),
-    }),
-  }));
-  await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [] }),
-  }));
-  await page.route('**/api/teams/marketing/files', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ files: [] }),
-  }));
+    } }));
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
 
-  const localInventory = page.waitForResponse((response) => (
-    new URL(response.url()).pathname === '/api/local-assistants'
-  ));
+  const localInventory = waitForRead(page, 'snapshots.list');
   await page.goto('/assistants/');
   await localInventory;
 
@@ -1015,14 +964,9 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await routeRead(page, 'teams.list', () => ok({ teams: [
       { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
     ] }));
-  await page.route('**/api/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [] }),
-  }));
-  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
-      version: 1, locale: 'en',
+  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
+  await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: {
+      version: 1, next: null, locale: 'en',
       assistants: [{
         assistant_id: 'whatsapp',
         assistant_version: '0.2.0',
@@ -1033,11 +977,8 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
         summary: 'This publication must be shadowed by the staged Local build.',
         ...structuredClone(PAGE_COPY),
       }],
-    }),
-  }));
-  await page.route('**/api/local-assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
+    } } : undefined));
+  await routeRead(page, 'snapshots.list', () => ({ status: 200, json: {
       assistants: [
         {
           assistant_id: 'whatsapp',
@@ -1073,46 +1014,34 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
         },
       ],
       trace_id: 'c'.repeat(32),
-    }),
-  }));
+    } }));
   await page.route('**/api/local-assistants/*/icon', (route) => route.fulfill({
     contentType: 'image/png',
     body: localIcon,
   }));
-  await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: {
       assistants: installed
         ? [{ assistant: 'whatsapp', assistant_version: '0.2.1', status: 'running', provenance: 'local' }]
         : [],
-    }),
-  }));
-  await page.route('**/api/teams/marketing/assistants/local', async (route) => {
-    expect(await route.request().postDataJSON()).toEqual({ image_id: imageId });
+    } } : undefined));
+  await routeRead(page, 'assistants.install_local', async ({ team_id: teamId, body }) => {
+    if (teamId !== 'marketing') return undefined;
+    expect(body).toEqual({ image_id: imageId });
     await new Promise((resolve) => setTimeout(resolve, 100));
     installed = true;
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
-        assistant: 'whatsapp',
-        image_id: imageId,
-        installed: true,
-        provenance: 'local',
-        unpublished: true,
-        trace_id: 'd'.repeat(32),
-      }),
+    return ok({
+      assistant: 'whatsapp',
+      image_id: imageId,
+      installed: true,
+      provenance: 'local',
+      unpublished: true,
+      trace_id: 'd'.repeat(32),
     });
   });
-  await page.route('**/api/teams/marketing/assistants/whatsapp', async (route) => {
-    expect(route.request().method()).toBe('DELETE');
+  await routeRead(page, 'assistants.uninstall', ({ team_id: teamId, assistant_id: assistantId }) => {
+    if (teamId !== 'marketing' || assistantId !== 'whatsapp') return undefined;
     installed = false;
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
-        assistant: 'whatsapp',
-        uninstalled: true,
-      }),
-    });
+    return ok({ assistant: 'whatsapp', uninstalled: true });
   });
 
   const whatsappPage = (locale, provenanceVersion) => assistantDetails({
@@ -1133,14 +1062,16 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
     }],
   });
   const stagedPages = [];
-  await page.route(/\/api\/local-assistants\/[0-9a-f]{64}\/details\?locale=en$/, (route) => {
-    stagedPages.push(new URL(route.request().url()).pathname);
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify(whatsappPage('en', '0.2.1')) });
+  await routeRead(page, 'snapshots.details', ({ image_id: stagedImage, locale }) => {
+    if (locale !== 'en') return undefined;
+    stagedPages.push(stagedImage);
+    return ok(whatsappPage('en', '0.2.1'));
   });
-  await page.route(/\/api\/teams\/marketing\/assistants\/whatsapp\/details\?locale=en$/, (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify(whatsappPage('en', '0.2.1')),
-  }));
+  await routeRead(page, 'assistants.details', (params) => (
+    params.team_id === 'marketing' && params.assistant_id === 'whatsapp' && params.locale === 'en'
+      ? ok(whatsappPage('en', '0.2.1'))
+      : undefined
+  ));
 
   await page.goto('/assistants/?team=marketing');
 
@@ -1155,7 +1086,7 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await expect(page).toHaveURL(/\/assistants\/whatsapp\?team=marketing$/);
   const sheet = page.getByRole('article');
   await expect(sheet.getByRole('heading', { level: 1 })).toHaveText('WhatsApp Automation');
-  await expect.poll(() => stagedPages).toEqual([`/api/local-assistants/${'b'.repeat(64)}/details`]);
+  await expect.poll(() => stagedPages).toEqual([imageId]);
   const install = sheet.getByRole('button', { name: 'Install', exact: true });
   await press(install, testInfo);
 
@@ -1202,14 +1133,9 @@ test('removes an installed publication before its staged build is installed', as
   await routeRead(page, 'teams.list', () => ok({ teams: [
       { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
     ] }));
-  await page.route('**/api/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [] }),
-  }));
-  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
-      version: 1, locale: 'en',
+  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
+  await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: {
+      version: 1, next: null, locale: 'en',
       assistants: [{
         assistant_id: 'whatsapp',
         assistant_version: '0.2.0',
@@ -1220,11 +1146,8 @@ test('removes an installed publication before its staged build is installed', as
         summary: 'This publication must be shadowed by the staged Local build.',
         ...structuredClone(PAGE_COPY),
       }],
-    }),
-  }));
-  await page.route('**/api/local-assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
+    } } : undefined));
+  await routeRead(page, 'snapshots.list', () => ({ status: 200, json: {
       assistants: [{
         assistant_id: 'whatsapp',
         assistant_version: '0.2.1',
@@ -1242,58 +1165,44 @@ test('removes an installed publication before its staged build is installed', as
         reason: null,
       }],
       trace_id: 'c'.repeat(32),
-    }),
-  }));
+    } }));
   await page.route('**/api/local-assistants/*/icon', (route) => route.fulfill({
     contentType: 'image/png',
     body: localIcon,
   }));
-  await page.route('**/api/teams/marketing/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: {
       assistants: provenance ? [{
         assistant: 'whatsapp',
         assistant_version: '0.2.1',
         status: 'running',
         provenance,
       }] : [],
-    }),
-  }));
-  await page.route('**/api/teams/marketing/assistants/local', async (route) => {
-    expect(await route.request().postDataJSON()).toEqual({ image_id: imageId });
+    } } : undefined));
+  await routeRead(page, 'assistants.install_local', ({ body }) => {
+    expect(body).toEqual({ image_id: imageId });
     provenance = 'local';
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
-        assistant: 'whatsapp',
-        image_id: imageId,
-        installed: true,
-        provenance: 'local',
-        unpublished: true,
-      }),
+    return ok({
+      assistant: 'whatsapp',
+      image_id: imageId,
+      installed: true,
+      provenance: 'local',
+      unpublished: true,
     });
   });
 
-  for (const pattern of [
-    /\/api\/local-assistants\/[0-9a-f]{64}\/details\?locale=en$/,
-    /\/api\/teams\/marketing\/assistants\/whatsapp\/details\?locale=en$/,
-  ]) {
-    await page.route(pattern, (route) => route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify(assistantDetails({
-        assistant_id: 'whatsapp', assistant_version: '0.2.1', name: 'WhatsApp Automation',
-        summary: 'Send and manage WhatsApp messages from your Team.',
-      })),
-    }));
-  }
+  const whatsappPage = assistantDetails({
+    assistant_id: 'whatsapp', assistant_version: '0.2.1', name: 'WhatsApp Automation',
+    summary: 'Send and manage WhatsApp messages from your Team.',
+  });
+  await routeRead(page, 'snapshots.details', ({ locale }) => (locale === 'en' ? ok(whatsappPage) : undefined));
+  await routeRead(page, 'assistants.details', ({ assistant_id: assistantId, locale }) => (
+    assistantId === 'whatsapp' && locale === 'en' ? ok(whatsappPage) : undefined
+  ));
 
-  await page.route('**/api/teams/marketing/assistants/whatsapp', async (route) => {
-    expect(route.request().method()).toBe('DELETE');
+  await routeRead(page, 'assistants.uninstall', ({ assistant_id: assistantId }) => {
+    if (assistantId !== 'whatsapp') return undefined;
     provenance = null;
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ assistant: 'whatsapp', uninstalled: true }),
-    });
+    return ok({ assistant: 'whatsapp', uninstalled: true });
   });
 
   // The publication of this Assistant is installed while this machine stages its own build: the installed binding is
@@ -1319,14 +1228,8 @@ test('asks for the first Team from the Store when no Team exists', async ({ page
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
   await routeRead(page, 'teams.list', () => ok({ teams: [] }));
-  await page.route('**/api/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [] }),
-  }));
-  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ version: 1, locale: 'en', assistants: [] }),
-  }));
+  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
+  await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: { version: 1, next: null, locale: 'en', assistants: [] } } : undefined));
 
   await page.goto('/assistants/');
 

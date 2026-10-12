@@ -30,10 +30,10 @@ let providerCatalogRequest = null;
 // The active Team view's persisted inference, as last loaded or saved by that view; null when it has none.
 let persisted = null;
 
-function cachedModelProviders(fetcher) {
+function cachedModelProviders() {
   if (providerCatalogCache) return Promise.resolve(providerCatalogCache);
   if (providerCatalogRequest) return providerCatalogRequest;
-  const request = listModelProviders(fetcher)
+  const request = listModelProviders()
     .then((providers) => {
       if (providerCatalogRequest === request) providerCatalogCache = providers;
       return providers;
@@ -45,8 +45,8 @@ function cachedModelProviders(fetcher) {
   return request;
 }
 
-function requireRequest(fetcher, teamId) {
-  if (typeof fetcher !== 'function' || typeof teamId !== 'string' || !TEAM_ID_RE.test(teamId)) {
+function requireRequest(teamId) {
+  if (typeof teamId !== 'string' || !TEAM_ID_RE.test(teamId)) {
     throw new LocalApiError('Invalid Team model request.');
   }
 }
@@ -91,10 +91,12 @@ function settle(attempt, snapshot, saved) {
   return settled;
 }
 
+// A failed view keeps the failure's code beside its message: `outcome-unknown` when a save's answer was lost with
+// Admin's connection.
 function fail(attempt, error, state) {
   const safe = publicError(error, 'The Team model settings are unavailable.');
   if (attempt === generation) {
-    modelContext.set({ ...state, phase: 'error', ready: false, error: safe.message });
+    modelContext.set({ ...state, phase: 'error', ready: false, error: safe.message, errorCode: safe.code ?? '' });
   }
   return safe;
 }
@@ -108,21 +110,20 @@ export function clearModelContext() {
   modelContext.set(emptyContext());
 }
 
-export function preloadModelProviders(fetcher) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid model provider request.');
-  return cachedModelProviders(fetcher);
+export function preloadModelProviders() {
+  return cachedModelProviders();
 }
 
-export async function loadModelContext(fetcher, teamId) {
-  requireRequest(fetcher, teamId);
+export async function loadModelContext(teamId) {
+  requireRequest(teamId);
   const attempt = ++generation;
   persisted = null;
   const loading = { ...emptyContext(), phase: 'loading', teamId };
   modelContext.set(loading);
   try {
     const [providers, inference] = await Promise.all([
-      cachedModelProviders(fetcher),
-      loadInference(fetcher, teamId),
+      cachedModelProviders(),
+      loadInference(teamId),
     ]);
     const selected = inference
       ? providers.find((entry) => entry.id === inference.provider)
@@ -133,7 +134,6 @@ export async function loadModelContext(fetcher, teamId) {
     let selectionReady = Boolean(inference && selected.configured);
     if (!inference && selected.configured) {
       await saveModelSetup(
-        fetcher,
         teamId,
         { provider: selected.id, model, apiKey: '' },
         providers,
@@ -155,8 +155,8 @@ export async function loadModelContext(fetcher, teamId) {
   }
 }
 
-async function persist(fetcher, teamId, apiKey = '') {
-  requireRequest(fetcher, teamId);
+async function persist(teamId, apiKey = '') {
+  requireRequest(teamId);
   const current = get(modelContext);
   const selected = providerFrom(current);
   if (
@@ -176,7 +176,6 @@ async function persist(fetcher, teamId, apiKey = '') {
   modelContext.set(saving);
   try {
     const result = await saveModelSetup(
-      fetcher,
       teamId,
       { provider: current.provider, model: current.model, apiKey },
       current.providers,
@@ -215,12 +214,39 @@ function publishProviderState(epoch, providerState) {
   if (current.phase === 'ready') modelContext.set(reconcile(current));
 }
 
-export async function configureModelContext(fetcher, teamId, apiKey = '') {
-  return persist(fetcher, teamId, typeof apiKey === 'string' ? apiKey.trim() : '');
+export async function configureModelContext(teamId, apiKey = '') {
+  return persist(teamId, typeof apiKey === 'string' ? apiKey.trim() : '');
 }
 
-export async function selectTeamBrain(fetcher, teamId, providerId, modelId) {
-  requireRequest(fetcher, teamId);
+/**
+ * Admin says the Team's model selection changed (another tab, or this one): read it again and show a selection that
+ * differs from the one shown. A view that is loading or saving keeps its own answer, which is the newer one.
+ */
+export async function refreshInference(teamId) {
+  requireRequest(teamId);
+  const shown = get(modelContext);
+  // A save whose outcome was lost, or a load that failed, reads the whole context again.
+  if (shown.teamId === teamId && shown.phase === 'error') return loadModelContext(teamId);
+  const attempt = generation;
+  if (!settledFor(shown, teamId)) return shown;
+  const inference = await loadInference(teamId);
+  const current = get(modelContext);
+  if (attempt !== generation || !settledFor(current, teamId) || !inference) return current;
+  if (current.provider === inference.provider && current.model === inference.model) return current;
+  const selected = providerFrom(current, inference.provider);
+  if (!selected || !selectedModel(selected, inference.model)) return current;
+  persisted = { teamId, provider: inference.provider, model: inference.model };
+  const snapshot = { ...current, provider: selected.id, model: inference.model, ready: selected.configured, error: '' };
+  modelContext.set(snapshot);
+  return snapshot;
+}
+
+function settledFor(state, teamId) {
+  return state.teamId === teamId && state.phase === 'ready';
+}
+
+export async function selectTeamBrain(teamId, providerId, modelId) {
+  requireRequest(teamId);
   const current = get(modelContext);
   const selected = providerFrom(current, providerId);
   if (
@@ -242,5 +268,5 @@ export async function selectTeamBrain(fetcher, teamId, providerId, modelId) {
     ready: selected.configured && current.ready,
     error: '',
   });
-  return selected.configured ? persist(fetcher, teamId) : get(modelContext);
+  return selected.configured ? persist(teamId) : get(modelContext);
 }

@@ -30,7 +30,7 @@
   import { calendarDay, clockTime, exchangeDays, instantValue, turnInstants, untilNextDay } from '#lib/chatDays.js';
   import { newerRoutineEntries, questionWords, refusalWords } from '#lib/routine.js';
   import { loadTeamRoutines } from '#lib/routineContext.js';
-  import { adminSocket, call, openChatChannel, watchTopic } from '#lib/adminSocket.js';
+  import { adminSocket, call, openChatChannel, outcomeUnknown, watchTopic } from '#lib/adminSocket.js';
   import ExecutionReceipt from '#lib/ExecutionReceipt.svelte';
   import {
     createExecutionProjection,
@@ -963,7 +963,7 @@
   }
 
   async function appendUninstallOutcome(incoming) {
-    const { installedAssistants } = await refreshTeamInventory(fetch);
+    const { installedAssistants } = await refreshTeamInventory();
     if (
       lifecycleOutcomePending?.teamId !== incoming.team_id ||
       lifecycleOutcomePending?.proposalId !== incoming.proposal_id ||
@@ -1073,7 +1073,7 @@
     providerKey = '';
     if (!teamId || !keyRequired || brainSaving || apiKey.trim().length < 16) return;
     try {
-      await configureModelContext(fetch, teamId, apiKey);
+      await configureModelContext(teamId, apiKey);
     } catch {
       // The model context carries the public error shown above the composer.
       return;
@@ -1091,7 +1091,7 @@
     inventoryRetrying = true;
     try {
       if (deferredUninstall?.team_id === chatTeamId) await confirmUninstall(deferredUninstall);
-      else await refreshTeamInventory(fetch).catch(() => {});
+      else await refreshTeamInventory().catch(() => {});
       await tick();
     } finally {
       inventoryRetrying = false;
@@ -1107,8 +1107,8 @@
     if (!teamId || brainSaving) return;
     // A configured selection only needs its save repeated; an unreadable catalog or selection is reloaded.
     const retry = brainProvider?.configured && brainModel
-      ? configureModelContext(fetch, teamId, '')
-      : loadModelContext(fetch, teamId);
+      ? configureModelContext(teamId, '')
+      : loadModelContext(teamId);
     retry.catch(() => {});
   }
 
@@ -1224,7 +1224,7 @@
     const epoch = turnEpoch;
     let installed = new Set();
     try {
-      const { installedAssistants } = await refreshTeamInventory(fetch);
+      const { installedAssistants } = await refreshTeamInventory();
       installed = new Set(installedAssistants.map((assistant) => assistant.assistant));
     } catch {
       installed = new Set();
@@ -1401,7 +1401,7 @@
               for (const assistant of incoming.assistants) ids.add(assistant.id);
               turnInstalled = { teamId: chatTeamId, ids };
             }
-            void refreshTeamInventory(fetch).catch(() => undefined);
+            void refreshTeamInventory().catch(() => undefined);
             if (incoming.continuation === 'none') {
               capabilityObjective = null;
               busy = false;
@@ -1547,8 +1547,8 @@
     integrationsReady = false;
     try {
       const [integrationInventory, storedInputInventory] = await Promise.all([
-        listAssistantIntegrations(fetch, teamId),
-        listAssistantStoredInputs(fetch, teamId),
+        listAssistantIntegrations(teamId),
+        listAssistantStoredInputs(teamId),
       ]);
       if (chatTeamId !== teamId) return;
       const installed = new Set($teamContext.installedAssistants.map((assistant) => assistant.assistant));
@@ -1586,7 +1586,7 @@
     ) throw new Error(integrationsCopy.storedInputClearFailed);
     storedInputWorking = key;
     try {
-      await clearAssistantStoredInput(fetch, teamId, item.assistant_id, item.stored_input_id);
+      await clearAssistantStoredInput(teamId, item.assistant_id, item.stored_input_id);
       if (chatTeamId !== teamId) return;
       storedInputs = storedInputs.map((candidate) => (
         candidate.assistant_id === item.assistant_id &&
@@ -1598,12 +1598,18 @@
       if (chatTeamId !== teamId) return;
       setError(
         integrationsCopy.storedInputClearFailed,
-        reason instanceof Error ? reason.message : integrationsCopy.storedInputClearFailed,
+        failureDetail(reason, integrationsCopy.storedInputClearFailed),
       );
       throw reason;
     } finally {
       if (chatTeamId === teamId) storedInputWorking = '';
     }
+  }
+
+  // A failure's detail: a change Admin never confirmed before it disconnected may or may not have happened.
+  function failureDetail(reason, fallback) {
+    if (outcomeUnknown(reason)) return $t('shell.outcomeUnknown');
+    return reason instanceof Error ? reason.message : fallback;
   }
 
   function toggleIntegrations() {
@@ -1636,7 +1642,6 @@
     let authorizationStarted = false;
     try {
       const authorization = await authorizeAssistantIntegration(
-        fetch,
         teamId,
         challengeId,
         requirement.assistant_id,
@@ -1663,7 +1668,7 @@
       authorizationWindow?.close();
       if (authorizationStarted) {
         try {
-          await cancelAssistantIntegrationAuthorization(fetch, teamId, challengeId);
+          await cancelAssistantIntegrationAuthorization(teamId, challengeId);
         } catch {
           // Bounded server-side expiry remains the fail-closed fallback.
         }
@@ -1671,7 +1676,7 @@
       if (chatTeamId === teamId) {
         setError(
           integrationsCopy.authorizationFailed,
-          reason instanceof Error ? reason.message : integrationsCopy.authorizationFailed,
+          failureDetail(reason, integrationsCopy.authorizationFailed),
         );
       }
       integrationWorking = '';
@@ -1688,7 +1693,7 @@
     ) throw new Error(integrationsCopy.completionFailed);
     integrationWorking = 'complete';
     try {
-      await completeAssistantIntegration(fetch, teamId, challengeId, completionCode);
+      await completeAssistantIntegration(teamId, challengeId, completionCode);
       if (chatTeamId !== teamId || integrationChallenge?.challenge_id !== challengeId) {
         throw new Error(integrationsCopy.completionFailed);
       }
@@ -1698,7 +1703,7 @@
         integrationWorking = '';
         setError(
           integrationsCopy.completionFailed,
-          reason instanceof Error ? reason.message : integrationsCopy.completionFailed,
+          failureDetail(reason, integrationsCopy.completionFailed),
         );
       }
       throw reason;
@@ -1709,7 +1714,7 @@
     const teamId = chatTeamId;
     if (!teamId || integrationChallenge?.challenge_id !== challengeId) return;
     try {
-      await cancelAssistantIntegrationAuthorization(fetch, teamId, challengeId);
+      await cancelAssistantIntegrationAuthorization(teamId, challengeId);
     } catch {
       // Expiry remains bounded and a new authorization uses a fresh binding.
     } finally {
@@ -2544,7 +2549,7 @@
             {#if (keyRequired || brainUnavailable) && $modelContext.error}
               <!-- The Brain's own failure sits on the composer it blocks, independent of any chat error. -->
               <Notice class="chat-brain-error" variant="error">
-                <strong>{$modelContext.error}</strong>
+                <strong>{$modelContext.errorCode === 'outcome-unknown' ? $t('shell.outcomeUnknown') : $modelContext.error}</strong>
                 {#if brainUnavailable}
                   <Button variant="secondary" size="compact" type="button" onclick={retryBrain} disabled={brainSaving}>
                     {keyCopy.retry}

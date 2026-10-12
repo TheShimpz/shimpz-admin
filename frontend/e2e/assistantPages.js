@@ -12,7 +12,7 @@ export const PAGE_COPY = Object.freeze({
   stored_inputs: [],
 });
 
-/** One public catalog entry as `/api/assistant-catalog` lists it. */
+/** One public catalog entry as a `store.catalog` page lists it. */
 export function publicAssistant(overrides = {}) {
   return {
     assistant_id: 'shimpz-cloudflare',
@@ -41,7 +41,7 @@ export function assistantDetails(overrides = {}) {
   };
 }
 
-/** One staged snapshot as `/api/local-assistants` lists it. */
+/** One staged snapshot as `snapshots.list` lists it. */
 export function stagedSnapshot(overrides = {}) {
   return {
     assistant_id: 'shimpz-cloudflare',

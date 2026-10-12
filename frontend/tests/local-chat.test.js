@@ -4,22 +4,27 @@ import test from 'node:test';
 import { localizedChallenge } from '../e2e/localizedRequest.js';
 import { browserTimezone } from '../src/lib/routine.js';
 
+import * as localChat from '../src/lib/localChat.js';
 import {
-  authorizeAssistantIntegration,
   capabilityContinuation,
-  cancelAssistantIntegrationAuthorization,
-  clearAssistantStoredInput,
-  completeAssistantIntegration,
   createChatFrame,
   createHumanResponseFrame,
   createResumeTaskFrame,
   createStopFrame,
   createSyncFrame,
-  listAssistantIntegrations,
-  listAssistantStoredInputs,
   oauthReturnFailure,
   parseChatEvent,
 } from '../src/lib/localChat.js';
+import { via } from './socketStub.js';
+
+// The integration operations go over the session socket; each test's stub, passed first, answers them.
+const integrationCall = (name) => (stub, ...args) => via(stub, () => localChat[name](...args));
+const authorizeAssistantIntegration = integrationCall('authorizeAssistantIntegration');
+const cancelAssistantIntegrationAuthorization = integrationCall('cancelAssistantIntegrationAuthorization');
+const clearAssistantStoredInput = integrationCall('clearAssistantStoredInput');
+const completeAssistantIntegration = integrationCall('completeAssistantIntegration');
+const listAssistantIntegrations = integrationCall('listAssistantIntegrations');
+const listAssistantStoredInputs = integrationCall('listAssistantStoredInputs');
 
 const TURN_ID = 'a'.repeat(32);
 const CHALLENGE_ID = 'b'.repeat(32);
@@ -775,14 +780,13 @@ test('lists only bounded status metadata for Team-scoped Assistant integrations'
   const calls = [];
   const inventory = integrationInventory();
   assert.deepEqual(
-    await listAssistantIntegrations(async (url, options) => {
-      calls.push({ url, options });
+    await listAssistantIntegrations(async (method, params) => {
+      calls.push({ method, params });
       return response(200, inventory);
     }, 'team_1'),
     inventory,
   );
-  assert.equal(calls[0].url, '/api/teams/team_1/assistant-integrations');
-  assert.equal(calls[0].options.cache, 'no-store');
+  assert.deepEqual(calls, [{ method: 'integrations.list', params: { team_id: 'team_1' } }]);
   assert.doesNotMatch(JSON.stringify(inventory), /token|code|verifier|client_secret/i);
 
   for (const invalid of [
@@ -822,28 +826,26 @@ test('lists and clears only exact Team-scoped Assistant Stored Input metadata', 
     ],
   };
   assert.deepEqual(
-    await listAssistantStoredInputs(async (url, options) => {
-      calls.push({ url, options });
+    await listAssistantStoredInputs(async (method, params) => {
+      calls.push({ method, params });
       return response(200, inventory);
     }, 'team_1'),
     inventory,
   );
-  assert.equal(calls[0].url, '/api/teams/team_1/assistant-stored-inputs');
-  assert.equal(calls[0].options.cache, 'no-store');
+  assert.deepEqual(calls, [{ method: 'stored_inputs.list', params: { team_id: 'team_1' } }]);
   assert.doesNotMatch(JSON.stringify(inventory), /"value"|"generation"/i);
 
   assert.equal(
-    await clearAssistantStoredInput(async (url, options) => {
-      calls.push({ url, options });
+    await clearAssistantStoredInput(async (method, params) => {
+      calls.push({ method, params });
       return response(200, { cleared: true });
     }, 'team_1', 'whatsapp', 'whatsapp-token'),
     true,
   );
-  assert.equal(
-    calls[1].url,
-    '/api/teams/team_1/assistant-stored-inputs/whatsapp/whatsapp-token',
-  );
-  assert.equal(calls[1].options.method, 'DELETE');
+  assert.deepEqual(calls[1], {
+    method: 'stored_inputs.clear',
+    params: { team_id: 'team_1', assistant_id: 'whatsapp', stored_input_id: 'whatsapp-token' },
+  });
 
   for (const invalid of [
     { ...inventory, value: 'must-not-cross' },
@@ -874,8 +876,8 @@ test('starts only a trusted Cloudflare authorization', async () => {
   };
   try {
     assert.deepEqual(
-      await authorizeAssistantIntegration(async (url, options) => {
-        calls.push({ url, options });
+      await authorizeAssistantIntegration(async (method, params) => {
+        calls.push({ method, params });
         return response(200, { authorization_url: authorizationUrl, completion_mode: 'code' });
       }, 'team_1', CHALLENGE_ID, ASSISTANT_ID, INTEGRATION_ID),
       { authorization_url: authorizationUrl, completion_mode: 'code' },
@@ -884,15 +886,14 @@ test('starts only a trusted Cloudflare authorization', async () => {
     if (previousLocation === undefined) delete globalThis.location;
     else globalThis.location = previousLocation;
   }
-  assert.equal(
-    calls[0].url,
-    `/api/teams/team_1/assistant-integrations/challenges/${CHALLENGE_ID}/authorize`,
-  );
-  assert.equal(calls[0].options.method, 'POST');
-  assert.equal(
-    calls[0].options.body,
-    JSON.stringify({ assistant_id: ASSISTANT_ID, integration_id: INTEGRATION_ID }),
-  );
+  assert.deepEqual(calls, [{
+    method: 'integrations.authorize',
+    params: {
+      team_id: 'team_1',
+      challenge_id: CHALLENGE_ID,
+      body: { assistant_id: ASSISTANT_ID, integration_id: INTEGRATION_ID },
+    },
+  }]);
 
   const readOnlyUrl = authorizationUrl.replace('dns.read+dns.write', 'dns.read');
   assert.deepEqual(
@@ -1001,8 +1002,8 @@ test('completes and cancels only the exact out-of-band challenge contract', asyn
   const calls = [];
   const completionCode = `c1.${'s'.repeat(43)}.${'a'.repeat(64)}`;
   const completed = await completeAssistantIntegration(
-    async (url, options) => {
-      calls.push({ url, options });
+    async (method, params) => {
+      calls.push({ method, params });
       return response(200, {
         connected: true,
         team_id: 'team_1',
@@ -1015,27 +1016,20 @@ test('completes and cancels only the exact out-of-band challenge contract', asyn
     completionCode,
   );
   assert.equal(completed.connected, true);
-  assert.equal(
-    calls[0].url,
-    `/api/teams/team_1/assistant-integrations/challenges/${CHALLENGE_ID}/complete`,
-  );
-  assert.equal(calls[0].options.method, 'POST');
-  assert.deepEqual(JSON.parse(calls[0].options.body), { completion_code: completionCode });
+  assert.deepEqual(calls[0], {
+    method: 'integrations.complete',
+    params: { team_id: 'team_1', challenge_id: CHALLENGE_ID, body: { completion_code: completionCode } },
+  });
 
   await cancelAssistantIntegrationAuthorization(
-    async (url, options) => {
-      calls.push({ url, options });
+    async (method, params) => {
+      calls.push({ method, params });
       return response(204, {});
     },
     'team_1',
     CHALLENGE_ID,
   );
-  assert.equal(
-    calls[1].url,
-    `/api/teams/team_1/assistant-integrations/challenges/${CHALLENGE_ID}/authorize`,
-  );
-  assert.equal(calls[1].options.method, 'DELETE');
-  assert.equal(calls[1].options.body, '{}');
+  assert.deepEqual(calls[1], { method: 'integrations.cancel', params: { team_id: 'team_1', challenge_id: CHALLENGE_ID } });
 
   for (const invalid of [
     `c0.${'s'.repeat(43)}.${'a'.repeat(64)}`,

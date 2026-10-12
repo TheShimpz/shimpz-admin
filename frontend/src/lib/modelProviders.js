@@ -1,3 +1,4 @@
+import { socketReads } from './adminSocket.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import MODEL_CATALOG from './modelCatalog.json' with { type: 'json' };
 import { exactKeys, jsonObject, TEAM_ID_RE } from './validate.js';
@@ -44,12 +45,8 @@ function validSelection(provider, model) {
 }
 
 /** Read masked provider state. A response containing any secret-shaped extra field fails closed. */
-export async function listModelProviders(fetcher) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid model provider request.');
-  const response = await fetcher('/api/model-providers', {
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
+export async function listModelProviders() {
+  const response = await socketReads.call('models.list', {});
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'Model provider settings are unavailable.'), response.status);
@@ -67,15 +64,12 @@ export async function listModelProviders(fetcher) {
   return body.providers;
 }
 
-/** Read only provider/model metadata from one Team. HTTP 409 means it has no selection yet. */
-export async function loadInference(fetcher, teamId) {
-  if (typeof fetcher !== 'function' || !TEAM_ID_RE.test(teamId)) {
+/** Read only provider/model metadata from one Team. A 409 means it has no selection yet. */
+export async function loadInference(teamId) {
+  if (typeof teamId !== 'string' || !TEAM_ID_RE.test(teamId)) {
     throw new LocalApiError('Invalid Team inference request.');
   }
-  const response = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/inference`, {
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-  });
+  const response = await socketReads.call('inference.read', { team_id: teamId });
   const body = await jsonObject(response);
   if (response.status === 409) return null;
   if (!response.ok) {
@@ -91,12 +85,11 @@ export async function loadInference(fetcher, teamId) {
   return { provider: body.provider, model: body.model };
 }
 
-async function saveInference(fetcher, teamId, setup) {
-  const inferenceResponse = await fetcher(`/api/teams/${encodeURIComponent(teamId)}/inference`, {
-    method: 'PUT',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ provider: setup.provider, model: setup.model }),
-  });
+async function saveInference(teamId, setup) {
+  const inferenceResponse = await socketReads.call(
+    'inference.save',
+    { team_id: teamId, body: { provider: setup.provider, model: setup.model } },
+  );
   const inferenceBody = await jsonObject(inferenceResponse);
   if (!inferenceResponse.ok) {
     throw new LocalApiError(
@@ -115,9 +108,9 @@ async function saveInference(fetcher, teamId, setup) {
 }
 
 /** Save a key to the backend first, then send only provider/model to the Team controller. */
-export async function saveModelSetup(fetcher, teamId, setup, providers) {
+export async function saveModelSetup(teamId, setup, providers) {
   if (
-    typeof fetcher !== 'function' ||
+    typeof teamId !== 'string' ||
     !TEAM_ID_RE.test(teamId) ||
     !validSelection(setup?.provider, setup?.model) ||
     !Array.isArray(providers) ||
@@ -134,11 +127,10 @@ export async function saveModelSetup(fetcher, teamId, setup, providers) {
   let providerState = current;
 
   if (apiKey) {
-    const credentialResponse = await fetcher(`/api/model-providers/${encodeURIComponent(setup.provider)}`, {
-      method: 'PUT',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ api_key: apiKey }),
-    });
+    const credentialResponse = await socketReads.call(
+      'models.save',
+      { provider: setup.provider, body: { api_key: apiKey } },
+    );
     const credentialBody = await jsonObject(credentialResponse);
     if (!credentialResponse.ok) {
       throw new LocalApiError(safeApiError(credentialBody, 'The API key could not be saved.'), credentialResponse.status);
@@ -152,7 +144,7 @@ export async function saveModelSetup(fetcher, teamId, setup, providers) {
   }
 
   try {
-    await saveInference(fetcher, teamId, setup);
+    await saveInference(teamId, setup);
   } catch (error) {
     // A key saved before the selection failed stays saved, so the caller must not ask for it again.
     const failure = error instanceof LocalApiError

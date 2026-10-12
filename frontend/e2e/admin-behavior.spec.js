@@ -85,10 +85,8 @@ async function routeSetup(page) {
 }
 
 async function routeAssistantStoreUninstall(page) {
-  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
-      version: 1, locale: 'en',
+  await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: {
+      version: 1, next: null, locale: 'en',
       assistants: [{
         assistant_id: 'shimpz-cloudflare',
         assistant_version: '0.4.1',
@@ -99,16 +97,13 @@ async function routeAssistantStoreUninstall(page) {
         summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
         ...structuredClone(PAGE_COPY),
       }],
-    }),
-  }));
-  await page.route('**/api/local-assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [], trace_id: 'c'.repeat(32) }),
-  }));
-  await page.route(/\/api\/teams\/marketing\/assistants\/shimpz-cloudflare\/details\?locale=en$/, (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify(assistantDetails({ assistant_version: '0.4.1' })),
-  }));
+    } } : undefined));
+  await routeRead(page, 'snapshots.list', () => ({ status: 200, json: { assistants: [], trace_id: 'c'.repeat(32) } }));
+  await routeRead(page, 'assistants.details', (params) => (
+    params.team_id === 'marketing' && params.assistant_id === 'shimpz-cloudflare' && params.locale === 'en'
+      ? { status: 200, json: assistantDetails({ assistant_version: '0.4.1' }) }
+      : undefined
+  ));
 }
 
 function humanRequest(kind) {
@@ -340,19 +335,15 @@ async function routeReadyChat(page, {
   ] }));
   const supportFrames = [];
   if (secondTeam) {
-    await page.route('**/api/teams/support/assistants', (route) => route.fulfill({ json: { assistants: [] } }));
-    await page.route('**/api/teams/support/inference', (route) => route.fulfill({
-      json: { team_id: 'support', provider: 'openai', model: 'gpt-6.1-sol' },
-    }));
+    await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'support' ? { status: 200, json: { assistants: [] } } : undefined));
+    await routeRead(page, 'inference.read', ({ team_id: teamId }) => (teamId === 'support' ? { status: 200, json: { team_id: 'support', provider: 'openai', model: 'gpt-6.1-sol' } } : undefined));
     await routeChat(page, 'support', (socket) => socket.onMessage((message) => {
       const frame = JSON.parse(message);
       supportFrames.push(frame);
       if (frame.type === 'sync') socket.send(JSON.stringify({ type: 'sync-empty' }));
     }));
   }
-  await page.route('**/api/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
+  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: {
       assistants: [
         {
           id: 'shimpz-cloudflare',
@@ -367,14 +358,12 @@ async function routeReadyChat(page, {
           title: 'Shimpz Slack',
         }] : []),
       ],
-    }),
-  }));
-  await page.route('**/api/teams/marketing/assistants', async (route) => {
+    } }));
+  await routeRead(page, 'assistants.list', async ({ team_id: teamId }) => {
+    if (teamId !== 'marketing') return undefined;
     if (holdAssistantInventoryRefresh && !assistantInstalled) await assistantInventoryHold;
     if (holdPostInstallInventory && assistantInstalled) await assistantInventoryHold;
-    return route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
+    return ok({
         assistants: assistantInstalled ? [
           {
             assistant: 'shimpz-cloudflare',
@@ -395,7 +384,6 @@ async function routeReadyChat(page, {
             provenance: 'published',
           }] : []),
         ] : [],
-      }),
     });
   });
   await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare/icon', (route) => {
@@ -434,10 +422,6 @@ async function routeReadyChat(page, {
       'base64',
     ),
   }));
-  await page.route('**/api/teams/marketing/files', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ files: [] }),
-  }));
   // Every listed Team has no Routine unless a test says otherwise; a failed listing would offer its Routines' error.
   await routeRead(page, 'routines.list', (params) => ok({
     team_id: params.team_id, routines: [], runs: [], incidents: [],
@@ -458,64 +442,39 @@ async function routeReadyChat(page, {
     configured: configuredProviders.has(provider.id),
     masked: configuredProviders.has(provider.id) ? '••••1234' : null,
   });
-  await page.route('**/api/model-providers', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ providers: modelCatalog.providers.map(providerState) }),
-  }));
-  await page.route('**/api/model-providers/*', (route) => {
-    const id = new URL(route.request().url()).pathname.split('/').at(-1);
-    credentialBodies.push({ id, ...route.request().postDataJSON() });
+  await routeRead(page, 'models.list', () => ({ status: 200, json: { providers: modelCatalog.providers.map(providerState) } }));
+  await routeRead(page, 'models.save', ({ provider: id, body }) => {
+    credentialBodies.push({ id, ...body });
     configuredProviders.add(id);
-    return route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify(providerState(modelCatalog.providers.find((provider) => provider.id === id))),
-    });
+    return ok(providerState(modelCatalog.providers.find((provider) => provider.id === id)));
   });
-  await page.route('**/api/decision-provider', (route) => {
-    const method = route.request().method();
-    decisionRequests.push({ method, body: route.request().postDataJSON() });
-    if (method === 'PUT' && rejectDecisionKey) {
-      return route.fulfill({ status: 400, contentType: 'application/json', body: JSON.stringify({ detail: 'TypeSafe rejected API key' }) });
-    }
-    if (method === 'PUT') decisionMasked = `••••${route.request().postDataJSON().api_key.slice(-4)}`;
-    if (method === 'DELETE') decisionMasked = null;
-    return route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ provider: 'typesafe', configured: decisionMasked !== null, masked: decisionMasked }),
-    });
+  // The fast-routing key's read, save, and removal, recorded as the operations Admin carries.
+  const decision = (method, body) => {
+    decisionRequests.push({ method, body });
+    if (method === 'decision.save' && rejectDecisionKey) return ok({ detail: 'TypeSafe rejected API key' }, 400);
+    if (method === 'decision.save') decisionMasked = `••••${body.api_key.slice(-4)}`;
+    if (method === 'decision.remove') decisionMasked = null;
+    return ok({ provider: 'typesafe', configured: decisionMasked !== null, masked: decisionMasked });
+  };
+  await routeRead(page, 'decision.read', () => decision('decision.read', null));
+  await routeRead(page, 'decision.save', ({ body }) => decision('decision.save', body));
+  await routeRead(page, 'decision.remove', () => decision('decision.remove', null));
+  await routeRead(page, 'inference.read', ({ team_id: teamId }) => {
+    if (teamId !== 'marketing') return undefined;
+    if (missingInference) return ok({ detail: 'not configured' }, 409);
+    return ok({ team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol' });
   });
-  await page.route('**/api/teams/marketing/inference', async (route) => {
-    if (missingInference && route.request().method() === 'GET') {
-      return route.fulfill({
-        status: 409,
-        contentType: 'application/json',
-        body: JSON.stringify({ detail: 'not configured' }),
-      });
+  await routeRead(page, 'inference.save', async ({ team_id: teamId, body }) => {
+    if (teamId !== 'marketing') return undefined;
+    inferenceWrites += 1;
+    inferenceBodies.push(body);
+    if (holdInferenceWrite) await inferenceWriteHold;
+    if (failInferenceWrite && inferenceWrites === 1) {
+      return ok({ detail: 'The Team model selection could not be saved.' }, 502);
     }
-    if (route.request().method() === 'PUT') {
-      inferenceWrites += 1;
-      inferenceBodies.push(route.request().postDataJSON());
-      if (holdInferenceWrite) await inferenceWriteHold;
-      if (failInferenceWrite && inferenceWrites === 1) {
-        return route.fulfill({
-          status: 502,
-          contentType: 'application/json',
-          body: JSON.stringify({ detail: 'The Team model selection could not be saved.' }),
-        });
-      }
-      return route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({ team_id: 'marketing', ...route.request().postDataJSON() }),
-      });
-    }
-    return route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol' }),
-    });
+    return ok({ team_id: 'marketing', ...body });
   });
-  await page.route('**/api/teams/marketing/assistant-integrations', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
+  await routeRead(page, 'integrations.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: {
       integrations: [
         {
           assistant_id: 'shimpz-cloudflare',
@@ -542,46 +501,30 @@ async function routeReadyChat(page, {
           expires_at: '2026-08-31T12:00:00.000Z',
         }] : []),
       ],
-    }),
-  }));
+    } } : undefined));
   // Team reads an installed Assistant's summary from its binding's pack, only in the requested interface language.
-  await page.route(
-    (url) => /^\/api\/teams\/marketing\/assistants\/[^/]+\/summary$/.test(url.pathname),
-    (route) => {
-      const url = new URL(route.request().url());
-      const locale = url.searchParams.get('locale');
-      const summary = INSTALLED_SUMMARIES[url.pathname.split('/')[5]]?.[locale];
-      return route.fulfill(summary ? {
-        contentType: 'application/json',
-        body: JSON.stringify({ locale, summary }),
-      } : {
-        status: 409,
-        contentType: 'application/json',
-        body: JSON.stringify({ detail: 'installed Assistant manifest failed its reviewed contract' }),
-      });
-    },
-  );
-  await page.route('**/api/teams/marketing/assistant-stored-inputs', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
+  await routeRead(page, 'assistants.summary', ({ team_id: teamId, assistant_id: assistantId, locale }) => {
+    if (teamId !== 'marketing') return undefined;
+    const summary = INSTALLED_SUMMARIES[assistantId]?.[locale];
+    return summary
+      ? ok({ locale, summary })
+      : ok({ detail: 'installed Assistant manifest failed its reviewed contract' }, 409);
+  });
+  await routeRead(page, 'stored_inputs.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: {
       stored_inputs: storedInputStatus ? [{
         assistant_id: 'whatsapp',
         stored_input_id: 'whatsapp-token',
         status: storedInputStatus,
       }] : [],
-    }),
-  }));
-  await page.route(
-    '**/api/teams/marketing/assistant-stored-inputs/whatsapp/whatsapp-token',
-    (route) => {
-      storedInputClears += 1;
-      storedInputStatus = 'missing';
-      return route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({ cleared: true }),
-      });
-    },
-  );
+    } } : undefined));
+  await routeRead(page, 'stored_inputs.clear', (params) => {
+    if (params.team_id !== 'marketing' || params.assistant_id !== 'whatsapp' || params.stored_input_id !== 'whatsapp-token') {
+      return undefined;
+    }
+    storedInputClears += 1;
+    storedInputStatus = 'missing';
+    return ok({ cleared: true });
+  });
   await routeConnect(page, (socket) => {
     if (firstChatDisconnected && reconnectsRefused < refusedReconnects) {
       // Admin is down while a release swaps its containers, or refuses an expired session before accepting the
@@ -1134,10 +1077,10 @@ test('the Supervisor adds and removes the Jev key', async ({ page }) => {
   await fast.getByRole('button', { name: 'Remove' }).click();
   await expect(fast.getByLabel('TypeSafe API key')).toBeFocused();
   expect(chat.decisionRequests()).toEqual([
-    { method: 'GET', body: null },
-    { method: 'GET', body: null },
-    { method: 'PUT', body: { api_key: secret } },
-    { method: 'DELETE', body: null },
+    { method: 'decision.read', body: null },
+    { method: 'decision.read', body: null },
+    { method: 'decision.save', body: { api_key: secret } },
+    { method: 'decision.remove', body: null },
   ]);
   expect(chat.credentialBodies()).toEqual([]);
   // Escape closes the panel and returns focus to the control that opened it.
@@ -1149,7 +1092,7 @@ test('the Supervisor adds and removes the Jev key', async ({ page }) => {
   chat.configureDecisionElsewhere('••••abcd');
   await trigger.click();
   await expect(fast).toContainText('On · key ••••abcd');
-  expect(chat.decisionRequests().map((request) => request.method)).toEqual(['GET', 'GET', 'PUT', 'DELETE', 'GET']);
+  expect(chat.decisionRequests().map((request) => request.method)).toEqual(['decision.read', 'decision.read', 'decision.save', 'decision.remove', 'decision.read']);
 });
 
 test('a rejected Jev key is reported and an unsent one never outlives the panel', async ({ page }) => {
@@ -1167,7 +1110,7 @@ test('a rejected Jev key is reported and an unsent one never outlives the panel'
   await trigger.click();
   await expect(fast.getByRole('alert')).toHaveCount(0);
   await expect(fast.getByLabel('TypeSafe API key')).toHaveValue('');
-  expect(chat.decisionRequests().map((request) => request.method)).toEqual(['GET', 'GET', 'PUT', 'GET']);
+  expect(chat.decisionRequests().map((request) => request.method)).toEqual(['decision.read', 'decision.read', 'decision.save', 'decision.read']);
 });
 
 const CLARIFICATION = {
@@ -2504,17 +2447,13 @@ test('a message after an install waits for the Team inventory and names the inst
 
 test('an install and the inventory read it causes never report the person\'s activity', async ({ page }) => {
   const chat = await routeReadyChat(page, { assistantPlan: true, assistantPlanContinuation: 'none' });
-  const inventory = [];
-  page.on('request', (request) => {
-    if (new URL(request.url()).pathname === '/api/teams/marketing/assistants') inventory.push(request.url());
-  });
   await page.goto('/chat/');
   await sendUntrusted(page, 'Install Cloudflare and WhatsApp');
   await expect(page.locator('.assistant-install-plan [data-slot="chat-task"]').nth(1)).toHaveAttribute(
     'data-state',
     'complete',
   );
-  await expect.poll(() => inventory.length).toBeGreaterThan(1);
+  await expect.poll(async () => (await readsOf(page, 'assistants.list')).length).toBeGreaterThan(1);
   expect(chat.chatFrames()).toHaveLength(1);
   expect(await activityReports(page)).toBe(0);
 });
@@ -2524,7 +2463,7 @@ test('an uninstall and the reads it causes never report the person\'s activity',
   const reads = [];
   page.on('request', (request) => {
     const path = new URL(request.url()).pathname;
-    if (path.endsWith('/icon') || path === '/api/teams/marketing/assistants') reads.push(path);
+    if (path.endsWith('/icon')) reads.push(path);
   });
   await page.goto('/chat/');
   await expect.poll(() => chat.syncFrames()).toBeGreaterThan(0);
@@ -2535,7 +2474,7 @@ test('an uninstall and the reads it causes never report the person\'s activity',
   await uninstall.dispatchEvent('click');
   await expect(task).toHaveAttribute('data-state', 'complete');
   await expect.poll(() => reads.filter((path) => path.endsWith('/icon')).length).toBeGreaterThan(0);
-  await expect.poll(() => reads.filter((path) => path === '/api/teams/marketing/assistants').length).toBeGreaterThan(1);
+  await expect.poll(async () => (await readsOf(page, 'assistants.list')).length).toBeGreaterThan(1);
   expect(await activityReports(page)).toBe(0);
 });
 
@@ -2585,9 +2524,7 @@ test('a protocol violation ends the install it interrupts like a dropped connect
 
 test('a Team that could not be created leaves the chat able to send to the selected Team', async ({ page }) => {
   const chat = await routeReadyChat(page);
-  await page.route('**/api/teams', (route) => (route.request().method() === 'POST'
-    ? route.fulfill({ status: 503, json: { detail: 'Team is unavailable' } })
-    : route.fallback()));
+  await routeRead(page, 'teams.create', () => ok({ detail: 'Team is unavailable' }, 503));
   await page.goto('/chat/');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await expect(composer).toBeEnabled();
@@ -3018,9 +2955,9 @@ test('a Stop that crosses an uninstall proposal leaves the proposal to answer', 
 test('an uninstall whose inventory could not be confirmed completes once the chat reads it again', async ({ page }) => {
   await routeReadyChat(page, { assistantUninstall: true });
   let failInventory = false;
-  await page.route('**/api/teams/marketing/assistants', (route) => (failInventory
-    ? route.fulfill({ status: 503, json: { detail: 'inventory unavailable' } })
-    : route.fallback()));
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (
+    failInventory && teamId === 'marketing' ? ok({ detail: 'inventory unavailable' }, 503) : undefined
+  ));
   await page.goto('/chat/');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await fillWhenReady(page, composer, 'Uninstall the Cloudflare Assistant');
@@ -3186,12 +3123,8 @@ test('keeps only one Assistant integration card expanded', async ({ page }) => {
 });
 
 test('shows an expanded Assistant summary only in the interface language', async ({ page }) => {
-  const summaryLocales = [];
-  page.on('request', (request) => {
-    const url = new URL(request.url());
-    if (url.pathname.endsWith('/summary')) summaryLocales.push(url.searchParams.get('locale'));
-  });
   await routeReadyChat(page, { multipleIntegrations: true });
+  const summaryLocales = async () => (await readsOf(page, 'assistants.summary')).map((params) => params.locale);
   await page.goto('/chat/');
 
   await page.getByRole('button', { name: 'Assistant integrations' }).click();
@@ -3210,7 +3143,7 @@ test('shows an expanded Assistant summary only in the interface language', async
   // A summary Team cannot read in this language stays empty instead of falling back to English.
   await slackToggle.click();
   await expect(slackToggle).toHaveAttribute('aria-expanded', 'true');
-  await expect.poll(() => summaryLocales).toEqual(['en', 'pt', 'pt']);
+  await expect.poll(summaryLocales).toEqual(['en', 'pt', 'pt']);
   await expect(drawer.getByText(INSTALLED_SUMMARIES['shimpz-slack'].en)).toHaveCount(0);
   await expect(drawer.locator('#assistant-integration-group-shimpz-slack p')).toHaveCount(0);
 });
@@ -3253,11 +3186,12 @@ test('presents individual authorization controls for every pending Integration',
       },
     ],
   });
-  let authorizeRoute;
-  await page.route(
-    '**/api/teams/marketing/assistant-integrations/challenges/*/authorize',
-    (route) => { authorizeRoute = route; },
-  );
+  // The authorization stays unanswered: the popup has opened on the click before Admin answers anything.
+  let authorizeParams;
+  await routeRead(page, 'integrations.authorize', (params) => {
+    authorizeParams = params;
+    return new Promise(() => {});
+  });
   await page.goto('/chat/');
 
   await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Review my DNS');
@@ -3278,12 +3212,11 @@ test('presents individual authorization controls for every pending Integration',
   });
   await expect(messageAuthorize).toBeDisabled();
   await expect(zoneAuthorize).toBeDisabled();
-  await expect.poll(() => Boolean(authorizeRoute)).toBe(true);
-  expect(authorizeRoute.request().postDataJSON()).toEqual({
+  await expect.poll(() => Boolean(authorizeParams)).toBe(true);
+  expect(authorizeParams.body).toEqual({
     assistant_id: 'whatsapp',
     integration_id: 'whatsapp-messages',
   });
-  await authorizeRoute.abort();
   await popup.close();
 });
 
@@ -3374,13 +3307,9 @@ test('uses the automatic Local OAuth handoff without opening a blank tab', async
   let popupCount = 0;
   page.on('popup', () => { popupCount += 1; });
   await routeReadyChat(page, { integrationChallenge: true, oauthCompletionMode: 'automatic' });
-  await page.route(
-    `**/api/teams/marketing/assistant-integrations/challenges/${challengeId}/authorize`,
-    (route) => route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ authorization_url: authorizationUrl, completion_mode: 'automatic' }),
-    }),
-  );
+  await routeRead(page, 'integrations.authorize', (params) => (params.challenge_id === challengeId
+    ? ok({ authorization_url: authorizationUrl, completion_mode: 'automatic' })
+    : undefined));
   await page.route(authorizationUrl, (route) => route.fulfill({
     contentType: 'text/html',
     body: '<!doctype html><title>Automatic Cloudflare OAuth handoff</title>',
@@ -3409,19 +3338,14 @@ test('cancels an authorization response that disagrees with the projected sessio
   let popupCount = 0;
   page.on('popup', () => { popupCount += 1; });
   await routeReadyChat(page, { integrationChallenge: true, oauthCompletionMode: 'automatic' });
-  await page.route(
-    `**/api/teams/marketing/assistant-integrations/challenges/${challengeId}/authorize`,
-    (route) => {
-      if (route.request().method() === 'DELETE') {
-        canceled = true;
-        return route.fulfill({ status: 204, body: '' });
-      }
-      return route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({ authorization_url: authorizationUrl, completion_mode: 'code' }),
-      });
-    },
-  );
+  await routeRead(page, 'integrations.authorize', (params) => (params.challenge_id === challengeId
+    ? ok({ authorization_url: authorizationUrl, completion_mode: 'code' })
+    : undefined));
+  await routeRead(page, 'integrations.cancel', (params) => {
+    if (params.challenge_id !== challengeId) return undefined;
+    canceled = true;
+    return ok({}, 204);
+  });
   await page.goto('/chat/');
 
   await page.getByRole('textbox', { name: 'Send', exact: true }).fill('List the Cloudflare zones');
@@ -3441,13 +3365,9 @@ test('opens the built Local app code flow in a separate tab', async ({ page }) =
     + `state=${'s'.repeat(43)}&code_challenge=${'c'.repeat(43)}`
     + '&scope=dns.read+dns.write+offline_access+zone.read&callback=out-of-band';
   await routeReadyChat(page, { integrationChallenge: true, oauthCompletionMode: 'code' });
-  await page.route(
-    `**/api/teams/marketing/assistant-integrations/challenges/${challengeId}/authorize`,
-    (route) => route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ authorization_url: authorizationUrl, completion_mode: 'code' }),
-    }),
-  );
+  await routeRead(page, 'integrations.authorize', (params) => (params.challenge_id === challengeId
+    ? ok({ authorization_url: authorizationUrl, completion_mode: 'code' })
+    : undefined));
   await page.context().route(authorizationUrl, (route) => route.fulfill({
     contentType: 'text/html',
     body: '<!doctype html><title>Cloudflare OAuth authorization</title>',
@@ -3478,19 +3398,14 @@ test('cancels code-mode OAuth when the browser blocks its separate tab', async (
     window.open = () => null;
   });
   await routeReadyChat(page, { integrationChallenge: true, oauthCompletionMode: 'code' });
-  await page.route(
-    `**/api/teams/marketing/assistant-integrations/challenges/${challengeId}/authorize`,
-    (route) => {
-      if (route.request().method() === 'DELETE') {
-        canceled = true;
-        return route.fulfill({ status: 204, body: '' });
-      }
-      return route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({ authorization_url: authorizationUrl, completion_mode: 'code' }),
-      });
-    },
-  );
+  await routeRead(page, 'integrations.authorize', (params) => (params.challenge_id === challengeId
+    ? ok({ authorization_url: authorizationUrl, completion_mode: 'code' })
+    : undefined));
+  await routeRead(page, 'integrations.cancel', (params) => {
+    if (params.challenge_id !== challengeId) return undefined;
+    canceled = true;
+    return ok({}, 204);
+  });
   await page.goto('/chat/');
 
   await page.getByRole('textbox', { name: 'Send', exact: true }).fill('List the Cloudflare zones');
@@ -3993,18 +3908,16 @@ test('deletes a Team with its exact confirmation and reports the deletion', { ta
             { team_id: 'support', team_name: 'Support', status: 'running' },
           ],
     }));
-  await page.route('**/api/teams/support', async (route) => {
-    deletionBody = route.request().postDataJSON();
+  await routeRead(page, 'teams.delete', ({ team_id: teamId, body }) => {
+    if (teamId !== 'support') return undefined;
+    deletionBody = body;
     deleted = true;
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
-        team_id: 'support',
-        destroyed: true,
-        assistants_removed: 0,
-        residue_absent: localTeamResidues,
-        storage_removed: true,
-      }),
+    return ok({
+      team_id: 'support',
+      destroyed: true,
+      assistants_removed: 0,
+      residue_absent: localTeamResidues,
+      storage_removed: true,
     });
   });
 
@@ -4038,21 +3951,21 @@ test('a Team name of 80 emoji can be typed to rename and to confirm its deletion
         ...(deleted ? [] : [{ team_id: 'support', team_name: renames.length ? longest : 'Support', status: 'running' }]),
       ],
     }));
-  await page.route('**/api/teams/support', async (route) => {
-    if (route.request().method() === 'PATCH') {
-      renames.push(route.request().postDataJSON());
-      return route.fulfill({ json: { team_id: 'support', team_name: route.request().postDataJSON().team_name } });
-    }
-    deletionBody = route.request().postDataJSON();
+  await routeRead(page, 'teams.rename', ({ team_id: teamId, body }) => {
+    if (teamId !== 'support') return undefined;
+    renames.push(body);
+    return ok({ team_id: 'support', team_name: body.team_name });
+  });
+  await routeRead(page, 'teams.delete', ({ team_id: teamId, body }) => {
+    if (teamId !== 'support') return undefined;
+    deletionBody = body;
     deleted = true;
-    return route.fulfill({
-      json: {
-        team_id: 'support',
-        destroyed: true,
-        assistants_removed: 0,
-        residue_absent: localTeamResidues,
-        storage_removed: true,
-      },
+    return ok({
+      team_id: 'support',
+      destroyed: true,
+      assistants_removed: 0,
+      residue_absent: localTeamResidues,
+      storage_removed: true,
     });
   });
 
@@ -4080,10 +3993,11 @@ test('reports an already-absent Store uninstall and keeps Chat usable', async ({
   test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
   await routeReadyChat(page);
   await routeAssistantStoreUninstall(page);
-  await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistant: 'shimpz-cloudflare', uninstalled: false }),
-  }));
+  await routeRead(page, 'assistants.uninstall', (params) => (
+    params.team_id === 'marketing' && params.assistant_id === 'shimpz-cloudflare'
+      ? ok({ assistant: 'shimpz-cloudflare', uninstalled: false })
+      : undefined
+  ));
 
   await page.goto('/assistants/shimpz-cloudflare?team=marketing');
   await page.getByRole('button', { name: 'Uninstall', exact: true }).click();
@@ -4101,21 +4015,14 @@ test('reports a committed uninstall when the Team inventory cannot refresh', asy
   await routeReadyChat(page);
   await routeAssistantStoreUninstall(page);
   let committed = false;
-  await page.route('**/api/teams/marketing/assistants/shimpz-cloudflare', async (route) => {
+  await routeRead(page, 'assistants.uninstall', (params) => {
+    if (params.team_id !== 'marketing' || params.assistant_id !== 'shimpz-cloudflare') return undefined;
     committed = true;
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({ assistant: 'shimpz-cloudflare', uninstalled: true }),
-    });
+    return ok({ assistant: 'shimpz-cloudflare', uninstalled: true });
   });
-  await page.route('**/api/teams/marketing/assistants', (route) => {
-    if (!committed) return route.fallback();
-    return route.fulfill({
-      status: 503,
-      contentType: 'application/json',
-      body: JSON.stringify({ detail: 'inventory unavailable' }),
-    });
-  });
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (
+    committed && teamId === 'marketing' ? ok({ detail: 'inventory unavailable' }, 503) : undefined
+  ));
 
   await page.goto('/assistants/shimpz-cloudflare?team=marketing');
   await page.getByRole('button', { name: 'Uninstall', exact: true }).click();
@@ -4146,55 +4053,24 @@ test('keeps a first Store install ready while local display metadata catches up'
   await routeRead(page, 'teams.list', () => ok({
       teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }],
     }));
-  await page.route('**/api/assistants', async (route) => {
+  await routeRead(page, 'assistants.registry', () => {
     catalogReads += 1;
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
-        assistants: installed
-          ? [{
-            id: 'shimpz-cloudflare',
-            title: 'Shimpz Cloudflare',
-          }]
-          : [],
-      }),
-    });
+    return ok({ assistants: installed ? [{ id: 'shimpz-cloudflare', title: 'Shimpz Cloudflare' }] : [] });
   });
-  await page.route('**/api/teams/marketing/assistants', async (route) => {
-    if (route.request().method() === 'POST') {
-      expect(route.request().postDataJSON()).toEqual({
-        assistant_id: 'shimpz-cloudflare',
-        source_digest: `sha256:${'4'.repeat(64)}`,
-      });
-      installed = true;
-      await route.fulfill({
-        contentType: 'application/json',
-        body: JSON.stringify({ assistant: 'shimpz-cloudflare', installed: true }),
-      });
-      return;
-    }
-    await route.fulfill({
-      contentType: 'application/json',
-      body: JSON.stringify({
-        assistants: installed
-          ? [{
-            assistant: 'shimpz-cloudflare',
-            assistant_version: '0.1.0',
-            status: 'running',
-            provenance: 'published',
-          }]
-          : [],
-      }),
-    });
+  const installs = [];
+  await routeRead(page, 'assistants.install', ({ team_id: teamId, body }) => {
+    if (teamId !== 'marketing') return undefined;
+    installs.push(body);
+    installed = true;
+    return ok({ assistant: 'shimpz-cloudflare', installed: true });
   });
-  await page.route('**/api/teams/marketing/files', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ files: [] }),
-  }));
-  await page.route(/\/api\/assistant-catalog\?locale=en$/, (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
-      version: 1, locale: 'en',
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? ok({
+    assistants: installed
+      ? [{ assistant: 'shimpz-cloudflare', assistant_version: '0.1.0', status: 'running', provenance: 'published' }]
+      : [],
+  }) : undefined));
+  await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: {
+      version: 1, next: null, locale: 'en',
       assistants: [{
         assistant_id: 'shimpz-cloudflare',
         assistant_version: '0.1.0',
@@ -4205,12 +4081,8 @@ test('keeps a first Store install ready while local display metadata catches up'
         summary: 'Inspect Cloudflare zones and safely manage common DNS records through OAuth.',
         ...structuredClone(PAGE_COPY),
       }],
-    }),
-  }));
-  await page.route('**/api/local-assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [], trace_id: 'c'.repeat(32) }),
-  }));
+    } } : undefined));
+  await routeRead(page, 'snapshots.list', () => ({ status: 200, json: { assistants: [], trace_id: 'c'.repeat(32) } }));
   await page.route('**/api/assistants/shimpz-cloudflare/catalog-icon', (route) => route.fulfill({
     contentType: 'image/png',
     body: Buffer.from(
@@ -4219,10 +4091,11 @@ test('keeps a first Store install ready while local display metadata catches up'
     ),
   }));
 
-  await page.route(/\/api\/teams\/marketing\/assistants\/shimpz-cloudflare\/details\?locale=en$/, (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify(assistantDetails({ assistant_version: '0.1.0' })),
-  }));
+  await routeRead(page, 'assistants.details', (params) => (
+    params.team_id === 'marketing' && params.assistant_id === 'shimpz-cloudflare' && params.locale === 'en'
+      ? ok(assistantDetails({ assistant_version: '0.1.0' }))
+      : undefined
+  ));
 
   await page.goto('/assistants/');
   await page.getByRole('link', { name: /^Shimpz Cloudflare/ }).click();
@@ -4238,6 +4111,7 @@ test('keeps a first Store install ready while local display metadata catches up'
   );
   await expect(page.getByText('The installed Assistant inventory is invalid.', { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Uninstall', exact: true })).toBeVisible();
+  expect(installs).toEqual([{ assistant_id: 'shimpz-cloudflare', source_digest: `sha256:${'4'.repeat(64)}` }]);
   expect(catalogReads).toBeGreaterThanOrEqual(2);
 });
 
@@ -4275,10 +4149,7 @@ test('opens a Team chat from the Team list and its Store from the row icon', { t
       { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
       { team_id: 'support', team_name: 'Support', status: 'running' },
     ] }));
-  await page.route('**/api/teams/support/assistants', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ assistants: [] }),
-  }));
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'support' ? { status: 200, json: { assistants: [] } } : undefined));
   await page.goto('/chat/?team=marketing');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
 
@@ -4534,11 +4405,11 @@ test('a Local Team is renamed in place: Enter saves by id, Escape keeps the name
   await routeScenario(page, 'ready');
   const renames = [];
   let refuse = false;
-  await page.route('**/api/teams/marketing', async (route) => {
-    if (route.request().method() !== 'PATCH') return route.fallback();
-    renames.push(route.request().postDataJSON());
-    if (refuse) return route.fulfill({ status: 409, json: { detail: 'Another Team already has this name.' } });
-    return route.fulfill({ json: { team_id: 'marketing', team_name: route.request().postDataJSON().team_name } });
+  await routeRead(page, 'teams.rename', ({ team_id: teamId, body }) => {
+    if (teamId !== 'marketing') return undefined;
+    renames.push(body);
+    if (refuse) return ok({ detail: 'Another Team already has this name.' }, 409);
+    return ok({ team_id: 'marketing', team_name: body.team_name });
   });
   await page.goto('/chat/?team=marketing');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
@@ -4565,10 +4436,9 @@ test('a Local Team is renamed in place: Enter saves by id, Escape keeps the name
   refuse = true;
   let releaseRefusal;
   const refusalHeld = new Promise((resolve) => { releaseRefusal = resolve; });
-  await page.route('**/api/teams/marketing', async (route) => {
-    if (route.request().method() !== 'PATCH') return route.fallback();
+  await routeRead(page, 'teams.rename', async () => {
     await refusalHeld;
-    return route.fallback();
+    return undefined;
   });
   await navigation.getByRole('button', { name: 'Actions for Growth Marketing' }).click();
   await page.getByRole('menuitem', { name: 'Rename' }).click();
@@ -4588,10 +4458,10 @@ test('a Team name that cannot be saved is explained in the interface language an
   await page.addInitScript(() => localStorage.setItem('shimpz_lang', 'pt'));
   await routeScenario(page, 'ready');
   const renames = [];
-  await page.route('**/api/teams/marketing', async (route) => {
-    if (route.request().method() !== 'PATCH') return route.fallback();
-    renames.push(route.request().postDataJSON());
-    return route.fulfill({ status: 400, json: { detail: 'team name has no usable characters' } });
+  await routeRead(page, 'teams.rename', ({ team_id: teamId, body }) => {
+    if (teamId !== 'marketing') return undefined;
+    renames.push(body);
+    return ok({ detail: 'team name has no usable characters' }, 400);
   });
   const copy = messages.pt.teamNavigation;
   await page.goto('/chat/?team=marketing');
@@ -4616,10 +4486,9 @@ test('a Team name that cannot be saved is explained in the interface language an
 
 test('a Team name is shown exactly as written in every label that names it', async ({ page }) => {
   await routeScenario(page, 'ready');
-  await page.route('**/api/teams/marketing', async (route) => {
-    if (route.request().method() !== 'PATCH') return route.fallback();
-    return route.fulfill({ json: { team_id: 'marketing', team_name: route.request().postDataJSON().team_name } });
-  });
+  await routeRead(page, 'teams.rename', ({ team_id: teamId, body }) => (
+    teamId === 'marketing' ? ok({ team_id: 'marketing', team_name: body.team_name }) : undefined
+  ));
   await page.goto('/chat/?team=marketing');
   const navigation = page.locator('.shell-sidebar');
   await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
@@ -4636,17 +4505,18 @@ test('a Team name is shown exactly as written in every label that names it', asy
 test('a chat that keeps reconnecting never takes the focus from a Team name being edited', async ({ page }) => {
   await routeScenario(page, 'ready');
   const renames = [];
-  await page.route('**/api/teams/neo', async (route) => {
-    if (route.request().method() !== 'PATCH') return route.fallback();
-    renames.push(route.request().postDataJSON());
-    return route.fulfill({ json: { team_id: 'neo', team_name: route.request().postDataJSON().team_name } });
+  await routeRead(page, 'teams.rename', ({ team_id: teamId, body }) => {
+    if (teamId !== 'neo') return undefined;
+    renames.push(body);
+    return ok({ team_id: 'neo', team_name: body.team_name });
   });
   // Neo's chat channel attaches and then its session socket closes, so the composer turns busy and idle again while
   // the name is typed.
   let connections = 0;
+  let dropping = true;
   await routeChat(page, 'neo', (socket) => {
     connections += 1;
-    setTimeout(() => socket.close({ code: 1011, reason: 'Synthetic interrupted connection' }), 50);
+    if (dropping) setTimeout(() => socket.close({ code: 1011, reason: 'Synthetic interrupted connection' }), 50);
   });
   await page.goto('/chat/?team=neo');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeVisible();
@@ -4663,6 +4533,12 @@ test('a chat that keeps reconnecting never takes the focus from a Team name bein
   await expect(field).toBeFocused();
   await expect(field).toHaveValue('New name');
   expect(renames).toEqual([]);
+  // Once Admin is reachable again, the name is saved.
+  dropping = false;
+  const dropped = connections;
+  await expect.poll(() => connections, { timeout: 30_000 }).toBeGreaterThan(dropped);
+  await expect(page.getByText(messages.en.shell.reconnecting)).toHaveCount(0);
+  await expect(field).toBeFocused();
   await page.keyboard.press('Enter');
   await expect.poll(() => renames).toEqual([{ team_name: 'New name' }]);
 });
@@ -4670,33 +4546,31 @@ test('a chat that keeps reconnecting never takes the focus from a Team name bein
 test('a Team that fails to open leaves the chat on the previous Team and later Teams still open', async ({ page }) => {
   await routeScenario(page, 'ready');
   const inventoryReads = [];
-  page.on('request', (request) => {
-    const path = new URL(request.url()).pathname;
-    if (/^\/api\/teams\/[a-z]+\/assistants$/.test(path)) inventoryReads.push(path);
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => {
+    inventoryReads.push(teamId);
+    return teamId === 'neo' ? ok({ detail: 'unavailable' }, 503) : undefined;
   });
-  await page.route('**/api/teams/neo/assistants', (route) => route.fulfill({ status: 503, json: { detail: 'unavailable' } }));
   await page.goto('/chat/?team=marketing');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeVisible();
   const navigation = page.locator('.shell-sidebar');
 
   await navigation.getByRole('link', { name: 'Neo', exact: true }).click();
-  await expect.poll(() => inventoryReads).toContain('/api/teams/neo/assistants');
+  await expect.poll(() => inventoryReads).toContain('neo');
   await expect(page).toHaveURL(/team=marketing/);
   await navigation.getByRole('link', { name: 'Trinity', exact: true }).click();
   await expect(page).toHaveURL(/team=trinity/);
   await expect(navigation.getByRole('link', { name: 'Trinity', exact: true })).toHaveAttribute('aria-current', 'page');
-  expect(inventoryReads).toContain('/api/teams/trinity/assistants');
+  expect(inventoryReads).toContain('trinity');
   // The failed Team was asked for once, not again while the address returned.
-  expect(inventoryReads.filter((path) => path === '/api/teams/neo/assistants')).toHaveLength(1);
+  expect(inventoryReads.filter((teamId) => teamId === 'neo')).toHaveLength(1);
 });
 
 test('a Team inventory that could not be read holds sending until it is read again', async ({ page }) => {
   await routeScenario(page, 'ready');
   let failInventory = false;
-  await page.route('**/api/teams/marketing/assistants', (route) => (failInventory
-    ? route.fulfill({ status: 503, json: { detail: 'unavailable' } })
-    : route.fallback()));
-  await page.route('**/api/teams/neo/assistants', (route) => route.fulfill({ status: 503, json: { detail: 'unavailable' } }));
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (
+    teamId === 'neo' || (failInventory && teamId === 'marketing') ? ok({ detail: 'unavailable' }, 503) : undefined
+  ));
   await page.goto('/chat/?team=marketing');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   const send = page.getByRole('button', { name: 'Send', exact: true });
@@ -4734,9 +4608,9 @@ test.describe('Team order', () => {
   async function openOrder(page, scenario = 'ready', team = 'marketing') {
     await routeScenario(page, scenario);
     const orders = [];
-    await page.route('**/api/teams/order', (route) => {
-      orders.push(route.request().postDataJSON());
-      return route.fallback();
+    await routeRead(page, 'teams.reorder', ({ body }) => {
+      orders.push(body);
+      return undefined;
     });
     await page.goto(`/chat/?team=${team}`);
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeVisible();

@@ -113,6 +113,11 @@ export async function routeConnect(page, connect) {
   (await sessionMock(page)).connect = connect;
 }
 
+/** Close every open session socket of the page with `code`, as a dropped connection does; the page reconnects. */
+export async function dropSessions(page, code = 1011) {
+  for (const session of (await sessionMock(page)).sessions) session.close(code, 'Synthetic dropped connection');
+}
+
 /** Raise one topic on every open session socket of the page, as Admin does when it learns of a change. */
 export async function raiseTopic(page, topic) {
   for (const session of (await sessionMock(page)).sessions) session.changed(topic);

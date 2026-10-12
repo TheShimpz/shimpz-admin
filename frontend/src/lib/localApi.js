@@ -11,6 +11,7 @@ import {
   TEAM_ID_RE,
   TRACE_ID_RE,
 } from './validate.js';
+import { socketReads } from './adminSocket.js';
 import { AssistantPageError, canonicalPageCopy } from './assistantPage.js';
 import { isLocale } from './locales.js';
 
@@ -21,6 +22,9 @@ const MAX_LOCAL_ASSISTANTS = 50;
 const LOCAL_ADMISSION_REASONS = Object.freeze(['declaration-invalid', 'image-inconsistent', 'labels-invalid']);
 // The producer contract: Store and Developers admit up to 1,000 public Assistants.
 const MAX_PUBLIC_ASSISTANTS = 1000;
+// A catalog that changes while its pages are read is read again from its first page, at most this many more times.
+const MAX_CATALOG_RESTARTS = 2;
+const CATALOG_CURSOR_RE = /^[1-9][0-9]{0,3}\.[0-9a-f]{32}$/;
 // The Assistant summary is a short description of at most 80 characters, in every interface language.
 const ASSISTANT_SUMMARY_CHARS = 80;
 const SHA256_RE = /^sha256:[0-9a-f]{64}$/;
@@ -39,11 +43,8 @@ export function safeApiError(body, fallback) {
  * Project the controller-owned registry onto display-only Assistant identities. Admin sends only each identity and
  * name: Team's registry summary is the canonical English text it plans with, never shown in the interface.
  */
-export async function listAssistantCatalog(fetcher) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid local Assistant request.');
-  const response = await fetcher('/api/assistants', {
-    cache: 'no-store', headers: { Accept: 'application/json' },
-  });
+export async function listAssistantCatalog() {
+  const response = await socketReads.call('assistants.registry', {});
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(
@@ -79,36 +80,69 @@ export async function listAssistantCatalog(fetcher) {
   });
 }
 
-/**
- * Read the exact bounded public Store projection used by the native Admin catalog and Assistant pages in one interface
- * language. Only the display copy (summary, description, Action descriptions, and Stored Input labels) is localized,
- * from the publication's own language pack; a catalog in any other language is refused.
- */
-export async function listPublicAssistantCatalog(fetcher, locale, signal) {
-  if (typeof fetcher !== 'function' || !isLocale(locale)) {
-    throw new LocalApiError('Invalid Assistant catalog request.');
-  }
-  const options = { cache: 'no-store', headers: { Accept: 'application/json' } };
-  if (signal) options.signal = signal;
-  const response = await fetcher(`/api/assistant-catalog?locale=${locale}`, options);
+function aborted(signal) {
+  if (signal?.aborted) throw new DOMException('The Assistant catalog request was aborted.', 'AbortError');
+}
+
+/** One bounded page of the public catalog, or `changed` when it changed since the first page was read. */
+async function catalogPage(locale, cursor, signal) {
+  aborted(signal);
+  const response = await socketReads.call('store.catalog', cursor ? { locale, cursor } : { locale });
+  aborted(signal);
   const body = await jsonObject(response);
+  if (response.status === 409 && body.code === 'catalog-changed' && cursor) return { changed: true };
   if (!response.ok) {
-    throw new LocalApiError(
-      safeApiError(body, 'The Assistant catalog is unavailable.'),
-      response.status,
-    );
+    throw new LocalApiError(safeApiError(body, 'The Assistant catalog is unavailable.'), response.status);
   }
   if (
-    !exactKeys(body, ['assistants', 'locale', 'version']) ||
+    !exactKeys(body, ['assistants', 'locale', 'next', 'version']) ||
     body.version !== 1 ||
     body.locale !== locale ||
     !Array.isArray(body.assistants) ||
-    body.assistants.length > MAX_PUBLIC_ASSISTANTS
+    body.assistants.length > MAX_PUBLIC_ASSISTANTS ||
+    (body.next !== null && (typeof body.next !== 'string' || !CATALOG_CURSOR_RE.test(body.next))) ||
+    (body.next !== null && !body.assistants.length)
   ) {
     throw new LocalApiError('The Assistant catalog is invalid.', response.status);
   }
+  return { assistants: body.assistants, next: body.next, status: response.status };
+}
+
+/** Every page of one catalog, joined; a catalog that changed between pages is read again from the start. */
+async function catalogPages(locale, signal) {
+  for (let attempt = 0; attempt <= MAX_CATALOG_RESTARTS; attempt += 1) {
+    const assistants = [];
+    let cursor = null;
+    let status = 200;
+    let changed = false;
+    do {
+      const page = await catalogPage(locale, cursor, signal);
+      if (page.changed) {
+        changed = true;
+        break;
+      }
+      assistants.push(...page.assistants);
+      if (assistants.length > MAX_PUBLIC_ASSISTANTS) {
+        throw new LocalApiError('The Assistant catalog is invalid.', page.status);
+      }
+      ({ next: cursor, status } = page);
+    } while (cursor);
+    if (!changed) return { assistants, status };
+  }
+  throw new LocalApiError('The Assistant catalog kept changing while it was read.', 409);
+}
+
+/**
+ * Read the exact bounded public Store projection used by the native Admin catalog and Assistant pages in one interface
+ * language, joined from its bounded pages. Only the display copy (summary, description, Action descriptions, and
+ * Stored Input labels) is localized, from the publication's own language pack; a catalog in any other language is
+ * refused.
+ */
+export async function listPublicAssistantCatalog(locale, signal) {
+  if (!isLocale(locale)) throw new LocalApiError('Invalid Assistant catalog request.');
+  const { assistants, status } = await catalogPages(locale, signal);
   const seen = new Set();
-  return body.assistants.map((entry) => {
+  return assistants.map((entry) => {
     if (
       !exactKeys(entry, [
         'actions',
@@ -148,14 +182,14 @@ export async function listPublicAssistantCatalog(fetcher, locale, signal) {
       !SHA256_RE.test(entry.icon_digest) ||
       seen.has(entry.assistant_id)
     ) {
-      throw new LocalApiError('The Assistant catalog is invalid.', response.status);
+      throw new LocalApiError('The Assistant catalog is invalid.', status);
     }
     seen.add(entry.assistant_id);
     let page;
     try {
       page = canonicalPageCopy(entry);
     } catch (error) {
-      if (error instanceof AssistantPageError) throw new LocalApiError('The Assistant catalog is invalid.', response.status);
+      if (error instanceof AssistantPageError) throw new LocalApiError('The Assistant catalog is invalid.', status);
       throw error;
     }
     return {
@@ -172,15 +206,12 @@ export async function listPublicAssistantCatalog(fetcher, locale, signal) {
 }
 
 /** Read the controller-owned runtime inventory; never turn an invalid response into an empty list. */
-export async function listInstalledAssistants(fetcher, teamId) {
-  if (typeof fetcher !== 'function' || !TEAM_ID_RE.test(teamId)) {
+export async function listInstalledAssistants(teamId) {
+  if (typeof teamId !== 'string' || !TEAM_ID_RE.test(teamId)) {
     throw new LocalApiError('Invalid local Assistant request.');
   }
 
-  const response = await fetcher(
-    `/api/teams/${encodeURIComponent(teamId)}/assistants`,
-    { cache: 'no-store', headers: { Accept: 'application/json' } },
-  );
+  const response = await socketReads.call('assistants.list', { team_id: teamId });
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(
@@ -220,9 +251,13 @@ function installRefusalCode(response, body) {
   return response.status === 409 && body.code === ASSISTANT_LIMIT_REACHED ? ASSISTANT_LIMIT_REACHED : '';
 }
 
-/** Install or reconcile one allowlisted Assistant without invoking an Action or starting a chat turn. */
-export async function installAssistant(fetcher, teamId, assistantId, sourceDigest) {
-  if (typeof fetcher !== 'function' || !TEAM_ID_RE.test(teamId)) {
+/**
+ * Install or reconcile one allowlisted Assistant without invoking an Action or starting a chat turn. The install stays
+ * pending while Team works; `onProgress` hears once that it started. Its answer lost with the socket is an unknown
+ * outcome (`outcome-unknown`), never replayed.
+ */
+export async function installAssistant(teamId, assistantId, sourceDigest, { onProgress } = {}) {
+  if (typeof teamId !== 'string' || !TEAM_ID_RE.test(teamId)) {
     throw new LocalApiError('Invalid local Assistant request.');
   }
   if (typeof assistantId !== 'string' || assistantId.length > 80 || !ASSISTANT_ID_RE.test(assistantId)) {
@@ -232,13 +267,11 @@ export async function installAssistant(fetcher, teamId, assistantId, sourceDiges
     throw new LocalApiError('Invalid local Assistant request.');
   }
 
-  const base = `/api/teams/${encodeURIComponent(teamId)}/assistants`;
-  const headers = { Accept: 'application/json', 'Content-Type': 'application/json' };
-  const installResponse = await fetcher(base, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ assistant_id: assistantId, source_digest: sourceDigest }),
-  });
+  const installResponse = await socketReads.call(
+    'assistants.install',
+    { team_id: teamId, body: { assistant_id: assistantId, source_digest: sourceDigest } },
+    { onProgress },
+  );
   const installBody = await jsonObject(installResponse);
   if (!installResponse.ok) {
     throw new LocalApiError(
@@ -293,11 +326,10 @@ function unlabeledSnapshotValid(entry) {
 }
 
 /** List bounded unpublished snapshots with explicitly unverified display declarations and Team's verdict. */
-export async function listLocalAssistantSnapshots(fetcher, signal) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid Local Assistant snapshot request.');
-  const options = { cache: 'no-store', headers: { Accept: 'application/json' } };
-  if (signal) options.signal = signal;
-  const response = await fetcher('/api/local-assistants', options);
+export async function listLocalAssistantSnapshots(signal) {
+  aborted(signal);
+  const response = await socketReads.call('snapshots.list', {});
+  aborted(signal);
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(
@@ -384,18 +416,15 @@ export async function listLocalAssistantSnapshots(fetcher, signal) {
   });
 }
 
-/** Bind and run one exact unpublished snapshot in the selected Local Team. */
-export async function installLocalAssistant(fetcher, teamId, imageId) {
-  if (typeof fetcher !== 'function' || !TEAM_ID_RE.test(teamId) || !SHA256_RE.test(imageId)) {
+/** Bind and run one exact unpublished snapshot in the selected Local Team; a long call, like `installAssistant`. */
+export async function installLocalAssistant(teamId, imageId, { onProgress } = {}) {
+  if (typeof teamId !== 'string' || !TEAM_ID_RE.test(teamId) || typeof imageId !== 'string' || !SHA256_RE.test(imageId)) {
     throw new LocalApiError('Invalid Local Assistant snapshot request.');
   }
-  const response = await fetcher(
-    `/api/teams/${encodeURIComponent(teamId)}/assistants/local`,
-    {
-      method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_id: imageId }),
-    },
+  const response = await socketReads.call(
+    'assistants.install_local',
+    { team_id: teamId, body: { image_id: imageId } },
+    { onProgress },
   );
   const body = await jsonObject(response);
   if (!response.ok) {
@@ -430,9 +459,8 @@ export async function installLocalAssistant(fetcher, teamId, imageId) {
 }
 
 /** Remove one Team-owned Assistant and validate the exact controller acknowledgement. */
-export async function uninstallAssistant(fetcher, teamId, assistantId) {
+export async function uninstallAssistant(teamId, assistantId) {
   if (
-    typeof fetcher !== 'function' ||
     typeof teamId !== 'string' ||
     !TEAM_ID_RE.test(teamId) ||
     typeof assistantId !== 'string' ||
@@ -442,10 +470,7 @@ export async function uninstallAssistant(fetcher, teamId, assistantId) {
     throw new LocalApiError('Invalid local Assistant request.');
   }
 
-  const response = await fetcher(
-    `/api/teams/${encodeURIComponent(teamId)}/assistants/${encodeURIComponent(assistantId)}`,
-    { method: 'DELETE', headers: { Accept: 'application/json' } },
-  );
+  const response = await socketReads.call('assistants.uninstall', { team_id: teamId, assistant_id: assistantId });
   const body = await jsonObject(response);
   if (response.status !== 200) {
     throw new LocalApiError(

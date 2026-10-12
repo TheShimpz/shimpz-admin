@@ -2,6 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { Button, StatusBadge, TextField, TextLink } from '@shimpz/frontend';
 
+  import { outcomeUnknown } from '#lib/adminSocket.js';
   import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/composerPanel.js';
   import {
     knownDecisionProvider,
@@ -75,7 +76,7 @@
     const ticket = ++fastTicket;
     if (fast.phase !== 'ready') await settle({ phase: 'loading', error: '' });
     try {
-      const state = await loadDecisionProvider(fetch);
+      const state = await loadDecisionProvider();
       if (ticket === fastTicket) await settle({ phase: 'ready', ...state });
     } catch {
       if (ticket === fastTicket) await settle({ phase: 'unavailable' });
@@ -88,14 +89,15 @@
     const ticket = ++fastTicket;
     await settle({ phase: 'saving', error: '' });
     try {
-      const state = await saveDecisionKey(fetch, fastKey);
+      const state = await saveDecisionKey(fastKey);
       if (ticket !== fastTicket) return;
       fastKey = '';
       await settle({ phase: 'ready', ...state });
       panel?.querySelector('.fast-remove')?.focus();
     } catch (error) {
       if (ticket !== fastTicket) return;
-      await settle({ phase: 'ready', error: error?.status === 400 ? copy.rejected : copy.failed });
+      const failure = error?.status === 400 ? copy.rejected : copy.failed;
+      await settle({ phase: 'ready', error: outcomeUnknown(error) ? $t('shell.outcomeUnknown') : failure });
     }
   }
 
@@ -104,13 +106,13 @@
     const ticket = ++fastTicket;
     await settle({ phase: 'saving', error: '' });
     try {
-      const state = await removeDecisionKey(fetch);
+      const state = await removeDecisionKey();
       if (ticket !== fastTicket) return;
       await settle({ phase: 'ready', ...state });
       panel?.querySelector('input')?.focus();
-    } catch {
+    } catch (error) {
       if (ticket !== fastTicket) return;
-      await settle({ phase: 'ready', error: copy.removeFailed });
+      await settle({ phase: 'ready', error: outcomeUnknown(error) ? $t('shell.outcomeUnknown') : copy.removeFailed });
     }
   }
 </script>

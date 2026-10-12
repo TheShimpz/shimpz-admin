@@ -29,7 +29,7 @@
 
   async function retry() {
     try {
-      await loadTeamContext(fetch, $teamContext.selectedTeamId);
+      await loadTeamContext($teamContext.selectedTeamId);
     } catch {
       // The shared context owns the visible fail-closed error state.
     }
@@ -52,7 +52,7 @@
     ) {
       const previousId = $teamContext.selectedTeamId;
       askedId = preferredId;
-      selectTeam(fetch, preferredId).catch(() => {
+      selectTeam(preferredId).catch(() => {
         if (previousId && requestedTeamId === preferredId) updateLocationTeam(previousId).catch(() => {});
       });
     }
@@ -63,14 +63,14 @@
     if (!teamId) {
       if ($modelContext.teamId) clearModelContext();
     } else if ($modelContext.teamId !== teamId || $modelContext.phase === 'idle') {
-      loadModelContext(fetch, teamId).catch(() => {});
+      loadModelContext(teamId).catch(() => {});
     }
   });
 
   onMount(() => {
-    preloadModelProviders(fetch).catch(() => {});
+    preloadModelProviders().catch(() => {});
     if ($teamContext.phase === 'idle') {
-      loadTeamContext(fetch, requestedTeamId).catch(() => {});
+      loadTeamContext(requestedTeamId).catch(() => {});
     }
   });
 </script>

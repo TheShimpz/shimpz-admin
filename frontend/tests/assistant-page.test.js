@@ -11,6 +11,11 @@ import {
 } from '../src/lib/assistantPage.js';
 import { loadAssistantDetails, loadLocalAssistantDetails } from '../src/lib/localAssistantIcons.js';
 import { LocalApiError } from '../src/lib/validate.js';
+import { via } from './socketStub.js';
+
+// Pages are read over the session socket; a stub answers each call as the call result Admin sends.
+const localDetails = (stub, ...args) => via(stub, () => loadLocalAssistantDetails(...args));
+const assistantDetails = (stub, ...args) => via(stub, () => loadAssistantDetails(...args));
 
 const IMAGE_ID = `sha256:${'a'.repeat(64)}`;
 const COPY = {
@@ -140,20 +145,20 @@ test('an installed Assistant always shows its binding; a candidate needs every s
 test('reads a staged page through the busy-retrying preview queue in exactly the asked language', async () => {
   const requests = [];
   const delays = [];
-  const fetcher = async (url) => {
-    requests.push(url);
+  const fetcher = async (method, params) => {
+    requests.push({ method, params });
     if (requests.length === 1) {
       return json(503, { code: 'local-assistant-preview-busy', retry_after_ms: 25 });
     }
     return json(200, DETAILS);
   };
-  const page = await loadLocalAssistantDetails(fetcher, IMAGE_ID, 'shimpz-cloudflare', 'pt', {
+  const page = await localDetails(fetcher, IMAGE_ID, 'shimpz-cloudflare', 'pt', {
     delay: async (delay) => delays.push(delay),
   });
   assert.equal(page.name, 'Shimpz Cloudflare');
   assert.equal(page.page.links[0].kind, 'site');
   assert.deepEqual(delays, [25]);
-  assert.deepEqual(requests, Array(2).fill(`/api/local-assistants/${'a'.repeat(64)}/details?locale=pt`));
+  assert.deepEqual(requests, Array(2).fill({ method: 'snapshots.details', params: { image_id: IMAGE_ID, locale: 'pt' } }));
 });
 
 test('refuses a page for another Assistant, language, or shape, and too many staged Creators', async () => {
@@ -167,14 +172,14 @@ test('refuses a page for another Assistant, language, or shape, and too many sta
     { ...DETAILS, creators: ['@a', '@b', '@c', '@d', '@e'] },
   ]) {
     await assert.rejects(
-      loadLocalAssistantDetails(async () => json(200, body), IMAGE_ID, 'shimpz-cloudflare', 'pt'),
+      localDetails(async () => json(200, body), IMAGE_ID, 'shimpz-cloudflare', 'pt'),
       invalid,
       JSON.stringify(body),
     );
   }
   // An installed binding names every one of its verified Creators.
   const creators = ['@a', '@b', '@c', '@d', '@e'];
-  const installed = await loadAssistantDetails(
+  const installed = await assistantDetails(
     async () => json(200, { ...DETAILS, creators }),
     'marketing',
     'shimpz-cloudflare',
@@ -185,7 +190,7 @@ test('refuses a page for another Assistant, language, or shape, and too many sta
 
 test('reports a refused or unavailable page with its code and refuses an invalid request before any fetch', async () => {
   await assert.rejects(
-    loadAssistantDetails(
+    assistantDetails(
       async () => json(409, { error: 'Assistant needs replacement', code: 'assistant-manifest-invalid' }),
       'marketing',
       'shimpz-cloudflare',
@@ -195,9 +200,9 @@ test('reports a refused or unavailable page with its code and refuses an invalid
   );
   let fetched = false;
   const fetcher = async () => { fetched = true; return json(200, DETAILS); };
-  await assert.rejects(loadLocalAssistantDetails(fetcher, 'latest', 'shimpz-cloudflare', 'pt'), LocalApiError);
-  await assert.rejects(loadLocalAssistantDetails(fetcher, IMAGE_ID, 'Bad', 'pt'), LocalApiError);
-  await assert.rejects(loadAssistantDetails(fetcher, 'Team 1', 'shimpz-cloudflare', 'pt'), LocalApiError);
-  await assert.rejects(loadAssistantDetails(fetcher, 'marketing', 'shimpz-cloudflare', 'it'), LocalApiError);
+  await assert.rejects(localDetails(fetcher, 'latest', 'shimpz-cloudflare', 'pt'), LocalApiError);
+  await assert.rejects(localDetails(fetcher, IMAGE_ID, 'Bad', 'pt'), LocalApiError);
+  await assert.rejects(assistantDetails(fetcher, 'Team 1', 'shimpz-cloudflare', 'pt'), LocalApiError);
+  await assert.rejects(assistantDetails(fetcher, 'marketing', 'shimpz-cloudflare', 'it'), LocalApiError);
   assert.equal(fetched, false);
 });

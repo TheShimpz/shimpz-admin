@@ -25,6 +25,7 @@ import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from '../src/
 import { loadAssistantDetails, loadLocalAssistantDetails, loadLocalAssistantSummary } from '../src/lib/localAssistantIcons.js';
 import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
 import { ROUTINE_TEXT, routineLifecycleStart } from '../e2e/routineScenarios.js';
+import { via } from './socketStub.js';
 
 // Each interface language's own catalog of this copy.
 const routineMessages = Object.fromEntries(Object.entries(messages).map(([code, catalog]) => [code, catalog.routine]));
@@ -62,8 +63,20 @@ test('a scenario answers only what it declares and fails closed otherwise', () =
   }
   assert.equal(createScenario('setup').call('teams.list', {}), null);
   assert.equal(createScenario('empty').call('routines.list', { team_id: 'marketing' }), null);
-  // A read moved to the session socket is no HTTP route of any scenario.
-  assert.equal(createScenario('ready').respond({ method: 'GET', path: '/api/teams' }), null);
+  // An operation the session socket carries is no HTTP route of any scenario.
+  const ready = createScenario('ready');
+  for (const [method, path] of [
+    ['GET', '/api/teams'],
+    ['PUT', '/api/teams/order'],
+    ['PATCH', '/api/teams/marketing'],
+    ['GET', '/api/teams/marketing/assistants'],
+    ['GET', '/api/teams/marketing/inference'],
+    ['GET', '/api/model-providers'],
+    ['GET', '/api/decision-provider'],
+    ['GET', '/api/assistants'],
+  ]) {
+    assert.equal(ready.respond({ method, path, body: { team_ids: [] } }), null, `${method} ${path}`);
+  }
   assert.throws(() => createScenario('production'), /unknown scenario/);
 });
 
@@ -209,7 +222,7 @@ test('a human request names an Assistant its Team inventory lists, so Admin open
     const scenario = createScenario(name);
     const [challenge] = scenario.chat.message({ type: 'chat', message: 'News', files: [], assistant_ids: [], locale: 'en' });
     const parsed = parseChatEvent(challenge, 'marketing', 'Marketing');
-    const inventory = scenario.respond({ method: 'GET', path: '/api/teams/marketing/assistants' }).json.assistants;
+    const inventory = scenario.call('assistants.list', { team_id: 'marketing' }).json.assistants;
     assert.equal(parsed.type, 'human-required', name);
     assert.equal(parsed.request.kind, kind, name);
     assert.ok(inventory.some((entry) => entry.assistant === parsed.assistant.id), name);
@@ -224,7 +237,7 @@ test('a human request names an Assistant its Team inventory lists, so Admin open
 test('the Team order is saved only as an exact permutation of the listed Teams', () => {
   const scenario = createScenario('ready');
   const ids = () => scenario.call('teams.list', {}).json.teams.map((team) => team.team_id);
-  const put = (body) => scenario.respond({ method: 'PUT', path: '/api/teams/order', body });
+  const put = (body) => scenario.call('teams.reorder', { body });
   const listed = ids();
   assert.deepEqual(listed, ['marketing', 'trinity', 'cypher', 'morpheus', 'neo', 'smith']);
 
@@ -252,23 +265,27 @@ test('the reorder failure scenarios fail one save, then save normally', () => {
   const unavailable = createScenario('reorder-unavailable');
   const order = (scenario) => scenario.call('teams.list', {}).json.teams.map((team) => team.team_id);
   const reversed = order(unavailable).reverse();
-  assert.equal(unavailable.respond({ method: 'PUT', path: '/api/teams/order', body: { team_ids: reversed } }).status, 503);
-  assert.equal(unavailable.respond({ method: 'PUT', path: '/api/teams/order', body: { team_ids: reversed } }).status, 200);
+  assert.equal(unavailable.call('teams.reorder', { body: { team_ids: reversed } }).status, 503);
+  assert.equal(unavailable.call('teams.reorder', { body: { team_ids: reversed } }).status, 200);
 
   const conflict = createScenario('reorder-conflict');
   const before = order(conflict);
-  assert.equal(conflict.respond({ method: 'PUT', path: '/api/teams/order', body: { team_ids: before } }).status, 409);
+  assert.equal(conflict.call('teams.reorder', { body: { team_ids: before } }).status, 409);
   assert.deepEqual(order(conflict), ['oracle', ...before]);
-  assert.equal(conflict.respond({ method: 'PUT', path: '/api/teams/order', body: { team_ids: order(conflict) } }).status, 200);
+  assert.equal(conflict.call('teams.reorder', { body: { team_ids: order(conflict) } }).status, 200);
 });
 
 test('every listed Team answers its read-only views, and an unlisted one fails closed', () => {
   const scenario = createScenario('ready');
-  for (const view of ['assistants', 'files', 'inference', 'assistant-integrations', 'assistant-stored-inputs']) {
-    assert.equal(scenario.respond({ method: 'GET', path: `/api/teams/neo/${view}` }).status, 200, view);
-    assert.equal(scenario.respond({ method: 'GET', path: `/api/teams/oracle/${view}` }), null, view);
-  }
-  for (const method of ['history.page', 'routines.list']) {
+  for (const method of [
+    'history.page',
+    'routines.list',
+    'assistants.list',
+    'files.list',
+    'inference.read',
+    'integrations.list',
+    'stored_inputs.list',
+  ]) {
     assert.equal(scenario.call(method, { team_id: 'neo' }).status, 200, method);
     assert.equal(scenario.call(method, { team_id: 'oracle' }), null, method);
   }
@@ -320,7 +337,7 @@ test('the human-approval scenario renders its copy in the turn language and keep
   });
   assert.match(parseChatEvent(done, 'marketing', 'Marketing').reply, /dns-only/u);
   assert.deepEqual(scenario.chat.message({ type: 'sync', locale: 'pt' }), [{ type: 'sync-empty' }]);
-  const inventory = scenario.respond({ method: 'GET', path: '/api/teams/marketing/assistants' }).json.assistants;
+  const inventory = scenario.call('assistants.list', { team_id: 'marketing' }).json.assistants;
   assert.ok(inventory.some((entry) => entry.assistant === portuguese.assistant.id));
 });
 
@@ -482,22 +499,21 @@ test('the preview confirms a Routine deletion with a password and a code, and re
 
 test("the catalog scenario's Assistants and pages pass Admin's own admission in each language", async () => {
   const scenario = createScenario('catalog');
-  const fetcher = adapter(scenario);
-  const snapshots = await listLocalAssistantSnapshots(fetcher);
+  const socket = reader(scenario);
+  const snapshots = await via(socket, () => listLocalAssistantSnapshots());
   assert.equal(snapshots.length, 4);
-  assert.deepEqual(await listPublicAssistantCatalog(fetcher, 'pt'), []);
+  assert.deepEqual(await via(socket, () => listPublicAssistantCatalog('pt')), []);
   for (const locale of ['en', 'pt', 'ja']) {
     for (const snapshot of snapshots) {
-      const page = await loadLocalAssistantDetails(fetcher, snapshot.image_id, snapshot.assistant_id, locale);
-      assert.equal(page.summary, await loadLocalAssistantSummary(fetcher, snapshot.image_id, locale));
+      const page = await via(socket, () => loadLocalAssistantDetails(snapshot.image_id, snapshot.assistant_id, locale));
+      assert.equal(page.summary, await via(socket, () => loadLocalAssistantSummary(snapshot.image_id, locale)));
     }
     for (const assistant of ['shimpz-cloudflare', 'shimpz-exa']) {
-      const page = await loadAssistantDetails(fetcher, 'marketing', assistant, locale);
+      const page = await via(socket, () => loadAssistantDetails('marketing', assistant, locale));
       assert.equal(page.assistant_id, assistant);
     }
   }
-  const unstaged = scenario.respond({ path: `/api/local-assistants/${'f'.repeat(64)}/details`, query: new URLSearchParams('locale=en') });
-  assert.equal(unstaged, null);
-  assert.equal(scenario.respond({ path: '/api/teams/marketing/assistants/meta-ads/details' }), null);
+  assert.equal(scenario.call('snapshots.details', { image_id: `sha256:${'f'.repeat(64)}`, locale: 'en' }), null);
+  assert.equal(scenario.call('assistants.details', { team_id: 'marketing', assistant_id: 'meta-ads', locale: 'en' }), null);
 });
 

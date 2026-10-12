@@ -41,31 +41,44 @@ function localizedCopy(locale) {
 // Answers each catalog read only once `catalogGate(locale)` settles, so a test can hold one language's reply.
 async function routeAssistants(page, { catalogLocale = (locale) => locale, catalogGate = async () => {} } = {}) {
   const requests = { catalog: [], summaries: [], details: [] };
-  await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } }));
+  const ok = (json) => ({ status: 200, json });
+  await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
+  await routeRead(page, 'store.catalog', async ({ locale }) => {
+    requests.catalog.push(locale);
+    await catalogGate(locale);
+    return ok({ version: 1, locale: catalogLocale(locale), next: null, assistants: [{
+      assistant_id: 'dns-publisher', assistant_version: '1.0.0', creators: ['@creator'],
+      icon_digest: `sha256:${'d'.repeat(64)}`, name: 'DNS Publisher',
+      source_digest: `sha256:${'c'.repeat(64)}`, summary: PUBLISHED[locale] ?? PUBLISHED.en,
+      ...localizedCopy(locale),
+    }] });
+  });
+  await routeRead(page, 'snapshots.details', ({ image_id: imageId, locale }) => {
+    if (imageId !== IMAGE_ID) return undefined;
+    requests.details.push(locale);
+    return ok(assistantDetails({
+      locale, assistant_id: 'zone-inspector', assistant_version: '0.1.0', name: 'Zone Inspector',
+      summary: STAGED[locale] ?? STAGED.en, ...localizedCopy(locale),
+    }));
+  });
+  await routeRead(page, 'snapshots.summary', ({ image_id: imageId, locale }) => {
+    if (imageId !== IMAGE_ID) return undefined;
+    requests.summaries.push(locale);
+    return ok({ locale, summary: STAGED[locale] });
+  });
+  await routeRead(page, 'assistants.registry', () => ok({ assistants: [] }));
+  await routeRead(page, 'assistants.list', () => ok({ assistants: [] }));
+  await routeRead(page, 'snapshots.list', () => ok({
+    assistants: [{
+      assistant_id: 'zone-inspector', assistant_version: '0.1.0', name: 'Zone Inspector',
+      summary: STAGED.en, actions: ['list-zones'], integrations: ['cloudflare'],
+      declared_creators: ['@shimpz'], created_at: '2026-09-17T07:00:00Z', image_id: IMAGE_ID,
+      platform: 'linux/amd64', provenance: 'local', unpublished: true, admission: 'admissible', reason: null,
+    }],
+    trace_id: 'c'.repeat(32),
+  }));
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
-    const locale = url.searchParams.get('locale');
-    if (url.pathname === '/api/assistant-catalog') {
-      requests.catalog.push(locale);
-      await catalogGate(locale);
-      return route.fulfill({ json: { version: 1, locale: catalogLocale(locale), assistants: [{
-        assistant_id: 'dns-publisher', assistant_version: '1.0.0', creators: ['@creator'],
-        icon_digest: `sha256:${'d'.repeat(64)}`, name: 'DNS Publisher',
-        source_digest: `sha256:${'c'.repeat(64)}`, summary: PUBLISHED[locale] ?? PUBLISHED.en,
-        ...localizedCopy(locale),
-      }] } });
-    }
-    if (url.pathname === `/api/local-assistants/${IMAGE_ID.slice(7)}/details`) {
-      requests.details.push(locale);
-      return route.fulfill({ json: assistantDetails({
-        locale, assistant_id: 'zone-inspector', assistant_version: '0.1.0', name: 'Zone Inspector',
-        summary: STAGED[locale] ?? STAGED.en, ...localizedCopy(locale),
-      }) });
-    }
-    if (url.pathname === `/api/local-assistants/${IMAGE_ID.slice(7)}/summary`) {
-      requests.summaries.push(locale);
-      return route.fulfill({ json: { locale, summary: STAGED[locale] } });
-    }
     if (url.pathname.endsWith('/icon') || url.pathname.endsWith('/catalog-icon')) {
       return route.fulfill({ contentType: 'image/png', body: ICON });
     }
@@ -74,17 +87,6 @@ async function routeAssistants(page, { catalogLocale = (locale) => locale, catal
         profile: 'local', authenticated: true, initialized: true, authentication_state: 'configured',
         authentication_method: 'webauthn', origin_admitted: true, oauth_completion_mode: 'automatic',
         passkey_enrollment_available: true, passkey_registered: true,
-      },
-      '/api/assistants': { assistants: [] },
-      '/api/teams/marketing/assistants': { assistants: [] },
-      '/api/local-assistants': {
-        assistants: [{
-          assistant_id: 'zone-inspector', assistant_version: '0.1.0', name: 'Zone Inspector',
-          summary: STAGED.en, actions: ['list-zones'], integrations: ['cloudflare'],
-          declared_creators: ['@shimpz'], created_at: '2026-09-17T07:00:00Z', image_id: IMAGE_ID,
-          platform: 'linux/amd64', provenance: 'local', unpublished: true, admission: 'admissible', reason: null,
-        }],
-        trace_id: 'c'.repeat(32),
       },
     }[url.pathname];
     return route.fulfill({ status: body ? 200 : 503, json: body ?? {} });

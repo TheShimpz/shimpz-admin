@@ -2,6 +2,7 @@
   import { page } from '$app/state';
   import { getContext, onMount, tick, untrack } from 'svelte';
   import { Button, Notice, Skeleton, Toolbar } from '@shimpz/frontend';
+  import { watchTopic } from '#lib/adminSocket.js';
   import AssistantRow from '#lib/AssistantRow.svelte';
   import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
   import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from '#lib/localApi.js';
@@ -99,7 +100,7 @@
       const key = localSummaryKey(language, snapshot);
       if (localSummaries[key]) return;
       try {
-        const summary = await loadLocalAssistantSummary(fetch, snapshot.image_id, language, { signal });
+        const summary = await loadLocalAssistantSummary(snapshot.image_id, language, { signal });
         if (request === catalogPresentationRequest) localSummaries[key] = summary;
       } catch {
         // An unavailable translation leaves the summary empty rather than showing another language.
@@ -181,8 +182,8 @@
 
     try {
       const [publicResult, localResult] = await Promise.allSettled([
-        listPublicAssistantCatalog(fetch, language, controller.signal),
-        listLocalAssistantSnapshots(fetch, controller.signal),
+        listPublicAssistantCatalog(language, controller.signal),
+        listLocalAssistantSnapshots(controller.signal),
       ]);
       if (request !== catalogPresentationRequest) return;
 
@@ -286,7 +287,13 @@
   });
 
   onMount(() => {
+    // A snapshot staged or removed elsewhere (the CLI) changes the catalog: it is read again then, and after Admin
+    // reconnects. The first read is the language effect's.
+    const stopWatching = watchTopic('local-assistants', (_topic, cause) => {
+      if (cause === 'changed' || cause === 'reopen') void loadCatalogPresentation();
+    });
     return () => {
+      stopWatching();
       catalogPresentationRequest += 1;
       catalogPresentationController?.abort();
       releaseCatalogIconUrls();

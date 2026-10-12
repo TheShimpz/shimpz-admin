@@ -3,6 +3,7 @@
   import { page } from '$app/state';
 
   import { DialogFrame, Modal, Notice, TextField } from '@shimpz/frontend';
+  import { outcomeUnknown } from '#lib/adminSocket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { showAdminNotice } from '#lib/adminNotice.js';
   import { t } from '#lib/i18n.js';
@@ -75,12 +76,12 @@
     creating = true;
     createError = '';
     try {
-      const created = await createTeam(fetch, teamName);
+      const created = await createTeam(teamName);
       createDialog?.close();
       await goto(`/chat/?team=${encodeURIComponent(created.id)}`);
       onsettled();
-    } catch {
-      createError = copy.createFailed;
+    } catch (error) {
+      createError = outcomeUnknown(error) ? $t('shell.outcomeUnknown') : copy.createFailed;
     } finally {
       creating = false;
     }
@@ -111,13 +112,14 @@
     deleteErrorDetail = '';
     let deleted = false;
     try {
-      await deleteTeam(fetch, target.id, deleteName, supervisorPassword);
+      await deleteTeam(target.id, deleteName, supervisorPassword);
       deleted = true;
     } catch (error) {
       const known = error instanceof LocalApiError;
       const wrongPassword = known && error.status === 403 && error.message === 'Supervisor password is incorrect';
-      deleteError = wrongPassword ? copy.wrongPassword : copy.deleteFailed;
-      deleteErrorDetail = known && !wrongPassword
+      const unknown = outcomeUnknown(error);
+      deleteError = wrongPassword ? copy.wrongPassword : unknown ? $t('shell.outcomeUnknown') : copy.deleteFailed;
+      deleteErrorDetail = known && !wrongPassword && !unknown
         ? `${error.status > 0 ? `HTTP ${error.status} · ` : ''}${error.message}`
         : '';
       supervisorPassword = '';

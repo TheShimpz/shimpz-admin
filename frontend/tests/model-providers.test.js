@@ -6,10 +6,7 @@ import {
   loadInference,
   saveModelSetup,
 } from '../src/lib/modelProviders.js';
-
-function response(status, body) {
-  return { ok: status >= 200 && status < 300, status, async json() { return body; } };
-}
+import { response, via } from './socketStub.js';
 
 const providers = [
   {
@@ -37,78 +34,80 @@ const providers = [
 ];
 
 test('loads masked provider state and rejects a secret-bearing response', async () => {
-  assert.deepEqual(await listModelProviders(async () => response(200, { providers })), providers);
+  const listed = [];
+  const answer = (body) => async (method, params) => {
+    listed.push({ method, params });
+    return response(200, body);
+  };
+  assert.deepEqual(await via(answer({ providers }), listModelProviders), providers);
+  assert.deepEqual(listed, [{ method: 'models.list', params: {} }]);
 
   await assert.rejects(
-    listModelProviders(async () => response(200, {
-      providers: [{ ...providers[0], api_key: 'must-not-enter-ui' }, providers[1]],
-    })),
+    via(answer({ providers: [{ ...providers[0], api_key: 'must-not-enter-ui' }, providers[1]] }), listModelProviders),
     /invalid/i,
   );
 
   await assert.rejects(
-    listModelProviders(async () => response(200, {
+    via(answer({
       providers: [
         { ...providers[0], models: [{ ...providers[0].models[0], input_usd_per_million_cents: 1 }, ...providers[0].models.slice(1)] },
         providers[1],
       ],
-    })),
+    }), listModelProviders),
     /invalid/,
   );
 });
 
 test('saves the key only to Admin and provider/model only to inference', async () => {
   const calls = [];
-  const fetcher = async (url, options) => {
-    calls.push({ url, options });
+  const fetcher = async (method, params) => {
+    calls.push({ method, params });
     return calls.length === 1
       ? response(200, { ...providers[0], configured: true, masked: '••••test' })
       : response(200, { team_id: 'team_1', provider: 'openai', model: 'gpt-6-luna' });
   };
 
-  await saveModelSetup(
-    fetcher,
+  await via(fetcher, () => saveModelSetup(
     'team_1',
     { provider: 'openai', model: 'gpt-6-luna', apiKey: 'test-api-key' },
     providers,
-  );
+  ));
 
-  assert.deepEqual(JSON.parse(calls[0].options.body), { api_key: 'test-api-key' });
-  assert.deepEqual(JSON.parse(calls[1].options.body), { provider: 'openai', model: 'gpt-6-luna' });
-  assert.doesNotMatch(calls[1].options.body, /api_key|sk-test/);
+  assert.deepEqual(calls, [
+    { method: 'models.save', params: { provider: 'openai', body: { api_key: 'test-api-key' } } },
+    { method: 'inference.save', params: { team_id: 'team_1', body: { provider: 'openai', model: 'gpt-6-luna' } } },
+  ]);
+  assert.doesNotMatch(JSON.stringify(calls[1]), /api_key|test-api-key/);
 });
 
 test('reuses a configured key without a credential write', async () => {
   const calls = [];
-  await saveModelSetup(
-    async (url, options) => {
-      calls.push({ url, options });
-      return response(200, { team_id: 'team_1', provider: 'anthropic', model: 'claude-sonnet-5-5' });
-    },
+  const fetcher = async (method, params) => {
+    calls.push({ method, params });
+    return response(200, { team_id: 'team_1', provider: 'anthropic', model: 'claude-sonnet-5-5' });
+  };
+  await via(fetcher, () => saveModelSetup(
     'team_1',
     { provider: 'anthropic', model: 'claude-sonnet-5-5', apiKey: '' },
     providers,
-  );
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].url, '/api/teams/team_1/inference');
+  ));
+  assert.deepEqual(calls.map((entry) => entry.method), ['inference.save']);
 });
 
 test('rejects inference models outside the provider catalog before saving', async () => {
   await assert.rejects(
-    loadInference(
+    via(
       async () => response(200, { team_id: 'team_1', provider: 'openai', model: 'claude-sonnet-5-5' }),
-      'team_1',
+      () => loadInference('team_1'),
     ),
     /invalid/,
   );
 
   let called = false;
   await assert.rejects(
-    saveModelSetup(
+    via(
       async () => { called = true; },
-      'team_1',
-      { provider: 'openai', model: 'gpt-5.7', apiKey: 'test-api-key' },
-      providers,
+      () => saveModelSetup('team_1', { provider: 'openai', model: 'gpt-5.7', apiKey: 'test-api-key' }, providers),
     ),
     /invalid/i,
   );
@@ -116,5 +115,5 @@ test('rejects inference models outside the provider catalog before saving', asyn
 });
 
 test('treats unconfigured inference as empty', async () => {
-  assert.equal(await loadInference(async () => response(409, { detail: 'not configured' }), 'team_1'), null);
+  assert.equal(await via(async () => response(409, { detail: 'not configured' }), () => loadInference('team_1')), null);
 });

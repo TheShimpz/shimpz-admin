@@ -29,30 +29,38 @@ function refusal(code, status) {
   return { status, json: { detail: 'Local Assistant preview failed admission', code } };
 }
 
-// `preview(imageId)` answers one image's icon, summary, and page: a route.fulfill options object, or a promise of one.
+// `preview(imageId)` answers one image's icon, summary, and page: `{ status, json }` for a refusal, or a promise of one.
 // `bindings(assistantId)` answers an installed Assistant's page the same way.
 async function routeStore(page, { snapshots, preview, installed = () => [], installs = [], bindings = () => ({}) }) {
-  await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } }));
+  const ok = (json, status = 200) => ({ status, json });
+  await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
+  await routeRead(page, 'assistants.registry', () => ok({ assistants: [] }));
+  await routeRead(page, 'assistants.list', () => ok({ assistants: installed() }));
+  await routeRead(page, 'store.catalog', ({ locale }) => ok({ version: 1, locale, assistants: [], next: null }));
+  await routeRead(page, 'snapshots.list', () => ok({ assistants: snapshots(), trace_id: 'c'.repeat(32) }));
+  await routeRead(page, 'snapshots.summary', async ({ image_id: imageId, locale }) => {
+    const answer = await preview(imageId);
+    return answer.status ? answer : ok({ locale, summary: 'Exercises Local snapshot admission.' });
+  });
+  await routeRead(page, 'snapshots.details', async ({ image_id: imageId, locale }) => {
+    const answer = await preview(imageId);
+    if (answer.status) return answer;
+    return ok(stagedDetails(snapshots().find((entry) => entry.image_id === imageId), locale));
+  });
+  await routeRead(page, 'assistants.details', ({ assistant_id: assistantId }) => {
+    const answer = bindings(assistantId);
+    return { status: answer.status ?? 200, json: answer.json };
+  });
+  await routeRead(page, 'assistants.install_local', ({ body }) => {
+    installs.push(body);
+    return ok({ detail: 'Local Assistant snapshot failed admission' }, 409);
+  });
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
-    const locale = url.searchParams.get('locale');
-    const previewPath = /^\/api\/local-assistants\/([0-9a-f]{64})\/(icon|summary|details)$/.exec(url.pathname);
-    if (previewPath) {
-      const imageId = `sha256:${previewPath[1]}`;
-      const answer = await preview(imageId);
-      if (answer.status) return route.fulfill(answer);
-      if (previewPath[2] === 'icon') return route.fulfill({ contentType: 'image/png', body: ICON });
-      if (previewPath[2] === 'details') {
-        const staged = snapshots().find((entry) => entry.image_id === imageId);
-        return route.fulfill({ json: stagedDetails(staged, locale) });
-      }
-      return route.fulfill({ json: { locale, summary: 'Exercises Local snapshot admission.' } });
-    }
-    const bindingPath = /^\/api\/teams\/marketing\/assistants\/([a-z-]+)\/details$/.exec(url.pathname);
-    if (bindingPath) return route.fulfill(bindings(bindingPath[1]));
-    if (url.pathname === '/api/teams/marketing/assistants/local') {
-      installs.push(route.request().postDataJSON());
-      return route.fulfill({ status: 409, json: { detail: 'Local Assistant snapshot failed admission' } });
+    const icon = /^\/api\/local-assistants\/([0-9a-f]{64})\/icon$/.exec(url.pathname);
+    if (icon) {
+      const answer = await preview(`sha256:${icon[1]}`);
+      return route.fulfill(answer.status ? answer : { contentType: 'image/png', body: ICON });
     }
     const body = {
       '/api/session': {
@@ -60,10 +68,6 @@ async function routeStore(page, { snapshots, preview, installed = () => [], inst
         authentication_method: 'webauthn', origin_admitted: true, oauth_completion_mode: 'automatic',
         passkey_enrollment_available: true, passkey_registered: true,
       },
-      '/api/assistants': { assistants: [] },
-      '/api/teams/marketing/assistants': { assistants: installed() },
-      '/api/assistant-catalog': { version: 1, locale: url.searchParams.get('locale'), assistants: [] },
-      '/api/local-assistants': { assistants: snapshots(), trace_id: 'c'.repeat(32) },
     }[url.pathname];
     return route.fulfill({ status: body ? 200 : 503, json: body ?? {} });
   });

@@ -8,6 +8,11 @@ import {
   loadLocalAssistantSummary,
   loadPublicAssistantIcon,
 } from '../src/lib/localAssistantIcons.js';
+import { via } from './socketStub.js';
+
+// Summaries are read over the session socket; a stub answers each call as the call result Admin sends.
+const localSummary = (stub, ...args) => via(stub, () => loadLocalAssistantSummary(...args));
+const assistantSummary = (stub, ...args) => via(stub, () => loadAssistantSummary(...args));
 
 const IMAGE_ID = `sha256:${'a'.repeat(64)}`;
 
@@ -138,24 +143,21 @@ function summaryResponse(body, status = 200) {
 test('reads a staged snapshot summary in exactly one interface language with one busy retry', async () => {
   const requests = [];
   const delays = [];
-  const fetcher = async (url, options) => {
-    requests.push({ url, accept: options.headers.Accept });
+  const fetcher = async (method, params) => {
+    requests.push({ method, params });
     if (requests.length === 1) {
       return summaryResponse({ code: 'local-assistant-preview-busy', retry_after_ms: 30 }, 503);
     }
     return summaryResponse({ locale: 'pt', summary: 'Publica alterações de DNS.' });
   };
 
-  const summary = await loadLocalAssistantSummary(fetcher, IMAGE_ID, 'pt', {
+  const summary = await localSummary(fetcher, IMAGE_ID, 'pt', {
     delay: async (delay) => delays.push(delay),
   });
 
   assert.equal(summary, 'Publica alterações de DNS.');
   assert.deepEqual(delays, [30]);
-  assert.deepEqual(requests, Array(2).fill({
-    url: `/api/local-assistants/${'a'.repeat(64)}/summary?locale=pt`,
-    accept: 'application/json',
-  }));
+  assert.deepEqual(requests, Array(2).fill({ method: 'snapshots.summary', params: { image_id: IMAGE_ID, locale: 'pt' } }));
 });
 
 test('refuses invalid summary requests and any answer outside the requested locale or shape', async () => {
@@ -165,17 +167,17 @@ test('refuses invalid summary requests and any answer outside the requested loca
     return summaryResponse({ locale: 'pt', summary: 'Resumo.' });
   };
   for (const [imageId, locale] of [['latest', 'pt'], [IMAGE_ID, 'pt-BR'], [IMAGE_ID, undefined]]) {
-    await assert.rejects(loadLocalAssistantSummary(counted, imageId, locale), /Invalid Local Assistant summary request/);
+    await assert.rejects(localSummary(counted, imageId, locale), /Invalid Local Assistant summary request/);
   }
   await assert.rejects(
-    loadLocalAssistantSummary(counted, IMAGE_ID, 'pt', { signal: 'not a signal' }),
+    localSummary(counted, IMAGE_ID, 'pt', { signal: 'not a signal' }),
     /Invalid Local Assistant summary request/,
   );
   assert.equal(calls, 0);
 
   // A translated summary may use all 80 code points, including ones outside the Basic Multilingual Plane.
   for (const summary of ['x'.repeat(80), `${'x'.repeat(79)}\u{1F44B}`]) {
-    const loaded = await loadLocalAssistantSummary(async () => summaryResponse({ locale: 'pt', summary }), IMAGE_ID, 'pt');
+    const loaded = await localSummary(async () => summaryResponse({ locale: 'pt', summary }), IMAGE_ID, 'pt');
     assert.equal(loaded, summary);
   }
 
@@ -190,17 +192,17 @@ test('refuses invalid summary requests and any answer outside the requested loca
     { locale: 'pt', summary: 'Resumo.', trace_id: 'a'.repeat(32) },
   ]) {
     await assert.rejects(
-      loadLocalAssistantSummary(async () => summaryResponse(body), IMAGE_ID, 'pt'),
+      localSummary(async () => summaryResponse(body), IMAGE_ID, 'pt'),
       /summary is invalid/,
     );
   }
   await assert.rejects(
-    loadLocalAssistantSummary(async () => summaryResponse({ detail: 'Team is unavailable' }, 502), IMAGE_ID, 'pt'),
+    localSummary(async () => summaryResponse({ detail: 'Team is unavailable' }, 502), IMAGE_ID, 'pt'),
     /Team is unavailable/,
   );
   let busy = 0;
   await assert.rejects(
-    loadLocalAssistantSummary(async () => {
+    localSummary(async () => {
       busy += 1;
       return summaryResponse({ code: 'local-assistant-preview-busy', retry_after_ms: 1 }, 503);
     }, IMAGE_ID, 'pt', { delay: async () => {} }),
@@ -212,18 +214,28 @@ test('refuses invalid summary requests and any answer outside the requested loca
 test('reads an installed Assistant summary only in the requested interface language', async () => {
   const requests = [];
   const controller = new AbortController();
-  const summary = await loadAssistantSummary(async (url, options) => {
-    requests.push({ url, cache: options.cache, accept: options.headers.Accept, signal: options.signal });
+  const summary = await assistantSummary(async (method, params) => {
+    requests.push({ method, params });
     return summaryResponse({ locale: 'ja', summary: 'DNS の変更を安全に公開します。' });
   }, 'team_1', 'shimpz-cloudflare', 'ja', { signal: controller.signal });
 
   assert.equal(summary, 'DNS の変更を安全に公開します。');
   assert.deepEqual(requests, [{
-    url: '/api/teams/team_1/assistants/shimpz-cloudflare/summary?locale=ja',
-    cache: 'no-store',
-    accept: 'application/json',
-    signal: controller.signal,
+    method: 'assistants.summary',
+    params: { team_id: 'team_1', assistant_id: 'shimpz-cloudflare', locale: 'ja' },
   }]);
+
+  // An answer that arrives after its request was aborted is dropped.
+  const aborted = new AbortController();
+  const late = assistantSummary(async () => {
+    aborted.abort();
+    return summaryResponse({ locale: 'ja', summary: 'DNS の変更を安全に公開します。' });
+  }, 'team_1', 'shimpz-cloudflare', 'ja', { signal: aborted.signal });
+  await assert.rejects(late, (error) => error.name === 'AbortError');
+  await assert.rejects(
+    assistantSummary(async () => summaryResponse({}), 'team_1', 'shimpz-cloudflare', 'ja', { signal: aborted.signal }),
+    (error) => error.name === 'AbortError',
+  );
 
   let calls = 0;
   const counted = async () => {
@@ -240,11 +252,10 @@ test('reads an installed Assistant summary only in the requested interface langu
     ['team_1', 'shimpz-cloudflare', 'pt', { signal: 'not a signal' }],
   ]) {
     await assert.rejects(
-      loadAssistantSummary(counted, teamId, assistantId, locale, options),
+      assistantSummary(counted, teamId, assistantId, locale, options),
       /Invalid Assistant summary request/,
     );
   }
-  await assert.rejects(loadAssistantSummary(null, 'team_1', 'shimpz-cloudflare', 'pt'), /Invalid Assistant summary/);
   assert.equal(calls, 0);
 
   for (const body of [
@@ -253,12 +264,12 @@ test('reads an installed Assistant summary only in the requested interface langu
     { locale: 'pt', summary: 'Resumo.', trace_id: 'a'.repeat(32) },
   ]) {
     await assert.rejects(
-      loadAssistantSummary(async () => summaryResponse(body), 'team_1', 'shimpz-cloudflare', 'pt'),
+      assistantSummary(async () => summaryResponse(body), 'team_1', 'shimpz-cloudflare', 'pt'),
       /^LocalApiError: The Assistant summary is invalid\.$/,
     );
   }
   await assert.rejects(
-    loadAssistantSummary(
+    assistantSummary(
       async () => summaryResponse({ detail: 'Assistant is not installed in this Team' }, 404),
       'team_1',
       'shimpz-cloudflare',
@@ -267,7 +278,7 @@ test('reads an installed Assistant summary only in the requested interface langu
     (error) => error.status === 404 && error.message === 'Assistant is not installed in this Team',
   );
   await assert.rejects(
-    loadAssistantSummary(async () => summaryResponse({}, 502), 'team_1', 'shimpz-cloudflare', 'pt'),
+    assistantSummary(async () => summaryResponse({}, 502), 'team_1', 'shimpz-cloudflare', 'pt'),
     /The Assistant summary is unavailable/,
   );
 });
@@ -280,7 +291,7 @@ test('carries only a bounded Team refusal code and recognizes an inadmissible st
   const error = await loadLocalAssistantIcon(refused('local-assistant-preview-invalid'), IMAGE_ID).catch((value) => value);
   assert.equal(error.code, 'local-assistant-preview-invalid');
   assert.equal(isInadmissibleLocalPreview(error), true);
-  const summaryError = await loadLocalAssistantSummary(refused('local-assistant-preview-invalid'), IMAGE_ID, 'pt')
+  const summaryError = await localSummary(refused('local-assistant-preview-invalid'), IMAGE_ID, 'pt')
     .catch((value) => value);
   assert.equal(isInadmissibleLocalPreview(summaryError), true);
 

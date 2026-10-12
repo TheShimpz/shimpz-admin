@@ -7,6 +7,7 @@
   import { getContext, onMount, untrack } from 'svelte';
   import { ActionLink, AssistantIcon, Button, Disclosure, Notice, Skeleton, TextLink } from '@shimpz/frontend';
   import { showAdminNotice } from '#lib/adminNotice.js';
+  import { outcomeUnknown, watchTopic } from '#lib/adminSocket.js';
   import AssistantActionDialog from '#lib/AssistantActionDialog.svelte';
   import { actionGroups, continuingText, pageTarget } from '#lib/assistantPage.js';
   import { CREATOR_LINK_ICONS, CREATOR_LINK_NAMES } from '#lib/creatorLinkIcons.js';
@@ -157,8 +158,8 @@
     const request = ++sourcesRequest;
     const language = $locale;
     const [publicResult, localResult] = await Promise.allSettled([
-      listPublicAssistantCatalog(fetch, language),
-      listLocalAssistantSnapshots(fetch),
+      listPublicAssistantCatalog(language),
+      listLocalAssistantSnapshots(),
     ]);
     if (request !== sourcesRequest) return;
     const groups = localResult.status === 'fulfilled' ? groupLocalAssistantSnapshots(localResult.value) : [];
@@ -232,7 +233,7 @@
     try {
       if (current.mode === 'installed') {
         iconSrc = `/api/teams/${encodeURIComponent(team.id)}/assistants/${encodeURIComponent(assistantId)}/icon`;
-        const loaded = await loadAssistantDetails(fetch, team.id, assistantId, language, { signal: controller.signal });
+        const loaded = await loadAssistantDetails(team.id, assistantId, language, { signal: controller.signal });
         if (stale()) return;
         // Team answers for the binding it runs now; a page for another version is not this entry's page.
         if (loaded.assistant_version !== current.installed.assistant_version) throw new Error('stale binding');
@@ -240,7 +241,7 @@
       } else if (current.mode === 'local') {
         const imageId = current.group.primary.image_id;
         void loadIcon(() => loadLocalAssistantIcon(fetch, imageId, { signal: controller.signal }), request);
-        const loaded = await loadLocalAssistantDetails(fetch, imageId, assistantId, language, {
+        const loaded = await loadLocalAssistantDetails(imageId, assistantId, language, {
           signal: controller.signal,
         });
         if (stale()) return;
@@ -300,6 +301,12 @@
     if (!validAssistant || sourcesPhase === 'error' || $teamContext.phase === 'error') settleInitialView();
   });
 
+  // A snapshot staged or removed elsewhere (the CLI) changes what this page may show: its sources are read again then,
+  // and after Admin reconnects. The page's own first read is the one above.
+  onMount(() => watchTopic('local-assistants', (_topic, cause) => {
+    if (cause === 'changed' || cause === 'reopen') void loadSources();
+  }));
+
   onMount(() => () => {
     sourcesRequest += 1;
     detailsRequest += 1;
@@ -311,7 +318,7 @@
   async function readInventory(team) {
     if ($teamContext.selectedTeamId !== team.id) return null;
     try {
-      return (await refreshTeamInventory(fetch)).installedAssistants;
+      return (await refreshTeamInventory()).installedAssistants;
     } catch {
       return null;
     }
@@ -368,8 +375,10 @@
     return { current: inventory.find((entry) => entry.assistant === frozen.assistantId) ?? null };
   }
 
-  // Team's refusal of an install beyond the Team's bound reads as that fact; any other failure keeps its own copy.
+  // Team's refusal of an install beyond the Team's bound reads as that fact, and a change Admin never confirmed before it
+  // disconnected as an unknown outcome; any other failure keeps its own copy.
   function installFailure(failure, fallback) {
+    if (outcomeUnknown(failure)) return $t('shell.outcomeUnknown');
     return failure?.code === ASSISTANT_LIMIT_REACHED
       ? $t('store.assistantLimitReached', { maximum: String(MAX_TEAM_ASSISTANTS) })
       : fallback;
@@ -387,7 +396,7 @@
         dialogMode = 'error';
         return;
       }
-      await installAssistant(fetch, frozen.team.id, frozen.assistantId, frozen.publication.source_digest);
+      await installAssistant(frozen.team.id, frozen.assistantId, frozen.publication.source_digest);
       await refreshInventory(frozen.team);
       dialogOpen = false;
       showAdminNotice({
@@ -419,7 +428,7 @@
       // Already absent from the Team is the outcome this uninstall asks for, so nothing is removed again.
       let refreshed = true;
       if (current) {
-        await uninstallAssistant(fetch, frozen.team.id, frozen.assistantId);
+        await uninstallAssistant(frozen.team.id, frozen.assistantId);
         refreshed = await refreshInventory(frozen.team);
       }
       dialogOpen = false;
@@ -431,9 +440,9 @@
           team: frozen.team.name,
         }),
       });
-    } catch {
+    } catch (failure) {
       await refreshInventory(frozen.team);
-      dialogError = pageCopy.uninstallFailed;
+      dialogError = outcomeUnknown(failure) ? $t('shell.outcomeUnknown') : pageCopy.uninstallFailed;
       dialogMode = 'error';
     } finally {
       busy = false;
@@ -472,7 +481,7 @@
         localDialogError = refusal ?? pageCopy.targetChanged;
         return;
       }
-      const result = await installLocalAssistant(fetch, frozen.team.id, snapshot.image_id);
+      const result = await installLocalAssistant(frozen.team.id, snapshot.image_id);
       await refreshInventory(frozen.team);
       localDialogOpen = false;
       showAdminNotice({

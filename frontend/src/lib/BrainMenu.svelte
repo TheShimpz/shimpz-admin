@@ -2,6 +2,7 @@
   import { Button, ChoiceItem } from '@shimpz/frontend';
 
   import { showAdminNotice } from '#lib/adminNotice.js';
+  import { outcomeUnknown } from '#lib/adminSocket.js';
   import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/composerPanel.js';
   import { t } from '#lib/i18n.js';
   import { modelContext, selectTeamBrain } from '#lib/modelContext.js';
@@ -71,17 +72,18 @@
     openPanel(trigger, panel, () => panel?.querySelector('.models [aria-pressed="true"]'));
   }
 
-  function failed() {
-    showAdminNotice({ tone: 'error', label: copy.label, message: $t('chatContext.modelFailed') });
+  function failed(error) {
+    const message = outcomeUnknown(error) ? $t('shell.outcomeUnknown') : $t('chatContext.modelFailed');
+    showAdminNotice({ tone: 'error', label: copy.label, message });
   }
 
   async function chooseModel(option) {
     const teamId = $teamContext.selectedTeamId;
     if (!teamId || unavailable || option.value === selected?.value) return;
     try {
-      await selectTeamBrain(fetch, teamId, option.provider, option.model);
-    } catch {
-      failed();
+      await selectTeamBrain(teamId, option.provider, option.model);
+    } catch (error) {
+      failed(error);
       return;
     }
     // A model whose provider has no key asks for it in the composer, which this panel would cover.

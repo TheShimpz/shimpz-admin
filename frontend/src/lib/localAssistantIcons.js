@@ -1,3 +1,4 @@
+import { socketReads } from './adminSocket.js';
 import { AssistantPageError, canonicalPageCopy, isDisplayText, SUMMARY_CHARS } from './assistantPage.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import { isLocale } from './locales.js';
@@ -90,6 +91,14 @@ function schedule(queue, task, signal) {
     queue.pending.push(item);
     drain(queue);
   });
+}
+
+// A socket call cannot be withdrawn once sent: an answer that arrives after its request was aborted is dropped.
+async function read(method, params, signal) {
+  if (signal?.aborted) throw abortError();
+  const response = await socketReads.call(method, params);
+  if (signal?.aborted) throw abortError();
+  return response;
 }
 
 function sleep(milliseconds, signal) {
@@ -187,14 +196,9 @@ function acceptedSummary(body, locale, status, invalid = 'The Local Assistant su
   return summary;
 }
 
-async function fetchLocalSummary(fetcher, imageId, locale, delay, signal) {
-  const imageHash = imageId.slice('sha256:'.length);
+async function fetchLocalSummary(imageId, locale, delay, signal) {
   for (let attempt = 0; ; attempt += 1) {
-    const response = await fetcher(`/api/local-assistants/${imageHash}/summary?locale=${locale}`, {
-      cache: 'no-store',
-      headers: { Accept: 'application/json' },
-      signal,
-    });
+    const response = await read('snapshots.summary', { image_id: imageId, locale }, signal);
     if (response.ok) return acceptedSummary(await jsonObject(response), locale, response.status);
     const retryAfter = await localBusyRetry(response);
     if (retryAfter === null || attempt >= MAX_BUSY_RETRIES) {
@@ -241,14 +245,9 @@ function acceptedDetails(body, expected, status) {
   }
 }
 
-async function fetchLocalDetails(fetcher, imageId, expected, delay, signal) {
-  const imageHash = imageId.slice('sha256:'.length);
+async function fetchLocalDetails(imageId, expected, delay, signal) {
   for (let attempt = 0; ; attempt += 1) {
-    const response = await fetcher(`/api/local-assistants/${imageHash}/details?locale=${expected.locale}`, {
-      cache: 'no-store',
-      headers: { Accept: 'application/json' },
-      signal,
-    });
+    const response = await read('snapshots.details', { image_id: imageId, locale: expected.locale }, signal);
     if (response.ok) return acceptedDetails(await jsonObject(response), expected, response.status);
     const retryAfter = await localBusyRetry(response);
     if (retryAfter === null || attempt >= MAX_BUSY_RETRIES) {
@@ -310,10 +309,9 @@ export function loadPublicAssistantIcon(fetcher, assistantId, options = {}) {
  * Fetch one staged snapshot's summary in one interface language, read by Team from the snapshot's own language pack
  * (ADR-0091), through the same two-slot queue as its icon because both share Team's bounded preview.
  */
-export function loadLocalAssistantSummary(fetcher, imageId, locale, options = {}) {
+export function loadLocalAssistantSummary(imageId, locale, options = {}) {
   const { delay = sleep, signal } = options;
   if (
-    typeof fetcher !== 'function' ||
     !SHA256_RE.test(imageId) ||
     !isLocale(locale) ||
     typeof delay !== 'function' ||
@@ -321,17 +319,16 @@ export function loadLocalAssistantSummary(fetcher, imageId, locale, options = {}
   ) {
     return Promise.reject(new LocalApiError('Invalid Local Assistant summary request.'));
   }
-  return schedule(localQueue, () => fetchLocalSummary(fetcher, imageId, locale, delay, signal), signal);
+  return schedule(localQueue, () => fetchLocalSummary(imageId, locale, delay, signal), signal);
 }
 
 /**
  * Fetch one installed Assistant's summary in one interface language, read by Team from the binding's own language
  * pack (ADR-0091). The answer must be exactly that language; there is no English fallback.
  */
-export async function loadAssistantSummary(fetcher, teamId, assistantId, locale, options = {}) {
+export async function loadAssistantSummary(teamId, assistantId, locale, options = {}) {
   const { signal } = options;
   if (
-    typeof fetcher !== 'function' ||
     typeof teamId !== 'string' ||
     !TEAM_ID_RE.test(teamId) ||
     typeof assistantId !== 'string' ||
@@ -341,12 +338,7 @@ export async function loadAssistantSummary(fetcher, teamId, assistantId, locale,
   ) {
     throw new LocalApiError('Invalid Assistant summary request.');
   }
-  const path = `/api/teams/${encodeURIComponent(teamId)}/assistants/${encodeURIComponent(assistantId)}/summary`;
-  const response = await fetcher(`${path}?locale=${locale}`, {
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-    signal,
-  });
+  const response = await read('assistants.summary', { team_id: teamId, assistant_id: assistantId, locale }, signal);
   if (!response.ok) throw await responseError(response, 'The Assistant summary is unavailable.');
   return acceptedSummary(await jsonObject(response), locale, response.status, 'The Assistant summary is invalid.');
 }
@@ -355,10 +347,9 @@ export async function loadAssistantSummary(fetcher, teamId, assistantId, locale,
  * Fetch one staged snapshot's page in one interface language: Team reads it from the exact image's manifest, contract,
  * and own language pack (ADR-0091), through the same two-slot queue as its icon because both share Team's preview.
  */
-export function loadLocalAssistantDetails(fetcher, imageId, assistantId, locale, options = {}) {
+export function loadLocalAssistantDetails(imageId, assistantId, locale, options = {}) {
   const { delay = sleep, signal } = options;
   if (
-    typeof fetcher !== 'function' ||
     !SHA256_RE.test(imageId) ||
     typeof assistantId !== 'string' ||
     !ASSISTANT_ID_RE.test(assistantId) ||
@@ -369,17 +360,16 @@ export function loadLocalAssistantDetails(fetcher, imageId, assistantId, locale,
     return Promise.reject(new LocalApiError('Invalid Local Assistant details request.'));
   }
   const expected = { assistantId, locale, maxCreators: 4 };
-  return schedule(localQueue, () => fetchLocalDetails(fetcher, imageId, expected, delay, signal), signal);
+  return schedule(localQueue, () => fetchLocalDetails(imageId, expected, delay, signal), signal);
 }
 
 /**
  * Fetch one installed Assistant's page in one interface language, read by Team from the exact binding it runs and that
  * binding's own language pack (ADR-0091). There is no English fallback and no substitute from discovery.
  */
-export async function loadAssistantDetails(fetcher, teamId, assistantId, locale, options = {}) {
+export async function loadAssistantDetails(teamId, assistantId, locale, options = {}) {
   const { signal } = options;
   if (
-    typeof fetcher !== 'function' ||
     typeof teamId !== 'string' ||
     !TEAM_ID_RE.test(teamId) ||
     typeof assistantId !== 'string' ||
@@ -389,12 +379,7 @@ export async function loadAssistantDetails(fetcher, teamId, assistantId, locale,
   ) {
     throw new LocalApiError('Invalid Assistant details request.');
   }
-  const path = `/api/teams/${encodeURIComponent(teamId)}/assistants/${encodeURIComponent(assistantId)}/details`;
-  const response = await fetcher(`${path}?locale=${locale}`, {
-    cache: 'no-store',
-    headers: { Accept: 'application/json' },
-    signal,
-  });
+  const response = await read('assistants.details', { team_id: teamId, assistant_id: assistantId, locale }, signal);
   if (!response.ok) throw await responseError(response, 'The Assistant details are unavailable.');
   return acceptedDetails(await jsonObject(response), { assistantId, locale, maxCreators: 16 }, response.status);
 }

@@ -151,7 +151,7 @@ export const CATALOG_INSTALLED = Object.freeze(['shimpz-cloudflare', 'shimpz-exa
 const imageId = (assistant) => `sha256:${assistant.hex.repeat(64)}`;
 const text = (copy, locale) => copy[locale] ?? copy.en;
 
-/** The staged snapshots `/api/local-assistants` lists. */
+/** The staged snapshots `snapshots.list` lists. */
 export function catalogSnapshots() {
   return ASSISTANTS.map((assistant) => ({
     assistant_id: assistant.id,

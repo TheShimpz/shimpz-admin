@@ -7,7 +7,7 @@
 
   import { t } from '#lib/i18n.js';
   import { loadTeamRoutines, retainTeamRoutines, routineContext } from '#lib/routineContext.js';
-  import { call } from '#lib/adminSocket.js';
+  import { call, outcomeUnknown } from '#lib/adminSocket.js';
   import TeamActionsMenu from '#lib/TeamActionsMenu.svelte';
   import { renameTeam, reorderTeams, teamContext } from '#lib/teamContext.js';
   import TeamRoutinesDialog from '#lib/TeamRoutinesDialog.svelte';
@@ -105,12 +105,13 @@
       return restoreFocus && (!active || active === document.body || active.id === renameFieldId(team.id));
     };
     try {
-      await renameTeam(fetch, team.id, name);
+      await renameTeam(team.id, name);
       const restore = stillHere();
       if (renaming === team.id) renaming = '';
       if (restore) await focusTeamLink(team.id);
-    } catch {
-      showAdminNotice({ tone: 'error', label: copy.rename, message: copy.renameFailed });
+    } catch (error) {
+      const message = outcomeUnknown(error) ? $t('shell.outcomeUnknown') : copy.renameFailed;
+      showAdminNotice({ tone: 'error', label: copy.rename, message });
       if (stillHere()) document.getElementById(renameFieldId(team.id))?.focus();
     } finally {
       renameSaving = false;
@@ -174,14 +175,16 @@
   async function saveOrder(ids, team) {
     const position = ids.indexOf(team.id) + 1;
     try {
-      const saving = reorderTeams(fetch, ids);
+      const saving = reorderTeams(ids);
       void announce($t('teamNavigation.moved', { team: team.name, position, total: ids.length }));
       await saving;
     } catch (error) {
       showAdminNotice({
         tone: 'error',
         label: copy.order,
-        message: error?.status === 409 ? copy.orderStale : copy.orderFailed,
+        message: outcomeUnknown(error)
+          ? $t('shell.outcomeUnknown')
+          : error?.status === 409 ? copy.orderStale : copy.orderFailed,
       });
     }
   }

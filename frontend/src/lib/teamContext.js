@@ -82,10 +82,6 @@ function validTeamResidueProof(value) {
   );
 }
 
-function requireFetcher(fetcher) {
-  if (typeof fetcher !== 'function') throw new LocalApiError('Invalid local Team request.');
-}
-
 function preferredTeamId(value) {
   if (value === '') return '';
   if (typeof value !== 'string' || !TEAM_ID_RE.test(value)) {
@@ -94,9 +90,8 @@ function preferredTeamId(value) {
   return value;
 }
 
-// The Team list is read over the Admin session socket (ADR-0114); the rest of the context still over HTTP.
-async function listTeams(fetcher) {
-  requireFetcher(fetcher);
+// The Team context is read and changed over the Admin session socket (ADR-0114).
+async function listTeams() {
   const response = await socketReads.call('teams.list', {});
   const body = await jsonObject(response);
   if (!response.ok) {
@@ -105,7 +100,7 @@ async function listTeams(fetcher) {
   return parseTeamList(body, response.status);
 }
 
-// `teams.list` and PUT /api/teams/order answer the same closed list, already in the Supervisor's display order.
+// `teams.list` and `teams.reorder` answer the same closed list, already in the Supervisor's display order.
 function parseTeamList(body, status) {
   if (
     !hasExactEnvelopeKeys(body, ['teams']) ||
@@ -138,9 +133,9 @@ function selectAvailableTeam(teams, preferredId, previousId) {
   return teams[0]?.id ?? '';
 }
 
-async function inventorySnapshot(fetcher, teamId) {
+async function inventorySnapshot(teamId) {
   if (!teamId) return { installedAssistants: [] };
-  return { installedAssistants: await listInstalledAssistants(fetcher, teamId) };
+  return { installedAssistants: await listInstalledAssistants(teamId) };
 }
 
 function markFailure(attempt, error, fallback, clearAuthority) {
@@ -182,12 +177,12 @@ function withRenames(teams, since) {
   });
 }
 
-async function hydrate(fetcher, preferredId, attempt, previousId = '') {
+async function hydrate(preferredId, attempt, previousId = '') {
   const since = renameClock;
   const read = ++listReads;
   const [listed, catalog] = await Promise.all([
-    listTeams(fetcher),
-    listAssistantCatalog(fetcher),
+    listTeams(),
+    listAssistantCatalog(),
   ]);
   const teams = withRenames(listed, since);
   const selectedTeamId = selectAvailableTeam(teams, preferredId, previousId);
@@ -212,7 +207,7 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
     return snapshot;
   }
 
-  const inventory = await inventorySnapshot(fetcher, selectedTeamId);
+  const inventory = await inventorySnapshot(selectedTeamId);
   const scope = chatScope(inventory.installedAssistants);
   // Re-apply renames at publication: one may have been confirmed while the inventory was loading.
   const published = withRenames(listed, since);
@@ -233,12 +228,11 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
   return { teams: published, selectedTeamId, catalog, ...inventory, ...scope };
 }
 
-export function loadTeamContext(fetcher, preferredId = '') {
-  return listing(loadContext(fetcher, preferredId));
+export function loadTeamContext(preferredId = '') {
+  return listing(loadContext(preferredId));
 }
 
-async function loadContext(fetcher, preferredId) {
-  requireFetcher(fetcher);
+async function loadContext(preferredId) {
   const canonicalPreferredId = preferredTeamId(preferredId);
   const previousId = get(teamContext).selectedTeamId;
   const attempt = ++generation;
@@ -246,18 +240,17 @@ async function loadContext(fetcher, preferredId) {
   listBarrier = ++listReads;
   teamContext.set({ ...emptyContext(), phase: 'loading', inventory: 'loading' });
   try {
-    return await hydrate(fetcher, canonicalPreferredId, attempt, previousId);
+    return await hydrate(canonicalPreferredId, attempt, previousId);
   } catch (error) {
     throw markFailure(attempt, error, 'The local Team context is unavailable.', true);
   }
 }
 
-export function selectTeam(fetcher, id) {
-  return listing(select(fetcher, id));
+export function selectTeam(id) {
+  return listing(select(id));
 }
 
-async function select(fetcher, id) {
-  requireFetcher(fetcher);
+async function select(id) {
   const canonicalId = preferredTeamId(id);
   const current = get(teamContext);
   if (!canonicalId || !current.teams.some((team) => team.id === canonicalId)) {
@@ -274,13 +267,13 @@ async function select(fetcher, id) {
     error: '',
   });
   try {
-    const inventory = await inventorySnapshot(fetcher, canonicalId);
+    const inventory = await inventorySnapshot(canonicalId);
     // The catalog is the Space's, not the Team's: a switch keeps the one this session last read, and reads it again
     // only when the selected Team has an Assistant that catalog does not name yet.
     const known = new Set(current.catalog.map((assistant) => assistant.id));
     const catalog = inventory.installedAssistants.every((entry) => known.has(entry.assistant))
       ? current.catalog
-      : await listAssistantCatalog(fetcher);
+      : await listAssistantCatalog();
     const scope = chatScope(inventory.installedAssistants);
     if (attempt === generation) {
       teamContext.set({
@@ -318,8 +311,7 @@ async function select(fetcher, id) {
  * Re-read the selected Team's inventory. The last one stays on display meanwhile, with the context `loading`: what
  * depends on the inventory (a message's Assistants, admitting an Assistant's request) waits for the fresh one.
  */
-export async function refreshTeamInventory(fetcher) {
-  requireFetcher(fetcher);
+export async function refreshTeamInventory() {
   const epoch = contextEpoch;
   if (listOperation) await listOperation.catch(() => {});
   // A session that ended meanwhile cleared the context; the next one loads its own, so nothing is published into it.
@@ -349,8 +341,8 @@ export async function refreshTeamInventory(fetcher) {
   });
   try {
     const [catalog, inventory] = await Promise.all([
-      listAssistantCatalog(fetcher),
-      inventorySnapshot(fetcher, current.selectedTeamId),
+      listAssistantCatalog(),
+      inventorySnapshot(current.selectedTeamId),
     ]);
     const scope = chatScope(inventory.installedAssistants);
     if (attempt === generation) {
@@ -384,12 +376,11 @@ export function clearTeamContext() {
   teamContext.set(emptyContext());
 }
 
-export function createTeam(fetcher, name) {
-  return listing(create(fetcher, name));
+export function createTeam(name) {
+  return listing(create(name));
 }
 
-async function create(fetcher, name) {
-  requireFetcher(fetcher);
+async function create(name) {
   // Team admits names in NFC; normalize before sending and before comparing its answer (ADR-0088).
   const canonicalName = typeof name === 'string' ? name.trim().normalize('NFC') : name;
   canonicalTeamName(canonicalName, 'Enter a valid Team name.');
@@ -404,11 +395,7 @@ async function create(fetcher, name) {
   });
   let created;
   try {
-    const response = await fetcher('/api/teams', {
-      method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ team_name: canonicalName }),
-    });
+    const response = await socketReads.call('teams.create', { body: { team_name: canonicalName } });
     const body = await jsonObject(response);
     if (!response.ok) {
       throw new LocalApiError(safeApiError(body, 'The Team could not be created.'), response.status);
@@ -433,7 +420,7 @@ async function create(fetcher, name) {
   }
 
   try {
-    await hydrate(fetcher, created.id, attempt, created.id);
+    await hydrate(created.id, attempt, created.id);
   } catch (error) {
     markFailure(attempt, error, 'The Team was created, but its local context could not be refreshed.', false);
   }
@@ -445,8 +432,7 @@ async function create(fetcher, name) {
  * confirmed name is applied by id to whatever context is current, so a newer context keeps it and a cleared one ignores
  * it; inventory refreshes keep the latest Team list rather than the one they started from.
  */
-export async function renameTeam(fetcher, id, name) {
-  requireFetcher(fetcher);
+export async function renameTeam(id, name) {
   const canonicalId = preferredTeamId(id);
   const canonicalName = typeof name === 'string' ? name.trim().normalize('NFC') : name;
   canonicalTeamName(canonicalName, 'Enter a valid Team name.');
@@ -455,11 +441,7 @@ export async function renameTeam(fetcher, id, name) {
   if (!target || current.phase !== 'ready') throw new LocalApiError('Invalid local Team request.');
   if (target.name === canonicalName) return target;
   const epoch = contextEpoch;
-  const response = await fetcher(`/api/teams/${encodeURIComponent(canonicalId)}`, {
-    method: 'PATCH',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ team_name: canonicalName }),
-  });
+  const response = await socketReads.call('teams.rename', { team_id: canonicalId, body: { team_name: canonicalName } });
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'The Team could not be renamed.'), response.status);
@@ -497,13 +479,8 @@ function applyOrder(ids) {
   teamContext.update((state) => (sameMembers(ids, state.teams) ? { ...state, teams: arranged(state.teams, ids) } : state));
 }
 
-async function putTeamOrder(fetcher, ids) {
-  const response = await fetcher('/api/teams/order', {
-    method: 'PUT',
-    cache: 'no-store',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ team_ids: ids }),
-  });
+async function putTeamOrder(ids) {
+  const response = await socketReads.call('teams.reorder', { body: { team_ids: ids } });
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'The Team order could not be saved.'), response.status);
@@ -517,13 +494,12 @@ async function putTeamOrder(fetcher, ids) {
  * Re-read only the Team list after Admin changed it or refused an order for stale membership: the selection, catalog,
  * and inventory stay as they are unless the selected Team itself is gone, which reloads the whole context.
  */
-export async function reloadTeamList(fetcher) {
-  requireFetcher(fetcher);
+export async function reloadTeamList() {
   const since = renameClock;
   const epoch = contextEpoch;
   const read = ++listReads;
   const revision = orderRevision;
-  const listed = await listTeams(fetcher);
+  const listed = await listTeams();
   const current = get(teamContext);
   if (
     epoch !== contextEpoch ||
@@ -532,7 +508,7 @@ export async function reloadTeamList(fetcher) {
     (current.phase === 'loading' && !current.teams.length)
   ) return;
   if (current.selectedTeamId && !listed.some((team) => team.id === current.selectedTeamId)) {
-    await loadTeamContext(fetcher, '');
+    await loadTeamContext('');
     return;
   }
   listVersion += 1;
@@ -545,34 +521,32 @@ function settled(phase) {
 }
 
 /** Admin announced that the Team list changed: read it again now, or once the context has finished loading. */
-export function teamListChanged(fetcher) {
-  requireFetcher(fetcher);
+export function teamListChanged() {
   if (!settled(get(teamContext).phase)) {
-    listChangedWhileLoading = fetcher;
+    listChangedWhileLoading = true;
     return;
   }
-  reloadTeamList(fetcher).catch(() => {});
+  reloadTeamList().catch(() => {});
 }
 
 teamContext.subscribe((state) => {
   if (!listChangedWhileLoading || !settled(state.phase)) return;
-  const fetcher = listChangedWhileLoading;
   listChangedWhileLoading = null;
-  reloadTeamList(fetcher).catch(() => {});
+  reloadTeamList().catch(() => {});
 });
 
 // Reordering is optimistic and serialized: the list moves at once, one save runs at a time, and moves made during a
 // save are coalesced into the next one. `baseline` is the last order Admin confirmed, the one a failure restores.
 const reorder = { desired: null, baseline: null, running: null };
 
-async function drainTeamOrder(fetcher) {
+async function drainTeamOrder() {
   while (reorder.desired) {
     const ids = reorder.desired;
     reorder.desired = null;
     const epoch = contextEpoch;
     const version = listVersion;
     try {
-      const saved = await putTeamOrder(fetcher, ids);
+      const saved = await putTeamOrder(ids);
       // A save answered after the context cleared never publishes; an order queued since then still gets saved.
       if (epoch !== contextEpoch) continue;
       reorder.baseline = saved;
@@ -593,7 +567,7 @@ async function drainTeamOrder(fetcher) {
       const safe = publicError(error, 'The Team order could not be saved.');
       // Teams were added or removed since this list was read: read it again. Not awaited, so no move made meanwhile
       // can be queued behind a save that has already given up.
-      if (safe.status === 409) reloadTeamList(fetcher).catch(() => {});
+      if (safe.status === 409) reloadTeamList().catch(() => {});
       throw safe;
     }
   }
@@ -601,8 +575,7 @@ async function drainTeamOrder(fetcher) {
 }
 
 /** Show the Teams in `ids` order now and save it; the promise settles when every queued order has been saved. */
-export function reorderTeams(fetcher, ids) {
-  requireFetcher(fetcher);
+export function reorderTeams(ids) {
   const current = get(teamContext);
   if (
     !Array.isArray(ids) ||
@@ -618,19 +591,18 @@ export function reorderTeams(fetcher, ids) {
   orderRevision += 1;
   teamContext.set({ ...current, teams: arranged(current.teams, ids) });
   if (!reorder.running) {
-    reorder.running = drainTeamOrder(fetcher).finally(() => {
+    reorder.running = drainTeamOrder().finally(() => {
       reorder.running = null;
     });
   }
   return reorder.running;
 }
 
-export function deleteTeam(fetcher, id, name, password) {
-  return listing(remove(fetcher, id, name, password));
+export function deleteTeam(id, name, password) {
+  return listing(remove(id, name, password));
 }
 
-async function remove(fetcher, id, name, password) {
-  requireFetcher(fetcher);
+async function remove(id, name, password) {
   const canonicalId = preferredTeamId(id);
   const current = get(teamContext);
   const target = current.teams.find((team) => team.id === canonicalId);
@@ -648,11 +620,7 @@ async function remove(fetcher, id, name, password) {
   teamContext.set({ ...current, phase: 'loading', error: '' });
   let result;
   try {
-    const response = await fetcher(`/api/teams/${encodeURIComponent(canonicalId)}`, {
-      method: 'DELETE',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ team_name: name, password }),
-    });
+    const response = await socketReads.call('teams.delete', { team_id: canonicalId, body: { team_name: name, password } });
     const body = await jsonObject(response);
     if (!response.ok) {
       throw new LocalApiError(safeApiError(body, 'The Team could not be deleted.'), response.status);
@@ -685,7 +653,7 @@ async function remove(fetcher, id, name, password) {
   }
   const preferredId = current.selectedTeamId === canonicalId ? '' : current.selectedTeamId;
   try {
-    await hydrate(fetcher, preferredId, attempt, '');
+    await hydrate(preferredId, attempt, '');
   } catch (error) {
     throw markFailure(
       attempt,

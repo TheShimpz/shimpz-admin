@@ -1,17 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {
-  installLocalAssistant,
-  installAssistant,
-  LocalApiError,
-  listAssistantCatalog,
-  listInstalledAssistants,
-  listLocalAssistantSnapshots,
-  listPublicAssistantCatalog,
-  safeApiError,
-  uninstallAssistant,
-} from '../src/lib/localApi.js';
+import * as api from '../src/lib/localApi.js';
+import { via } from './socketStub.js';
+
+const { LocalApiError, safeApiError } = api;
+// Each operation is answered by the stub its test passes first, as the session socket would answer it.
+const installLocalAssistant = (stub, ...args) => via(stub, () => api.installLocalAssistant(...args));
+const installAssistant = (stub, ...args) => via(stub, () => api.installAssistant(...args));
+const listAssistantCatalog = (stub) => via(stub, () => api.listAssistantCatalog());
+const listInstalledAssistants = (stub, ...args) => via(stub, () => api.listInstalledAssistants(...args));
+const listLocalAssistantSnapshots = (stub, ...args) => via(stub, () => api.listLocalAssistantSnapshots(...args));
+const listPublicAssistantCatalog = (stub, ...args) => via(stub, () => api.listPublicAssistantCatalog(...args));
+const uninstallAssistant = (stub, ...args) => via(stub, () => api.uninstallAssistant(...args));
 
 const SOURCE_DIGEST = `sha256:${'a'.repeat(64)}`;
 const LOCAL_IMAGE_ID = `sha256:${'b'.repeat(64)}`;
@@ -52,23 +53,20 @@ function projectedPage(copy = PAGE_COPY) {
 
 test('install is passive and never invokes an Assistant Action', async () => {
   const calls = [];
-  const fetcher = async (url, options) => {
-    calls.push({ url, options });
+  const progress = () => {};
+  const fetcher = async (method, params, options) => {
+    calls.push({ method, params, options });
     return response(200, { assistant: 'hello-pulse', installed: true });
   };
 
-  const result = await installAssistant(fetcher, 'team_1', 'hello-pulse', SOURCE_DIGEST);
+  const result = await installAssistant(fetcher, 'team_1', 'hello-pulse', SOURCE_DIGEST, { onProgress: progress });
 
   assert.deepEqual(result, { assistant: 'hello-pulse', installed: true });
-  assert.deepEqual(
-    calls.map(({ url, options }) => [options.method, url, JSON.parse(options.body)]),
-    [[
-      'POST',
-      '/api/teams/team_1/assistants',
-      { assistant_id: 'hello-pulse', source_digest: SOURCE_DIGEST },
-    ]],
-  );
-  assert.equal(calls.some(({ url }) => url.includes('/actions/')), false);
+  assert.deepEqual(calls, [{
+    method: 'assistants.install',
+    params: { team_id: 'team_1', body: { assistant_id: 'hello-pulse', source_digest: SOURCE_DIGEST } },
+    options: { onProgress: progress },
+  }]);
 });
 
 test('idempotent install reports an existing Assistant without executing it', async () => {
@@ -87,8 +85,8 @@ test('idempotent install reports an existing Assistant without executing it', as
 
 test('safe install errors stop after one request and prefer error over detail', async () => {
   const calls = [];
-  const fetcher = async (url) => {
-    calls.push(url);
+  const fetcher = async (method) => {
+    calls.push(method);
     return response(503, { error: 'runtime recovery failed', detail: 'generic failure' });
   };
 
@@ -137,8 +135,8 @@ test('invalid install responses fail closed without invoking anything else', asy
 
 test('uninstalls through the exact Team route and accepts idempotent absence', async () => {
   const calls = [];
-  const fetcher = async (url, options) => {
-    calls.push({ url, options });
+  const fetcher = async (method, params) => {
+    calls.push({ method, params });
     return response(200, {
       assistant: 'hello-pulse',
       uninstalled: false,
@@ -150,10 +148,7 @@ test('uninstalls through the exact Team route and accepts idempotent absence', a
     await uninstallAssistant(fetcher, 'team_1', 'hello-pulse'),
     { assistant: 'hello-pulse', uninstalled: false },
   );
-  assert.deepEqual(calls, [{
-    url: '/api/teams/team_1/assistants/hello-pulse',
-    options: { method: 'DELETE', headers: { Accept: 'application/json' } },
-  }]);
+  assert.deepEqual(calls, [{ method: 'assistants.uninstall', params: { team_id: 'team_1', assistant_id: 'hello-pulse' } }]);
 });
 
 test('lists and installs only exact unpublished Local Assistant snapshots', async () => {
@@ -177,9 +172,9 @@ test('lists and installs only exact unpublished Local Assistant snapshots', asyn
     reason: null,
   };
   const calls = [];
-  const fetcher = async (url, options) => {
-    calls.push({ url, options });
-    if (url === '/api/local-assistants') {
+  const fetcher = async (method, params) => {
+    calls.push({ method, params });
+    if (method === 'snapshots.list') {
       return response(200, { assistants: [snapshot], trace_id: 'c'.repeat(32) });
     }
     return response(200, {
@@ -200,15 +195,13 @@ test('lists and installs only exact unpublished Local Assistant snapshots', asyn
     installed: false,
     updated: true,
   });
-  assert.equal(calls[0].options.signal, controller.signal);
-  assert.deepEqual(calls[1], {
-    url: '/api/teams/team_1/assistants/local',
-    options: {
-      method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_id: LOCAL_IMAGE_ID }),
-    },
-  });
+  assert.deepEqual(calls, [
+    { method: 'snapshots.list', params: {} },
+    { method: 'assistants.install_local', params: { team_id: 'team_1', body: { image_id: LOCAL_IMAGE_ID } } },
+  ]);
+  // An inventory whose request was aborted before or while it was read is dropped.
+  controller.abort();
+  await assert.rejects(listLocalAssistantSnapshots(fetcher, controller.signal), (error) => error.name === 'AbortError');
 });
 
 test('keeps the Team admission verdict and refuses a verdict outside the closed contract', async () => {
@@ -424,8 +417,8 @@ test('uninstall fails closed on invalid requests, status, or acknowledgements', 
 
 test('loads the controller-owned installed Assistant inventory without weakening its shape', async () => {
   const calls = [];
-  const fetcher = async (url, options) => {
-    calls.push({ url, options });
+  const fetcher = async (method, params) => {
+    calls.push({ method, params });
     return response(200, {
       assistants: [
         { assistant: 'hello-pulse', assistant_version: '1.2.3', status: 'running', provenance: 'published' },
@@ -440,16 +433,13 @@ test('loads the controller-owned installed Assistant inventory without weakening
     { assistant: 'salesnator', assistant_version: '2.0.0', status: 'created', provenance: 'local' },
     { assistant: 'retired-assistant', assistant_version: '0.1.0', status: 'invalid', provenance: 'published' },
   ]);
-  assert.deepEqual(calls, [{
-    url: '/api/teams/team_1/assistants',
-    options: { cache: 'no-store', headers: { Accept: 'application/json' } },
-  }]);
+  assert.deepEqual(calls, [{ method: 'assistants.list', params: { team_id: 'team_1' } }]);
 });
 
 test('projects only bounded display identities from the local Assistant catalog', async () => {
-  const fetcher = async (url, options) => {
-    assert.equal(url, '/api/assistants');
-    assert.deepEqual(options, { cache: 'no-store', headers: { Accept: 'application/json' } });
+  const fetcher = async (method, params) => {
+    assert.equal(method, 'assistants.registry');
+    assert.deepEqual(params, {});
     return response(200, {
       assistants: [
         { id: 'hello-pulse', title: 'Hello Pulse' },
@@ -475,14 +465,10 @@ test('projects the strict public Assistant catalog used by native cards', async 
     source_digest: SOURCE_DIGEST,
     summary: 'Manage Cloudflare DNS.',
   };
-  const fetcher = async (url, options) => {
-    assert.equal(url, '/api/assistant-catalog?locale=pt');
-    assert.deepEqual(options, {
-      cache: 'no-store',
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-    });
-    return response(200, { version: 1, locale: 'pt', assistants: [{ ...assistant, ...PAGE_COPY }] });
+  const fetcher = async (method, params) => {
+    assert.equal(method, 'store.catalog');
+    assert.deepEqual(params, { locale: 'pt' });
+    return response(200, { next: null, version: 1, locale: 'pt', assistants: [{ ...assistant, ...PAGE_COPY }] });
   };
 
   assert.deepEqual(
@@ -494,16 +480,16 @@ test('projects the strict public Assistant catalog used by native cards', async 
 test('reads the public Assistant catalog only in exactly the requested interface language', async () => {
   const invalid = (error) => error instanceof LocalApiError;
   const requested = [];
-  const fetcher = async (url) => {
-    requested.push(url);
-    return response(200, { version: 1, locale: 'en', assistants: [] });
+  const fetcher = async (method, params) => {
+    requested.push(params.locale);
+    return response(200, { next: null, version: 1, locale: 'en', assistants: [] });
   };
   assert.deepEqual(await listPublicAssistantCatalog(fetcher, 'en'), []);
   await assert.rejects(listPublicAssistantCatalog(fetcher, 'ja'), invalid);
   for (const locale of ['', 'EN', 'pt-BR', 'it', undefined]) {
     await assert.rejects(listPublicAssistantCatalog(fetcher, locale), invalid);
   }
-  assert.deepEqual(requested, ['/api/assistant-catalog?locale=en', '/api/assistant-catalog?locale=ja']);
+  assert.deepEqual(requested, ['en', 'ja']);
 });
 
 test('reports an unavailable public Assistant catalog with its bounded reason', async () => {
@@ -521,6 +507,7 @@ test('bounds Assistant catalog names and summaries by Unicode code points, as th
       assistants: [{ id: 'hello-pulse', title }],
     }));
     const published = (name, summary) => listPublicAssistantCatalog(async () => response(200, {
+      next: null,
       version: 1,
       locale: 'en',
       assistants: [{
@@ -577,7 +564,7 @@ test('admits the producer public catalog size and no more', async () => {
     summary: 'A reviewed Assistant.',
     ...PAGE_COPY,
   }));
-  const catalog = (count) => async () => response(200, { version: 1, locale: 'en', assistants: entries(count) });
+  const catalog = (count) => async () => response(200, { next: null, version: 1, locale: 'en', assistants: entries(count) });
   assert.equal((await listPublicAssistantCatalog(catalog(1000), 'en')).length, 1000);
   await assert.rejects(
     listPublicAssistantCatalog(catalog(1001), 'en'),
@@ -598,31 +585,31 @@ test('rejects malformed public Assistant catalog projections', async () => {
   };
   const action = PAGE_COPY.actions[1];
   for (const body of [
-    { version: 2, locale: 'en', assistants: [] },
-    { version: 1, assistants: [] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, extra: true }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, creators: [] }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, source_digest: 'sha256:bad' }] },
-    { version: 1, locale: 'en', assistants: [valid, valid] },
+    { next: null, version: 2, locale: 'en', assistants: [] },
+    { next: null, version: 1, assistants: [] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, extra: true }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, creators: [] }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, source_digest: 'sha256:bad' }] },
+    { next: null, version: 1, locale: 'en', assistants: [valid, valid] },
     // The page copy follows its contract: bounded localized text, closed link kinds on their own hosts, sorted
     // unique declarations, and only the two effects.
-    { version: 1, locale: 'en', assistants: [{ ...valid, description: 'd'.repeat(501) }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, description: ' Untrimmed.' }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, description: 'Bidi\u202eoverride.' }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, links: { facebook: 'https://facebook.com/shimpz' } }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, links: { github: 'https://gitlab.com/shimpz' } }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, links: { youtube: 'https://youtube.com.example.org/x' } }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, links: { site: 'http://shimpz.com/' } }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, links: { site: `https://shimpz.com/${'a'.repeat(238)}` } }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, links: [] }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, actions: [] }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, actions: [...PAGE_COPY.actions].reverse() }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, actions: [{ ...action, effect: 'deleting' }] }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, actions: [{ ...action, description: 'x'.repeat(121) }] }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, actions: [{ ...action, schema: {} }] }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, integrations: [{ id: 'cloudflare' }] }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, stored_inputs: [{ id: 'token', label: 'l'.repeat(121) }] }] },
-    { version: 1, locale: 'en', assistants: [{ ...valid, stored_inputs: [{ id: 'token', label: 'Token' }] }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, description: 'd'.repeat(501) }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, description: ' Untrimmed.' }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, description: 'Bidi\u202eoverride.' }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, links: { facebook: 'https://facebook.com/shimpz' } }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, links: { github: 'https://gitlab.com/shimpz' } }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, links: { youtube: 'https://youtube.com.example.org/x' } }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, links: { site: 'http://shimpz.com/' } }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, links: { site: `https://shimpz.com/${'a'.repeat(238)}` } }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, links: [] }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, actions: [] }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, actions: [...PAGE_COPY.actions].reverse() }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, actions: [{ ...action, effect: 'deleting' }] }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, actions: [{ ...action, description: 'x'.repeat(121) }] }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, actions: [{ ...action, schema: {} }] }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, integrations: [{ id: 'cloudflare' }] }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, stored_inputs: [{ id: 'token', label: 'l'.repeat(121) }] }] },
+    { next: null, version: 1, locale: 'en', assistants: [{ ...valid, stored_inputs: [{ id: 'token', label: 'Token' }] }] },
   ]) {
     await assert.rejects(
       listPublicAssistantCatalog(async () => response(200, body), 'en'),
@@ -701,4 +688,102 @@ test('rejects consecutive and trailing hyphens in installed Assistant ids', asyn
       ),
     );
   }
+});
+
+function publication(index) {
+  return {
+    assistant_id: `assistant-${String(index).padStart(4, '0')}`,
+    assistant_version: '1.0.0',
+    creators: ['@shimpz'],
+    icon_digest: `sha256:${'b'.repeat(64)}`,
+    name: `Assistant ${index}`,
+    source_digest: SOURCE_DIGEST,
+    summary: 'A reviewed Assistant.',
+    ...PAGE_COPY,
+  };
+}
+
+// A catalog served in pages of `size`, each naming the next by its offset and the catalog's digest.
+function pagedCatalog(entries, size, digest = 'c'.repeat(32)) {
+  const requests = [];
+  const call = async (method, params) => {
+    requests.push(params);
+    const start = params.cursor ? Number(params.cursor.split('.')[0]) : 0;
+    const end = Math.min(start + size, entries.length);
+    return response(200, {
+      version: 1,
+      locale: params.locale,
+      assistants: entries.slice(start, end),
+      next: end < entries.length ? `${end}.${digest}` : null,
+    });
+  };
+  return { call, requests };
+}
+
+test('joins the public catalog from its bounded pages, each read with the cursor the last one named', async () => {
+  const entries = Array.from({ length: 5 }, (_, index) => publication(index));
+  const catalog = pagedCatalog(entries, 2);
+  const joined = await listPublicAssistantCatalog(catalog.call, 'en');
+  assert.deepEqual(joined.map((entry) => entry.assistant_id), entries.map((entry) => entry.assistant_id));
+  assert.deepEqual(catalog.requests, [
+    { locale: 'en' },
+    { locale: 'en', cursor: `2.${'c'.repeat(32)}` },
+    { locale: 'en', cursor: `4.${'c'.repeat(32)}` },
+  ]);
+  // The pages together admit the producer catalog size and no more, and an Assistant named on two pages is refused.
+  assert.equal((await listPublicAssistantCatalog(pagedCatalog(Array.from({ length: 1000 }, (_, index) => publication(index)), 400).call, 'en')).length, 1000);
+  for (const repeated of [
+    Array.from({ length: 1001 }, (_, index) => publication(index)),
+    [publication(0), publication(1), publication(0)],
+  ]) {
+    await assert.rejects(
+      listPublicAssistantCatalog(pagedCatalog(repeated, 400).call, 'en'),
+      (error) => error instanceof LocalApiError && error.message === 'The Assistant catalog is invalid.',
+    );
+  }
+});
+
+test('reads a catalog that changed between its pages again from the first page, and gives up after two retries', async () => {
+  const entries = Array.from({ length: 3 }, (_, index) => publication(index));
+  const paged = pagedCatalog(entries, 2);
+  let changes = 1;
+  const changing = async (method, params) => {
+    if (params.cursor && changes > 0) {
+      changes -= 1;
+      return response(409, { code: 'catalog-changed', detail: 'The Assistant catalog changed; read it again' });
+    }
+    return paged.call(method, params);
+  };
+  assert.equal((await listPublicAssistantCatalog(changing, 'en')).length, 3);
+  assert.deepEqual(paged.requests.map((request) => Boolean(request.cursor)), [false, false, true]);
+
+  changes = 3;
+  await assert.rejects(
+    listPublicAssistantCatalog(changing, 'en'),
+    (error) => error instanceof LocalApiError && error.status === 409,
+  );
+  // Only a later page may answer that the catalog changed; the first page's 409 is a failure like any other.
+  await assert.rejects(
+    listPublicAssistantCatalog(async () => response(409, { code: 'catalog-changed', detail: 'changed' }), 'en'),
+    (error) => error instanceof LocalApiError && error.message === 'changed',
+  );
+});
+
+test('refuses a page that names a next page without Assistants or with a malformed cursor', async () => {
+  for (const next of ['', 'next', `0.${'c'.repeat(32)}`, `2.${'C'.repeat(32)}`, 7]) {
+    await assert.rejects(
+      listPublicAssistantCatalog(async () => response(200, { version: 1, locale: 'en', assistants: [publication(0)], next }), 'en'),
+      (error) => error instanceof LocalApiError && error.message === 'The Assistant catalog is invalid.',
+    );
+  }
+  await assert.rejects(
+    listPublicAssistantCatalog(async () => response(200, { version: 1, locale: 'en', assistants: [], next: `1.${'c'.repeat(32)}` }), 'en'),
+    (error) => error instanceof LocalApiError && error.message === 'The Assistant catalog is invalid.',
+  );
+  const controller = new AbortController();
+  const aborting = async (method, params) => {
+    controller.abort();
+    return pagedCatalog([publication(0)], 1).call(method, params);
+  };
+  await assert.rejects(listPublicAssistantCatalog(aborting, 'en', controller.signal), (error) => error.name === 'AbortError');
 });

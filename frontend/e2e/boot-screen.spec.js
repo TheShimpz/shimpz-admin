@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 
 import { accessibilityViolations } from './axe.js';
-import { routeChat, routeRead } from './scenarioRoutes.js';
+import { readsOf, routeChat, routeRead, waitForRead } from './scenarioRoutes.js';
 
 const modelCatalog = JSON.parse(
   readFileSync(new URL('../src/lib/modelCatalog.json', import.meta.url), 'utf8'),
@@ -70,19 +70,18 @@ async function routeReadyChat(page, { teamGate, inferenceGate }) {
     await teamGate.promise;
     return { status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } };
   });
-  await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
-  await page.route('**/api/teams/marketing/assistants', (route) => json(route, { assistants: [] }));
-  await page.route('**/api/teams/marketing/files', (route) => json(route, { files: [] }));
-  await page.route('**/api/model-providers', (route) => json(route, {
+  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
+  await routeRead(page, 'models.list', () => ({ status: 200, json: {
     providers: modelCatalog.providers.map(({ credential_validation: _credential, ...provider }) => ({
       ...provider,
       configured: true,
       masked: '••••1234',
     })),
-  }));
-  await page.route('**/api/teams/marketing/inference', async (route) => {
+  } }));
+  await routeRead(page, 'inference.read', async () => {
     await inferenceGate.promise;
-    await json(route, { team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol' });
+    return { status: 200, json: { team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol' } };
   });
   await routeChat(page, 'marketing', (socket) => {
     socket.onMessage((message) => {
@@ -123,9 +122,8 @@ test('keeps one boot surface through Team and model hydration, then focuses usab
   await expect(boot).toBeVisible();
   await expect(page.locator('.chat-route')).toBeHidden();
 
-  const inferenceRequest = page.waitForRequest('**/api/teams/marketing/inference');
   teamGate.resolve();
-  await inferenceRequest;
+  await waitForRead(page, 'inference.read', (params) => params.team_id === 'marketing');
   await expect(boot).toBeVisible();
   await expect(page.locator('.chat-route')).toBeHidden();
 
@@ -138,12 +136,6 @@ test('keeps one boot surface through Team and model hydration, then focuses usab
 
 test('keeps boot visible across the authenticated root redirect and releases without a model request', async ({ page }) => {
   const teamGate = deferred();
-  let inferenceRequests = 0;
-  page.on('request', (request) => {
-    if (/\/api\/teams\/[^/]+\/inference$/.test(new URL(request.url()).pathname)) {
-      inferenceRequests += 1;
-    }
-  });
   await page.route('**/api/**', (route) => json(
     route,
     { detail: 'Unavailable outside this boot contract.' },
@@ -156,7 +148,7 @@ test('keeps boot visible across the authenticated root redirect and releases wit
     await teamGate.promise;
     return { status: 200, json: { teams: [] } };
   });
-  await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
+  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
 
   await page.goto('/');
   const boot = page.locator('[data-slot="boot-screen"]');
@@ -167,7 +159,7 @@ test('keeps boot visible across the authenticated root redirect and releases wit
   await expect(boot).toHaveCount(0);
   // The empty-Team final state is released without waiting for a model request.
   await expect(page.getByText('Create a Team with the + button to start chatting.')).toBeVisible();
-  expect(inferenceRequests).toBe(0);
+  expect(await readsOf(page, 'inference.read')).toEqual([]);
 });
 
 test('releases to the final Chat error when Team hydration fails', async ({ page }) => {
@@ -184,7 +176,7 @@ test('releases to the final Chat error when Team hydration fails', async ({ page
     await teamGate.promise;
     return { status: 503, json: { detail: 'Team catalog unavailable.' } };
   });
-  await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
+  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
 
   await page.goto('/chat/');
   const boot = page.locator('[data-slot="boot-screen"]');
@@ -216,17 +208,15 @@ test('releases the Assistants route when initial catalog hydration does not sett
   await routeRead(page, 'teams.list', () => ({
     status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] },
   }));
-  await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
-  await page.route('**/api/teams/marketing/assistants', (route) => json(route, { assistants: [] }));
-  await page.route(/\/api\/assistant-catalog\?locale=en$/, async (route) => {
+  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
+  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
+  await routeRead(page, 'store.catalog', async ({ locale }) => {
+    if (locale !== 'en') return undefined;
     catalogRequested.resolve();
     await catalogGate.promise;
-    await json(route, { version: 1, locale: 'en', assistants: [] });
+    return { status: 200, json: { version: 1, locale: 'en', assistants: [], next: null } };
   });
-  await page.route('**/api/local-assistants', (route) => json(route, {
-    assistants: [],
-    trace_id: 'c'.repeat(32),
-  }));
+  await routeRead(page, 'snapshots.list', () => ({ status: 200, json: { assistants: [], trace_id: 'c'.repeat(32) } }));
 
   // The page's clock stands still until the test moves it, so the release deadline is measured on that clock, never by
   // how fast this runner observes the page.

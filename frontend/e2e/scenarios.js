@@ -378,7 +378,7 @@ function routineRoutes(state, method, path, body) {
   return null;
 }
 
-// PUT /api/teams/order: exactly `{ team_ids }`, an exact permutation of the current Team ids. A malformed body is 400;
+// `teams.reorder`: exactly `{ team_ids }`, an exact permutation of the current Team ids. A malformed body is 400;
 // a body naming another set of Teams is 409, so the page reloads the list.
 function reorderTeams(state, body) {
   const ids = body?.team_ids;
@@ -650,32 +650,74 @@ export function historyView(entries, routine = null) {
 // empty public catalog in the requested interface language.
 function catalogRoutes(path, locale) {
   if (path === '/api/local-assistants') return ok({ assistants: catalogSnapshots(), trace_id: 'c'.repeat(32) });
-  if (path === '/api/assistant-catalog') return ok({ version: 1, locale, assistants: [] });
+  if (path === '/api/assistant-catalog') return ok({ version: 1, locale, assistants: [], next: null });
   if (path === '/api/teams/marketing/assistants') return ok({ assistants: catalogInventory() });
   const answer = catalogImageAnswer(path, locale) ?? catalogBindingAnswer(path, locale);
   return answer ? ok(answer) : null;
 }
 
-// The reads Admin serves over the session socket (ADR-0114), each as the scenario's own state answers it; no HTTP route
-// answers them any more.
-const SOCKET_READS = Object.freeze({
+// Every operation Admin serves over the session socket (ADR-0114), each answered by the scenario's own state under the
+// resource it reads or changes; no HTTP route answers them any more.
+const teamPath = (params) => `/api/teams/${params.team_id}`;
+const localeQuery = (params) => new URLSearchParams({ locale: params.locale });
+const SOCKET_CALLS = Object.freeze({
   'teams.list': () => ({ path: '/api/teams' }),
+  'teams.create': (params) => ({ method: 'POST', path: '/api/teams', body: params.body }),
+  'teams.rename': (params) => ({ method: 'PATCH', path: teamPath(params), body: params.body }),
+  'teams.reorder': (params) => ({ method: 'PUT', path: '/api/teams/order', body: params.body }),
+  'teams.delete': (params) => ({ method: 'DELETE', path: teamPath(params), body: params.body }),
   'history.page': (params) => ({
-    path: `/api/teams/${params.team_id}/chat/history`,
+    path: `${teamPath(params)}/chat/history`,
     query: new URLSearchParams(Object.entries(params).filter(([key]) => key !== 'team_id')),
   }),
-  'routines.list': (params) => ({ path: `/api/teams/${params.team_id}/routines` }),
+  'routines.list': (params) => ({ path: `${teamPath(params)}/routines` }),
   'space.resources': () => ({ path: '/api/space/resources' }),
   'platform.release': () => ({ path: '/api/platform-release' }),
   'security.summary': () => ({ path: '/api/admin/security' }),
+  'inference.read': (params) => ({ path: `${teamPath(params)}/inference` }),
+  'inference.save': (params) => ({ method: 'PUT', path: `${teamPath(params)}/inference`, body: params.body }),
+  'assistants.registry': () => ({ path: '/api/assistants' }),
+  'assistants.list': (params) => ({ path: `${teamPath(params)}/assistants` }),
+  'assistants.summary': (params) => ({
+    path: `${teamPath(params)}/assistants/${params.assistant_id}/summary`,
+    query: localeQuery(params),
+  }),
+  'assistants.details': (params) => ({
+    path: `${teamPath(params)}/assistants/${params.assistant_id}/details`,
+    query: localeQuery(params),
+  }),
+  'snapshots.list': () => ({ path: '/api/local-assistants' }),
+  'snapshots.summary': (params) => ({
+    path: `/api/local-assistants/${params.image_id.slice('sha256:'.length)}/summary`,
+    query: localeQuery(params),
+  }),
+  'snapshots.details': (params) => ({
+    path: `/api/local-assistants/${params.image_id.slice('sha256:'.length)}/details`,
+    query: localeQuery(params),
+  }),
+  'models.list': () => ({ path: '/api/model-providers' }),
+  'models.save': (params) => ({ method: 'PUT', path: `/api/model-providers/${params.provider}`, body: params.body }),
+  'decision.read': () => ({ path: '/api/decision-provider' }),
+  'decision.save': (params) => ({ method: 'PUT', path: '/api/decision-provider', body: params.body }),
+  'decision.remove': () => ({ method: 'DELETE', path: '/api/decision-provider' }),
+  'integrations.list': (params) => ({ path: `${teamPath(params)}/assistant-integrations` }),
+  'stored_inputs.list': (params) => ({ path: `${teamPath(params)}/assistant-stored-inputs` }),
+  'files.list': (params) => ({ path: `${teamPath(params)}/files` }),
+  'store.catalog': (params) => ({ path: '/api/assistant-catalog', query: localeQuery(params) }),
 });
-const SOCKET_READ_PATHS = [
-  /^\/api\/teams$/,
-  /^\/api\/teams\/[a-z0-9_]{1,40}\/chat\/history$/,
-  /^\/api\/teams\/[a-z0-9_]{1,40}\/routines$/,
-  /^\/api\/space\/resources$/,
-  /^\/api\/platform-release$/,
-  /^\/api\/admin\/security$/,
+// The browser reaches these only through the socket: an HTTP request for one is never answered.
+const TEAM_PATH = String.raw`\/api\/teams\/[a-z0-9_]{1,40}`;
+const SOCKET_ONLY = [
+  /^(?:GET|POST) \/api\/teams$/,
+  new RegExp(`^(?:PATCH|DELETE) ${TEAM_PATH}$`),
+  /^PUT \/api\/teams\/order$/,
+  new RegExp(`^GET ${TEAM_PATH}\\/(?:chat\\/history|routines|assistant-integrations|assistant-stored-inputs|files)$`),
+  new RegExp(`^(?:GET|PUT) ${TEAM_PATH}\\/(?:inference|action-confirmation)$`),
+  new RegExp(`^(?:GET|POST) ${TEAM_PATH}\\/assistants(?:\\/local)?$`),
+  new RegExp(`^(?:DELETE ${TEAM_PATH}\\/assistants\\/[a-z0-9-]+|GET ${TEAM_PATH}\\/assistants\\/[a-z0-9-]+\\/(?:summary|details))$`),
+  /^GET \/api\/local-assistants(?:\/[0-9a-f]{64}\/(?:summary|details))?$/,
+  /^[A-Z]+ \/api\/(?:model-providers(?:\/[a-z]+)?|decision-provider|assistants|assistant-catalog)$/,
+  /^GET \/api\/(?:space\/resources|platform-release|admin\/security)$/,
 ];
 
 /**
@@ -691,13 +733,13 @@ export function createScenario(name = 'ready', locale = 'en') {
     name,
     respond(request) {
       const { method = 'GET', path } = request;
-      if (method === 'GET' && SOCKET_READ_PATHS.some((pattern) => pattern.test(path))) return null;
+      if (SOCKET_ONLY.some((pattern) => pattern.test(`${method} ${path}`))) return null;
       return scenario.answer(request);
     },
-    // One session socket read, or null when the scenario does not answer it.
+    // One session socket call, or null when the scenario does not answer it.
     call(method, params = {}) {
-      const read = Object.hasOwn(SOCKET_READS, method) ? SOCKET_READS[method](params) : null;
-      return read && state.session.authenticated ? scenario.answer({ method: 'GET', ...read }) : null;
+      const request = Object.hasOwn(SOCKET_CALLS, method) ? SOCKET_CALLS[method](params) : null;
+      return request && state.session.authenticated ? scenario.answer({ method: 'GET', ...request }) : null;
     },
     // Whether the chat channel of this Team can attach: the preview answers every listed Team's chat.
     attachable(teamId) {

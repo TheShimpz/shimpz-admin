@@ -104,7 +104,7 @@
     const key = summaryKey(assistantId, language);
     if (Object.hasOwn(summaries, key)) return;
     const controller = new AbortController();
-    loadAssistantSummary(fetch, teamId, assistantId, language, { signal: controller.signal }).then(
+    loadAssistantSummary(teamId, assistantId, language, { signal: controller.signal }).then(
       (summary) => {
         summaries = { ...summaries, [key]: summary };
       },

@@ -7,26 +7,38 @@ import * as context from '../src/lib/teamContext.js';
 import { socketReads } from '../src/lib/adminSocket.js';
 import { LocalApiError } from '../src/lib/localApi.js';
 
-const { clearTeamContext, refreshTeamInventory, renameTeam, teamContext } = context;
+const { clearTeamContext, teamContext } = context;
 
-// The Team list is the session socket's `teams.list` read (ADR-0114). Each test's fixture answers it under the key
-// `/api/teams` with no method, beside the HTTP requests the context still makes, so one fixture states a whole Space.
+// The Team context reads and changes Teams over the session socket (ADR-0114). Each test's fixture states a whole
+// Space as one function of a resource key and request options: a call is answered under the key of the resource it
+// reads or changes (`/api/teams`, `/api/teams/{id}`, `/api/teams/order`, `/api/assistants`, `/api/teams/{id}/assistants`),
+// with the change it asks for as a method and a JSON body.
+const RESOURCES = {
+  'teams.list': () => ['/api/teams', {}],
+  'teams.create': (params) => ['/api/teams', { method: 'POST', body: JSON.stringify(params.body) }],
+  'teams.rename': (params) => [`/api/teams/${params.team_id}`, { method: 'PATCH', body: JSON.stringify(params.body) }],
+  'teams.delete': (params) => [`/api/teams/${params.team_id}`, { method: 'DELETE', body: JSON.stringify(params.body) }],
+  'teams.reorder': (params) => ['/api/teams/order', { method: 'PUT', body: JSON.stringify(params.body) }],
+  'assistants.registry': () => ['/api/assistants', {}],
+  'assistants.list': (params) => [`/api/teams/${params.team_id}/assistants`, {}],
+};
 let fixture = null;
 socketReads.call = async (method, params) => {
-  assert.equal(method, 'teams.list');
-  assert.deepEqual(params, {});
-  return fixture('/api/teams', { cache: 'no-store', headers: { Accept: 'application/json' } });
+  const [key, options] = RESOURCES[method](params);
+  return fixture(key, options);
 };
 function using(operation) {
   return (fetcher, ...args) => {
     fixture = fetcher;
-    return operation(fetcher, ...args);
+    return operation(...args);
   };
 }
 const createTeam = using(context.createTeam);
 const deleteTeam = using(context.deleteTeam);
 const loadTeamContext = using(context.loadTeamContext);
+const refreshTeamInventory = using(context.refreshTeamInventory);
 const reloadTeamList = using(context.reloadTeamList);
+const renameTeam = using(context.renameTeam);
 const teamListChanged = using(context.teamListChanged);
 const reorderTeams = using(context.reorderTeams);
 const selectTeam = using(context.selectTeam);
@@ -470,10 +482,9 @@ test('creates a Team with the exact payload, validates the response, and refresh
   assert.deepEqual(created, { created: true, id: 'growth', name: 'Growth', status: 'running' });
   assert.deepEqual(calls[0], {
     method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
     body: JSON.stringify({ team_name: 'Growth' }),
   });
-  assert.deepEqual(calls[1], { cache: 'no-store', headers: { Accept: 'application/json' } });
+  assert.deepEqual(calls[1], {});
   assert.equal(get(teamContext).phase, 'ready');
   assert.equal(get(teamContext).selectedTeamId, 'growth');
 });
@@ -539,7 +550,6 @@ test('deletes a Team with exact credentials and selects a remaining Team', async
 
     assert.deepEqual(calls, [{
       method: 'DELETE',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ team_name: 'Marketing', password: 'violet otter lantern quartz 92' }),
     }]);
     assert.deepEqual(result, {
@@ -977,7 +987,6 @@ function heldOrderFetcher({ list = () => THREE_TEAMS } = {}) {
   const fetcher = async (url, options = {}) => {
     if (url !== '/api/teams/order') return base(url, options);
     assert.equal(options.method, 'PUT');
-    assert.equal(options.cache, 'no-store');
     return new Promise((resolve) => saves.push({ body: JSON.parse(options.body), answer: resolve }));
   };
   return { fetcher, saves };
@@ -1141,7 +1150,6 @@ test('a reorder that is not an exact permutation of the listed Teams is refused 
   ]) {
     await assert.rejects(reorderTeams(fetcher, ids), /Invalid local Team request/);
   }
-  assert.throws(() => reorderTeams(null, []), /Invalid local Team request/);
   await settle();
   assert.equal(saves.length, 0);
   assert.deepEqual(orderIds(), ['marketing', 'support', 'sales']);

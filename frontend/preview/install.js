@@ -39,9 +39,21 @@ try {
 const ORDER_KEY = scenario.name.startsWith('reorder-') ? null : `shimpz-preview-team-order:${scenario.name}`;
 try {
   const saved = ORDER_KEY && JSON.parse(sessionStorage.getItem(ORDER_KEY) ?? 'null');
-  if (Array.isArray(saved)) scenario.respond({ method: 'PUT', path: '/api/teams/order', body: { team_ids: saved } });
+  if (Array.isArray(saved)) scenario.call('teams.reorder', { body: { team_ids: saved } });
 } catch {
   // Without storage the preview starts from the scenario's own order.
+}
+// One session socket call, answered by the scenario; a Team order it saved is kept for the next reload.
+function previewCall(method, params) {
+  const answer = scenario.call(method, params);
+  if (ORDER_KEY && answer?.status === 200 && method === 'teams.reorder') {
+    try {
+      sessionStorage.setItem(ORDER_KEY, JSON.stringify(params.body.team_ids));
+    } catch {
+      // The order still holds until the tab reloads.
+    }
+  }
+  return answer;
 }
 const realFetch = window.fetch.bind(window);
 const RealWebSocket = window.WebSocket;
@@ -78,13 +90,6 @@ window.fetch = async (input, init = {}) => {
   if (url.origin !== location.origin) return jsonResponse(503, { detail: 'The preview refuses a cross-origin API.' });
   const body = await requestBody(request);
   const answer = scenario.respond({ method: request.method, path: url.pathname, query: url.searchParams, body });
-  if (ORDER_KEY && answer?.status === 200 && url.pathname === '/api/teams/order') {
-    try {
-      sessionStorage.setItem(ORDER_KEY, JSON.stringify(body.team_ids));
-    } catch {
-      // The order still holds until the tab reloads.
-    }
-  }
   return answer
     ? jsonResponse(answer.status, answer.json)
     : jsonResponse(503, { detail: `The ${scenario.name} preview scenario does not answer this request.` });
@@ -153,7 +158,7 @@ class SessionSocket extends EventTarget {
     this.session = serveSession({
       send: (text) => setTimeout(() => this.#emit('message', new MessageEvent('message', { data: text })), 0),
       close: (code, reason) => this.close(code, reason),
-    }, { call: (method, params) => scenario.call(method, params), chat: previewChat });
+    }, { call: previewCall, chat: previewChat });
     const refused = SOCKET_RECONNECTING && Date.now() - PREVIEW_STARTED > 1000 && Date.now() - PREVIEW_STARTED < 23000;
     setTimeout(() => {
       if (refused) {
