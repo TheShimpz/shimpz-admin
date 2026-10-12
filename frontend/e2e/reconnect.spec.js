@@ -124,7 +124,8 @@ test('a provider key typed while Admin reconnects stays in its field and is save
   await page.goto('/chat/?team=marketing');
   const key = page.getByLabel(messages.en.providerSetup.key);
   const save = page.getByRole('button', { name: messages.en.providerSetup.saveKey });
-  await expect(key).toBeVisible();
+  // The key field takes the focus once the conversation has loaded and can be typed in.
+  await expect(key).toBeFocused();
 
   refusing = true;
   await dropSessions(page);
