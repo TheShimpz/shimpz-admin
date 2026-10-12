@@ -207,3 +207,36 @@ test('the session ending stops a warm-up under way', async () => {
   warmAssistantSources('en');
   assert.equal(socket.listeners.get('local-assistants').size, 1);
 });
+
+test('a screen that swaps every summary it shows keeps each new one shared, and the session end clears them all', async () => {
+  const socket = harness();
+  const images = Array.from({ length: 50 }, (_, index) => `sha256:d${index.toString(16).padStart(63, '0')}`);
+  const take = (locale) => {
+    const values = images.map((imageId) => snapshotSummary(imageId, locale));
+    return { values, stops: values.map(show) };
+  };
+  const portuguese = take('pt');
+  // Switching the language lets go of the Portuguese summaries before it takes the Spanish ones, in one turn.
+  for (const stop of portuguese.stops) stop();
+  const spanish = take('es');
+  await flush();
+  // Every value the screen shows is still the session's own, so every later screen shares it.
+  images.forEach((imageId, index) => assert.equal(snapshotSummary(imageId, 'es'), spanish.values[index]));
+  // A value evicted while a screen still held it is the session's again once shown, and the session's end reaches it.
+  const evicted = portuguese.values[0];
+  assert.notEqual(snapshotSummary(images[0], 'pt'), evicted);
+  for (const stop of spanish.stops) stop();
+  const shownAgain = show(evicted);
+  socket.announce('local-assistants', 'subscribed', 1);
+  await flush();
+  const read = socket.calls.findIndex((item) => item.params?.image_id === images[0] && item.params?.locale === 'pt');
+  socket.calls[read].answered = true;
+  const answered = response(200, { locale: 'pt', summary: 'Diz olá.' });
+  answered.revision = { topic: 'local-assistants', epoch: EPOCH, revision: 1 };
+  socket.calls[read].resolve(answered);
+  await flush();
+  assert.equal(get(evicted).value, 'Diz olá.');
+  clearAssistantSources();
+  assert.equal(get(evicted).status, 'loading');
+  shownAgain();
+});

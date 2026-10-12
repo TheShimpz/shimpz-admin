@@ -39,6 +39,18 @@ const MAX_RETAINED_BYTES = 16 * 1024 * 1024;
  */
 function sessionFamily(make, maxEntries) {
   const entries = new Map();
+  const strays = new Set();
+  let evicting = false;
+  // A screen that changes what it shows lets go of its old values before it takes the new ones, so eviction waits
+  // until that handoff is over: a value about to be shown is never taken for one no screen shows.
+  function evictSoon() {
+    if (evicting) return;
+    evicting = true;
+    queueMicrotask(() => {
+      evicting = false;
+      evict();
+    });
+  }
   function evict() {
     const idle = [...entries].filter(([, entry]) => entry.users === 0).sort(([, a], [, b]) => a.used - b.used);
     let bytes = idle.reduce((total, [, entry]) => total + entry.value.size(), 0);
@@ -54,12 +66,16 @@ function sessionFamily(make, maxEntries) {
       let entry = entries.get(key);
       if (!entry) {
         const value = make(key);
-        // A new value counts as just shown, so making it never evicts it before its screen subscribes.
         entry = { value, users: 0, used: performance.now(), shared: null };
         const current = entry;
         current.shared = {
           ...value,
           subscribe(run, invalidate) {
+            // A value evicted while a screen still held it is the session's again once shown, so clearing reaches it.
+            if (entries.get(key) !== current) {
+              if (entries.has(key)) strays.add(current);
+              else entries.set(key, current);
+            }
             current.users += 1;
             current.used = performance.now();
             const stop = value.subscribe(run, invalidate);
@@ -67,17 +83,21 @@ function sessionFamily(make, maxEntries) {
               stop();
               current.users -= 1;
               current.used = performance.now();
-              if (entries.get(key) === current) evict();
+              // A stray value no screen shows any more is forgotten at once: it is outside the family's bounds.
+              if (current.users === 0 && strays.delete(current)) current.value.reset();
+              evictSoon();
             };
           },
         };
         entries.set(key, entry);
+        evictSoon();
       }
       return entry.shared;
     },
     clear() {
-      for (const entry of entries.values()) entry.value.reset();
+      for (const entry of [...entries.values(), ...strays]) entry.value.reset();
       entries.clear();
+      strays.clear();
     },
   };
 }
