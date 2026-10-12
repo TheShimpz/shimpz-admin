@@ -235,6 +235,11 @@
   let composerBusy = $derived(
     busy || syncing || socketOpening || lifecycleOutcomePending !== null || historyHydrating,
   );
+  // The Brain and fast-routing menus stay open while Admin reconnects, so a change they sent can say how it ended; what
+  // they would send waits for the connection on its own.
+  let menusBusy = $derived(
+    busy || syncing || lifecycleOutcomePending !== null || historyHydrating || stopping,
+  );
   // A message waits for a pending Brain change to be saved so the turn never runs on the previous selection.
   let brainSaving = $derived($modelContext.phase === 'saving');
   // A message names the Team's running Assistants, so it waits while their inventory is being read again (after an
@@ -1282,6 +1287,8 @@
       if (socket !== active || chatTeamId !== expectedTeamId) return;
       socketReady = true;
       syncing = true;
+      // An open Integrations drawer shows the Team's Integrations as they are once Admin is back.
+      if (integrationsOpen) void refreshIntegrations(expectedTeamId);
       resetProgress();
       if (error === copy.disconnected || error === copy.connectionFailed) clearError();
     };
@@ -2627,8 +2634,8 @@
                   onchange={attachmentsChosen}
                 />
               {/if}
-              <BrainMenu disabled={composerBusy || stopping} />
-              <FastRoutingMenu disabled={composerBusy || stopping} />
+              <BrainMenu disabled={menusBusy} />
+              <FastRoutingMenu disabled={menusBusy} />
               <Button
                 bind:element={integrationsButton}
                 class="composer-integrations"

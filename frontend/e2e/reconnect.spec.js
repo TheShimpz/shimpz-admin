@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test';
 
 import { publicAssistant } from './assistantPages.js';
 import { messages } from '../src/lib/messages.js';
-import { dropSessions, routeConnect, routeRead, routeScenario } from './scenarioRoutes.js';
+import { dropSessions, readsOf, routeConnect, routeRead, routeScenario, waitForRead } from './scenarioRoutes.js';
 
 const shell = messages.en.shell;
 const chatPage = messages.en.chatPage;
@@ -140,6 +140,58 @@ test('a provider key typed while Admin reconnects stays in its field and is save
   await expect(key).toHaveValue('test-provider-key-word');
   await save.click();
   await expect.poll(() => saves).toEqual(['openai']);
+});
+
+test('a fast-routing key whose answer was lost says its outcome is unknown and shows the key Admin holds once back', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  let stored = false;
+  await routeRead(page, 'decision.read', () => ({
+    status: 200, json: { provider: 'typesafe', configured: stored, masked: stored ? '••••word' : null },
+  }));
+  // Admin stores the key, and the connection drops before its answer arrives.
+  await routeRead(page, 'decision.save', () => {
+    stored = true;
+    return new Promise(() => {});
+  });
+  let refusing = false;
+  await refuseWhile(page, () => refusing);
+  await page.goto('/chat/?team=marketing');
+  await expect(page.getByRole('textbox', { name: chatPage.send, exact: true })).toBeEnabled();
+  const trigger = page.getByRole('button', { name: /^Fast routing \(Jev\)/ });
+  await trigger.click();
+  const fast = page.getByRole('dialog', { name: 'Fast routing (Jev)' });
+  await fast.getByLabel('TypeSafe API key').fill('test-typesafe-key-word');
+  await fast.getByRole('button', { name: 'Save', exact: true }).click();
+  await waitForRead(page, 'decision.save');
+  const reads = (await readsOf(page, 'decision.read')).length;
+  refusing = true;
+  await dropSessions(page);
+  await expect(fast.getByRole('alert')).toHaveText(shell.outcomeUnknown);
+
+  refusing = false;
+  // The key Admin holds is read again on its own, without saving it again.
+  await expect(trigger).toHaveAccessibleName(/••••word/, { timeout: 20_000 });
+  expect((await readsOf(page, 'decision.read')).length).toBeGreaterThan(reads);
+  expect(await readsOf(page, 'decision.save')).toHaveLength(1);
+});
+
+test('an open Integrations drawer reads its Integrations again once Admin is back', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  let refusing = false;
+  await refuseWhile(page, () => refusing);
+  await page.goto('/chat/?team=marketing');
+  await expect(page.getByRole('textbox', { name: chatPage.send, exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Assistant integrations' }).click();
+  await waitForRead(page, 'integrations.list');
+  const reads = (await readsOf(page, 'integrations.list')).length;
+
+  refusing = true;
+  await dropSessions(page);
+  await expect(page.getByText(shell.reconnecting)).toBeVisible();
+  refusing = false;
+  await expect.poll(async () => (await readsOf(page, 'integrations.list')).length, { timeout: 20_000 })
+    .toBeGreaterThan(reads);
+  await expect.poll(async () => (await readsOf(page, 'stored_inputs.list')).length).toBeGreaterThan(reads);
 });
 
 test('a change stays disabled while Admin reconnects and is offered again once it is back', async ({ page }) => {

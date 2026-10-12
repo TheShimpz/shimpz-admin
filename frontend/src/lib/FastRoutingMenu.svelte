@@ -99,6 +99,8 @@
       if (ticket !== fastTicket) return;
       const failure = error?.status === 400 ? copy.rejected : copy.failed;
       await settle({ phase: 'ready', error: outcomeUnknown(error) ? $t('shell.outcomeUnknown') : failure });
+      // A save whose answer was lost may have stored the key: the state is read again once Admin is back.
+      if (outcomeUnknown(error)) void loadFast();
     }
   }
 
@@ -114,6 +116,7 @@
     } catch (error) {
       if (ticket !== fastTicket) return;
       await settle({ phase: 'ready', error: outcomeUnknown(error) ? $t('shell.outcomeUnknown') : copy.removeFailed });
+      if (outcomeUnknown(error)) void loadFast();
     }
   }
 </script>
