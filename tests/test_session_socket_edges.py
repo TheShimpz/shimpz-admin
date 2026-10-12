@@ -127,6 +127,11 @@ class SessionCallEdgeTests(unittest.TestCase):
             with mock.patch.dict(calls.METHODS, {"subscribe": never}):
                 await calls.run(refused, "c1", "subscribe", {"topics": ["teams"]})
             self.assertEqual((refused.outbound.queued, refused.close_code), (0, socket.SIGNED_OUT))
+            # A read checks its socket on the lane worker that runs it, and is never answered once refused there.
+            unread = _socket(_gate(session_current=mock.AsyncMock(return_value=False)))
+            with mock.patch.object(calls.team_order, "listing", side_effect=AssertionError("must not read")):
+                await calls.run(unread, "c2", "teams.list", {})
+            self.assertEqual((unread.outbound.queued, unread.close_code), (0, socket.SIGNED_OUT))
             # A lane worker whose check never answers closes its socket as unavailable instead of running.
             stalled = _socket(_gate())
             check = mock.Mock()
