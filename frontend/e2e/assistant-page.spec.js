@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 import { assistantDetails, publicAssistant, stagedSnapshot } from './assistantPages.js';
 import { accessibilityViolations } from './axe.js';
 import { messages } from '../src/lib/messages.js';
+import { routeRead } from './scenarioRoutes.js';
 
 // One Assistant's own page (ADR-0087 functional coverage): it reads the exact target for the Team its link names,
 // shows its copy, Actions, credentials, and Creator links, and installs or removes it only for that Team.
@@ -51,6 +52,7 @@ async function routePage(page, {
   inventoryGate = () => undefined,
   installRefusal = false,
 } = {}) {
+  await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } }));
   await page.route('**/api/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -87,7 +89,6 @@ async function routePage(page, {
     }
     const body = {
       '/api/session': SESSION,
-      '/api/teams': { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] },
       '/api/assistants': { assistants: [] },
       '/api/teams/marketing/assistants': { assistants: inventory() },
       '/api/teams/marketing/files': { files: [] },

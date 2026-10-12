@@ -8,9 +8,27 @@ import { messages } from '../src/lib/messages.js';
 import { accessibilityViolations } from './axe.js';
 import { localizedChallenge } from './localizedRequest.js';
 
-import { routeScenario } from './scenarioRoutes.js';
+import {
+  raiseTopic,
+  readsOf,
+  routeChat,
+  routeConnect,
+  routeRead,
+  routeScenario,
+  nextRead,
+  waitForRead,
+} from './scenarioRoutes.js';
 import { planPage, planSummary, ROUTINE_TEXT, routineLifecycleStart, runStepsPage } from './routineScenarios.js';
 import { historyView, CLARIFICATION as SCENARIO_CLARIFICATION, ROUTINE_PLAN, ROUTINE_VIEW, TEAMS } from './scenarios.js';
+
+const ok = (json, status = 200) => ({ status, json });
+
+// Admin learned that Marketing's Routines and history changed (a run ended, a notice was written) and says so on the
+// session socket (ADR-0114), so the page reads both again.
+async function routineNotice(page) {
+  await raiseTopic(page, 'team/marketing/routines');
+  await raiseTopic(page, 'team/marketing/history');
+}
 
 // Every stored chat history row carries the UTC time Admin wrote it.
 const HISTORY_AT = '2026-10-01T12:00:00Z';
@@ -246,6 +264,7 @@ async function routeReadyChat(page, {
   let expiredHumanRedelivered = false;
   let firstChatDisconnected = false;
   let reconnectsRefused = 0;
+  let sessionExpired = false;
   let storedInputClears = 0;
   let assistantInstalled = assistantUninstall || !assistantPlan;
   let cloudflareInstalled = assistantInstalled;
@@ -289,7 +308,7 @@ async function routeReadyChat(page, {
   await page.route('**/api/session', (route) => {
     // While Admin itself restarts, its session check is unreachable too.
     if (firstChatDisconnected && reconnectsRefused < adminDownRefusals) return route.abort('connectionrefused');
-    if (firstChatDisconnected && expireSessionOnDisconnect) {
+    if ((firstChatDisconnected && expireSessionOnDisconnect) || sessionExpired) {
       return route.fulfill({
         contentType: 'application/json',
         body: JSON.stringify(localSession({ initialized: true, authentication_state: 'configured' })),
@@ -300,21 +319,17 @@ async function routeReadyChat(page, {
       body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: oauthCompletionMode })),
     });
   });
-  await page.route('**/api/teams', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ teams: [
-      { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
-      ...(secondTeam ? [{ team_id: 'support', team_name: 'Support', status: 'running' }] : []),
-    ] }),
-  }));
+  await routeRead(page, 'teams.list', () => ok({ teams: [
+    { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
+    ...(secondTeam ? [{ team_id: 'support', team_name: 'Support', status: 'running' }] : []),
+  ] }));
   const supportFrames = [];
   if (secondTeam) {
     await page.route('**/api/teams/support/assistants', (route) => route.fulfill({ json: { assistants: [] } }));
     await page.route('**/api/teams/support/inference', (route) => route.fulfill({
       json: { team_id: 'support', provider: 'openai', model: 'gpt-6.1-sol' },
     }));
-    await page.route('**/api/teams/support/chat/history**', (route) => route.fulfill({ json: { entries: [], before: null } }));
-    await page.routeWebSocket('**/api/teams/support/chat/ws', (socket) => socket.onMessage((message) => {
+    await routeChat(page, 'support', (socket) => socket.onMessage((message) => {
       const frame = JSON.parse(message);
       supportFrames.push(frame);
       if (frame.type === 'sync') socket.send(JSON.stringify({ type: 'sync-empty' }));
@@ -409,22 +424,19 @@ async function routeReadyChat(page, {
     body: JSON.stringify({ files: [] }),
   }));
   // Every listed Team has no Routine unless a test says otherwise; a failed listing would offer its Routines' error.
-  await page.route('**/api/teams/*/routines', (route) => route.fulfill({
-    json: { team_id: new URL(route.request().url()).pathname.split('/')[3], routines: [], runs: [], incidents: [] },
+  await routeRead(page, 'routines.list', (params) => ok({
+    team_id: params.team_id, routines: [], runs: [], incidents: [],
   }));
-  await page.route('**/api/teams/marketing/chat/history**', async (route) => {
-    const requestUrl = new URL(route.request().url());
-    historyRequests.push(requestUrl.searchParams.get('before'));
+  await routeRead(page, 'history.page', async (params) => {
+    if (params.team_id === 'support') return ok({ entries: [], before: null });
+    if (params.team_id !== 'marketing') return null;
+    historyRequests.push(params.before ?? null);
     if (holdHistory) await historyHold;
     // Each page answers in the view asked for: the chat's, or a Routine's own history.
-    const page = requestUrl.searchParams.has('before') ? olderHistory : history;
-    return route.fulfill({
-      status: historyStatus,
-      contentType: 'application/json',
-      body: JSON.stringify(historyStatus === 200
-        ? page && { ...page, entries: historyView(page.entries, requestUrl.searchParams.get('routine')) }
-        : { detail: 'Synthetic history failure.' }),
-    });
+    const page = 'before' in params ? olderHistory : history;
+    return historyStatus === 200
+      ? ok(page && { ...page, entries: historyView(page.entries, params.routine ?? null) })
+      : ok({ detail: 'Synthetic history failure.' }, historyStatus);
   });
   const providerState = ({ credential_validation: _credential, ...provider }) => ({
     ...provider,
@@ -555,14 +567,17 @@ async function routeReadyChat(page, {
       });
     },
   );
-  await page.routeWebSocket('**/api/teams/marketing/chat/ws', (socket) => {
+  await routeConnect(page, (socket) => {
     if (firstChatDisconnected && reconnectsRefused < refusedReconnects) {
       // Admin is down while a release swaps its containers, or refuses an expired session before accepting the
       // upgrade: either way the upgrade fails before the socket ever opens.
       reconnectsRefused += 1;
       socket.connectToServer();
-      return;
+      return false;
     }
+    return true;
+  });
+  await routeChat(page, 'marketing', (socket) => {
     sendProgressEvent = (event) => socket.send(JSON.stringify(event));
     closeChatSocket = () => socket.close({ code: 1011, reason: 'Synthetic interrupted connection' });
     const connection = chatConnections;
@@ -636,6 +651,7 @@ async function routeReadyChat(page, {
         }
         if (expireSessionOnFirstChat) {
           // Admin revalidates the session before every frame and closes the socket once it has expired.
+          sessionExpired = true;
           socket.close({ code: 4401 });
           return;
         }
@@ -1324,9 +1340,9 @@ test('an error delivered by a reconnect sync is shown without sending the finish
   await routeScenario(page, 'ready');
   const frames = [];
   let connections = 0;
-  // Registered after the scenario, so this chat socket takes precedence: the first request ends with Team guidance,
-  // the socket restarts, and the reconnect sync reports a failure that belongs to no request of this page.
-  await page.routeWebSocket('**/api/teams/marketing/chat/ws', (socket) => {
+  // This chat channel takes precedence over the scenario's: the first request ends with Team guidance, the session
+  // socket restarts, and the sync of the reattached channel reports a failure that belongs to no request of this page.
+  await routeChat(page, 'marketing', (socket) => {
     connections += 1;
     const connection = connections;
     socket.onMessage((message) => {
@@ -1718,9 +1734,6 @@ test('recalls sent prompts from an empty Chat composer with ArrowUp and ArrowDow
 });
 
 test('restores durable Team history, terminal Assistant cards and older prompts after reload', async ({ page }) => {
-  // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
-  // this test counts, however long a loaded host makes it run.
-  await freezeClock(page);
   const firstTurn = 'a'.repeat(32);
   const secondTurn = 'b'.repeat(32);
   const cursor = 'AAAAAAAAAAI';
@@ -1813,9 +1826,6 @@ function longHistory(prefix, count, before, { detail = true } = {}) {
 }
 
 test('loads earlier history only when the transcript is scrolled to its top', async ({ page }) => {
-  // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
-  // this test counts, however long a loaded host makes it run.
-  await freezeClock(page);
   const cursor = 'AAAAAAAAAAI';
   const chat = await routeReadyChat(page, {
     history: longHistory('f', 12, cursor),
@@ -1867,9 +1877,9 @@ test('keeps the message at the top of the transcript where it was once earlier h
   });
   let releaseOlder;
   const olderHeld = new Promise((resolve) => { releaseOlder = resolve; });
-  await page.route('**/api/teams/marketing/chat/history**', async (route) => {
-    if (new URL(route.request().url()).searchParams.has('before')) await olderHeld;
-    return route.fallback();
+  await routeRead(page, 'history.page', async (params) => {
+    if ('before' in params) await olderHeld;
+    return undefined;
   });
   // A reader who asked for reduced motion gets every layout change at once, so it is measured with that setting.
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -1900,9 +1910,6 @@ test('keeps the message at the top of the transcript where it was once earlier h
 });
 
 test('keeps the reader in place when they scroll while earlier history is loading', async ({ page }) => {
-  // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
-  // this test counts, however long a loaded host makes it run.
-  await freezeClock(page);
   const cursor = 'AAAAAAAAAAI';
   const chat = await routeReadyChat(page, {
     history: longHistory('f', 12, cursor),
@@ -1910,15 +1917,15 @@ test('keeps the reader in place when they scroll while earlier history is loadin
   });
   let releaseOlder;
   const olderHeld = new Promise((resolve) => { releaseOlder = resolve; });
-  await page.route('**/api/teams/marketing/chat/history**', async (route) => {
-    if (new URL(route.request().url()).searchParams.has('before')) await olderHeld;
-    return route.fallback();
+  await routeRead(page, 'history.page', async (params) => {
+    if ('before' in params) await olderHeld;
+    return undefined;
   });
   await page.goto('/chat/');
   const turns = page.locator('.turns');
   await expect(page.getByText('Recent answer 12', { exact: false })).toBeInViewport();
 
-  const olderRequest = page.waitForRequest((request) => request.url().includes('before='));
+  const olderRequest = waitForRead(page, 'history.page', (params) => 'before' in params);
   await turns.evaluate((element) => { element.scrollTop = 0; });
   await olderRequest;
   await expect(page.getByRole('status').filter({ hasText: 'Loading earlier messages…' })).toBeAttached();
@@ -1932,9 +1939,6 @@ test('keeps the reader in place when they scroll while earlier history is loadin
 });
 
 test('fills a short transcript through consecutive earlier pages', async ({ page }) => {
-  // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
-  // this test counts, however long a loaded host makes it run.
-  await freezeClock(page);
   const first = 'AAAAAAAAAAI';
   const second = 'AAAAAAAAABA';
   const chat = await routeReadyChat(page, { history: longHistory('f', 1, first, { detail: false }) });
@@ -1942,39 +1946,27 @@ test('fills a short transcript through consecutive earlier pages', async ({ page
     [first]: longHistory('e', 1, second, { detail: false }),
     [second]: longHistory('d', 1, null, { detail: false }),
   };
-  await page.route('**/api/teams/marketing/chat/history**', (route) => {
-    const before = new URL(route.request().url()).searchParams.get('before');
-    if (!before) return route.fallback();
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify(pages[before]) });
-  });
-  const requested = [];
-  page.on('request', (request) => {
-    const url = new URL(request.url());
-    if (url.pathname.endsWith('/chat/history')) requested.push(url.searchParams.get('before'));
-  });
+  await routeRead(page, 'history.page', (params) => (params.before ? ok(pages[params.before]) : undefined));
   await page.goto('/chat/');
   await expect(page.getByText('Oldest question 1', { exact: true })).toBeVisible();
   await expect(page.getByText('Earlier question 1', { exact: true })).toBeVisible();
-  await expect.poll(() => requested).toEqual([null, first, second]);
+  await expect.poll(async () => (await readsOf(page, 'history.page')).map((params) => params.before ?? null))
+    .toEqual([null, first, second]);
   await expect(page.locator('.turns')).not.toHaveAttribute('aria-describedby');
   await expect.poll(() => chat.historyRequests()).toEqual([null]);
 });
 
 test('offers a retry only after automatic earlier history fails', async ({ page }) => {
-  // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
-  // this test counts, however long a loaded host makes it run.
-  await freezeClock(page);
   const cursor = 'AAAAAAAAAAI';
   const chat = await routeReadyChat(page, {
     history: longHistory('f', 1, cursor),
     olderHistory: longHistory('e', 1, null),
   });
   let olderAttempts = 0;
-  await page.route('**/api/teams/marketing/chat/history**', (route) => {
-    if (!new URL(route.request().url()).searchParams.has('before')) return route.fallback();
+  await routeRead(page, 'history.page', (params) => {
+    if (!('before' in params)) return undefined;
     olderAttempts += 1;
-    if (olderAttempts > 1) return route.fallback();
-    return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ detail: 'offline' }) });
+    return olderAttempts > 1 ? undefined : ok({ detail: 'offline' }, 503);
   });
   await page.goto('/chat/');
   const retry = page.getByRole('button', { name: 'Load older messages' });
@@ -1991,9 +1983,6 @@ test('offers a retry only after automatic earlier history fails', async ({ page 
 });
 
 test('stops automatic earlier history when a page does not advance its cursor', async ({ page }) => {
-  // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
-  // this test counts, however long a loaded host makes it run.
-  await freezeClock(page);
   const cursor = 'AAAAAAAAAAI';
   const chat = await routeReadyChat(page, {
     history: longHistory('f', 1, cursor),
@@ -2007,9 +1996,6 @@ test('stops automatic earlier history when a page does not advance its cursor', 
 });
 
 test('keeps focus on a message link when older history arrives @browser-sensitive', async ({ page }) => {
-  // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
-  // this test counts, however long a loaded host makes it run.
-  await freezeClock(page);
   const cursor = 'AAAAAAAAAAI';
   const recent = 'c'.repeat(32);
   const earlier = 'd'.repeat(32);
@@ -2033,12 +2019,12 @@ test('keeps focus on a message link when older history arrives @browser-sensitiv
   });
   let releaseOlder;
   const olderHeld = new Promise((resolve) => { releaseOlder = resolve; });
-  await page.route('**/api/teams/marketing/chat/history**', async (route) => {
-    if (new URL(route.request().url()).searchParams.has('before')) await olderHeld;
-    return route.fallback();
+  await routeRead(page, 'history.page', async (params) => {
+    if ('before' in params) await olderHeld;
+    return undefined;
   });
 
-  const olderRequest = page.waitForRequest((request) => request.url().includes('before='));
+  const olderRequest = waitForRead(page, 'history.page', (params) => 'before' in params);
   await page.goto('/chat/');
   const link = page.getByRole('link', { name: 'current status' });
   await expect(link).toBeVisible();
@@ -2052,9 +2038,6 @@ test('keeps focus on a message link when older history arrives @browser-sensitiv
 });
 
 test('restores the installed Assistant card after a successful OAuth return @browser-sensitive', async ({ page, baseURL }) => {
-  // The page's clock stands still, so Admin's 15 s background re-read of the Team's history never adds to the reads
-  // this test counts, however long a loaded host makes it run.
-  await freezeClock(page);
   const turnId = 'c'.repeat(32);
   const callbackPath = `/api/oauth/cloudflare/callback?state=${'s'.repeat(43)}&claim=${'c'.repeat(64)}`;
   let callbackObserved = false;
@@ -2509,7 +2492,7 @@ test('a chat socket that opens and is closed again keeps backing off and then re
   // Admin accepts the socket and closes it after the page's first frame, as when it cannot check the session.
   let connections = 0;
   let syncs = 0;
-  await page.routeWebSocket('**/api/teams/marketing/chat/ws', (socket) => {
+  await routeChat(page, 'marketing', (socket) => {
     connections += 1;
     socket.onMessage(() => {
       syncs += 1;
@@ -2662,15 +2645,13 @@ test('a session that expired while disconnected returns to sign-in instead of re
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await fillWhenReady(page, composer, 'List my DNS zones');
   await page.getByRole('button', { name: 'Send' }).click();
-  await expect.poll(async () => {
-    await page.clock.runFor(1_000);
-    return chat.refusedConnections();
-  }).toBeGreaterThan(0);
+  // A dropped socket first asks Admin about the session (ADR-0114): signed out, it returns to sign-in at once and
+  // never tries to reconnect.
   await expect(page.getByLabel('Password', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
-  const refused = chat.refusedConnections();
   await page.clock.runFor(160_000);
-  expect(chat.refusedConnections()).toBe(refused);
+  expect(chat.refusedConnections()).toBe(0);
+  expect(chat.chatConnections()).toBe(1);
 });
 
 test('an expired session ends the chat connection instead of reconnecting', async ({ page }) => {
@@ -2681,7 +2662,9 @@ test('an expired session ends the chat connection instead of reconnecting', asyn
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await fillWhenReady(page, composer, 'List my DNS zones');
   await page.getByRole('button', { name: 'Send' }).click();
-  await expect(page.getByText('The secure chat connection could not be established.', { exact: false })).toBeVisible();
+  // Admin closing the socket as signed out (4401) returns to sign-in and clears what the session showed.
+  await expect(page.getByLabel('Password', { exact: true })).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toHaveCount(0);
   const connections = chat.chatConnections();
   await page.clock.runFor(60_000);
   expect(chat.chatConnections()).toBe(connections);
@@ -2910,8 +2893,11 @@ for (const [interruption, interrupt] of [
   }],
   ['the connection drops', async (page, chat) => {
     chat.closeChatSocket();
-    await page.clock.runFor(500);
-    await expect.poll(() => chat.syncFrames()).toBe(2);
+    // The page asks Admin about its session before it reconnects; the paused clock moves until the channel is back.
+    await expect.poll(async () => {
+      await page.clock.runFor(100);
+      return chat.syncFrames();
+    }).toBe(2);
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     await page.clock.runFor(2100);
     await expect(page.locator('[data-slot="chat-task"]')).toHaveAttribute('data-state', 'cancelled');
@@ -3941,18 +3927,14 @@ test('deletes a Team with its exact confirmation and reports the deletion', { ta
   await routeReadyChat(page);
   let deleted = false;
   let deletionBody;
-  await page.unroute('**/api/teams');
-  await page.route('**/api/teams', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
+  await routeRead(page, 'teams.list', () => ok({
       teams: deleted
         ? [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }]
         : [
             { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
             { team_id: 'support', team_name: 'Support', status: 'running' },
           ],
-    }),
-  }));
+    }));
   await page.route('**/api/teams/support', async (route) => {
     deletionBody = route.request().postDataJSON();
     deleted = true;
@@ -3992,15 +3974,12 @@ test('a Team name of 80 emoji can be typed to rename and to confirm its deletion
   let deleted = false;
   const renames = [];
   let deletionBody;
-  await page.unroute('**/api/teams');
-  await page.route('**/api/teams', (route) => route.fulfill({
-    json: {
+  await routeRead(page, 'teams.list', () => ok({
       teams: [
         { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
         ...(deleted ? [] : [{ team_id: 'support', team_name: renames.length ? longest : 'Support', status: 'running' }]),
       ],
-    },
-  }));
+    }));
   await page.route('**/api/teams/support', async (route) => {
     if (route.request().method() === 'PATCH') {
       renames.push(route.request().postDataJSON());
@@ -4106,12 +4085,9 @@ test('keeps a first Store install ready while local display metadata catches up'
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
-  await page.route('**/api/teams', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
+  await routeRead(page, 'teams.list', () => ok({
       teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }],
-    }),
-  }));
+    }));
   await page.route('**/api/assistants', async (route) => {
     catalogReads += 1;
     await route.fulfill({
@@ -4237,14 +4213,10 @@ test('the ready Chat passes its accessibility scan and the Brain chooser works b
 
 test('opens a Team chat from the Team list and its Store from the row icon', { tag: '@mobile' }, async ({ page }) => {
   await routeReadyChat(page);
-  await page.unroute('**/api/teams');
-  await page.route('**/api/teams', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ teams: [
+  await routeRead(page, 'teams.list', () => ok({ teams: [
       { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
       { team_id: 'support', team_name: 'Support', status: 'running' },
-    ] }),
-  }));
+    ] }));
   await page.route('**/api/teams/support/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
@@ -4436,12 +4408,10 @@ async function routeRoutines(
     const routine = routines.find((item) => item.routine_id === routineId);
     await route.fulfill({ json: planPage(routineId, routine.plan, ROUTINE_PLAN, Number(offset)) });
   });
-  await page.route('**/api/teams/marketing/routines', async (route) => {
-    if (listFailsAfterDelete && calls.deletes.length > 0) {
-      await route.fulfill({ status: 503, json: { code: 'team-unavailable' } });
-      return;
-    }
-    await route.fulfill({ json: { team_id: 'marketing', routines, runs, incidents } });
+  await routeRead(page, 'routines.list', (params) => {
+    if (params.team_id !== 'marketing') return undefined;
+    if (listFailsAfterDelete && calls.deletes.length > 0) return ok({ code: 'team-unavailable' }, 503);
+    return ok({ team_id: 'marketing', routines, runs, incidents });
   });
   await page.route('**/api/teams/marketing/routines/*/resume', async (route) => {
     const routineId = new URL(route.request().url()).pathname.split('/').at(-2);
@@ -4613,9 +4583,10 @@ test('a chat that keeps reconnecting never takes the focus from a Team name bein
     renames.push(route.request().postDataJSON());
     return route.fulfill({ json: { team_id: 'neo', team_name: route.request().postDataJSON().team_name } });
   });
-  // Neo's chat socket is accepted and then closed, so its composer turns busy and idle again while the name is typed.
+  // Neo's chat channel attaches and then its session socket closes, so the composer turns busy and idle again while
+  // the name is typed.
   let connections = 0;
-  await page.routeWebSocket('**/api/teams/neo/chat/ws', (socket) => {
+  await routeChat(page, 'neo', (socket) => {
     connections += 1;
     setTimeout(() => socket.close({ code: 1011, reason: 'Synthetic interrupted connection' }), 50);
   });
@@ -4907,14 +4878,14 @@ test.describe('Team Routines', () => {
     await expect(card.getByRole('button', { name: 'Create Routine', exact: true })).toBeEnabled();
     await expect(card.getByRole('button', { name: 'Cancel', exact: true })).toBeEnabled();
     expect(await accessibilityViolations(page)).toEqual([]);
-    expect(scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json.routines).toEqual([]);
+    expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toEqual([]);
 
     await card.getByRole('button', { name: 'Create Routine', exact: true }).click();
     // Once created, the card is gone and nothing is left to answer.
     await expect(card).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Create Routine', exact: true })).toHaveCount(0);
     await expect.poll(() => calls).toEqual([['POST', '{}']]);
-    const [routine] = scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json.routines;
+    const [routine] = scenario.call('routines.list', { team_id: 'marketing' }).json.routines;
     expect(routine.name).toBe(ROUTINE_TEXT.en.card);
 
     // After a reload, the created notice keeps the name Team froze into it, and the card is shown again with its reply.
@@ -4927,7 +4898,7 @@ test.describe('Team Routines', () => {
     const reloaded = page.getByRole('region', { name: 'Routine to create' });
     await reloaded.getByRole('button', { name: 'Create Routine', exact: true }).click();
     await expect(reloaded.getByRole('alert')).toHaveText(messages.en.routine.errors.proposalExpired);
-    expect(scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json.routines).toHaveLength(1);
+    expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toHaveLength(1);
   });
 
   test('a Routine card canceled with its Cancel button revokes it and creates nothing', async ({ page }) => {
@@ -4939,7 +4910,7 @@ test.describe('Team Routines', () => {
     await expect(card).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Create Routine', exact: true })).toHaveCount(0);
     await expect.poll(() => calls).toEqual([['DELETE', null]]);
-    expect(scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json.routines).toEqual([]);
+    expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toEqual([]);
     await expect(page.locator('.routine-run')).toHaveCount(0);
   });
 
@@ -4953,7 +4924,7 @@ test.describe('Team Routines', () => {
   // What Team asks before a card is answered in the chat (ADR-0101): no answer is preselected, the answer is the next
   // send, and its reply carries the card.
   function sentMessages(scenario) {
-    return scenario.respond({ method: 'GET', path: '/api/teams/marketing/chat/history' }).json.entries
+    return scenario.call('history.page', { team_id: 'marketing' }).json.entries
       .filter((entry) => entry.role === 'user')
       .map((entry) => entry.text);
   }
@@ -5011,11 +4982,6 @@ test.describe('Team Routines', () => {
   });
 
   test("the chat shows only each Routine's creation: its runs and later outcomes stay out of it, also after a reload", async ({ page }) => {
-    const requested = [];
-    page.on('request', (request) => {
-      const url = new URL(request.url());
-      if (url.pathname.endsWith('/chat/history')) requested.push(url.searchParams.get('routine'));
-    });
     await routeScenario(page, 'routine-lifecycle');
     await page.goto('/chat/?team=marketing');
     const created = routineLifecycleStart('en').history.filter((entry) => entry.outcome === 'created');
@@ -5029,6 +4995,7 @@ test.describe('Team Routines', () => {
       await expect(notices.getByRole('button')).toHaveCount(0);
     }
     // The chat reads its own view of the history, never a Routine's.
+    const requested = (await readsOf(page, 'history.page')).map((params) => params.routine ?? null);
     expect(requested.length).toBeGreaterThan(0);
     expect(requested.every((routine) => routine === null)).toBe(true);
   });
@@ -5068,9 +5035,7 @@ test.describe('Team Routines', () => {
   test('a Team whose Routines are all running needs no attention, and a Team without Routines has no Routines button', async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await routeReadyChat(page);
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     await page.goto('/chat/?team=marketing');
     const navigation = await openTeamNavigation(page);
     await expect(navigation.getByRole('button', { name: 'Routines for Marketing', exact: true })).toBeVisible();
@@ -5082,9 +5047,12 @@ test.describe('Team Routines', () => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await routeReadyChat(page);
     let available = false;
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill(available
-      ? { json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] } }
-      : { status: 503, json: { code: 'routine-unavailable' } }));
+    await routeRead(page, 'routines.list', (params) => {
+      if (params.team_id !== 'marketing') return undefined;
+      return available
+        ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] })
+        : ok({ code: 'routine-unavailable' }, 503);
+    });
     await page.goto('/chat/?team=marketing');
     const navigation = await openTeamNavigation(page);
     // A failed listing is never a Team without Routines: the button stays and its name says the list failed.
@@ -5383,9 +5351,7 @@ test.describe('Team Routines', () => {
       steps: 3,
     }];
     let incidents = [];
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
     await page.route('**/api/teams/marketing/routines/runs/*/challenge', (route) => route.fulfill({
       json: {
         team_id: 'marketing',
@@ -5443,9 +5409,7 @@ test.describe('Team Routines', () => {
     const runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', scheduled_at: '2026-10-01T12:00:00Z', request_kind: null, assistant_id: null, action: null, position: null, steps: null }];
     let incidents = [];
     const openings = [];
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
     await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
       openings.push(route.request().url());
       // Team has not indexed the incident at the first opening; it is listed from then on.
@@ -5478,9 +5442,7 @@ test.describe('Team Routines', () => {
     let release;
     const answered = new Promise((resolve) => { release = resolve; });
     const openings = [];
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
     await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
       openings.push(route.request().url());
       await route.fulfill({ json: recoveryCard(run, { nonce: 'e'.repeat(32) }) });
@@ -5500,7 +5462,7 @@ test.describe('Team Routines', () => {
     await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Run' }).click();
-    await page.clock.fastForward(15_000);
+    await routineNotice(page);
     await expect(panel.getByRole('button', { name: 'Review' })).toBeVisible();
     release();
     // The late answer belonged to the held decision; the approval it led to stays in front of the person.
@@ -5596,9 +5558,7 @@ test.describe('Team Routines', () => {
         before: null,
       },
     });
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     await page.goto('/chat/?team=marketing');
     // The chat names the Routine once, where it was created, and offers nothing to open.
     const transcript = page.locator('.routine-run');
@@ -5679,9 +5639,7 @@ test.describe('Team Routines', () => {
         before: null,
       },
     });
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     // Each run's own step records: the inputs its attempt was given, as Team's redacted previews.
     const record = (position, action, inputs) => ({
       position: { phase: 'replay', step: position }, status: 'done', assistant_id: 'shimpz-cloudflare', action, attempt: 1, duration_ms: 812,
@@ -5814,7 +5772,7 @@ test.describe('Team Routines', () => {
   test("a Routine plan whose step read failed resumes when the Routine list is read again", async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     const scenario = await routeScenario(page, 'routine-lifecycle');
-    const [watch] = scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json.routines;
+    const [watch] = scenario.call('routines.list', { team_id: 'marketing' }).json.routines;
     let refusals = 1;
     await page.route(`**/api/teams/marketing/routines/${watch.routine_id}/revisions/*/steps/*`, (route) => {
       if (refusals === 0) return route.fallback();
@@ -5831,8 +5789,9 @@ test.describe('Team Routines', () => {
     const steps = panel.getByRole('list', { name: 'Steps' }).locator(':scope > li');
     await expect(panel.getByText(messages.en.routine.plan.unavailable)).toBeVisible();
     await expect(steps).toHaveCount(0);
-    const reread = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/teams/marketing/routines');
-    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    // Admin says the Team's Routines changed (ADR-0114), so the page reads them again.
+    const reread = nextRead(page, 'routines.list');
+    await raiseTopic(page, 'team/marketing/routines');
     await reread;
     await expect(steps).toHaveCount(10);
     await expect(panel.getByText(messages.en.routine.plan.unavailable)).toHaveCount(0);
@@ -5842,7 +5801,7 @@ test.describe('Team Routines', () => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     // ADR-0092 amendment, 2026-10-05 (scale): the continuous watch repeats one Action for each of its zones.
     const scenario = await routeScenario(page, 'routine-lifecycle');
-    const [watch] = scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json.routines;
+    const [watch] = scenario.call('routines.list', { team_id: 'marketing' }).json.routines;
     expect(watch.plan.steps).toBe(120);
     const read = [];
     page.on('request', (request) => {
@@ -5872,10 +5831,10 @@ test.describe('Team Routines', () => {
     await expect(steps).toHaveCount(70);
     await expect.poll(() => read).toEqual(['1/0', '1/64']);
     await expect(steps.nth(60)).toBeFocused();
-    // Reading the Routine list again in the background, as Admin does while the page is visible, keeps what was read
-    // and revealed for the same revision.
-    const reread = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/teams/marketing/routines');
-    await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+    // Reading the Routine list again when Admin says it changed keeps what was read and revealed for the same revision.
+    // Admin says the Team's Routines changed (ADR-0114), so the page reads them again.
+    const reread = nextRead(page, 'routines.list');
+    await raiseTopic(page, 'team/marketing/routines');
     await reread;
     await expect(steps).toHaveCount(70);
     await expect.poll(() => read).toEqual(['1/0', '1/64']);
@@ -5891,7 +5850,7 @@ test.describe('Team Routines', () => {
   test('a Routine whose revision changed while its steps were read shows only the new revision', async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     const scenario = await routeScenario(page, 'routine-lifecycle');
-    const listed = scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json;
+    const listed = scenario.call('routines.list', { team_id: 'marketing' }).json;
     const [watch] = listed.routines;
     // The first step's literal carries a bidi override that Team escaped in its preview.
     const steps = Array.from({ length: 3 }, (_, index) => ({
@@ -5915,11 +5874,9 @@ test.describe('Team Routines', () => {
       return route.fulfill({ json: planPage(watch.routine_id, revised, steps, Number(offset)) });
     });
     // Once Team refused the old revision, the Routine list names the new one.
-    await page.route('**/api/teams/marketing/routines', (route) => (changed
-      ? route.fulfill({
-        json: { ...listed, routines: listed.routines.map((item) => (item.routine_id === watch.routine_id ? { ...item, plan: revised } : item)) },
-      })
-      : route.fallback()));
+    await routeRead(page, 'routines.list', (params) => (changed && params.team_id === 'marketing'
+      ? ok({ ...listed, routines: listed.routines.map((item) => (item.routine_id === watch.routine_id ? { ...item, plan: revised } : item)) })
+      : undefined));
     await page.goto('/chat/?team=marketing');
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
@@ -5959,9 +5916,7 @@ test.describe('Team Routines', () => {
         before: null,
       },
     });
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     await page.route('**/api/teams/marketing/routines/runs/*/diagnostics', (route) => route.fulfill({
       json: { team_id: 'marketing', run_id: run, diagnostics: [] },
     }));
@@ -6036,7 +5991,7 @@ test.describe('Team Routines', () => {
   test('every run opens its own step records: a failed run whose notice names no plan, and a completed run that shows no result', async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const scenario = await routeScenario(page, 'routine-lifecycle');
-    const { routines } = scenario.respond({ method: 'GET', path: '/api/teams/marketing/routines' }).json;
+    const { routines } = scenario.call('routines.list', { team_id: 'marketing' }).json;
     const [watch, , daily] = routines;
     const status = messages.en.routine.result.status;
     const read = [];
@@ -6118,9 +6073,7 @@ test.describe('Team Routines', () => {
         before: null,
       },
     });
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [listed], runs: [], incidents: [] },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [listed], runs: [], incidents: [] }) : undefined));
     const dialogs = [];
     page.on('dialog', async (dialog) => {
       dialogs.push(dialog.message());
@@ -6225,9 +6178,7 @@ test.describe('Team Routines', () => {
     });
     let routines = [{ ...ROUTINE_VIEW, state: 'paused' }, { ...audit, state: 'paused' }];
     let incidents = [heldIncident(held), heldIncident(paused, audit)];
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines, runs: [], incidents },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines, runs: [], incidents }) : undefined));
     const opened = [];
     const answers = [];
     await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
@@ -6308,9 +6259,7 @@ test.describe('Team Routines', () => {
         before: null,
       },
     });
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [{ ...ROUTINE_VIEW, state: 'paused' }], runs: [], incidents: [heldIncident(held)] },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [{ ...ROUTINE_VIEW, state: 'paused' }], runs: [], incidents: [heldIncident(held)] }) : undefined));
     await page.route('**/api/teams/marketing/routines/incidents/*/card', (route) => route.fulfill({
       json: recoveryCard(held, { failure: { message, truncated: true } }),
     }));
@@ -6328,9 +6277,7 @@ test.describe('Team Routines', () => {
     await routeReadyChat(page, {
       history: { entries: [routineRow(failed, 'failed', { code: 'assistant-rpc-failed', actions: [], position: null, steps: null })], before: null },
     });
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     const requested = [];
     const attempt = (number, failure, condition = null) => ({
       operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
@@ -6395,9 +6342,7 @@ test.describe('Team Routines', () => {
     await routeReadyChat(page, {
       history: { entries: [routineRow(failed, 'failed', { code: 'assistant-rpc-failed', actions: [], position: { phase: 'replay', step: 5 }, steps: 6 })], before: null },
     });
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     // The same Action's first attempt failed at steps 2, 5, and 7: one operation per position.
     const attempt = (operation, position) => ({
       operation_id: `6f1c2b8e-3a4d-4c5e-9f60-${operation}`,
@@ -6455,14 +6400,8 @@ test.describe('Team Routines', () => {
         before: null,
       },
     });
-    const views = [];
-    page.on('request', (request) => {
-      const url = new URL(request.url());
-      if (url.pathname.endsWith('/chat/history')) views.push(url.searchParams.get('routine'));
-    });
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
-    }));
+    const views = async () => (await readsOf(page, 'history.page')).map((params) => params.routine ?? null);
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     await page.goto('/chat/?team=marketing');
     await expect(page.getByText('Unrelated message 64', { exact: true })).toBeVisible();
     const panel = await openRoutinePanel(page);
@@ -6472,8 +6411,8 @@ test.describe('Team Routines', () => {
     await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(2);
     await expect(runs.getByRole('listitem').first()).toContainText('Done');
     await expect(runs.getByRole('button', { name: 'Look for older runs' })).toHaveCount(0);
-    await expect.poll(() => views).toContain(ROUTINE_VIEW.routine_id);
-    expect(views.every((routine) => routine === null || routine === ROUTINE_VIEW.routine_id)).toBe(true);
+    await expect.poll(views).toContain(ROUTINE_VIEW.routine_id);
+    expect((await views()).every((routine) => routine === null || routine === ROUTINE_VIEW.routine_id)).toBe(true);
     expect(chatHistory.historyRequests().every((before) => before === null)).toBe(true);
   });
 
@@ -6486,17 +6425,16 @@ test.describe('Team Routines', () => {
     let delivered = null;
     await routeReadyChat(page);
     // The Routine's own history: a full newest page of its runs, then its one older run.
-    await page.route('**/api/teams/marketing/chat/history**', (route) => {
-      const params = new URL(route.request().url()).searchParams;
+    await routeRead(page, 'history.page', (read) => {
+      if (read.team_id !== 'marketing') return undefined;
+      const params = new URLSearchParams(Object.entries(read).filter(([key]) => key !== 'team_id'));
       const routine = params.get('routine');
-      if (routine === null) return route.fulfill({ json: { entries: [], before: null } });
+      if (routine === null) return ok({ entries: [], before: null });
       searched.push(params.get('before'));
       const newest = Array.from({ length: 64 }, (_, index) => run(index + 1));
-      return route.fulfill({
-        json: params.get('before') === null
+      return ok(params.get('before') === null
           ? { entries: delivered ? [...newest.slice(1), delivered] : newest, before: 'AAAAAAAAAMg' }
-          : { entries: [run(0)], before: null },
-      });
+          : { entries: [run(0)], before: null });
     });
     let routineReads = 0;
     let running = [{
@@ -6510,9 +6448,10 @@ test.describe('Team Routines', () => {
       position: null,
       steps: null,
     }];
-    await page.route('**/api/teams/marketing/routines', (route) => {
+    await routeRead(page, 'routines.list', (read) => {
+      if (read.team_id !== 'marketing') return undefined;
       routineReads += 1;
-      return route.fulfill({ json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: running, incidents: [] } });
+      return ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: running, incidents: [] });
     });
     await page.clock.install();
     await page.goto('/chat/?team=marketing');
@@ -6529,7 +6468,7 @@ test.describe('Team Routines', () => {
     const before = searched.length;
     delivered = routineRow('e'.repeat(32), 'done', done);
     running = [];
-    await page.clock.runFor(16_000);
+    await routineNotice(page);
     await expect(runs).not.toContainText('Running now');
     await expect(runs.getByRole('listitem').first()).toContainText('Done');
     await expect(runs.getByRole('listitem').first().getByRole('button', { name: 'Execution details' })).toBeVisible();
@@ -6542,7 +6481,7 @@ test.describe('Team Routines', () => {
     // The chat's periodic refresh replaces the Routine's details; the runs found so far stay.
     const reads = routineReads;
     const searches = searched.length;
-    await page.clock.runFor(16_000);
+    await routineNotice(page);
     await expect.poll(() => routineReads).toBeGreaterThan(reads);
     await expect(details).toHaveCount(listed + 1);
     await expect(older).toHaveCount(0);
@@ -6572,18 +6511,20 @@ test.describe('Team Routines', () => {
     const position = (value) => Number(Buffer.from(value, 'base64url').readBigUInt64BE());
     await routeReadyChat(page);
     // One newest-first page of at most 64 rows before the cursor, oldest first, as Admin pages the Routine's view.
-    await page.route('**/api/teams/marketing/chat/history**', (route) => {
-      const params = new URL(route.request().url()).searchParams;
-      if (params.get('routine') === null) return route.fulfill({ json: { entries: [], before: null } });
+    await routeRead(page, 'history.page', (read) => {
+      if (read.team_id !== 'marketing') return undefined;
+      const params = new URLSearchParams(Object.entries(read).filter(([key]) => key !== 'team_id'));
+      if (params.get('routine') === null) return ok({ entries: [], before: null });
       const below = params.get('before') === null ? stored.length + 1 : position(params.get('before'));
       const start = Math.max(0, below - 1 - 64);
       const entries = stored.slice(start, below - 1);
-      return route.fulfill({ json: { entries, before: start > 0 ? cursor(start + 1) : null } });
+      return ok({ entries, before: start > 0 ? cursor(start + 1) : null });
     });
     let routineReads = 0;
-    await page.route('**/api/teams/marketing/routines', (route) => {
+    await routeRead(page, 'routines.list', (read) => {
+      if (read.team_id !== 'marketing') return undefined;
       routineReads += 1;
-      return route.fulfill({ json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] } });
+      return ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] });
     });
     write(5);
     await page.clock.install();
@@ -6596,7 +6537,7 @@ test.describe('Team Routines', () => {
     await expect.poll(listed).toEqual(everyRun());
     const refresh = async () => {
       const reads = routineReads;
-      await page.clock.runFor(16_000);
+      await routineNotice(page);
       await expect.poll(() => routineReads).toBeGreaterThan(reads);
     };
     // Every run that ends while the panel is open joins the top; none listed before is dropped.
@@ -6649,25 +6590,27 @@ test.describe('Team Routines', () => {
     const newestCursors = [];
     let holdOlder = null;
     await routeReadyChat(page);
-    await page.route('**/api/teams/marketing/chat/history**', async (route) => {
-      const params = new URL(route.request().url()).searchParams;
-      if (params.get('routine') === null) return route.fulfill({ json: { entries: [], before: null } });
+    await routeRead(page, 'history.page', async (read) => {
+      if (read.team_id !== 'marketing') return undefined;
+      const params = new URLSearchParams(Object.entries(read).filter(([key]) => key !== 'team_id'));
+      if (params.get('routine') === null) return ok({ entries: [], before: null });
       const reading = params.get('before') === null ? ++newestReads : 0;
       if (reading && holdNewest && reading === holdNewest.at) await holdNewest.released;
       if (!reading && holdOlder && params.get('before') === holdOlder.cursor) {
         await holdOlder.released;
-        return route.fulfill({ status: 503, json: { detail: 'Synthetic history failure.' } });
+        return ok({ detail: 'Synthetic history failure.' }, 503);
       }
       const below = reading ? stored.length + 1 : position(params.get('before'));
       const start = Math.max(0, below - 1 - 64);
       const before = start > 0 ? cursor(start + 1) : null;
       if (reading) newestCursors[reading] = before;
-      return route.fulfill({ json: { entries: stored.slice(start, below - 1), before } });
+      return ok({ entries: stored.slice(start, below - 1), before });
     });
     let routineReads = 0;
-    await page.route('**/api/teams/marketing/routines', (route) => {
+    await routeRead(page, 'routines.list', (read) => {
+      if (read.team_id !== 'marketing') return undefined;
       routineReads += 1;
-      return route.fulfill({ json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] } });
+      return ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] });
     });
     const gate = () => {
       let release;
@@ -6693,7 +6636,7 @@ test.describe('Team Routines', () => {
       holdNewest = { at: newestReads + 2, released: newest.released };
       holdOlder = { cursor: newestCursors[panelReading], released: search.released };
       const reads = routineReads;
-      await page.clock.runFor(16_000);
+      await routineNotice(page);
       await expect.poll(() => routineReads).toBeGreaterThan(reads);
       await expect.poll(() => newestReads).toBe(holdNewest.at);
       await older.click();
@@ -6727,9 +6670,7 @@ test.describe('Team Routines', () => {
     const continuous = { ...ROUTINE_VIEW, schedule: { kind: 'continuous', gap: 5, cap: 17280 } };
     const rollup = (id, runs) => ({ ...routineRow(id, 'healthy', { runs }, { routine: continuous }), run_id: null });
     await routeReadyChat(page, { history: { entries: [rollup('c'.repeat(32), 12), rollup('d'.repeat(32), 1)], before: null } });
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [continuous], runs: [], incidents: [] },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [continuous], runs: [], incidents: [] }) : undefined));
     await page.goto('/chat/?team=marketing');
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
@@ -6759,9 +6700,7 @@ test.describe('Team Routines', () => {
       usage: { duration_ms: 7400, models: [] },
     };
     await routeReadyChat(page, { history: { entries: [missed, lost, done], before: null } });
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     await page.goto('/chat/?team=marketing');
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
@@ -6813,9 +6752,7 @@ test.describe('Team Routines', () => {
     let routines = [{ ...ROUTINE_VIEW, state: 'paused' }, heldRoutine];
     const incidents = [heldIncident(held, heldRoutine)];
     const resumed = [];
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines, runs: [], incidents },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines, runs: [], incidents }) : undefined));
     await page.route('**/api/teams/marketing/routines/*/resume', async (route) => {
       const routineId = new URL(route.request().url()).pathname.split('/').at(-2);
       resumed.push(routineId);
@@ -6851,9 +6788,7 @@ test.describe('Team Routines', () => {
         before: null,
       },
     });
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [{ ...ROUTINE_VIEW, state: 'paused' }], runs: [], incidents: [heldIncident(held)] },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [{ ...ROUTINE_VIEW, state: 'paused' }], runs: [], incidents: [heldIncident(held)] }) : undefined));
     let opened = 0;
     const answers = [];
     await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
@@ -6897,9 +6832,7 @@ test.describe('Team Routines', () => {
       history: { entries: [frozenRow(waiting, 'integrations', audit), frozenRow(run, 'human', ROUTINE_VIEW)], before: null },
     });
     let runs = [frozenRun(waiting, 'integrations', audit), frozenRun(run, 'human')];
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW, audit], runs, incidents: [] },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW, audit], runs, incidents: [] }) : undefined));
     const answers = [];
     const resumes = [];
     const openings = [];
@@ -6989,9 +6922,7 @@ test.describe('Team Routines', () => {
       },
     });
     let runs = [frozenRun(run, 'human')];
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents: [] },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents: [] }) : undefined));
     await page.route('**/api/teams/marketing/routines/runs/*/challenge', (route) => route.fulfill({
       json: {
         team_id: 'marketing',
@@ -7057,12 +6988,8 @@ test.describe('Team Routines', () => {
     await routeReadyChat(page, { history });
     // Admin's scheduler writes notices durably on its own; these routes serve whatever it has written so far, in the
     // view each request asks for.
-    await page.route('**/api/teams/marketing/chat/history**', (route) => route.fulfill({
-      json: { ...history, entries: historyView(history.entries, new URL(route.request().url()).searchParams.get('routine')) },
-    }));
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents: [] },
-    }));
+    await routeRead(page, 'history.page', (params) => (params.team_id === 'marketing' ? ok({ ...history, entries: historyView(history.entries, params.routine ?? null) }) : undefined));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents: [] }) : undefined));
     await page.route(`**/api/teams/marketing/routines/runs/${run}/challenge`, (route) => route.fulfill({
       json: {
         team_id: 'marketing',
@@ -7093,7 +7020,7 @@ test.describe('Team Routines', () => {
     // joins the transcript, the run stays out of it, and the draft is kept.
     history = { entries: [earlier, frozen], before: null };
     runs = [frozenRun(run, 'human')];
-    await page.clock.fastForward(15_000);
+    await routineNotice(page);
     await expect(rows).toHaveCount(1);
     await expect(rows).toHaveAccessibleName(ROUTINE_VIEW.name);
     await expect(composer).toHaveValue('A draft that must survive');
@@ -7118,7 +7045,7 @@ test.describe('Team Routines', () => {
     const published = { plan: planSummary([{ assistant: 'shimpz-cloudflare', action: 'replace-dns-record' }]), output: null };
     history = { entries: [earlier, { ...frozen, outcome: 'done', detail: published, version: 2 }], before: null };
     runs = [];
-    await page.clock.fastForward(15_000);
+    await routineNotice(page);
     await expect(rows).toHaveCount(1);
     await expect(composer).toHaveValue('A draft that must survive');
   });
@@ -7140,14 +7067,13 @@ test.describe('Team Routines', () => {
     let pages = { null: { entries: [earlier], before: null } };
     const requested = [];
     await routeReadyChat(page);
-    await page.route('**/api/teams/marketing/chat/history**', (route) => {
-      const before = new URL(route.request().url()).searchParams.get('before');
+    await routeRead(page, 'history.page', (read) => {
+      if (read.team_id !== 'marketing') return undefined;
+      const before = read.before ?? null;
       requested.push(before);
-      return route.fulfill({ json: pages[before] });
+      return ok(pages[before]);
     });
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     await page.goto('/chat/?team=marketing');
     const rows = page.locator('.routine-run');
     await expect(rows).toHaveCount(1);
@@ -7160,14 +7086,14 @@ test.describe('Team Routines', () => {
       AAAAAAAAAMg: { entries: [earlier, gap, ...unrelated(0, 10)], before: null },
     };
     requested.length = 0;
-    await page.clock.fastForward(15_000);
+    await routineNotice(page);
     await expect(rows).toHaveCount(3);
     await expect(rows.nth(1)).toHaveAccessibleName('Weekly DNS audit');
     await expect(rows.nth(2)).toHaveAccessibleName('Certificate check');
     await expect.poll(() => requested).toEqual([null, 'AAAAAAAAAMg']);
     // The next refresh finds nothing new on the newest page and reads no further.
     requested.length = 0;
-    await page.clock.fastForward(15_000);
+    await routineNotice(page);
     await expect.poll(() => requested).toEqual([null]);
     await expect(rows).toHaveCount(3);
 
@@ -7181,7 +7107,7 @@ test.describe('Team Routines', () => {
     ]));
     pages[cursor(8)] = { entries: [newest, behind], before: null };
     requested.length = 0;
-    await page.clock.fastForward(15_000);
+    await routineNotice(page);
     await expect(page.getByText(`Unrelated message ${1000 + 8 * 64 + 64}`, { exact: true })).toBeVisible();
     await expect(rows).toHaveCount(0);
     await expect.poll(() => requested).toEqual([null, ...Array.from({ length: 7 }, (_, index) => cursor(index + 1))]);
@@ -7219,9 +7145,7 @@ test.describe('Team Routines', () => {
       before: null,
     };
     await routeReadyChat(page, { history, reply: 'Live answer' });
-    await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-      json: { team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] },
-    }));
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     await page.goto('/chat/?team=marketing');
     const turns = page.locator('.turns');
     const days = turns.getByRole('heading', { level: 2 });
@@ -7374,8 +7298,7 @@ test('a frozen Routine run opens in the interface language and answers with the 
       before: null,
     },
   });
-  await page.route('**/api/teams/marketing/routines', (route) => route.fulfill({
-    json: {
+  await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({
       team_id: 'marketing',
       routines: [ROUTINE_VIEW],
       runs: [{
@@ -7390,8 +7313,7 @@ test('a frozen Routine run opens in the interface language and answers with the 
         steps: 3,
       }],
       incidents: [],
-    },
-  }));
+    }) : undefined));
   const openings = [];
   const answers = [];
   await page.route(`**/api/teams/marketing/routines/runs/${run}/challenge`, async (route) => {

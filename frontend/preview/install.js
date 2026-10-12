@@ -1,8 +1,9 @@
-// Preview only (ADR-0087): answer the Admin API and the chat socket from a scenario inside the browser, before the
+// Preview only (ADR-0087): answer the Admin API and the session socket from a scenario inside the browser, before the
 // application boots. A request or socket the scenario does not answer fails here; nothing reaches a backend.
 import { get } from 'svelte/store';
 
 import { createScenario, SCENARIOS } from '../e2e/scenarios.js';
+import { serveSession, SESSION_PROTOCOL, SESSION_SOCKET_PATH } from '../e2e/sessionSocket.js';
 import { locale } from '../src/lib/i18n.js';
 
 const STORAGE_KEY = 'shimpz-preview-scenario';
@@ -102,69 +103,68 @@ const PREVIEW_PROGRESS = Object.freeze([
   { type: 'progress', seq: index * 2 + 2, origin, phase, state: 'finished', elapsed_ms: elapsed, ...(action ?? {}) },
 ]));
 
-// A scripted chat socket: it accepts the requested subprotocol and answers frames from the scenario.
-class ScenarioSocket extends EventTarget {
+// The scripted Admin session socket (ADR-0114): it accepts the session protocol and answers every read and chat frame
+// from the scenario. A finished reply arrives after the execution stages a real turn reports, so its trace can be
+// reviewed, and Stop cancels the replies still on their way and answers like Team: the turn stopped.
+function previewChat(teamId) {
+  return scenario.attachable(teamId) && ((channel) => {
+    const pending = [];
+    channel.onMessage((message) => {
+      const frame = JSON.parse(message);
+      if (frame.type === 'stop') {
+        pending.splice(0).forEach(clearTimeout);
+        setTimeout(() => channel.send({ type: 'stopped' }), 0);
+        return;
+      }
+      for (const reply of scenario.chat.message(frame, teamId)) {
+        const frames = reply?.type === 'done' ? [...PREVIEW_PROGRESS, reply] : [reply];
+        frames.forEach((item, index) => {
+          const delay = item === reply ? 3000 : 200 + index * 220;
+          pending.push(setTimeout(() => channel.send(item), delay));
+        });
+      }
+    });
+  });
+}
+
+class SessionSocket extends EventTarget {
   static CONNECTING = 0;
   static OPEN = 1;
   static CLOSING = 2;
   static CLOSED = 3;
 
-  constructor(url, protocols, teamId) {
+  constructor(url) {
     super();
     this.url = url;
-    this.teamId = teamId;
-    this.protocol = [protocols].flat().filter(Boolean)[0] ?? '';
-    this.readyState = ScenarioSocket.CONNECTING;
+    this.protocol = SESSION_PROTOCOL;
+    this.readyState = SessionSocket.CONNECTING;
     this.onopen = null;
     this.onmessage = null;
     this.onclose = null;
     this.onerror = null;
+    this.session = serveSession({
+      send: (text) => setTimeout(() => this.#emit('message', new MessageEvent('message', { data: text })), 0),
+      close: (code, reason) => this.close(code, reason),
+    }, { call: (method, params) => scenario.call(method, params), chat: previewChat });
     setTimeout(() => {
-      this.readyState = ScenarioSocket.OPEN;
+      this.readyState = SessionSocket.OPEN;
       this.#emit('open', new Event('open'));
     }, 0);
   }
 
-  #pending = [];
-
-  #deliver(reply) {
-    if (this.readyState === ScenarioSocket.OPEN) {
-      this.#emit('message', new MessageEvent('message', { data: JSON.stringify(reply) }));
-    }
-  }
-
   #emit(type, event) {
+    if (type === 'message' && this.readyState !== SessionSocket.OPEN) return;
     this.dispatchEvent(event);
     this[`on${type}`]?.(event);
   }
 
   send(data) {
-    if (this.readyState !== ScenarioSocket.OPEN) return;
-    let frame = null;
-    try {
-      frame = JSON.parse(data);
-    } catch {
-      return;
-    }
-    // Stop cancels the replies still on their way and answers like Team: the turn stopped.
-    if (frame?.type === 'stop') {
-      this.#pending.splice(0).forEach(clearTimeout);
-      setTimeout(() => this.#deliver({ type: 'stopped' }), 0);
-      return;
-    }
-    for (const reply of scenario.chat.message(frame, this.teamId)) {
-      // A finished reply arrives after the execution stages a real turn reports, so its trace can be reviewed.
-      const frames = reply?.type === 'done' ? [...PREVIEW_PROGRESS, reply] : [reply];
-      frames.forEach((item, index) => {
-        const delay = item === reply ? 3000 : 200 + index * 220;
-        this.#pending.push(setTimeout(() => this.#deliver(item), delay));
-      });
-    }
+    if (this.readyState === SessionSocket.OPEN) void this.session.receive(data);
   }
 
   close(code = 1000, reason = '') {
-    if (this.readyState === ScenarioSocket.CLOSED) return;
-    this.readyState = ScenarioSocket.CLOSED;
+    if (this.readyState === SessionSocket.CLOSED) return;
+    this.readyState = SessionSocket.CLOSED;
     setTimeout(() => this.#emit('close', new CloseEvent('close', { code, reason, wasClean: true })), 0);
   }
 }
@@ -172,8 +172,9 @@ class ScenarioSocket extends EventTarget {
 window.WebSocket = function PreviewWebSocket(url, protocols) {
   const target = new URL(url, location.href);
   const sameHost = target.host === location.host;
-  const teamId = sameHost ? scenario.chat.team(target.pathname) : null;
-  if (teamId) return new ScenarioSocket(target.href, protocols, teamId);
+  if (sameHost && target.pathname === SESSION_SOCKET_PATH && [protocols].flat().includes(SESSION_PROTOCOL)) {
+    return new SessionSocket(target.href);
+  }
   // Only Vite's own hot-reload socket stays real; every other socket is refused.
   if (sameHost && [protocols].flat().some((name) => ['vite-hmr', 'vite-ping'].includes(name))) {
     return new RealWebSocket(url, protocols);

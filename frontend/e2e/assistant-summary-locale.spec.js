@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { LOCALES } from '../src/lib/locales.js';
 import { messages } from '../src/lib/messages.js';
 import { assistantDetails, PAGE_COPY } from './assistantPages.js';
+import { routeRead } from './scenarioRoutes.js';
 
 // ADR-0091: published and staged Assistant summaries follow the interface language. Published summaries come from
 // the locale-keyed public catalog; a staged snapshot's comes from its own language pack through Team. English is the
@@ -40,6 +41,7 @@ function localizedCopy(locale) {
 // Answers each catalog read only once `catalogGate(locale)` settles, so a test can hold one language's reply.
 async function routeAssistants(page, { catalogLocale = (locale) => locale, catalogGate = async () => {} } = {}) {
   const requests = { catalog: [], summaries: [], details: [] };
+  await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } }));
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
     const locale = url.searchParams.get('locale');
@@ -73,7 +75,6 @@ async function routeAssistants(page, { catalogLocale = (locale) => locale, catal
         authentication_method: 'webauthn', origin_admitted: true, oauth_completion_mode: 'automatic',
         passkey_enrollment_available: true, passkey_registered: true,
       },
-      '/api/teams': { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] },
       '/api/assistants': { assistants: [] },
       '/api/teams/marketing/assistants': { assistants: [] },
       '/api/local-assistants': {

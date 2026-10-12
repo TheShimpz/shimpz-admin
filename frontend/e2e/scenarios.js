@@ -656,18 +656,54 @@ function catalogRoutes(path, locale) {
   return answer ? ok(answer) : null;
 }
 
+// The reads Admin serves over the session socket (ADR-0114), each as the scenario's own state answers it; no HTTP route
+// answers them any more.
+const SOCKET_READS = Object.freeze({
+  'teams.list': () => ({ path: '/api/teams' }),
+  'history.page': (params) => ({
+    path: `/api/teams/${params.team_id}/chat/history`,
+    query: new URLSearchParams(Object.entries(params).filter(([key]) => key !== 'team_id')),
+  }),
+  'routines.list': (params) => ({ path: `/api/teams/${params.team_id}/routines` }),
+  'space.resources': () => ({ path: '/api/space/resources' }),
+  'platform.release': () => ({ path: '/api/platform-release' }),
+  'security.summary': () => ({ path: '/api/admin/security' }),
+});
+const SOCKET_READ_PATHS = [
+  /^\/api\/teams$/,
+  /^\/api\/teams\/[a-z0-9_]{1,40}\/chat\/history$/,
+  /^\/api\/teams\/[a-z0-9_]{1,40}\/routines$/,
+  /^\/api\/space\/resources$/,
+  /^\/api\/platform-release$/,
+  /^\/api\/admin\/security$/,
+];
+
 /**
- * A fresh scenario; `respond` returns `{ status, json }` or null for a request this scenario does not answer. `query`
- * holds the request's search parameters.
+ * A fresh scenario; `respond` returns `{ status, json }` or null for a request this scenario does not answer, and `call`
+ * the same for a session socket read. `query` holds the request's search parameters.
  */
 export function createScenario(name = 'ready', locale = 'en') {
   const start = STARTS[name];
   if (!start) throw new Error(`unknown scenario: ${name}`);
   // A scenario's own texts, such as a Routine's name and request, are written in the interface language it starts in.
   const state = { history: [], sequence: 0, locale, security: securityStart(), ...structuredClone(start(locale)) };
-  return {
+  const scenario = {
     name,
-    respond({ method = 'GET', path, query = new URLSearchParams(), body = null }) {
+    respond(request) {
+      const { method = 'GET', path } = request;
+      if (method === 'GET' && SOCKET_READ_PATHS.some((pattern) => pattern.test(path))) return null;
+      return scenario.answer(request);
+    },
+    // One session socket read, or null when the scenario does not answer it.
+    call(method, params = {}) {
+      const read = Object.hasOwn(SOCKET_READS, method) ? SOCKET_READS[method](params) : null;
+      return read && state.session.authenticated ? scenario.answer({ method: 'GET', ...read }) : null;
+    },
+    // Whether the chat channel of this Team can attach: the preview answers every listed Team's chat.
+    attachable(teamId) {
+      return state.session.authenticated && state.teams.some((team) => team.team_id === teamId);
+    },
+    answer({ method = 'GET', path, query = new URLSearchParams(), body = null }) {
       if (path === '/api/session' && method === 'POST') return ok(state.session);
       const security = securityRoutes(state, method, path, body);
       if (security) return security;
@@ -717,14 +753,8 @@ export function createScenario(name = 'ready', locale = 'en') {
       return routineRecoveryRoutes(state, method, path, body) ?? routineStepRoutes(state, method, path) ??
         routineProposalRoutes(state, method, path, body) ?? routineRoutes(state, method, path, body);
     },
-    // The chat socket: `open` and `message` return the frames to send back, in order.
+    // The chat channel: `message` returns the v7 frames to send back, in order.
     chat: {
-      path: '/api/teams/marketing/chat/ws',
-      // The listed Team a chat socket path belongs to, or null; the preview answers every listed Team's chat.
-      team(path) {
-        const teamId = path.match(/^\/api\/teams\/([a-z0-9_]{1,40})\/chat\/ws$/)?.[1];
-        return teamId && state.teams.some((team) => team.team_id === teamId) ? teamId : null;
-      },
       message(frame, teamId = 'marketing') {
         // Any Team but Marketing just echoes, so a Team picked in the preview chats without a scenario of its own.
         if (teamId !== 'marketing') {
@@ -771,4 +801,5 @@ export function createScenario(name = 'ready', locale = 'en') {
       },
     },
   };
+  return scenario;
 }

@@ -6,7 +6,7 @@ import { expect, test } from '@playwright/test';
 import { LOCALES } from '../src/lib/locales.js';
 import { messages } from '../src/lib/messages.js';
 import { localizedChallenge } from './localizedRequest.js';
-import { routeScenario } from './scenarioRoutes.js';
+import { routeChat, routeScenario } from './scenarioRoutes.js';
 
 const PASSWORD = 'violet otter lantern quartz 92';
 const KINDS = ['approval', 'auth:password', 'input:choice'];
@@ -115,7 +115,7 @@ async function routeLocalizedTeam(page, { purpose = false } = {}) {
     if (team.pending.locale !== frame.locale) issue(frame.locale);
     return [challenge()];
   };
-  await page.routeWebSocket('**/api/teams/marketing/chat/ws', (socket) => {
+  await routeChat(page, 'marketing', (socket) => {
     team.socket = socket;
     socket.onMessage((message) => {
       const frame = JSON.parse(message);

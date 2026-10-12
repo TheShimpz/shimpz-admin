@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 
 import { accessibilityViolations } from './axe.js';
+import { routeChat, routeRead } from './scenarioRoutes.js';
 
 const modelCatalog = JSON.parse(
   readFileSync(new URL('../src/lib/modelCatalog.json', import.meta.url), 'utf8'),
@@ -65,11 +66,9 @@ async function routeReadyChat(page, { teamGate, inferenceGate }) {
   await routeSession(page, {
     body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
   });
-  await page.route('**/api/teams', async (route) => {
+  await routeRead(page, 'teams.list', async () => {
     await teamGate.promise;
-    await json(route, {
-      teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }],
-    });
+    return { status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } };
   });
   await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
   await page.route('**/api/teams/marketing/assistants', (route) => json(route, { assistants: [] }));
@@ -85,7 +84,7 @@ async function routeReadyChat(page, { teamGate, inferenceGate }) {
     await inferenceGate.promise;
     await json(route, { team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol' });
   });
-  await page.routeWebSocket('**/api/teams/marketing/chat/ws', (socket) => {
+  await routeChat(page, 'marketing', (socket) => {
     socket.onMessage((message) => {
       if (JSON.parse(message).type === 'sync') {
         socket.send(JSON.stringify({ type: 'sync-empty' }));
@@ -153,9 +152,9 @@ test('keeps boot visible across the authenticated root redirect and releases wit
   await routeSession(page, {
     body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
   });
-  await page.route('**/api/teams', async (route) => {
+  await routeRead(page, 'teams.list', async () => {
     await teamGate.promise;
-    await json(route, { teams: [] });
+    return { status: 200, json: { teams: [] } };
   });
   await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
 
@@ -181,9 +180,9 @@ test('releases to the final Chat error when Team hydration fails', async ({ page
   await routeSession(page, {
     body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
   });
-  await page.route('**/api/teams', async (route) => {
+  await routeRead(page, 'teams.list', async () => {
     await teamGate.promise;
-    await json(route, { detail: 'Team catalog unavailable.' }, 503);
+    return { status: 503, json: { detail: 'Team catalog unavailable.' } };
   });
   await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
 
@@ -214,8 +213,8 @@ test('releases the Assistants route when initial catalog hydration does not sett
   await routeSession(page, {
     body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
   });
-  await page.route('**/api/teams', (route) => json(route, {
-    teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }],
+  await routeRead(page, 'teams.list', () => ({
+    status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] },
   }));
   await page.route('**/api/assistants', (route) => json(route, { assistants: [] }));
   await page.route('**/api/teams/marketing/assistants', (route) => json(route, { assistants: [] }));

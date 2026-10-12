@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import { LOCALES } from '../src/lib/locales.js';
 import { messages } from '../src/lib/messages.js';
 import { assistantDetails } from './assistantPages.js';
+import { routeRead } from './scenarioRoutes.js';
 
 // Team admits a staged snapshot's preview from the image's own files. A refused preview (409) keeps that Assistant's
 // page uninstallable and names the next action; a transient failure stays installable, and every load validates each
@@ -31,6 +32,7 @@ function refusal(code, status) {
 // `preview(imageId)` answers one image's icon, summary, and page: a route.fulfill options object, or a promise of one.
 // `bindings(assistantId)` answers an installed Assistant's page the same way.
 async function routeStore(page, { snapshots, preview, installed = () => [], installs = [], bindings = () => ({}) }) {
+  await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } }));
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
     const locale = url.searchParams.get('locale');
@@ -58,7 +60,6 @@ async function routeStore(page, { snapshots, preview, installed = () => [], inst
         authentication_method: 'webauthn', origin_admitted: true, oauth_completion_mode: 'automatic',
         passkey_enrollment_available: true, passkey_registered: true,
       },
-      '/api/teams': { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] },
       '/api/assistants': { assistants: [] },
       '/api/teams/marketing/assistants': { assistants: installed() },
       '/api/assistant-catalog': { version: 1, locale: url.searchParams.get('locale'), assistants: [] },

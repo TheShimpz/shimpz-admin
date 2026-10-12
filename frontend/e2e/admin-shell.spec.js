@@ -2,8 +2,10 @@ import { expect, test } from '@playwright/test';
 
 import { assistantDetails, PAGE_COPY, publicAssistant } from './assistantPages.js';
 import { accessibilityViolations } from './axe.js';
-import { routeScenario } from './scenarioRoutes.js';
+import { raiseTopic, routeRead, routeScenario } from './scenarioRoutes.js';
 import { recoveryCodeSet } from './securityScenarios.js';
+
+const ok = (json, status = 200) => ({ status, json });
 
 function localSession(overrides = {}) {
   return {
@@ -289,15 +291,12 @@ test('shows the installed Admin version with the read-only Local release status'
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
-  await page.route('**/api/platform-release', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
+  await routeRead(page, 'platform.release', () => ({ status: 200, json: {
       release: `ghcr.io/theshimpz/shimpz-local-release@sha256:${'a'.repeat(64)}`,
       ordinal: 42,
       checked_at: '2026-08-08T22:52:21Z',
       outcome: 'updated',
-    }),
-  }));
+    } }));
 
   await page.goto('/assistants/');
 
@@ -338,15 +337,12 @@ test('names a developer release built on this host in the Local release status',
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
-  await page.route('**/api/platform-release', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
+  await routeRead(page, 'platform.release', () => ({ status: 200, json: {
       release: `localhost/shimpz-local-release@sha256:${'b'.repeat(64)}`,
       ordinal: 42,
       checked_at: '2026-08-08T22:52:21Z',
       outcome: 'current',
-    }),
-  }));
+    } }));
 
   await page.goto('/assistants/');
 
@@ -372,15 +368,12 @@ test('reports a Local rollback as a localized warning', async ({ page }) => {
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
-  await page.route('**/api/platform-release', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
+  await routeRead(page, 'platform.release', () => ({ status: 200, json: {
       release: `ghcr.io/theshimpz/shimpz-local-release@sha256:${'a'.repeat(64)}`,
       ordinal: 42,
       checked_at: '2026-08-08T22:52:21Z',
       outcome: 'rollback-needed',
-    }),
-  }));
+    } }));
 
   await page.goto('/assistants/');
 
@@ -391,29 +384,18 @@ test('reports a Local rollback as a localized warning', async ({ page }) => {
   await expect(release.getByText('Atualização revertida', { exact: true })).toBeVisible();
 });
 
-test('reads the Space resources only while visible, one read at a time, and clears them after a failed read', async ({ page }) => {
-  await page.clock.install();
-  // The page starts each read synchronously in its timer or event, so its own count is exact once the clock has run.
-  await page.addInitScript(() => {
-    const original = window.fetch;
-    window.resourceReads = 0;
-    window.fetch = (input, init) => {
-      if (input === '/api/space/resources') window.resourceReads += 1;
-      return original(input, init);
-    };
-  });
-  const started = () => page.evaluate(() => window.resourceReads);
+test('reads the Space resources when Admin says they changed, one read at a time, and clears them after a failed read', async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
+  // Each read waits until the test answers it.
   const reads = [];
-  await page.route('**/api/space/resources', (route) => { reads.push(route); });
-  const answer = (status) => reads.at(-1).fulfill({
+  await routeRead(page, 'space.resources', () => new Promise((resolve) => reads.push(resolve)));
+  const answer = (status) => reads.at(-1)({
     status,
-    contentType: 'application/json',
-    body: JSON.stringify(status === 200
+    json: status === 200
       ? {
         services_running: 6,
         services_total: 7,
@@ -422,13 +404,8 @@ test('reads the Space resources only while visible, one read at a time, and clea
         storage_used_bytes: null,
         storage_total_bytes: null,
       }
-      : { detail: 'Docker is unavailable' }),
+      : { detail: 'Docker is unavailable' },
   });
-  const visibility = (state) => page.evaluate((hidden) => {
-    if (hidden) Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
-    else delete document.visibilityState;
-    document.dispatchEvent(new Event('visibilitychange'));
-  }, state === 'hidden');
   const services = page.getByText('A service is stopped', { exact: true });
 
   await page.goto('/assistants/');
@@ -438,64 +415,53 @@ test('reads the Space resources only while visible, one read at a time, and clea
   // The numbers behind the status are its hover details.
   await expect(page.getByTitle(/Memory 0\.4\/4 GiB/)).toBeVisible();
 
-  // A hidden page lets its turns pass; becoming visible reads at once.
-  await visibility('hidden');
-  await page.clock.runFor(61_000);
-  expect(await started()).toBe(1);
-  await visibility('visible');
-  expect(await started()).toBe(2);
+  // A change reads again; changes while that read is pending start no other read, only one more once it ends.
+  await raiseTopic(page, 'space/resources');
   await expect.poll(() => reads.length).toBe(2);
-
-  // While that read is pending, the next turn does not start another.
-  await page.clock.runFor(31_000);
-  expect(await started()).toBe(2);
-
-  // A failed read clears the signal, and the next turn reads again.
+  await raiseTopic(page, 'space/resources');
+  await raiseTopic(page, 'space/resources');
+  // A failed read clears the signal, and the one held change reads again.
   await answer(503);
   await expect(services).toBeHidden();
-  await page.clock.runFor(31_000);
   await expect.poll(() => reads.length).toBe(3);
+  await answer(200);
+  await expect(services).toBeVisible();
+  expect(reads).toHaveLength(3);
 });
 
-test('reads the Local release status only while visible, one read at a time', async ({ page }) => {
+test('reads the Local release status at open and when Admin says it changed, never on a timer', async ({ page }) => {
   await page.clock.install();
-  // The page starts each read synchronously in its timer or event, so its own count is exact once the clock has run.
-  await page.addInitScript(() => {
-    const original = window.fetch;
-    window.releaseReads = 0;
-    window.fetch = (input, init) => {
-      if (input === '/api/platform-release') window.releaseReads += 1;
-      return original(input, init);
-    };
-  });
-  const started = () => page.evaluate(() => window.releaseReads);
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
-  const reads = [];
-  await page.route('**/api/platform-release', (route) => { reads.push(route); });
-  const visibility = (state) => page.evaluate((hidden) => {
-    if (hidden) Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
-    else delete document.visibilityState;
-    document.dispatchEvent(new Event('visibilitychange'));
-  }, state === 'hidden');
+  let reads = 0;
+  let outcome = 'current';
+  await routeRead(page, 'platform.release', () => {
+    reads += 1;
+    return {
+      status: 200,
+      json: {
+        release: `ghcr.io/theshimpz/shimpz-local-release@sha256:${'a'.repeat(64)}`,
+        ordinal: 42,
+        checked_at: '2026-08-08T22:52:21Z',
+        outcome,
+      },
+    };
+  });
 
   await page.goto('/assistants/');
-  await expect.poll(() => reads.length).toBe(1);
-  // While that read is pending, the next turn does not start another.
-  await page.clock.runFor(61_000);
-  expect(await started()).toBe(1);
-  await reads[0].fulfill({ status: 503, contentType: 'application/json', body: '{"detail":"unavailable"}' });
-
-  // A hidden page lets its turns pass; becoming visible reads at once.
-  await visibility('hidden');
-  await page.clock.runFor(121_000);
-  expect(await started()).toBe(1);
-  await visibility('visible');
-  expect(await started()).toBe(2);
-  await expect.poll(() => reads.length).toBe(2);
+  const release = page.getByText('Admin v0.1.0', { exact: true }).locator('..');
+  await expect(release).toHaveAttribute('title', 'Local platform release 42');
+  await expect.poll(() => reads).toBe(1);
+  // An idle page sends nothing however long it stays open.
+  await page.clock.runFor(10 * 60_000);
+  expect(reads).toBe(1);
+  outcome = 'rollback-needed';
+  await raiseTopic(page, 'platform/release');
+  await expect(release.getByText('Update rolled back', { exact: true })).toBeVisible();
+  expect(reads).toBe(2);
 });
 
 test('opens the Store for the Team its link names and refuses a missing Team', { tag: '@mobile' }, async ({ page }) => {
@@ -504,13 +470,10 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
-  await page.route('**/api/teams', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ teams: [
-      { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
-      { team_id: 'gestao', team_name: 'Gestão', status: 'running' },
-    ] }),
-  }));
+  await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [
+    { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
+    { team_id: 'gestao', team_name: 'Gestão', status: 'running' },
+  ] } }));
   await page.route('**/api/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
@@ -544,16 +507,16 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
     body: JSON.stringify({ files: [] }),
   }));
   // The sidebar's status, with memory nearly full, is part of the scanned screen.
-  await page.route('**/api/space/resources', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({
+  await routeRead(page, 'space.resources', () => ({
+    status: 200,
+    json: {
       services_running: 7,
       services_total: 7,
       memory_used_bytes: 3.5 * 2 ** 30,
       memory_total_bytes: 4 * 2 ** 30,
       storage_used_bytes: 2 ** 30,
       storage_total_bytes: 64 * 2 ** 30,
-    }),
+    },
   }));
 
   await page.goto('/assistants/?team=marketing');
@@ -594,10 +557,7 @@ test('never renders a matching publication while Local snapshots are settling', 
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
-  await page.route('**/api/teams', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }),
-  }));
+  await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
   await page.route('**/api/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
@@ -717,10 +677,7 @@ test('renders Assistant identities immediately during in-app icon hydration', as
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
-  await page.route('**/api/teams', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }),
-  }));
+  await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
   await page.route('**/api/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
@@ -786,6 +743,7 @@ test('shows the first Assistants view before a public icon finishes loading', as
   let markIconRequested;
   const iconGate = new Promise((resolve) => { releaseIcon = resolve; });
   const iconRequested = new Promise((resolve) => { markIconRequested = resolve; });
+  await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } }));
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path === '/api/assistants/hello-pulse/catalog-icon') {
@@ -796,7 +754,6 @@ test('shows the first Assistants view before a public icon finishes loading', as
     }
     const body = {
       '/api/session': authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
-      '/api/teams': { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] },
       '/api/assistants': { assistants: [] },
       '/api/teams/marketing/assistants': { assistants: [] },
       '/api/assistant-catalog': { version: 1, locale: 'en', assistants: [{
@@ -847,13 +804,13 @@ test('shows the first Assistants view before a public icon finishes loading', as
 });
 
 test('shows an over-budget public icon as unavailable instead of loading forever', async ({ page }) => {
+  await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } }));
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     // The icon never answers within ICON_PRESENTATION_BUDGET_MS, so the catalog gives up on it.
     if (path === '/api/assistants/hello-pulse/catalog-icon') return;
     const body = {
       '/api/session': authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
-      '/api/teams': { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] },
       '/api/assistants': { assistants: [] },
       '/api/teams/marketing/assistants': { assistants: [] },
       '/api/assistant-catalog': { version: 1, locale: 'en', assistants: [{
@@ -904,10 +861,7 @@ test('keeps public discovery available when Local snapshot enumeration fails', a
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
-  await page.route('**/api/teams', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }),
-  }));
+  await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
   await page.route('**/api/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
@@ -971,12 +925,9 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
-  await page.route('**/api/teams', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ teams: [
+  await routeRead(page, 'teams.list', () => ok({ teams: [
       { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
-    ] }),
-  }));
+    ] }));
   await page.route('**/api/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
@@ -1161,12 +1112,9 @@ test('removes an installed publication before its staged build is installed', as
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
-  await page.route('**/api/teams', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ teams: [
+  await routeRead(page, 'teams.list', () => ok({ teams: [
       { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
-    ] }),
-  }));
+    ] }));
   await page.route('**/api/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
@@ -1283,10 +1231,7 @@ test('asks for the first Team from the Store when no Team exists', async ({ page
     contentType: 'application/json',
     body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
   }));
-  await page.route('**/api/teams', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify({ teams: [] }),
-  }));
+  await routeRead(page, 'teams.list', () => ok({ teams: [] }));
   await page.route('**/api/assistants', (route) => route.fulfill({
     contentType: 'application/json',
     body: JSON.stringify({ assistants: [] }),
