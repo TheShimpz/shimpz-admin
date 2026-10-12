@@ -457,6 +457,47 @@ test('reads the Space resources only while visible, one read at a time, and clea
   await expect.poll(() => reads.length).toBe(3);
 });
 
+test('reads the Local release status only while visible, one read at a time', async ({ page }) => {
+  await page.clock.install();
+  // The page starts each read synchronously in its timer or event, so its own count is exact once the clock has run.
+  await page.addInitScript(() => {
+    const original = window.fetch;
+    window.releaseReads = 0;
+    window.fetch = (input, init) => {
+      if (input === '/api/platform-release') window.releaseReads += 1;
+      return original(input, init);
+    };
+  });
+  const started = () => page.evaluate(() => window.releaseReads);
+  await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+  }));
+  const reads = [];
+  await page.route('**/api/platform-release', (route) => { reads.push(route); });
+  const visibility = (state) => page.evaluate((hidden) => {
+    if (hidden) Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    else delete document.visibilityState;
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, state === 'hidden');
+
+  await page.goto('/assistants/');
+  await expect.poll(() => reads.length).toBe(1);
+  // While that read is pending, the next turn does not start another.
+  await page.clock.runFor(61_000);
+  expect(await started()).toBe(1);
+  await reads[0].fulfill({ status: 503, contentType: 'application/json', body: '{"detail":"unavailable"}' });
+
+  // A hidden page lets its turns pass; becoming visible reads at once.
+  await visibility('hidden');
+  await page.clock.runFor(121_000);
+  expect(await started()).toBe(1);
+  await visibility('visible');
+  expect(await started()).toBe(2);
+  await expect.poll(() => reads.length).toBe(2);
+});
+
 test('opens the Store for the Team its link names and refuses a missing Team', { tag: '@mobile' }, async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
