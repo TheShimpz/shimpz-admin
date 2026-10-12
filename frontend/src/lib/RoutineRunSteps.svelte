@@ -7,6 +7,7 @@
   import {
     attemptWords,
     conditionWords,
+    countWords,
     fillRoutineCopy,
     humanizeId,
     literalWords,
@@ -50,10 +51,6 @@
   let remaining = $derived((total ?? 0) - shown.length);
 
   const assistantName = (assistant) => names[assistant] ?? humanizeId(assistant);
-  const plural = (forms, count) => fillRoutineCopy(
-    new Intl.PluralRules(locale).select(count) === 'one' ? forms.one : forms.other,
-    { count: new Intl.NumberFormat(locale).format(count) },
-  );
 
   function restart() {
     steps = [];
@@ -168,7 +165,7 @@
         {/if}
         {#if attempts?.byStep.get(step.position.step)?.length}
           <div class="attempts">
-            <div class="attempts-title">{plural(copy.result.attempts, attempts.byStep.get(step.position.step).length)}</div>
+            <div class="attempts-title">{countWords(copy.result.attempts, attempts.byStep.get(step.position.step).length, locale)}</div>
             <ul>{#each attempts.byStep.get(step.position.step) as item (`${item.operation_id}:${item.attempt}`)}{@render attempt(item, false)}{/each}</ul>
           </div>
         {/if}
@@ -182,7 +179,7 @@
   <div class="dim" role="status">{copy.result.stepsLoading}</div>
 {:else if remaining > 0}
   <Button class="more" variant="ghost" size="sm" type="button" onclick={more}>
-    {plural(copy.result.more, Math.min(pageSize, remaining))}
+    {countWords(copy.result.more, Math.min(pageSize, remaining), locale)}
   </Button>
 {/if}
 {#if attempts?.apart.length}

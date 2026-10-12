@@ -1142,6 +1142,11 @@ function plural(forms, count, locale) {
   return new Intl.PluralRules(locale).select(count) === 'one' ? forms.one : forms.other;
 }
 
+/** A count in words: its form for the count in the viewer's locale, the count written in that locale's digits. */
+export function countWords(forms, count, locale) {
+  return fill(plural(forms, count, locale), { count: new Intl.NumberFormat(locale).format(count) });
+}
+
 /** How many runs one rollup counts, in words: the healthy runs of a continuous Routine, or the runs one missed. */
 export function runCountWords(forms, runs, locale) {
   return fill(plural(forms, runs, locale), { runs });
@@ -1178,7 +1183,7 @@ export function stepChain(steps, assistantName) {
 export function summaryChain(plan, assistantName, copy, locale) {
   const chain = stepChain(plan.actions, assistantName);
   if (plan.more === 0) return chain;
-  return `${chain} › ${fill(plural(copy.rest, plan.more, locale), { count: new Intl.NumberFormat(locale).format(plan.more) })}`;
+  return `${chain} › ${countWords(copy.rest, plan.more, locale)}`;
 }
 
 /**
@@ -1259,7 +1264,7 @@ export function outputScalarWords(node, copy, locale) {
 
 /** How many more items or fields a shown result left out, in words. */
 export function omittedWords(copy, count, locale) {
-  return fill(plural(copy.more, count, locale), { count: new Intl.NumberFormat(locale).format(count) });
+  return countWords(copy.more, count, locale);
 }
 
 /**

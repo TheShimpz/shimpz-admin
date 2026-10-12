@@ -7,7 +7,7 @@
   import RoutineRunSteps from '#lib/RoutineRunSteps.svelte';
   import RoutineTag from '#lib/RoutineTag.svelte';
   import {
-    displayZone, fillRoutineCopy, instantWords, MAX_ROUTINE_STEPS, readRunDiagnostics, runBinding,
+    countWords, displayZone, instantWords, MAX_ROUTINE_STEPS, readRunDiagnostics, runBinding,
   } from '#lib/routine.js';
   import { attemptsByStep, resultView } from '#lib/routineResult.js';
 
@@ -43,10 +43,7 @@
   let steps = $derived(entry.detail.plan?.steps ?? total);
   let attempts = $derived(diagnostics ? attemptsByStep(diagnostics, steps ?? MAX_ROUTINE_STEPS) : null);
   let finished = $derived(instantWords(entry.createdAt, $locale, routine ? displayZone(routine) : undefined));
-  let count = $derived(steps === null ? '' : fillRoutineCopy(
-    new Intl.PluralRules($locale).select(steps) === 'one' ? copy.result.stepCount.one : copy.result.stepCount.other,
-    { count: new Intl.NumberFormat($locale).format(steps) },
-  ));
+  let count = $derived(steps === null ? '' : countWords(copy.result.stepCount, steps, $locale));
   let badge = $derived(TAGS[tone] ?? TAGS.neutral);
   let label = $derived(status.charAt(0).toLocaleUpperCase($locale) + status.slice(1));
 

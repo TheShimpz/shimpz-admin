@@ -5,6 +5,7 @@
   import { call } from '#lib/adminSocket.js';
   import RoutineIcon from '#lib/RoutineIcon.svelte';
   import {
+    countWords,
     dispositionWords,
     fillRoutineCopy,
     humanizeId,
@@ -38,10 +39,6 @@
   let shown = $derived(visibleSteps(steps, pages, pageSize));
   let remaining = $derived(plan.steps - shown.length);
   let summary = $derived(summaryChain(plan, assistantName, copy.notice, locale));
-  const plural = (forms, count) => fillRoutineCopy(
-    new Intl.PluralRules(locale).select(count) === 'one' ? forms.one : forms.other,
-    { count: new Intl.NumberFormat(locale).format(count) },
-  );
 
   // Read pages until `wanted` steps are loaded or the plan has no more.
   async function load(wanted) {
@@ -97,7 +94,7 @@
   }
 </script>
 
-<p class="overview">{plural(copy.result.stepCount, plan.steps)} · {summary}</p>
+<p class="overview">{countWords(copy.result.stepCount, plan.steps, locale)} · {summary}</p>
 <ol class="plan" aria-label={copy.plan.title} bind:this={list}>
   {#each shown as step (step.position)}
     <li tabindex="-1">
@@ -133,7 +130,7 @@
   <p class="note" role="status">{copy.plan.loading}</p>
 {:else if remaining > 0}
   <Button class="more" variant="ghost" size="sm" type="button" onclick={more}>
-    {plural(copy.result.more, Math.min(pageSize, remaining))}
+    {countWords(copy.result.more, Math.min(pageSize, remaining), locale)}
   </Button>
 {/if}
 <p class="disposition">{dispositionWords(routine.output, copy.plan)}</p>

@@ -3,7 +3,7 @@
   import RoutineResult from '#lib/RoutineResult.svelte';
   import RoutineResultTable from '#lib/RoutineResultTable.svelte';
   import RoutineResultValue from '#lib/RoutineResultValue.svelte';
-  import { fillRoutineCopy, omittedWords } from '#lib/routine.js';
+  import { countWords, omittedWords } from '#lib/routine.js';
 
   // A run's shown result organized for reading (ADR-0092 amendment, 2026-10-05, output): its single values as one
   // compact summary strip, each small group of them under its own label, then each list as a table and each deeper
@@ -11,13 +11,6 @@
   let { view, copy, resultCopy, locale, level = 4, oncopy = null } = $props();
 
   let heading = $derived(`h${Math.min(level, 6)}`);
-
-  function countWords(count) {
-    const forms = resultCopy.items;
-    return fillRoutineCopy(new Intl.PluralRules(locale).select(count) === 'one' ? forms.one : forms.other, {
-      count: new Intl.NumberFormat(locale).format(count),
-    });
-  }
 </script>
 
 {#if view.summary.length}
@@ -43,7 +36,7 @@
     {#if block.label}
       <svelte:element this={heading} class="block-label">
         {block.label}
-        {#if block.kind === 'table'}<span class="count">{countWords(block.table.rows.length + block.omitted)}</span>{/if}
+        {#if block.kind === 'table'}<span class="count">{countWords(resultCopy.items, block.table.rows.length + block.omitted, locale)}</span>{/if}
       </svelte:element>
     {/if}
     {#if block.kind === 'table'}
