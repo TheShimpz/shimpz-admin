@@ -241,14 +241,18 @@ async def authenticated(
 
 
 def resume_answered(answered: Answered) -> team.TeamResponse:
-    """The run resumes, or ends denied; it replays for up to its active time, so this runs on a worker thread.
+    """Team's answer as the run resumes, or ends denied; it replays for up to its active time, so this runs on a worker.
 
     The Supervisor's session binding travels with the worker thread.
     """
-    result = _resume(answered.team_id, answered.run_id, "human", answered.payload, answered.assurance)
+    return _resume(answered.team_id, answered.run_id, "human", answered.payload, answered.assurance)
+
+
+def answered_outcome(answered: Answered, resumed: team.TeamResponse) -> team.TeamResponse:
+    """What the person learns: an Action password Admin could not check denied the run, which says so as a failure."""
     if answered.failure is not None:
         return team.TeamResponse(answered.failure[0], {"code": "human-authentication-unavailable"})
-    return result
+    return resumed
 
 
 def resume_integrations(team_id: object, run_id: object) -> team.TeamResponse:

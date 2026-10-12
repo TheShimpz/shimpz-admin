@@ -40,6 +40,7 @@ def _offer(socket: SessionSocket, subject: str) -> Answer:
     earlier, socket.ticket = socket.ticket, token
     local_auth.discard_operation(earlier, confirmations)
     if not registry.REGISTRY.live(socket.step_up):
+        local_auth.discard_operation(token, confirmations)
         confirmations.ticket_store.revoke(socket.step_up)
     return 202, offer
 
@@ -57,8 +58,11 @@ async def begin(socket: SessionSocket, subject: str, body: dict[str, object]) ->
 
 
 def _current(socket: SessionSocket) -> bool:
-    """The socket is still open in its session, and its Origin and session are still current (on the lane worker)."""
-    return registry.REGISTRY.live(socket.step_up) and lane.current(socket)
+    """On the lane worker: the socket's Origin and session are still current, and then it is still open in its session.
+
+    The socket's registration is read last, after the loop answered, so a socket that closed meanwhile never dispatches.
+    """
+    return lane.current(socket) and registry.REGISTRY.live(socket.step_up)
 
 
 def _complete(socket: SessionSocket, subject: str, body: dict[str, object], dispatch: Dispatch) -> object:

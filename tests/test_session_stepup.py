@@ -325,9 +325,15 @@ class RoutineDeletionTests(StepUpCase):
             context.ticket_store.revoke(asker.binding)
             return offer(asker, context, subject)
 
-        with mock.patch.object(self.local_auth, "offer_operation", side_effect=offer_while_closing):
+        with (
+            mock.patch.object(self.local_auth, "offer_operation", side_effect=offer_while_closing),
+            mock.patch.object(self.local_auth, "passkey_registered", return_value=True),
+            mock.patch.object(self.state, "active_passkeys", return_value=[{"credential_id": "credential"}]),
+            mock.patch.object(self.passkeys, "authentication_options", return_value={"challenge": "x"}),
+        ):
             self.assertEqual(self.run_calls(_deletion())[0]["status"], 202)
-        self.assertEqual(self.context.ticket_store._records, {})
+        # Neither the ticket nor its passkey challenge outlives the socket.
+        self.assertEqual((self.context.ticket_store._records, self.context.challenge_store._records), ({}, {}))
 
     def test_an_origin_admin_does_not_admit_is_refused_before_the_password(self) -> None:
         binding = self.tickets.Binding("s" * 64, "a" * 32)

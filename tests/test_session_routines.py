@@ -235,6 +235,22 @@ class RoutineResumeTests(RoutineMethodCase):
         self.assertEqual(authenticated.await_args.args[:3], ("team_1", RUN, DENY))
         self.assertIs(authenticated.await_args.args[3], self.admin_app._AUTHENTICATE_ACTION_REQUEST)
 
+    def test_a_denial_sent_because_the_password_could_not_be_checked_still_announces_the_run(self) -> None:
+        checked = self.answer.Answered(
+            "team_1", RUN, {"challenge_id": CHALLENGE, "decision": "deny"}, None, (503, "authentication-unavailable")
+        )
+        denied = self.team.TeamResponse(200, {"team_id": "team_1", "run_id": RUN, "status": "denied"})
+        with (
+            mock.patch.object(self.answer, "authenticated", new=mock.AsyncMock(return_value=checked)),
+            mock.patch.object(self.answer, "resume_answered", return_value=denied),
+        ):
+            (result,), raised = self.results(
+                ("routines.human", {"team_id": "team_1", "run_id": RUN, "body": DENY}), topics=("team/team_1/routines",)
+            )
+        # Team ended the run denied, so the Routines changed; the person learns the password could not be checked.
+        self.assertEqual((result["status"], result["body"]), (503, {"code": "human-authentication-unavailable"}))
+        self.assertEqual(raised, {"team/team_1/routines"})
+
     def test_a_rejected_or_expired_answer_never_resumes_and_says_nothing_started(self) -> None:
         rejected = self.team.TeamResponse(409, {"code": "authentication-denied", "attempts_remaining": 2})
         with (

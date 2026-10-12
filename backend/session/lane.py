@@ -61,7 +61,8 @@ class RefusedError(Exception):
 def current(socket: SessionSocket) -> bool:
     """On a lane worker: check the socket's Origin and session on its loop, never renewing it.
 
-    A loop that already closed runs nothing more, and a check it cannot answer in time closes the socket.
+    A loop that already closed runs nothing more, a check it cannot answer in time closes the socket, and a socket that
+    closed while the answer came back to this worker is not current.
     """
     authorized = socket.authorized()
     try:
@@ -70,7 +71,7 @@ def current(socket: SessionSocket) -> bool:
         authorized.close()
         return False
     try:
-        return check.result(timeout=CHECK_SECONDS)
+        return check.result(timeout=CHECK_SECONDS) and not socket.closed.is_set()
     except TimeoutError:
         check.cancel()
         with contextlib.suppress(RuntimeError):

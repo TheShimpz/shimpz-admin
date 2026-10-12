@@ -124,7 +124,9 @@ def _answered(socket: SessionSocket, call_id: str, params: dict[str, object]) ->
     if not lane.current(socket):
         raise lane.RefusedError
     _started(socket, call_id)()
-    return _settled(socket, params["team_id"], answer.resume_answered(checked))
+    # The run changed whenever Team answered, also when the answer was a denial for a password Admin could not check.
+    resumed = _settled(socket, params["team_id"], answer.resume_answered(checked))
+    return answer.answered_outcome(checked, resumed)
 
 
 async def human(socket: SessionSocket, call_id: str, params: dict[str, object]) -> Answer:

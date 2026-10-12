@@ -40,6 +40,20 @@ def _socket(gate: socket.Gate) -> socket.SessionSocket:
 
 
 class SessionPartsTests(unittest.TestCase):
+    def test_a_socket_that_closes_while_its_check_comes_back_is_not_current(self) -> None:
+        async def scenario() -> bool:
+            closed = asyncio.Event()
+
+            async def authorized() -> bool:
+                # The check passes, and the socket closes before the worker reads the answer.
+                closed.set()
+                return True
+
+            socket = types.SimpleNamespace(authorized=authorized, loop=asyncio.get_running_loop(), closed=closed)
+            return await asyncio.to_thread(lane.current, socket)
+
+        self.assertFalse(asyncio.run(scenario()))
+
     def test_a_budget_forgets_events_and_sessions_older_than_its_minute(self) -> None:
         now = [0.0]
         limited = budget.SessionBudget(1, clock=lambda: now[0])

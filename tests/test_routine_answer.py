@@ -37,7 +37,9 @@ def resumed(status: str = "done", run: str = RUN) -> team.TeamResponse:
 async def answered(frame: dict[str, object], authenticate) -> team.TeamResponse:
     """An answer as the session socket's method makes it: authenticated, then the run resumed."""
     checked = await answer.authenticated("team_1", RUN, frame, authenticate)
-    return checked if isinstance(checked, team.TeamResponse) else answer.resume_answered(checked)
+    if isinstance(checked, team.TeamResponse):
+        return checked
+    return answer.answered_outcome(checked, answer.resume_answered(checked))
 
 
 class RoutineAnswerTests(unittest.TestCase):
