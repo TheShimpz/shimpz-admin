@@ -7,7 +7,7 @@
 
   import { t } from '#lib/i18n.js';
   import { loadTeamRoutines, retainTeamRoutines, routineContext } from '#lib/routineContext.js';
-  import { call } from '#lib/adminSocket.js';
+  import { backgroundCall } from '#lib/adminSocket.js';
   import TeamActionsMenu from '#lib/TeamActionsMenu.svelte';
   import { renameTeam, reorderTeams, teamContext } from '#lib/teamContext.js';
   import TeamRoutinesDialog from '#lib/TeamRoutinesDialog.svelte';
@@ -150,13 +150,14 @@
       listed.routines.some((routine) => routine.state === 'paused' || routine.needs_reconfirm);
   }
 
-  // Loads follow the Team list's membership, not every Team context transition such as a selection or a new order.
+  // Loads follow the Team list's membership, not every Team context transition such as a selection or a new order. They
+  // are automatic reads (Admin's own change may cause them), so they never renew the session's idle time.
   let routineTeams = $derived(JSON.stringify($teamContext.teams.map((team) => team.id).sort()));
 
   $effect(() => {
     const ids = JSON.parse(routineTeams);
     retainTeamRoutines(ids);
-    for (const id of ids) loadTeamRoutines(call, id).catch(() => {});
+    for (const id of ids) loadTeamRoutines(backgroundCall, id).catch(() => {});
   });
 
   // Teams keep the Supervisor's order: drag a Team by its name, or press Alt+ArrowUp / Alt+ArrowDown on it. The order

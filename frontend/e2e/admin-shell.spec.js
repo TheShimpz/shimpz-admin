@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import { assistantDetails, PAGE_COPY, publicAssistant } from './assistantPages.js';
 import { accessibilityViolations } from './axe.js';
-import { raiseTopic, routeRead, routeScenario } from './scenarioRoutes.js';
+import { raiseTopic, routeRead, routeScenario, sessionFrames } from './scenarioRoutes.js';
 import { recoveryCodeSet } from './securityScenarios.js';
 
 const ok = (json, status = 200) => ({ status, json });
@@ -427,6 +427,39 @@ test('reads the Space resources when Admin says they changed, one read at a time
   await answer(200);
   await expect(services).toBeVisible();
   expect(reads).toHaveLength(3);
+});
+
+test('reads a Team list change heard while the shell loads, and re-reads after a change never renew the session', async ({ page }) => {
+  const scenario = await routeScenario(page);
+  const listed = (await scenario.call('teams.list', {})).json.teams;
+  let releaseFirst;
+  const first = new Promise((resolve) => { releaseFirst = resolve; });
+  let lists = 0;
+  await routeRead(page, 'teams.list', async () => {
+    lists += 1;
+    if (lists === 1) {
+      await first;
+      return undefined;
+    }
+    return ok({ teams: [...listed, { team_id: 'research', team_name: 'Research', status: 'running' }] });
+  });
+
+  await page.goto('/chat/?team=marketing');
+  await expect.poll(() => lists).toBe(1);
+  await expect.poll(() => scenario.sessions.some((session) => session.subscribed('teams'))).toBe(true);
+  // Another tab made a Team while this one's first list read was still on its way.
+  await raiseTopic(page, 'teams');
+  releaseFirst();
+  await expect(page.getByRole('link', { name: 'Research', exact: true })).toBeVisible();
+  expect(lists).toBe(2);
+
+  // Reads Admin's change caused are automatic: none of them restarts the session's idle time.
+  const calls = (await sessionFrames(page)).filter((frame) => frame.type === 'call');
+  const teamLists = calls.filter((frame) => frame.method === 'teams.list');
+  expect(teamLists.slice(1).map((frame) => frame.background)).toEqual([true]);
+  const routineLists = calls.filter((frame) => frame.method === 'routines.list');
+  expect(routineLists.some((frame) => frame.params.team_id === 'research')).toBe(true);
+  expect(routineLists.filter((frame) => frame.background !== true)).toEqual([]);
 });
 
 test('reads the Local release status at open and when Admin says it changed, never on a timer', async ({ page }) => {
