@@ -2263,7 +2263,7 @@
           aria-busy={composerBusy && !integrationChallenge && !humanChallenge}
           inert={historyHydrating}
         >
-        <p class="live-status" aria-live="polite" aria-atomic="true">{liveStatus}</p>
+        <p class="live-status sr-only" aria-live="polite" aria-atomic="true">{liveStatus}</p>
         {#if historyBefore && !olderHistoryFailed}
           <p id="chat-history-hint" class="sr-only">{copy.olderHint}</p>
         {/if}
@@ -2862,19 +2862,6 @@
 
   .empty-conversation :global(.turns) {
     display: none;
-  }
-
-  .live-status {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    margin: -1px;
-    padding: 0;
-    border: 0;
-    clip: rect(0 0 0 0);
-    clip-path: inset(50%);
-    overflow: hidden;
-    white-space: nowrap;
   }
 
   .exchange {
