@@ -1,10 +1,9 @@
 <script>
   import { Disclosure } from '@shimpz/frontend';
   import {
-    executionSteps,
-    executionStepCount,
     formatExecutionDuration,
     localizedStepLabel,
+    receiptSteps,
   } from './executionProgress.js';
 
   let {
@@ -15,10 +14,12 @@
     assistantNames = new Map(),
     // The reply's usage line: when given, it is the visible summary and the step count is announced after it.
     line = undefined,
+    // Team's measured duration of the turn, which the receipt's rows add up to exactly.
+    durationMs = undefined,
   } = $props();
   let open = $state(false);
-  let steps = $derived(open ? executionSteps(events) : []);
-  let stepCount = $derived(executionStepCount(events));
+  let steps = $derived(receiptSteps(events, durationMs));
+  let stepCount = $derived(steps.length);
   let summaryLabel = $derived(countLabelParts(label));
 
   function countLabelParts(template) {
@@ -32,7 +33,7 @@
   }
 </script>
 
-{#if events.length > 0}
+{#if stepCount > 0}
   <Disclosure class="receipt" bind:open>
     {#snippet summary()}
       {#if line}

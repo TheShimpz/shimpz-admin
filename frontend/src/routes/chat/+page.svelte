@@ -330,6 +330,29 @@
     return grouped;
   }
 
+  // Team's progress of the earlier segments of the turn in flight, kept across each human or Integration pause so the
+  // turn's receipt lists every step it observed; each event carries its segment, as every segment restarts its seq.
+  let earlierSegments = [];
+  let segmentNumber = 0;
+
+  function retainSegment() {
+    for (const event of progressEvents) {
+      if (event.origin === 'team') earlierSegments.push({ ...event, segment: segmentNumber });
+    }
+    segmentNumber += 1;
+  }
+
+  function forgetSegments() {
+    earlierSegments = [];
+    segmentNumber = 0;
+  }
+
+  function turnReceipt() {
+    const receipt = [...earlierSegments, ...progressEvents.map((event) => ({ ...event, segment: segmentNumber }))];
+    forgetSegments();
+    return receipt;
+  }
+
   function resetProgress() {
     progressEvents = [];
     progressProjection = createExecutionProjection();
@@ -1106,6 +1129,7 @@
     busy = true;
     syncing = false;
     stopping = false;
+    retainSegment();
     resetProgress();
   }
 
@@ -1121,6 +1145,7 @@
     busy = true;
     syncing = false;
     stopping = false;
+    retainSegment();
     resetProgress();
   }
 
@@ -1302,7 +1327,7 @@
         }
         if (incoming.type === 'assistant-install-plan') {
           if (!busy || syncing) throw new Error('unexpected Assistant install plan event');
-          const receipt = progressEvents.map((item) => ({ ...item }));
+          const receipt = turnReceipt();
           applyInstallPlanEvent(incoming, receipt);
           const restoreStoppedFocus = stopping && document.activeElement === document.body;
           stopping = false;
@@ -1344,7 +1369,7 @@
             role: 'assistant',
             text: escapeMarkdownText(incoming.reply),
             author: incoming.team_name,
-            receipt: progressEvents.map((item) => ({ ...item })),
+            receipt: turnReceipt(),
           }];
           busy = false;
           stopping = false;
@@ -1356,7 +1381,7 @@
         if (incoming.type === 'assistant-uninstall') {
           if (!busy || syncing) throw new Error('unexpected Assistant lifecycle event');
           capabilityObjective = null;
-          const receipt = progressEvents.map((item) => ({ ...item }));
+          const receipt = turnReceipt();
           if (stopping) throw new Error('unexpected Assistant lifecycle event');
           const terminal = applyLifecycleEvent(incoming, receipt);
           stopping = false;
@@ -1396,7 +1421,7 @@
         return;
       }
 
-      const receipt = progressEvents.map((item) => ({ ...item }));
+      const receipt = turnReceipt();
       expireSocketLifecycles();
       busy = false;
       syncing = false;
@@ -1447,6 +1472,7 @@
   }
 
   function activateTeam(nextTeamId) {
+    forgetSegments();
     if (attachmentTeamId !== nextTeamId) clearAttachments();
     closeSocket();
     clearTurnInstalled();
@@ -1869,6 +1895,7 @@
       return false;
     }
     busy = true;
+    forgetSegments();
     resetProgress();
     clearError();
     if (projectUserTurn) {
@@ -2367,6 +2394,7 @@
                   {/if}
                   <ExecutionReceipt
                     line={assistantTurn.usage ? usageLine : undefined}
+                    durationMs={assistantTurn.usage?.durationMs}
                     events={assistantTurn.receipt ?? []}
                     label={copy.progressStagesExecuted}
                     progressLabels={copy.progress}

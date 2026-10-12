@@ -236,6 +236,7 @@ export default {
         actionAgain: 'Assistant {assistant} で Action {action} の実行を再度試みます',
         actionPosition: '· {total} 件中 {index} 件目のアクション',
         actionDelivery: 'すでに使った結果を記録します',
+        rest: 'ステップ間の調整と待機',
       },
       states: {
         started: '実行中',

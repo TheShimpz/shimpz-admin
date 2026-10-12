@@ -2,6 +2,7 @@ const MAX_DISPLAY_DURATION_MS = 24 * 60 * 60 * 1000;
 
 function identity(event) {
   return [
+    event.segment ?? 0,
     event.origin,
     event.phase,
     event.assistant_id ?? '',
@@ -20,7 +21,7 @@ export function createExecutionProjection() {
 
 function appendStep(projection, event, key, elapsedMs) {
   const step = {
-    key: `${event.seq}:${key}`,
+    key: `${event.segment ?? 0}:${event.seq}:${key}`,
     identity: key,
     seq: event.seq,
     origin: event.origin,
@@ -73,6 +74,21 @@ export function executionSteps(events) {
   const projection = createExecutionProjection();
   for (const event of events) extendExecutionProjection(projection, event);
   return projection.steps;
+}
+
+// The receipt of one logical turn (ADR-0082): Team's measured steps of every segment the page observed, then one row
+// for the rest of Team's clock (the gaps between steps, the person's wait during a pause, and anything this page never
+// observed), so the rows add up to the turn's duration exactly, in whole milliseconds. Admin's own steps run outside
+// that clock and stay in the live progress only.
+export function receiptSteps(events, durationMs) {
+  const projection = createExecutionProjection();
+  for (const event of events) if (event.origin === 'team') extendExecutionProjection(projection, event);
+  const steps = projection.steps;
+  // A reply restored from history, or one whose Team steps this page never saw, has no receipt.
+  if (steps.length === 0 || !Number.isSafeInteger(durationMs) || durationMs < 0) return steps;
+  const measured = steps.reduce((sum, step) => sum + (Number.isSafeInteger(step.elapsed_ms) ? step.elapsed_ms : 0), 0);
+  const rest = durationMs - measured;
+  return rest > 0 ? [...steps, { key: 'rest', identity: 'rest', origin: 'team', phase: 'rest', elapsed_ms: rest }] : steps;
 }
 
 export function executionStepCount(events) {
@@ -137,6 +153,7 @@ function narrativeKey(step) {
     'admin-preparation': 'adminPreparation',
     'action-delivery': 'actionDelivery',
     'reply-validation': 'replyValidation',
+    rest: 'rest',
   }[step.phase];
 }
 

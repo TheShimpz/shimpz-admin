@@ -9,6 +9,7 @@ import {
   formatExecutionDuration,
   localizedEventLabel,
   localizedStepLabel,
+  receiptSteps,
   technicalStepLabel,
 } from '../src/lib/executionProgress.js';
 import { CHAT_PROGRESS_PHASES } from '../src/lib/localChat.js';
@@ -263,4 +264,34 @@ test('counts the same observed rows when a finish has no observed start', () => 
 
   assert.equal(executionStepCount(events), executionSteps(events).length);
   assert.equal(executionStepCount(events), 1);
+});
+
+test('a receipt lists Team\'s steps of every segment and adds up to the turn duration exactly', () => {
+  const segment = (number, phase, elapsed) => [
+    { seq: 1, origin: 'admin', phase: 'admin-preparation', state: 'started', segment: number },
+    { seq: 2, origin: 'admin', phase: 'admin-preparation', state: 'finished', elapsed_ms: 14, segment: number },
+    { seq: 3, origin: 'team', phase, state: 'started', segment: number },
+    { seq: 4, origin: 'team', phase, state: 'finished', elapsed_ms: elapsed, segment: number },
+  ];
+  // A turn that paused once: both segments restart their seq, and the person's wait is in neither.
+  const events = [...segment(0, 'model', 4_200), ...segment(1, 'action', 3_600)];
+  const steps = receiptSteps(events, 36_829);
+  assert.deepEqual(steps.map((step) => [step.phase, step.elapsed_ms]), [
+    ['model', 4_200],
+    ['action', 3_600],
+    ['rest', 29_029],
+  ]);
+  assert.equal(new Set(steps.map((step) => step.key)).size, steps.length);
+  assert.equal(steps.reduce((sum, step) => sum + step.elapsed_ms, 0), 36_829);
+  assert.equal(
+    localizedStepLabel(steps.at(-1), messages.pt.chatPage.progress),
+    messages.pt.chatPage.progress.narrative.rest,
+  );
+
+  // Steps that already fill the duration need no rest row; without a duration the receipt lists only the steps.
+  assert.deepEqual(receiptSteps(segment(0, 'model', 900), 900).map((step) => step.phase), ['model']);
+  assert.deepEqual(receiptSteps(segment(0, 'model', 900)).map((step) => step.phase), ['model']);
+  // Admin's steps alone, or a reply restored from history, make no receipt.
+  assert.deepEqual(receiptSteps(segment(0, 'model', 900).slice(0, 2), 5_000), []);
+  assert.deepEqual(receiptSteps([], 5_000), []);
 });

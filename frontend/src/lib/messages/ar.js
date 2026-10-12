@@ -236,6 +236,7 @@ export default {
         actionAgain: 'أحاول مجددًا تنفيذ Action {action} باستخدام Assistant {assistant}',
         actionPosition: '· الإجراء {index} من {total}',
         actionDelivery: 'أسجّل النتائج التي استخدمتها بالفعل',
+        rest: 'التنسيق والانتظار بين الخطوات',
       },
       states: {
         started: 'قيد التنفيذ',

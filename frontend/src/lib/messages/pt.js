@@ -236,6 +236,7 @@ export default {
         actionAgain: 'Tento executar de novo a Action {action} com o Assistant {assistant}',
         actionPosition: '· ação {index} de {total}',
         actionDelivery: 'Registro os resultados que já usei',
+        rest: 'Coordenação e espera entre etapas',
       },
       states: {
         started: 'Em andamento',

@@ -1541,7 +1541,6 @@ test('compiled Chat renders Markdown and its execution receipt', async ({ page }
   for (let index = 0; index < 3; index += 1) {
     await expect(notices.nth(index)).toHaveAttribute('role', 'status');
   }
-  await expect(page.getByText(/Execution stages recorded: 1/i)).toBeVisible();
 });
 
 test('finishing a measured span updates its duration and announcements across turns', async ({ page }) => {
@@ -1566,14 +1565,12 @@ test('finishing a measured span updates its duration and announcements across tu
   await expect(liveStatus).toHaveText(/Complete$/);
 
   chat.releaseReply();
-  await expect(page.getByText('Execution stages recorded: 1')).toBeVisible();
   await composer.fill('Check progress again');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(liveStatus).toHaveText(/In progress$/);
   chat.releaseProgressFinish();
   await expect(liveStatus).toHaveText(/Complete$/);
   chat.releaseReply();
-  await expect(page.getByText('Execution stages recorded: 1')).toHaveCount(2);
 });
 
 test('overlapping progress returns the visible summary to the earlier active phase', async ({ page }) => {
@@ -1608,7 +1605,8 @@ test('overlapping progress returns the visible summary to the earlier active pha
   });
   await expect(current).toHaveText('Waiting for execution');
   chat.releaseReply();
-  await expect(page.getByText('Execution stages recorded: 2')).toBeVisible();
+  // The receipt lists only Team's steps; Admin's run outside Team's clock.
+  await expect(page.getByText('Execution stages recorded: 1')).toBeVisible();
 });
 
 test('shows a pending chat state before any server progress frame', async ({ page }) => {
@@ -1632,7 +1630,6 @@ test('shows a pending chat state before any server progress frame', async ({ pag
   chat.releaseProgressStart();
   await expect(liveStatus).toHaveText(/Complete$/);
   chat.releaseReply();
-  await expect(page.getByText('Execution stages recorded: 1')).toBeVisible();
   await expect(composer).toBeEnabled();
   await expect.poll(() => chat.chatFrames()).toHaveLength(1);
 });
@@ -3563,10 +3560,15 @@ test('a reply shows what its task used only when its done frame reports usage', 
       { provider: 'openai', model: 'gpt-6-luna', input_tokens: 11900, output_tokens: 580 },
     ],
   };
-  await routeReadyChat(page, { usage });
+  const chat = await routeReadyChat(page, { usage, holdReply: true });
   await page.goto('/chat/');
   await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
+  // Admin's own step comes first, as the mock sends it when the chat frame arrives.
+  await expect.poll(() => chat.chatFrames().length).toBe(1);
+  chat.sendProgressEvent({ type: 'progress', seq: 2, origin: 'team', phase: 'model', state: 'started' });
+  chat.sendProgressEvent({ type: 'progress', seq: 3, origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 1240 });
+  chat.releaseReply();
   const reply = page.getByRole('article', { name: 'Marketing' });
   await expect(reply).toContainText('Rendered answer');
   await expect(reply).toContainText('$0.0095');
@@ -3574,9 +3576,11 @@ test('a reply shows what its task used only when its done frame reports usage', 
   await expect(reply.getByTitle(/GPT-6 Luna: 11,900 input · 580 output/)).toHaveCount(1);
   // With recorded steps the usage line is the one control that opens them, and it still announces their count.
   const receipt = reply.locator('.receipt summary');
-  await expect(receipt).toHaveAccessibleName(/^≈ \$0\.0095 · 13,680 tokens · 6\.2 s · Execution stages recorded: \d+$/);
+  await expect(receipt).toHaveAccessibleName('≈ $0.0095 · 13,680 tokens · 6.2 s · Execution stages recorded: 2');
   await receipt.click();
-  await expect(reply.locator('.receipt ol li').first()).toBeVisible();
+  // Team's measured step, then the rest of Team's clock: together exactly the reply's 6,240 ms.
+  const rows = reply.locator('.receipt ol li time');
+  await expect(rows).toHaveText(['1.2 s', '5.0 s']);
 });
 
 test('a reply restored from history shows its usage line, and one stored without usage shows none', async ({ page }) => {

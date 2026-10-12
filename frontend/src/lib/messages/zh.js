@@ -236,6 +236,7 @@ export default {
         actionAgain: '我再次尝试用 Assistant {assistant} 执行 Action {action}',
         actionPosition: '· 第 {index}/{total} 个操作',
         actionDelivery: '我记录刚才已经使用的结果',
+        rest: '步骤之间的协调与等待',
       },
       states: {
         started: '进行中',

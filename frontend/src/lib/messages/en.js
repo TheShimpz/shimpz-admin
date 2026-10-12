@@ -234,6 +234,7 @@ export default {
         actionAgain: 'I try to run the {action} Action again with the {assistant} Assistant',
         actionPosition: '· action {index} of {total}',
         actionDelivery: 'I record the results I already used',
+        rest: 'Coordination and waiting between steps',
       },
       states: {
         started: 'In progress',

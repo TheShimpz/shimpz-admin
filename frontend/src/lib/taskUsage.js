@@ -83,7 +83,7 @@ function parseUsage(value, minimum) {
   return { duration_ms: value.duration_ms, models };
 }
 
-/** Totals for display: tokens, estimated USD (null when no used model is priced), seconds, and per-model detail. */
+/** Totals for display: tokens, estimated USD (null when no used model is priced), duration, and per-model detail. */
 export function taskUsageSummary(usage) {
   let tokens = 0;
   let cents = 0;
@@ -97,7 +97,7 @@ export function taskUsageSummary(usage) {
     }
     return { title: price?.title ?? entry.model, input: entry.input_tokens, output: entry.output_tokens };
   });
-  return { tokens, usd: priced ? cents / 100 : null, seconds: usage.duration_ms / 1000, detail };
+  return { tokens, usd: priced ? cents / 100 : null, seconds: usage.duration_ms / 1000, durationMs: usage.duration_ms, detail };
 }
 
 /**

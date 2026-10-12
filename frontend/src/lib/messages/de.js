@@ -236,6 +236,7 @@ export default {
         actionAgain: 'Ich versuche erneut, die Action {action} mit dem Assistant {assistant} auszuführen',
         actionPosition: '· Aktion {index} von {total}',
         actionDelivery: 'Ich erfasse die Ergebnisse, die ich bereits verwendet habe',
+        rest: 'Koordination und Warten zwischen den Schritten',
       },
       states: {
         started: 'Läuft',
