@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { Button, StatusBadge, TextField, TextLink } from '@shimpz/frontend';
 
-  import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
+  import { commandsReady, outcomeUnknown, watchTopic } from '#lib/adminSocket.js';
   import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/composerPanel.js';
   import {
     knownDecisionProvider,
@@ -40,6 +40,11 @@
     const known = knownDecisionProvider();
     if (known) fast = { ...fast, phase: 'ready', ...known };
     else void loadFast();
+    // The key changed elsewhere (another tab, or a save that finished after its socket dropped): it is read again,
+    // unless this control is saving, whose own answer is the newer one.
+    return watchTopic('space/decision', (_topic, cause) => {
+      if ((cause === 'changed' || cause === 'reopen') && fast.phase !== 'saving') void loadFast();
+    });
   });
 
   $effect(() => {

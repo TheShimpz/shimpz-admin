@@ -12,7 +12,7 @@
   import SessionExpiryWarning from '#lib/SessionExpiryWarning.svelte';
   import { SESSION_ENDED, setSessionContext } from '#lib/sessionContext.js';
   import SupervisorMenu from '#lib/SupervisorMenu.svelte';
-  import { refreshInference } from '#lib/modelContext.js';
+  import { refreshInference, refreshProviders } from '#lib/modelContext.js';
   import { requestInventoryRefresh, teamContext, teamListChanged } from '#lib/teamContext.js';
   import TeamDialogs from '#lib/TeamDialogs.svelte';
   import TeamNavigation from '#lib/TeamNavigation.svelte';
@@ -95,6 +95,12 @@
     };
   }
 
+  // A provider key of the Space changed (a save that finished after its socket dropped, another tab): the providers
+  // are read again.
+  function providersChanged(_topic, cause) {
+    if (cause === 'changed' || cause === 'reopen') refreshProviders().catch(() => {});
+  }
+
   let watchedTeam = $derived(authenticated ? $teamContext.selectedTeamId : '');
 
   $effect(() => {
@@ -117,6 +123,7 @@
       watchTopic('teams', refreshTeams),
       watchTopic('session', refreshSession),
       watchTopic('assistants/registry', refreshInventory),
+      watchTopic('space/models', providersChanged),
       trackActivity(),
     ];
     onDestroy(() => {

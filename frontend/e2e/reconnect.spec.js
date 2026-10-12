@@ -254,6 +254,70 @@ test('a fast-routing key whose answer was lost says its outcome is unknown and s
   expect(await readsOf(page, 'decision.save')).toHaveLength(1);
 });
 
+test('a provider key that Admin stores only after the connection dropped opens the chat once Admin announces it', async ({ page }) => {
+  const scenario = await routeScenario(page, 'ready');
+  const providers = scenario.call('models.list', {}).json.providers;
+  let stored = false;
+  await routeRead(page, 'models.list', () => ({
+    status: 200,
+    json: { providers: providers.map((entry) => ({ ...entry, configured: stored, masked: stored ? '••••word' : null })) },
+  }));
+  // The save is still running when the connection drops: the page's recovery read finds no key yet.
+  await routeRead(page, 'models.save', () => new Promise(() => {}));
+  let refusing = false;
+  await refuseWhile(page, () => refusing);
+  await page.goto('/chat/?team=marketing');
+  const key = page.getByLabel(messages.en.providerSetup.key);
+  await expect(key).toBeFocused();
+  await key.fill('test-provider-key-word');
+  await page.getByRole('button', { name: messages.en.providerSetup.saveKey }).click();
+  await waitForRead(page, 'models.save');
+  const listReads = (await readsOf(page, 'models.list')).length;
+  refusing = true;
+  await dropSessions(page);
+  await expect(page.getByText(shell.reconnecting)).toBeVisible();
+  refusing = false;
+  await expect.poll(async () => (await readsOf(page, 'models.list')).length).toBeGreaterThan(listReads);
+  await expect(page.getByText(shell.reconnecting)).toHaveCount(0);
+
+  // The save finishes on Admin afterwards, and Admin announces the Space's providers changed.
+  stored = true;
+  await raiseTopic(page, 'space/models');
+  await expect(page.getByRole('textbox', { name: chatPage.send, exact: true })).toBeEnabled();
+  expect(await readsOf(page, 'models.save')).toHaveLength(1);
+});
+
+test('a fast-routing key that Admin stores only after the connection dropped shows once Admin announces it', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  let stored = false;
+  await routeRead(page, 'decision.read', () => ({
+    status: 200, json: { provider: 'typesafe', configured: stored, masked: stored ? '••••word' : null },
+  }));
+  await routeRead(page, 'decision.save', () => new Promise(() => {}));
+  let refusing = false;
+  await refuseWhile(page, () => refusing);
+  await page.goto('/chat/?team=marketing');
+  await expect(page.getByRole('textbox', { name: chatPage.send, exact: true })).toBeEnabled();
+  const trigger = page.getByRole('button', { name: /^Fast routing \(Jev\)/ });
+  await trigger.click();
+  const fast = page.getByRole('dialog', { name: 'Fast routing (Jev)' });
+  await fast.getByLabel('TypeSafe API key').fill('test-typesafe-key-word');
+  await fast.getByRole('button', { name: 'Save', exact: true }).click();
+  await waitForRead(page, 'decision.save');
+  const reads = (await readsOf(page, 'decision.read')).length;
+  refusing = true;
+  await dropSessions(page);
+  await expect(fast.getByRole('alert')).toHaveText(shell.outcomeUnknown);
+  refusing = false;
+  await expect.poll(async () => (await readsOf(page, 'decision.read')).length).toBeGreaterThan(reads);
+  await expect(trigger).not.toHaveAccessibleName(/••••word/);
+
+  stored = true;
+  await raiseTopic(page, 'space/decision');
+  await expect(trigger).toHaveAccessibleName(/••••word/);
+  expect(await readsOf(page, 'decision.save')).toHaveLength(1);
+});
+
 test('an open Integrations drawer reads its Integrations again once Admin is back', async ({ page }) => {
   await routeScenario(page, 'ready');
   let refusing = false;
