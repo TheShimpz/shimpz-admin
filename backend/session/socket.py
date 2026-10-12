@@ -274,11 +274,11 @@ class SessionSocket:
     async def _activity(self, frame: dict[str, object]) -> None:
         """The person's own input restarts the session's idle time, at most once per renewal interval per session.
 
-        It is checked as every frame is, spends the session's call budget, and renews only a session that is still
-        current, so it never revives an expired session nor moves its absolute expiry.
+        It is checked as every frame is, before anything else, spends the session's call budget, and renews only a
+        session that is still current, so it never revives an expired session nor moves its absolute expiry.
         """
         frames.activity(frame)
-        if not budget.CALL_BUDGET.admit(self.session) or not await self._authorized():
+        if not await self._authorized() or not budget.CALL_BUDGET.admit(self.session):
             return
         if not budget.RENEWALS.due(self.session):
             return

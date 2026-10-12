@@ -148,3 +148,17 @@ class SessionSocketActivityTests(SessionSocketCase):
             await websocket.disconnect()
 
         asyncio.run(scenario())
+
+    def test_activity_beyond_the_call_budget_still_closes_a_socket_whose_origin_was_replaced(self) -> None:
+        external = "https://developer.example.test"
+
+        async def scenario() -> None:
+            self.assertEqual(self.admin_app.state.bind_browser_origin(external), "learned")
+            websocket = await self._connect(origin=external)
+            self.assertEqual(self.admin_app.state.bind_browser_origin("https://next.example.test"), "replaced")
+            with mock.patch.object(self.budget, "CALL_BUDGET", self.budget.SessionBudget(0)):
+                await websocket.send_json(ACTIVITY)
+                self.assertEqual(await self._closed(websocket), 4403)
+            await websocket.finish()
+
+        asyncio.run(scenario())
