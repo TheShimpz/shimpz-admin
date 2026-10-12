@@ -348,18 +348,32 @@
   }
 
   // A drag cancelled by Escape still never ends in a click on the name it started from when the pointer is released.
+  // The navigation watches for that release only while it exists.
+  let watchedRelease = null;
+
+  function stopWatchingRelease() {
+    if (!watchedRelease) return;
+    window.removeEventListener('pointerup', watchedRelease, { capture: true });
+    window.removeEventListener('pointercancel', watchedRelease, { capture: true });
+    watchedRelease = null;
+  }
+
   function suppressClickOnRelease(pointerId) {
+    stopWatchingRelease();
     const release = (event) => {
       if (event.pointerId !== pointerId) return;
-      window.removeEventListener('pointerup', release, { capture: true });
-      window.removeEventListener('pointercancel', release, { capture: true });
+      stopWatchingRelease();
       if (event.type === 'pointerup') suppressNextClick();
     };
+    watchedRelease = release;
     window.addEventListener('pointerup', release, { capture: true });
     window.addEventListener('pointercancel', release, { capture: true });
   }
 
-  onDestroy(cancelDrag);
+  onDestroy(() => {
+    cancelDrag();
+    stopWatchingRelease();
+  });
 
   function dragKeydown(event) {
     if (event.key !== 'Escape' || !gesture?.active) return;
