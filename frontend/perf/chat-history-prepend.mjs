@@ -71,6 +71,10 @@ function apiFixture(method, path) {
       failed_second_factor_attempts: 0, recovery_codes_remaining: 10,
       sign_in_history: { previous: { at: '2026-09-23T00:00:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 0 },
     }),
+    'GET /api/space/resources': () => ({
+      services_running: 7, services_total: 7, memory_used_bytes: 429_496_730, memory_total_bytes: 4 * 2 ** 30,
+      storage_used_bytes: 1_395_864_371, storage_total_bytes: 64 * 2 ** 30,
+    }),
     'GET /api/teams': () => ({ teams: [team] }),
     'GET /api/assistants': () => ({ assistants: [] }),
     'GET /api/model-providers': () => ({ providers: models }),
