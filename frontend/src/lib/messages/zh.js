@@ -82,6 +82,8 @@ export default {
     resourceStorage: '存储',
     resourceUnit: 'GiB',
     resourceOk: '所有系统正常',
+    resourceReconnecting: '正在重新连接…',
+    resourceUnreachable: '无法连接 Admin',
     resourceServiceStopped: '有服务已停止',
     resourceMemoryNearlyFull: '内存即将用满',
     resourceMemoryFull: '内存已满',

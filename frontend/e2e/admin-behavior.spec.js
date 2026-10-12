@@ -2670,6 +2670,9 @@ test('keeps reconnecting while Admin restarts for a release and recovers without
   const reconnecting = page.getByText(messages.en.shell.reconnecting);
   await expect(reconnecting).toBeVisible();
   await expect(page.getByText(messages.en.chatPage.disconnected)).toHaveCount(0);
+  // The Space status line reflects the same condition, and returns to the Space's summary once Admin is back.
+  const footerReconnecting = page.getByText(messages.en.shell.resourceReconnecting, { exact: true });
+  await expect(footerReconnecting).toBeVisible();
 
   // Each probe advances virtual time one second through the app's growing reconnect delays (about 22 s over six
   // refusals); probing every 100 ms of real time, instead of backing off to a second between probes, lets those
@@ -2680,6 +2683,7 @@ test('keeps reconnecting while Admin restarts for a release and recovers without
   };
   await expect.poll(advanced(() => chat.refusedConnections()), { timeout: 30_000, intervals: [100] }).toBe(6);
   await expect.poll(advanced(() => reconnecting.isVisible()), { timeout: 30_000, intervals: [100] }).toBe(false);
+  await expect(footerReconnecting).toHaveCount(0);
   await expect(page.getByText('The secure chat connection could not be established.', { exact: false })).toHaveCount(0);
 
   await fillWhenReady(page, composer, 'List my DNS zones');

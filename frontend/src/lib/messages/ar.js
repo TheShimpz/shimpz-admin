@@ -82,6 +82,8 @@ export default {
     resourceStorage: 'التخزين',
     resourceUnit: 'GiB',
     resourceOk: 'جميع الأنظمة طبيعية',
+    resourceReconnecting: 'جارٍ إعادة الاتصال…',
+    resourceUnreachable: 'تعذّر الوصول إلى Admin',
     resourceServiceStopped: 'خدمة متوقفة',
     resourceMemoryNearlyFull: 'الذاكرة ممتلئة تقريبًا',
     resourceMemoryFull: 'الذاكرة ممتلئة',

@@ -82,6 +82,8 @@ export default {
     resourceStorage: 'Speicher',
     resourceUnit: 'GiB',
     resourceOk: 'Alle Systeme normal',
+    resourceReconnecting: 'Verbinde neu…',
+    resourceUnreachable: 'Admin nicht erreichbar',
     resourceServiceStopped: 'Dienst gestoppt',
     resourceMemoryNearlyFull: 'Speicher fast voll',
     resourceMemoryFull: 'Speicher voll',

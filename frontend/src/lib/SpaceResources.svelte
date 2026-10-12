@@ -1,6 +1,6 @@
 <script>
   import { locale, t } from '#lib/i18n.js';
-  import { call, topicValue } from '#lib/adminSocket.js';
+  import { adminSocket, call, topicValue } from '#lib/adminSocket.js';
   import { fetchSpaceResources, resourceSegments, resourceStatus } from '#lib/spaceResources.js';
 
   // What leads the status line, such as the Admin version; it shows even while the status is unknown.
@@ -8,7 +8,15 @@
   // Admin's watcher reads the Space's resources while this line is shown and says when they changed (ADR-0114).
   const signal = topicValue('space/resources', () => fetchSpaceResources(call));
   let resources = $derived($signal);
-  let status = $derived(resources ? resourceStatus(resources) : null);
+  // While Admin cannot be reached the line says so, as the shell's notice does, instead of the last known summary.
+  let connection = $derived(
+    $adminSocket.phase === 'failed'
+      ? { level: 'alert', message: 'shell.resourceUnreachable' }
+      : $adminSocket.phase === 'reconnecting'
+        ? { level: 'warn', message: 'shell.resourceReconnecting' }
+        : null,
+  );
+  let status = $derived(connection ?? (resources ? resourceStatus(resources) : null));
   // The numbers behind the status, read on hover: services, memory, and storage.
   let details = $derived(
     resources

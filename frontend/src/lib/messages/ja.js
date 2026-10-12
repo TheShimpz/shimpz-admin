@@ -82,6 +82,8 @@ export default {
     resourceStorage: 'ストレージ',
     resourceUnit: 'GiB',
     resourceOk: '全システム正常',
+    resourceReconnecting: '再接続中…',
+    resourceUnreachable: 'Admin に接続できません',
     resourceServiceStopped: '停止中のサービスあり',
     resourceMemoryNearlyFull: 'メモリがほぼ満杯',
     resourceMemoryFull: 'メモリが満杯',

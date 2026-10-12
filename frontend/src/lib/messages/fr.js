@@ -82,6 +82,8 @@ export default {
     resourceStorage: 'Stockage',
     resourceUnit: 'Gio',
     resourceOk: 'Tous les systèmes normaux',
+    resourceReconnecting: 'Reconnexion…',
+    resourceUnreachable: 'Admin injoignable',
     resourceServiceStopped: 'Service arrêté',
     resourceMemoryNearlyFull: 'Mémoire presque pleine',
     resourceMemoryFull: 'Mémoire pleine',

@@ -82,6 +82,8 @@ export default {
     resourceStorage: 'Almacenamiento',
     resourceUnit: 'GiB',
     resourceOk: 'Todos los sistemas normales',
+    resourceReconnecting: 'Reconectando…',
+    resourceUnreachable: 'Admin inaccesible',
     resourceServiceStopped: 'Servicio detenido',
     resourceMemoryNearlyFull: 'Memoria casi llena',
     resourceMemoryFull: 'Memoria llena',
