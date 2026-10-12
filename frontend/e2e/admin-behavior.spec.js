@@ -3583,6 +3583,18 @@ test('a reply shows what its task used only when its done frame reports usage', 
   await expect(rows).toHaveText(['1.2 s', '5.0 s']);
 });
 
+test('a reply whose only observed steps are Admin\'s keeps its usage line', async ({ page }) => {
+  const usage = { duration_ms: 6240, models: [{ provider: 'openai', model: 'gpt-6-luna', input_tokens: 11900, output_tokens: 580 }] };
+  await routeReadyChat(page, { usage });
+  await page.goto('/chat/');
+  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  const reply = page.getByRole('article', { name: 'Marketing' });
+  await expect(reply).toContainText('Rendered answer');
+  await expect(reply).toContainText('12,480 tokens');
+  await expect(reply.getByTitle(/GPT-6 Luna: 11,900 input · 580 output/)).toHaveCount(1);
+});
+
 test('a reply restored from history shows its usage line, and one stored without usage shows none', async ({ page }) => {
   const [first, second] = ['d'.repeat(32), 'e'.repeat(32)];
   const usage = {

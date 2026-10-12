@@ -36,6 +36,7 @@
     createExecutionProjection,
     extendExecutionProjection,
     localizedEventLabel,
+    receiptSteps,
   } from '#lib/executionProgress.js';
   import Markdown from '#lib/Markdown.svelte';
   import { escapeMarkdownText } from '#lib/markdown.js';
@@ -340,6 +341,15 @@
       if (event.origin === 'team') earlierSegments.push({ ...event, segment: segmentNumber });
     }
     segmentNumber += 1;
+  }
+
+  // A reply's usage as its receipt shows it (ADR-0082): with a receipt, the duration shown is what its rows add up to,
+  // which is Team's duration unless steps measured on another clock overrun it.
+  function shownUsage(turn) {
+    const steps = receiptSteps(turn.receipt ?? [], turn.usage?.durationMs);
+    if (!turn.usage || steps.length === 0) return { usage: turn.usage, receipt: false };
+    const total = steps.reduce((sum, step) => sum + (Number.isSafeInteger(step.elapsed_ms) ? step.elapsed_ms : 0), 0);
+    return { usage: { ...turn.usage, seconds: Math.max(total, turn.usage.durationMs) / 1000 }, receipt: true };
   }
 
   function forgetSegments() {
@@ -1301,6 +1311,7 @@
         }
         if (incoming.type === 'sync-empty') {
           syncing = false;
+          forgetSegments();
           resetProgress();
           clearTurnInstalled();
           if (humanRelocalizing) {
@@ -1453,6 +1464,8 @@
     };
     active.onclose = (event) => {
       if (socket !== active || chatTeamId !== expectedTeamId) return;
+      // A reconnect may restore another turn; one this page still waits on keeps only what it observes from now on.
+      forgetSegments();
       socket = null;
       socketReady = false;
       syncing = false;
@@ -2383,11 +2396,12 @@
                   {/if}
                   <!-- With recorded steps, the usage line itself opens them: one line, its triangle beside it. -->
                   {#snippet usageLine()}
-                    <span class="task-usage" title={formatTaskUsageDetail(assistantTurn.usage, $locale, copy.usage)}>
-                      {formatTaskUsage(assistantTurn.usage, $locale, copy.usage)}
+                    {@const shown = shownUsage(assistantTurn).usage}
+                    <span class="task-usage" title={formatTaskUsageDetail(shown, $locale, copy.usage)}>
+                      {formatTaskUsage(shown, $locale, copy.usage)}
                     </span>
                   {/snippet}
-                  {#if assistantTurn.usage && !assistantTurn.receipt?.length}
+                  {#if assistantTurn.usage && !shownUsage(assistantTurn).receipt}
                     <p class="task-usage" title={formatTaskUsageDetail(assistantTurn.usage, $locale, copy.usage)}>
                       {formatTaskUsage(assistantTurn.usage, $locale, copy.usage)}
                     </p>
