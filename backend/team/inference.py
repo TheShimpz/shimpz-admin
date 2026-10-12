@@ -1,33 +1,23 @@
-"""Admin routes for a Team's settings: the model selection and Action confirmation."""
+"""A Team's settings as session calls: the model selection and Action confirmation (ADR-0112)."""
 
-from fastapi import FastAPI, Request
-from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
 from team import bridge as team
 from team import http as team_http
 
 
-def register(app: FastAPI) -> None:
-    app.add_api_route("/api/teams/{team_id}/inference", team_inference_status, methods=["GET"])
-    app.add_api_route("/api/teams/{team_id}/inference", team_inference_configure, methods=["PUT"])
-    app.add_api_route("/api/teams/{team_id}/action-confirmation", action_confirmation_status, methods=["GET"])
-    app.add_api_route("/api/teams/{team_id}/action-confirmation", action_confirmation_configure, methods=["PUT"])
-
-
-def team_inference_status(team_id: str):
+def status(team_id: str) -> JSONResponse:
     """Return only the Team's provider/model selection; credentials remain in this backend."""
     return team_http.response(lambda: team.get_inference(team_id))
 
 
-async def team_inference_configure(team_id: str, request: Request):
-    payload = await team_http.bounded_json_object(request)
-    return await run_in_threadpool(team_http.response, lambda: team.configure_inference(team_id, payload))
+def configure(team_id: str, payload: dict) -> JSONResponse:
+    return team_http.response(lambda: team.configure_inference(team_id, payload))
 
 
-def action_confirmation_status(team_id: str):
+def action_confirmation_status(team_id: str) -> JSONResponse:
     """Whether Team confirms the Team's mutating Actions before they run (ADR-0112); on unless turned off."""
     return team_http.response(lambda: team.get_action_confirmation(team_id))
 
 
-async def action_confirmation_configure(team_id: str, request: Request):
-    payload = await team_http.bounded_json_object(request)
-    return await run_in_threadpool(team_http.response, lambda: team.configure_action_confirmation(team_id, payload))
+def action_confirmation_configure(team_id: str, payload: dict) -> JSONResponse:
+    return team_http.response(lambda: team.configure_action_confirmation(team_id, payload))

@@ -1,16 +1,13 @@
 """The Supervisor's TypeSafe key for the Jev intent-classification fast path (ADR-0077).
 
 The key is Space-owned and optional: without it, intent classification runs the LLM route exactly as before. Only
-masked metadata leaves this module over HTTP; ``resolve`` is the internal hand-off to the Team intent route and must
-never be registered as a route.
+masked metadata leaves this module through its session calls; ``resolve`` is the internal hand-off to the Team intent
+route and is never a call.
 """
-
-import asyncio
 
 import models
 import state
-from fastapi import FastAPI, HTTPException, Request
-from team import http as team_http
+from fastapi import HTTPException
 
 PROVIDER = "typesafe"
 # TypeSafe's authenticated model listing: 2xx for a valid key, 401 or 403 otherwise.
@@ -60,24 +57,17 @@ def remove() -> dict[str, object]:
 
 
 def resolve() -> str | None:
-    """Return the verified key for the Team intent-route hand-off; never expose it over HTTP."""
+    """Return the verified key for the Team intent-route hand-off; never expose it to the browser."""
     return _verified_secret()
 
 
-async def _configure_route(request: Request) -> dict[str, object]:
-    payload = await team_http.bounded_json_object(request)
+def save(payload: dict) -> dict[str, object]:
+    """Validate the key with TypeSafe, then store it; a rejected key is 400 and an unreachable TypeSafe 503."""
     if set(payload) != {"api_key"}:
         raise HTTPException(status_code=400, detail="request body must contain only api_key")
     try:
-        return await asyncio.to_thread(configure, payload["api_key"])
+        return configure(payload["api_key"])
     except DecisionProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     except DecisionProviderUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
-
-
-def register(app: FastAPI) -> None:
-    """Expose masked status, configuration, and removal to the authenticated Local Supervisor."""
-    app.add_api_route("/api/decision-provider", status, methods=["GET"])
-    app.add_api_route("/api/decision-provider", _configure_route, methods=["PUT"])
-    app.add_api_route("/api/decision-provider", remove, methods=["DELETE"])

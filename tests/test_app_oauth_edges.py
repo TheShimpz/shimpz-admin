@@ -31,135 +31,62 @@ class AppOAuthEdgeTests(app_import.RouteStatusAssertions):
         cls.environment = app_import.environment(root)
         cls.admin_app = app_import.load_app(root)
 
-    def _body(self, **payload: object):
-        """Patch the bounded JSON body the route reads with exactly this object."""
-        return mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value=payload))
-
     @staticmethod
     def preparation():
         return types.SimpleNamespace(token="f" * 64, session_binding="b" * 43)
 
+    def call(self, operation: str, *args: object) -> tuple[int, object]:
+        """One authorization operation as its session call answers it."""
+        authorization = self.admin_app.authorization
+        return __import__("session.lane", fromlist=["lane"]).http(getattr(authorization, operation), *args)
+
+    def authorize(self, team_id: str = "team_1") -> tuple[int, object]:
+        pair = {"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare"}
+        origins = frozenset({"http://127.0.0.1:7777"})
+        return self.call("authorize", team_id, "a" * 32, pair, "token", "http://127.0.0.1:7777", lambda: origins)
+
     def test_authorization_maps_provider_team_and_handoff_rejections(self) -> None:
-        request = _request()
+        handoffs = self.admin_app.authorization.HANDOFFS
         unavailable = self.admin_app.team.TeamResponse(503, {"error": "offline"})
         preparation = self.preparation()
         with (
-            self._body(assistant_id="shimpz-cloudflare", integration_id="cloudflare"),
-            mock.patch.object(self.admin_app, "_local_oauth_authorization_mode", return_value="loopback"),
-            mock.patch.object(self.admin_app.OAUTH_HANDOFFS, "issue", return_value=preparation),
-            mock.patch.object(self.admin_app.OAUTH_HANDOFFS, "discard") as discard,
+            mock.patch.object(handoffs, "issue", return_value=preparation),
+            mock.patch.object(handoffs, "discard") as discard,
             mock.patch.object(
                 self.admin_app.integrations,
                 "start_local_assistant_integration_authorization",
                 return_value=unavailable,
             ),
         ):
-            response = asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
-        self.assertEqual(response.status_code, 503)
+            self.assertEqual(self.authorize()[0], 503)
         discard.assert_called_once_with(preparation.token)
-
-        with (
-            self._body(assistant_id="shimpz-cloudflare", integration_id="cloudflare"),
-            mock.patch.object(self.admin_app, "_local_oauth_authorization_mode", return_value="loopback"),
-        ):
-            self.assert_status(
-                400,
-                self.admin_app.team_assistant_integration_authorize("Bad", "a" * 32, request),
-            )
-
-        with (
-            self._body(assistant_id="shimpz-cloudflare", integration_id="cloudflare"),
-            mock.patch.object(self.admin_app, "_local_oauth_authorization_mode", return_value="loopback"),
-            mock.patch.object(
-                self.admin_app.OAUTH_HANDOFFS,
-                "issue",
-                side_effect=self.admin_app.handoff_store.OAuthHandoffError("conflict"),
-            ),
-        ):
-            self.assert_status(
-                409,
-                self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request),
-            )
+        self.assertEqual(self.authorize("Bad")[0], 400)
+        conflict = self.admin_app.handoff_store.OAuthHandoffError("conflict")
+        with mock.patch.object(handoffs, "issue", side_effect=conflict):
+            self.assertEqual(self.authorize()[0], 409)
 
     def test_completion_and_cancellation_validate_shape_identity_and_handoff_state(self) -> None:
-        request = _request()
-        with self._body():
-            self.assert_status(
-                400,
-                self.admin_app.team_assistant_integration_complete("team_1", "a" * 32, request),
-            )
-        with self._body(completion_code="code"):
-            self.assert_status(
-                400,
-                self.admin_app.team_assistant_integration_complete("Bad", "a" * 32, request),
-            )
-
-        with self._body(unexpected=True):
-            self.assert_status(
-                400,
-                self.admin_app.team_assistant_integration_cancel("team_1", "a" * 32, request),
-            )
-        with (
-            self._body(),
-            mock.patch.object(self.admin_app.OAUTH_HANDOFFS, "cancel", return_value=None),
-        ):
-            response = asyncio.run(self.admin_app.team_assistant_integration_cancel("team_1", "a" * 32, request))
-        self.assertEqual(response.status_code, 204)
-
-        with self._body():
-            self.assert_status(
-                400,
-                self.admin_app.team_assistant_integration_cancel("Bad", "a" * 32, request),
-            )
-
-        with (
-            self._body(),
-            mock.patch.object(
-                self.admin_app.OAUTH_HANDOFFS,
-                "cancel",
-                side_effect=self.admin_app.handoff_store.OAuthHandoffError("conflict"),
-            ),
-        ):
-            self.assert_status(
-                409,
-                self.admin_app.team_assistant_integration_cancel("team_1", "a" * 32, request),
-            )
-
+        handoffs = self.admin_app.authorization.HANDOFFS
+        self.assertEqual(self.call("complete", "team_1", "a" * 32, {}, "token")[0], 400)
+        self.assertEqual(self.call("complete", "Bad", "a" * 32, {"completion_code": "code"}, "token")[0], 400)
+        with mock.patch.object(handoffs, "cancel", return_value=None):
+            self.assertEqual(self.call("cancel", "team_1", "a" * 32, "token"), (204, {}))
+        self.assertEqual(self.call("cancel", "Bad", "a" * 32, "token")[0], 400)
+        conflict = self.admin_app.handoff_store.OAuthHandoffError("conflict")
+        with mock.patch.object(handoffs, "cancel", side_effect=conflict):
+            self.assertEqual(self.call("cancel", "team_1", "a" * 32, "token")[0], 409)
         rejected = self.admin_app.team.TeamResponse(409, {"error": "not pending"})
         with (
-            self._body(),
-            mock.patch.object(self.admin_app.OAUTH_HANDOFFS, "cancel", return_value="binding"),
+            mock.patch.object(handoffs, "cancel", return_value="binding"),
             mock.patch.object(
                 self.admin_app.integrations,
                 "cancel_local_assistant_integration_authorization",
                 return_value=rejected,
             ),
         ):
-            response = asyncio.run(self.admin_app.team_assistant_integration_cancel("team_1", "a" * 32, request))
-        self.assertEqual(response.status_code, 409)
+            self.assertEqual(self.call("cancel", "team_1", "a" * 32, "token"), (409, {"error": "not pending"}))
 
-    def test_disconnect_and_callback_map_invalid_team_responses(self) -> None:
-        with mock.patch.object(
-            self.admin_app.integrations,
-            "disconnect_assistant_integration",
-            side_effect=self.admin_app.team.TeamRequestError("invalid"),
-        ):
-            self.assert_status(
-                400,
-                self.admin_app.team_assistant_integration_disconnect("team_1", "assistant", "integration"),
-            )
-
-        rejected = self.admin_app.team.TeamResponse(409, {"error": "connected"})
-        with mock.patch.object(
-            self.admin_app.integrations,
-            "disconnect_assistant_integration",
-            return_value=rejected,
-        ):
-            response = asyncio.run(
-                self.admin_app.team_assistant_integration_disconnect("team_1", "assistant", "integration")
-            )
-        self.assertEqual(response.status_code, 409)
-
+    def test_the_callback_maps_invalid_team_responses(self) -> None:
         callback = _request(cookie="binding")
         callback.scope["query_string"] = ("state=" + "b" * 43 + "&claim=" + "c" * 64).encode()
         with (

@@ -14,7 +14,13 @@ envelope included, at most 1 MiB.
 
 - `call {id, method, params}` asks for one Admin operation; Admin answers it with exactly one
   `result {id, status, body}`. A read of a topic's state also carries that topic, the process `epoch`, and the
-  topic `revision` taken before the read. At most 16 calls are in flight per socket.
+  topic `revision` taken before the read. At most 16 calls are in flight per socket. Every parameter is a string of
+  at most 128 characters, except `topics` and a request `body`: one JSON object whose compact UTF-8 size keeps the
+  operation's own bound (`BODY_BYTES`: a Team name 1 KiB, a Team order or deletion 8 KiB, every other body 16 KiB),
+  or the call is answered 413. A status and body are exactly what the operation always answered; an empty answer is
+  `{}`.
+- `progress {id, state: "running"}` says once that a long call (`LONG_METHODS`, an Assistant install) started; its
+  result follows when it ends, or is lost with the socket and never replayed.
 - `activity {}` (exactly `{"type": "activity"}`) is the page's report of the person's own input, at most once a minute
   per tab. It is the only frame, and nothing over HTTP, that restarts the session's idle time; Admin ignores one that
   arrives within 30 seconds of the session's last renewal, from any tab, and it never revives an expired session or
@@ -25,5 +31,10 @@ envelope included, at most 1 MiB.
 - The chat channel carries the `shimpz.chat.v7` frames of `.context/SHIMPZ_CHAT_V7.md`, each with the attached Team's
   `team_id`, after `chat.attach {team_id, locale}`.
 
-Topics in this version: `teams`, `team/{id}/history`, `team/{id}/routines`, `space/resources`, `platform/release`,
+Topics in this version: `teams`, `team/{id}/history`, `team/{id}/routines`, `team/{id}/inventory`,
+`team/{id}/inference`, `assistants/registry`, `local-assistants`, `space/resources`, `platform/release`,
 `security/summary`, and `session`.
+
+`store.catalog {locale, cursor?}` reads the public Store catalog in pages: each page's Assistants fit one result
+frame whole, `next` names the following page (or is null on the last), and a catalog that changed between pages is
+answered 409 `catalog-changed`, so the client reads it again from the first page.

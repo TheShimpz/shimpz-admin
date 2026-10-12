@@ -1,6 +1,7 @@
 """The one process-wide watcher of state Admin cannot observe itself (ADR-0114 decision 4).
 
-Teams made by the CLI, the Space's resources, and the platform release file change without passing through Admin. While
+Teams made by the CLI, Assistant snapshots the CLI stages, the Space's resources, and the platform release file change
+without passing through Admin. While
 at least one open socket subscribes to such a topic, and only then, the watcher reads it no more often than the page
 used to poll it, under the current Supervisor authority of a socket whose session is still current (never renewing
 it), and raises the topic only when the value changed.
@@ -39,6 +40,11 @@ def _teams() -> object:
     return _seen(response.status_code, json.loads(response.body))
 
 
+def _snapshots() -> object:
+    response = team.list_local_assistants()
+    return _seen(response.status, response.body)
+
+
 def _release() -> object:
     try:
         return platform_release.read_status()
@@ -54,11 +60,13 @@ class Watched:
     authority: bool = True
 
 
-# Each watched topic and how often it was polled before the socket (Team list: the slowest of those intervals).
+# Each watched topic and how often it was polled before the socket; the Team list and the staged snapshots, which no
+# page polled, at the slowest of those intervals.
 WATCHED = {
     "space/resources": Watched(30.0, _resources),
     "platform/release": Watched(60.0, _release, authority=False),
     "teams": Watched(60.0, _teams),
+    "local-assistants": Watched(60.0, _snapshots),
 }
 # How often the watcher wakes to see whether a watched topic is due.
 TICK_SECONDS = 1.0

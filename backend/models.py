@@ -1,6 +1,6 @@
 """Local model-provider credentials owned exclusively by the Admin backend.
 
-Only masked metadata is safe for HTTP responses. The cleartext resolver at the bottom is an
+Only masked metadata is safe for the browser. The cleartext resolver at the bottom is an
 internal hand-off point for the local chat control plane; it must never be registered as a route,
 placed in Team inference metadata, or sent through the Assistant Store iframe.
 """
@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import state
+from fastapi import HTTPException
 
 
 @dataclass(frozen=True, slots=True)
@@ -214,3 +215,22 @@ def resolve_api_key(provider: object) -> str | None:
     selected = canonical_provider(provider)
     record = _records().get(selected)
     return verified_secret(record)
+
+
+def save(provider: str, payload: dict) -> dict[str, object]:
+    """Validate the key with its provider, then store it; a rejected key is 400 and an unreachable provider 503."""
+    if set(payload) != {"api_key"}:
+        raise HTTPException(status_code=400, detail="request body must contain only api_key")
+    try:
+        return configure(provider, payload["api_key"])
+    except ModelProviderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    except ModelProviderUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from None
+
+
+def delete(provider: str) -> dict[str, object]:
+    try:
+        return remove(provider)
+    except ModelProviderError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None

@@ -1,6 +1,5 @@
 """The Supervisor's Action confirmation setting for a Team (ADR-0112), projected from Team exactly."""
 
-import asyncio
 import json
 import sys
 import unittest
@@ -11,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from fastapi import HTTPException
-from http_request import LOOPBACK, http_request, json_headers
 from team import bridge as team
 from team import inference as routes
 
@@ -83,30 +81,22 @@ class ActionConfirmationBridgeTests(unittest.TestCase):
             self.assertIs(team.get_action_confirmation("team_1"), refusal)
 
 
-class ActionConfirmationRouteTests(unittest.TestCase):
-    def test_the_routes_forward_the_supervisor_body_and_answer_its_projection(self) -> None:
+class ActionConfirmationCallTests(unittest.TestCase):
+    def test_the_calls_forward_the_supervisor_body_and_answer_its_projection(self) -> None:
         answer = team.TeamResponse(200, {"team_id": "team_1", "confirm_mutating": False})
         with mock.patch.object(team, "get_action_confirmation", return_value=answer) as read:
             response = routes.action_confirmation_status("team_1")
         read.assert_called_once_with("team_1")
         self.assertEqual((response.status_code, json.loads(response.body)), (200, answer.body))
 
-        raw = json.dumps({"confirm_mutating": False}).encode()
-        request = http_request(
-            "/api/teams/team_1/action-confirmation", LOOPBACK, method="PUT", body=raw, headers=json_headers(raw)
-        )
         with mock.patch.object(team, "configure_action_confirmation", return_value=answer) as write:
-            response = asyncio.run(routes.action_confirmation_configure("team_1", request))
+            response = routes.action_confirmation_configure("team_1", {"confirm_mutating": False})
         write.assert_called_once_with("team_1", {"confirm_mutating": False})
         self.assertEqual(response.status_code, 200)
 
     def test_an_invalid_body_is_a_bad_request(self) -> None:
-        raw = json.dumps({"confirm_mutating": "no"}).encode()
-        request = http_request(
-            "/api/teams/team_1/action-confirmation", LOOPBACK, method="PUT", body=raw, headers=json_headers(raw)
-        )
         with mock.patch.object(team, "_call") as call, self.assertRaises(HTTPException) as refused:
-            asyncio.run(routes.action_confirmation_configure("team_1", request))
+            routes.action_confirmation_configure("team_1", {"confirm_mutating": "no"})
         self.assertEqual(refused.exception.status_code, 400)
         call.assert_not_called()
 

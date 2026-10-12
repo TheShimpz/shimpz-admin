@@ -1,17 +1,20 @@
-"""Local Team names (ADR-0088): create under a free id, and rename a Team without changing its id."""
+"""Local Team names (ADR-0088): create under a free id, rename without changing the id, and delete by exact name.
+
+Each operation that changed the Team list raises its `teams` topic for the session sockets that show it.
+"""
 
 import logging
 import unicodedata
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 from history import http as chat_history_http
-from starlette.concurrency import run_in_threadpool
+from session import topics
+from signin import auth
 from team import bridge
 from team import http as team_http
 from team import order as team_order
 
-MAX_TEAM_NAME_BODY_BYTES = 1024
 # A recreated name whose id a renamed Team still holds gets the next free suffix: marketing, marketing_2 ... _9.
 MAX_ID_SUFFIX = 9
 ID_SUFFIX_BASE_CHARS = 38
@@ -48,6 +51,12 @@ def _create(team_name: str) -> tuple[str, bridge.TeamResponse]:
         return team_id, response
 
 
+def _changed(response: JSONResponse) -> JSONResponse:
+    if 200 <= response.status_code < 300:
+        topics.changed("teams")
+    return response
+
+
 def create(payload: dict) -> JSONResponse:
     team_name = _team_name(payload)
     team_id, result = _create(team_name)
@@ -55,25 +64,33 @@ def create(payload: dict) -> JSONResponse:
     response = team_http.response(lambda: result)
     if 200 <= response.status_code < 300:
         log.info("team created: %s", team_id)
-    return response
+    return _changed(response)
 
 
-def register(app: FastAPI) -> None:
-    async def created(request: Request) -> JSONResponse:
-        payload = await team_http.bounded_json_object(request, MAX_TEAM_NAME_BODY_BYTES)
-        return await run_in_threadpool(create, payload)
+def rename(team_id: str, payload: dict) -> JSONResponse:
+    team_name = _team_name(payload)
+    return _changed(team_http.response(lambda: bridge.rename(team_id, team_name)))
 
-    async def team_create(request: Request) -> JSONResponse:
-        """Create a Team under a free id; every answer, including a refusal, is no-store."""
-        return await team_http.no_store(lambda: created(request))
 
-    async def rename(team_id: str, request: Request) -> JSONResponse:
-        team_name = _team_name(await team_http.bounded_json_object(request, MAX_TEAM_NAME_BODY_BYTES))
-        return await run_in_threadpool(team_http.response, lambda: bridge.rename(team_id, team_name))
+def deletion(payload: dict) -> tuple[str, str]:
+    """The exact Team name and Supervisor password a deletion confirms, as the browser sent them."""
+    if set(payload) != {"team_name", "password"}:
+        raise HTTPException(status_code=400, detail="request body must contain only team_name and password")
+    team_name = payload["team_name"]
+    password = payload["password"]
+    if not isinstance(team_name, str) or not isinstance(password, str):
+        raise HTTPException(status_code=400, detail="Team name and password must be strings")
+    if not 1 <= len(password) <= auth.MAX_PASSWORD_CHARS:
+        raise HTTPException(status_code=400, detail="Supervisor password is invalid")
+    return team_name, password
 
-    async def team_rename(team_id: str, request: Request) -> JSONResponse:
-        """Rename a Team; every answer, including a refusal, is no-store."""
-        return await team_http.no_store(lambda: rename(team_id, request))
 
-    app.add_api_route("/api/teams", team_create, methods=["POST"])
-    app.add_api_route("/api/teams/{team_id}", team_rename, methods=["PATCH"])
+def _deleted_with_history(team_id: str, team_name: str) -> bridge.TeamResponse:
+    with team_order.LOCK:
+        response = chat_history_http.team_delete(team_id, lambda: bridge.destroy_confirmed(team_id, team_name))
+        return team_order.team_deleted(team_id, response)
+
+
+def delete(team_id: str, team_name: str) -> JSONResponse:
+    """Delete the Team its exact current name confirms, with its history and its saved list position."""
+    return _changed(team_http.response(lambda: _deleted_with_history(team_id, team_name)))

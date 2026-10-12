@@ -23,8 +23,9 @@ def _response(action) -> Response:
 
 
 def register(app: FastAPI) -> None:
-    """Register the route that reads an installed Assistant's icon."""
+    """Register the routes that read an installed Assistant's icon and a staged snapshot's icon."""
     app.add_api_route("/api/teams/{team_id}/assistants/{assistant_id}/icon", assistant_icon, methods=["GET"])
+    app.add_api_route("/api/local-assistants/{image_hash}/icon", local_assistant_icon, methods=["GET"])
 
 
 def assistant_icon(team_id: str, assistant_id: str) -> Response:

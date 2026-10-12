@@ -1,7 +1,6 @@
-"""Route contracts for the Admin-owned local OAuth browser bridge."""
+"""The Admin-owned local OAuth browser bridge: the authorization calls and the start and callback routes."""
 
 import asyncio
-import json
 import sys
 import unittest
 from http.cookies import SimpleCookie
@@ -10,7 +9,6 @@ from unittest import mock
 from urllib.parse import parse_qs, urlencode, urlsplit
 
 import app_import
-from fastapi import HTTPException
 from http_request import Peer, http_request, json_headers
 from starlette.requests import Request
 
@@ -37,41 +35,51 @@ def _request(method: str, url: str, *, body: bytes = b"", cookie: str = "", orig
     )
 
 
-class OAuthRoutesTest(unittest.TestCase):
-    def test_local_profile_registers_only_the_closed_oauth_route_methods(self) -> None:
-        routes = app_import.route_methods(self.admin_app)
-        path = "/api/teams/{team_id}/assistant-integrations/challenges/{challenge_id}"
+PAIR = {"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare"}
 
-        self.assertIn((path + "/authorize", "POST"), routes)
-        self.assertIn((path + "/complete", "POST"), routes)
-        self.assertIn((path + "/authorize", "DELETE"), routes)
+
+class OAuthRoutesTest(unittest.TestCase):
+    def test_local_profile_registers_only_the_oauth_start_and_callback_routes(self) -> None:
+        routes = app_import.route_methods(self.admin_app)
+        self.assertIn(("/api/oauth/cloudflare/start", "GET"), routes)
+        self.assertIn(("/api/oauth/cloudflare/callback", "GET"), routes)
 
     @classmethod
     def setUpClass(cls) -> None:
         root = app_import.temporary_root(cls)
         cls.admin_app = app_import.load_app(root)
+        cls.authorization = __import__("integrations.authorization", fromlist=["authorization"])
+        cls.lane = __import__("session.lane", fromlist=["lane"])
 
     def setUp(self) -> None:
-        self.admin_app.OAUTH_HANDOFFS = self.admin_app.handoff_store.OAuthHandoffStore(
-            ttl_seconds=30,
+        handoffs = mock.patch.object(
+            self.authorization, "HANDOFFS", self.admin_app.handoff_store.OAuthHandoffStore(ttl_seconds=30)
         )
+        handoffs.start()
+        self.addCleanup(handoffs.stop)
         self.session = "v1:9999999999:0123456789abcdef:" + "a" * 64
 
-    def _authorize_request(self, origin: str) -> Request:
-        """The Supervisor's authenticated Cloudflare authorize POST for challenge a*32, sent from this origin."""
-        return _request(
-            "POST",
-            f"{origin}/api/teams/team_1/assistant-integrations/challenges/{'a' * 32}/authorize",
-            body=b'{"assistant_id":"shimpz-cloudflare","integration_id":"cloudflare"}',
-            cookie=f"shimpz_admin={self.session}",
-            origin=origin,
+    def _authorize(self, origin: str, body: dict | None = None) -> tuple[int, dict]:
+        """The Supervisor's Cloudflare authorization of challenge a*32, from a session socket bound to this origin."""
+        return self.lane.http(
+            self.authorization.authorize,
+            "team_1",
+            "a" * 32,
+            PAIR if body is None else body,
+            self.session,
+            origin,
+            self.admin_app._allowed_browser_origins,
         )
+
+    def _complete(self, code: str) -> tuple[int, dict]:
+        body = {"completion_code": code}
+        return self.lane.http(self.authorization.complete, "team_1", "a" * 32, body, self.session)
 
     def _origins(self, origin: str):
         return mock.patch.object(self.admin_app, "_allowed_browser_origins", return_value=frozenset({origin}))
 
     def test_loopback_oauth_origin_is_fixed(self) -> None:
-        self.assertEqual(self.admin_app.OAUTH_ORIGINS["loopback"], "http://127.0.0.1:7777")
+        self.assertEqual(self.authorization.OAUTH_ORIGINS["loopback"], "http://127.0.0.1:7777")
 
     @staticmethod
     def _cloudflare_authorization_url(callback: str = "loopback") -> str:
@@ -84,8 +92,7 @@ class OAuthRoutesTest(unittest.TestCase):
             }
         )
 
-    def test_authenticated_post_returns_only_one_strict_loopback_handoff(self) -> None:
-        request = self._authorize_request("http://127.0.0.1:7777")
+    def test_an_authorization_from_loopback_returns_only_one_strict_loopback_handoff(self) -> None:
         provider = self.admin_app.team.TeamResponse(
             200,
             {"authorization_url": self._cloudflare_authorization_url()},
@@ -98,10 +105,9 @@ class OAuthRoutesTest(unittest.TestCase):
                 return_value=provider,
             ) as start,
         ):
-            response = asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
+            status, body = self._authorize("http://127.0.0.1:7777")
 
-        self.assertEqual(response.status_code, 200)
-        body = json.loads(response.body)
+        self.assertEqual(status, 200)
         self.assertEqual(set(body), {"authorization_url", "completion_mode"})
         self.assertEqual(body["completion_mode"], "automatic")
         parsed = urlsplit(body["authorization_url"])
@@ -112,14 +118,12 @@ class OAuthRoutesTest(unittest.TestCase):
         query = parse_qs(parsed.query, strict_parsing=True)
         self.assertEqual(set(query), {"handoff"})
         self.assertRegex(query["handoff"][0], r"^[0-9a-f]{64}$")
-        self.assertEqual(response.headers["cache-control"], "no-store")
         arguments = start.call_args.args
         self.assertEqual(arguments[:4], ("team_1", "a" * 32, "shimpz-cloudflare", "cloudflare"))
         self.assertRegex(arguments[4], r"^[A-Za-z0-9_-]{43}$")
         self.assertEqual(arguments[5], "loopback")
 
     def test_authorization_failure_always_releases_the_handoff_reservation(self) -> None:
-        request = self._authorize_request("http://127.0.0.1:7777")
         with (
             self._origins("http://127.0.0.1:7777"),
             mock.patch.object(
@@ -129,24 +133,24 @@ class OAuthRoutesTest(unittest.TestCase):
             ),
             self.assertRaisesRegex(RuntimeError, "unexpected Team client failure"),
         ):
-            asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
+            self._authorize("http://127.0.0.1:7777")
 
-        replacement = self.admin_app.OAUTH_HANDOFFS.issue(
+        replacement = self.authorization.HANDOFFS.issue(
             team_id="team_1",
             challenge_id="a" * 32,
             admin_session=self.session,
             callback_mode="loopback",
         )
-        self.assertTrue(self.admin_app.OAUTH_HANDOFFS.discard(replacement.token))
+        self.assertTrue(self.authorization.HANDOFFS.discard(replacement.token))
 
     def test_loopback_start_consumes_once_and_sets_browser_only_callback_binding(self) -> None:
-        preparation = self.admin_app.OAUTH_HANDOFFS.issue(
+        preparation = self.authorization.HANDOFFS.issue(
             team_id="team_1",
             challenge_id="a" * 32,
             admin_session=self.session,
             callback_mode="loopback",
         )
-        self.admin_app.OAUTH_HANDOFFS.authorize(preparation.token, self._cloudflare_authorization_url())
+        self.authorization.HANDOFFS.authorize(preparation.token, self._cloudflare_authorization_url())
         request = _request(
             "GET",
             f"http://127.0.0.1:7777/api/oauth/cloudflare/start?handoff={preparation.token}",
@@ -175,7 +179,6 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(replay.headers["location"], "/chat?oauth=start-failed")
 
     def test_local_domain_handoff_start_and_callback_use_only_the_named_https_origin(self) -> None:
-        authorize_request = self._authorize_request("https://local.shimpz.com")
         provider = self.admin_app.team.TeamResponse(
             200,
             {"authorization_url": self._cloudflare_authorization_url("local-domain")},
@@ -188,10 +191,8 @@ class OAuthRoutesTest(unittest.TestCase):
                 return_value=provider,
             ),
         ):
-            authorized = asyncio.run(
-                self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, authorize_request)
-            )
-        authorization_url = urlsplit(json.loads(authorized.body)["authorization_url"])
+            _status, authorized = self._authorize("https://local.shimpz.com")
+        authorization_url = urlsplit(authorized["authorization_url"])
         self.assertEqual(
             (authorization_url.scheme, authorization_url.netloc, authorization_url.path),
             ("https", "local.shimpz.com", "/api/oauth/cloudflare/start"),
@@ -247,13 +248,13 @@ class OAuthRoutesTest(unittest.TestCase):
             self.assertEqual(result.headers["location"], "/chat?oauth=start-failed")
 
     def test_replacing_the_admitted_https_origin_invalidates_a_pending_handoff(self) -> None:
-        preparation = self.admin_app.OAUTH_HANDOFFS.issue(
+        preparation = self.authorization.HANDOFFS.issue(
             team_id="team_1",
             challenge_id="a" * 32,
             admin_session=self.session,
             callback_mode="local-domain",
         )
-        self.admin_app.OAUTH_HANDOFFS.authorize(
+        self.authorization.HANDOFFS.authorize(
             preparation.token,
             self._cloudflare_authorization_url("local-domain"),
         )
@@ -273,19 +274,12 @@ class OAuthRoutesTest(unittest.TestCase):
         origins = ("http://localhost:7777", "http://127.0.0.1:49123")
         with mock.patch.object(self.admin_app, "_allowed_browser_origins", return_value=frozenset(origins)):
             for origin in origins:
-                request = _request(
-                    "POST",
-                    origin + "/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
-                    body=b'{"assistant_id":"shimpz-cloudflare","integration_id":"cloudflare"}',
-                    cookie=f"shimpz_admin={self.session}",
-                    origin=origin,
-                )
-                with self.subTest(origin=origin), self.assertRaises(HTTPException) as raised:
-                    asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
-                self.assertEqual(raised.exception.status_code, 409)
+                with self.subTest(origin=origin):
+                    self.assertEqual(self._authorize(origin)[0], 409)
+            # An Origin the page no longer holds an admission for never starts one.
+            self.assertEqual(self._authorize("http://127.0.0.1:7777")[0], 403)
 
     def test_custom_https_address_completes_out_of_band_in_the_original_session(self) -> None:
-        authorize_request = self._authorize_request("https://developer.example.test")
         provider_url = self._cloudflare_authorization_url("out-of-band")
         provider = self.admin_app.team.TeamResponse(200, {"authorization_url": provider_url})
         with (
@@ -297,24 +291,12 @@ class OAuthRoutesTest(unittest.TestCase):
                 return_value=provider,
             ) as start,
         ):
-            authorized = asyncio.run(
-                self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, authorize_request)
-            )
-        body = json.loads(authorized.body)
+            _status, body = self._authorize("https://developer.example.test")
         self.assertEqual(body, {"authorization_url": provider_url, "completion_mode": "code"})
         binding = start.call_args.args[4]
         self.assertEqual(start.call_args.args[5], "out-of-band")
 
         code = "c1." + "b" * 43 + "." + "d" * 64
-        complete_request = _request(
-            "POST",
-            "https://developer.example.test/api/teams/team_1/assistant-integrations/challenges/"
-            + "a" * 32
-            + "/complete",
-            body=json.dumps({"completion_code": code}).encode(),
-            cookie=f"shimpz_admin={self.session}",
-            origin="https://developer.example.test",
-        )
         completed = self.admin_app.team.TeamResponse(
             200,
             {
@@ -329,27 +311,13 @@ class OAuthRoutesTest(unittest.TestCase):
             "complete_cloudflare_oauth_callback",
             return_value=completed,
         ) as complete:
-            response = asyncio.run(
-                self.admin_app.team_assistant_integration_complete("team_1", "a" * 32, complete_request)
-            )
-            replay_request = _request(
-                "POST",
-                "https://developer.example.test/api/teams/team_1/assistant-integrations/challenges/"
-                + "a" * 32
-                + "/complete",
-                body=json.dumps({"completion_code": code}).encode(),
-                cookie=f"shimpz_admin={self.session}",
-                origin="https://developer.example.test",
-            )
-            with self.assertRaises(HTTPException) as replay:
-                asyncio.run(self.admin_app.team_assistant_integration_complete("team_1", "a" * 32, replay_request))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(json.loads(response.body)["connected"], True)
+            status, response = self._complete(code)
+            replay = self._complete(code)
+        self.assertEqual((status, response["connected"]), (200, True))
         complete.assert_called_once_with(state="b" * 43, claim="d" * 64, session_binding=binding)
-        self.assertEqual(replay.exception.status_code, 409)
+        self.assertEqual(replay[0], 409)
 
     def test_custom_https_authorization_cancel_releases_the_exact_team_binding(self) -> None:
-        authorize_request = self._authorize_request("https://developer.example.test")
         provider = self.admin_app.team.TeamResponse(
             200,
             {"authorization_url": self._cloudflare_authorization_url("out-of-band")},
@@ -363,25 +331,18 @@ class OAuthRoutesTest(unittest.TestCase):
                 return_value=provider,
             ) as start,
         ):
-            asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, authorize_request))
+            self._authorize("https://developer.example.test")
 
-        cancel_request = _request(
-            "DELETE",
-            "https://developer.example.test/api/teams/team_1/assistant-integrations/challenges/"
-            + "a" * 32
-            + "/authorize",
-            body=b"{}",
-            cookie=f"shimpz_admin={self.session}",
-            origin="https://developer.example.test",
-        )
         cancelled = self.admin_app.team.TeamResponse(204, {})
         with mock.patch.object(
             self.admin_app.integrations,
             "cancel_local_assistant_integration_authorization",
             return_value=cancelled,
         ) as cancel:
-            response = asyncio.run(self.admin_app.team_assistant_integration_cancel("team_1", "a" * 32, cancel_request))
-        self.assertEqual(response.status_code, 204)
+            response = self.lane.http(self.authorization.cancel, "team_1", "a" * 32, self.session)
+            # Nothing pending any more is already cancelled, without asking Team again.
+            again = self.lane.http(self.authorization.cancel, "team_1", "a" * 32, self.session)
+        self.assertEqual((response, again), ((204, {}), (204, {})))
         cancel.assert_called_once_with("team_1", "a" * 32, start.call_args.args[4])
 
     def test_callback_forwards_exact_proof_then_removes_it_from_the_browser_url(self) -> None:
@@ -450,105 +411,15 @@ class OAuthRoutesTest(unittest.TestCase):
         complete.assert_not_called()
         self.assertTrue(all(response.headers["location"] == "/chat?oauth=callback-failed" for response in responses))
 
-    def test_inventory_and_disconnect_keep_the_public_contract_exact(self) -> None:
-        inventory = self.admin_app.team.TeamResponse(200, {"integrations": []})
-        with mock.patch.object(
-            self.admin_app.integrations,
-            "list_assistant_integrations",
-            return_value=inventory,
-        ):
-            listed = self.admin_app.team_assistant_integrations("team_1")
-        self.assertEqual(json.loads(listed.body), {"integrations": []})
-        self.assertEqual(listed.headers["cache-control"], "no-store")
-
-        disconnected = self.admin_app.team.TeamResponse(204, {})
-        with mock.patch.object(
-            self.admin_app.integrations,
-            "disconnect_assistant_integration",
-            return_value=disconnected,
-        ):
-            response = asyncio.run(
-                self.admin_app.team_assistant_integration_disconnect(
-                    "team_1",
-                    "shimpz-cloudflare",
-                    "x-integration",
-                )
-            )
-        self.assertEqual(response.status_code, 204)
-        self.assertEqual(response.body, b"")
-
-    def test_stored_input_inventory_and_clear_keep_the_public_contract_exact(self) -> None:
-        inventory = self.admin_app.team.TeamResponse(
-            200,
-            {
-                "stored_inputs": [
-                    {
-                        "assistant_id": "whatsapp",
-                        "stored_input_id": "whatsapp-token",
-                        "status": "stored",
-                    }
-                ]
-            },
-        )
-        with mock.patch.object(
-            self.admin_app.action_stored_input,
-            "list_assistant_stored_inputs",
-            return_value=inventory,
-        ):
-            listed = self.admin_app.team_assistant_stored_inputs("team_1")
-        self.assertEqual(json.loads(listed.body), inventory.body)
-        self.assertEqual(listed.headers["cache-control"], "no-store")
-
-        cleared = self.admin_app.team.TeamResponse(200, {"cleared": True})
-        with mock.patch.object(
-            self.admin_app.action_stored_input,
-            "clear_assistant_stored_input",
-            return_value=cleared,
-        ) as clear:
-            response = asyncio.run(
-                self.admin_app.team_assistant_stored_input_clear(
-                    "team_1",
-                    "whatsapp",
-                    "whatsapp-token",
-                )
-            )
-        clear.assert_called_once_with("team_1", "whatsapp", "whatsapp-token")
-        self.assertEqual(json.loads(response.body), {"cleared": True})
-        self.assertEqual(response.headers["cache-control"], "no-store")
-
-        with (
-            mock.patch.object(
-                self.admin_app.action_stored_input,
-                "clear_assistant_stored_input",
-                side_effect=self.admin_app.team.TeamRequestError("invalid stored input"),
-            ),
-            self.assertRaises(HTTPException) as raised,
-        ):
-            asyncio.run(
-                self.admin_app.team_assistant_stored_input_clear(
-                    "team_1",
-                    "whatsapp",
-                    "bad",
-                )
-            )
-        self.assertEqual(raised.exception.status_code, 400)
-        self.assertEqual(raised.exception.detail, "invalid stored input")
-
     def test_authorize_body_requires_only_the_exact_integration_pair(self) -> None:
-        for request_body in (
-            b"{}",
-            b'{"assistant_id":"shimpz-cloudflare"}',
-            b'{"assistant_id":"shimpz-cloudflare","integration_id":"cloudflare","client_id":"must-not-cross"}',
+        for body in (
+            {},
+            {"assistant_id": "shimpz-cloudflare"},
+            {"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare", "client_id": "must-not-cross"},
         ):
-            request = _request(
-                "POST",
-                "http://localhost:7777/api/teams/team_1/assistant-integrations/challenges/" + "a" * 32 + "/authorize",
-                body=request_body,
-                cookie=f"shimpz_admin={self.session}",
-            )
-            with self.subTest(request_body=request_body), self.assertRaises(HTTPException) as raised:
-                asyncio.run(self.admin_app.team_assistant_integration_authorize("team_1", "a" * 32, request))
-            self.assertEqual(raised.exception.status_code, 400)
+            # The body is refused before the callback mode is chosen, whatever the page's Origin.
+            with self.subTest(body=body):
+                self.assertEqual(self._authorize("http://localhost:7777", body)[0], 400)
 
 
 if __name__ == "__main__":

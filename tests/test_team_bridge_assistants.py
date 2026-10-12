@@ -17,10 +17,13 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
+sys.path.insert(0, str(ROOT))
 
 from mfa_helper import configure_supervisor
 from team import bridge as team
 from team import transport
+
+from tests import chat_socket_fixtures
 
 LOCAL_TEAM_RESIDUES = [
     "assistant_containers",
@@ -533,6 +536,8 @@ class TeamAssistantRouteTest(_LiveTeamCase):
 
         self.assertEqual(document["status"], 409)
         self.assertEqual(document["body"], {"detail": "already installed"})
+        # A long call tells the page once that it started, before its result.
+        self.assertTrue(document["progress"])
         self.assertEqual(len(_TeamHandler.requests), 1)
         request = _TeamHandler.requests[0]
         self.assertEqual(request["method"], "POST")
@@ -554,16 +559,18 @@ class TeamAssistantRouteTest(_LiveTeamCase):
 
         document = self._run_asgi_probe("team-create")
 
-        self.assertEqual(document["valid"], {"status": 200, "body": expected})
+        self.assertEqual(document["valid"], {"status": 200, "body": expected, "progress": False})
         self.assertEqual(
             document["unsupported_field"],
-            {"status": 400, "body": {"detail": "request body must contain only team_name"}},
+            {"status": 400, "body": {"detail": "request body must contain only team_name"}, "progress": False},
         )
         self.assertEqual(
             document["non_string"],
-            {"status": 400, "body": {"detail": "team name must be a string"}},
+            {"status": 400, "body": {"detail": "team name must be a string"}, "progress": False},
         )
-        self.assertEqual(document["oversized"], {"status": 413, "body": {"detail": "request body too large"}})
+        self.assertEqual(
+            document["oversized"], {"status": 413, "body": {"detail": "request body too large"}, "progress": False}
+        )
         self.assertEqual(len(_TeamHandler.requests), 1)
         request = _TeamHandler.requests[0]
         self.assertEqual((request["method"], request["path"]), ("POST", "/v1/teams/marketing/create"))
@@ -591,15 +598,23 @@ class TeamAssistantRouteTest(_LiveTeamCase):
 
         self.assertEqual(
             document["malformed"],
-            {"status": 400, "body": {"detail": "request body must contain only team_name and password"}},
+            {
+                "status": 400,
+                "body": {"detail": "request body must contain only team_name and password"},
+                "progress": False,
+            },
         )
         self.assertEqual(
             document["wrong_password"],
-            {"status": 403, "body": {"detail": "Supervisor password is incorrect"}},
+            {"status": 403, "body": {"detail": "Supervisor password is incorrect"}, "progress": False},
         )
         self.assertEqual(
             document["wrong_name"],
-            {"status": 409, "body": {"detail": "Team name confirmation does not match", "code": "team-name-mismatch"}},
+            {
+                "status": 409,
+                "body": {"detail": "Team name confirmation does not match", "code": "team-name-mismatch"},
+                "progress": False,
+            },
         )
         self.assertEqual(document["valid"]["status"], 200)
         self.assertEqual(
@@ -672,6 +687,7 @@ class TeamAssistantRouteTest(_LiveTeamCase):
         self.assertTrue(document["install_was_pending"])
         self.assertLess(document["session_elapsed_seconds"], 0.75)
         self.assertEqual(document["install_status"], 200)
+        self.assertTrue(document["install_progress"])
         self.assertEqual(len(_TeamHandler.requests), 1)
 
 
@@ -748,21 +764,14 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
     routes = {
         (route.path, method) for route in admin_app.app.routes for method in (getattr(route, "methods", None) or set())
     }
+    # Only binary bytes stay HTTP: icons and file uploads. Every other Team and Assistant operation is a session call.
     expected = {
-        ("/api/assistant-catalog", "GET"),
-        ("/api/assistants", "GET"),
         ("/api/assistants/{assistant_id}/catalog-icon", "GET"),
-        ("/api/teams/{team_id}", "DELETE"),
-        ("/api/teams/{team_id}/assistants", "GET"),
-        ("/api/teams/{team_id}/assistants", "POST"),
         ("/api/teams/{team_id}/assistants/{assistant_id}/icon", "GET"),
-        ("/api/teams/{team_id}/assistants/{assistant_id}/summary", "GET"),
-        ("/api/teams/{team_id}/assistants/{assistant_id}", "DELETE"),
-        ("/api/teams/{team_id}/files", "GET"),
+        ("/api/local-assistants/{image_hash}/icon", "GET"),
         ("/api/teams/{team_id}/files", "POST"),
-        ("/api/teams/{team_id}/files/{file_id}", "DELETE"),
     }
-    status, body = asyncio.run(_asgi_request(admin_app, "GET", "/api/assistants"))
+    status, body = asyncio.run(_asgi_request(admin_app, "GET", "/api/teams/team_1/assistants/hello-pulse/icon"))
     action_status, _action_body = asyncio.run(
         _asgi_request(
             admin_app,
@@ -780,6 +789,22 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
         "anonymous_status": status,
         "anonymous_body": body,
     }
+
+
+async def _socket_results(admin_app, token: str, calls: tuple[tuple[str, dict], ...]) -> list[dict[str, object]]:
+    """Answer each call over one real session socket on the ASGI app, opened from Admin's own page."""
+    websocket = chat_socket_fixtures.Socket(
+        admin_app.app, token=token, origin=sorted(admin_app._allowed_browser_origins())[0]
+    )
+    accepted = await websocket.start()
+    if accepted.get("type") != "websocket.accept":
+        raise AssertionError(f"the session socket was refused: {accepted!r}")
+    results = []
+    for method, params in calls:
+        frame = await websocket.result(method, params, wait_seconds=10)
+        results.append({"status": frame["status"], "body": frame["body"], "progress": bool(websocket.progress)})
+    await websocket.disconnect()
+    return results
 
 
 def _probe_session():
@@ -815,37 +840,31 @@ def _run_asgi_probe(scenario: str) -> None:
     if scenario == "routes":
         output = _probe_routes(admin_app, token)
     elif scenario == "install-conflict":
-        payload = json.dumps(
-            {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
-            separators=(",", ":"),
-        ).encode()
-        output = request("POST", "/api/teams/team_1/assistants", payload)
+        body = {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)}
+        (output,) = asyncio.run(
+            _socket_results(admin_app, token, (("assistants.install", {"team_id": "team_1", "body": body}),))
+        )
     elif scenario == "team-create":
-        output = asyncio.run(
-            json_requests(
-                "POST",
-                "/api/teams",
-                (
-                    ("unsupported_field", {"name": "Marketing"}),
-                    ("non_string", {"team_name": 123}),
-                    ("oversized", {"team_name": "Marketing", "padding": "x" * 2048}),
-                    ("valid", {"team_name": "Marketing"}),
-                ),
-            )
+        cases = (
+            ("unsupported_field", {"name": "Marketing"}),
+            ("non_string", {"team_name": 123}),
+            ("oversized", {"team_name": "Marketing", "padding": "x" * 2048}),
+            ("valid", {"team_name": "Marketing"}),
         )
+        results = asyncio.run(
+            _socket_results(admin_app, token, tuple(("teams.create", {"body": body}) for _key, body in cases))
+        )
+        output = {key: result for (key, _body), result in zip(cases, results, strict=True)}
     elif scenario == "team-delete":
-        output = asyncio.run(
-            json_requests(
-                "DELETE",
-                "/api/teams/team_1",
-                (
-                    ("malformed", {"team_name": "Marketing", "password": "test-team-passphrase", "extra": True}),
-                    ("wrong_password", {"team_name": "Marketing", "password": "wrong-admin-password"}),
-                    ("wrong_name", {"team_name": "Not Marketing", "password": "test-team-passphrase"}),
-                    ("valid", {"team_name": "Marketing", "password": "test-team-passphrase"}),
-                ),
-            )
+        cases = (
+            ("malformed", {"team_name": "Marketing", "password": "test-team-passphrase", "extra": True}),
+            ("wrong_password", {"team_name": "Marketing", "password": "wrong-admin-password"}),
+            ("wrong_name", {"team_name": "Not Marketing", "password": "test-team-passphrase"}),
+            ("valid", {"team_name": "Marketing", "password": "test-team-passphrase"}),
         )
+        calls = tuple(("teams.delete", {"team_id": "team_1", "body": body}) for _key, body in cases)
+        results = asyncio.run(_socket_results(admin_app, token, calls))
+        output = {key: result for (key, _body), result in zip(cases, results, strict=True)}
     elif scenario == "file-upload":
         payload = _multipart_file_body(boundary, b"Team private data")
         output = request("POST", "/api/teams/team_1/files", payload, headers=multipart)
@@ -864,19 +883,10 @@ def _run_asgi_probe(scenario: str) -> None:
     elif scenario == "concurrent-session":
 
         async def concurrent_requests():
-            payload = json.dumps(
-                {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
-                separators=(",", ":"),
-            ).encode()
+            body = {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)}
             started = time.monotonic()
             install_task = asyncio.create_task(
-                _asgi_request(
-                    admin_app,
-                    "POST",
-                    "/api/teams/team_1/assistants",
-                    payload,
-                    token=token,
-                )
+                _socket_results(admin_app, token, (("assistants.install", {"team_id": "team_1", "body": body}),))
             )
             await asyncio.sleep(0.1)
             session_status, session_body = await asyncio.wait_for(
@@ -885,13 +895,14 @@ def _run_asgi_probe(scenario: str) -> None:
             )
             install_was_pending = not install_task.done()
             session_elapsed_seconds = time.monotonic() - started
-            install_status, _install_body = await install_task
+            (install,) = await install_task
             return {
                 "session_status": session_status,
                 "session_body": session_body,
                 "install_was_pending": install_was_pending,
                 "session_elapsed_seconds": session_elapsed_seconds,
-                "install_status": install_status,
+                "install_status": install["status"],
+                "install_progress": install["progress"],
             }
 
         output = asyncio.run(concurrent_requests())

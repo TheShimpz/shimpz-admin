@@ -1,6 +1,5 @@
-"""The Supervisor's TypeSafe key: custody, validation, routes, and its intent-classification-only hand-off."""
+"""The Supervisor's TypeSafe key: custody, validation, its save operation, and its classification-only hand-off."""
 
-import asyncio
 import hashlib
 import importlib
 import json
@@ -11,27 +10,11 @@ from unittest import mock
 
 import app_import
 from fastapi import HTTPException
-from starlette.requests import Request
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 KEY = "tsk-test-0123456789abcdef"
-
-
-def _request(body: object) -> Request:
-    raw = json.dumps(body).encode()
-    scope = {
-        "type": "http",
-        "method": "PUT",
-        "path": "/api/decision-provider",
-        "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(raw)).encode())],
-    }
-
-    async def receive():
-        return {"type": "http.request", "body": raw, "more_body": False}
-
-    return Request(scope, receive)
 
 
 class DecisionProviderTests(unittest.TestCase):
@@ -93,14 +76,9 @@ class DecisionProviderTests(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.decision.resolve()
 
-    def test_routes_are_local_session_gated_and_map_failures(self) -> None:
-        routes = app_import.route_methods(self.admin_app)
-        for method in ("GET", "PUT", "DELETE"):
-            self.assertIn(("/api/decision-provider", method), routes)
-        self.assertNotIn("/api/decision-provider", self.admin_app.OPEN_API)
-        route = self.decision._configure_route
+    def test_a_save_validates_exactly_one_key_and_maps_failures(self) -> None:
         with mock.patch.object(self.decision, "configure", return_value={"configured": True}) as configure:
-            self.assertEqual(asyncio.run(route(_request({"api_key": KEY}))), {"configured": True})
+            self.assertEqual(self.decision.save({"api_key": KEY}), {"configured": True})
         configure.assert_called_once_with(KEY)
         for body, error, status in (
             ({"api_key": KEY, "extra": 1}, None, 400),
@@ -112,7 +90,7 @@ class DecisionProviderTests(unittest.TestCase):
                 mock.patch.object(self.decision, "configure", side_effect=error),
                 self.assertRaises(HTTPException) as raised,
             ):
-                asyncio.run(route(_request(body)))
+                self.decision.save(body)
             self.assertEqual(raised.exception.status_code, status)
 
 

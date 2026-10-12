@@ -17,6 +17,8 @@ class SessionSocketCase(ChatWebSocketCase):
         self.topics = __import__("session.topics", fromlist=["topics"])
         self.budget = __import__("session.budget", fromlist=["budget"])
         self.calls = __import__("session.calls", fromlist=["calls"])
+        self.methods = __import__("session.methods", fromlist=["methods"])
+        self.lane = __import__("session.lane", fromlist=["lane"])
         # Each test starts with fresh session budgets, so one test's opens and calls never spend another's.
         for name in ("OPENS", "CALL_BUDGET", "CHANGE_BUDGET"):
             patch = mock.patch.object(

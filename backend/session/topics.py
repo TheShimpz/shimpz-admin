@@ -64,17 +64,13 @@ _UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 def for_mutation(method: str, path: str) -> tuple[str, ...]:
     """The topics an Admin HTTP mutation that succeeded changed: the Team list, a Team's Routines, or sign-in security.
 
-    A Team's history changes as Admin's history store commits it, and every session change rotates the session secret.
+    Every other change Admin makes is a session call that raises its own topics. A Team's history changes as Admin's
+    history store commits it, and every session change rotates the session secret.
     """
     if method not in _UNSAFE_METHODS:
         return ()
-    if path in {"/api/teams", "/api/teams/order", "/api/space"}:
+    if path == "/api/space":
         return ("teams",)
-    if (match := _TEAM_PATH.fullmatch(path)) is not None:
-        rest = match[2] or ""
-        if not rest:
-            return ("teams",)
-        if rest.startswith("/routines/"):
-            return (f"team/{match[1]}/routines",)
-        return ()
+    if (match := _TEAM_PATH.fullmatch(path)) is not None and (match[2] or "").startswith("/routines/"):
+        return (f"team/{match[1]}/routines",)
     return ("security/summary",) if path.startswith("/api/admin/") else ()

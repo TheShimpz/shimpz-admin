@@ -1,4 +1,4 @@
-"""Bounded JSON and thin Team route edges for the Admin HTTP application."""
+"""Bounded JSON, Team lifecycle, and thin Team operation edges for the Admin application."""
 
 import asyncio
 import importlib
@@ -42,27 +42,26 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         cls.admin_app = app_import.load_app(root)
         app_import.replace_for_class(cls, cls.admin_app.state, "STORE_PATH", root / "admin.json")
         app_import.replace_for_class(cls, cls.admin_app.chat_history, "STORE_PATH", root / "chat-history.sqlite3")
+        cls.team_names = importlib.import_module("team.names")
+        cls.team_summary = importlib.import_module("team.summary")
+        cls.team_inference = importlib.import_module("team.inference")
+        cls.team_snapshots = importlib.import_module("team.snapshots")
+
+    def delete_with_history(self, team_id: str, answer):
+        with mock.patch.object(self.admin_app.team, "destroy_confirmed", return_value=answer):
+            return self.team_names._deleted_with_history(team_id, "Marketing")
 
     def assert_sync_status(self, expected: int, action) -> None:
         with self.assertRaises(self.admin_app.HTTPException) as raised:
             action()
         self.assertEqual(raised.exception.status_code, expected)
 
-    def test_team_response_and_model_routes_map_domain_rejections(self) -> None:
+    def test_a_team_request_admin_refused_is_a_bad_request(self) -> None:
         with self.assertRaises(self.admin_app.HTTPException) as raised:
-            self.admin_app._team_response(lambda: (_ for _ in ()).throw(self.admin_app.team.TeamRequestError("bad")))
+            self.admin_app.team_http.response(
+                lambda: (_ for _ in ()).throw(self.admin_app.team.TeamRequestError("bad"))
+            )
         self.assertEqual(raised.exception.status_code, 400)
-
-        with mock.patch.object(self.admin_app.models, "status", return_value={"providers": []}):
-            self.assertEqual(self.admin_app.model_providers_status(), {"providers": []})
-        with mock.patch.object(self.admin_app.models, "remove", return_value={"configured": False}):
-            self.assertEqual(self.admin_app.model_provider_delete("openai"), {"configured": False})
-        with mock.patch.object(
-            self.admin_app.models,
-            "remove",
-            side_effect=self.admin_app.models.ModelProviderError("invalid provider"),
-        ):
-            self.assert_sync_status(400, lambda: self.admin_app.model_provider_delete("invalid"))
 
     def test_the_platform_release_read_is_a_read_only_local_projection(self) -> None:
         self.platform_release = importlib.import_module("space.release")
@@ -85,16 +84,16 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             self.assert_sync_status(503, self.platform_release.status_response)
 
     def test_bounded_json_rejects_media_length_stream_and_document_violations(self) -> None:
-        self.assert_status(415, self.admin_app._bounded_json_object(_request(body=b"{}")))
+        self.assert_status(415, self.admin_app.team_http.bounded_json_object(_request(body=b"{}")))
         self.assert_status(
             400,
-            self.admin_app._bounded_json_object(
+            self.admin_app.team_http.bounded_json_object(
                 _request(body=b"{}", headers=[(b"content-type", b"application/json"), (b"content-length", b"x")])
             ),
         )
         self.assert_status(
             413,
-            self.admin_app._bounded_json_object(
+            self.admin_app.team_http.bounded_json_object(
                 _request(
                     body=b"{}",
                     headers=[(b"content-type", b"application/json"), (b"content-length", b"3")],
@@ -104,7 +103,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         )
         self.assert_status(
             413,
-            self.admin_app._bounded_json_object(
+            self.admin_app.team_http.bounded_json_object(
                 _request(body=b"{}", headers=[(b"content-type", b"application/json")]),
                 max_bytes=1,
             ),
@@ -113,13 +112,15 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             with self.subTest(body=body):
                 self.assert_status(
                     400,
-                    self.admin_app._bounded_json_object(
+                    self.admin_app.team_http.bounded_json_object(
                         _request(body=body, headers=[(b"content-type", b"application/json")])
                     ),
                 )
         self.assert_status(
             400,
-            self.admin_app._bounded_json_object(_request(body=b"[]", headers=[(b"content-type", b"application/json")])),
+            self.admin_app.team_http.bounded_json_object(
+                _request(body=b"[]", headers=[(b"content-type", b"application/json")])
+            ),
         )
 
     def test_team_creation_validates_shape_and_logs_only_successful_creation(self) -> None:
@@ -130,10 +131,10 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         )
         for payload, expected in invalid:
             with self.subTest(payload=payload):
-                self.assert_sync_status(expected, lambda payload=payload: self.admin_app.team_names.create(payload))
+                self.assert_sync_status(expected, lambda payload=payload: self.team_names.create(payload))
 
         with mock.patch.object(self.admin_app.team, "to_team_id", return_value=""):
-            self.assert_sync_status(400, lambda: self.admin_app.team_names.create({"team_name": "!!!"}))
+            self.assert_sync_status(400, lambda: self.team_names.create({"team_name": "!!!"}))
 
         with (
             mock.patch.object(
@@ -143,7 +144,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             ),
             mock.patch.object(self.admin_app.log, "info") as logged,
         ):
-            response = self.admin_app.team_names.create({"team_name": " Marketing "})
+            response = self.team_names.create({"team_name": " Marketing "})
         self.assertEqual(response.status_code, 201)
         logged.assert_called_once_with("team created: %s", "marketing")
 
@@ -152,7 +153,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             "create",
             return_value=self.admin_app.team.TeamResponse(409, {"error": "exists"}),
         ):
-            self.assertEqual(self.admin_app.team_names.create({"team_name": "Marketing"}).status_code, 409)
+            self.assertEqual(self.team_names.create({"team_name": "Marketing"}).status_code, 409)
 
     def test_new_local_team_clears_only_stale_history_for_its_id(self) -> None:
         created = self.admin_app.team.TeamResponse(
@@ -167,56 +168,9 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             mock.patch.object(self.admin_app.team, "create", side_effect=(created, existing)),
             mock.patch.object(self.admin_app.chat_history, "clear_team", return_value=2) as cleared,
         ):
-            self.assertEqual(self.admin_app.team_names.create({"team_name": "Marketing"}).status_code, 201)
-            self.assertEqual(self.admin_app.team_names.create({"team_name": "Marketing"}).status_code, 200)
+            self.assertEqual(self.team_names.create({"team_name": "Marketing"}).status_code, 201)
+            self.assertEqual(self.team_names.create({"team_name": "Marketing"}).status_code, 200)
         cleared.assert_called_once_with("marketing")
-
-    def test_local_team_deletion_validates_confirmation_and_authority_failures(self) -> None:
-        request = _json_request({}, cookie="token")
-        cases = (({"team_name": "Marketing"}, 400), ({"team_name": 1, "password": "secret"}, 400))
-        for payload, expected in cases:
-            with (
-                self.subTest(payload=payload),
-                mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value=payload)),
-            ):
-                self.assert_status(expected, self.admin_app.teams_destroy("team_1", request))
-
-        with mock.patch.object(
-            self.admin_app,
-            "_bounded_json_object",
-            new=mock.AsyncMock(return_value={"team_name": "Marketing", "password": ""}),
-        ):
-            self.assert_status(400, self.admin_app.teams_destroy("team_1", request))
-
-        payload = {"team_name": "Marketing", "password": "violet otter lantern quartz 92"}
-        attempt = self.admin_app.local_auth.auth
-        corrupt = mock.AsyncMock(side_effect=self.admin_app.auth.PasswordRecordError("corrupt"))
-        with (
-            mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value=payload)),
-            mock.patch.object(attempt, "attempt_login", new=corrupt),
-            self.assertRaises(self.admin_app.auth.PasswordRecordError),
-        ):
-            asyncio.run(self.admin_app.teams_destroy("team_1", request))
-
-        with (
-            mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value=payload)),
-            mock.patch.object(attempt, "attempt_login", new=mock.AsyncMock(return_value=(False, 0))),
-        ):
-            self.assert_status(403, self.admin_app.teams_destroy("team_1", request))
-
-        with (
-            mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value=payload)),
-            mock.patch.object(attempt, "attempt_login", new=mock.AsyncMock(return_value=(True, 0))),
-            mock.patch.object(
-                self.admin_app.team,
-                "destroy_confirmed",
-                return_value=self.admin_app.team.TeamResponse(200, {"deleted": True}),
-            ) as confirmed,
-        ):
-            response = asyncio.run(self.admin_app.teams_destroy("team_1", request))
-        self.assertEqual(response.status_code, 200)
-        # Local Team confirms the current name itself (ADR-0088); Admin forwards the typed name.
-        confirmed.assert_called_once_with("team_1", payload["team_name"])
 
     def test_the_history_read_is_team_gated_and_never_cached(self) -> None:
         page = {
@@ -253,16 +207,16 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         deleted = self.admin_app.team.TeamResponse(200, {"deleted": True})
         failed = self.admin_app.team.TeamResponse(503, {"detail": "unavailable"})
         with mock.patch.object(self.admin_app.chat_history, "clear_team", return_value=3) as cleared:
-            self.assertIs(self.admin_app._team_delete_with_history("marketing", lambda: deleted), deleted)
+            self.assertIs(self.delete_with_history("marketing", deleted), deleted)
         cleared.assert_called_once_with("marketing")
 
         with mock.patch.object(self.admin_app.chat_history, "clear_team") as cleared:
-            self.assertIs(self.admin_app._team_delete_with_history("marketing", lambda: failed), failed)
+            self.assertIs(self.delete_with_history("marketing", failed), failed)
         cleared.assert_not_called()
 
         absent = self.admin_app.team.TeamResponse(404, {"detail": "Team not found"})
         with mock.patch.object(self.admin_app.chat_history, "clear_team", return_value=1) as cleared:
-            response = self.admin_app._team_delete_with_history("marketing", lambda: absent)
+            response = self.delete_with_history("marketing", absent)
         self.assertEqual(response, self.admin_app.team.TeamResponse(200, {"deleted": False}))
         cleared.assert_called_once_with("marketing")
 
@@ -271,7 +225,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             "clear_team",
             side_effect=self.admin_app.chat_history.HistoryUnavailableError("full"),
         ):
-            response = self.admin_app._team_delete_with_history("marketing", lambda: deleted)
+            response = self.delete_with_history("marketing", deleted)
         self.assertEqual(response.status, 503)
 
         with mock.patch.object(self.admin_app.chat_history, "clear_all", return_value=4) as cleared:
@@ -290,16 +244,16 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             },
         )
         with mock.patch.object(self.admin_app.team, "list_assistants", return_value=registry):
-            shown = self.admin_app.team_summary.assistants_list()
+            shown = self.team_summary.assistants_list()
         unavailable = self.admin_app.team.TeamResponse(503, {"detail": "Team is unavailable"})
         with mock.patch.object(self.admin_app.team, "list_assistants", return_value=unavailable):
-            refused = self.admin_app.team_summary.assistants_list()
+            refused = self.team_summary.assistants_list()
         malformed = self.admin_app.team.TeamResponse(200, {"assistants": [{"id": "hello-pulse"}]})
         with (
             mock.patch.object(self.admin_app.team, "list_assistants", return_value=malformed),
             self.assertRaises(self.admin_app.HTTPException) as invalid,
         ):
-            self.admin_app.team_summary.assistants_list()
+            self.team_summary.assistants_list()
 
         self.assertEqual(
             json.loads(shown.body),
@@ -313,56 +267,21 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         self.assertEqual((refused.status_code, json.loads(refused.body)), (503, {"detail": "Team is unavailable"}))
         self.assertEqual(invalid.exception.status_code, 502)
 
-    def test_thin_team_assistant_and_file_routes_preserve_the_team_response(self) -> None:
+    def test_thin_team_operations_preserve_the_team_response(self) -> None:
         response = self.admin_app.team.TeamResponse(200, {"ok": True})
-        synchronous = (
-            (self.admin_app.team_inference.team_inference_status, self.admin_app.team, "get_inference", ("team_1",)),
-            (self.admin_app.team_snapshots.local_assistants_list, self.admin_app.team, "list_local_assistants", ()),
-            (
-                self.admin_app.team_assistants_list,
-                self.admin_app.team,
-                "list_installed_assistants",
-                ("team_1",),
-            ),
-            (
-                self.admin_app.team_assistant_uninstall,
-                self.admin_app.team,
-                "uninstall_assistant",
-                ("team_1", "assistant"),
-            ),
-            (self.admin_app.team_files.team_files_list, self.admin_app.team, "list_files", ("team_1",)),
-            (self.admin_app.team_files.team_file_delete, self.admin_app.team, "delete_file", ("team_1", "f" * 32)),
+        operations = (
+            (self.team_inference.status, "get_inference", ("team_1",)),
+            (self.team_inference.configure, "configure_inference", ("team_1", {"model": "x"})),
+            (self.team_snapshots.local_assistants_list, "list_local_assistants", ()),
+            (self.admin_app.team_files.team_files_list, "list_files", ("team_1",)),
+            (self.admin_app.team_files.team_file_delete, "delete_file", ("team_1", "f" * 32)),
         )
-        for route, owner, name, arguments in synchronous:
-            with self.subTest(route=route.__name__), mock.patch.object(owner, name, return_value=response):
-                self.assertEqual(route(*arguments).status_code, 200)
-
-        with (
-            mock.patch.object(
-                self.admin_app.team_http, "bounded_json_object", new=mock.AsyncMock(return_value={"model": "x"})
-            ),
-            mock.patch.object(self.admin_app.team, "configure_inference", return_value=response),
-        ):
-            configured = asyncio.run(self.admin_app.team_inference.team_inference_configure("team_1", mock.Mock()))
-        self.assertEqual(configured.status_code, 200)
-
-        with (
-            mock.patch.object(self.admin_app, "_bounded_json_object", new=mock.AsyncMock(return_value={"id": "a"})),
-            mock.patch.object(self.admin_app.team, "install_assistant", return_value=response),
-        ):
-            installed = asyncio.run(self.admin_app.team_assistant_install("team_1", mock.Mock()))
-        self.assertEqual(installed.status_code, 200)
-
-        with (
-            mock.patch.object(
-                self.admin_app,
-                "_bounded_json_object",
-                new=mock.AsyncMock(return_value={"image_id": "x"}),
-            ),
-            mock.patch.object(self.admin_app.team, "install_local_assistant", return_value=response),
-        ):
-            installed = asyncio.run(self.admin_app.team_local_assistant_install("team_1", mock.Mock()))
-        self.assertEqual(installed.status_code, 200)
+        for operation, name, arguments in operations:
+            with (
+                self.subTest(operation=operation.__name__),
+                mock.patch.object(self.admin_app.team, name, return_value=response),
+            ):
+                self.assertEqual(operation(*arguments).status_code, 200)
 
         with (
             mock.patch.object(

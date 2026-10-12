@@ -16,7 +16,6 @@ import sys
 from contextlib import asynccontextmanager, suppress
 from functools import partial
 from pathlib import Path
-from urllib.parse import urlencode
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
@@ -26,8 +25,6 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import browser
-import decision
-import models
 import state
 import supervisor
 from history import http as chat_history_http
@@ -40,16 +37,12 @@ from team import assets as team_assets
 from team import bridge as team
 from team import files as team_files
 from team import http as team_http
-from team import inference as team_inference
-from team import names as team_names
 from team import order as team_order
-from team import snapshots as team_snapshots
-from team import summary as team_summary
 
-from action import stored_input as action_stored_input
 from chat import assets as chat_assets
 from chat import human as chat_human
 from integrations import assistants as integrations
+from integrations import authorization
 from integrations import handoff as handoff_store
 from protocol.http.v1 import websocket as chat_ws_common
 from routine import http as routine_http
@@ -75,18 +68,13 @@ COOKIE = "shimpz_admin"
 OAUTH_COOKIE = "shimpz_oauth_binding"
 OAUTH_COOKIE_PATH = "/api/oauth/cloudflare"
 OAUTH_COOKIE_TTL = 300
-OAUTH_START_PATH = "/api/oauth/cloudflare/start"
 _OAUTH_CHAT_REDIRECT = partial(
     browser.oauth_chat_redirect,
     cookie_name=OAUTH_COOKIE,
     cookie_path=OAUTH_COOKIE_PATH,
 )
 _ADMIN_SETUP_LOCK = asyncio.Lock()
-OAUTH_ORIGINS = {
-    "loopback": "http://127.0.0.1:7777",
-    "local-domain": "https://local.shimpz.com",
-}
-MAX_TEAM_DELETE_BODY_BYTES = 8 * 1024
+MAX_SPACE_RESET_BODY_BYTES = 8 * 1024
 MAX_PASSWORD_CHARS = auth.MAX_PASSWORD_CHARS
 SPA_SCRIPT_SOURCES = browser.spa_script_sources(UI_DIR)
 
@@ -135,21 +123,13 @@ async def _lifespan(application: FastAPI):
 
 app = FastAPI(title="shimpz-admin", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
 routine_http.register(app, _AUTHENTICATE_ACTION_REQUEST, _LOCAL_AUTH_CONTEXT)
-team_inference.register(app)
 team_assets.register(app)
-team_summary.register(app)
 security.register(app)
-app.add_api_route(
-    "/api/assistant-catalog",
-    chat_assets.assistant_catalog,
-    methods=["GET"],
-)
 app.add_api_route(
     "/api/assistants/{assistant_id}/catalog-icon",
     chat_assets.assistant_icon,
     methods=["GET"],
 )
-OAUTH_HANDOFFS = handoff_store.OAuthHandoffStore()
 
 
 class SessionEvidenceUnavailableError(RuntimeError):
@@ -183,26 +163,13 @@ async def _password_record_unavailable(_request: Request, _exc: auth.PasswordRec
     return _password_recovery_response()
 
 
-def _local_oauth_authorization_mode(request: Request) -> str:
-    origin = chat_ws_common.canonical_origin(request.headers.get("origin"))
-    if origin is None or origin not in _allowed_browser_origins():
-        raise HTTPException(status_code=403, detail="OAuth authorization origin is not admitted")
-    if origin == OAUTH_ORIGINS["loopback"]:
-        return "loopback"
-    if origin == OAUTH_ORIGINS["local-domain"]:
-        return "local-domain"
-    if origin.startswith("https://") and origin == state.browser_origin():
-        return "out-of-band"
-    raise HTTPException(status_code=409, detail="OAuth authorization is unavailable for this Admin address")
-
-
 def _oauth_request_mode(request: Request) -> str | None:
     if request.url.scheme == "http" and request.url.hostname == "127.0.0.1" and request.url.port == 7777:
         return "loopback"
     if (
         request.url.hostname == "local.shimpz.com"
         and request.url.port is None
-        and state.browser_origin() == OAUTH_ORIGINS["local-domain"]
+        and state.browser_origin() == authorization.OAUTH_ORIGINS["local-domain"]
     ):
         return "local-domain"
     return None
@@ -408,7 +375,9 @@ async def session(request: Request):
         response["passkey_enrollment_available"] = local_auth.passkey_enrollment_available(origin)
         response["passkey_registered"] = local_auth.passkey_registered(origin)
         if origin_admitted:
-            completion_mode = browser.oauth_completion_mode(request, _local_oauth_authorization_mode)
+            completion_mode = browser.oauth_completion_mode(
+                lambda: authorization.callback_mode(origin, _allowed_browser_origins)
+            )
             response["oauth_completion_mode"] = completion_mode
     return response
 
@@ -437,7 +406,7 @@ async def logout(request: Request):
                 status_code=503,
             )
         with suppress(handoff_store.OAuthHandoffError):
-            OAUTH_HANDOFFS.cancel_session(session_token)
+            authorization.HANDOFFS.cancel_session(session_token)
     resp = JSONResponse({"ok": True})
     resp.delete_cookie(COOKIE, path="/")
     return resp
@@ -554,11 +523,6 @@ async def _host_reset_password(password: object) -> None:
     await local_auth._verify_password(password, _LOCAL_AUTH_CONTEXT)
 
 
-def _team_delete_with_history(team_id: str, action) -> team.TeamResponse:
-    with team_order.LOCK:
-        return team_order.team_deleted(team_id, chat_history_http.team_delete(team_id, action))
-
-
 def _space_reset_with_history(action) -> team.TeamResponse:
     # Admin owns the saved Team order, so a Space reset clears it with the history.
     with team_order.LOCK:
@@ -568,7 +532,7 @@ def _space_reset_with_history(action) -> team.TeamResponse:
 
 
 def _space_reset_response(action) -> JSONResponse:
-    return _team_response(lambda: _space_reset_with_history(action))
+    return team_http.response(lambda: _space_reset_with_history(action))
 
 
 def _established_host_reset(capability_digest: str) -> JSONResponse:
@@ -581,7 +545,7 @@ async def local_space_host_reset(request: Request):
     return await host_reset.reset(
         request,
         setup_lock=_ADMIN_SETUP_LOCK,
-        read_json=partial(_bounded_json_object, max_bytes=MAX_TEAM_DELETE_BODY_BYTES),
+        read_json=partial(team_http.bounded_json_object, max_bytes=MAX_SPACE_RESET_BODY_BYTES),
         verify_password=_host_reset_password,
         bootstrap_reset=lambda: _space_reset_response(team.bootstrap_reset_space),
         established_reset=_established_host_reset,
@@ -595,72 +559,13 @@ async def local_space_reset(request: Request):
     return await space_reset.authenticated(
         request,
         max_password_chars=MAX_PASSWORD_CHARS,
-        read_json=partial(_bounded_json_object, max_bytes=MAX_TEAM_DELETE_BODY_BYTES),
+        read_json=partial(team_http.bounded_json_object, max_bytes=MAX_SPACE_RESET_BODY_BYTES),
         recheck_password=partial(local_auth.recheck_password, context=_LOCAL_AUTH_CONTEXT),
         team_response=_space_reset_response,
     )
 
 
 app.add_api_route("/api/space", local_space_reset, methods=["DELETE"])
-
-
-# Teams and Assistants stay outside OPEN_API. Admin keeps Supervisor authentication while this
-# adapter preserves Team's bounded status and JSON contract without gaining Docker access.
-_team_response = team_http.response
-_bounded_json_object = team_http.bounded_json_object
-
-
-def model_providers_status():
-    """Return masked local provider state; cleartext keys never leave the Admin backend."""
-    return models.status()
-
-
-async def model_provider_configure(provider: str, request: Request):
-    payload = await _bounded_json_object(request)
-    if set(payload) != {"api_key"}:
-        raise HTTPException(status_code=400, detail="request body must contain only api_key")
-    try:
-        return await asyncio.to_thread(models.configure, provider, payload["api_key"])
-    except models.ModelProviderError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-    except models.ModelProviderUnavailableError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from None
-
-
-def model_provider_delete(provider: str):
-    try:
-        return models.remove(provider)
-    except models.ModelProviderError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-
-
-app.add_api_route("/api/model-providers", model_providers_status, methods=["GET"])
-app.add_api_route("/api/model-providers/{provider}", model_provider_configure, methods=["PUT"])
-app.add_api_route("/api/model-providers/{provider}", model_provider_delete, methods=["DELETE"])
-decision.register(app)
-
-
-team_names.register(app)
-team_order.register(app)
-
-
-@app.delete("/api/teams/{team_id}")
-async def teams_destroy(team_id: str, request: Request):
-    payload = await _bounded_json_object(request, MAX_TEAM_DELETE_BODY_BYTES)
-    if set(payload) != {"team_name", "password"}:
-        raise HTTPException(status_code=400, detail="request body must contain only team_name and password")
-    team_name = payload["team_name"]
-    password = payload["password"]
-    if not isinstance(team_name, str) or not isinstance(password, str):
-        raise HTTPException(status_code=400, detail="Team name and password must be strings")
-    if not 1 <= len(password) <= MAX_PASSWORD_CHARS:
-        raise HTTPException(status_code=400, detail="Supervisor password is invalid")
-
-    await local_auth.recheck_password(request, password, _LOCAL_AUTH_CONTEXT)
-    return await run_in_threadpool(
-        _team_response,
-        lambda: _team_delete_with_history(team_id, lambda: team.destroy_confirmed(team_id, team_name)),
-    )
 
 
 def _session_gate() -> session_socket.Gate:
@@ -672,6 +577,7 @@ def _session_gate() -> session_socket.Gate:
         request_scope=_team_session_scope,
         session_deadlines=_session_deadlines,
         authenticate=_AUTHENTICATE_ACTION_REQUEST,
+        recheck_password=partial(local_auth.recheck_password, context=_LOCAL_AUTH_CONTEXT),
         revoke_tickets=_LOCAL_AUTH_CONTEXT.ticket_store.revoke,
         cookie=COOKIE,
     )
@@ -682,187 +588,15 @@ async def session_ws(websocket: WebSocket):
     await session_socket.serve(websocket, _session_gate())
 
 
-@app.get("/api/teams/{team_id}/assistant-integrations")
-def team_assistant_integrations(team_id: str):
-    response = _team_response(lambda: integrations.list_assistant_integrations(team_id))
-    response.headers["Cache-Control"] = "no-store"
-    return response
-
-
-@app.get("/api/teams/{team_id}/assistant-stored-inputs")
-def team_assistant_stored_inputs(team_id: str):
-    response = _team_response(lambda: action_stored_input.list_assistant_stored_inputs(team_id))
-    response.headers["Cache-Control"] = "no-store"
-    return response
-
-
-@app.delete("/api/teams/{team_id}/assistant-stored-inputs/{assistant_id}/{stored_input_id}")
-async def team_assistant_stored_input_clear(
-    team_id: str,
-    assistant_id: str,
-    stored_input_id: str,
-):
-    with team_http.refused_as_bad_request():
-        response = await asyncio.to_thread(
-            action_stored_input.clear_assistant_stored_input,
-            team_id,
-            assistant_id,
-            stored_input_id,
-        )
-    return JSONResponse(response.body, status_code=response.status, headers={"Cache-Control": "no-store"})
-
-
-async def team_assistant_integration_authorize(team_id: str, challenge_id: str, request: Request):
-    payload = await _bounded_json_object(request)
-    if set(payload) != {"assistant_id", "integration_id"}:
-        raise HTTPException(
-            status_code=400,
-            detail="request body must contain only assistant_id and integration_id",
-        )
-    session_token = request.cookies.get(COOKIE, "")
-    preparation = None
-    authorized = False
-    try:
-        callback_mode = _local_oauth_authorization_mode(request)
-        canonical_team = team.canonical_team_id(team_id)
-        canonical_challenge = team.canonical_challenge_id(challenge_id)
-        preparation = OAUTH_HANDOFFS.issue(
-            team_id=canonical_team,
-            challenge_id=canonical_challenge,
-            admin_session=session_token,
-            callback_mode=callback_mode,
-        )
-        result = await asyncio.to_thread(
-            integrations.start_local_assistant_integration_authorization,
-            canonical_team,
-            canonical_challenge,
-            payload["assistant_id"],
-            payload["integration_id"],
-            preparation.session_binding,
-            callback_mode,
-        )
-        if result.status != 200:
-            return JSONResponse(
-                result.body,
-                status_code=result.status,
-                headers={"Cache-Control": "no-store"},
-            )
-        OAUTH_HANDOFFS.authorize(preparation.token, result.body.get("authorization_url"))
-        authorized = True
-    except team.TeamRequestError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-    except handoff_store.OAuthHandoffError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from None
-    finally:
-        if preparation is not None and not authorized:
-            OAUTH_HANDOFFS.discard(preparation.token)
-    if callback_mode == "out-of-band":
-        authorization_url = result.body["authorization_url"]
-        completion_mode = "code"
-    else:
-        authorization_url = (
-            OAUTH_ORIGINS[callback_mode] + OAUTH_START_PATH + "?" + urlencode({"handoff": preparation.token})
-        )
-        completion_mode = "automatic"
-    return JSONResponse(
-        {"authorization_url": authorization_url, "completion_mode": completion_mode},
-        headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
-    )
-
-
-async def team_assistant_integration_complete(team_id: str, challenge_id: str, request: Request):
-    payload = await _bounded_json_object(request)
-    if set(payload) != {"completion_code"}:
-        raise HTTPException(status_code=400, detail="request body must contain only completion_code")
-    try:
-        completion = OAUTH_HANDOFFS.complete(
-            team_id=team.canonical_team_id(team_id),
-            challenge_id=team.canonical_challenge_id(challenge_id),
-            admin_session=request.cookies.get(COOKIE, ""),
-            completion_code=payload["completion_code"],
-        )
-        result = await asyncio.to_thread(
-            integrations.complete_cloudflare_oauth_callback,
-            state=completion.state,
-            claim=completion.claim,
-            session_binding=completion.session_binding,
-        )
-    except team.TeamRequestError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-    except handoff_store.OAuthHandoffError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from None
-    return JSONResponse(result.body, status_code=result.status, headers={"Cache-Control": "no-store"})
-
-
-async def team_assistant_integration_cancel(team_id: str, challenge_id: str, request: Request):
-    payload = await _bounded_json_object(request)
-    if payload:
-        raise HTTPException(status_code=400, detail="request body must be an empty JSON object")
-    try:
-        canonical_team = team.canonical_team_id(team_id)
-        canonical_challenge = team.canonical_challenge_id(challenge_id)
-        binding = OAUTH_HANDOFFS.cancel(
-            team_id=canonical_team,
-            challenge_id=canonical_challenge,
-            admin_session=request.cookies.get(COOKIE, ""),
-        )
-        if binding is None:
-            return Response(status_code=204, headers={"Cache-Control": "no-store"})
-        result = await asyncio.to_thread(
-            integrations.cancel_local_assistant_integration_authorization,
-            canonical_team,
-            canonical_challenge,
-            binding,
-        )
-    except team.TeamRequestError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-    except handoff_store.OAuthHandoffError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from None
-    if result.status == 204:
-        return Response(status_code=204, headers={"Cache-Control": "no-store"})
-    return JSONResponse(result.body, status_code=result.status, headers={"Cache-Control": "no-store"})
-
-
-app.add_api_route(
-    "/api/teams/{team_id}/assistant-integrations/challenges/{challenge_id}/authorize",
-    team_assistant_integration_authorize,
-    methods=["POST"],
-)
-app.add_api_route(
-    "/api/teams/{team_id}/assistant-integrations/challenges/{challenge_id}/complete",
-    team_assistant_integration_complete,
-    methods=["POST"],
-)
-app.add_api_route(
-    "/api/teams/{team_id}/assistant-integrations/challenges/{challenge_id}/authorize",
-    team_assistant_integration_cancel,
-    methods=["DELETE"],
-)
-
-
-@app.delete("/api/teams/{team_id}/assistant-integrations/{assistant_id}/{integration_id}")
-async def team_assistant_integration_disconnect(team_id: str, assistant_id: str, integration_id: str):
-    with team_http.refused_as_bad_request():
-        response = await asyncio.to_thread(
-            integrations.disconnect_assistant_integration,
-            team_id,
-            assistant_id,
-            integration_id,
-        )
-    if response.status == 204 and not response.body:
-        return Response(status_code=204, headers={"Cache-Control": "no-store"})
-    return JSONResponse(response.body, status_code=response.status, headers={"Cache-Control": "no-store"})
-
-
 @app.get("/api/oauth/cloudflare/start")
 async def oauth_cloudflare_start(request: Request, handoff: str = ""):
     request_mode = _oauth_request_mode(request)
     if request_mode is None:
         with suppress(handoff_store.OAuthHandoffError):
-            OAUTH_HANDOFFS.discard(handoff)
+            authorization.HANDOFFS.discard(handoff)
         return _OAUTH_CHAT_REDIRECT("start-failed")
     try:
-        pending = OAUTH_HANDOFFS.consume(handoff, request_mode)
+        pending = authorization.HANDOFFS.consume(handoff, request_mode)
     except handoff_store.OAuthHandoffError:
         return _OAUTH_CHAT_REDIRECT("start-failed")
     response = RedirectResponse(pending.authorization_url, status_code=303)
@@ -903,41 +637,6 @@ async def oauth_cloudflare_callback(request: Request):
         log.info("OAuth callback rejected (HTTP %s)", result.status)
         return _OAUTH_CHAT_REDIRECT("callback-failed")
     return _OAUTH_CHAT_REDIRECT()
-
-
-@app.get("/api/teams/{team_id}/assistants")
-def team_assistants_list(team_id: str):
-    return _team_response(lambda: team.list_installed_assistants(team_id))
-
-
-@app.post("/api/teams/{team_id}/assistants")
-async def team_assistant_install(team_id: str, request: Request):
-    payload = await _bounded_json_object(request)
-    return await run_in_threadpool(
-        _team_response,
-        lambda: team.install_assistant(team_id, payload),
-    )
-
-
-async def team_local_assistant_install(team_id: str, request: Request):
-    payload = await _bounded_json_object(request)
-    return await run_in_threadpool(
-        _team_response,
-        lambda: team.install_local_assistant(team_id, payload),
-    )
-
-
-team_snapshots.register(app)
-app.add_api_route(
-    "/api/teams/{team_id}/assistants/local",
-    team_local_assistant_install,
-    methods=["POST"],
-)
-
-
-@app.delete("/api/teams/{team_id}/assistants/{assistant_id}")
-def team_assistant_uninstall(team_id: str, assistant_id: str):
-    return _team_response(lambda: team.uninstall_assistant(team_id, assistant_id))
 
 
 team_files.register(app)

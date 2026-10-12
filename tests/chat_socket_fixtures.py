@@ -123,6 +123,8 @@ class Socket:
         self._fail_send_type = fail_send_type
         self._calls = 0
         self.deadlines: list[dict] = []
+        # The long calls Admin said had started running, in order.
+        self.progress: list[str] = []
         self.send_failed = threading.Event()
 
     async def _send(self, message: dict) -> None:
@@ -190,10 +192,15 @@ class Socket:
         await self.send_json({"type": "call", "id": call_id, "method": method, "params": params})
         return call_id
 
-    async def result(self, method: str, params: dict[str, object]) -> dict:
-        """Call one method and return its result, which must be the next frame."""
+    async def result(
+        self, method: str, params: dict[str, object], wait_seconds: float = EXPECTED_FRAME_SECONDS
+    ) -> dict:
+        """Call one method and return its result, which must be the next frame past the call's own `progress`."""
         call_id = await self.call(method, params)
-        frame = await self.next_frame()
+        frame = await self.next_frame(wait_seconds)
+        if frame == {"type": "progress", "id": call_id, "state": "running"}:
+            self.progress.append(call_id)
+            frame = await self.next_frame(wait_seconds)
         if frame.get("type") != "result" or frame.get("id") != call_id:
             raise AssertionError(f"expected the result of {call_id}, got {frame!r}")
         return frame

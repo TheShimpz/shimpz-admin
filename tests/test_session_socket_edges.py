@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from fastapi import HTTPException
-from session import budget, calls, outbound, registry, socket, topics, watcher
+from session import budget, calls, lane, methods, outbound, registry, socket, topics, watcher
 from signin import audit, auth
 
 
@@ -27,6 +27,7 @@ def _gate(**overrides) -> socket.Gate:
         "request_scope": lambda _cookies: contextlib.nullcontext(),
         "session_deadlines": lambda _cookies: (60.0, 600.0),
         "authenticate": mock.AsyncMock(),
+        "recheck_password": mock.AsyncMock(),
         "revoke_tickets": mock.Mock(),
         "cookie": "shimpz_admin",
     }
@@ -79,7 +80,7 @@ class SessionPartsTests(unittest.TestCase):
 
     def test_only_a_closed_topic_grammar_changes(self) -> None:
         with self.assertRaises(ValueError):
-            topics.changed("team/marketing/inventory")
+            topics.changed("team/marketing/files")
 
 
 class SessionCallEdgeTests(unittest.TestCase):
@@ -95,12 +96,12 @@ class SessionCallEdgeTests(unittest.TestCase):
                 async def failing(*_args, failure=failure):
                     raise failure
 
-                with self.subTest(failure=failure), mock.patch.dict(calls.METHODS, {"teams.list": failing}):
+                with self.subTest(failure=failure), mock.patch.dict(methods.METHODS, {"teams.list": failing}):
                     if expected[0] == 500:
                         with self.assertLogs("shimpz-admin", "ERROR"):
-                            status, body = await calls._dispatch(session_socket, "teams.list", {})
+                            status, body = await calls._dispatch(session_socket, "c1", "teams.list", {})
                     else:
-                        status, body = await calls._dispatch(session_socket, "teams.list", {})
+                        status, body = await calls._dispatch(session_socket, "c1", "teams.list", {})
                 self.assertEqual(status, expected[0])
                 if expected[1] is not None:
                     self.assertEqual(body["code"], expected[1])
@@ -114,7 +115,7 @@ class SessionCallEdgeTests(unittest.TestCase):
         async def scenario() -> None:
             session_socket = _socket(_gate())
             session_socket.outbound.closed = True
-            with mock.patch.dict(calls.METHODS, {"teams.list": answered}):
+            with mock.patch.dict(methods.METHODS, {"teams.list": answered}):
                 await calls.run(session_socket, "c1", "teams.list", {})
             self.assertEqual(session_socket.outbound.queued, 0)
 
@@ -126,12 +127,12 @@ class SessionCallEdgeTests(unittest.TestCase):
 
         async def scenario() -> None:
             refused = _socket(_gate(session_current=mock.AsyncMock(return_value=False)))
-            with mock.patch.dict(calls.METHODS, {"subscribe": never}):
+            with mock.patch.dict(methods.METHODS, {"subscribe": never}):
                 await calls.run(refused, "c1", "subscribe", {"topics": ["teams"]})
             self.assertEqual((refused.outbound.queued, refused.close_code), (0, socket.SIGNED_OUT))
             # A read checks its socket on the lane worker that runs it, and is never answered once refused there.
             unread = _socket(_gate(session_current=mock.AsyncMock(return_value=False)))
-            with mock.patch.object(calls.team_order, "listing", side_effect=AssertionError("must not read")):
+            with mock.patch.object(methods.team_order, "listing", side_effect=AssertionError("must not read")):
                 await calls.run(unread, "c2", "teams.list", {})
             self.assertEqual((unread.outbound.queued, unread.close_code), (0, socket.SIGNED_OUT))
             # A lane worker whose check never answers closes its socket as unavailable instead of running.
@@ -139,27 +140,43 @@ class SessionCallEdgeTests(unittest.TestCase):
             check = mock.Mock()
             check.result.side_effect = TimeoutError
             with (
-                mock.patch.object(calls.asyncio, "run_coroutine_threadsafe", return_value=check) as scheduled,
+                mock.patch.object(lane.asyncio, "run_coroutine_threadsafe", return_value=check) as scheduled,
                 mock.patch.object(stalled, "end") as end,
             ):
-                self.assertFalse(await asyncio.to_thread(calls._current, stalled))
+                self.assertFalse(await asyncio.to_thread(lane.current, stalled))
             scheduled.call_args.args[0].close()
             check.cancel.assert_called_once_with()
-            end.assert_called_once_with(calls.SOCKET_UNAVAILABLE)
+            end.assert_called_once_with(lane.SOCKET_UNAVAILABLE)
             # A worker whose socket's loop already closed runs nothing, leaving no check behind.
             closed = _socket(_gate())
             with (
-                mock.patch.object(calls.asyncio, "run_coroutine_threadsafe", side_effect=RuntimeError("closed")),
+                mock.patch.object(lane.asyncio, "run_coroutine_threadsafe", side_effect=RuntimeError("closed")),
                 mock.patch.object(closed, "authorized", new=mock.Mock(return_value=mock.Mock())) as authorized,
             ):
-                self.assertFalse(await asyncio.to_thread(calls._current, closed))
+                self.assertFalse(await asyncio.to_thread(lane.current, closed))
             authorized.return_value.close.assert_called_once_with()
             # A timed-out check on a loop that closed meanwhile still refuses the read.
             with (
-                mock.patch.object(calls.asyncio, "run_coroutine_threadsafe", return_value=check),
+                mock.patch.object(lane.asyncio, "run_coroutine_threadsafe", return_value=check),
                 mock.patch.object(stalled, "end", side_effect=RuntimeError("closed")),
             ):
-                self.assertFalse(await asyncio.to_thread(calls._current, stalled))
+                self.assertFalse(await asyncio.to_thread(lane.current, stalled))
+
+        asyncio.run(scenario())
+
+
+class SessionProgressTests(unittest.TestCase):
+    def test_progress_reaches_the_page_only_for_a_call_still_running_on_an_open_socket(self) -> None:
+        async def scenario() -> None:
+            session_socket = _socket(_gate())
+            session_socket.progress("gone")
+            self.assertEqual(session_socket.outbound.queued, 0)
+            session_socket.calls["c1"] = mock.Mock()
+            session_socket.progress("c1")
+            self.assertEqual(await session_socket.outbound.take(), '{"type":"progress","id":"c1","state":"running"}')
+            session_socket._end(1000)
+            session_socket.progress("c1")
+            self.assertEqual(session_socket.outbound.queued, 0)
 
         asyncio.run(scenario())
 

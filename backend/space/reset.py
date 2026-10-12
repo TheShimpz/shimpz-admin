@@ -19,7 +19,8 @@ async def authenticated(
     password = payload["password"]
     if not 1 <= len(password) <= max_password_chars:
         raise HTTPException(status_code=400, detail="Supervisor password is invalid")
-    await recheck_password(request, password)
+    origin = canonical_origin(request.headers.get("origin"))
+    await recheck_password(origin, password)
     # Journaled before Team, history, or the saved order changes: an unwritable journal refuses the reset.
-    audit.record("space-reset", outcome="ok", origin=canonical_origin(request.headers.get("origin")))
+    audit.record("space-reset", outcome="ok", origin=origin)
     return await run_in_threadpool(team_response, team.reset_space)

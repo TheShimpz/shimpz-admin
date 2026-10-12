@@ -19,9 +19,9 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import HTTPException
 from fastapi.responses import JSONResponse
-from starlette.concurrency import run_in_threadpool
+from session import topics
 from team import bridge
 from team import http as team_http
 
@@ -30,7 +30,6 @@ from protocol.http.v1 import strict_json
 
 ORDER_PATH = Path(os.environ.get("SHIMPZ_TEAM_ORDER_STORE") or "/data/team-order.json")
 MAX_ORDER_BYTES = 8 * 1024
-MAX_ORDER_BODY_BYTES = 8 * 1024
 LOCK = threading.Lock()
 log = logging.getLogger("shimpz-admin")
 
@@ -308,19 +307,14 @@ def _requested_ids(payload: dict) -> list[str]:
 
 
 def listing() -> JSONResponse:
-    """The Local Team list route's answer, which is never cached."""
-    response = team_http.response(_listing)
-    response.headers["Cache-Control"] = "no-store"
+    """The Local Team list in the Supervisor's order."""
+    return team_http.response(_listing)
+
+
+def save(payload: dict) -> JSONResponse:
+    """Save the Team list order the Supervisor arranged; a saved order changes the `teams` topic."""
+    team_ids = _requested_ids(payload)
+    response = team_http.response(lambda: reorder(team_ids))
+    if 200 <= response.status_code < 300:
+        topics.changed("teams")
     return response
-
-
-def register(app: FastAPI) -> None:
-    async def save(request: Request) -> JSONResponse:
-        team_ids = _requested_ids(await team_http.bounded_json_object(request, MAX_ORDER_BODY_BYTES))
-        return await run_in_threadpool(team_http.response, lambda: reorder(team_ids))
-
-    async def teams_reorder(request: Request) -> JSONResponse:
-        """Save the Team list order; every answer, including a refusal, is no-store."""
-        return await team_http.no_store(lambda: save(request))
-
-    app.add_api_route("/api/teams/order", teams_reorder, methods=["PUT"])

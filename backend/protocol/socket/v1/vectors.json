@@ -15,12 +15,20 @@
       {"type": "call", "id": "c9", "method": "subscribe", "params": {"topics": ["teams", "team/marketing/history", "team/marketing/routines", "space/resources", "platform/release", "security/summary", "session"]}},
       {"type": "call", "id": "c10", "method": "unsubscribe", "params": {"topics": ["team/marketing/history"]}},
       {"type": "call", "id": "c11", "method": "chat.attach", "params": {"team_id": "marketing", "locale": "en"}},
-      {"type": "call", "id": "c12", "method": "chat.detach", "params": {"team_id": "marketing"}}
+      {"type": "call", "id": "c12", "method": "chat.detach", "params": {"team_id": "marketing"}},
+      {"type": "call", "id": "c13", "method": "teams.create", "params": {"body": {"team_name": "Marketing"}}},
+      {"type": "call", "id": "c14", "method": "teams.delete", "params": {"team_id": "marketing", "body": {"team_name": "Marketing", "password": "correct horse"}}},
+      {"type": "call", "id": "c15", "method": "assistants.install", "params": {"team_id": "marketing", "body": {"assistant_id": "shimpz-cloudflare", "source_digest": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}}},
+      {"type": "call", "id": "c16", "method": "snapshots.summary", "params": {"image_id": "sha256:0000000000000000000000000000000000000000000000000000000000000000", "locale": "pt"}},
+      {"type": "call", "id": "c17", "method": "store.catalog", "params": {"locale": "en"}},
+      {"type": "call", "id": "c18", "method": "store.catalog", "params": {"locale": "en", "cursor": "12.0123456789abcdef0123456789abcdef"}},
+      {"type": "call", "id": "c19", "method": "integrations.cancel", "params": {"team_id": "marketing", "challenge_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+      {"type": "call", "id": "c20", "method": "subscribe", "params": {"topics": ["assistants/registry", "local-assistants", "team/marketing/inventory", "team/marketing/inference"]}}
     ],
     "invalid": [
       {"type": "call", "id": "", "method": "teams.list", "params": {}},
       {"type": "call", "id": "has space", "method": "teams.list", "params": {}},
-      {"type": "call", "id": "c1", "method": "teams.delete", "params": {}},
+      {"type": "call", "id": "c1", "method": "teams.destroy", "params": {}},
       {"type": "call", "id": "c1", "method": "teams.list", "params": {"extra": "x"}},
       {"type": "call", "id": "c1", "method": "teams.list"},
       {"type": "call", "id": "c1", "method": "teams.list", "params": {}, "extra": 1},
@@ -29,8 +37,13 @@
       {"type": "call", "id": "c1", "method": "subscribe", "params": {"topics": []}},
       {"type": "call", "id": "c1", "method": "subscribe", "params": {"topics": ["teams", "teams"]}},
       {"type": "call", "id": "c1", "method": "subscribe", "params": {"topics": ["team/Marketing/history"]}},
-      {"type": "call", "id": "c1", "method": "subscribe", "params": {"topics": ["team/marketing/inventory"]}},
-      {"type": "call", "id": "c1", "method": "chat.attach", "params": {"team_id": "marketing"}}
+      {"type": "call", "id": "c1", "method": "subscribe", "params": {"topics": ["team/marketing/files"]}},
+      {"type": "call", "id": "c1", "method": "chat.attach", "params": {"team_id": "marketing"}},
+      {"type": "call", "id": "c1", "method": "teams.create", "params": {"body": "Marketing"}},
+      {"type": "call", "id": "c1", "method": "teams.create", "params": {"body": ["Marketing"]}},
+      {"type": "call", "id": "c1", "method": "teams.rename", "params": {"team_id": {"id": "marketing"}, "body": {"team_name": "Growth"}}},
+      {"type": "call", "id": "c1", "method": "models.save", "params": {"provider": "openai", "body": {"api_key": "test-api-key"}, "extra": "x"}},
+      {"type": "call", "id": "c1", "method": "store.catalog", "params": {"cursor": "12.0123456789abcdef0123456789abcdef"}}
     ]
   },
   "activity": {
@@ -51,6 +64,7 @@
   "server": {
     "result": {"type": "result", "id": "c1", "status": 200, "body": {"teams": []}, "topic": "teams", "epoch": "0123456789abcdef0123456789abcdef", "revision": 3},
     "refused": {"type": "result", "id": "c2", "status": 429, "body": {"detail": "too many calls in flight"}},
+    "progress": {"type": "progress", "id": "c15", "state": "running"},
     "session": {"type": "session", "idle_seconds": 3480, "absolute_seconds": 82800},
     "changed": {"type": "changed", "topic": "team/marketing/history", "epoch": "0123456789abcdef0123456789abcdef", "revision": 4},
     "chat": [
@@ -60,7 +74,7 @@
     ]
   },
   "topics": {
-    "valid": ["teams", "space/resources", "platform/release", "security/summary", "session", "team/marketing/history", "team/team_1/routines"],
-    "invalid": ["", "team", "team/marketing", "team/Marketing/history", "team/marketing/inventory", "teams/", "Teams"]
+    "valid": ["teams", "space/resources", "platform/release", "security/summary", "session", "assistants/registry", "local-assistants", "team/marketing/history", "team/team_1/routines", "team/marketing/inventory", "team/marketing/inference"],
+    "invalid": ["", "team", "team/marketing", "team/Marketing/history", "team/marketing/files", "teams/", "Teams", "assistants", "local-assistants/x"]
   }
 }

@@ -79,14 +79,14 @@ class SessionSocketAdmissionTests(SessionSocketCase):
             loopback = await self._connect()
             # Replacing the learned origin closes the socket bound to it at its next frame, before the read runs.
             self.assertEqual(self.admin_app.state.bind_browser_origin("https://next.example.test"), "replaced")
-            with mock.patch.object(self.calls.team_order, "listing", side_effect=AssertionError("must not read")):
+            with mock.patch.object(self.methods.team_order, "listing", side_effect=AssertionError("must not read")):
                 await admitted.call("teams.list", {})
                 self.assertEqual(await self._closed(admitted), 4403)
             await admitted.finish()
             stale = _Socket(self.admin_app.app, token=self.token, origin=external)
             self.assertEqual(await stale.start(), self._refusal(4403))
             # A socket from a still admitted origin keeps working.
-            with mock.patch.object(self.calls.team_order, "listing", return_value=self._listing()):
+            with mock.patch.object(self.methods.team_order, "listing", return_value=self._listing()):
                 self.assertEqual((await loopback.result("teams.list", {}))["status"], 200)
             await loopback.disconnect()
 
@@ -125,7 +125,7 @@ class SessionSocketFrameTests(SessionSocketCase):
         async def scenario() -> None:
             websocket = await self._connect()
             revision = self.topics.changed("teams")
-            with mock.patch.object(self.calls.team_order, "listing", return_value=self._listing()):
+            with mock.patch.object(self.methods.team_order, "listing", return_value=self._listing()):
                 result = await websocket.result("teams.list", {})
             self.assertEqual(
                 result,
@@ -179,7 +179,7 @@ class SessionSocketFrameTests(SessionSocketCase):
 
         async def scenario() -> None:
             websocket = await self._connect()
-            with mock.patch.dict(self.calls.METHODS, {"teams.list": held}):
+            with mock.patch.dict(self.methods.METHODS, {"teams.list": held}):
                 for index in range(16):
                     await websocket.send_json({"type": "call", "id": f"c{index}", "method": "teams.list", "params": {}})
                 await websocket.send_json({"type": "call", "id": "c16", "method": "teams.list", "params": {}})
@@ -214,7 +214,7 @@ class SessionSocketFrameTests(SessionSocketCase):
         async def scenario() -> None:
             websocket = await self._connect()
             with mock.patch.object(
-                self.calls, "submit_in_context", side_effect=self.calls.ExecutorSaturatedError("full")
+                self.lane, "submit_in_context", side_effect=self.lane.ExecutorSaturatedError("full")
             ):
                 refused = await websocket.result("teams.list", {})
             self.assertEqual(refused["status"], 429)
@@ -239,7 +239,7 @@ class SessionSocketFrameTests(SessionSocketCase):
         async def scenario() -> None:
             self.assertEqual(self.admin_app.state.bind_browser_origin(external), "learned")
             websocket = await self._connect(origin=external)
-            with mock.patch.object(self.calls.team_order, "listing", side_effect=listing):
+            with mock.patch.object(self.methods.team_order, "listing", side_effect=listing):
                 # The lane's four workers are busy, so a fifth read waits for one.
                 for _ in range(workers + 1):
                     await websocket.call("teams.list", {})
@@ -259,7 +259,7 @@ class SessionSocketFrameTests(SessionSocketCase):
 
         async def scenario() -> None:
             websocket = await self._connect()
-            with mock.patch.dict(self.calls.METHODS, {"teams.list": large}):
+            with mock.patch.dict(self.methods.METHODS, {"teams.list": large}):
                 result = await websocket.result("teams.list", {})
             self.assertEqual(
                 (result["status"], result["body"]), (502, {"detail": "the result exceeds the session frame bound"})
@@ -295,7 +295,7 @@ class SessionSocketFrameTests(SessionSocketCase):
         async def scenario() -> None:
             with mock.patch.object(self.admin_app, "_team_session_scope", side_effect=counted):
                 websocket = await self._connect()
-                with mock.patch.object(self.calls.team_order, "listing", return_value=self._listing()):
+                with mock.patch.object(self.methods.team_order, "listing", return_value=self._listing()):
                     await websocket.result("teams.list", {})
                     await websocket.result("teams.list", {})
                 await websocket.disconnect()
@@ -432,7 +432,7 @@ class SessionSocketClosureTests(SessionSocketCase):
             with (
                 mock.patch.object(auth.SESSIONS, "current", wraps=auth.SESSIONS.current) as current,
                 mock.patch.object(
-                    self.calls.team_order, "listing", return_value=SessionSocketFrameTests._listing(None)
+                    self.methods.team_order, "listing", return_value=SessionSocketFrameTests._listing(None)
                 ),
             ):
                 await websocket.result("teams.list", {})
@@ -552,17 +552,12 @@ class SessionSocketTopicTests(SessionSocketCase):
 
     def test_each_admin_mutation_names_exactly_what_it_changed(self) -> None:
         for method, path, expected in (
-            ("POST", "/api/teams", ("teams",)),
-            ("PUT", "/api/teams/order", ("teams",)),
-            ("PATCH", "/api/teams/team_1", ("teams",)),
-            ("DELETE", "/api/teams/team_1", ("teams",)),
             ("DELETE", "/api/space", ("teams",)),
             ("POST", "/api/teams/team_1/routines/" + "a" * 32 + "/pause", ("team/team_1/routines",)),
             ("DELETE", "/api/teams/team_1/routines/proposals/" + "a" * 32, ("team/team_1/routines",)),
             ("POST", "/api/admin/security/failures", ("security/summary",)),
             ("POST", "/api/admin/recovery-codes", ("security/summary",)),
-            ("PUT", "/api/teams/team_1/inference", ()),
-            ("GET", "/api/teams", ()),
+            ("GET", "/api/teams/team_1/routines", ()),
             ("POST", "/api/teams/team_1/files", ()),
         ):
             with self.subTest(method=method, path=path):
@@ -675,19 +670,21 @@ class SessionSocketWatcherTests(SessionSocketCase):
 class SessionSocketWatchedValueTests(SessionSocketCase):
     def test_a_watched_read_compares_only_what_the_page_sees_never_teams_per_request_trace(self) -> None:
         watcher_module = __import__("session.watcher", fromlist=["watcher"])
-        bridge = self.calls.team_order.bridge
+        bridge = self.methods.team_order.bridge
         listed = [{"team_id": "team_1", "team_name": "Marketing", "status": "running"}]
         failed = {"detail": "Team is unavailable"}
         for topic, patched, status, body in (
             ("teams", "list_teams", 200, {"teams": listed}),
             ("teams", "list_teams", 503, failed),
             ("space/resources", "_call", 503, failed),
+            ("local-assistants", "_call", 200, {"assistants": []}),
+            ("local-assistants", "_call", 503, failed),
         ):
             with self.subTest(topic=topic, status=status):
                 answers = [bridge.TeamResponse(status, {**body, "trace_id": trace}) for trace in ("a" * 32, "b" * 32)]
                 with (
                     mock.patch.object(bridge, patched, side_effect=answers),
-                    mock.patch.object(self.calls.team_order, "load", return_value=None),
+                    mock.patch.object(self.methods.team_order, "load", return_value=None),
                 ):
                     first = watcher_module.WATCHED[topic].read()
                     second = watcher_module.WATCHED[topic].read()
@@ -713,13 +710,13 @@ class SessionSocketReadParityTests(SessionSocketCase):
                 with self.subTest(params=params):
                     self.assertEqual((await websocket.result("history.page", params))["status"], status)
             missing = self.chat_socket.team.TeamResponse(404, {"detail": "Team not found"})
-            with mock.patch.object(self.calls.history_http.team, "resolve_team_name", return_value=missing):
+            with mock.patch.object(self.methods.history_http.team, "resolve_team_name", return_value=missing):
                 result = await websocket.result("history.page", {"team_id": "team_1"})
             self.assertEqual((result["status"], result["body"]), (404, {"detail": "Team not found"}))
             self.assertNotIn("revision", result)
-            unavailable = self.calls.history_http.store.HistoryUnavailableError("down")
+            unavailable = self.methods.history_http.store.HistoryUnavailableError("down")
             with (
-                mock.patch.object(self.calls.history_http.store, "page", side_effect=unavailable),
+                mock.patch.object(self.methods.history_http.store, "page", side_effect=unavailable),
                 self.assertLogs("shimpz-admin", "ERROR"),
             ):
                 result = await websocket.result("history.page", {"team_id": "team_1"})
@@ -734,7 +731,7 @@ class SessionSocketReadParityTests(SessionSocketCase):
         async def scenario() -> None:
             websocket = await self._connect()
             with mock.patch.object(
-                self.calls.routine_http.manage,
+                self.methods.routine_http.manage,
                 "list_routines",
                 return_value=team_response(503, {"detail": "Team is unavailable"}),
             ):
@@ -742,16 +739,16 @@ class SessionSocketReadParityTests(SessionSocketCase):
             self.assertEqual((result["status"], result["body"]), (503, {"detail": "Team is unavailable"}))
             self.assertEqual((await websocket.result("routines.list", {"team_id": "Team 1"}))["status"], 400)
             with mock.patch.object(
-                self.calls.team,
+                self.methods.team,
                 "space_resources",
                 return_value=team_response(502, {"detail": "Team Space resources response is invalid."}),
             ):
                 result = await websocket.result("space.resources", {})
             self.assertEqual(result["status"], 502)
             with mock.patch.object(
-                self.calls.platform_release,
+                self.methods.platform_release,
                 "read_status",
-                side_effect=self.calls.platform_release.PlatformReleaseUnavailableError,
+                side_effect=self.methods.platform_release.PlatformReleaseUnavailableError,
             ):
                 result = await websocket.result("platform.release", {})
             self.assertEqual(
@@ -763,7 +760,7 @@ class SessionSocketReadParityTests(SessionSocketCase):
                 set(summary["body"]), {"failed_second_factor_attempts", "recovery_codes_remaining", "sign_in_history"}
             )
             with mock.patch.object(
-                self.calls.team_order, "listing", side_effect=self.calls.HTTPException(400, "Team id is invalid")
+                self.methods.team_order, "listing", side_effect=self.methods.HTTPException(400, "Team id is invalid")
             ):
                 result = await websocket.result("teams.list", {})
             self.assertEqual((result["status"], result["body"]), (400, {"detail": "Team id is invalid"}))

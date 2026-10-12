@@ -12,6 +12,7 @@ import unicodedata
 from collections.abc import Callable
 
 import models
+from session import topics
 from team import transport
 
 from chat import payloads
@@ -268,6 +269,15 @@ def _project_inference_response(
     )
 
 
+def _changed(response: TeamResponse, team_id: str, *names: str, registry: bool = False) -> TeamResponse:
+    """A change Admin made through Team raises the topics it changed for the session sockets that show them."""
+    if is_team_response(response) and 200 <= response.status < 300:
+        topics.team_changed(team_id, *names)
+        if registry:
+            topics.changed("assistants/registry")
+    return response
+
+
 def get_inference(team_id: object) -> TeamResponse:
     """Read provider/model metadata only; the controller response must never contain a key."""
     canonical_id = canonical_team_id(team_id)
@@ -294,11 +304,8 @@ def configure_inference(team_id: object, payload: object) -> TeamResponse:
         f"/v1/teams/{canonical_id}/inference",
         {"provider": selected_provider, "model": selected_model},
     )
-    return _project_inference_response(
-        response,
-        canonical_id,
-        expected=(selected_provider, selected_model),
-    )
+    projected = _project_inference_response(response, canonical_id, expected=(selected_provider, selected_model))
+    return _changed(projected, canonical_id, "inference")
 
 
 def _project_action_confirmation(response: TeamResponse, team_id: str, expected: bool | None = None) -> TeamResponse:
@@ -339,7 +346,7 @@ def configure_action_confirmation(team_id: object, payload: object) -> TeamRespo
         raise TeamRequestError("the Action confirmation setting requires only a boolean confirm_mutating")
     enabled = payload["confirm_mutating"]
     response = _call("PUT", f"/v1/teams/{canonical_id}/action-confirmation", {"confirm_mutating": enabled})
-    return _project_action_confirmation(response, canonical_id, enabled)
+    return _changed(_project_action_confirmation(response, canonical_id, enabled), canonical_id, "inference")
 
 
 canonical_chat_payload = payloads.canonical_chat_payload
@@ -584,24 +591,26 @@ def install_assistant(team_id: object, payload: object) -> TeamResponse:
         raise TeamRequestError("request body must contain only assistant_id and source_digest")
     assistant_id = canonical_assistant_id(payload["assistant_id"])
     source_digest = canonical_source_digest(payload["source_digest"])
-    return _call(
+    response = _call(
         "POST",
         _assistant_path(team_id),
         {"assistant_id": assistant_id, "source_digest": source_digest},
         timeout=ASSISTANT_INSTALL_TIMEOUT_SECONDS,
     )
+    return _changed(response, canonical_team_id(team_id), "inventory", registry=True)
 
 
 def _install_local(team_id: object, payload: object, route: str) -> TeamResponse:
     if not isinstance(payload, dict) or set(payload) != {"image_id"}:
         raise TeamRequestError("request body must contain only image_id")
     image_id = canonical_source_digest(payload["image_id"])
-    return _call(
+    response = _call(
         "POST",
         f"{_assistant_path(team_id)}/{route}",
         {"image_id": image_id},
         timeout=ASSISTANT_INSTALL_TIMEOUT_SECONDS,
     )
+    return _changed(response, canonical_team_id(team_id), "inventory", registry=True)
 
 
 def install_local_assistant(team_id: object, payload: object) -> TeamResponse:
@@ -613,7 +622,8 @@ def install_fresh_local_assistant(team_id: object, payload: object) -> TeamRespo
 
 
 def uninstall_assistant(team_id: object, assistant_id: object) -> TeamResponse:
-    return _call("DELETE", _assistant_path(team_id, assistant_id))
+    response = _call("DELETE", _assistant_path(team_id, assistant_id))
+    return _changed(response, canonical_team_id(team_id), "inventory", registry=True)
 
 
 def _files_path(team_id: object, file_id: object | None = None) -> str:

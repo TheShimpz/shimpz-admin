@@ -1,4 +1,4 @@
-"""Local-only projection of staged Assistant snapshots and their localized summary (ADR-0091)."""
+"""Local-only staged Assistant snapshots and their localized summary and page, as session calls (ADR-0091)."""
 
 import json
 import sys
@@ -6,14 +6,14 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from fastapi import FastAPI, HTTPException
+from fastapi import HTTPException
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from team import bridge, snapshots, transport
 
-IMAGE_HASH = "c" * 64
+IMAGE_ID = "sha256:" + "c" * 64
 # One staged snapshot's page as Team answers it: Team HTTP protocol `assistant_details`.
 DETAILS = {
     "locale": "pt",
@@ -30,23 +30,7 @@ DETAILS = {
 }
 
 
-def _routes(app: FastAPI) -> set[str]:
-    return {route.path for route in app.routes}
-
-
-class SnapshotRouteTests(unittest.TestCase):
-    def test_registers_the_snapshot_routes(self) -> None:
-        local = FastAPI()
-        snapshots.register(local)
-        self.assertTrue(
-            {
-                "/api/local-assistants",
-                "/api/local-assistants/{image_hash}/icon",
-                "/api/local-assistants/{image_hash}/summary",
-                "/api/local-assistants/{image_hash}/details",
-            }.issubset(_routes(local))
-        )
-
+class SnapshotListTests(unittest.TestCase):
     def test_lists_snapshots_through_the_team_response(self) -> None:
         with mock.patch.object(
             bridge, "list_local_assistants", return_value=transport.TeamResponse(200, {"assistants": []})
@@ -59,8 +43,8 @@ class SnapshotRouteTests(unittest.TestCase):
 class SnapshotSummaryTests(unittest.TestCase):
     def summary(self, team_response: transport.TeamResponse, locale: str = "pt"):
         with mock.patch.object(bridge, "local_assistant_summary", return_value=team_response) as read:
-            response = snapshots.local_assistant_summary(IMAGE_HASH, locale)
-        read.assert_called_once_with(f"sha256:{IMAGE_HASH}", locale)
+            response = snapshots.local_assistant_summary(IMAGE_ID, locale)
+        read.assert_called_once_with(IMAGE_ID, locale)
         return response
 
     def test_returns_exactly_the_requested_locale_summary_without_team_trace(self) -> None:
@@ -69,7 +53,6 @@ class SnapshotSummaryTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(json.loads(response.body), {"locale": "pt", "summary": "Resumo."})
-        self.assertEqual(response.headers["cache-control"], "no-store")
 
     def test_refuses_an_answer_in_another_locale_or_outside_its_shape(self) -> None:
         for body in (
@@ -97,7 +80,7 @@ class SnapshotSummaryTests(unittest.TestCase):
         with mock.patch.object(bridge, "local_assistant_summary") as read:
             for locale in ("", "it", "PT", "pt-BR"):
                 with self.subTest(locale=locale), self.assertRaises(HTTPException) as caught:
-                    snapshots.local_assistant_summary(IMAGE_HASH, locale)
+                    snapshots.local_assistant_summary(IMAGE_ID, locale)
                 self.assertEqual(caught.exception.status_code, 422)
         read.assert_not_called()
         with self.assertRaises(HTTPException) as caught:
@@ -108,15 +91,14 @@ class SnapshotSummaryTests(unittest.TestCase):
 class SnapshotDetailsTests(unittest.TestCase):
     def details(self, team_response: transport.TeamResponse, locale: str = "pt"):
         with mock.patch.object(bridge, "local_assistant_details", return_value=team_response) as read:
-            response = snapshots.local_assistant_details(IMAGE_HASH, locale)
-        read.assert_called_once_with(f"sha256:{IMAGE_HASH}", locale)
+            response = snapshots.local_assistant_details(IMAGE_ID, locale)
+        read.assert_called_once_with(IMAGE_ID, locale)
         return response
 
     def test_returns_exactly_the_requested_locale_page_without_team_trace(self) -> None:
         response = self.details(transport.TeamResponse(200, {**DETAILS, "trace_id": "a" * 32}))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(json.loads(response.body), DETAILS)
-        self.assertEqual(response.headers["cache-control"], "no-store")
 
     def test_refuses_a_page_in_another_locale_or_outside_its_contract(self) -> None:
         for body in (
@@ -148,7 +130,7 @@ class SnapshotDetailsTests(unittest.TestCase):
         with mock.patch.object(bridge, "local_assistant_details") as read:
             for locale in ("", "it", "PT"):
                 with self.subTest(locale=locale), self.assertRaises(HTTPException) as caught:
-                    snapshots.local_assistant_details(IMAGE_HASH, locale)
+                    snapshots.local_assistant_details(IMAGE_ID, locale)
                 self.assertEqual(caught.exception.status_code, 422)
         read.assert_not_called()
         with self.assertRaises(HTTPException) as caught:

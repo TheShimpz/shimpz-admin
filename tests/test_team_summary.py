@@ -27,7 +27,6 @@ class InstalledSummaryTests(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(json.loads(response.body), {"locale": "pt", "summary": "Resumo."})
-        self.assertEqual(response.headers["cache-control"], "no-store")
 
     def test_refuses_an_answer_in_another_locale_or_outside_its_shape(self) -> None:
         for body in (
@@ -92,7 +91,6 @@ class InstalledDetailsTests(unittest.TestCase):
         response = self.details(transport.TeamResponse(200, {**PAGE, "trace_id": "a" * 32}))
         self.assertEqual(response.status_code, 200)
         self.assertEqual(json.loads(response.body), PAGE)
-        self.assertEqual(response.headers["cache-control"], "no-store")
 
     def test_refuses_another_assistant_locale_or_shape(self) -> None:
         for body, assistant_id in (

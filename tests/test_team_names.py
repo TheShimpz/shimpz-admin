@@ -1,4 +1,4 @@
-"""Local Team names (ADR-0088): rename and create through the real ASGI stack, and the bridge's own checks."""
+"""Local Team names (ADR-0088): rename and create over a real session socket, and the bridge's own checks."""
 
 import asyncio
 import json
@@ -10,11 +10,9 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from fastapi import FastAPI, HTTPException
 from team import bridge as team
 from team import names as team_names
-from test_app_route_edges import _request
-from test_team_bridge_assistants import _asgi_request, _LiveTeamCase, _probe_session, _TeamHandler
+from test_team_bridge_assistants import _LiveTeamCase, _probe_session, _socket_results, _TeamHandler
 
 TRACE_ID = "a" * 32
 
@@ -102,50 +100,23 @@ class TeamNameBoundaryTests(unittest.TestCase):
 
 
 class TeamNameInProcessTests(unittest.TestCase):
-    """The same routes in process: the rename endpoint and Team creation."""
+    """The operations in process: a rename passes Team's refusals through, and creation clears stale history."""
 
-    def rename_endpoint(self):
-        return self.endpoint("PATCH")
-
-    @staticmethod
-    def endpoint(method: str):
-        app = FastAPI()
-        team_names.register(app)
-        (route,) = [route for route in app.routes if getattr(route, "methods", None) == {method}]
-        return route.endpoint
-
-    def test_creation_reads_a_bounded_body_and_answers_without_caching(self) -> None:
-        endpoint = self.endpoint("POST")
-        headers = [(b"content-type", b"application/json")]
-        oversized = json.dumps({"team_name": "Growth", "padding": "x" * team_names.MAX_TEAM_NAME_BODY_BYTES}).encode()
-        with mock.patch.object(team_names.bridge, "create") as create:
-            for sent in ([*headers, (b"content-length", str(len(oversized)).encode())], headers):
-                with self.subTest(declared=len(sent) > 1), self.assertRaises(HTTPException) as refused:
-                    asyncio.run(endpoint(_request(body=oversized, headers=sent)))
-                self.assertEqual(refused.exception.status_code, 413)
-                self.assertEqual(refused.exception.headers, {"Cache-Control": "no-store"})
-        create.assert_not_called()
-        created = team.TeamResponse(200, {"team_id": "growth", "team_name": "Growth", "created": True})
-        with (
-            mock.patch.object(team_names.bridge, "create", return_value=created),
-            mock.patch.object(team_names.chat_history_http, "team_created", side_effect=lambda _id, result: result),
-        ):
-            response = asyncio.run(endpoint(_request(body=b'{"team_name":"Growth"}', headers=headers)))
-        self.assertEqual((response.status_code, response.headers["Cache-Control"]), (200, "no-store"))
-
-    def test_the_rename_endpoint_answers_without_caching_and_passes_team_refusals_through(self) -> None:
-        endpoint = self.rename_endpoint()
-        headers = [(b"content-type", b"application/json")]
+    def test_a_rename_passes_team_refusals_through_and_refuses_an_invalid_name_before_team(self) -> None:
         taken = team.TeamResponse(409, {"detail": "another Team already has this name", "code": "team-name-taken"})
         with mock.patch.object(team, "_call", return_value=taken) as call:
-            response = asyncio.run(endpoint("team_1", _request(body=b'{"team_name":"Growth"}', headers=headers)))
+            response = team_names.rename("team_1", {"team_name": "Growth"})
         call.assert_called_once_with("PATCH", "/v1/teams/team_1", {"team_name": "Growth"})
-        self.assertEqual((response.status_code, response.headers["Cache-Control"]), (409, "no-store"))
-        for body in (b'{"team_name":1}', b'{"team_name":""}'):
-            with self.subTest(body=body), self.assertRaises(HTTPException) as invalid:
-                asyncio.run(endpoint("team_1", _request(body=body, headers=headers)))
+        self.assertEqual(response.status_code, 409)
+        for body in ({"team_name": 1}, {"team_name": ""}):
+            with (
+                self.subTest(body=body),
+                mock.patch.object(team, "_call") as unreached,
+                self.assertRaises(team_names.HTTPException) as invalid,
+            ):
+                team_names.rename("team_1", body)
             self.assertEqual(invalid.exception.status_code, 400)
-            self.assertEqual(invalid.exception.headers, {"Cache-Control": "no-store"})
+            unreached.assert_not_called()
 
     def test_local_creation_clears_history_for_the_id_it_created(self) -> None:
         created = team.TeamResponse(200, {"team_id": "marketing", "team_name": "Marketing", "created": True})
@@ -162,28 +133,25 @@ class TeamNameInProcessTests(unittest.TestCase):
 
 def _run_asgi_probe(scenario: str) -> None:
     admin_app, token = _probe_session()
-    origin = sorted(admin_app._allowed_browser_origins())[0]
-
-    async def send(method: str, path: str, payload: dict, request_origin: str | None) -> dict[str, object]:
-        encoded = json.dumps(payload).encode()
-        headers = {} if request_origin is None else {"origin": request_origin}
-        status, body = await _asgi_request(admin_app, method, path, encoded, token=token, headers=headers)
-        return {"status": status, "body": body}
-
-    async def renames() -> dict[str, object]:
-        cases = (
-            ("malformed", {"team_name": "Growth", "extra": 1}, origin),
-            ("decomposed", {"team_name": " Équipe "}, origin),
-            ("valid", {"team_name": "Growth"}, origin),
-            ("taken", {"team_name": "Taken"}, origin),
-            ("tampered", {"team_name": "Tampered"}, origin),
-        )
-        return {key: await send("PATCH", "/api/teams/team_1", payload, sent) for key, payload, sent in cases}
-
     if scenario == "team-rename":
-        output = asyncio.run(renames())
+        cases = (
+            ("malformed", {"team_name": "Growth", "extra": 1}),
+            ("decomposed", {"team_name": " Équipe "}),
+            ("valid", {"team_name": "Growth"}),
+            ("taken", {"team_name": "Taken"}),
+            ("tampered", {"team_name": "Tampered"}),
+        )
+        calls = tuple(("teams.rename", {"team_id": "team_1", "body": body}) for _key, body in cases)
+        results = asyncio.run(_socket_results(admin_app, token, calls))
+        output = {
+            key: {"status": result["status"], "body": result["body"]}
+            for (key, _), result in zip(cases, results, strict=True)
+        }
     else:
-        output = asyncio.run(send("POST", "/api/teams", {"team_name": "Marketing"}, None))
+        (result,) = asyncio.run(
+            _socket_results(admin_app, token, (("teams.create", {"body": {"team_name": "Marketing"}}),))
+        )
+        output = {"status": result["status"], "body": result["body"]}
     print(json.dumps(output))
 
 

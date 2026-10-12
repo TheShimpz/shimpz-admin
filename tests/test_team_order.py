@@ -16,12 +16,11 @@ import app_import
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from fastapi import FastAPI, HTTPException
+from fastapi import HTTPException
 from team import bridge as team
 from team import names as team_names
 from team import order as team_order
-from test_app_route_edges import _request
-from test_team_bridge_assistants import _LiveTeamCase, _probe_session, _TeamHandler
+from test_team_bridge_assistants import _LiveTeamCase, _probe_session, _socket_results, _TeamHandler
 
 
 def _teams(*team_ids: str) -> list[dict[str, str]]:
@@ -30,6 +29,12 @@ def _teams(*team_ids: str) -> list[dict[str, str]]:
 
 def _inventory(*team_ids: str, **extra: object) -> team.TeamResponse:
     return team.TeamResponse(200, {"teams": _teams(*team_ids), **extra})
+
+
+def _delete_with_history(team_id: str, action) -> team.TeamResponse:
+    """A Team deletion whose Team answer is `action`'s, through Admin's own history and order cleanup."""
+    with mock.patch.object(team_names.bridge, "destroy_confirmed", side_effect=lambda *_args: action()):
+        return team_names._deleted_with_history(team_id, "Name")
 
 
 class OrderCase(unittest.TestCase):
@@ -287,13 +292,10 @@ class ListingTests(OrderCase):
                 self.assertEqual(self.listing(duplicate).status, 502)
         load.assert_not_called()
 
-    def test_the_list_route_is_never_cached(self) -> None:
-        with mock.patch.object(team, "list_teams", return_value=_inventory("a")):
-            response = team_order.listing()
-        self.assertEqual((response.status_code, response.headers["Cache-Control"]), (200, "no-store"))
+    def test_the_list_passes_a_team_failure_through(self) -> None:
         with mock.patch.object(team, "list_teams", return_value=team.TeamResponse(502, {"detail": "unavailable"})):
             response = team_order.listing()
-        self.assertEqual((response.status_code, response.headers["Cache-Control"]), (502, "no-store"))
+        self.assertEqual((response.status_code, json.loads(response.body)), (502, {"detail": "unavailable"}))
 
 
 class ReorderTests(OrderCase):
@@ -342,51 +344,38 @@ class ReorderTests(OrderCase):
         self.assertEqual(team_order.load(), ["b", "a"])
 
 
-class ReorderRouteTests(OrderCase):
-    def endpoint(self):
-        app = FastAPI()
-        team_order.register(app)
-        (route,) = [route for route in app.routes if getattr(route, "methods", None) == {"PUT"}]
-        self.assertEqual(route.path, "/api/teams/order")
-        return route.endpoint
-
-    def send(self, body: bytes):
-        headers = [(b"content-type", b"application/json")]
-        return asyncio.run(self.endpoint()(_request("/api/teams/order", body=body, headers=headers)))
-
-    def refused(self, body: bytes) -> int:
-        with self.assertRaises(HTTPException) as caught:
-            self.send(body)
-        self.assertEqual(caught.exception.headers, {"Cache-Control": "no-store"})
-        return caught.exception.status_code
+class SaveTests(OrderCase):
+    """The `teams.reorder` operation: exactly one bounded list of canonical ids, and a saved order changes `teams`."""
 
     def test_only_exactly_one_bounded_list_of_canonical_ids_is_admitted(self) -> None:
-        too_many = json.dumps({"team_ids": [f"t{index}" for index in range(129)]}).encode()
+        too_many = {"team_ids": [f"t{index}" for index in range(129)]}
         with mock.patch.object(team, "list_teams") as listed:
             for body in (
-                b'{"team_ids":["a"],"extra":1}',
-                b'{"order":["a"]}',
-                b'{"team_ids":"a"}',
-                b'{"team_ids":["a","a"]}',
-                b'{"team_ids":["A"]}',
-                b"[]",
-                b"not json",
+                {"team_ids": ["a"], "extra": 1},
+                {"order": ["a"]},
+                {"team_ids": "a"},
+                {"team_ids": ["a", "a"]},
+                {"team_ids": ["A"]},
                 too_many,
             ):
-                with self.subTest(body=body[:40]):
-                    self.assertEqual(self.refused(body), 400)
-            self.assertEqual(self.refused(b'{"team_ids":["' + b"a" * 9000 + b'"]}'), 413)
+                with self.subTest(body=str(body)[:40]), self.assertRaises(HTTPException) as refused:
+                    team_order.save(body)
+                self.assertEqual(refused.exception.status_code, 400)
         listed.assert_not_called()
 
-    def test_every_answer_is_never_cached(self) -> None:
+    def test_only_a_saved_order_raises_the_team_list_topic(self) -> None:
         for inventory, expected in (
-            (_inventory("b", "a"), 200),
             (_inventory("c"), 409),
             (team.TeamResponse(502, {"detail": "team unavailable"}), 503),
+            (_inventory("b", "a"), 200),
         ):
-            with self.subTest(expected=expected), mock.patch.object(team, "list_teams", return_value=inventory):
-                response = self.send(b'{"team_ids":["a","b"]}')
-            self.assertEqual((response.status_code, response.headers["Cache-Control"]), (expected, "no-store"))
+            with (
+                self.subTest(expected=expected),
+                mock.patch.object(team, "list_teams", return_value=inventory),
+                mock.patch.object(team_order.topics, "changed") as changed,
+            ):
+                self.assertEqual(team_order.save({"team_ids": ["a", "b"]}).status_code, expected)
+            self.assertEqual(changed.call_args_list, [mock.call("teams")] if expected == 200 else [])
         self.assertEqual(team_order.load(), ["a", "b"])
 
 
@@ -563,18 +552,16 @@ class LifecycleCleanupTests(OrderCase):
     def test_a_deleted_or_absent_team_loses_its_saved_position(self) -> None:
         self.saved("a", "b")
         deleted = team.TeamResponse(200, {"deleted": True})
-        self.assertIs(self.admin_app._team_delete_with_history("a", lambda: deleted), deleted)
+        self.assertIs(_delete_with_history("a", lambda: deleted), deleted)
         self.assertEqual(team_order.load(), ["b"])
         absent = team.TeamResponse(404, {"detail": "Team not found"})
-        self.assertEqual(
-            self.admin_app._team_delete_with_history("b", lambda: absent), team.TeamResponse(200, {"deleted": False})
-        )
+        self.assertEqual(_delete_with_history("b", lambda: absent), team.TeamResponse(200, {"deleted": False}))
         self.assertEqual(team_order.load(), [])
 
     def test_a_failed_deletion_keeps_the_position(self) -> None:
         self.saved("a")
         failed = team.TeamResponse(409, {"detail": "Team name does not match"})
-        self.assertIs(self.admin_app._team_delete_with_history("a", lambda: failed), failed)
+        self.assertIs(_delete_with_history("a", lambda: failed), failed)
         self.assertEqual(team_order.load(), ["a"])
 
     def test_a_cleanup_failure_after_deletion_reports_partial_completion_and_retry(self) -> None:
@@ -584,13 +571,13 @@ class LifecycleCleanupTests(OrderCase):
             mock.patch.object(team_order, "_save", side_effect=team_order.OrderUnavailableError("full")),
             self.assertLogs("shimpz-admin", "ERROR"),
         ):
-            response = self.admin_app._team_delete_with_history("a", lambda: deleted)
+            response = _delete_with_history("a", lambda: deleted)
         self.assertEqual((response.status, response.body["code"]), (503, "team-order-cleanup-incomplete"))
         self.assertIn("was deleted", response.body["detail"])
         self.assertIn("retry the deletion", response.body["detail"])
         # The retry finds the Team absent and completes the cleanup.
         absent = team.TeamResponse(404, {"detail": "Team not found"})
-        self.assertEqual(self.admin_app._team_delete_with_history("a", lambda: absent).status, 200)
+        self.assertEqual(_delete_with_history("a", lambda: absent).status, 200)
         self.assertEqual(team_order.load(), [])
 
     def test_a_deletion_whose_invalid_order_cannot_be_removed_reports_partial_completion(self) -> None:
@@ -600,7 +587,7 @@ class LifecycleCleanupTests(OrderCase):
             mock.patch.object(team_order.os, "geteuid", return_value=os.geteuid() + 1),
             self.assertLogs("shimpz-admin", "WARNING"),
         ):
-            response = self.admin_app._team_delete_with_history("a", lambda: deleted)
+            response = _delete_with_history("a", lambda: deleted)
         self.assertEqual((response.status, response.body["code"]), (503, "team-order-cleanup-incomplete"))
         self.assertTrue(self.path.exists())
 
@@ -689,9 +676,7 @@ class LifecycleCleanupTests(OrderCase):
 
     def test_deletion_waits_for_a_reorder_in_progress(self) -> None:
         deleted = team.TeamResponse(200, {"deleted": True})
-        self.assert_waits_for_a_reorder(
-            "delete", lambda action: self.admin_app._team_delete_with_history("a", action), deleted
-        )
+        self.assert_waits_for_a_reorder("delete", lambda action: _delete_with_history("a", action), deleted)
         # The deletion ran after the save, so the deleted Team's position does not survive it.
         self.assertEqual(team_order.load(), [])
 
@@ -707,7 +692,6 @@ class LifecycleCleanupTests(OrderCase):
         with mock.patch.object(team, "list_teams", return_value=_inventory("b", "a")):
             response = self.admin_app.team_order.listing()
         self.assertEqual(json.loads(response.body)["teams"], _teams("b", "a"))
-        self.assertEqual(response.headers["Cache-Control"], "no-store")
 
 
 def _team(method: str, path: str, _body: bytes) -> tuple[int, bytes]:
@@ -718,87 +702,32 @@ def _team(method: str, path: str, _body: bytes) -> tuple[int, bytes]:
 
 
 class TeamOrderStackTests(_LiveTeamCase):
-    """The real ASGI stack: the Supervisor session gate, the Origin check, and the Team bridge."""
+    """A real session socket on the ASGI app, the Team bridge, and the private order file."""
 
-    def test_reorder_requires_a_session_and_an_admitted_origin_and_every_answer_is_no_store(self) -> None:
+    def test_a_reorder_over_the_session_socket_saves_the_order_the_list_then_follows(self) -> None:
         _TeamHandler.responder = staticmethod(_team)
         order_path = self.root / "team-order.json"
         with mock.patch.dict(os.environ, {"SHIMPZ_TEAM_ORDER_STORE": str(order_path)}):
             document = self._run_asgi_probe("team-order", Path(__file__).resolve())
-        self.assertEqual(document["anonymous_reorder"], [401, "no-store"])
-        self.assertEqual(document["no_origin"], [403, "no-store"])
-        self.assertEqual(document["newest_first"], [200, "no-store", ["b", "a"]])
-        self.assertEqual(document["reordered"], [200, "no-store", ["a", "b"]])
-        self.assertEqual(document["saved_order"], [200, "no-store", ["a", "b"]])
-        self.assertEqual(document["stale"], [409, "no-store", None])
+        self.assertEqual(document["newest_first"], [200, ["b", "a"]])
+        self.assertEqual(document["reordered"], [200, ["a", "b"]])
+        self.assertEqual(document["saved_order"], [200, ["a", "b"]])
+        self.assertEqual(document["stale"], [409, None])
         self.assertEqual(json.loads(order_path.read_bytes()), {"team_ids": ["a", "b"]})
         self.assertEqual(order_path.stat().st_mode & 0o777, 0o600)
 
 
 def _run_asgi_probe() -> None:
     admin_app, token = _probe_session()
-    origin = sorted(admin_app._allowed_browser_origins())[0]
-
-    async def send(method: str, path: str, body: bytes = b"", *, session: bool = True, sent_origin: bool = True):
-        headers = [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]
-        if session:
-            headers.append((b"cookie", f"{admin_app.COOKIE}={token}".encode()))
-        if sent_origin:
-            headers.append((b"origin", origin.encode()))
-        scope = {
-            "type": "http",
-            "asgi": {"version": "3.0", "spec_version": "2.5"},
-            "http_version": "1.1",
-            "method": method,
-            "scheme": "http",
-            "path": path,
-            "raw_path": path.encode(),
-            "query_string": b"",
-            "root_path": "",
-            "headers": headers,
-            "client": ("127.0.0.1", 1234),
-            "server": ("testserver", 80),
-        }
-        delivered = False
-
-        async def receive():
-            nonlocal delivered
-            if delivered:
-                await asyncio.Event().wait()
-            delivered = True
-            return {"type": "http.request", "body": body, "more_body": False}
-
-        messages = []
-
-        async def respond(message):
-            messages.append(message)
-
-        await asyncio.wait_for(admin_app.app(scope, receive, respond), timeout=5)
-        start = next(message for message in messages if message["type"] == "http.response.start")
-        response_headers = {name.decode().lower(): value.decode() for name, value in start["headers"]}
-        payload = json.loads(b"".join(message.get("body", b"") for message in messages) or b"{}")
-        teams = [item["team_id"] for item in payload["teams"]] if "teams" in payload else None
-        return [start["status"], response_headers.get("cache-control"), teams]
-
-    def listed() -> list[object]:
-        """The Team list the session socket's `teams.list` reads, under the session's authority."""
-        with admin_app._team_session_scope({admin_app.COOKIE: token}):
-            response = admin_app.team_order.listing()
-        teams = [item["team_id"] for item in json.loads(response.body)["teams"]]
-        return [response.status_code, response.headers.get("cache-control"), teams]
-
-    async def scenario() -> dict[str, object]:
-        reorder = b'{"team_ids":["a","b"]}'
-        return {
-            "anonymous_reorder": (await send("PUT", "/api/teams/order", reorder, session=False))[:2],
-            "no_origin": (await send("PUT", "/api/teams/order", reorder, sent_origin=False))[:2],
-            "newest_first": await asyncio.to_thread(listed),
-            "reordered": await send("PUT", "/api/teams/order", reorder),
-            "saved_order": await asyncio.to_thread(listed),
-            "stale": await send("PUT", "/api/teams/order", b'{"team_ids":["a"]}'),
-        }
-
-    print(json.dumps(asyncio.run(scenario())))
+    reorder = ("teams.reorder", {"body": {"team_ids": ["a", "b"]}})
+    stale = ("teams.reorder", {"body": {"team_ids": ["a"]}})
+    listed = ("teams.list", {})
+    results = asyncio.run(_socket_results(admin_app, token, (listed, reorder, listed, stale)))
+    teams = [
+        [result["status"], [item["team_id"] for item in result["body"]["teams"]] if "teams" in result["body"] else None]
+        for result in results
+    ]
+    print(json.dumps(dict(zip(("newest_first", "reordered", "saved_order", "stale"), teams, strict=True))))
 
 
 if __name__ == "__main__":

@@ -173,10 +173,10 @@ def from_admin_page(request: Request, admitted_origins: Callable[[], frozenset[s
     return True
 
 
-def oauth_completion_mode(request: Request, select_mode: Callable[[Request], str]) -> str | None:
-    """Project Admin's request-origin decision before the browser needs popup activation."""
+def oauth_completion_mode(select_mode: Callable[[], str]) -> str | None:
+    """Project Admin's page-origin decision before the browser needs popup activation."""
     try:
-        callback_mode = select_mode(request)
+        callback_mode = select_mode()
     except HTTPException as exc:
         if exc.status_code == 409:
             return None

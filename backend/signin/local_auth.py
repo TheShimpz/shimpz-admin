@@ -127,13 +127,14 @@ async def _verify_password(password: object, context: Context, origin: str | Non
     return record
 
 
-async def recheck_password(request: Request, password: object, context: Context) -> None:
+async def recheck_password(origin: str | None, password: object, context: Context) -> None:
     """Confirm the password for a session-held destructive operation within the same budget and lockout as sign-in.
 
-    A session holder therefore guesses no faster here than at login; every refusal is journaled the same way.
+    A session holder therefore guesses no faster here than at login; every refusal is journaled the same way, with the
+    Origin of the page that asked.
     """
     try:
-        await _verify_password(password, context, canonical_origin(request.headers.get("origin")))
+        await _verify_password(password, context, origin)
     except HTTPException as exc:
         if exc.status_code == 401:
             raise HTTPException(status_code=403, detail="Supervisor password is incorrect") from None

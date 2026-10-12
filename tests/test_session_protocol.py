@@ -62,6 +62,7 @@ class SessionProtocolVectorTests(unittest.TestCase):
         self.assertEqual(frames.changed(changed["topic"], changed["epoch"], changed["revision"]), changed)
         session = server["session"]
         self.assertEqual(frames.session(3480.9, 82800.2), session)
+        self.assertEqual(frames.progress(server["progress"]["id"]), server["progress"])
         self.assertRegex(changed["epoch"], frames.EPOCH_RE)
 
     def test_topics_follow_the_closed_grammar(self) -> None:
@@ -91,6 +92,19 @@ class SessionProtocolVectorTests(unittest.TestCase):
         rows = history.MAX_PAGE_BYTES // len(json.dumps(entry, ensure_ascii=False))
         page = {"entries": [entry] * min(rows, history.PAGE_ROWS), "before": "AAAAAAAAAMg"}
         self.assertLessEqual(len(frames.encode(frames.result("c", 200, page)).encode()), frames.MAX_OUTBOUND_BYTES)
+
+    def test_a_body_is_measured_as_the_page_sends_it(self) -> None:
+        # Compact UTF-8 JSON: a two-byte character counts twice, and nothing a page never sends is counted.
+        self.assertEqual(frames.body_bytes({"team_name": "é"}), len('{"team_name":"é"}'.encode()))
+        # A lone surrogate the strict decoder admitted is still measured rather than failing the call.
+        self.assertEqual(frames.body_bytes({"x": "\ud800"}), len('{"x":""}') + 3)
+
+    def test_every_body_bound_is_one_a_method_takes_and_every_body_method_has_one(self) -> None:
+        bodies = {method for method, (required, _optional) in frames.METHODS.items() if "body" in required}
+        self.assertEqual(set(frames.BODY_BYTES), bodies)
+        self.assertEqual((frames.BODY_BYTES["teams.rename"], frames.BODY_BYTES["teams.delete"]), (1024, 8 * 1024))
+        self.assertLessEqual(frames.LONG_METHODS, set(frames.METHODS))
+        self.assertLessEqual(set(frames.READ_TOPICS), set(frames.METHODS))
 
 
 if __name__ == "__main__":

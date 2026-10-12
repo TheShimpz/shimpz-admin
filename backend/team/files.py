@@ -1,4 +1,4 @@
-"""Admin routes for a Team's files and their bounded browser file ingress at the Admin-to-Team boundary."""
+"""A Team's files: the bounded browser upload stays HTTP; listing and deleting their metadata are session calls."""
 
 from fastapi import FastAPI, HTTPException, Request
 from python_multipart.exceptions import ParseError
@@ -72,9 +72,7 @@ async def bounded_multipart_file(request: Request) -> tuple[str, str, bytes]:
 
 
 def register(app: FastAPI) -> None:
-    app.add_api_route("/api/teams/{team_id}/files", team_files_list, methods=["GET"])
     app.add_api_route("/api/teams/{team_id}/files", team_file_upload, methods=["POST"])
-    app.add_api_route("/api/teams/{team_id}/files/{file_id}", team_file_delete, methods=["DELETE"])
 
 
 def team_files_list(team_id: str):

@@ -50,7 +50,7 @@ class SecurityHeaderTests(unittest.TestCase):
         for method, path, expected_status in (
             ("GET", "/", 200),
             ("POST", "/api/session", 200),
-            ("GET", "/api/model-providers", 401),
+            ("GET", "/api/gate-check", 401),
         ):
             with self.subTest(path=path):
                 status, headers = asyncio.run(self._request(method, path))
@@ -66,7 +66,7 @@ class SecurityHeaderTests(unittest.TestCase):
     def test_identity_failure_is_hardened(self) -> None:
         unavailable = self.admin_app.SessionEvidenceUnavailableError("unavailable")
         with mock.patch.object(self.admin_app, "_session_evidence", side_effect=unavailable):
-            status, headers = asyncio.run(self._request("GET", "/api/model-providers"))
+            status, headers = asyncio.run(self._request("GET", "/api/gate-check"))
 
         self.assertEqual(status, 503)
         self.assert_security_headers(headers)

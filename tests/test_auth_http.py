@@ -17,6 +17,10 @@ from mfa_helper import code
 sys.path.insert(0, str(BACKEND))
 from signin import auth
 
+# A path no route answers: the session gate refuses it first (401, or 503 while the password needs recovery), and only a
+# current session reaches the router, which answers it 404. It proves the gate without reaching Team or a provider.
+GATED = "/api/gate-check"
+
 
 class AuthHTTPTests(unittest.TestCase):
     @staticmethod
@@ -76,9 +80,9 @@ class AuthHTTPTests(unittest.TestCase):
             root = Path(directory)
             with AdminHTTPServer(root) as server:
                 session, _enrollment = self._setup(server.port)
-                self.assertEqual(request(server.port, "GET", "/api/model-providers", session=session)[0], 200)
+                self.assertEqual(request(server.port, "GET", GATED, session=session)[0], 404)
             with AdminHTTPServer(root) as restarted:
-                self.assertEqual(request(restarted.port, "GET", "/api/model-providers", session=session)[0], 401)
+                self.assertEqual(request(restarted.port, "GET", GATED, session=session)[0], 401)
                 status, payload, _ = request(restarted.port, "POST", "/api/session", session=session)
                 self.assertEqual((status, payload["authenticated"]), (200, False))
 
@@ -107,7 +111,7 @@ class AuthHTTPTests(unittest.TestCase):
                 for method, path, body in (
                     ("POST", "/api/login", {"password": GOOD_PASSWORD}),
                     ("POST", "/api/admin/setup", {"password": GOOD_PASSWORD}),
-                    ("GET", "/api/model-providers", None),
+                    ("GET", GATED, None),
                 ):
                     with self.subTest(path=path):
                         status, payload, _ = request(server.port, method, path, body)
@@ -127,7 +131,7 @@ class AuthHTTPTests(unittest.TestCase):
                 "features": {"teamCredentials": False},
             },
         )
-        self.assertEqual(request(port, "GET", "/api/model-providers")[0], 401)
+        self.assertEqual(request(port, "GET", GATED)[0], 401)
         self.assertEqual(request(port, "POST", "/api/admin/setup", {"password": "short"})[0], 400)
 
         status, payload, set_cookie = request(
@@ -141,7 +145,7 @@ class AuthHTTPTests(unittest.TestCase):
         self.assertEqual(set(payload), {"enrollment"})
         self.assertIsNotNone(ticket)
         self.assertIsNone(session_cookie(set_cookie))
-        self.assertEqual(request(port, "GET", "/api/model-providers")[0], 401)
+        self.assertEqual(request(port, "GET", GATED)[0], 401)
 
         self.assertEqual(store.stat().st_mode & 0o777, 0o600)
         disk = store.read_text(encoding="utf-8")
@@ -152,7 +156,7 @@ class AuthHTTPTests(unittest.TestCase):
         self.assertTrue(record["session_secret"])
 
         session = self._confirm_setup(port, payload["enrollment"], ticket)
-        self.assertEqual(request(port, "GET", "/api/model-providers", session=session)[0], 200)
+        self.assertEqual(request(port, "GET", GATED, session=session)[0], 404)
 
         self.assertEqual(
             request(port, "POST", "/api/admin/setup", {"password": "another good password"})[0],
@@ -181,15 +185,15 @@ class AuthHTTPTests(unittest.TestCase):
         fresh_session = session_cookie(login_cookie)
         self.assertEqual((login_status, login_payload), (200, {"ok": True, "method": "totp"}))
         self.assertIsNotNone(fresh_session)
-        self.assertEqual(request(port, "GET", "/api/model-providers", session=fresh_session)[0], 200)
+        self.assertEqual(request(port, "GET", GATED, session=fresh_session)[0], 404)
 
         self._assert_authenticated_session(port, fresh_session)
 
-        self.assertEqual(request(port, "GET", "/api/model-providers", session="garbage-not-a-token")[0], 401)
+        self.assertEqual(request(port, "GET", GATED, session="garbage-not-a-token")[0], 401)
         expired = auth.issue_session(record["session_secret"], "totp", issued_at=int(time.time()) - auth.TTL - 10)
-        self.assertEqual(request(port, "GET", "/api/model-providers", session=expired)[0], 401)
+        self.assertEqual(request(port, "GET", GATED, session=expired)[0], 401)
         foreign = auth.issue_session(auth.new_secret(), "totp")
-        self.assertEqual(request(port, "GET", "/api/model-providers", session=foreign)[0], 401)
+        self.assertEqual(request(port, "GET", GATED, session=foreign)[0], 401)
         self.assertEqual(request(port, "GET", "/")[0], 200)
 
     def _assert_logout_boundaries(self, port: int, session: str) -> None:
@@ -202,16 +206,16 @@ class AuthHTTPTests(unittest.TestCase):
         )
         self.assertEqual(hostile_status, 403)
         self.assertEqual(hostile_cookie, "")
-        self.assertEqual(request(port, "GET", "/api/model-providers", session=session)[0], 200)
+        self.assertEqual(request(port, "GET", GATED, session=session)[0], 404)
 
         garbage_status, _, _ = request(port, "POST", "/api/logout", session="not-a-current-session")
         self.assertEqual(garbage_status, 200)
-        self.assertEqual(request(port, "GET", "/api/model-providers", session=session)[0], 200)
+        self.assertEqual(request(port, "GET", GATED, session=session)[0], 404)
 
         logout_status, _, logout_cookie = request(port, "POST", "/api/logout", session=session)
         self.assertEqual(logout_status, 200)
         self.assertRegex(logout_cookie, r"shimpz_admin=.*(?:Max-Age=0|01 Jan 1970)")
-        self.assertEqual(request(port, "GET", "/api/model-providers", session=session)[0], 401)
+        self.assertEqual(request(port, "GET", GATED, session=session)[0], 401)
 
     def _assert_authenticated_session(self, port: int, session: str) -> None:
         status, payload, _ = request(

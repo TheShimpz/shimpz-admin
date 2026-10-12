@@ -157,7 +157,7 @@ class AuthRouteTests(unittest.TestCase):
             return PlainTextResponse("allowed")
 
         with_cookie = asyncio.run(
-            through_gate(self.admin_app, self._request("/api/model-providers", cookie=session), allowed)
+            through_gate(self.admin_app, self._request("/api/gate-check", cookie=session), allowed)
         )
         self.assertEqual(with_cookie.status_code, 200)
 
@@ -167,7 +167,7 @@ class AuthRouteTests(unittest.TestCase):
         for query in (f"shimpz_admin={session}", f"token={session}"):
             with self.subTest(query=query.partition("=")[0]):
                 guarded = asyncio.run(
-                    through_gate(self.admin_app, self._request(f"/api/model-providers?{query}"), should_not_run)
+                    through_gate(self.admin_app, self._request(f"/api/gate-check?{query}"), should_not_run)
                 )
                 self.assertEqual(guarded.status_code, 401)
                 self.assertNotIn("set-cookie", guarded.headers)
@@ -188,14 +188,14 @@ class AuthRouteTests(unittest.TestCase):
             session = self._cookie(self._configure("violet otter lantern quartz 92")[1], "shimpz_admin")
             now[0] = auth.IDLE_SECONDS - 600
             for request in (
-                self._request("/api/model-providers", cookie=session),
-                self._request("/api/model-providers", cookie=session, browser=((b"sec-fetch-site", b"same-site"),)),
+                self._request("/api/gate-check", cookie=session),
+                self._request("/api/gate-check", cookie=session, browser=((b"sec-fetch-site", b"same-site"),)),
                 self._request("/api/teams", {"name": "Marketing"}, cookie=session, origin="http://localhost:7777"),
             ):
                 with self.subTest(method=request.method, headers=request.headers):
                     self.assertEqual(status(request), 200)
             now[0] = auth.IDLE_SECONDS + 1
-            self.assertEqual(status(self._request("/api/model-providers", cookie=session)), 401)
+            self.assertEqual(status(self._request("/api/gate-check", cookie=session)), 401)
 
     def test_a_session_this_process_does_not_track_is_refused(self) -> None:
         _setup, confirmed = self._configure("violet otter lantern quartz 92")
@@ -208,7 +208,7 @@ class AuthRouteTests(unittest.TestCase):
         # A restarted Admin, or one that evicted the session, has no record of its activity: sign in again.
         with mock.patch.object(auth, "SESSIONS", auth.SessionActivity()):
             response = asyncio.run(
-                through_gate(self.admin_app, self._request("/api/model-providers", cookie=session), allowed)
+                through_gate(self.admin_app, self._request("/api/gate-check", cookie=session), allowed)
             )
         self.assertEqual(response.status_code, 401)
 
@@ -431,7 +431,7 @@ class AuthRouteTests(unittest.TestCase):
             return PlainTextResponse("changed")
 
         def answer(origin: str):
-            request = self._request("/api/model-providers/openai", {"api_key": "x"}, origin=origin, cookie=session)
+            request = self._request("/api/gate-check", {"api_key": "x"}, origin=origin, cookie=session)
             request.scope["method"] = "PUT"
             return asyncio.run(through_gate(self.admin_app, request, route))
 
@@ -455,12 +455,10 @@ class AuthRouteTests(unittest.TestCase):
         limit = self.admin_app.auth.LOGIN_FAILURE_LIMIT
 
         def team_deletion(attempt: str) -> int:
-            request = self._request(
-                "/api/teams/marketing", {"team_name": "Marketing", "password": attempt}, cookie=session
-            )
-            request.scope["method"] = "DELETE"
+            """The password check a Team deletion's session call makes before anything reaches Team."""
+            recheck = self.admin_app._session_gate().recheck_password
             with self.assertRaises(self.admin_app.HTTPException) as refused:
-                asyncio.run(self.admin_app.teams_destroy("marketing", request))
+                asyncio.run(recheck("http://localhost:7777", attempt))
             return refused.exception.status_code
 
         with mock.patch.object(self.admin_app.team, "destroy_confirmed") as destroyed:

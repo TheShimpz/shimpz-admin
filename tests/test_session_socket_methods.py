@@ -1,0 +1,500 @@
+"""Every Admin operation a session call names keeps exactly the checks its HTTP route had (ADR-0114 tranche (b)).
+
+Each method runs only while the socket's bound Origin and session are current, at receipt and again when its turn
+comes on a lane worker; its body keeps the route's own bound; a full lane answers as the route's executor did; no call
+renews the session; and Team identity, the Team deletion password, its limiter, and its journal are the route's own.
+"""
+
+import asyncio
+import json
+from unittest import mock
+
+from tests.session_socket_case import SessionSocketCase
+
+from tests import chat_socket_fixtures
+
+_Socket = chat_socket_fixtures.Socket
+PASSWORD = "violet otter lantern quartz 92"
+DIGEST = "sha256:" + "a" * 64
+IMAGE = "sha256:" + "c" * 64
+CHALLENGE = "a" * 32
+PAIR = {"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare"}
+CODE = "c1." + "b" * 43 + "." + "d" * 64
+EXTERNAL = "https://developer.example.test"
+TRACE = "a" * 32
+INFERENCE = {"team_id": "team_1", "provider": "openai", "model": "gpt-6.1-sol", "trace_id": TRACE}
+
+
+def _provider_url(callback: str) -> str:
+    """Team's strict Cloudflare authorization URL for one callback mode."""
+    query = (
+        "scope=dns.read+dns.write+offline_access+zone.read&state="
+        + "b" * 43
+        + "&code_challenge="
+        + "c" * 43
+        + "&callback="
+        + callback
+    )
+    return "https://shimpz.com/api/oauth/cloudflare/start?" + query
+
+
+# One valid call of every method that reads or changes Admin's or Team's state.
+SAMPLES = {
+    "teams.list": {},
+    "teams.create": {"body": {"team_name": "Growth"}},
+    "teams.rename": {"team_id": "team_1", "body": {"team_name": "Growth"}},
+    "teams.reorder": {"body": {"team_ids": ["team_1"]}},
+    "teams.delete": {"team_id": "team_1", "body": {"team_name": "Marketing", "password": PASSWORD}},
+    "history.page": {"team_id": "team_1"},
+    "routines.list": {"team_id": "team_1"},
+    "space.resources": {},
+    "platform.release": {},
+    "security.summary": {},
+    "inference.read": {"team_id": "team_1"},
+    "inference.save": {"team_id": "team_1", "body": {"provider": "openai", "model": "gpt-6.1-sol"}},
+    "action_confirmation.read": {"team_id": "team_1"},
+    "action_confirmation.save": {"team_id": "team_1", "body": {"confirm_mutating": False}},
+    "assistants.registry": {},
+    "assistants.list": {"team_id": "team_1"},
+    "assistants.install": {"team_id": "team_1", "body": {"assistant_id": "hello-pulse", "source_digest": DIGEST}},
+    "assistants.install_local": {"team_id": "team_1", "body": {"image_id": IMAGE}},
+    "assistants.uninstall": {"team_id": "team_1", "assistant_id": "hello-pulse"},
+    "assistants.summary": {"team_id": "team_1", "assistant_id": "hello-pulse", "locale": "en"},
+    "assistants.details": {"team_id": "team_1", "assistant_id": "hello-pulse", "locale": "en"},
+    "snapshots.list": {},
+    "snapshots.summary": {"image_id": IMAGE, "locale": "en"},
+    "snapshots.details": {"image_id": IMAGE, "locale": "en"},
+    "models.list": {},
+    "models.save": {"provider": "openai", "body": {"api_key": "test-api-key"}},
+    "models.remove": {"provider": "openai"},
+    "decision.read": {},
+    "decision.save": {"body": {"api_key": "test-api-key"}},
+    "decision.remove": {},
+    "integrations.list": {"team_id": "team_1"},
+    "integrations.authorize": {"team_id": "team_1", "challenge_id": CHALLENGE, "body": PAIR},
+    "integrations.complete": {"team_id": "team_1", "challenge_id": CHALLENGE, "body": {"completion_code": CODE}},
+    "integrations.cancel": {"team_id": "team_1", "challenge_id": CHALLENGE},
+    "integrations.disconnect": {
+        "team_id": "team_1",
+        "assistant_id": "shimpz-cloudflare",
+        "integration_id": "cloudflare",
+    },
+    "stored_inputs.list": {"team_id": "team_1"},
+    "stored_inputs.clear": {"team_id": "team_1", "assistant_id": "whatsapp", "stored_input_id": "whatsapp-token"},
+    "files.list": {"team_id": "team_1"},
+    "files.delete": {"team_id": "team_1", "file_id": "f" * 32},
+    "store.catalog": {"locale": "en"},
+}
+# What a full lane answers for each method: 429, except the Store catalog's own single-worker executor, which always
+# answered 503.
+FULL = dict.fromkeys(SAMPLES, 429) | {"store.catalog": 503}
+
+
+class SessionMethodCase(SessionSocketCase):
+    def setUp(self) -> None:
+        super().setUp()
+        # Every test here opens many sockets for one session.
+        opens = mock.patch.object(self.budget, "OPENS", self.budget.SessionBudget(1000))
+        opens.start()
+        self.addCleanup(opens.stop)
+        order = mock.patch.object(self.methods.team_order, "ORDER_PATH", self.root / "team-order.json")
+        order.start()
+        self.addCleanup(order.stop)
+        self.team_calls = []
+        call = mock.patch.object(self.team, "_call", side_effect=self._team_call)
+        call.start()
+        self.addCleanup(call.stop)
+
+    def _team_call(self, method: str, path: str, *_args, **_kwargs):
+        self.team_calls.append((method, path))
+        return self.team.TeamResponse(503, {"detail": "Team is unavailable"})
+
+    def _answers(self, method: str, params: dict, **options) -> dict:
+        async def scenario() -> dict:
+            websocket = await self._connect(**options)
+            frame = await websocket.result(method, params)
+            await websocket.disconnect()
+            return frame
+
+        return asyncio.run(scenario())
+
+
+class SessionMethodTableTests(SessionMethodCase):
+    def test_the_samples_name_every_method_that_reaches_admin_or_team_state(self) -> None:
+        local = {"subscribe", "unsubscribe", "chat.attach", "chat.detach"}
+        self.assertEqual(set(SAMPLES), set(self.methods.METHODS) - local | set(self.methods.LONG_METHODS))
+        self.assertEqual(set(self.methods.METHODS) | set(self.methods.LONG_METHODS), set(self.calls.frames.METHODS))
+
+
+class SessionMethodAuthorityTests(SessionMethodCase):
+    """Origin and session: checked at receipt, and again on the lane worker when the call's turn comes."""
+
+    def test_every_method_closes_a_socket_whose_bound_origin_is_no_longer_admitted_before_it_runs(self) -> None:
+        async def scenario() -> None:
+            with mock.patch.object(self.lane, "http", side_effect=AssertionError("must not run")):
+                for method, params in SAMPLES.items():
+                    with self.subTest(method=method):
+                        self.assertIn(self.admin_app.state.bind_browser_origin(EXTERNAL), {"learned", "replaced"})
+                        websocket = await self._connect(origin=EXTERNAL)
+                        self.admin_app.state.bind_browser_origin("https://next.example.test")
+                        await websocket.call(method, params)
+                        self.assertEqual(await self._closed(websocket), 4403)
+                        await websocket.finish()
+            self.assertEqual(self.team_calls, [])
+
+        with mock.patch.object(self.admin_app.local_auth, "_verify_password", side_effect=AssertionError("no check")):
+            asyncio.run(scenario())
+
+    def test_every_method_closes_a_socket_whose_session_ended_before_it_runs(self) -> None:
+        async def scenario() -> None:
+            with mock.patch.object(self.lane, "http", side_effect=AssertionError("must not run")):
+                for method, params in SAMPLES.items():
+                    with self.subTest(method=method):
+                        self.token = self.admin_app.auth.issue_session(
+                            self.admin_app.state.get()["session_secret"], "totp"
+                        )
+                        websocket = await self._connect()
+                        await asyncio.to_thread(self.admin_app.state.revoke_sessions_for_logout, self.token)
+                        self.assertEqual(await self._closed(websocket), 4401)
+                        await websocket.call(method, params)
+                        await websocket.finish()
+            self.assertEqual(self.team_calls, [])
+
+        asyncio.run(scenario())
+
+    def test_no_method_runs_when_its_socket_is_refused_on_the_lane_worker_whose_turn_came(self) -> None:
+        async def scenario() -> None:
+            websocket = await self._connect()
+            for method, params in SAMPLES.items():
+                with self.subTest(method=method):
+                    await websocket.call(method, params)
+                    with self.assertRaises(TimeoutError):
+                        await websocket.next_frame(0.2)
+            await websocket.disconnect()
+
+        with (
+            mock.patch.object(self.lane, "current", return_value=False),
+            mock.patch.object(self.lane, "http", side_effect=AssertionError("must not run")),
+            mock.patch.object(self.admin_app.local_auth, "recheck_password", new=mock.AsyncMock()),
+        ):
+            asyncio.run(scenario())
+        self.assertEqual(self.team_calls, [])
+
+    def test_no_method_renews_the_session(self) -> None:
+        auth = self.admin_app.auth
+
+        async def scenario() -> None:
+            websocket = await self._connect()
+            for method, params in SAMPLES.items():
+                with self.subTest(method=method):
+                    await websocket.result(method, params)
+            await websocket.disconnect()
+
+        with (
+            mock.patch.object(self.lane, "http", return_value=(200, {})),
+            mock.patch.object(self.admin_app.local_auth, "recheck_password", new=mock.AsyncMock()),
+            mock.patch.object(auth.SESSIONS, "current", wraps=auth.SESSIONS.current) as current,
+        ):
+            asyncio.run(scenario())
+        self.assertTrue(current.call_args_list)
+        self.assertEqual({call.kwargs["activity"] for call in current.call_args_list}, {False})
+
+    def test_a_full_lane_answers_every_method_as_its_route_executor_did(self) -> None:
+        async def scenario() -> None:
+            websocket = await self._connect()
+            for method, params in SAMPLES.items():
+                with self.subTest(method=method):
+                    self.assertEqual((await websocket.result(method, params))["status"], FULL[method])
+            await websocket.disconnect()
+
+        with (
+            mock.patch.object(self.lane, "submit_in_context", side_effect=self.lane.ExecutorSaturatedError("full")),
+            mock.patch.object(self.admin_app.local_auth, "recheck_password", new=mock.AsyncMock()),
+        ):
+            asyncio.run(scenario())
+        self.assertEqual(self.team_calls, [])
+
+    def test_every_body_keeps_its_routes_bound(self) -> None:
+        async def scenario() -> None:
+            websocket = await self._connect()
+            for method, limit in self.calls.frames.BODY_BYTES.items():
+                params = SAMPLES[method]
+                for size, expected in ((limit, 200), (limit + 1, 413)):
+                    with self.subTest(method=method, size=size):
+                        body = {"pad": "x" * (size - len('{"pad":""}'))}
+                        self.assertEqual(self.calls.frames.body_bytes(body), size)
+                        result = await websocket.result(method, {**params, "body": body})
+                        self.assertEqual(result["status"], expected)
+                        if expected == 413:
+                            self.assertEqual(result["body"], {"detail": "request body too large"})
+            await websocket.disconnect()
+
+        dispatched = mock.AsyncMock(return_value=(200, {}))
+        with mock.patch.object(self.methods, "dispatch", new=dispatched):
+            asyncio.run(scenario())
+        self.assertEqual(dispatched.await_count, len(self.calls.frames.BODY_BYTES))
+        # The bounds the routes had: a Team name 1 KiB, a Team order or deletion 8 KiB, every other body J16.
+        self.assertEqual(self.calls.frames.BODY_BYTES["teams.create"], 1024)
+        self.assertEqual(self.calls.frames.BODY_BYTES["teams.reorder"], 8 * 1024)
+        self.assertEqual(self.calls.frames.BODY_BYTES["models.save"], self.team.MAX_JSON_BODY_BYTES)
+
+    def test_every_team_method_refuses_an_invalid_team_id_before_team(self) -> None:
+        team_methods = {method: params for method, params in SAMPLES.items() if "team_id" in params}
+
+        async def scenario() -> None:
+            # From the loopback page, the one an OAuth authorization may start from.
+            websocket = await self._connect(origin="http://127.0.0.1:7777")
+            for method, params in team_methods.items():
+                with self.subTest(method=method):
+                    result = await websocket.result(method, {**params, "team_id": "Team 1"})
+                    self.assertEqual(result["status"], 400)
+            await websocket.disconnect()
+
+        asyncio.run(scenario())
+        self.assertEqual(self.team_calls, [])
+
+
+class TeamDeletionTests(SessionMethodCase):
+    """A Team deletion confirms the Supervisor password within sign-in's own budget, lockout, and journal."""
+
+    def _journal(self) -> list[dict]:
+        path = self.admin_app.audit.path()
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()] if path.exists() else []
+
+    def test_wrong_passwords_spend_the_sign_in_budget_and_are_journaled_with_the_sockets_origin(self) -> None:
+        limit = self.admin_app.auth.LOGIN_FAILURE_LIMIT
+        wrong = {"team_name": "Marketing", "password": "definitely wrong"}
+
+        async def scenario() -> list[int]:
+            websocket = await self._connect()
+            statuses = [
+                (await websocket.result("teams.delete", {"team_id": "team_1", "body": wrong}))["status"]
+                for _ in range(limit)
+            ]
+            # The lock is sign-in's own: the right password is refused while it lasts.
+            right = {"team_name": "Marketing", "password": PASSWORD}
+            statuses.append((await websocket.result("teams.delete", {"team_id": "team_1", "body": right}))["status"])
+            await websocket.disconnect()
+            return statuses
+
+        before = len(self._journal())
+        self.assertEqual(asyncio.run(scenario()), [403] * (limit - 1) + [429, 429])
+        entries = self._journal()[before:]
+        self.assertEqual(
+            [entry["event"] for entry in entries], ["password-rejected"] * (limit - 1) + ["password-locked"]
+        )
+        self.assertEqual({entry["origin"] for entry in entries}, {"http://localhost:7777"})
+        self.assertEqual(self.team_calls, [])
+
+    def test_a_malformed_confirmation_is_refused_before_the_password_check(self) -> None:
+        for body, detail in (
+            ({"team_name": "Marketing"}, "request body must contain only team_name and password"),
+            ({"team_name": 1, "password": PASSWORD}, "Team name and password must be strings"),
+            ({"team_name": "Marketing", "password": ""}, "Supervisor password is invalid"),
+        ):
+            with (
+                self.subTest(body=body),
+                mock.patch.object(self.admin_app.local_auth, "_verify_password") as verify,
+            ):
+                result = self._answers("teams.delete", {"team_id": "team_1", "body": body})
+            self.assertEqual((result["status"], result["body"]), (400, {"detail": detail}))
+            verify.assert_not_called()
+
+    def test_the_right_password_lets_team_confirm_the_name_and_raises_the_team_list(self) -> None:
+        destroyed = self.team.TeamResponse(200, {"team_id": "team_1", "destroyed": True})
+
+        async def scenario() -> tuple[dict, dict]:
+            websocket = await self._connect()
+            await websocket.result("subscribe", {"topics": ["teams"]})
+            await websocket.call(
+                "teams.delete", {"team_id": "team_1", "body": {"team_name": "Marketing", "password": PASSWORD}}
+            )
+            frames = [await websocket.next_frame(), await websocket.next_frame()]
+            await websocket.disconnect()
+            return tuple(sorted(frames, key=lambda frame: frame["type"]))
+
+        with mock.patch.object(self.team, "destroy_confirmed", return_value=destroyed) as confirmed:
+            changed, result = asyncio.run(scenario())
+        confirmed.assert_called_once_with("team_1", "Marketing")
+        self.assertEqual((result["status"], changed["topic"]), (200, "teams"))
+
+
+class SessionMethodTopicTests(SessionMethodCase):
+    """Admin raises the topics its own changes made, for the sockets that show them, and only on success."""
+
+    async def _changed_by(self, method: str, params: dict, topics: list[str]) -> tuple[dict, set[str]]:
+        websocket = await self._connect()
+        await websocket.result("subscribe", {"topics": topics})
+        await websocket.call(method, params)
+        raised, result = set(), None
+        while result is None:
+            frame = await websocket.next_frame()
+            if frame["type"] == "changed":
+                raised.add(frame["topic"])
+            elif frame["type"] == "result":
+                result = frame
+        # A change raised after the result still arrives before anything else the socket sends.
+        while True:
+            try:
+                frame = await websocket.next_frame(0.2)
+            except TimeoutError:
+                break
+            raised.add(frame["topic"])
+        await websocket.disconnect()
+        return result, raised
+
+    def test_each_change_raises_exactly_its_topics(self) -> None:
+        topics = ["teams", "team/team_1/inventory", "team/team_1/inference", "assistants/registry"]
+        installed = self.team.TeamResponse(200, {"assistant": "hello-pulse", "installed": True})
+        for method, answer, expected in (
+            ("teams.rename", {"team_id": "team_1", "team_name": "Growth"}, {"teams"}),
+            (
+                "teams.reorder",
+                {"teams": [{"team_id": "team_1", "team_name": "Marketing", "status": "running"}]},
+                {"teams"},
+            ),
+            ("assistants.install", installed.body, {"team/team_1/inventory", "assistants/registry"}),
+            ("assistants.install_local", None, {"team/team_1/inventory", "assistants/registry"}),
+            (
+                "assistants.uninstall",
+                {"assistant": "hello-pulse", "uninstalled": True},
+                {"team/team_1/inventory", "assistants/registry"},
+            ),
+            ("inference.save", INFERENCE, {"team/team_1/inference"}),
+            ("action_confirmation.save", {"team_id": "team_1", "confirm_mutating": False}, {"team/team_1/inference"}),
+        ):
+            body = (
+                answer
+                if answer is not None
+                else {
+                    "assistant": "hello-pulse",
+                    "image_id": IMAGE,
+                    "installed": True,
+                    "provenance": "local",
+                    "unpublished": True,
+                }
+            )
+            ok = self.team.TeamResponse(200, body)
+            with self.subTest(method=method), mock.patch.object(self.team, "_call", return_value=ok):
+                if method == "teams.reorder":
+                    with mock.patch.object(self.team, "list_teams", return_value=ok):
+                        result, raised = asyncio.run(self._changed_by(method, SAMPLES[method], topics))
+                else:
+                    result, raised = asyncio.run(self._changed_by(method, SAMPLES[method], topics))
+                self.assertEqual((result["status"], raised), (200, expected))
+            # A refused change raises nothing.
+            with self.subTest(method=method, refused=True):
+                result, raised = asyncio.run(self._changed_by(method, SAMPLES[method], topics))
+                self.assertNotEqual(result["status"], 200)
+                self.assertEqual(raised, set())
+
+    def test_a_created_team_raises_the_team_list(self) -> None:
+        created = self.team.TeamResponse(
+            200, {"team_id": "growth", "team_name": "Growth", "status": "running", "created": True}
+        )
+        with mock.patch.object(self.team, "create", return_value=created):
+            result, raised = asyncio.run(self._changed_by("teams.create", SAMPLES["teams.create"], ["teams"]))
+        self.assertEqual((result["status"], raised), (200, {"teams"}))
+
+    def test_a_read_carries_the_revision_of_its_new_topic(self) -> None:
+        for method, topic in (
+            ("assistants.list", "team/team_1/inventory"),
+            ("inference.read", "team/team_1/inference"),
+            ("assistants.registry", "assistants/registry"),
+            ("snapshots.list", "local-assistants"),
+        ):
+            revision = self.topics.changed(topic)
+            ok = self.team.TeamResponse(200, {"assistants": []} if "inference" not in method else INFERENCE)
+            with self.subTest(method=method), mock.patch.object(self.team, "_call", return_value=ok):
+                result = self._answers(method, SAMPLES[method])
+            self.assertEqual((result.get("topic"), result.get("revision")), (topic, revision))
+
+
+class SessionMethodAnswerTests(SessionMethodCase):
+    """Answers the routes gave, as call results: an install's progress, empty answers, and Team's own failures."""
+
+    def test_an_install_says_once_that_it_started_and_then_answers_teams_result(self) -> None:
+        installed = self.team.TeamResponse(200, {"assistant": "hello-pulse", "installed": True})
+
+        async def scenario() -> list[dict]:
+            websocket = await self._connect()
+            call_id = await websocket.call("assistants.install", SAMPLES["assistants.install"])
+            frames = [await websocket.next_frame(), await websocket.next_frame()]
+            await websocket.disconnect()
+            self.assertEqual(frames[0], {"type": "progress", "id": call_id, "state": "running"})
+            return frames
+
+        with mock.patch.object(self.team, "_call", return_value=installed) as call:
+            frames = asyncio.run(scenario())
+        self.assertEqual((frames[1]["status"], frames[1]["body"]), (200, installed.body))
+        self.assertEqual(
+            call.call_args.args[:3], ("POST", "/v1/teams/team_1/assistants", SAMPLES["assistants.install"]["body"])
+        )
+
+    def test_an_empty_answer_is_an_empty_object(self) -> None:
+        integrations = self.methods.integrations
+        empty = self.team.TeamResponse(204, {})
+        with mock.patch.object(integrations, "disconnect_assistant_integration", return_value=empty):
+            disconnected = self._answers("integrations.disconnect", SAMPLES["integrations.disconnect"])
+        self.assertEqual((disconnected["status"], disconnected["body"]), (204, {}))
+        cancelled = self._answers("integrations.cancel", SAMPLES["integrations.cancel"])
+        self.assertEqual((cancelled["status"], cancelled["body"]), (204, {}))
+
+    def test_team_answers_and_admins_own_refusals_pass_through(self) -> None:
+        cleared = self.team.TeamResponse(200, {"cleared": True})
+        stored_input = self.methods.stored_input
+        with mock.patch.object(stored_input, "clear_assistant_stored_input", return_value=cleared) as clear:
+            result = self._answers("stored_inputs.clear", SAMPLES["stored_inputs.clear"])
+        clear.assert_called_once_with("team_1", "whatsapp", "whatsapp-token")
+        self.assertEqual((result["status"], result["body"]), (200, {"cleared": True}))
+        result = self._answers("stored_inputs.clear", {**SAMPLES["stored_inputs.clear"], "stored_input_id": "Bad"})
+        self.assertEqual(result["status"], 400)
+        result = self._answers("assistants.summary", {**SAMPLES["assistants.summary"], "locale": "it"})
+        self.assertEqual((result["status"], result["body"]), (422, {"detail": "Assistant summary locale is invalid"}))
+        result = self._answers("store.catalog", {"locale": "en", "cursor": "not-a-cursor"})
+        self.assertEqual((result["status"], result["body"]), (400, {"detail": "Assistant catalog cursor is invalid"}))
+        self.assertEqual(self._answers("models.remove", {"provider": "unknown-provider"})["status"], 400)
+        with mock.patch.object(self.methods.decision, "status", return_value={"configured": False}):
+            self.assertEqual(self._answers("decision.read", {})["body"], {"configured": False})
+
+
+class IntegrationAuthorizationTests(SessionMethodCase):
+    """The callback mode follows the Origin the socket is bound to, exactly as it followed the request's Origin."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.authorization = __import__("integrations.authorization", fromlist=["authorization"])
+        handoffs = mock.patch.object(
+            self.authorization, "HANDOFFS", self.authorization.handoff_store.OAuthHandoffStore(ttl_seconds=30)
+        )
+        handoffs.start()
+        self.addCleanup(handoffs.stop)
+
+    def _authorized(self, origin: str, provider_url: str) -> dict:
+        provider = self.team.TeamResponse(200, {"authorization_url": provider_url})
+        with mock.patch.object(
+            self.authorization.integrations, "start_local_assistant_integration_authorization", return_value=provider
+        ) as start:
+            result = self._answers("integrations.authorize", SAMPLES["integrations.authorize"], origin=origin)
+        if result["status"] == 200:
+            self.assertEqual(start.call_args.args[:4], ("team_1", CHALLENGE, "shimpz-cloudflare", "cloudflare"))
+        return result
+
+    def test_a_loopback_page_completes_automatically_through_admins_own_start_route(self) -> None:
+        result = self._authorized("http://127.0.0.1:7777", _provider_url("loopback"))
+        self.assertEqual(result["status"], 200)
+        self.assertEqual(result["body"]["completion_mode"], "automatic")
+        self.assertRegex(
+            result["body"]["authorization_url"],
+            r"^http://127\.0\.0\.1:7777/api/oauth/cloudflare/start\?handoff=[0-9a-f]{64}$",
+        )
+
+    def test_a_learned_https_page_completes_out_of_band_and_another_admitted_page_cannot_start(self) -> None:
+        self.assertEqual(self.admin_app.state.bind_browser_origin(EXTERNAL), "learned")
+        url = _provider_url("out-of-band")
+        result = self._authorized(EXTERNAL, url)
+        self.assertEqual(
+            (result["status"], result["body"]), (200, {"authorization_url": url, "completion_mode": "code"})
+        )
+        # localhost is an admitted page, but no OAuth callback returns to it.
+        self.assertEqual(self._authorized("http://localhost:7777", url)["status"], 409)

@@ -27,34 +27,105 @@ MAX_REVISION = 2**53 - 1
 CALL_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 EPOCH_RE = re.compile(r"[0-9a-f]{32}\Z")
 TOPIC_RE = re.compile(
-    r"(?:teams|space/resources|platform/release|security/summary|session"
-    r"|team/[a-z0-9_]{1,40}/(?:routines|history))\Z"
+    r"(?:teams|space/resources|platform/release|security/summary|session|assistants/registry|local-assistants"
+    r"|team/[a-z0-9_]{1,40}/(?:routines|history|inventory|inference))\Z"
 )
 # The Team's own topics a client may name; every other topic is the Space's or the session's.
-TEAM_TOPICS = ("routines", "history")
+TEAM_TOPICS = ("routines", "history", "inventory", "inference")
 MAX_PARAM_CHARS = 128
+KIB = 1024
 
-# Each method names one Admin operation and the exact parameters it takes: required, then optional.
+# Each method names one Admin operation and the exact parameters it takes: required, then optional. Every parameter is
+# a string of at most 128 characters, except `topics` and a request `body`, which is one JSON object.
+_TEAM = frozenset({"team_id"})
+_NONE: frozenset[str] = frozenset()
 METHODS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
-    "teams.list": (frozenset(), frozenset()),
-    "history.page": (frozenset({"team_id"}), frozenset({"before", "routine"})),
-    "routines.list": (frozenset({"team_id"}), frozenset()),
-    "space.resources": (frozenset(), frozenset()),
-    "platform.release": (frozenset(), frozenset()),
-    "security.summary": (frozenset(), frozenset()),
-    "subscribe": (frozenset({"topics"}), frozenset()),
-    "unsubscribe": (frozenset({"topics"}), frozenset()),
-    "chat.attach": (frozenset({"team_id", "locale"}), frozenset()),
-    "chat.detach": (frozenset({"team_id"}), frozenset()),
+    "teams.list": (_NONE, _NONE),
+    "teams.create": (frozenset({"body"}), _NONE),
+    "teams.rename": (frozenset({"team_id", "body"}), _NONE),
+    "teams.reorder": (frozenset({"body"}), _NONE),
+    "teams.delete": (frozenset({"team_id", "body"}), _NONE),
+    "history.page": (_TEAM, frozenset({"before", "routine"})),
+    "routines.list": (_TEAM, _NONE),
+    "space.resources": (_NONE, _NONE),
+    "platform.release": (_NONE, _NONE),
+    "security.summary": (_NONE, _NONE),
+    "inference.read": (_TEAM, _NONE),
+    "inference.save": (frozenset({"team_id", "body"}), _NONE),
+    "action_confirmation.read": (_TEAM, _NONE),
+    "action_confirmation.save": (frozenset({"team_id", "body"}), _NONE),
+    "assistants.registry": (_NONE, _NONE),
+    "assistants.list": (_TEAM, _NONE),
+    "assistants.install": (frozenset({"team_id", "body"}), _NONE),
+    "assistants.install_local": (frozenset({"team_id", "body"}), _NONE),
+    "assistants.uninstall": (frozenset({"team_id", "assistant_id"}), _NONE),
+    "assistants.summary": (frozenset({"team_id", "assistant_id", "locale"}), _NONE),
+    "assistants.details": (frozenset({"team_id", "assistant_id", "locale"}), _NONE),
+    "snapshots.list": (_NONE, _NONE),
+    "snapshots.summary": (frozenset({"image_id", "locale"}), _NONE),
+    "snapshots.details": (frozenset({"image_id", "locale"}), _NONE),
+    "models.list": (_NONE, _NONE),
+    "models.save": (frozenset({"provider", "body"}), _NONE),
+    "models.remove": (frozenset({"provider"}), _NONE),
+    "decision.read": (_NONE, _NONE),
+    "decision.save": (frozenset({"body"}), _NONE),
+    "decision.remove": (_NONE, _NONE),
+    "integrations.list": (_TEAM, _NONE),
+    "integrations.authorize": (frozenset({"team_id", "challenge_id", "body"}), _NONE),
+    "integrations.complete": (frozenset({"team_id", "challenge_id", "body"}), _NONE),
+    "integrations.cancel": (frozenset({"team_id", "challenge_id"}), _NONE),
+    "integrations.disconnect": (frozenset({"team_id", "assistant_id", "integration_id"}), _NONE),
+    "stored_inputs.list": (_TEAM, _NONE),
+    "stored_inputs.clear": (frozenset({"team_id", "assistant_id", "stored_input_id"}), _NONE),
+    "files.list": (_TEAM, _NONE),
+    "files.delete": (frozenset({"team_id", "file_id"}), _NONE),
+    "store.catalog": (frozenset({"locale"}), frozenset({"cursor"})),
+    "subscribe": (frozenset({"topics"}), _NONE),
+    "unsubscribe": (frozenset({"topics"}), _NONE),
+    "chat.attach": (frozenset({"team_id", "locale"}), _NONE),
+    "chat.detach": (_TEAM, _NONE),
 }
+# The most bytes each method's request body takes as compact UTF-8 JSON: the bound its operation always had (a Team
+# name 1 KiB, a Team order or deletion 8 KiB, every other body 16 KiB). A larger body is answered 413.
+BODY_BYTES = {
+    "teams.create": 1 * KIB,
+    "teams.rename": 1 * KIB,
+    "teams.reorder": 8 * KIB,
+    "teams.delete": 8 * KIB,
+    "inference.save": 16 * KIB,
+    "action_confirmation.save": 16 * KIB,
+    "assistants.install": 16 * KIB,
+    "assistants.install_local": 16 * KIB,
+    "models.save": 16 * KIB,
+    "decision.save": 16 * KIB,
+    "integrations.authorize": 16 * KIB,
+    "integrations.complete": 16 * KIB,
+}
+# A long call keeps its result pending while it runs and says once, with `progress`, that it started.
+LONG_METHODS = frozenset({"assistants.install", "assistants.install_local"})
+
+
+def _team_topic(name: str):
+    return lambda params: f"team/{params['team_id']}/{name}"
+
+
 # The read a topic's change asks the client to repeat; its result carries the topic revision it reflects.
 READ_TOPICS = {
     "teams.list": lambda _params: "teams",
-    "history.page": lambda params: f"team/{params['team_id']}/history",
-    "routines.list": lambda params: f"team/{params['team_id']}/routines",
+    "history.page": _team_topic("history"),
+    "routines.list": _team_topic("routines"),
     "space.resources": lambda _params: "space/resources",
     "platform.release": lambda _params: "platform/release",
     "security.summary": lambda _params: "security/summary",
+    "inference.read": _team_topic("inference"),
+    "action_confirmation.read": _team_topic("inference"),
+    "assistants.registry": lambda _params: "assistants/registry",
+    "assistants.list": _team_topic("inventory"),
+    "assistants.summary": _team_topic("inventory"),
+    "assistants.details": _team_topic("inventory"),
+    "snapshots.list": lambda _params: "local-assistants",
+    "snapshots.summary": lambda _params: "local-assistants",
+    "snapshots.details": lambda _params: "local-assistants",
 }
 # Calls that change what the socket holds count against the session's change budget.
 CHANGE_METHODS = frozenset({"subscribe", "unsubscribe", "chat.attach", "chat.detach"})
@@ -117,9 +188,15 @@ def call(frame: dict[str, object]) -> tuple[str, str, dict[str, object]]:
         raise ProtocolError("invalid call parameters")
     if method in {"subscribe", "unsubscribe"}:
         topics(params)
-    elif not all(_param(value) for value in params.values()):
+    elif not all(isinstance(value, dict) if name == "body" else _param(value) for name, value in params.items()):
         raise ProtocolError("invalid call parameters")
     return call_id, method, params
+
+
+def body_bytes(body: dict[str, object]) -> int:
+    """A request body's size as the page sends it: compact JSON in UTF-8."""
+    text = json.dumps(body, ensure_ascii=False, separators=(",", ":"), allow_nan=False)
+    return len(text.encode("utf-8", errors="surrogatepass"))
 
 
 def activity(frame: dict[str, object]) -> None:
@@ -150,6 +227,11 @@ def result(call_id: str, status: int, body: object, revision: tuple[str, str, in
         topic, epoch, number = revision
         frame.update(topic=topic, epoch=epoch, revision=number)
     return frame
+
+
+def progress(call_id: str) -> dict[str, object]:
+    """A long call started running: its result follows when it ends, or is lost with the socket."""
+    return {"type": "progress", "id": call_id, "state": "running"}
 
 
 def session(idle_seconds: float, absolute_seconds: float) -> dict[str, object]:

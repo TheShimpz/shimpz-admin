@@ -105,11 +105,10 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
         materialize.assert_called_once_with(identity)
 
     def test_origin_helpers_reject_unadmitted_values_and_preserve_an_unchanged_binding(self) -> None:
-        with self.assertRaises(self.admin_app.HTTPException) as denied:
-            self.admin_app._local_oauth_authorization_mode(
-                _request("/authorize", {}, origin="https://unadmitted.example.test")
-            )
-        self.assertEqual(denied.exception.status_code, 403)
+        for unadmitted in ("https://unadmitted.example.test", None):
+            with self.subTest(origin=unadmitted), self.assertRaises(self.admin_app.HTTPException) as denied:
+                self.admin_app.authorization.callback_mode(unadmitted, self.admin_app._allowed_browser_origins)
+            self.assertEqual(denied.exception.status_code, 403)
 
         with self.assertRaises(self.admin_app.HTTPException) as inexact:
             self.admin_app.local_auth._request_origin(_request("/login", origin="https://EXAMPLE.test"))
@@ -138,50 +137,23 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
             )
 
     def test_oauth_completion_mode_projects_only_the_admin_origin_decision(self) -> None:
-        for callback_mode, completion_mode in (
+        completion_mode = self.admin_app.browser.oauth_completion_mode
+        for callback_mode, expected in (
             ("loopback", "automatic"),
             ("local-domain", "automatic"),
             ("out-of-band", "code"),
         ):
-            with mock.patch.object(
-                self.admin_app,
-                "_local_oauth_authorization_mode",
-                return_value=callback_mode,
-            ):
-                self.assertEqual(
-                    self.admin_app.browser.oauth_completion_mode(
-                        _request("/api/session"),
-                        self.admin_app._local_oauth_authorization_mode,
-                    ),
-                    completion_mode,
-                )
+            self.assertEqual(completion_mode(lambda callback_mode=callback_mode: callback_mode), expected)
 
-        unavailable = self.admin_app.HTTPException(status_code=409, detail="unavailable")
-        with mock.patch.object(
-            self.admin_app,
-            "_local_oauth_authorization_mode",
-            side_effect=unavailable,
-        ):
-            self.assertIsNone(
-                self.admin_app.browser.oauth_completion_mode(
-                    _request("/api/session"),
-                    self.admin_app._local_oauth_authorization_mode,
-                )
-            )
+        def refused(status: int):
+            def select() -> str:
+                raise self.admin_app.HTTPException(status_code=status, detail="refused")
 
-        denied = self.admin_app.HTTPException(status_code=403, detail="denied")
-        with (
-            mock.patch.object(
-                self.admin_app,
-                "_local_oauth_authorization_mode",
-                side_effect=denied,
-            ),
-            self.assertRaises(self.admin_app.HTTPException) as caught,
-        ):
-            self.admin_app.browser.oauth_completion_mode(
-                _request("/api/session"),
-                self.admin_app._local_oauth_authorization_mode,
-            )
+            return select
+
+        self.assertIsNone(completion_mode(refused(409)))
+        with self.assertRaises(self.admin_app.HTTPException) as caught:
+            completion_mode(refused(403))
         self.assertEqual(caught.exception.status_code, 403)
 
     def test_session_evidence_maps_corrupt_local_authority(self) -> None:
@@ -363,7 +335,7 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
 
         with (
             mock.patch.object(self.admin_app.state, "revoke_sessions_for_logout") as revoked,
-            mock.patch.object(self.admin_app.OAUTH_HANDOFFS, "cancel_session") as cancelled,
+            mock.patch.object(self.admin_app.authorization.HANDOFFS, "cancel_session") as cancelled,
         ):
             response = asyncio.run(self.admin_app.logout(_request("/api/logout", cookie="token")))
         self.assertEqual(response.status_code, 200)

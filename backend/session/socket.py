@@ -53,6 +53,8 @@ class Gate:
     request_scope: Callable[[Mapping[str, str]], contextlib.AbstractContextManager[None]]
     session_deadlines: Callable[[Mapping[str, str]], tuple[float, float] | None]
     authenticate: Callable[[str, str], Awaitable[object]]
+    # Confirms the Supervisor password within sign-in's limiter and lockout, journaling a refusal with this Origin.
+    recheck_password: Callable[[str | None, object], Awaitable[None]]
     revoke_tickets: Callable[[tickets.Binding], None]
     cookie: str
 
@@ -156,6 +158,12 @@ class SessionSocket:
         if deadlines is not None:
             with contextlib.suppress(OutboundOverflowError):
                 self.send(frames.session(*deadlines))
+
+    def progress(self, call_id: str) -> None:
+        """A long call started running (on the socket's loop): its result follows when it ends."""
+        if call_id in self.calls and not self.closed.is_set():
+            with contextlib.suppress(OutboundOverflowError):
+                self.send(frames.progress(call_id))
 
     def changed(self, topic: str, revision: int) -> None:
         """A topic changed: tell the client when it subscribes to it (any thread)."""

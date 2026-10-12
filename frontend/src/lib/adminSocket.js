@@ -15,7 +15,7 @@ const MAX_SUBSCRIPTIONS = 64;
 const MAX_ATTACHED_TEAMS = 4;
 const EPOCH_RE = /^[0-9a-f]{32}$/;
 const CALL_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
-const TOPIC_RE = /^(?:teams|space\/resources|platform\/release|security\/summary|session|team\/[a-z0-9_]{1,40}\/(?:routines|history))$/;
+const TOPIC_RE = /^(?:teams|space\/resources|platform\/release|security\/summary|session|assistants\/registry|local-assistants|team\/[a-z0-9_]{1,40}\/(?:routines|history|inventory|inference))$/;
 const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
 // The chat-channel frames a client sends; every one carries its Team's `team_id`.
 const CHAT_CLIENT_TYPES = new Set(['chat', 'resume-task', 'stop', 'sync', 'human-response']);

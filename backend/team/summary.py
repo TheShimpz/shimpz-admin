@@ -1,22 +1,15 @@
-"""Same-origin projection of one Assistant's summary or page in one interface language, read by Team from a pack."""
+"""One Assistant's summary or page in one interface language, read by Team from a pack, and the interface registry."""
 
 import json
 from collections.abc import Callable
 
-from fastapi import FastAPI, HTTPException
+from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 from team import bridge as team
 from team import http as team_http
 
 from chat import assistant_inventory
 from protocol.http.v1 import payload as team_contract
-
-
-def register(app: FastAPI) -> None:
-    """Register the interface registry and an installed Assistant's summary."""
-    app.add_api_route("/api/assistants", assistants_list, methods=["GET"])
-    app.add_api_route("/api/teams/{team_id}/assistants/{assistant_id}/summary", assistant_summary, methods=["GET"])
-    app.add_api_route("/api/teams/{team_id}/assistants/{assistant_id}/details", assistant_details, methods=["GET"])
 
 
 def assistants_list() -> JSONResponse:
@@ -67,15 +60,15 @@ def localized(
     answer = validate(body)
     if answer is None or answer["locale"] != canonical:
         raise HTTPException(status_code=502, detail=f"{subject} {kind} is invalid")
-    return JSONResponse(content=answer, headers={"Cache-Control": "no-store"})
+    return JSONResponse(content=answer)
 
 
-def assistant_summary(team_id: str, assistant_id: str, locale: str = "") -> JSONResponse:
+def assistant_summary(team_id: str, assistant_id: str, locale: str) -> JSONResponse:
     """One installed Assistant's summary in the interface language, from its binding's own pack."""
     return localized(lambda canonical: team.assistant_summary(team_id, assistant_id, canonical), locale, "Assistant")
 
 
-def assistant_details(team_id: str, assistant_id: str, locale: str = "") -> JSONResponse:
+def assistant_details(team_id: str, assistant_id: str, locale: str) -> JSONResponse:
     """One installed Assistant's page in the interface language, from its exact binding and that binding's pack.
 
     Team answers for the binding it runs, so the identity it returns must be the one asked for.
