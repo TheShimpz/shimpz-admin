@@ -16,7 +16,7 @@ import {
   routineView,
   setAside,
 } from './routineScenarios.js';
-import { recoveryCodeSet, securityRoutes, securityStart } from './securityScenarios.js';
+import { recoveryCodeSet, securityRoutes, securityStart, securitySummary } from './securityScenarios.js';
 
 export const TEAM = { team_id: 'marketing', team_name: 'Marketing', status: 'running' };
 
@@ -353,10 +353,6 @@ function routineDeletion(method, path, body) {
 function routineRoutes(state, method, path, body) {
   const deletion = routineDeletion(method, path, body);
   if (deletion) return deletion;
-  const base = '/api/teams/marketing/routines';
-  if (path === base && method === 'GET') {
-    return ok({ team_id: 'marketing', routines: state.routines, runs: state.runs, incidents: state.incidents ?? [] });
-  }
   const resume = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})\/resume$/);
   if (resume && method === 'POST') {
     state.routines = state.routines.map((item) => (item.routine_id === resume[1] ? { ...item, state: 'active' } : item));
@@ -376,6 +372,21 @@ function routineRoutes(state, method, path, body) {
     return ok({ team_id: 'marketing', routine_id: routine[1], deleted: true });
   }
   return null;
+}
+
+// `routines.list`: Marketing's Routines, runs, and held incidents; every other listed Team has none.
+function routinesList(state, teamId) {
+  return teamId === 'marketing'
+    ? ok({ team_id: 'marketing', routines: state.routines, runs: state.runs, incidents: state.incidents ?? [] })
+    : ok({ team_id: teamId, routines: [], runs: [], incidents: [] });
+}
+
+// `teams.rename`: a listed Team takes a bounded name.
+function renameTeam(state, { team_id: teamId, body }) {
+  const name = typeof body?.team_name === 'string' ? body.team_name.trim() : '';
+  if (!name || name.length > 80) return { status: 400, json: { detail: 'Enter a valid Team name.' } };
+  state.teams = state.teams.map((team) => (team.team_id === teamId ? { ...team, team_name: name } : team));
+  return ok({ team_id: teamId, team_name: name });
 }
 
 // `teams.reorder`: exactly `{ team_ids }`, an exact permutation of the current Team ids. A malformed body is 400;
@@ -403,22 +414,6 @@ function reorderTeams(state, body) {
   }
   state.teams = ids.map((id) => byId.get(id));
   return ok({ teams: state.teams });
-}
-
-// Every listed Team other than Marketing answers its read-only views empty, so selecting one in the preview works.
-function otherTeamRoutes(state, method, path) {
-  const match = path.match(/^\/api\/teams\/([a-z0-9_]{1,40})\/(.+)$/);
-  if (method !== 'GET' || !match || !state.teams.some((team) => team.team_id === match[1])) return null;
-  const [, teamId, view] = match;
-  return {
-    assistants: () => ok({ assistants: [] }),
-    files: () => ok({ files: [] }),
-    'chat/history': () => ok({ entries: [], before: null }),
-    inference: () => ok({ team_id: teamId, provider: 'openai', model: 'gpt-6.1-sol' }),
-    'assistant-integrations': () => ok({ integrations: [] }),
-    'assistant-stored-inputs': () => ok({ stored_inputs: [] }),
-    routines: () => ok({ team_id: teamId, routines: [], runs: [], incidents: [] }),
-  }[view]?.() ?? null;
 }
 
 // A recurring request creates its Routine directly from the user's own message (ADR-0092), with a created notice.
@@ -646,83 +641,65 @@ export function historyView(entries, routine = null) {
       (entry.run_id !== null || entry.outcome === 'healthy' || entry.outcome === 'skipped')));
 }
 
-// The catalog scenario's Assistants: the staged snapshots and their pages, Marketing's installed bindings, and an
-// empty public catalog in the requested interface language.
-function catalogRoutes(path, locale) {
-  if (path === '/api/local-assistants') return ok({ assistants: catalogSnapshots(), trace_id: 'c'.repeat(32) });
-  if (path === '/api/assistant-catalog') return ok({ version: 1, locale, assistants: [], next: null });
-  if (path === '/api/teams/marketing/assistants') return ok({ assistants: catalogInventory() });
-  const answer = catalogImageAnswer(path, locale) ?? catalogBindingAnswer(path, locale);
+// Marketing's installed Assistants as Team lists them: the catalog scenario's bindings, or the chat's Cloudflare and,
+// for a Stored Input request, the Exa Assistant that request names (Admin refuses one the inventory does not list).
+function marketingInventory(state) {
+  if (state.catalog) return catalogInventory();
+  return [
+    { assistant: 'shimpz-cloudflare', assistant_version: '0.4.1', status: 'running', provenance: 'published' },
+    ...(state.human === 'stored-input'
+      ? [{ assistant: 'shimpz-exa', assistant_version: '0.1.1', status: 'running', provenance: 'published' }]
+      : []),
+  ];
+}
+
+// Every operation Admin serves over the session socket (ADR-0114), answered from the scenario's own state by method
+// and params. A Team-scoped operation answers only for a listed Team; one the scenario does not declare is unanswered.
+const SPACE_METHODS = Object.freeze({
+  'teams.list': (state) => ok({ teams: state.teams }),
+  'teams.reorder': (state, params) => reorderTeams(state, params.body),
+  'space.resources': () => ok(SPACE_RESOURCES),
+  'security.summary': (state) => securitySummary(state),
+  'assistants.registry': () => ok({ assistants: ASSISTANTS }),
+  'models.list': () => ok({ providers: providers() }),
+  'decision.read': () => ok({ provider: 'typesafe', configured: false, masked: null }),
+  // The catalog scenario stages four Assistants and finds no public ones in any interface language.
+  'store.catalog': (state, params) => (state.catalog
+    ? ok({ version: 1, locale: params.locale, assistants: [], next: null })
+    : null),
+  'snapshots.list': (state) => (state.catalog ? ok({ assistants: catalogSnapshots(), trace_id: 'c'.repeat(32) }) : null),
+  'snapshots.summary': (state, params) => snapshotAnswer(state, params, 'summary'),
+  'snapshots.details': (state, params) => snapshotAnswer(state, params, 'details'),
+});
+
+function snapshotAnswer(state, params, kind) {
+  const answer = state.catalog ? catalogImageAnswer(params.image_id, kind, params.locale) : null;
   return answer ? ok(answer) : null;
 }
 
-// Every operation Admin serves over the session socket (ADR-0114), each answered by the scenario's own state under the
-// resource it reads or changes; no HTTP route answers them any more.
-const teamPath = (params) => `/api/teams/${params.team_id}`;
-const localeQuery = (params) => new URLSearchParams({ locale: params.locale });
-const SOCKET_CALLS = Object.freeze({
-  'teams.list': () => ({ path: '/api/teams' }),
-  'teams.create': (params) => ({ method: 'POST', path: '/api/teams', body: params.body }),
-  'teams.rename': (params) => ({ method: 'PATCH', path: teamPath(params), body: params.body }),
-  'teams.reorder': (params) => ({ method: 'PUT', path: '/api/teams/order', body: params.body }),
-  'teams.delete': (params) => ({ method: 'DELETE', path: teamPath(params), body: params.body }),
-  'history.page': (params) => ({
-    path: `${teamPath(params)}/chat/history`,
-    query: new URLSearchParams(Object.entries(params).filter(([key]) => key !== 'team_id')),
+const TEAM_METHODS = Object.freeze({
+  'teams.rename': renameTeam,
+  'history.page': (state, params) => ok({
+    entries: params.team_id === 'marketing' ? historyView(state.history, params.routine ?? null) : [],
+    before: null,
   }),
-  'routines.list': (params) => ({ path: `${teamPath(params)}/routines` }),
-  'space.resources': () => ({ path: '/api/space/resources' }),
-  'platform.release': () => ({ path: '/api/platform-release' }),
-  'security.summary': () => ({ path: '/api/admin/security' }),
-  'inference.read': (params) => ({ path: `${teamPath(params)}/inference` }),
-  'inference.save': (params) => ({ method: 'PUT', path: `${teamPath(params)}/inference`, body: params.body }),
-  'assistants.registry': () => ({ path: '/api/assistants' }),
-  'assistants.list': (params) => ({ path: `${teamPath(params)}/assistants` }),
-  'assistants.summary': (params) => ({
-    path: `${teamPath(params)}/assistants/${params.assistant_id}/summary`,
-    query: localeQuery(params),
-  }),
-  'assistants.details': (params) => ({
-    path: `${teamPath(params)}/assistants/${params.assistant_id}/details`,
-    query: localeQuery(params),
-  }),
-  'snapshots.list': () => ({ path: '/api/local-assistants' }),
-  'snapshots.summary': (params) => ({
-    path: `/api/local-assistants/${params.image_id.slice('sha256:'.length)}/summary`,
-    query: localeQuery(params),
-  }),
-  'snapshots.details': (params) => ({
-    path: `/api/local-assistants/${params.image_id.slice('sha256:'.length)}/details`,
-    query: localeQuery(params),
-  }),
-  'models.list': () => ({ path: '/api/model-providers' }),
-  'models.save': (params) => ({ method: 'PUT', path: `/api/model-providers/${params.provider}`, body: params.body }),
-  'decision.read': () => ({ path: '/api/decision-provider' }),
-  'decision.save': (params) => ({ method: 'PUT', path: '/api/decision-provider', body: params.body }),
-  'decision.remove': () => ({ method: 'DELETE', path: '/api/decision-provider' }),
-  'integrations.list': (params) => ({ path: `${teamPath(params)}/assistant-integrations` }),
-  'stored_inputs.list': (params) => ({ path: `${teamPath(params)}/assistant-stored-inputs` }),
-  'files.list': (params) => ({ path: `${teamPath(params)}/files` }),
-  'store.catalog': (params) => ({ path: '/api/assistant-catalog', query: localeQuery(params) }),
+  'routines.list': (state, params) => routinesList(state, params.team_id),
+  'inference.read': (_state, params) => ok({ team_id: params.team_id, provider: 'openai', model: 'gpt-6.1-sol' }),
+  'inference.save': (_state, params) => ok({ team_id: params.team_id, ...params.body }),
+  'assistants.list': (state, params) => ok({ assistants: params.team_id === 'marketing' ? marketingInventory(state) : [] }),
+  'assistants.details': (state, params) => {
+    const answer = state.catalog && params.team_id === 'marketing'
+      ? catalogBindingAnswer(params.assistant_id, params.locale)
+      : null;
+    return answer ? ok(answer) : null;
+  },
+  'integrations.list': () => ok({ integrations: [] }),
+  'stored_inputs.list': () => ok({ stored_inputs: [] }),
 });
-// The browser reaches these only through the socket: an HTTP request for one is never answered.
-const TEAM_PATH = String.raw`\/api\/teams\/[a-z0-9_]{1,40}`;
-const SOCKET_ONLY = [
-  /^(?:GET|POST) \/api\/teams$/,
-  new RegExp(`^(?:PATCH|DELETE) ${TEAM_PATH}$`),
-  /^PUT \/api\/teams\/order$/,
-  new RegExp(`^GET ${TEAM_PATH}\\/(?:chat\\/history|routines|assistant-integrations|assistant-stored-inputs|files)$`),
-  new RegExp(`^(?:GET|PUT) ${TEAM_PATH}\\/(?:inference|action-confirmation)$`),
-  new RegExp(`^(?:GET|POST) ${TEAM_PATH}\\/assistants(?:\\/local)?$`),
-  new RegExp(`^(?:DELETE ${TEAM_PATH}\\/assistants\\/[a-z0-9-]+|GET ${TEAM_PATH}\\/assistants\\/[a-z0-9-]+\\/(?:summary|details))$`),
-  /^GET \/api\/local-assistants(?:\/[0-9a-f]{64}\/(?:summary|details))?$/,
-  /^[A-Z]+ \/api\/(?:model-providers(?:\/[a-z]+)?|decision-provider|assistants|assistant-catalog)$/,
-  /^GET \/api\/(?:space\/resources|platform-release|admin\/security)$/,
-];
 
 /**
- * A fresh scenario; `respond` returns `{ status, json }` or null for a request this scenario does not answer, and `call`
- * the same for a session socket read. `query` holds the request's search parameters.
+ * A fresh scenario; `respond` returns `{ status, json }` or null for an HTTP request this scenario does not answer, and
+ * `call` the same for a session socket call by its method and params.
  */
 export function createScenario(name = 'ready', locale = 'en') {
   const start = STARTS[name];
@@ -731,67 +708,24 @@ export function createScenario(name = 'ready', locale = 'en') {
   const state = { history: [], sequence: 0, locale, security: securityStart(), ...structuredClone(start(locale)) };
   const scenario = {
     name,
-    respond(request) {
-      const { method = 'GET', path } = request;
-      if (SOCKET_ONLY.some((pattern) => pattern.test(`${method} ${path}`))) return null;
-      return scenario.answer(request);
-    },
     // One session socket call, or null when the scenario does not answer it.
     call(method, params = {}) {
-      const request = Object.hasOwn(SOCKET_CALLS, method) ? SOCKET_CALLS[method](params) : null;
-      return request && state.session.authenticated ? scenario.answer({ method: 'GET', ...request }) : null;
+      if (!state.session.authenticated) return null;
+      if (Object.hasOwn(SPACE_METHODS, method)) return SPACE_METHODS[method](state, params);
+      const listed = state.teams.some((team) => team.team_id === params.team_id);
+      return listed && Object.hasOwn(TEAM_METHODS, method) ? TEAM_METHODS[method](state, params) : null;
     },
     // Whether the chat channel of this Team can attach: the preview answers every listed Team's chat.
     attachable(teamId) {
       return state.session.authenticated && state.teams.some((team) => team.team_id === teamId);
     },
-    answer({ method = 'GET', path, query = new URLSearchParams(), body = null }) {
+    // One HTTP request Admin still serves (the session and sign-in family, file uploads, and the Routine routes), or null.
+    respond({ method = 'GET', path, body = null }) {
       if (path === '/api/session' && method === 'POST') return ok(state.session);
       const security = securityRoutes(state, method, path, body);
       if (security) return security;
-      if (!state.session.authenticated) return null;
-      if (path === '/api/space/resources' && method === 'GET') return ok(SPACE_RESOURCES);
-      if (path === '/api/teams' && method === 'GET') return ok({ teams: state.teams });
-      if (path === '/api/teams/order' && method === 'PUT') return reorderTeams(state, body);
-      if (path === '/api/assistants' && method === 'GET') return ok({ assistants: ASSISTANTS });
-      if (path === '/api/model-providers' && method === 'GET') return ok({ providers: providers() });
-      if (path === '/api/decision-provider' && method === 'GET') {
-        return ok({ provider: 'typesafe', configured: false, masked: null });
-      }
-      if (path === '/api/teams/marketing' && method === 'PATCH' && state.teams.length) {
-        const name = typeof body?.team_name === 'string' ? body.team_name.trim() : '';
-        if (!name || name.length > 80) return { status: 400, json: { detail: 'Enter a valid Team name.' } };
-        state.teams = state.teams.map((team) => (team.team_id === 'marketing' ? { ...team, team_name: name } : team));
-        return ok({ team_id: 'marketing', team_name: name });
-      }
-      if (!state.teams.length) return null;
-      if (state.catalog && method === 'GET') {
-        const answer = catalogRoutes(path, query.get('locale'));
-        if (answer) return answer;
-      }
-      if (!path.startsWith('/api/teams/marketing/')) return otherTeamRoutes(state, method, path);
-      if (path === '/api/teams/marketing/assistants' && method === 'GET') {
-        return ok({
-          assistants: [
-            { assistant: 'shimpz-cloudflare', assistant_version: '0.4.1', status: 'running', provenance: 'published' },
-            // A human request names an installed Assistant; Admin refuses one the Team inventory does not list.
-            ...(state.human === 'stored-input'
-              ? [{ assistant: 'shimpz-exa', assistant_version: '0.1.1', status: 'running', provenance: 'published' }]
-              : []),
-          ],
-        });
-      }
-      if (path === '/api/teams/marketing/files' && method === 'GET') return ok({ files: [] });
+      if (!state.session.authenticated || !state.teams.length) return null;
       if (path === '/api/teams/marketing/files' && method === 'POST') return uploadFile(state, body);
-      if (path === '/api/teams/marketing/chat/history' && method === 'GET') {
-        return ok({ entries: historyView(state.history, query.get('routine')), before: null });
-      }
-      if (path === '/api/teams/marketing/inference' && method === 'GET') {
-        return ok({ team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol' });
-      }
-      if (path === '/api/teams/marketing/inference' && method === 'PUT') return ok({ team_id: 'marketing', ...body });
-      if (path === '/api/teams/marketing/assistant-integrations' && method === 'GET') return ok({ integrations: [] });
-      if (path === '/api/teams/marketing/assistant-stored-inputs' && method === 'GET') return ok({ stored_inputs: [] });
       return routineRecoveryRoutes(state, method, path, body) ?? routineStepRoutes(state, method, path) ??
         routineProposalRoutes(state, method, path, body) ?? routineRoutes(state, method, path, body);
     },

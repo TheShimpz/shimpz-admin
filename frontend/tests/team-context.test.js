@@ -10,23 +10,11 @@ import { LocalApiError } from '../src/lib/localApi.js';
 const { clearTeamContext, teamContext } = context;
 
 // The Team context reads and changes Teams over the session socket (ADR-0114). Each test's fixture states a whole
-// Space as one function of a resource key and request options: a call is answered under the key of the resource it
-// reads or changes (`/api/teams`, `/api/teams/{id}`, `/api/teams/order`, `/api/assistants`, `/api/teams/{id}/assistants`),
-// with the change it asks for as a method and a JSON body.
-const RESOURCES = {
-  'teams.list': () => ['/api/teams', {}],
-  'teams.create': (params) => ['/api/teams', { method: 'POST', body: JSON.stringify(params.body) }],
-  'teams.rename': (params) => [`/api/teams/${params.team_id}`, { method: 'PATCH', body: JSON.stringify(params.body) }],
-  'teams.delete': (params) => [`/api/teams/${params.team_id}`, { method: 'DELETE', body: JSON.stringify(params.body) }],
-  'teams.reorder': (params) => ['/api/teams/order', { method: 'PUT', body: JSON.stringify(params.body) }],
-  'assistants.registry': () => ['/api/assistants', {}],
-  'assistants.list': (params) => [`/api/teams/${params.team_id}/assistants`, {}],
-};
+// Space as one function of an operation's key and its params: the method, followed for one Team's operation by that
+// Team (`teams.list`, `teams.create`, `teams.rename marketing`, `teams.delete marketing`, `teams.reorder`,
+// `assistants.registry`, `assistants.list marketing`).
 let fixture = null;
-socketReads.call = async (method, params) => {
-  const [key, options] = RESOURCES[method](params);
-  return fixture(key, options);
-};
+socketReads.call = async (method, params) => fixture(params.team_id ? `${method} ${params.team_id}` : method, params);
 function using(operation) {
   return (fetcher, ...args) => {
     fixture = fetcher;
@@ -71,9 +59,9 @@ function installedAssistant(assistant, status = 'running') {
 }
 
 function fixtureFetcher(overrides = {}) {
-  return async (url, options = {}) => {
-    if (overrides[url]) return overrides[url](options);
-    if (url === '/api/teams') {
+  return async (key, params = {}) => {
+    if (overrides[key]) return overrides[key](params);
+    if (key === 'teams.list') {
       return response(200, {
         teams: [
           { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
@@ -81,7 +69,7 @@ function fixtureFetcher(overrides = {}) {
         ],
       });
     }
-    if (url === '/api/assistants') {
+    if (key === 'assistants.registry') {
       return response(200, {
         assistants: [
           { id: 'hello-pulse', title: 'Hello Pulse' },
@@ -89,13 +77,13 @@ function fixtureFetcher(overrides = {}) {
         ],
       });
     }
-    if (url === '/api/teams/marketing/assistants') {
+    if (key === 'assistants.list marketing') {
       return response(200, { assistants: [installedAssistant('salesnator')] });
     }
-    if (url === '/api/teams/support/assistants') {
+    if (key === 'assistants.list support') {
       return response(200, { assistants: [installedAssistant('hello-pulse')] });
     }
-    throw new Error(`Unexpected request: ${options.method ?? 'GET'} ${url}`);
+    throw new Error(`Unexpected request: ${key}`);
   };
 }
 
@@ -129,7 +117,7 @@ test('switching Teams immediately selects the URL authority and clears stale inv
   let releaseAssistants;
   const assistants = new Promise((resolve) => { releaseAssistants = resolve; });
   const fetcher = fixtureFetcher({
-    '/api/teams/support/assistants': async () => assistants,
+    'assistants.list support': async () => assistants,
   });
   const pending = selectTeam(fetcher, 'support');
 
@@ -146,7 +134,7 @@ test('a failed Team switch keeps the last verified Team selected', async () => {
 
   await assert.rejects(
     selectTeam(fixtureFetcher({
-      '/api/teams/support/assistants': async () => response(503, {}),
+      'assistants.list support': async () => response(503, {}),
     }), 'support'),
     (error) => error instanceof LocalApiError,
   );
@@ -161,7 +149,7 @@ test('a Team switch keeps the Space catalog it read, and reads it again only for
   const catalog = get(teamContext).catalog;
   let catalogRequests = 0;
   await selectTeam(fixtureFetcher({
-    '/api/assistants': async () => {
+    'assistants.registry': async () => {
       catalogRequests += 1;
       return response(503, {});
     },
@@ -171,10 +159,10 @@ test('a Team switch keeps the Space catalog it read, and reads it again only for
   assert.deepEqual(get(teamContext).installedAssistants, [installedAssistant('hello-pulse')]);
 
   await selectTeam(fixtureFetcher({
-    '/api/teams/marketing/assistants': async () => response(200, {
+    'assistants.list marketing': async () => response(200, {
       assistants: [installedAssistant('salesnator'), installedAssistant('newcomer')],
     }),
-    '/api/assistants': async () => {
+    'assistants.registry': async () => {
       catalogRequests += 1;
       return response(200, {
         assistants: [
@@ -198,11 +186,11 @@ test('Team and Assistant catalogs load in parallel and each context load refresh
   const teams = new Promise((resolve) => { releaseTeams = resolve; });
   const catalog = new Promise((resolve) => { releaseCatalog = resolve; });
   const fetcher = fixtureFetcher({
-    '/api/teams': async () => {
+    'teams.list': async () => {
       teamRequests += 1;
       return teams;
     },
-    '/api/assistants': async () => {
+    'assistants.registry': async () => {
       catalogRequests += 1;
       return catalog;
     },
@@ -223,7 +211,7 @@ test('Team and Assistant catalogs load in parallel and each context load refresh
   await pending;
 
   await loadTeamContext(fixtureFetcher({
-    '/api/assistants': async () => {
+    'assistants.registry': async () => {
       catalogRequests += 1;
       return response(200, { assistants: [] });
     },
@@ -236,8 +224,8 @@ test('Team and Assistant catalogs load in parallel and each context load refresh
 test('a confirmed empty inventory retains the catalog while malformed Team data fails closed', async () => {
   let catalogRequests = 0;
   await loadTeamContext(fixtureFetcher({
-    '/api/teams': async () => response(200, { teams: [] }),
-    '/api/assistants': async () => {
+    'teams.list': async () => response(200, { teams: [] }),
+    'assistants.registry': async () => {
       catalogRequests += 1;
       return response(200, {
         assistants: [
@@ -269,7 +257,7 @@ test('a confirmed empty inventory retains the catalog while malformed Team data 
     clearTeamContext();
     await assert.rejects(
       loadTeamContext(fixtureFetcher({
-        '/api/teams': async () => response(200, { teams }),
+        'teams.list': async () => response(200, { teams }),
       })),
       (error) => error instanceof LocalApiError && error.message === 'The local Team inventory is invalid.',
     );
@@ -281,7 +269,7 @@ test('a confirmed empty inventory retains the catalog while malformed Team data 
 
 test('accepts only the backend trace identifier as optional Team envelope metadata', async () => {
   await loadTeamContext(fixtureFetcher({
-    '/api/teams': async () => response(200, {
+    'teams.list': async () => response(200, {
       teams: [],
       trace_id: 'a'.repeat(32),
     }),
@@ -295,7 +283,7 @@ test('accepts only the backend trace identifier as optional Team envelope metada
     clearTeamContext();
     await assert.rejects(
       loadTeamContext(fixtureFetcher({
-        '/api/teams': async () => response(200, document),
+        'teams.list': async () => response(200, document),
       })),
       (error) => error instanceof LocalApiError && error.message === 'The local Team inventory is invalid.',
     );
@@ -305,8 +293,8 @@ test('accepts only the backend trace identifier as optional Team envelope metada
 test('refresh accepts authoritative installed inventory while display metadata catches up', async () => {
   await loadTeamContext(fixtureFetcher(), 'marketing');
   const refreshed = fixtureFetcher({
-    '/api/assistants': async () => response(200, { assistants: [] }),
-    '/api/teams/marketing/assistants': async () => response(200, {
+    'assistants.registry': async () => response(200, { assistants: [] }),
+    'assistants.list marketing': async () => response(200, {
       assistants: [installedAssistant('not-in-catalog')],
     }),
   });
@@ -322,18 +310,18 @@ test('refresh accepts authoritative installed inventory while display metadata c
 
 test('refresh exposes a first install and its newly projected display metadata together', async () => {
   await loadTeamContext(fixtureFetcher({
-    '/api/assistants': async () => response(200, { assistants: [] }),
-    '/api/teams/marketing/assistants': async () => response(200, { assistants: [] }),
+    'assistants.registry': async () => response(200, { assistants: [] }),
+    'assistants.list marketing': async () => response(200, { assistants: [] }),
   }), 'marketing');
 
   await refreshTeamInventory(fixtureFetcher({
-    '/api/assistants': async () => response(200, {
+    'assistants.registry': async () => response(200, {
       assistants: [{
         id: 'shimpz-cloudflare',
         title: 'Shimpz Cloudflare',
       }],
     }),
-    '/api/teams/marketing/assistants': async () => response(200, {
+    'assistants.list marketing': async () => response(200, {
       assistants: [installedAssistant('shimpz-cloudflare')],
     }),
   }));
@@ -355,7 +343,7 @@ test('a refresh keeps the last inventory on display, loading, until the fresh on
   let release;
   const held = new Promise((resolve) => { release = resolve; });
   const refreshing = refreshTeamInventory(fixtureFetcher({
-    '/api/teams/marketing/assistants': async () => held,
+    'assistants.list marketing': async () => held,
   }));
 
   assert.equal(get(teamContext).phase, 'loading');
@@ -380,14 +368,12 @@ for (const operation of ['create', 'delete']) {
       ]
       : [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }];
     const fetcher = fixtureFetcher({
-      '/api/teams': async (options) => {
-        if (options.method === 'POST') {
-          await held;
-          return response(201, { created: true, team_id: 'growth', team_name: 'Growth', status: 'running' });
-        }
-        return response(200, { teams: listed });
+      'teams.create': async () => {
+        await held;
+        return response(201, { created: true, team_id: 'growth', team_name: 'Growth', status: 'running' });
       },
-      '/api/teams/support': async () => {
+      'teams.list': async () => response(200, { teams: listed }),
+      'teams.delete support': async () => {
         await held;
         return response(200, {
           team_id: 'support',
@@ -397,7 +383,7 @@ for (const operation of ['create', 'delete']) {
           residue_absent: LOCAL_TEAM_RESIDUES,
         });
       },
-      '/api/teams/growth/assistants': async () => response(200, { assistants: [] }),
+      'assistants.list growth': async () => response(200, { assistants: [] }),
     });
     const changing = operation === 'create'
       ? createTeam(fetcher, 'Growth')
@@ -417,8 +403,8 @@ test('a refresh waiting on a Team operation when the session ends publishes noth
   let release;
   const held = new Promise((resolve) => { release = resolve; });
   const fetcher = fixtureFetcher({
-    '/api/teams': async (options) => {
-      if (options.method !== 'POST') return response(200, { teams: [] });
+    'teams.list': async () => response(200, { teams: [] }),
+    'teams.create': async () => {
       await held;
       return response(201, { created: true, team_id: 'growth', team_name: 'Growth', status: 'running' });
     },
@@ -438,7 +424,7 @@ test('a refresh waiting on a Team operation when the session ends publishes noth
   await loadTeamContext(fixtureFetcher(), 'marketing');
   let answer;
   const late = new Promise((resolve) => { answer = resolve; });
-  const reading = refreshTeamInventory(fixtureFetcher({ '/api/teams/marketing/assistants': async () => late }));
+  const reading = refreshTeamInventory(fixtureFetcher({ 'assistants.list marketing': async () => late }));
   clearTeamContext();
   answer(response(200, { assistants: [installedAssistant('salesnator')] }));
   await reading;
@@ -449,7 +435,7 @@ test('a refresh waiting on a Team operation when the session ends publishes noth
 test('a Team that could not be created leaves the selected Team and its current inventory', async () => {
   await loadTeamContext(fixtureFetcher(), 'marketing');
   await assert.rejects(createTeam(fixtureFetcher({
-    '/api/teams': async (options) => (options.method === 'POST' ? response(503, { detail: 'unavailable' }) : null),
+    'teams.create': async () => response(503, { detail: 'unavailable' }),
   }), 'Growth'), (error) => error instanceof LocalApiError);
 
   assert.equal(get(teamContext).phase, 'error');
@@ -461,30 +447,24 @@ test('a Team that could not be created leaves the selected Team and its current 
 test('creates a Team with the exact payload, validates the response, and refreshes its inventory', async () => {
   const calls = [];
   const fetcher = fixtureFetcher({
-    '/api/teams': async (options) => {
-      calls.push(options);
-      if (options.method === 'POST') {
-        return response(201, {
-          created: true,
-          team_id: 'growth',
-          team_name: 'Growth',
-          status: 'running',
-          trace_id: 'b'.repeat(32),
-        });
-      }
-      return response(200, { teams: [{ team_id: 'growth', team_name: 'Growth', status: 'running' }] });
+    'teams.create': async (params) => {
+      calls.push(params);
+      return response(201, {
+        created: true,
+        team_id: 'growth',
+        team_name: 'Growth',
+        status: 'running',
+        trace_id: 'b'.repeat(32),
+      });
     },
-    '/api/teams/growth/assistants': async () => response(200, { assistants: [] }),
+    'teams.list': async () => response(200, { teams: [{ team_id: 'growth', team_name: 'Growth', status: 'running' }] }),
+    'assistants.list growth': async () => response(200, { assistants: [] }),
   });
 
   const created = await createTeam(fetcher, '  Growth  ');
 
   assert.deepEqual(created, { created: true, id: 'growth', name: 'Growth', status: 'running' });
-  assert.deepEqual(calls[0], {
-    method: 'POST',
-    body: JSON.stringify({ team_name: 'Growth' }),
-  });
-  assert.deepEqual(calls[1], {});
+  assert.deepEqual(calls, [{ body: { team_name: 'Growth' } }]);
   assert.equal(get(teamContext).phase, 'ready');
   assert.equal(get(teamContext).selectedTeamId, 'growth');
 });
@@ -492,19 +472,12 @@ test('creates a Team with the exact payload, validates the response, and refresh
 test('keeps a confirmed Team creation successful when its follow-up context refresh fails', async () => {
   let postRequests = 0;
   const fetcher = fixtureFetcher({
-    '/api/teams': async (options) => {
-      if (options.method === 'POST') {
-        postRequests += 1;
-        return response(201, {
-          created: true,
-          team_id: 'growth',
-          team_name: 'Growth',
-          status: 'running',
-        });
-      }
-      return response(200, { teams: [{ team_id: 'growth', team_name: 'Growth', status: 'running' }] });
+    'teams.create': async () => {
+      postRequests += 1;
+      return response(201, { created: true, team_id: 'growth', team_name: 'Growth', status: 'running' });
     },
-    '/api/assistants': async () => response(503, {}),
+    'teams.list': async () => response(200, { teams: [{ team_id: 'growth', team_name: 'Growth', status: 'running' }] }),
+    'assistants.registry': async () => response(503, {}),
   });
 
   const created = await createTeam(fetcher, 'Growth');
@@ -522,7 +495,7 @@ test('deletes a Team with exact credentials and selects a remaining Team', async
   const calls = [];
   let deleted = false;
   const fetcher = fixtureFetcher({
-    '/api/teams': async () => response(200, {
+    'teams.list': async () => response(200, {
       teams: deleted
         ? [{ team_id: 'support', team_name: 'Support', status: 'running' }]
         : [
@@ -530,8 +503,8 @@ test('deletes a Team with exact credentials and selects a remaining Team', async
             { team_id: 'support', team_name: 'Support', status: 'running' },
           ],
     }),
-    '/api/teams/marketing': async (options) => {
-      calls.push(options);
+    'teams.delete marketing': async (params) => {
+      calls.push(params);
       deleted = true;
       return response(200, {
         team_id: 'marketing',
@@ -549,8 +522,8 @@ test('deletes a Team with exact credentials and selects a remaining Team', async
     const result = await deleteTeam(fetcher, 'marketing', 'Marketing', 'violet otter lantern quartz 92');
 
     assert.deepEqual(calls, [{
-      method: 'DELETE',
-      body: JSON.stringify({ team_name: 'Marketing', password: 'violet otter lantern quartz 92' }),
+      team_id: 'marketing',
+      body: { team_name: 'Marketing', password: 'violet otter lantern quartz 92' },
     }]);
     assert.deepEqual(result, {
       teamId: 'marketing',
@@ -582,7 +555,7 @@ test('Team deletion fails closed on an inexact name or malformed success envelop
 
   await assert.rejects(
     deleteTeam(fixtureFetcher({
-      '/api/teams/marketing': async () => response(200, {
+      'teams.delete marketing': async () => response(200, {
         team_id: 'marketing',
         destroyed: true,
         assistants_removed: 1,
@@ -617,7 +590,7 @@ test('Team deletion rejects missing, ambiguous, or malformed residue proofs', as
     if (residueAbsent !== undefined) body.residue_absent = residueAbsent;
     await assert.rejects(
       deleteTeam(fixtureFetcher({
-        '/api/teams/marketing': async () => response(200, body),
+        'teams.delete marketing': async () => response(200, body),
       }), 'marketing', 'Marketing', 'secret'),
       (error) => (
         error instanceof LocalApiError &&
@@ -634,7 +607,7 @@ test('Team deletion preserves the bounded API reason and status for safe diagnos
 
   await assert.rejects(
     deleteTeam(fixtureFetcher({
-      '/api/teams/marketing': async () => response(403, { detail: 'Supervisor password is incorrect' }),
+      'teams.delete marketing': async () => response(403, { detail: 'Supervisor password is incorrect' }),
     }), 'marketing', 'Marketing', 'wrong password'),
     (error) => (
       error instanceof LocalApiError &&
@@ -652,8 +625,8 @@ test('Team deletion bounds the Supervisor password in code points, not UTF-16 un
   assert.equal(password.length, 4201);
   let sent = '';
   const fetcher = fixtureFetcher({
-    '/api/teams/marketing': async (init) => {
-      sent = JSON.parse(init.body).password;
+    'teams.delete marketing': async (params) => {
+      sent = params.body.password;
       return response(200, {
         team_id: 'marketing',
         destroyed: true,
@@ -683,12 +656,12 @@ test('Team deletion bounds the Supervisor password in code points, not UTF-16 un
 test('deleting the last Team rehydrates an authoritative empty context', async () => {
   let deleted = false;
   const fetcher = fixtureFetcher({
-    '/api/teams': async () => response(200, {
+    'teams.list': async () => response(200, {
       teams: deleted
         ? []
         : [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }],
     }),
-    '/api/teams/marketing': async () => {
+    'teams.delete marketing': async () => {
       deleted = true;
       return response(200, {
         team_id: 'marketing',
@@ -721,15 +694,15 @@ test('deleting the last Team rehydrates an authoritative empty context', async (
 test('a first Team whose creation answer was lost opens once the Team list is read again', async () => {
   let created = false;
   const fetcher = fixtureFetcher({
-    '/api/teams': async (options) => {
-      if (options.method === 'POST') {
-        // Team created it, and Admin's connection dropped before its answer arrived.
-        created = true;
-        throw new LocalApiError('Admin disconnected before it answered.', 0, 'outcome-unknown');
-      }
-      return response(200, { teams: created ? [{ team_id: 'growth', team_name: 'Growth', status: 'running' }] : [] });
+    'teams.create': async () => {
+      // Team created it, and Admin's connection dropped before its answer arrived.
+      created = true;
+      throw new LocalApiError('Admin disconnected before it answered.', 0, 'outcome-unknown');
     },
-    '/api/teams/growth/assistants': async () => response(200, { assistants: [] }),
+    'teams.list': async () => response(200, {
+      teams: created ? [{ team_id: 'growth', team_name: 'Growth', status: 'running' }] : [],
+    }),
+    'assistants.list growth': async () => response(200, { assistants: [] }),
   });
   await loadTeamContext(fetcher, '');
   assert.equal(get(teamContext).teams.length, 0);
@@ -766,7 +739,7 @@ test('clear invalidates a late context response', async () => {
   let releaseTeams;
   const teams = new Promise((resolve) => { releaseTeams = resolve; });
   const pending = loadTeamContext(fixtureFetcher({
-    '/api/teams': async () => teams,
+    'teams.list': async () => teams,
   }));
   clearTeamContext();
   releaseTeams(response(200, { teams: [] }));
@@ -785,7 +758,7 @@ test('clear invalidates a late context response', async () => {
 
 test('every running Assistant joins the chat scope and stopped ones stay out', async () => {
   const inventory = (status) => fixtureFetcher({
-    '/api/teams/marketing/assistants': async () => response(200, {
+    'assistants.list marketing': async () => response(200, {
       assistants: [
         installedAssistant('hello-pulse', status),
         installedAssistant('salesnator'),
@@ -811,8 +784,8 @@ test('a Team rename is sent by id and applied to the current context, and bad in
   clearTeamContext();
   const patches = [];
   const fetcher = fixtureFetcher({
-    '/api/teams/marketing': async (options) => {
-      patches.push(JSON.parse(options.body));
+    'teams.rename marketing': async (params) => {
+      patches.push(params.body);
       return response(200, { team_id: 'marketing', team_name: 'Growth' });
     },
   });
@@ -825,9 +798,9 @@ test('a Team rename is sent by id and applied to the current context, and bad in
   assert.equal(get(teamContext).teams.find((team) => team.id === 'marketing').name, 'Growth');
   await assert.rejects(renameTeam(fetcher, 'unknown', 'Other'), /Invalid local Team request/);
 
-  const refused = fixtureFetcher({ '/api/teams/marketing': async () => response(409, { detail: 'Another Team already has this name.' }) });
+  const refused = fixtureFetcher({ 'teams.rename marketing': async () => response(409, { detail: 'Another Team already has this name.' }) });
   await assert.rejects(renameTeam(refused, 'marketing', 'Support'), /Another Team already has this name/);
-  const forged = fixtureFetcher({ '/api/teams/marketing': async () => response(200, { team_id: 'marketing', team_name: 'Other' }) });
+  const forged = fixtureFetcher({ 'teams.rename marketing': async () => response(200, { team_id: 'marketing', team_name: 'Other' }) });
   await assert.rejects(renameTeam(forged, 'marketing', 'Sales'), /invalid response/);
 });
 
@@ -838,19 +811,19 @@ test('a rename confirmed while a selection or a Team list read is pending keeps 
   let holdInventory = false;
   let holdList = false;
   const base = fixtureFetcher({
-    '/api/teams/marketing': async () => response(200, { team_id: 'marketing', team_name: 'Growth' }),
+    'teams.rename marketing': async () => response(200, { team_id: 'marketing', team_name: 'Growth' }),
   });
-  const fetcher = async (url, options = {}) => {
-    if (holdInventory && url === '/api/teams/support/assistants') await inventory.promise;
-    if (url === '/api/teams' && options.method === 'POST') {
+  const fetcher = async (key, params = {}) => {
+    if (holdInventory && key === 'assistants.list support') await inventory.promise;
+    if (key === 'teams.create') {
       return response(200, { created: true, status: 'running', team_id: 'research', team_name: 'Research' });
     }
-    if (holdList && url === '/api/teams') {
-      const answer = await base(url, options);
+    if (holdList && key === 'teams.list') {
+      const answer = await base(key, params);
       await listRead.promise;
       return answer;
     }
-    return base(url, options);
+    return base(key, params);
   };
   await loadTeamContext(fetcher, 'marketing');
 
@@ -869,17 +842,17 @@ test('a rename confirmed while a selection or a Team list read is pending keeps 
   const patch = deferred();
   const researchInventory = deferred();
   const inventoryRequested = deferred();
-  const racing = async (url, options = {}) => {
-    if (url === '/api/teams/marketing' && options.method === 'PATCH') {
+  const racing = async (key, params = {}) => {
+    if (key === 'teams.rename marketing') {
       await patch.promise;
       return response(200, { team_id: 'marketing', team_name: 'Growth 2' });
     }
-    if (url === '/api/teams/research/assistants') {
+    if (key === 'assistants.list research') {
       inventoryRequested.resolve();
       await researchInventory.promise;
       return response(200, { assistants: [] });
     }
-    if (url === '/api/teams' && options.method !== 'POST') {
+    if (key === 'teams.list') {
       await listRead.promise;
       return response(200, {
         teams: [
@@ -888,7 +861,7 @@ test('a rename confirmed while a selection or a Team list read is pending keeps 
         ],
       });
     }
-    return fetcher(url, options);
+    return fetcher(key, params);
   };
   const renaming = renameTeam(racing, 'marketing', 'Growth 2');
   const creating = createTeam(racing, 'Research');
@@ -907,9 +880,9 @@ test('Team names are sent and compared in NFC, as Team admits them', async () =>
   clearTeamContext();
   const posted = [];
   const fetcher = fixtureFetcher({
-    '/api/teams': async (options) => {
-      if (options.method !== 'POST') return response(200, { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] });
-      posted.push(JSON.parse(options.body));
+    'teams.list': async () => response(200, { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }),
+    'teams.create': async (params) => {
+      posted.push(params.body);
       return response(200, { created: true, status: 'running', team_id: 'cafe', team_name: 'Café' });
     },
   });
@@ -925,12 +898,12 @@ test('Team names are bounded by Unicode code points, as Team counts them', async
     const longest = character.repeat(80);
     const patches = [];
     const fetcher = fixtureFetcher({
-      '/api/teams': async () => response(200, {
+      'teams.list': async () => response(200, {
         teams: [{ team_id: 'marketing', team_name: longest, status: 'running' }],
       }),
-      '/api/teams/marketing': async (options) => {
-        patches.push(JSON.parse(options.body));
-        return response(200, { team_id: 'marketing', team_name: JSON.parse(options.body).team_name });
+      'teams.rename marketing': async (params) => {
+        patches.push(params.body);
+        return response(200, { team_id: 'marketing', team_name: params.body.team_name });
       },
     });
     await loadTeamContext(fetcher, 'marketing');
@@ -945,7 +918,7 @@ test('Team names are bounded by Unicode code points, as Team counts them', async
     clearTeamContext();
     await assert.rejects(
       loadTeamContext(fixtureFetcher({
-        '/api/teams': async () => response(200, {
+        'teams.list': async () => response(200, {
           teams: [{ team_id: 'marketing', team_name: character.repeat(81), status: 'running' }],
         }),
       }), 'marketing'),
@@ -958,7 +931,7 @@ test('a rename answered after the context cleared never publishes over the next 
   clearTeamContext();
   const patch = deferred();
   const fetcher = fixtureFetcher({
-    '/api/teams/marketing': async () => {
+    'teams.rename marketing': async () => {
       await patch.promise;
       return response(200, { team_id: 'marketing', team_name: 'Growth' });
     },
@@ -973,15 +946,14 @@ test('a rename answered after the context cleared never publishes over the next 
 
   // A later list read in the new context is not overlaid with the stale rename either.
   await createTeam(fixtureFetcher({
-    '/api/teams': async (options) => (options.method === 'POST'
-      ? response(200, { created: true, status: 'running', team_id: 'research', team_name: 'Research' })
-      : response(200, {
-        teams: [
-          { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
-          { team_id: 'research', team_name: 'Research', status: 'running' },
-        ],
-      })),
-    '/api/teams/research/assistants': async () => response(200, { assistants: [] }),
+    'teams.create': async () => response(200, { created: true, status: 'running', team_id: 'research', team_name: 'Research' }),
+    'teams.list': async () => response(200, {
+      teams: [
+        { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
+        { team_id: 'research', team_name: 'Research', status: 'running' },
+      ],
+    }),
+    'assistants.list research': async () => response(200, { assistants: [] }),
   }), 'Research');
   assert.equal(get(teamContext).teams.find((team) => team.id === 'marketing').name, 'Marketing');
 });
@@ -1004,13 +976,12 @@ function orderIds() {
 function heldOrderFetcher({ list = () => THREE_TEAMS } = {}) {
   const saves = [];
   const base = fixtureFetcher({
-    '/api/teams': () => response(200, { teams: list() }),
-    '/api/teams/sales/assistants': () => response(200, { assistants: [] }),
+    'teams.list': () => response(200, { teams: list() }),
+    'assistants.list sales': () => response(200, { assistants: [] }),
   });
-  const fetcher = async (url, options = {}) => {
-    if (url !== '/api/teams/order') return base(url, options);
-    assert.equal(options.method, 'PUT');
-    return new Promise((resolve) => saves.push({ body: JSON.parse(options.body), answer: resolve }));
+  const fetcher = async (key, params = {}) => {
+    if (key !== 'teams.reorder') return base(key, params);
+    return new Promise((resolve) => saves.push({ body: params.body, answer: resolve }));
   };
   return { fetcher, saves };
 }
@@ -1058,7 +1029,7 @@ test('moves made during a save are coalesced into one later save, never sent con
 test('a failed save restores only the order, keeping the selection and a rename made meanwhile', async () => {
   const { fetcher, saves } = heldOrderFetcher();
   const renaming = fixtureFetcher({
-    '/api/teams/sales': () => response(200, { team_id: 'sales', team_name: 'Revenue' }),
+    'teams.rename sales': () => response(200, { team_id: 'sales', team_name: 'Revenue' }),
   });
   await loadTeamContext(fetcher, 'support');
   const saving = reorderTeams(fetcher, ['sales', 'support', 'marketing']);
@@ -1114,8 +1085,8 @@ function heldListFetcher() {
   const lists = [];
   const { fetcher } = heldOrderFetcher();
   let holding = false;
-  const held = async (url, options = {}) => {
-    if (url !== '/api/teams' || !holding) return fetcher(url, options);
+  const held = async (key, params = {}) => {
+    if (key !== 'teams.list' || !holding) return fetcher(key, params);
     return new Promise((resolve) => lists.push((ids) => resolve(response(200, { teams: listedTeams(ids) }))));
   };
   return { fetcher: held, lists, hold() { holding = true; } };
@@ -1232,9 +1203,9 @@ function heldListAndOrderFetcher() {
   const lists = [];
   let holding = false;
   const held = heldOrderFetcher();
-  const fetcher = async (url, options = {}) => {
-    if (holding && url === '/api/teams') return new Promise((resolve) => lists.push({ answer: resolve }));
-    return held.fetcher(url, options);
+  const fetcher = async (key, params = {}) => {
+    if (holding && key === 'teams.list') return new Promise((resolve) => lists.push({ answer: resolve }));
+    return held.fetcher(key, params);
   };
   return { fetcher, saves: held.saves, lists, hold: () => { holding = true; } };
 }

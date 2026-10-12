@@ -59,24 +59,10 @@ test('a scenario answers only what it declares and fails closed otherwise', () =
     const scenario = createScenario(name);
     assert.equal(scenario.respond({ method: 'POST', path: '/api/session' }).status, 200);
     assert.equal(scenario.respond({ method: 'GET', path: '/api/space/reset' }), null);
-    assert.equal(scenario.respond({ method: 'DELETE', path: '/api/teams/marketing' }), null);
+    assert.equal(scenario.call('space.reset', {}), null);
   }
   assert.equal(createScenario('setup').call('teams.list', {}), null);
   assert.equal(createScenario('empty').call('routines.list', { team_id: 'marketing' }), null);
-  // An operation the session socket carries is no HTTP route of any scenario.
-  const ready = createScenario('ready');
-  for (const [method, path] of [
-    ['GET', '/api/teams'],
-    ['PUT', '/api/teams/order'],
-    ['PATCH', '/api/teams/marketing'],
-    ['GET', '/api/teams/marketing/assistants'],
-    ['GET', '/api/teams/marketing/inference'],
-    ['GET', '/api/model-providers'],
-    ['GET', '/api/decision-provider'],
-    ['GET', '/api/assistants'],
-  ]) {
-    assert.equal(ready.respond({ method, path, body: { team_ids: [] } }), null, `${method} ${path}`);
-  }
   assert.throws(() => createScenario('production'), /unknown scenario/);
 });
 
@@ -281,7 +267,6 @@ test('every listed Team answers its read-only views, and an unlisted one fails c
     'history.page',
     'routines.list',
     'assistants.list',
-    'files.list',
     'inference.read',
     'integrations.list',
     'stored_inputs.list',

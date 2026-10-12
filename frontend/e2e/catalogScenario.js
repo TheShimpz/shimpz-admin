@@ -208,17 +208,15 @@ function details(assistant, locale) {
   };
 }
 
-/** One staged image's page or summary, or null for an image this catalog does not stage. */
-export function catalogImageAnswer(path, locale) {
-  const match = /^\/api\/local-assistants\/([0-9a-f]{64})\/(summary|details)$/.exec(path);
-  const assistant = match && ASSISTANTS.find((entry) => imageId(entry) === `sha256:${match[1]}`);
+/** One staged image's summary or page, or null for an image this catalog does not stage. */
+export function catalogImageAnswer(image, kind, locale) {
+  const assistant = ASSISTANTS.find((entry) => imageId(entry) === image);
   if (!assistant) return null;
-  return match[2] === 'summary' ? { locale, summary: text(assistant.summary, locale) } : details(assistant, locale);
+  return kind === 'summary' ? { locale, summary: text(assistant.summary, locale) } : details(assistant, locale);
 }
 
 /** One installed binding's page, or null when Marketing does not run that Assistant. */
-export function catalogBindingAnswer(path, locale) {
-  const match = /^\/api\/teams\/marketing\/assistants\/([a-z0-9-]+)\/details$/.exec(path);
-  const assistant = match && CATALOG_INSTALLED.includes(match[1]) && ASSISTANTS.find((entry) => entry.id === match[1]);
+export function catalogBindingAnswer(assistantId, locale) {
+  const assistant = CATALOG_INSTALLED.includes(assistantId) && ASSISTANTS.find((entry) => entry.id === assistantId);
   return assistant ? details(assistant, locale) : null;
 }

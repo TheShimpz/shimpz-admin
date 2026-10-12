@@ -135,7 +135,6 @@ function loginRoutes(state, method, path, body) {
 function signedInRoutes(state, method, path, body) {
   if (!state.session.authenticated) return null;
   const security = state.security;
-  if (path === '/api/admin/security' && method === 'GET') return ok(summary(security));
   if (path === '/api/admin/security/failures' && method === 'POST') {
     const seen = body?.acknowledged;
     if (!Number.isSafeInteger(seen) || seen < 1 || Object.keys(body).length !== 1) {
@@ -177,6 +176,11 @@ function supervisorKeyRoutes(security, method, path, body) {
 }
 
 /** Answer the authentication and security routes, or null for a request they do not cover. */
+/** The `security.summary` read: what the Supervisor's sign-ins and second factors look like now. */
+export function securitySummary(state) {
+  return ok(summary(state.security));
+}
+
 export function securityRoutes(state, method, path, body) {
   return setupRoutes(state, method, path, body) ?? loginRoutes(state, method, path, body) ??
     signedInRoutes(state, method, path, body);
