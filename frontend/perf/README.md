@@ -2,9 +2,11 @@
 
 Build `frontend/` with Node.js 26, then run the built Local chat benchmark from
 that directory. It alternates fresh Chromium contexts with and without the
-selected synthetic WebSocket progress frames at the configured interval, and
+selected synthetic progress frames at the configured interval, and
 checks the live ledger's final row, final announcement, terminal reply, and
-completed receipt. The commands below use 128 events separated by 25 ms.
+completed receipt. The page's session socket (`perf/sessionSocket.js`) runs in
+the page: chat frames are dispatched there synchronously, and the driver answers
+each read the page makes. The commands below use 128 events separated by 25 ms.
 Run it in the image `playwright.Dockerfile` builds (Playwright 1.62.0 on Node.js 26), 2 CPUs, 2 GiB,
 512 MiB shared memory, and no container network. Install dependencies first
 with network access, then build and measure offline. From `admin/frontend/`,
@@ -48,7 +50,7 @@ first animation-frame callback that sees the processing group in the DOM.
 The benchmark fails if one trial exceeds 250 ms. This is the browser's local
 optimistic state, not a server acknowledgment or a completed paint. The
 interval includes composer checks, frame construction, Svelte updates, and
-the fixture WebSocket's synchronous JSON parse; it excludes a real socket
+the in-page session socket's synchronous JSON parse; it excludes a real socket
 write and all remote response time. `firstEventFrameP50Ms` and
 `firstEventFrameP95Ms` time the first synthetic progress dispatch to the
 first animation-frame callback after the processing step text changes.

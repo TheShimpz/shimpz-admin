@@ -44,13 +44,34 @@ function input() {
   return { origin, session: cookie.slice('shimpz_admin='.length), samples, mode };
 }
 
+// The page's one Admin session socket (ADR-0114) carries its reads and invalidations beside the Team's chat channel:
+// a failed read is an API error, as a failed request is; only the chat channel's frames are timed.
+function observeSessionFrame(state, frame, sent) {
+  if (sent && frame.type === 'call') {
+    state.calls.set(frame.id, frame.method);
+    return true;
+  }
+  if (!sent && frame.type === 'result') {
+    const method = state.calls.get(frame.id);
+    state.calls.delete(frame.id);
+    if (frame.status >= 400) state.apiErrors.push({ call: method, status: frame.status });
+    return true;
+  }
+  return !sent && frame.type === 'changed';
+}
+
 function observeSocket(page, state) {
   page.on('websocket', (socket) => {
-    if (new URL(socket.url()).pathname !== '/api/teams/demo_team/chat/ws') return;
+    if (new URL(socket.url()).pathname !== '/api/session/ws') return;
     state.sockets += 1;
     socket.on('framesent', ({ payload }) => {
       let frame;
       try { frame = JSON.parse(payload.toString()); } catch { state.frameErrors += 1; return; }
+      if (observeSessionFrame(state, frame, true)) return;
+      if (frame.team_id !== 'demo_team') {
+        state.frameErrors += 1;
+        return;
+      }
       if (frame.type === 'chat' && state.current) {
         const sample = state.current;
         if (sample.mode === 'uninstall-proposal') {
@@ -71,6 +92,7 @@ function observeSocket(page, state) {
     socket.on('framereceived', ({ payload }) => {
       let frame;
       try { frame = JSON.parse(payload.toString()); } catch { state.frameErrors += 1; return; }
+      if (observeSessionFrame(state, frame, false)) return;
       const sample = state.current;
       if (!sample?.sendAt) return;
       if (sample.mode === 'uninstall-proposal') {
@@ -245,7 +267,9 @@ async function run() {
   await context.addCookies([{ name: 'shimpz_admin', value: session, url: origin,
     httpOnly: true, secure: false, sameSite: 'Strict' }]);
   const page = await context.newPage();
-  const state = { current: null, sockets: 0, frameErrors: 0, socketErrors: 0, pageErrors: 0, apiErrors: [] };
+  const state = {
+    current: null, sockets: 0, frameErrors: 0, socketErrors: 0, pageErrors: 0, apiErrors: [], calls: new Map(),
+  };
   page.on('pageerror', () => { state.pageErrors += 1; });
   page.on('response', (response) => {
     const url = new URL(response.url());
@@ -275,7 +299,7 @@ async function run() {
       : await measure(page, state, composer, send, index));
   }
   if (state.sockets !== 1 || state.frameErrors || state.socketErrors || state.pageErrors
-      || state.apiErrors.some((error) => error.path !== '/api/platform-release' || error.status !== 503)) {
+      || state.apiErrors.some((error) => error.call !== 'platform.release' || error.status !== 503)) {
     throw new Error('Browser transport or page failed');
   }
   const measured = turns.slice(WARMUPS);

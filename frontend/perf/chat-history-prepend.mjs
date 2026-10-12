@@ -1,5 +1,5 @@
 // Measure a real built chat page while older, bounded history is prepended.
-// API and WebSocket fixtures are synthetic; Team, Brain, and provider are excluded.
+// API and session socket fixtures are synthetic; Team, Brain, and provider are excluded.
 // Build first, then run with Node.js 26 in the browser image ../playwright.Dockerfile builds.
 // Chromium TaskDuration is page-wide; nearest-rank p95 depends on the sample count.
 // Script, layout, and style counters help attribution but do not account for all task time or paint.
@@ -16,6 +16,7 @@
 import { chromium } from '@playwright/test';
 import { preview } from 'vite';
 import catalog from '../src/lib/modelCatalog.json' with { type: 'json' };
+import { answerCalls, installSessionSocket } from './sessionSocket.js';
 
 const team = { team_id: 'perf_team', team_name: 'Performance Team', status: 'running' };
 const provider = catalog.providers.find((item) => item.id === catalog.default_provider);
@@ -56,8 +57,26 @@ function historyPage(index, totalPages) {
   return { entries, before: index + 1 < totalPages ? cursor(index + 1) : null };
 }
 
-// Closed HTTP fixtures for the current Admin client contracts, shaped like e2e/scenarios.js. Each answer is keyed by
-// method and path; anything else is recorded as unexpected and fails the trial.
+// Closed fixtures for the current Admin client contracts, shaped like e2e/scenarios.js: the session socket's reads by
+// method (history pages are answered per trial), and the HTTP requests by method and path. Anything else is recorded as
+// unexpected and fails the trial.
+const reads = {
+  'teams.list': () => ({ teams: [team] }),
+  'routines.list': () => ({ team_id: team.team_id, routines: [], runs: [], incidents: [] }),
+  'security.summary': () => ({
+    failed_second_factor_attempts: 0, recovery_codes_remaining: 10,
+    sign_in_history: { previous: { at: '2026-09-23T00:00:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 0 },
+  }),
+  'space.resources': () => ({
+    services_running: 7, services_total: 7, memory_used_bytes: 429_496_730, memory_total_bytes: 4 * 2 ** 30,
+    storage_used_bytes: 1_395_864_371, storage_total_bytes: 64 * 2 ** 30,
+  }),
+  'platform.release': () => ({
+    release: 'ghcr.io/theshimpz/shimpz-local-release@sha256:' + 'd'.repeat(64),
+    ordinal: 1, checked_at: '2026-09-23T00:00:00Z', outcome: 'current',
+  }),
+};
+
 function apiFixture(method, path) {
   const answers = {
     'POST /api/session': () => ({
@@ -67,28 +86,14 @@ function apiFixture(method, path) {
       passkey_registered: false, oauth_completion_mode: 'automatic',
       features: { teamCredentials: true },
     }),
-    'GET /api/admin/security': () => ({
-      failed_second_factor_attempts: 0, recovery_codes_remaining: 10,
-      sign_in_history: { previous: { at: '2026-09-23T00:00:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 0 },
-    }),
-    'GET /api/space/resources': () => ({
-      services_running: 7, services_total: 7, memory_used_bytes: 429_496_730, memory_total_bytes: 4 * 2 ** 30,
-      storage_used_bytes: 1_395_864_371, storage_total_bytes: 64 * 2 ** 30,
-    }),
-    'GET /api/teams': () => ({ teams: [team] }),
     'GET /api/assistants': () => ({ assistants: [] }),
     'GET /api/model-providers': () => ({ providers: models }),
     'GET /api/decision-provider': () => ({ provider: 'typesafe', configured: false, masked: null }),
-    'GET /api/platform-release': () => ({
-      release: 'ghcr.io/theshimpz/shimpz-local-release@sha256:' + 'd'.repeat(64),
-      ordinal: 1, checked_at: '2026-09-23T00:00:00Z', outcome: 'current',
-    }),
     'GET /api/assistant-catalog': () => ({ version: 1, locale: 'en', assistants: [] }),
     'GET /api/local-assistants': () => ({ assistants: [], trace_id: 'c'.repeat(32) }),
     'GET /api/teams/perf_team/assistants': () => ({ assistants: [] }),
     'GET /api/teams/perf_team/assistant-integrations': () => ({ integrations: [] }),
     'GET /api/teams/perf_team/assistant-stored-inputs': () => ({ stored_inputs: [] }),
-    'GET /api/teams/perf_team/routines': () => ({ team_id: team.team_id, routines: [], runs: [], incidents: [] }),
     'GET /api/teams/perf_team/inference': () => ({
       team_id: team.team_id, provider: provider.id, model: provider.default_model,
     }),
@@ -96,40 +101,18 @@ function apiFixture(method, path) {
   return answers[`${method} ${path}`]?.() ?? null;
 }
 
-function installSocket() {
-  class FakeWebSocket {
-    static OPEN = 1;
-    constructor(_url, protocol) {
-      this.protocol = protocol;
-      this.readyState = 0;
-      setTimeout(() => { this.readyState = FakeWebSocket.OPEN; this.onopen?.({}); }, 0);
-    }
-    send(payload) {
-      if (JSON.parse(payload).type === 'sync') {
-        setTimeout(() => {
-          this.onmessage?.({ data: JSON.stringify({ type: 'sync-empty' }) });
-          window.benchReady = true;
-        }, 0);
-      }
-    }
-    close() { this.readyState = 3; }
-  }
-  window.WebSocket = FakeWebSocket;
-  // Marks when the page issues the measured older-history request, and where the current first exchange sits when its
-  // response reaches the page: the view the prepend must keep, including a loading status laid out but not yet painted.
-  // That one read may force layout the prepend frame would otherwise do. Nothing is recorded until the probe arms it.
-  const nativeFetch = window.fetch.bind(window);
-  window.fetch = (input, init) => {
-    const url = new URL(input instanceof Request ? input.url : String(input), location.href);
-    if (!window.benchArmed || window.benchRequestAt !== undefined
-      || !url.pathname.endsWith('/chat/history') || !url.searchParams.has('before')) {
-      return nativeFetch(input, init);
-    }
-    window.benchRequestAt = performance.now();
-    return nativeFetch(input, init).then((response) => {
+// Marks when the page issues the measured older-history read, and where the current first exchange sits when its
+// result reaches the page: the view the prepend must keep, including a loading status laid out but not yet painted.
+// That one read may force layout the prepend frame would otherwise do. Nothing is recorded until the probe arms it.
+function installProbes() {
+  const measured = (method, params) => window.benchArmed && method === 'history.page' && params.before;
+  window.benchCallSent = (method, params) => {
+    if (measured(method, params) && window.benchRequestAt === undefined) window.benchRequestAt = performance.now();
+  };
+  window.benchCallAnswered = (method, params) => {
+    if (measured(method, params) && window.benchViewY === undefined) {
       window.benchViewY = window.benchAnchor.getBoundingClientRect().y;
-      return response;
-    });
+    }
   };
 }
 
@@ -157,21 +140,25 @@ async function measure(browser, baseURL, existingPages) {
     let newestRequests = 0;
     let olderRequests = 0;
     page.on('pageerror', (error) => errors.push(error.name));
-    await page.addInitScript(installSocket);
+    await page.addInitScript(installSessionSocket);
+    await page.addInitScript(installProbes);
+    await answerCalls(page, {
+      ...reads,
+      'history.page': (params) => {
+        const before = params.before ?? null;
+        const index = before === null ? 0 : Number(before.slice(0, -1));
+        if (params.team_id !== team.team_id || (before !== null && before !== cursor(index))) {
+          unexpected.push('invalid history read');
+        }
+        if (before === null) newestRequests += 1;
+        else olderRequests += 1;
+        return historyPage(index, existingPages + (exhaust ? 1 : 2));
+      },
+    }, unexpected);
     await page.route('**/api/**', async (route) => {
       const url = new URL(route.request().url());
       const method = route.request().method();
-      let body;
-      if (method === 'GET' && url.pathname === '/api/teams/perf_team/chat/history') {
-        const before = url.searchParams.get('before');
-        const index = before === null ? 0 : Number(before.slice(0, -1));
-        if (before !== null && before !== cursor(index)) unexpected.push('invalid cursor');
-        if (before === null) newestRequests += 1;
-        else olderRequests += 1;
-        body = historyPage(index, existingPages + (exhaust ? 1 : 2));
-      } else {
-        body = apiFixture(method, url.pathname);
-      }
+      const body = apiFixture(method, url.pathname);
       if (!body) unexpected.push(`${method} ${url.pathname}`);
       await route.fulfill({ status: body ? 200 : 404, contentType: 'application/json',
         body: JSON.stringify(body ?? { detail: 'unknown' }) });

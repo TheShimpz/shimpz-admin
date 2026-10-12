@@ -1,4 +1,4 @@
-// Synthetic WebSocket workload against the built Local chat; no Team or provider timing is included.
+// Synthetic session-socket chat workload against the built Local chat; no Team or provider timing is included.
 // Build first. Set SHIMPZ_PROGRESS_CASES, SHIMPZ_PERF_SAMPLES, SHIMPZ_PROGRESS_GAP_MS,
 // and SHIMPZ_PERF_MOTION as needed.
 // Gap 0 incurs Chromium's ~4 ms timer clamp. Each trial uses a fresh context and a warm preview server.
@@ -9,6 +9,7 @@ import { preview } from 'vite';
 import catalog from '../src/lib/modelCatalog.json' with { type: 'json' };
 import { receiptSteps } from '../src/lib/executionProgress.js';
 import { messages } from '../src/lib/messages.js';
+import { answerCalls, installSessionSocket } from './sessionSocket.js';
 
 const team = { team_id: 'perf_team', team_name: 'Performance Team', status: 'running' };
 const provider = catalog.providers.find((item) => item.id === catalog.default_provider);
@@ -42,8 +43,26 @@ if (!['reduce', 'no-preference'].includes(motion)) {
   throw new Error('Motion must be reduce or no-preference.');
 }
 
-// Closed HTTP fixtures for the current Admin client contracts, shaped like e2e/scenarios.js. Each answer is keyed by
-// method and path; anything else is recorded as unexpected and fails the trial.
+// Closed fixtures for the current Admin client contracts, shaped like e2e/scenarios.js: the session socket's reads by
+// method, and the HTTP requests by method and path. Anything else is recorded as unexpected and fails the trial.
+const reads = {
+  'teams.list': () => ({ teams: [team] }),
+  'history.page': () => ({ entries: [], before: null }),
+  'routines.list': () => ({ team_id: team.team_id, routines: [], runs: [], incidents: [] }),
+  'security.summary': () => ({
+    failed_second_factor_attempts: 0, recovery_codes_remaining: 10,
+    sign_in_history: { previous: { at: '2026-09-23T00:00:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 0 },
+  }),
+  'space.resources': () => ({
+    services_running: 7, services_total: 7, memory_used_bytes: 429_496_730, memory_total_bytes: 4 * 2 ** 30,
+    storage_used_bytes: 1_395_864_371, storage_total_bytes: 64 * 2 ** 30,
+  }),
+  'platform.release': () => ({
+    release: 'ghcr.io/theshimpz/shimpz-local-release@sha256:' + 'd'.repeat(64),
+    ordinal: 1, checked_at: '2026-09-23T00:00:00Z', outcome: 'current',
+  }),
+};
+
 function fixture(method, path) {
   const answers = {
     'POST /api/session': () => ({
@@ -53,29 +72,14 @@ function fixture(method, path) {
       passkey_registered: false, oauth_completion_mode: 'automatic',
       features: { teamCredentials: true },
     }),
-    'GET /api/admin/security': () => ({
-      failed_second_factor_attempts: 0, recovery_codes_remaining: 10,
-      sign_in_history: { previous: { at: '2026-09-23T00:00:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 0 },
-    }),
-    'GET /api/space/resources': () => ({
-      services_running: 7, services_total: 7, memory_used_bytes: 429_496_730, memory_total_bytes: 4 * 2 ** 30,
-      storage_used_bytes: 1_395_864_371, storage_total_bytes: 64 * 2 ** 30,
-    }),
-    'GET /api/teams': () => ({ teams: [team] }),
     'GET /api/assistants': () => ({ assistants: [] }),
     'GET /api/model-providers': () => ({ providers: models }),
     'GET /api/decision-provider': () => ({ provider: 'typesafe', configured: false, masked: null }),
-    'GET /api/platform-release': () => ({
-      release: 'ghcr.io/theshimpz/shimpz-local-release@sha256:' + 'd'.repeat(64),
-      ordinal: 1, checked_at: '2026-09-23T00:00:00Z', outcome: 'current',
-    }),
     'GET /api/assistant-catalog': () => ({ version: 1, locale: 'en', assistants: [] }),
     'GET /api/local-assistants': () => ({ assistants: [], trace_id: 'c'.repeat(32) }),
     'GET /api/teams/perf_team/assistants': () => ({ assistants: [] }),
-    'GET /api/teams/perf_team/chat/history': () => ({ entries: [], before: null }),
     'GET /api/teams/perf_team/assistant-integrations': () => ({ integrations: [] }),
     'GET /api/teams/perf_team/assistant-stored-inputs': () => ({ stored_inputs: [] }),
-    'GET /api/teams/perf_team/routines': () => ({ team_id: team.team_id, routines: [], runs: [], incidents: [] }),
     'GET /api/teams/perf_team/inference': () => ({
       team_id: team.team_id, provider: provider.id, model: provider.default_model,
     }),
@@ -113,27 +117,7 @@ function frames(count) {
 // duration row); counting them with that projection keeps the check on the current receipt contract.
 const receiptRows = (count) => receiptSteps(frames(count)).length;
 
-function installSocket() {
-  let socket;
-  class FakeWebSocket {
-    static OPEN = 1;
-    constructor(_url, protocol) {
-      socket = this;
-      this.protocol = protocol;
-      this.readyState = 0;
-      setTimeout(() => { this.readyState = FakeWebSocket.OPEN; this.onopen?.({}); }, 0);
-    }
-    send(payload) {
-      if (JSON.parse(payload).type === 'sync') {
-        setTimeout(() => {
-          this.onmessage?.({ data: JSON.stringify({ type: 'sync-empty' }) });
-          window.benchReady = true;
-        }, 0);
-      }
-    }
-    close() { this.readyState = 3; }
-  }
-  window.WebSocket = FakeWebSocket;
+function installProbes() {
   window.benchAckFrameMs = null;
   const onSendClick = (event) => {
     if (!(event.target instanceof Element)
@@ -169,9 +153,10 @@ function installSocket() {
     return probe;
   };
   window.benchEventMarks = [];
+  const emit = window.benchEmit;
   window.benchEmit = (event) => {
     if (event.type === 'progress') window.benchEventMarks.push(performance.now());
-    socket.onmessage?.({ data: JSON.stringify(event) });
+    emit(event);
   };
   window.benchLongTasks = [];
   new PerformanceObserver((list) => window.benchLongTasks.push(
@@ -212,7 +197,9 @@ async function measure(browser, baseURL, count, control) {
     const badPaths = [];
     const pageErrors = [];
     page.on('pageerror', (error) => pageErrors.push(error.name));
-    await page.addInitScript(installSocket);
+    await page.addInitScript(installSessionSocket);
+    await page.addInitScript(installProbes);
+    await answerCalls(page, reads, badPaths);
     await page.route('**/api/**', async (route) => {
       const request = `${route.request().method()} ${new URL(route.request().url()).pathname}`;
       const body = fixture(...request.split(' '));
