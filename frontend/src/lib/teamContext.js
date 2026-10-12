@@ -275,7 +275,7 @@ async function select(fetcher, id) {
     throw new LocalApiError('Invalid local Team request.');
   }
   const attempt = ++generation;
-  automaticSelection = false;
+  automaticSelection = fetcher.background === true;
   teamContext.set({
     ...current,
     phase: 'loading',

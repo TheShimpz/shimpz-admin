@@ -469,6 +469,8 @@ test('a selected Team removed elsewhere reloads the Team context without renewin
   await routeRead(page, 'teams.list', () => (
     removed ? ok({ teams: listed.filter((team) => team.team_id !== 'marketing') }) : undefined
   ));
+  // The fast routing state cannot be read, so the composer's menu reads it again whenever it is shown.
+  await page.route('**/api/decision-provider', (route) => route.fulfill({ status: 503, json: { detail: 'unavailable' } }));
   await page.goto('/chat/?team=marketing');
   const navigation = page.locator('.shell-sidebar');
   await expect(navigation.getByRole('link', { name: 'Marketing', exact: true })).toBeVisible();
@@ -489,6 +491,18 @@ test('a selected Team removed elsewhere reloads the Team context without renewin
   expect(requests.map((request) => request.background)).not.toContain(false);
   expect(await laterCalls(page, 'teams.list')).not.toContain(false);
   expect((await histories()).map((frame) => frame.background === true)).not.toContain(false);
+
+  // Marketing is made again elsewhere: the address still names it, so the page selects it again, on its own.
+  removed = false;
+  await raiseTopic(page, 'teams');
+  await expect.poll(() => requests.some((request) => request.path === '/api/teams/marketing/inference')).toBe(true);
+  await expect.poll(async () => (await sessionFrames(page)).some((frame) => (
+    frame.method === 'history.page' && frame.params.team_id === 'marketing' && frame.background === true
+  ))).toBe(true);
+  expect(requests.map((request) => `${request.path} ${request.background}`).filter((entry) => entry.endsWith(' false')))
+    .toEqual([]);
+  expect(await laterCalls(page, 'history.page', (params) => params.team_id === 'marketing' && !params.before))
+    .not.toContain(false);
 });
 
 test('an Assistant page whose Team was removed elsewhere reads the page for the Team chosen in its place automatically', async ({ page }) => {

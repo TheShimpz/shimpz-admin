@@ -40,9 +40,18 @@
   // failure keeps the previous Team selected and returns the address to it, unless another Team was asked for since.
   // A Team is asked for once while the address names it, so a failure never repeats itself.
   let askedId = '';
+  // The Team the person's own navigation asked for and the page has not selected yet. The address meeting a Team list
+  // Admin changed (a Team made again elsewhere) selects it on the page's own account, with automatic reads.
+  let addressSeen = '';
+  let personAsked = '';
 
   $effect(() => {
     const preferredId = requestedTeamId;
+    if (preferredId !== addressSeen) {
+      addressSeen = preferredId;
+      personAsked = preferredId;
+    }
+    if (preferredId === $teamContext.selectedTeamId) personAsked = '';
     if (preferredId !== askedId) askedId = '';
     if (
       ($teamContext.phase === 'ready' || $teamContext.phase === 'error') &&
@@ -53,7 +62,9 @@
     ) {
       const previousId = $teamContext.selectedTeamId;
       askedId = preferredId;
-      selectTeam(fetch, preferredId).catch(() => {
+      const read = preferredId === personAsked ? fetch : backgroundFetch;
+      personAsked = '';
+      selectTeam(read, preferredId).catch(() => {
         if (previousId && requestedTeamId === preferredId) updateLocationTeam(previousId).catch(() => {});
       });
     }
