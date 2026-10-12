@@ -7,6 +7,7 @@ topic it reflects, taken before the read, so a change that lands meanwhile is ne
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 from collections.abc import Awaitable, Callable
@@ -143,7 +144,8 @@ def admission(socket: SessionSocket, method: str) -> str | None:
 async def _dispatch(socket: SessionSocket, method: str, params: dict[str, object]) -> Answer:
     """Run one method under the current Supervisor authority, answering its failures as the HTTP gate does."""
     try:
-        with socket.gate.request_scope(socket.cookies):
+        # A read reaches Team under the current Supervisor authority; changing what the socket holds needs none.
+        with socket.gate.request_scope(socket.cookies) if method in frames.READ_TOPICS else contextlib.nullcontext():
             return await METHODS[method](socket, params)
     except team.TeamRequestError, supervisor.SupervisorAuthorityError:
         return UNAVAILABLE_AUTHORITY

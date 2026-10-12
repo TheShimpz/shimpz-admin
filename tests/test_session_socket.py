@@ -855,6 +855,31 @@ class SessionSocketChatChannelTests(SessionSocketCase):
         asyncio.run(scenario())
 
 
+class SessionSocketAuthorityTests(SessionSocketCase):
+    def test_a_chat_frame_without_current_supervisor_authority_is_refused_and_the_channel_ends_cleanly(self) -> None:
+        unavailable = self.admin_app.supervisor.SupervisorAuthorityError("signing key unreadable")
+
+        async def scenario() -> None:
+            websocket = await self._open()
+            with (
+                mock.patch.object(self.admin_app.state, "local_supervisor", side_effect=unavailable),
+                mock.patch.object(self.chat_socket.local, "turn") as turn,
+                self.assertLogs("shimpz-admin", "WARNING"),
+            ):
+                await websocket.send_json(chat_socket_fixtures.chat_frame("must not run"))
+                self.assertEqual(
+                    await websocket.next_json(),
+                    {"type": "error", "status": 503, "detail": "Supervisor authority is unavailable"},
+                )
+                turn.assert_not_called()
+                # Detaching needs no authority, and the channel still ends every operation it ran.
+                self.assertEqual((await websocket.result("chat.detach", {"team_id": "team_1"}))["status"], 200)
+                await asyncio.sleep(0.1)
+            await websocket.disconnect()
+
+        asyncio.run(scenario())
+
+
 class StepUpFoundationTests(SessionSocketCase):
     """A step-up ticket issued over a socket keeps every binding it has and also dies with its socket or session."""
 

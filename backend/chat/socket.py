@@ -11,6 +11,7 @@ import logging
 import threading
 from collections.abc import Awaitable, Callable, Mapping
 
+import supervisor as local_supervisor
 from chat.delivery import challenge as challenge_delivery
 from chat.delivery import plan as plan_delivery
 from chat.delivery import progress as progress_transport
@@ -828,9 +829,14 @@ class Channel:
         try:
             while True:
                 frame = await self._frames.get()
-                with self._scope():
-                    await _dispatch(self.transport, self.connection, self.team_id, frame, self._authenticate)
-        except WebSocketDisconnect, RuntimeError, OSError:
+                try:
+                    with self._scope():
+                        await _dispatch(self.transport, self.connection, self.team_id, frame, self._authenticate)
+                except team.TeamRequestError, local_supervisor.SupervisorAuthorityError, RuntimeError:
+                    # The current Supervisor authority is unavailable: the frame is refused as the HTTP gate refuses.
+                    log.warning("chat channel frame refused: Supervisor authority is unavailable")
+                    await _send_event(self.transport, _error_terminal(503, "Supervisor authority is unavailable"))
+        except WebSocketDisconnect:
             self.connection.closed = True
 
     async def close(self) -> None:
@@ -838,5 +844,10 @@ class Channel:
         self.connection.closed = True
         self._task.cancel()
         await asyncio.gather(self._task, return_exceptions=True)
-        with self._scope():
+        try:
+            with self._scope():
+                await _close_connection(self.transport, self.connection, self.team_id)
+        except team.TeamRequestError, local_supervisor.SupervisorAuthorityError, RuntimeError:
+            # Without current authority Team refuses the Stop, but every local operation still ends here.
+            log.warning("chat channel closed without Supervisor authority")
             await _close_connection(self.transport, self.connection, self.team_id)

@@ -9,10 +9,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from protocol.socket.v1 import frames as socket_frames
+
 from protocol.http.v1 import challenge as team_challenge
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import turn as turn_contract
-from protocol.socket.v1 import frames as socket_frames
 
 LOCAL_CHAT = ROOT / "frontend" / "src" / "lib" / "localChat.js"
 VALIDATE = ROOT / "frontend" / "src" / "lib" / "validate.js"
@@ -190,9 +191,10 @@ class FrontendSessionSocketParityTests(unittest.TestCase):
         topic = socket_frames.TOPIC_RE.pattern.removesuffix(r"\Z").replace("/", r"\/")
         self.assertEqual(constant("TOPIC_RE"), f"/^{topic}$/")
         self.assertEqual(
-            constant("CHAT_CLIENT_TYPES"), "new Set([" + ", ".join(
-                f"'{kind}'" for kind in ("chat", "resume-task", "stop", "sync", "human-response")
-            ) + "])"
+            constant("CHAT_CLIENT_TYPES"),
+            "new Set(["
+            + ", ".join(f"'{kind}'" for kind in ("chat", "resume-task", "stop", "sync", "human-response"))
+            + "])",
         )
         self.assertEqual(socket_frames.CHAT_TYPES, {"chat", "resume-task", "stop", "sync", "human-response"})
 
