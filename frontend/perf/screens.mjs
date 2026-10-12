@@ -4,15 +4,18 @@
 // Brain, and provider timing are excluded. Build first, then run with Node.js 26 in the browser image
 // ../playwright.Dockerfile builds. Every sample is a fresh browser context. Output is one JSON line per measurement.
 // SHIMPZ_PERF_SAMPLES (default 5) sets the samples per measurement and SHIMPZ_PERF_PARTS (default
-// loads,team-switch,typing,scroll,idle,freshness) selects the parts: `idle` counts what an open chat sends in a minute,
-// and `freshness` times a change Admin announces on the session socket until it is on screen. Nearest-rank p95 is the maximum below twenty samples.
+// loads,team-switch,typing,scroll,idle,freshness,catalog-pages) selects the parts: `idle` counts what an open chat sends
+// in a minute, `freshness` times a change Admin announces on the session socket until it is on screen, and
+// `catalog-pages` times the Assistants page joining a 1,000-Assistant Store catalog from its bounded socket pages.
+// Nearest-rank p95 is the maximum below twenty samples.
 import { spawn } from 'node:child_process';
 import { setTimeout as delay } from 'node:timers/promises';
 import { chromium } from '@playwright/test';
-import { raiseTopic, routeRead, routeScenario, sessionFrames } from '../e2e/scenarioRoutes.js';
+import { publicAssistant } from '../e2e/assistantPages.js';
+import { raiseTopic, readsOf, routeRead, routeScenario, sessionFrames } from '../e2e/scenarioRoutes.js';
 
 if (Number(process.versions.node.split('.')[0]) !== 26) throw new Error('This benchmark requires Node.js 26.');
-const PARTS = ['loads', 'team-switch', 'typing', 'scroll', 'idle', 'freshness'];
+const PARTS = ['loads', 'team-switch', 'typing', 'scroll', 'idle', 'freshness', 'catalog-pages'];
 const samples = Number(process.env.SHIMPZ_PERF_SAMPLES ?? '5');
 const parts = (process.env.SHIMPZ_PERF_PARTS ?? PARTS.join(',')).split(',');
 if (!Number.isSafeInteger(samples) || samples < 1 || samples > 30) {
@@ -400,6 +403,55 @@ async function freshnessSample(browser) {
   });
 }
 
+// A Store catalog of `total` Assistants answered in pages as Admin pages it: greedily up to the bytes a result frame
+// holds (1 MiB less a 4 KiB envelope), or at most `perPage` Assistants when given. Each page is one `store.catalog` call.
+const CATALOG_TOTAL = 1000;
+const PAGE_BYTES = 1024 * 1024 - 4 * 1024;
+
+function catalogPages(total, perPage) {
+  const entries = Array.from({ length: total }, (_, index) => publicAssistant({
+    assistant_id: `bench-public-${String(index).padStart(4, '0')}`,
+    name: `Published Assistant ${index}`,
+    summary: 'A measured public Assistant.',
+  }));
+  const pages = [];
+  let page = [];
+  let bytes = 0;
+  for (const entry of entries) {
+    const size = JSON.stringify(entry).length + 1;
+    if (page.length && (bytes + size > PAGE_BYTES || (perPage && page.length === perPage))) {
+      pages.push(page);
+      page = [];
+      bytes = 0;
+    }
+    page.push(entry);
+    bytes += size;
+  }
+  pages.push(page);
+  return pages;
+}
+
+async function catalogPagesSample(browser, perPage) {
+  return withPage(browser, async (page) => {
+    const pages = catalogPages(CATALOG_TOTAL, perPage);
+    const digest = 'c'.repeat(32);
+    await routeScenario(page, 'ready');
+    await routeRead(page, 'store.catalog', ({ locale, cursor }) => {
+      const index = cursor ? Number(cursor.split('.')[0]) : 0;
+      const next = index + 1 < pages.length ? `${index + 1}.${digest}` : null;
+      return { status: 200, json: { version: 1, locale, assistants: pages[index], next } };
+    });
+    await routeRead(page, 'snapshots.list', () => ({ status: 200, json: { assistants: [], trace_id: 'c'.repeat(32) } }));
+    await page.route('**/api/assistants/*/catalog-icon', (route) => route.fulfill({ status: 404, body: '' }));
+    await page.goto(`/assistants/?team=${team.id}`);
+    await page.waitForFunction((count) => (
+      document.querySelectorAll('section.assistant-catalog a.assistant-row').length === count
+    ), CATALOG_TOTAL, { timeout: 60_000 });
+    const readyMs = await page.evaluate(() => performance.now());
+    return { readyMs, pages: (await readsOf(page, 'store.catalog')).length };
+  });
+}
+
 async function repeat(measure) {
   const rows = [];
   for (let index = 0; index < samples; index += 1) rows.push(await measure());
@@ -444,6 +496,14 @@ try {
   if (parts.includes('freshness')) {
     const rows = await repeat(() => freshnessSample(browser));
     print({ part: 'freshness', ...summarize(rows, ['freshnessMs']) });
+  }
+  if (parts.includes('catalog-pages')) {
+    // Admin's own byte-bounded pages, then pages of 100 Assistants to show how the read scales with more round trips.
+    for (const perPage of [0, 100]) {
+      const rows = await repeat(() => catalogPagesSample(browser, perPage));
+      print({ part: 'catalog-pages', assistants: CATALOG_TOTAL, pageLimit: perPage || 'bytes',
+        ...summarize(rows, ['readyMs', 'pages']) });
+    }
   }
   if (parts.includes('typing')) {
     for (const pages of [0, ...HISTORY_PAGES]) {

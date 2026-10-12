@@ -1,4 +1,6 @@
-// Measure the built Local Assistants page with bounded, deterministic API delays.
+// Measure the built Local Assistants page with bounded, deterministic API delays. The page's session socket
+// (`perf/sessionSocket.js`) runs in the page and the driver answers each of its calls after its delay; the session
+// bootstrap and the icons stay HTTP.
 // For a real Supervisor session, run in a Playwright container sharing the network
 // namespace of a disposable Admin image with --network none, a fresh /data volume,
 // and uvicorn bound to port 7777 inside that namespace. No host port is published.
@@ -9,6 +11,7 @@ import { networkInterfaces } from 'node:os';
 import { performance } from 'node:perf_hooks';
 import { preview } from 'vite';
 import modelCatalog from '../src/lib/modelCatalog.json' with { type: 'json' };
+import { installSessionSocket } from './sessionSocket.js';
 
 if (Number(process.versions.node.split('.')[0]) !== 26) throw new Error('This benchmark requires Node.js 26.');
 const samples = positiveInteger(process.env.SHIMPZ_PERF_SAMPLES, 20);
@@ -83,56 +86,60 @@ function fixture(count) {
   return { local, published };
 }
 
-function apiBody(path, data) {
-  if (path === '/api/session') return {
+function sessionBody() {
+  return {
     profile: 'local', authenticated: true, initialized: true,
     authentication_state: 'configured', authentication_method: 'webauthn',
     origin_admitted: true, passkey_enrollment_available: true,
     passkey_registered: true, oauth_completion_mode: 'automatic',
     features: { teamCredentials: true },
   };
-  if (path === '/api/model-providers') return {
-    providers: modelCatalog.providers.map((provider) => ({
-      id: provider.id,
-      title: provider.title,
-      default_model: provider.default_model,
-      models: provider.models,
-      configured: provider.id === modelCatalog.default_provider,
-      masked: null,
-    })),
+}
+
+// Each session socket operation the page makes, answered from the fixture.
+function callBody(method, params, data) {
+  const answers = {
+    'models.list': () => ({
+      providers: modelCatalog.providers.map((provider) => ({
+        id: provider.id,
+        title: provider.title,
+        default_model: provider.default_model,
+        models: provider.models,
+        configured: provider.id === modelCatalog.default_provider,
+        masked: null,
+      })),
+    }),
+    'platform.release': () => ({
+      release: `ghcr.io/theshimpz/shimpz-local-release@sha256:${'d'.repeat(64)}`,
+      ordinal: 1,
+      checked_at: '2026-09-23T00:00:00Z',
+      outcome: 'current',
+    }),
+    'security.summary': () => ({
+      failed_second_factor_attempts: 0, recovery_codes_remaining: 10,
+      sign_in_history: { previous: { at: '2026-09-23T00:00:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 0 },
+    }),
+    'space.resources': () => ({
+      services_running: 7, services_total: 7, memory_used_bytes: 429_496_730, memory_total_bytes: 4 * 2 ** 30,
+      storage_used_bytes: 1_395_864_371, storage_total_bytes: 64 * 2 ** 30,
+    }),
+    'teams.list': () => ({ teams: [{ team_id: teamId, team_name: 'Performance Team', status: 'running' }] }),
+    'assistants.registry': () => ({ assistants: [] }),
+    'assistants.list': () => ({ assistants: [] }),
+    'inference.read': () => ({
+      team_id: teamId,
+      provider: modelCatalog.default_provider,
+      model: modelCatalog.providers.find((provider) => provider.id === modelCatalog.default_provider).default_model,
+    }),
+    'integrations.list': () => ({ integrations: [] }),
+    'routines.list': () => ({ team_id: teamId, routines: [], runs: [], incidents: [] }),
+    'store.catalog': () => ({ version: 1, locale: 'en', assistants: data.published, next: null }),
+    'snapshots.list': () => ({ assistants: data.local, trace_id: 'c'.repeat(32) }),
+    'snapshots.summary': () => ({ locale: 'en', summary: 'A measured local snapshot.' }),
   };
-  if (path === '/api/platform-release') return {
-    release: `ghcr.io/theshimpz/shimpz-local-release@sha256:${'d'.repeat(64)}`,
-    ordinal: 1,
-    checked_at: '2026-09-23T00:00:00Z',
-    outcome: 'current',
-  };
-  if (path === '/api/admin/security') return {
-    failed_second_factor_attempts: 0, recovery_codes_remaining: 10,
-    sign_in_history: { previous: { at: '2026-09-23T00:00:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 0 },
-  };
-  if (path === '/api/space/resources') return {
-    services_running: 7, services_total: 7, memory_used_bytes: 429_496_730, memory_total_bytes: 4 * 2 ** 30,
-    storage_used_bytes: 1_395_864_371, storage_total_bytes: 64 * 2 ** 30,
-  };
-  if (path === '/api/teams') return {
-    teams: [{ team_id: teamId, team_name: 'Performance Team', status: 'running' }],
-  };
-  if (path === '/api/assistants') return { assistants: [] };
-  if (path === `/api/teams/${teamId}/assistants`) return { assistants: [] };
-  if (path === `/api/teams/${teamId}/inference`) return {
-    team_id: teamId,
-    provider: modelCatalog.default_provider,
-    model: modelCatalog.providers.find((provider) => provider.id === modelCatalog.default_provider).default_model,
-  };
-  if (path === `/api/teams/${teamId}/assistant-integrations`) return { integrations: [] };
-  if (path === `/api/teams/${teamId}/routines`) return { team_id: teamId, routines: [], runs: [], incidents: [] };
-  if (path === '/api/assistant-catalog') return { version: 1, locale: 'en', assistants: data.published };
-  if (path === '/api/local-assistants') return { assistants: data.local, trace_id: 'c'.repeat(32) };
-  if (/^\/api\/local-assistants\/[0-9a-f]{64}\/summary$/.test(path)) {
-    return { locale: 'en', summary: 'A measured local snapshot.' };
-  }
-  return null;
+  if (['inference.read', 'assistants.list', 'integrations.list', 'routines.list'].includes(method)
+      && params.team_id !== teamId) return null;
+  return answers[method]?.() ?? null;
 }
 
 // Requests the closed fixture does not answer; any of them fails the run instead of skewing a sample.
@@ -142,7 +149,29 @@ function requireAnsweredRequests() {
   if (unexpectedRequests.size) throw new Error(`Unanswered benchmark requests: ${[...unexpectedRequests].join(', ')}`);
 }
 
-async function mockApi(page, data) {
+// The session socket's calls, timed in the page as they leave and as their results arrive.
+function observeCalls() {
+  window.__calls = [];
+  window.benchCallSent = (method) => window.__calls.push({ method, startTime: performance.now(), responseEnd: null });
+  window.benchCallAnswered = (method) => {
+    const call = window.__calls.find((entry) => entry.method === method && entry.responseEnd === null);
+    if (call) call.responseEnd = performance.now();
+  };
+}
+
+// `data` is read through `current.data`, so one page serves the fixture of the sample it runs.
+async function mockApi(page, current) {
+  await page.addInitScript(observeCalls);
+  await page.addInitScript(installSessionSocket);
+  await page.exposeFunction('benchCall', async (method, params) => {
+    await new Promise((resolve) => setTimeout(resolve, method === 'snapshots.list' ? snapshotDelayMs : apiDelayMs));
+    const body = callBody(method, params, current.data);
+    if (body === null) {
+      unexpectedRequests.add(`call ${method}`);
+      return { status: 503, body: { detail: 'unexpected benchmark call' } };
+    }
+    return { status: 200, body };
+  });
   await page.route('**/api/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (isolatedAuth && path === '/api/session') {
@@ -151,15 +180,12 @@ async function mockApi(page, data) {
     }
     const icon = path.startsWith('/api/local-assistants/') && path.endsWith('/icon')
       || path.startsWith('/api/assistants/') && path.endsWith('/catalog-icon');
-    let delayMs = apiDelayMs;
-    if (icon) delayMs = iconDelayMs;
-    if (path === '/api/local-assistants') delayMs = snapshotDelayMs;
-    await new Promise((resolve) => setTimeout(resolve, delayMs));
+    await new Promise((resolve) => setTimeout(resolve, icon ? iconDelayMs : apiDelayMs));
     if (icon) {
       await route.fulfill({ contentType: 'image/png', body: iconPng });
       return;
     }
-    const body = apiBody(path, data);
+    const body = path === '/api/session' ? sessionBody() : null;
     if (body === null) unexpectedRequests.add(`${route.request().method()} ${path}`);
     await route.fulfill({
       status: body === null ? 404 : 200,
@@ -203,22 +229,21 @@ function observePresentation(expectedCards) {
   document.addEventListener('DOMContentLoaded', inspect, { once: true });
 }
 
-function phase(path) {
-  if (path === '/api/session') return 'session';
-  if (path === '/api/teams' || path === '/api/assistants') return 'team-start';
-  if (path === `/api/teams/${teamId}/assistants`) return 'team-inventory';
-  if (path === '/api/assistant-catalog') return 'catalog';
-  if (path === '/api/local-assistants') return 'snapshots';
-  if (path.endsWith('/icon') || path.endsWith('/catalog-icon')) return 'icons';
+// A phase by HTTP path or by socket operation.
+function phase(name) {
+  if (name === '/api/session') return 'session';
+  if (name === 'teams.list' || name === 'assistants.registry') return 'team-start';
+  if (name === 'assistants.list') return 'team-inventory';
+  if (name === 'store.catalog') return 'catalog';
+  if (name === 'snapshots.list') return 'snapshots';
+  if (name.endsWith('/icon') || name.endsWith('/catalog-icon')) return 'icons';
   return 'other';
 }
 
-function timeline(resources) {
+function timeline(entries) {
   const spans = {};
-  for (const entry of resources) {
-    const path = new URL(entry.name).pathname;
-    if (!path.startsWith('/api/')) continue;
-    const name = phase(path);
+  for (const entry of entries) {
+    const name = phase(entry.name);
     const span = spans[name] ?? { count: 0, startMs: Infinity, endMs: 0 };
     span.count += 1;
     span.startMs = Math.min(span.startMs, entry.startTime);
@@ -234,19 +259,13 @@ async function taskDuration(cdp) {
 }
 
 async function sample(page, cdp, mode, count, index) {
-  const counts = {};
   let errors = 0;
-  const onRequest = (request) => {
-    const path = new URL(request.url()).pathname;
-    if (path.startsWith('/api/')) counts[path] = (counts[path] ?? 0) + 1;
-  };
   const onResponse = (response) => {
     if (response.url().includes('/api/') && response.status() >= 400) errors += 1;
   };
   const onFailed = (request) => {
     if (request.url().includes('/api/')) errors += 1;
   };
-  page.on('request', onRequest);
   page.on('response', onResponse);
   page.on('requestfailed', onFailed);
   const started = performance.now();
@@ -273,16 +292,21 @@ async function sample(page, cdp, mode, count, index) {
       throw error;
     });
     requireAnsweredRequests();
+    // HTTP requests by path and session socket calls by operation, each with its start and end on the page's clock.
     const result = await page.evaluate(() => ({
       marks: window.__assistantPerf,
-      resources: performance.getEntriesByType('resource').map((entry) => ({
-        name: entry.name, startTime: entry.startTime, responseEnd: entry.responseEnd,
-      })),
+      resources: [
+        ...performance.getEntriesByType('resource')
+          .filter((entry) => new URL(entry.name).pathname.startsWith('/api/'))
+          .map((entry) => ({ name: new URL(entry.name).pathname, startTime: entry.startTime, responseEnd: entry.responseEnd })),
+        ...window.__calls.filter((call) => call.responseEnd !== null)
+          .map((call) => ({ name: call.method, startTime: call.startTime, responseEnd: call.responseEnd })),
+      ],
     }));
     const requests = {};
-    for (const [path, total] of Object.entries(counts)) {
-      const name = phase(path);
-      requests[name] = (requests[name] ?? 0) + total;
+    for (const entry of result.resources) {
+      const name = phase(entry.name);
+      requests[name] = (requests[name] ?? 0) + 1;
     }
     return {
       count, composition, sample: index, mode, errors, requests,
@@ -291,7 +315,6 @@ async function sample(page, cdp, mode, count, index) {
       observedWallMs: Math.round(performance.now() - started),
     };
   } finally {
-    page.off('request', onRequest);
     page.off('response', onResponse);
     page.off('requestfailed', onFailed);
   }
@@ -447,7 +470,7 @@ try {
     const warmCdp = await warmContext.newCDPSession(warmPage);
     await warmCdp.send('Performance.enable');
     await warmPage.addInitScript(observePresentation, 1);
-    await mockApi(warmPage, fixture(1));
+    await mockApi(warmPage, { data: fixture(1) });
     const warmup = await sample(warmPage, warmCdp, 'cold', 1, 0);
     if (warmup.errors || warmErrors.length) throw new Error('The benchmark warmup had an API or browser error.');
   } finally {
@@ -463,7 +486,7 @@ try {
       const cdp = await context.newCDPSession(page);
       await cdp.send('Performance.enable');
       await page.addInitScript(observePresentation, count);
-      await mockApi(page, fixture(count));
+      await mockApi(page, { data: fixture(count) });
       try {
         for (const mode of ['cold', 'warm']) {
           const result = await sample(page, cdp, mode, count, index);
