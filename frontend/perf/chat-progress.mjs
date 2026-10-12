@@ -7,6 +7,7 @@
 import { chromium } from '@playwright/test';
 import { preview } from 'vite';
 import catalog from '../src/lib/modelCatalog.json' with { type: 'json' };
+import { receiptSteps } from '../src/lib/executionProgress.js';
 import { messages } from '../src/lib/messages.js';
 
 const team = { team_id: 'perf_team', team_name: 'Performance Team', status: 'running' };
@@ -51,6 +52,14 @@ function fixture(method, path) {
       origin_admitted: true, passkey_enrollment_available: false,
       passkey_registered: false, oauth_completion_mode: 'automatic',
       features: { teamCredentials: true },
+    }),
+    'GET /api/admin/security': () => ({
+      failed_second_factor_attempts: 0, recovery_codes_remaining: 10,
+      sign_in_history: { previous: { at: '2026-09-23T00:00:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 0 },
+    }),
+    'GET /api/space/resources': () => ({
+      services_running: 7, services_total: 7, memory_used_bytes: 429_496_730, memory_total_bytes: 4 * 2 ** 30,
+      storage_used_bytes: 1_395_864_371, storage_total_bytes: 64 * 2 ** 30,
     }),
     'GET /api/teams': () => ({ teams: [team] }),
     'GET /api/assistants': () => ({ assistants: [] }),
@@ -99,6 +108,10 @@ function frames(count) {
   if (result.length !== count) throw new Error('Invalid progress fixture length.');
   return result;
 }
+
+// The completed receipt lists the steps the page's own projection keeps (the terminal reply carries no usage, so no
+// duration row); counting them with that projection keeps the check on the current receipt contract.
+const receiptRows = (count) => receiptSteps(frames(count)).length;
 
 function installSocket() {
   let socket;
@@ -288,7 +301,7 @@ async function measure(browser, baseURL, count, control) {
     if (!await page.getByPlaceholder('Message Performance Team…').isEnabled()) {
       throw new Error('Composer remained disabled after terminal reply.');
     }
-    const receipt = page.getByText(copy.progressStagesExecuted.replace('{count}', count / 2), { exact: true });
+    const receipt = page.getByText(copy.progressStagesExecuted.replace('{count}', receiptRows(count)), { exact: true });
     if (!control) await receipt.waitFor();
     const terminalTaskMs = await taskDuration(cdp) - beforeTerminal;
     let receiptTaskMs = 0;
@@ -298,7 +311,7 @@ async function measure(browser, baseURL, count, control) {
       const beforeReceipt = await taskDuration(cdp);
       await receipt.click();
       await page.waitForFunction((expected) => document.querySelectorAll('.receipt ol li').length === expected,
-        count / 2);
+        receiptRows(count));
       await page.evaluate(async () => {
         for (let frame = 0; frame < 3; frame += 1) {
           await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -391,7 +404,7 @@ try {
         maxReceiptLongTaskMs: arm === 'progress'
           ? Math.max(...values.map((value) => value.receiptLongTaskMs)) : null,
         maxNextFrameMs: Math.max(...values.map((value) => value.nextFrameMs)),
-        receiptSteps: arm === 'progress' ? count / 2 : null }));
+        receiptSteps: arm === 'progress' ? receiptRows(count) : null }));
     }
   }
 } finally {
