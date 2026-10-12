@@ -459,10 +459,12 @@ async function routeReadyChat(page, {
   await routeRead(page, 'decision.read', () => decision('decision.read', null));
   await routeRead(page, 'decision.save', ({ body }) => decision('decision.save', body));
   await routeRead(page, 'decision.remove', () => decision('decision.remove', null));
+  // Marketing's selection as Admin holds it: what a save stored is what the next read answers.
+  let selection = missingInference ? null : { provider: 'openai', model: 'gpt-6.1-sol' };
   await routeRead(page, 'inference.read', ({ team_id: teamId }) => {
     if (teamId !== 'marketing') return undefined;
-    if (missingInference) return ok({ detail: 'not configured' }, 409);
-    return ok({ team_id: 'marketing', provider: 'openai', model: 'gpt-6.1-sol' });
+    if (!selection) return ok({ detail: 'not configured' }, 409);
+    return ok({ team_id: 'marketing', ...selection });
   });
   await routeRead(page, 'inference.save', async ({ team_id: teamId, body }) => {
     if (teamId !== 'marketing') return undefined;
@@ -472,6 +474,7 @@ async function routeReadyChat(page, {
     if (failInferenceWrite && inferenceWrites === 1) {
       return ok({ detail: 'The Team model selection could not be saved.' }, 502);
     }
+    selection = { ...body };
     return ok({ team_id: 'marketing', ...body });
   });
   await routeRead(page, 'integrations.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: {
@@ -1076,11 +1079,13 @@ test('the Supervisor adds and removes the Jev key', async ({ page }) => {
 
   await fast.getByRole('button', { name: 'Remove' }).click();
   await expect(fast.getByLabel('TypeSafe API key')).toBeFocused();
+  // What shows after each change is the key read again from Admin, never the change's own answer.
   expect(chat.decisionRequests()).toEqual([
     { method: 'decision.read', body: null },
-    { method: 'decision.read', body: null },
     { method: 'decision.save', body: { api_key: secret } },
+    { method: 'decision.read', body: null },
     { method: 'decision.remove', body: null },
+    { method: 'decision.read', body: null },
   ]);
   expect(chat.credentialBodies()).toEqual([]);
   // Escape closes the panel and returns focus to the control that opened it.
@@ -1088,11 +1093,12 @@ test('the Supervisor adds and removes the Jev key', async ({ page }) => {
   await expect(fast).toBeHidden();
   await expect(trigger).toBeFocused();
 
-  // Reopening reads again a key another session changed meanwhile.
+  // A key another session stores meanwhile is read once Admin announces it, and the panel shows it.
   chat.configureDecisionElsewhere('••••abcd');
+  await raiseTopic(page, 'space/decision');
+  await expect(trigger).toHaveAccessibleName(/••••abcd/);
   await trigger.click();
   await expect(fast).toContainText('On · key ••••abcd');
-  expect(chat.decisionRequests().map((request) => request.method)).toEqual(['decision.read', 'decision.read', 'decision.save', 'decision.remove', 'decision.read']);
 });
 
 test('a rejected Jev key is reported and an unsent one never outlives the panel', async ({ page }) => {
@@ -1110,7 +1116,7 @@ test('a rejected Jev key is reported and an unsent one never outlives the panel'
   await trigger.click();
   await expect(fast.getByRole('alert')).toHaveCount(0);
   await expect(fast.getByLabel('TypeSafe API key')).toHaveValue('');
-  expect(chat.decisionRequests().map((request) => request.method)).toEqual(['decision.read', 'decision.read', 'decision.save', 'decision.read']);
+  expect(chat.decisionRequests().map((request) => request.method)).toEqual(['decision.read', 'decision.save']);
 });
 
 const CLARIFICATION = {

@@ -227,9 +227,10 @@ test('a fast-routing key whose answer was lost says its outcome is unknown and s
   await routeRead(page, 'decision.read', () => ({
     status: 200, json: { provider: 'typesafe', configured: stored, masked: stored ? '••••word' : null },
   }));
-  // Admin stores the key, and the connection drops before its answer arrives.
+  // Admin stores the key and announces it, and the connection drops before the save's own answer arrives.
   await routeRead(page, 'decision.save', () => {
     stored = true;
+    void raiseTopic(page, 'space/decision');
     return new Promise(() => {});
   });
   let refusing = false;
@@ -242,15 +243,13 @@ test('a fast-routing key whose answer was lost says its outcome is unknown and s
   await fast.getByLabel('TypeSafe API key').fill('test-typesafe-key-word');
   await fast.getByRole('button', { name: 'Save', exact: true }).click();
   await waitForRead(page, 'decision.save');
-  const reads = (await readsOf(page, 'decision.read')).length;
   refusing = true;
   await dropSessions(page);
   await expect(fast.getByRole('alert')).toHaveText(shell.outcomeUnknown);
 
   refusing = false;
-  // The key Admin holds is read again on its own, without saving it again.
+  // The key Admin holds shows from the read its announcement asked for, and is never saved again.
   await expect(trigger).toHaveAccessibleName(/••••word/, { timeout: 20_000 });
-  expect((await readsOf(page, 'decision.read')).length).toBeGreaterThan(reads);
   expect(await readsOf(page, 'decision.save')).toHaveLength(1);
 });
 
@@ -309,7 +308,8 @@ test('a fast-routing key that Admin stores only after the connection dropped sho
   await dropSessions(page);
   await expect(fast.getByRole('alert')).toHaveText(shell.outcomeUnknown);
   refusing = false;
-  await expect.poll(async () => (await readsOf(page, 'decision.read')).length).toBeGreaterThan(reads);
+  await expect(page.getByText(shell.reconnecting)).toHaveCount(0);
+  expect((await readsOf(page, 'decision.read')).length).toBe(reads);
   await expect(trigger).not.toHaveAccessibleName(/••••word/);
 
   stored = true;
