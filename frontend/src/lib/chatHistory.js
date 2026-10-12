@@ -4,6 +4,7 @@ import { parseRoutineReply } from './localChat.js';
 import { parseRoutineRunEntry } from './routine.js';
 import { parseTaskUsage } from './taskUsage.js';
 import { LocalApiError, safeApiError } from './localApi.js';
+import { synced } from './synced.js';
 import {
   ASSISTANT_ID_RE,
   ASSISTANT_LIMIT_REACHED,
@@ -401,4 +402,51 @@ export function mergedRoutineRuns(runs, arrived, routineId) {
   if (fresh.length === 0) return runs;
   const moved = new Set(fresh.map((entry) => entry.id));
   return [...fresh, ...runs.filter((entry) => !moved.has(entry.id))];
+}
+
+/**
+ * The newest rows of a Team's history as one synced value (`synced.js`) on the Team's history topic: the chat's view,
+ * or with `routine` that Routine's own. Its first read is the newest page; each later read is the rows written since the
+ * newest it read, back to them. A value is `{ restart: true, entries, before }` when it replaces what is shown (the
+ * newest page and its cursor, or, in the chat's view, every row a refresh read when more was written than it reads, and
+ * the cursor it stopped at), or `{ restart: false, entries }` with the rows written since, oldest first. Each value is
+ * read after the one before it, so a screen applies them in order. `restart()` reads the newest page again, and
+ * `failed(error)` hears every read that failed.
+ */
+export function historyHead(teamId, { routine = null, failed = () => {} } = {}) {
+  let marks = null;
+  const newest = async (call) => {
+    const page = await listChatHistory(call, teamId, null, { routine });
+    marks = historyBoundary(new Set(), page.entries);
+    return { restart: true, entries: page.entries, before: page.before };
+  };
+  const read = async (call) => {
+    if (marks === null) return newest(call);
+    const since = await historySince(call, teamId, marks, { routine });
+    if (since.before !== null) {
+      if (routine !== null) return newest(call);
+      marks = historyBoundary(new Set(), since.entries);
+      return { restart: true, entries: since.entries, before: since.before };
+    }
+    marks = historyBoundary(marks, since.entries);
+    return { restart: false, entries: since.entries };
+  };
+  // Every failed read is told to `failed`, also one the head reads again on its own: a screen that waits for the
+  // history (the chat, before it connects) need not wait for an outage to end.
+  const head = synced(`team/${teamId}/history`, async (call) => {
+    try {
+      return await read(call);
+    } catch (error) {
+      failed(error);
+      throw error;
+    }
+  });
+  return {
+    subscribe: head.subscribe,
+    refresh: head.refresh,
+    restart() {
+      marks = null;
+      return head.refresh();
+    },
+  };
 }
