@@ -2523,7 +2523,7 @@
         </ScrollArea>
 
         {#if visibleError}
-          <Notice class="error" variant="error">
+          <Notice class="chat-error" variant="error">
             <strong>{visibleError}</strong>
             {#if visibleErrorDetail}<code>{copy.technicalDetail}: {visibleErrorDetail}</code>{/if}
           </Notice>
@@ -2540,7 +2540,7 @@
           >
             {#if (keyRequired || brainUnavailable) && $modelContext.error}
               <!-- The Brain's own failure sits on the composer it blocks, independent of any chat error. -->
-              <Notice class="brain-error" variant="error">
+              <Notice class="chat-brain-error" variant="error">
                 <strong>{$modelContext.error}</strong>
                 {#if brainUnavailable}
                   <Button variant="secondary" size="compact" type="button" onclick={retryBrain} disabled={brainSaving}>
@@ -2726,7 +2726,7 @@
         title={contextLoading ? copy.loading : copy.emptyTeams}
       >
         {#if visibleError}
-          <Notice class="empty-error" variant="error">
+          <Notice class="chat-empty-error" variant="error">
             <strong>{visibleError}</strong>
             {#if visibleErrorDetail}<code>{copy.technicalDetail}: {visibleErrorDetail}</code>{/if}
           </Notice>
@@ -2959,14 +2959,15 @@
     margin-block-start: var(--gap-group);
   }
 
-  :global(.error),
-  :global(.empty-error) {
+  /* The chat's own notices only: other components' `.error` text keeps its own layout. */
+  .conversation :global(.chat-error),
+  .empty-state :global(.chat-empty-error) {
     display: grid;
     gap: var(--gap-item);
     font-size: 0.72rem;
   }
 
-  :global(.error) {
+  .conversation :global(.chat-error) {
     grid-row: 2;
     width: min(
       calc(100% - (2 * var(--chat-rail-gutter))),
@@ -2978,21 +2979,21 @@
     overflow-y: auto;
   }
 
-  :global(.brain-error) {
+  .composer :global(.chat-brain-error) {
     display: grid;
     justify-items: start;
     gap: var(--gap-item);
     font-size: 0.72rem;
   }
 
-  :global(.error strong),
-  :global(.brain-error strong),
-  :global(.empty-error strong) {
+  .conversation :global(.chat-error strong),
+  .composer :global(.chat-brain-error strong),
+  .empty-state :global(.chat-empty-error strong) {
     font-weight: 600;
   }
 
-  :global(.error code),
-  :global(.empty-error code) {
+  .conversation :global(.chat-error code),
+  .empty-state :global(.chat-empty-error code) {
     color: var(--text-faint);
     font-size: 0.6rem;
     line-height: 1.45;

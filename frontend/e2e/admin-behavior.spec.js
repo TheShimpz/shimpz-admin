@@ -2709,7 +2709,7 @@ for (const [code, message, question] of [
 
     await expect(page.getByText(question, { exact: true })).toBeVisible();
     await expect(page.locator('[data-slot="chat-task"]')).toHaveCount(0);
-    await expect(page.locator('.chat-route > .error')).toHaveCount(0);
+    await expect(page.locator('.chat-error')).toHaveCount(0);
     await expect(composer).toBeEnabled();
     await expect(composer).toBeFocused();
 
