@@ -65,13 +65,22 @@ class RefusedError(Exception):
 
 
 def _current(socket: SessionSocket) -> bool:
-    """On a lane worker: check the socket's Origin and session on its loop, never renewing the session."""
-    check = asyncio.run_coroutine_threadsafe(socket.authorized(), socket.loop)
+    """On a lane worker: check the socket's Origin and session on its loop, never renewing the session.
+
+    A loop that already closed runs nothing more, and a check it cannot answer in time closes the socket.
+    """
+    authorized = socket.authorized()
+    try:
+        check = asyncio.run_coroutine_threadsafe(authorized, socket.loop)
+    except RuntimeError:
+        authorized.close()
+        return False
     try:
         return check.result(timeout=CHECK_SECONDS)
     except TimeoutError:
         check.cancel()
-        socket.end(SOCKET_UNAVAILABLE)
+        with contextlib.suppress(RuntimeError):
+            socket.end(SOCKET_UNAVAILABLE)
         return False
 
 

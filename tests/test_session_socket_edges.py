@@ -144,6 +144,20 @@ class SessionCallEdgeTests(unittest.TestCase):
             scheduled.call_args.args[0].close()
             check.cancel.assert_called_once_with()
             end.assert_called_once_with(calls.SOCKET_UNAVAILABLE)
+            # A worker whose socket's loop already closed runs nothing, leaving no check behind.
+            closed = _socket(_gate())
+            with (
+                mock.patch.object(calls.asyncio, "run_coroutine_threadsafe", side_effect=RuntimeError("closed")),
+                mock.patch.object(closed, "authorized", new=mock.Mock(return_value=mock.Mock())) as authorized,
+            ):
+                self.assertFalse(await asyncio.to_thread(calls._current, closed))
+            authorized.return_value.close.assert_called_once_with()
+            # A timed-out check on a loop that closed meanwhile still refuses the read.
+            with (
+                mock.patch.object(calls.asyncio, "run_coroutine_threadsafe", return_value=check),
+                mock.patch.object(stalled, "end", side_effect=RuntimeError("closed")),
+            ):
+                self.assertFalse(await asyncio.to_thread(calls._current, stalled))
 
         asyncio.run(scenario())
 
