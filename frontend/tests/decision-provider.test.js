@@ -126,3 +126,16 @@ test('a read that overlaps a save or removal never overwrites what it stored, wh
     assert.deepEqual(knownDecisionProvider(), { configured: stored.configured, masked: stored.masked });
   }
 });
+
+test('a read that a change completed under never overwrites what the change stored', async () => {
+  forgetDecisionProvider();
+  let finishSave;
+  let finishRead;
+  const save = saveDecisionKey(async () => new Promise((resolve) => { finishSave = resolve; }), KEY);
+  const read = loadDecisionProvider(async () => new Promise((resolve) => { finishRead = resolve; }));
+  finishSave(response(200, { provider: 'typesafe', configured: true, masked: '••••6789' }));
+  await save;
+  finishRead(response(200, { provider: 'typesafe', configured: false, masked: null }));
+  await read;
+  assert.deepEqual(knownDecisionProvider(), { configured: true, masked: '••••6789' });
+});
