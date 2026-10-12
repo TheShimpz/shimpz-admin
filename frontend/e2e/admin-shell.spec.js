@@ -1263,3 +1263,38 @@ test('asks for the first Team from the Store when no Team exists', async ({ page
   await page.keyboard.press('Escape');
   await expect(dialog).toBeVisible();
 });
+
+test('the Store shows its rows and icons at once when opened, and again when the person returns to it', { tag: '@mobile' }, async ({ page }) => {
+  await routeScenario(page, 'catalog');
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  );
+  let iconRequests = 0;
+  await page.route('**/api/local-assistants/*/icon', (route) => {
+    iconRequests += 1;
+    return route.fulfill({ contentType: 'image/png', body: png });
+  });
+  await page.goto('/chat/');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeVisible();
+  // While the chat sits idle, the Store's rows and icons are read before anyone opens it.
+  await expect.poll(() => iconRequests).toBeGreaterThan(0);
+  const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
+  const icons = catalog.locator('a.assistant-row img');
+  const rows = catalog.locator('a.assistant-row');
+  const open = async () => {
+    if (page.viewportSize().width <= 820) await page.getByRole('button', { name: 'Open the Team list' }).click();
+    await page.getByRole('link', { name: 'Open the Store for Marketing' }).click();
+    await expect(rows.first()).toBeVisible();
+    await expect(icons).toHaveCount(await rows.count());
+    for (const icon of await icons.all()) await expect(icon).toHaveAttribute('src', /^blob:/);
+  };
+  await open();
+  const read = iconRequests;
+  // Leaving and returning in the same tab shows the same icons without asking Admin for them again.
+  if (page.viewportSize().width <= 820) await page.getByRole('button', { name: 'Open the Team list' }).click();
+  await page.getByRole('link', { name: 'Marketing', exact: true }).first().click();
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeVisible();
+  await open();
+  expect(iconRequests).toBe(read);
+});
