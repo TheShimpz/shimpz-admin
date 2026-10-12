@@ -2428,6 +2428,37 @@ test('discards an inventory-pending just-in-time request after the turn stops', 
   expect(chat.humanResponses()).toHaveLength(0);
 });
 
+test('a message after an install waits for the Team inventory and names the installed Assistants', async ({ page }) => {
+  const chat = await routeReadyChat(page, {
+    assistantPlan: true,
+    assistantPlanContinuation: 'none',
+    holdPostInstallInventory: true,
+  });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'Install Cloudflare and WhatsApp');
+  await composer.press('Enter');
+  await expect(page.locator('.assistant-install-plan [data-slot="chat-task"]').nth(1)).toHaveAttribute(
+    'data-state',
+    'complete',
+  );
+  await expect(composer).toBeEnabled();
+  await composer.fill('List my zones');
+  const send = page.getByRole('button', { name: 'Send', exact: true });
+  await expect(send).toBeDisabled();
+  await composer.press('Enter');
+  expect(chat.chatFrames()).toHaveLength(1);
+
+  chat.releaseAssistantInventory();
+  await expect(send).toBeEnabled();
+  await composer.press('Enter');
+  await expect.poll(() => chat.chatFrames()).toHaveLength(2);
+  expect(chat.chatFrames()[1]).toMatchObject({
+    message: 'List my zones',
+    assistant_ids: ['shimpz-cloudflare', 'whatsapp'],
+  });
+});
+
 test('shows the continued task execution stages after an explicit install', async ({ page }) => {
   const chat = await routeReadyChat(page, { assistantPlan: true, progressAfterPlan: true });
   await page.goto('/chat/');

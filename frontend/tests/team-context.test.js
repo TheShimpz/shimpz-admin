@@ -288,6 +288,23 @@ test('refresh exposes a first install and its newly projected display metadata t
   ]);
 });
 
+test('a refresh keeps the last inventory on display, loading, until the fresh one is published', async () => {
+  await loadTeamContext(fixtureFetcher(), 'marketing');
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const refreshing = refreshTeamInventory(fixtureFetcher({
+    '/api/teams/marketing/assistants': async () => held,
+  }));
+
+  assert.equal(get(teamContext).phase, 'loading');
+  assert.deepEqual(get(teamContext).installedAssistants, [installedAssistant('salesnator')]);
+  assert.deepEqual(get(teamContext).activeAssistantIds, ['salesnator']);
+  release(response(200, { assistants: [installedAssistant('salesnator'), installedAssistant('hello-pulse')] }));
+  await refreshing;
+  assert.equal(get(teamContext).phase, 'ready');
+  assert.deepEqual(get(teamContext).activeAssistantIds, ['salesnator', 'hello-pulse']);
+});
+
 for (const operation of ['create', 'delete']) {
   test(`an inventory refresh during a Team ${operation} never drops the Team list it publishes`, async () => {
     await loadTeamContext(fixtureFetcher(), 'marketing');

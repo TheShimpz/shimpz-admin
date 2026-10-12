@@ -233,8 +233,13 @@
   );
   // A message waits for a pending Brain change to be saved so the turn never runs on the previous selection.
   let brainSaving = $derived($modelContext.phase === 'saving');
+  // A message names the Team's running Assistants, so it waits while their inventory is being read again (after an
+  // install, for instance); the inventory shown meanwhile is for display only.
+  let inventoryReady = $derived($teamContext.phase === 'ready');
   // A question answer or a retry sends at once, so it is offered only when a message could be sent now.
-  let sendUnavailable = $derived(composerBusy || brainSaving || !$modelContext.ready || !socketReady);
+  let sendUnavailable = $derived(
+    composerBusy || brainSaving || !$modelContext.ready || !socketReady || !inventoryReady,
+  );
   let keyCopy = $derived($t('providerSetup'));
   let brainProvider = $derived(
     $modelContext.providers.find((entry) => entry.id === $modelContext.provider) ?? null,
@@ -277,6 +282,7 @@
     composerBusy ||
       stopping ||
       lifecycleDecisionPending ||
+      !inventoryReady ||
       !socketReady ||
       !socket ||
       chatTeamId !== selectedTeamId,
@@ -1112,18 +1118,22 @@
     return incoming.requirements.map((requirement) => requirement.assistant_id);
   }
 
+  // Only a settled inventory admits an Assistant's request at once; one being read again is checked when it arrives.
   function knownIntegrationAssistants(incoming) {
-    const selected = new Set($teamContext.activeAssistantIds);
+    const selected = new Set(inventoryReady ? $teamContext.activeAssistantIds : []);
     return integrationAssistantIds(incoming).every((id) => selected.has(id) || installedThisTurn(id));
   }
 
   function knownHumanAssistant(incoming) {
-    const installed = new Set($teamContext.installedAssistants.map((assistant) => assistant.assistant));
+    const installed = new Set(
+      inventoryReady ? $teamContext.installedAssistants.map((assistant) => assistant.assistant) : [],
+    );
     return installed.has(incoming.assistant.id) || installedThisTurn(incoming.assistant.id);
   }
 
-  // The cached Team inventory is empty while it refreshes after an install, so an Assistant the cache does not know
-  // is checked against the fresh authenticated Team inventory before the request is refused as a protocol error.
+  // The cached Team inventory may be one being read again (after an install, for instance), so an Assistant it does
+  // not admit is checked against the fresh authenticated Team inventory before the request is refused as a protocol
+  // error.
   async function admitWithFreshInventory(active, expectedTeamId, assistantIds, accept) {
     const epoch = turnEpoch;
     let installed = new Set();
@@ -1882,6 +1892,7 @@
       composerBusy ||
       brainSaving ||
       !$modelContext.ready ||
+      !inventoryReady ||
       !teamId ||
       chatTeamId !== teamId ||
       !normalized ||
@@ -2638,7 +2649,7 @@
                   class="composer-send"
                   type="submit"
                   variant="ghost"
-                  disabled={composerBusy || questionOpen || brainSaving || !$modelContext.ready || !socketReady || !draft.trim() || attachmentsPending}
+                  disabled={sendUnavailable || questionOpen || !draft.trim() || attachmentsPending}
                   title={socketReady ? copy.send : copy.connecting}
                 >
                   <span class="sr-only">{socketReady ? copy.send : copy.connecting}</span>

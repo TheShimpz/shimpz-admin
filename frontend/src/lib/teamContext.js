@@ -293,6 +293,10 @@ async function select(fetcher, id) {
   }
 }
 
+/**
+ * Re-read the selected Team's inventory. The last one stays on display meanwhile, with the context `loading`: what
+ * depends on the inventory (a message's Assistants, admitting an Assistant's request) waits for the fresh one.
+ */
 export async function refreshTeamInventory(fetcher) {
   requireFetcher(fetcher);
   if (listOperation) await listOperation.catch(() => {});
@@ -315,8 +319,6 @@ export async function refreshTeamInventory(fetcher) {
   teamContext.set({
     ...current,
     phase: 'loading',
-    installedAssistants: [],
-    activeAssistantIds: [],
     error: '',
   });
   try {
