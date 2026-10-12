@@ -93,7 +93,8 @@ export function serveSession(transport, handlers, revisions = new Map()) {
       return { status: 200, json: { team_id: params.team_id } };
     }
     const answered = await handlers.call?.(method, params, frame);
-    return answered ?? { status: 503, json: { detail: 'Not in this scenario.' } };
+    // A call this scenario does not answer is refused, never an outage the page would wait out.
+    return answered ?? { status: 404, json: { detail: 'Not in this scenario.' } };
   }
 
   async function receive(text) {

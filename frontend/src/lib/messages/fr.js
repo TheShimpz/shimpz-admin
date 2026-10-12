@@ -70,6 +70,7 @@ export default {
     reconnecting: 'Reconnexion à Admin… Ce que vous voyez peut être obsolète, et les actions attendent le retour de la connexion.',
     reconnectFailed: "Admin est injoignable. Shimpz continue d’essayer de se reconnecter.",
     offline: "Vous êtes hors ligne. Shimpz se reconnecte dès le retour de la connexion.",
+    dataUnavailable: 'Certaines données d’Admin sont temporairement indisponibles. Shimpz continue d’essayer.',
     outcomeUnknown: 'Admin s’est déconnecté avant de confirmer cette modification : elle a pu être faite ou non. Ce que vous voyez est relu dès le retour d’Admin.',
     sessionExpiring: {
       title: 'Votre session va bientôt se terminer',
@@ -87,6 +88,7 @@ export default {
     resourceReconnecting: 'Reconnexion…',
     resourceUnreachable: 'Admin injoignable',
     resourceOffline: 'Hors ligne',
+    resourceDataUnavailable: 'Données indisponibles',
     resourceServiceStopped: 'Service arrêté',
     resourceMemoryNearlyFull: 'Mémoire presque pleine',
     resourceMemoryFull: 'Mémoire pleine',

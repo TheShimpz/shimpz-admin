@@ -478,3 +478,21 @@ test('a fast-routing key Admin refuses to read is said to be unavailable even af
   await expect(fast.getByRole('status')).toHaveText(messages.en.brainMenu.fast.unavailable);
   await expect(trigger).not.toHaveAccessibleName(/••••word/);
 });
+
+test('data Admin keeps failing to read is said once, over the page, and the page fills in once it reads', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  let unavailable = true;
+  await routeRead(page, 'teams.list', () => (unavailable ? { status: 503, json: { detail: 'Team is unavailable' } } : undefined));
+  await page.clock.install();
+  await page.goto('/chat/?team=marketing');
+  // The boot screen gives way to the one message, which the Space status line mirrors; nothing else speaks of it.
+  await expect(page.getByText(shell.dataUnavailable)).toBeVisible({ timeout: 20_000 });
+  await expect(page.locator('.space-status')).toContainText(shell.resourceDataUnavailable);
+  await expect(page.getByText(shell.reconnecting)).toHaveCount(0);
+  for (const error of pageConnectivityErrors(page)) await expect(error).toHaveCount(0);
+  // Admin answers again: the capped retries read it and the message goes.
+  unavailable = false;
+  await page.clock.runFor(31_000);
+  await expect(page.getByRole('textbox', { name: chatPage.send, exact: true })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByText(shell.dataUnavailable)).toHaveCount(0);
+});

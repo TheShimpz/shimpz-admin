@@ -70,6 +70,7 @@ export default {
     reconnecting: 'Reconectando ao Admin… O que você vê pode estar desatualizado, e as ações aguardam até a conexão voltar.',
     reconnectFailed: "Não foi possível alcançar o Admin. O Shimpz continua tentando reconectar.",
     offline: "Você está offline. O Shimpz reconecta quando a conexão voltar.",
+    dataUnavailable: 'Alguns dados do Admin estão temporariamente indisponíveis. O Shimpz continua tentando.',
     outcomeUnknown: 'O Admin se desconectou antes de confirmar esta alteração, então ela pode ou não ter sido feita. O que você vê é lido de novo assim que o Admin voltar.',
     sessionExpiring: {
       title: 'Sua sessão está prestes a terminar',
@@ -87,6 +88,7 @@ export default {
     resourceReconnecting: 'Reconectando…',
     resourceUnreachable: 'Admin inacessível',
     resourceOffline: 'Offline',
+    resourceDataUnavailable: 'Dados indisponíveis',
     resourceServiceStopped: 'Serviço parado',
     resourceMemoryNearlyFull: 'Memória quase cheia',
     resourceMemoryFull: 'Memória cheia',

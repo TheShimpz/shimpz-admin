@@ -70,6 +70,7 @@ export default {
     reconnecting: 'Admin に再接続しています… 表示内容が古い可能性があり、操作は接続が戻るまで待機します。',
     reconnectFailed: "Admin に接続できません。Shimpz は再接続を試み続けています。",
     offline: "オフラインです。接続が戻ると Shimpz が再接続します。",
+    dataUnavailable: '一部の Admin データが一時的に利用できません。Shimpz は再試行を続けています。',
     outcomeUnknown: 'Admin がこの変更を確認する前に切断されたため、変更が行われたかどうかは不明です。Admin が戻りしだい、表示内容を読み込み直します。',
     sessionExpiring: {
       title: 'まもなくセッションが終了します',
@@ -87,6 +88,7 @@ export default {
     resourceReconnecting: '再接続中…',
     resourceUnreachable: 'Admin に接続できません',
     resourceOffline: 'オフライン',
+    resourceDataUnavailable: 'データを取得できません',
     resourceServiceStopped: '停止中のサービスあり',
     resourceMemoryNearlyFull: 'メモリがほぼ満杯',
     resourceMemoryFull: 'メモリが満杯',

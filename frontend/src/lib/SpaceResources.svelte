@@ -1,7 +1,7 @@
 <script>
   import { locale, t } from '#lib/i18n.js';
   import { adminSocket } from '#lib/adminSocket.js';
-  import { synced } from '#lib/synced.js';
+  import { dataUnavailable, synced } from '#lib/synced.js';
   import { fetchSpaceResources, resourceSegments, resourceStatus } from '#lib/spaceResources.js';
 
   // What leads the status line, such as the Admin version; it shows even while the status is unknown.
@@ -17,7 +17,7 @@
       ? { level: 'alert', message: 'shell.resourceUnreachable' }
       : $adminSocket.phase === 'reconnecting'
         ? { level: 'warn', message: 'shell.resourceReconnecting' }
-        : null,
+        : $dataUnavailable ? { level: 'warn', message: 'shell.resourceDataUnavailable' } : null,
   );
   let status = $derived(connection ?? (resources ? resourceStatus(resources) : null));
   // The numbers behind the status, read on hover: services, memory, and storage.

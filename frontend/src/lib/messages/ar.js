@@ -70,6 +70,7 @@ export default {
     reconnecting: 'جارٍ إعادة الاتصال بـ Admin… قد يكون ما تراه قديمًا، وتنتظر الإجراءات حتى يعود الاتصال.',
     reconnectFailed: "تعذّر الوصول إلى Admin. يواصل Shimpz محاولة إعادة الاتصال.",
     offline: "أنت غير متصل. سيعيد Shimpz الاتصال عند عودة الاتصال.",
+    dataUnavailable: 'بعض بيانات Admin غير متاحة مؤقتًا. يواصل Shimpz المحاولة.',
     outcomeUnknown: 'انقطع اتصال Admin قبل أن يؤكد هذا التغيير، لذلك ربما تم أو لم يتم. سيُعاد تحميل ما تراه بمجرد عودة Admin.',
     sessionExpiring: {
       title: 'جلستك على وشك الانتهاء',
@@ -87,6 +88,7 @@ export default {
     resourceReconnecting: 'جارٍ إعادة الاتصال…',
     resourceUnreachable: 'تعذّر الوصول إلى Admin',
     resourceOffline: 'غير متصل',
+    resourceDataUnavailable: 'البيانات غير متاحة',
     resourceServiceStopped: 'خدمة متوقفة',
     resourceMemoryNearlyFull: 'الذاكرة ممتلئة تقريبًا',
     resourceMemoryFull: 'الذاكرة ممتلئة',

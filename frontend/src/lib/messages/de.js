@@ -70,6 +70,7 @@ export default {
     reconnecting: 'Verbindung zu Admin wird wiederhergestellt… Was Sie sehen, ist womöglich veraltet, und Aktionen warten, bis die Verbindung zurück ist.',
     reconnectFailed: "Admin ist nicht erreichbar. Shimpz versucht weiter, die Verbindung wiederherzustellen.",
     offline: "Sie sind offline. Shimpz verbindet sich neu, sobald die Verbindung zurück ist.",
+    dataUnavailable: 'Einige Admin-Daten sind vorübergehend nicht verfügbar. Shimpz versucht es weiter.',
     outcomeUnknown: 'Admin wurde getrennt, bevor es diese Änderung bestätigt hat. Sie wurde daher vielleicht ausgeführt, vielleicht nicht. Was Sie sehen, wird neu gelesen, sobald Admin wieder erreichbar ist.',
     sessionExpiring: {
       title: 'Ihre Sitzung endet gleich',
@@ -87,6 +88,7 @@ export default {
     resourceReconnecting: 'Verbinde neu…',
     resourceUnreachable: 'Admin nicht erreichbar',
     resourceOffline: 'Offline',
+    resourceDataUnavailable: 'Daten nicht verfügbar',
     resourceServiceStopped: 'Dienst gestoppt',
     resourceMemoryNearlyFull: 'Speicher fast voll',
     resourceMemoryFull: 'Speicher voll',

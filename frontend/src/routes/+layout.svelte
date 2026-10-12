@@ -8,6 +8,7 @@
   import AdminShell from '#lib/AdminShell.svelte';
   import AuthScreen from '#lib/AuthScreen.svelte';
   import { adminSocket } from '#lib/adminSocket.js';
+  import { dataUnavailable } from '#lib/synced.js';
   import BootScreen from '#lib/BootScreen.svelte';
   import { clearAdminNotice } from '#lib/adminNotice.js';
   import { forgetDecisionProvider } from '#lib/decisionProvider.js';
@@ -61,6 +62,8 @@
     if (phase !== 'ready') return sessionSettled;
     // Admin could not be reached: the shell says so over the page's own loading state, which fills in once it is back.
     if (['reconnecting', 'failed'].includes($adminSocket.phase)) return true;
+    // Data Admin keeps failing to read: the shell says so over the page's own loading state, read again on its own.
+    if ($dataUnavailable) return true;
     if (!['ready', 'error'].includes($teamContext.phase)) return false;
     if (exactAssistantsRoute) return assistantsViewSettled || assistantsViewDeadlineReached;
     if ($teamContext.phase === 'error') return true;

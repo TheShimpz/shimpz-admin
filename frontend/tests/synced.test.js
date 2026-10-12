@@ -4,7 +4,7 @@ import test, { mock } from 'node:test';
 import { get } from 'svelte/store';
 
 import { socketReads } from '../src/lib/adminSocket.js';
-import { RETRY_FIRST_MS, synced, transientFailure } from '../src/lib/synced.js';
+import { dataUnavailable, RETRY_FIRST_MS, synced, transientFailure } from '../src/lib/synced.js';
 import { LocalApiError } from '../src/lib/validate.js';
 import { response } from './socketStub.js';
 
@@ -328,4 +328,36 @@ test('a reset while a screen still shows the value reads it again under the subs
   await flush();
   assert.deepEqual(get(value).value, ['again']);
   stop();
+});
+
+test('the shell hears that some shown data keeps failing, and that it no longer does once it reads or is not shown', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const socket = harness();
+    const first = synced('local-assistants', snapshots);
+    const second = synced('local-assistants', snapshots);
+    const shownFirst = shown(first);
+    const shownSecond = shown(second);
+    socket.announce('open', 1);
+    socket.calls[0].resolve(response(503, { detail: 'Team is unavailable' }));
+    socket.calls[1].resolve(response(503, { detail: 'Team is unavailable' }));
+    await flush();
+    assert.equal(get(dataUnavailable), true);
+    mock.timers.tick(RETRY_FIRST_MS);
+    socket.answer(2, { assistants: ['one'] }, 1);
+    await flush();
+    // One value still fails: the shell still says so.
+    assert.equal(get(dataUnavailable), true);
+    // A failing value no screen shows any more is no longer the shell's to speak of.
+    shownSecond.stop();
+    assert.equal(get(dataUnavailable), false);
+    // An outage of Admin's own connection is the shell's other message, never this one.
+    socket.announce('changed', 2);
+    socket.calls[4]?.reject(new LocalApiError('Admin is reconnecting.', 0, 'socket-unavailable'));
+    await flush();
+    assert.equal(get(dataUnavailable), false);
+    shownFirst.stop();
+  } finally {
+    mock.timers.reset();
+  }
 });

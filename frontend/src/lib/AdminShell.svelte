@@ -3,6 +3,7 @@
   import { getContext, onDestroy, onMount, untrack } from 'svelte';
   import AdminNotice from '#lib/AdminNotice.svelte';
   import { adminSocket, connectAdminSocket, trackActivity, watchTopic } from '#lib/adminSocket.js';
+  import { dataUnavailable } from '#lib/synced.js';
   import { t } from '#lib/i18n.js';
   import LocaleMenu from '#lib/LocaleMenu.svelte';
   import PlatformReleaseStatus from '#lib/PlatformReleaseStatus.svelte';
@@ -58,6 +59,15 @@
   // it as signed out hands the page back to the sign-in flow, which clears every protected cache.
   const sessionEnded = getContext(SESSION_ENDED);
   let reconnecting = $derived(['reconnecting', 'failed'].includes($adminSocket.phase));
+  // The one message about Admin's availability, the most pressing first: offline, then reconnecting or unreachable,
+  // then data Admin keeps failing to read while it is read again on its own.
+  let availability = $derived(
+    reconnecting
+      ? $adminSocket.offline
+        ? 'shell.offline'
+        : $adminSocket.phase === 'failed' ? 'shell.reconnectFailed' : 'shell.reconnecting'
+      : $dataUnavailable ? 'shell.dataUnavailable' : '',
+  );
 
   // What the session bootstrap answers changed (an admitted origin, for instance): read it again over HTTP. The sign-in
   // flow read it just before the socket first opened.
@@ -187,12 +197,10 @@
     {/if}
     <div class:chat-layout={chat} class="authenticated-content">
       <div class="admin-notice-region">
-        {#if reconnecting}
-          <!-- The one place that speaks about Admin's connection; pages never add their own. -->
-          <p class="socket-status" class:failed={$adminSocket.phase === 'failed' || $adminSocket.offline} role="status">
-            {$t($adminSocket.offline
-              ? 'shell.offline'
-              : $adminSocket.phase === 'failed' ? 'shell.reconnectFailed' : 'shell.reconnecting')}
+        {#if availability}
+          <!-- The one place that speaks about Admin's availability; pages never add their own. -->
+          <p class="socket-status" class:failed={reconnecting && ($adminSocket.phase === 'failed' || $adminSocket.offline)} role="status">
+            {$t(availability)}
           </p>
         {/if}
         <SecurityAlert /><AdminNotice />

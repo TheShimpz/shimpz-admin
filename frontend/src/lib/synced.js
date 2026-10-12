@@ -5,13 +5,29 @@
 // runs one read at a time, so an older answer can never overwrite a newer one, and it knows the revision its value
 // reflects from the read's own results, never from another read of the same topic. A change a screen makes never sets
 // the value: its own read after Admin announces the change does (`refresh()` waits for that read).
-import { writable } from 'svelte/store';
+import { derived, writable } from 'svelte/store';
 
 import { socketReads } from './adminSocket.js';
 import { LocalApiError } from './validate.js';
 
 export const RETRY_FIRST_MS = 1_000;
 export const RETRY_MAX_MS = 30_000;
+
+// The shown synced values whose reads keep failing in a way that clears by itself: the shell says so once, for all.
+const failingValues = writable(new Set());
+
+/** Whether some data a screen shows cannot be read right now, while it is read again on its own. */
+export const dataUnavailable = derived(failingValues, (values) => values.size > 0);
+
+function markFailing(token, on) {
+  failingValues.update((values) => {
+    if (on === values.has(token)) return values;
+    const next = new Set(values);
+    if (on) next.add(token);
+    else next.delete(token);
+    return next;
+  });
+}
 
 /** A failure worth reading again on its own: Admin or Team briefly unavailable, busy, or the socket reconnecting. */
 export function transientFailure(error) {
@@ -47,6 +63,12 @@ export function synced(topic, read, { initial = null } = {}) {
   let publish = () => {};
   let failing = null;
   const empty = () => ({ status: 'loading', value: initial, error: null, failing: null });
+  const token = {};
+  // Every state published says whether this value is failing, so the shell's one message follows it.
+  function show(state) {
+    markFailing(token, Boolean(state.failing) && !stopped);
+    publish(state);
+  }
 
   function stale() {
     if (!has) return true;
@@ -92,18 +114,18 @@ export function synced(topic, read, { initial = null } = {}) {
       retryAttempt = 0;
       clearTimeout(retryTimer);
       failing = null;
-      publish({ status: 'ready', value, error: null, failing });
+      show({ status: 'ready', value, error: null, failing });
       if (stale()) again = true;
     } catch (error) {
       if (owner !== era) return;
       if (transientFailure(error)) {
         failing = error instanceof LocalApiError && error.status === 0 ? failing : error;
-        publish({ status: has ? 'ready' : 'loading', value, error: null, failing });
+        show({ status: has ? 'ready' : 'loading', value, error: null, failing });
         scheduleRetry();
         return;
       }
       failing = null;
-      publish({ status: 'error', value, error, failing });
+      show({ status: 'error', value, error, failing });
     }
   }
 
@@ -152,6 +174,7 @@ export function synced(topic, read, { initial = null } = {}) {
     subscribed = false;
     waiting?.resolve();
     waiting = null;
+    markFailing(token, false);
   }
 
   const store = writable(empty(), (set) => {
