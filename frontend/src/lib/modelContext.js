@@ -225,8 +225,15 @@ export async function configureModelContext(teamId, apiKey = '') {
 export async function refreshInference(teamId) {
   requireRequest(teamId);
   const shown = get(modelContext);
-  // A save whose outcome was lost, or a load that failed, reads the whole context again.
-  if (shown.teamId === teamId && shown.phase === 'error') return loadModelContext(teamId);
+  // A save whose outcome was lost, or a load that failed, reads the whole context again; after a lost save the
+  // providers are read again too, since its key may have been stored. Nothing is sent again.
+  if (shown.teamId === teamId && shown.phase === 'error') {
+    if (shown.errorCode === 'outcome-unknown') {
+      providerCatalogCache = null;
+      providerCatalogRequest = null;
+    }
+    return loadModelContext(teamId);
+  }
   const attempt = generation;
   if (!settledFor(shown, teamId)) return shown;
   const inference = await loadInference(teamId);

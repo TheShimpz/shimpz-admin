@@ -499,3 +499,32 @@ test('a save whose answer was lost reads the whole context again once Admin is b
   assert.equal(get(modelContext).phase, 'ready');
   assert.equal(get(modelContext).model, 'gpt-6.1-sol');
 });
+
+test('a key save whose answer was lost reads the providers again on recovery and never sends the key again', async () => {
+  let keySaved = false;
+  const saves = [];
+  const base = fixtureFetcher();
+  const fetcher = async (method, params = {}) => {
+    if (method === 'models.list') {
+      return response(200, { providers: providers.map((entry) => (
+        entry.id === 'anthropic' && keySaved ? { ...entry, configured: true, masked: '••••test' } : entry
+      )) });
+    }
+    if (method === 'models.save') {
+      saves.push(params);
+      // Admin stored the key, and the connection dropped before its answer arrived.
+      keySaved = true;
+      throw new LocalApiError('Admin disconnected before it answered.', 0, 'outcome-unknown');
+    }
+    return base(method, params);
+  };
+  await load(fetcher, 'marketing');
+  await select(fetcher, 'marketing', 'anthropic', 'claude-opus-5-5');
+  await assert.rejects(configure(fetcher, 'marketing', 'sk-ant-test-0123456789'), (error) => error.code === 'outcome-unknown');
+  assert.equal(get(modelContext).errorCode, 'outcome-unknown');
+
+  await via(fetcher, () => refreshInference('marketing'));
+  assert.equal(get(modelContext).phase, 'ready');
+  assert.equal(get(modelContext).providers.find((entry) => entry.id === 'anthropic').configured, true);
+  assert.equal(saves.length, 1);
+});
