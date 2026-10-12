@@ -73,7 +73,6 @@ const {
   disconnectAdminSocket,
   openChatChannel,
   sessionDeadlines,
-  topicValue,
   trackActivity,
   watchTopic,
 } = socketModule;
@@ -221,39 +220,6 @@ test('a malformed, unknown, or unexpected frame closes the socket', () => {
     assert.equal(socket.closedWith, 1002, JSON.stringify(frame));
     disconnectAdminSocket();
   }
-});
-
-test('a read that reflects an older revision than the subscription it watches is told to read again', async () => {
-  const socket = connected();
-  const heard = [];
-  const stop = watchTopic('local-assistants', (_topic, cause) => heard.push(cause));
-  // The page's own read goes out before its subscription is in place, and reflects revision 2.
-  const reading = call('snapshots.list', {});
-  await flush();
-  socket.answer('snapshots.list', { assistants: [] }, 200, { topic: 'local-assistants', epoch: EPOCH, revision: 2 });
-  await reading;
-  // A change landed in between: the subscription is at revision 3, so the read is stale and is repeated once.
-  socket.answer('subscribe', { epoch: EPOCH, topics: { 'local-assistants': 3 } });
-  await flush();
-  assert.deepEqual(heard.splice(0), ['subscribed', 'changed']);
-  // A read that reflects the subscribed revision is current: nothing more is asked for.
-  const again = call('snapshots.list', {});
-  await flush();
-  socket.answer('snapshots.list', { assistants: [] }, 200, { topic: 'local-assistants', epoch: EPOCH, revision: 3 });
-  await again;
-  await flush();
-  assert.deepEqual(heard, []);
-  // An older read answered after a change was announced asks for nothing more: that change already asked for a read.
-  const late = call('snapshots.list', {});
-  await flush();
-  socket.frame({ type: 'changed', topic: 'local-assistants', epoch: EPOCH, revision: 5 });
-  assert.deepEqual(heard.splice(0), ['changed']);
-  socket.answer('snapshots.list', { assistants: [] }, 200, { topic: 'local-assistants', epoch: EPOCH, revision: 4 });
-  await late;
-  await flush();
-  assert.deepEqual(heard, []);
-  stop();
-  disconnectAdminSocket();
 });
 
 test('a watched topic is subscribed, re-read on each newer change and after a reopen, and unsubscribed', async () => {
@@ -415,42 +381,32 @@ test('a subscription refused after a reopen is asked for again, and its readers 
   reopened.open();
   reopened.answer('subscribe', { detail: 'session change budget reached' }, 429);
   await flush();
-  assert.deepEqual(heard, ['subscribed', 'reopen']);
+  // Nothing is heard until the subscription is in place again.
+  assert.deepEqual(heard, ['subscribed']);
   await new Promise((resolve) => setTimeout(resolve, 1_100));
   reopened.answer('subscribe', { epoch: EPOCH, topics: { session: 0 } });
   await flush();
-  assert.deepEqual(heard, ['subscribed', 'reopen', 'subscribed']);
+  assert.deepEqual(heard, ['subscribed', 'subscribed']);
   stop();
 });
 
-test('a topic value reads once its subscription is in place, at a change, and once more after a change mid-read', async () => {
+test('a listener hears the newest revision Admin announced with each cause, and a second reader at once', async () => {
   const socket = connected();
-  let reads = 0;
-  let release;
-  const value = topicValue('space/resources', () => {
-    reads += 1;
-    return new Promise((resolve) => { release = () => resolve(reads); });
-  }, 'none');
-  const seen = [];
-  const stop = value.subscribe((current) => seen.push(current));
+  const heard = [];
+  const stop = watchTopic('space/resources', (_topic, cause, known) => heard.push([cause, known]));
   await flush();
-  // Nothing is read before the subscription answers, so no change can fall between a read and the subscription.
-  assert.equal(reads, 0);
   socket.answer('subscribe', { epoch: EPOCH, topics: { 'space/resources': 4 } });
   await flush();
-  assert.equal(reads, 1);
   socket.frame({ type: 'changed', topic: 'space/resources', epoch: EPOCH, revision: 5 });
-  release();
+  assert.deepEqual(heard.splice(0), [
+    ['subscribed', { epoch: EPOCH, revision: 4 }],
+    ['changed', { epoch: EPOCH, revision: 5 }],
+  ]);
+  // A second reader of a subscribed topic hears it at once, after what is already on its way.
+  const second = [];
+  const stopSecond = watchTopic('space/resources', (_topic, cause, known) => second.push([cause, known]));
   await flush();
-  assert.equal(reads, 2);
-  release();
-  await flush();
-  assert.deepEqual(seen, ['none', 1, 2]);
-  // A second reader of a subscribed topic reads at once, after what is already on its way.
-  const heard = [];
-  const stopSecond = watchTopic('space/resources', (_topic, cause) => heard.push(cause));
-  await flush();
-  assert.deepEqual(heard, ['subscribed']);
+  assert.deepEqual(second, [['subscribed', { epoch: EPOCH, revision: 5 }]]);
   stopSecond();
   stop();
 });
@@ -463,7 +419,11 @@ test('a close asks Admin about the session: signed out ends it, signed in reconn
   watchTopic('teams', (_topic, cause) => heard.push(cause));
   let socket = FakeSocket.opened.at(-1);
   socket.open();
-  // The first open reads what is shown; a reopen reads it again.
+  // The first open and a reopen are heard once the topic's subscription is in place, so no read precedes it.
+  assert.deepEqual(heard, []);
+  await flush();
+  socket.answer('subscribe', { epoch: EPOCH, topics: { teams: 0 } });
+  await flush();
   assert.deepEqual(heard, ['open']);
   sessionAnswer = { authenticated: true };
   socket.drop(1006);
@@ -474,8 +434,10 @@ test('a close asks Admin about the session: signed out ends it, signed in reconn
   socket.open();
   await flush();
   assert.equal(get(adminSocket).phase, 'open');
-  assert.deepEqual(heard, ['open', 'reopen']);
   assert.equal(socket.sent[0].method, 'subscribe');
+  socket.answer('subscribe', { epoch: EPOCH, topics: { teams: 0 } });
+  await flush();
+  assert.deepEqual(heard, ['open', 'reopen']);
 
   sessionAnswer = { authenticated: false };
   socket.drop(1006);

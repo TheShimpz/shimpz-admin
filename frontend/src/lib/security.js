@@ -1,6 +1,7 @@
-import { writable } from 'svelte/store';
+import { derived } from 'svelte/store';
 
 import { LocalApiError, safeApiError } from './localApi.js';
+import { synced } from './synced.js';
 import { exactKeys, isInstant, jsonObject } from './validate.js';
 
 // The Supervisor's own sign-in security (ADR-0051): the refused second-factor attempts a sign-in reported, kept until
@@ -12,9 +13,6 @@ export const RECOVERY_CODE_COUNT = 10;
 const RECOVERY_CODE_RE = /^[0-9a-hjkmnp-tv-z]{4}-[0-9a-hjkmnp-tv-z]{4}-[0-9a-hjkmnp-tv-z]{4}$/;
 const REFUSAL_RE = /^[a-z][a-z0-9-]{0,63}$/;
 
-export const securitySummary = writable(null);
-// Advances whenever the summary is cleared (with the session), so a read that answers afterwards is never shown.
-let summaryEpoch = 0;
 
 function count(value) {
   return Number.isSafeInteger(value) && value >= 0 && value <= MAX_COUNT;
@@ -59,47 +57,42 @@ function summary(response, body) {
   };
 }
 
-async function published(answer, fallback) {
-  const epoch = summaryEpoch;
+async function validated(answer, fallback) {
   const response = await answer;
   const body = await jsonObject(response);
   if (!response.ok) throw new LocalApiError(safeApiError(body, fallback), response.status);
-  const result = summary(response, body);
-  if (epoch === summaryEpoch) securitySummary.set(result);
-  return result;
+  return summary(response, body);
 }
 
-function send(fetcher, url, init, fallback) {
-  if (typeof fetcher !== 'function') return Promise.reject(new LocalApiError('Invalid sign-in security request.'));
-  return published(fetcher(url, { cache: 'no-store', ...init }), fallback);
-}
-
-/** Read the summary over the session socket; the page reads it on its own, so it is no Supervisor activity. */
+/** Read the summary over the session socket with `read`, as Admin answers it. */
 export function loadSecuritySummary(read) {
   if (typeof read !== 'function') return Promise.reject(new LocalApiError('Invalid sign-in security request.'));
-  return published(read('security.summary', {}), 'The sign-in security summary is unavailable.');
+  return validated(read('security.summary', {}), 'The sign-in security summary is unavailable.');
 }
+
+// The summary as every screen shows it: read over the session socket and again whenever Admin says it changed (a
+// sign-in, a refusal, an acknowledgment, new recovery codes); a change never writes it itself.
+const summaryValue = synced('security/summary', loadSecuritySummary);
+export const securitySummary = derived(summaryValue, (state) => state.value);
 
 /** Acknowledge exactly the failed attempts the Supervisor saw; any reported since stay. */
 export function acknowledgeFailedAttempts(fetcher, seen) {
   if (!Number.isSafeInteger(seen) || seen < 1 || seen > MAX_COUNT) {
     return Promise.reject(new LocalApiError('Invalid sign-in security request.'));
   }
-  return send(
-    fetcher,
-    FAILURES,
-    {
-      method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ acknowledged: seen }),
-    },
-    'The acknowledgment could not be saved.',
-  );
+  if (typeof fetcher !== 'function') return Promise.reject(new LocalApiError('Invalid sign-in security request.'));
+  const answer = fetcher(FAILURES, {
+    method: 'POST',
+    cache: 'no-store',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ acknowledged: seen }),
+  });
+  // The summary shown is the one read after Admin announces the acknowledgment.
+  return validated(answer, 'The acknowledgment could not be saved.').then(() => summaryValue.refresh());
 }
 
 export function clearSecuritySummary() {
-  summaryEpoch += 1;
-  securitySummary.set(null);
+  summaryValue.reset();
 }
 
 /** A fresh set exactly as Admin shows it once: ten distinct codes written xxxx-xxxx-xxxx, or null. */
@@ -180,7 +173,7 @@ export async function replaceRecoveryCodes(fetcher, proof) {
   const body = await completeOperation(fetcher, RECOVERY_CODES, proof);
   const codes = exactKeys(body, ['recovery_codes']) ? recoveryCodes(body.recovery_codes) : null;
   if (!codes) throw new SecurityError('response-invalid');
-  securitySummary.update((current) => current && { ...current, recoveryCodesRemaining: RECOVERY_CODE_COUNT });
+  void summaryValue.refresh();
   return codes;
 }
 

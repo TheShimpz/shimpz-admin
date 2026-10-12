@@ -1,13 +1,14 @@
 <script>
   import { locale, t } from '#lib/i18n.js';
-  import { adminSocket, call, topicValue } from '#lib/adminSocket.js';
+  import { adminSocket } from '#lib/adminSocket.js';
+  import { synced } from '#lib/synced.js';
   import { fetchSpaceResources, resourceSegments, resourceStatus } from '#lib/spaceResources.js';
 
   // What leads the status line, such as the Admin version; it shows even while the status is unknown.
   let { lead } = $props();
   // Admin's watcher reads the Space's resources while this line is shown and says when they changed (ADR-0114).
-  const signal = topicValue('space/resources', () => fetchSpaceResources(call));
-  let resources = $derived($signal);
+  const signal = synced('space/resources', fetchSpaceResources);
+  let resources = $derived($signal.value);
   // While Admin cannot be reached the line says so, as the shell's notice does, instead of the last known summary.
   let connection = $derived(
     ['reconnecting', 'failed'].includes($adminSocket.phase) && $adminSocket.offline

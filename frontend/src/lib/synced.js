@@ -1,0 +1,162 @@
+// The one way a screen holds data Admin serves (ADR-0114): a synced value of one read of one topic. It subscribes to
+// the topic while a screen shows it, reads once the subscription is in place, and reads again whenever its value may be
+// older than what Admin holds: on a change Admin announces, on a subscription (or reopen) at a newer revision, after a
+// change announced while a read ran, and after a transient failure (with a capped backoff, never a terminal error). It
+// runs one read at a time, so an older answer can never overwrite a newer one, and it knows the revision its value
+// reflects from the read's own results, never from another read of the same topic. A change a screen makes never sets
+// the value: its own read after Admin announces the change does (`refresh()` waits for that read).
+import { writable } from 'svelte/store';
+
+import { socketReads } from './adminSocket.js';
+import { LocalApiError } from './validate.js';
+
+export const RETRY_FIRST_MS = 1_000;
+export const RETRY_MAX_MS = 30_000;
+
+/** A failure worth reading again on its own: Admin or Team briefly unavailable, busy, or the socket reconnecting. */
+export function transientFailure(error) {
+  if (!(error instanceof LocalApiError)) return true;
+  return error.status === 0 || error.status === 429 || error.status >= 500;
+}
+
+/**
+ * A synced value: `read(call)` reads it with `call(method, params)`, which answers as the session socket does and
+ * records the revisions of `topic` its results reflect. `topic` may be null for data no topic announces (the public
+ * Store catalog): it is read when shown and retried on failure. The store holds `{ status, value, error }`:
+ * `loading` until the first read ends, `ready` with the newest value, or `error` with the last value kept and the
+ * failure of a read that will not succeed by itself (a refusal); a transient failure keeps the status and retries.
+ */
+export function synced(topic, read, { initial = null } = {}) {
+  let value = initial;
+  let has = false;
+  // The revision the value reflects, and the newest one Admin announced for the topic: the value is stale while older.
+  let reflects = { epoch: '', revision: -1 };
+  let known = { epoch: '', revision: -1 };
+  let reading = null;
+  let again = false;
+  let started = false;
+  let stopped = true;
+  let retryTimer;
+  let retryAttempt = 0;
+  let publish = () => {};
+  // Bumped by reset: a read that started before it never publishes.
+  let era = 0;
+
+  function stale() {
+    if (!has) return true;
+    if (!known.epoch) return false;
+    return reflects.epoch !== known.epoch || reflects.revision < known.revision;
+  }
+
+  function hear(knownNow) {
+    if (!knownNow?.epoch) return;
+    if (knownNow.epoch !== known.epoch || knownNow.revision > known.revision) known = { ...knownNow };
+  }
+
+  function scheduleRetry() {
+    clearTimeout(retryTimer);
+    const delay = Math.min(RETRY_FIRST_MS * (2 ** Math.min(retryAttempt, 5)), RETRY_MAX_MS);
+    retryAttempt += 1;
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      if (!stopped) void refresh();
+    }, delay);
+  }
+
+  async function once() {
+    const begun = era;
+    again = false;
+    const before = { ...known };
+    const seen = [];
+    const call = async (method, params) => {
+      const response = await socketReads.call(method, params);
+      const revision = response?.revision;
+      if (topic && revision?.topic === topic) seen.push({ epoch: revision.epoch, revision: revision.revision });
+      return response;
+    };
+    try {
+      const next = await read(call);
+      if (stopped || begun !== era) return;
+      value = next;
+      has = true;
+      // The oldest revision any of its results reflects; a read whose results carry none reflects what was known as
+      // it started, since Admin announces every later change.
+      reflects = seen.length
+        ? seen.reduce((oldest, item) => (item.revision < oldest.revision ? item : oldest))
+        : before;
+      retryAttempt = 0;
+      clearTimeout(retryTimer);
+      publish({ status: 'ready', value, error: null });
+      if (stale()) again = true;
+    } catch (error) {
+      if (stopped || begun !== era) return;
+      if (transientFailure(error)) {
+        scheduleRetry();
+        return;
+      }
+      publish({ status: 'error', value, error });
+    }
+  }
+
+  /** Read again now, or once the read under way ends; settles when a read started after this call has ended. */
+  function refresh() {
+    if (stopped) return Promise.resolve();
+    if (reading) {
+      again = true;
+      return reading;
+    }
+    reading = (async () => {
+      try {
+        do await once(); while (again && !stopped);
+      } finally {
+        reading = null;
+      }
+    })();
+    return reading;
+  }
+
+  const store = writable({ status: 'loading', value: initial, error: null }, (set) => {
+    stopped = false;
+    publish = set;
+    if (has) set({ status: 'ready', value, error: null });
+    if (!topic) {
+      void refresh();
+      return () => {
+        stopped = true;
+        clearTimeout(retryTimer);
+      };
+    }
+    // Nothing was heard while no screen showed it: the first subscription reads again.
+    started = false;
+    const stop = socketReads.watch(topic, (_topic, cause, knownNow) => {
+      hear(knownNow);
+      // A change always reads; a subscription or reopen reads only what may be older than Admin's revision. A first
+      // open reads too, since nothing has been read yet.
+      if (cause === 'changed' || !started || stale()) {
+        started = true;
+        void refresh();
+      }
+    });
+    return () => {
+      stopped = true;
+      clearTimeout(retryTimer);
+      stop();
+    };
+  });
+
+  /** Forget the value and what it reflects, as a session that ended must: the next screen reads it from the start. */
+  function reset() {
+    era += 1;
+    value = initial;
+    has = false;
+    reflects = { epoch: '', revision: -1 };
+    known = { epoch: '', revision: -1 };
+    again = false;
+    reading = null;
+    retryAttempt = 0;
+    clearTimeout(retryTimer);
+    store.set({ status: 'loading', value: initial, error: null });
+  }
+
+  return { subscribe: store.subscribe, refresh, reset };
+}

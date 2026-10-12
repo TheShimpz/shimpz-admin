@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { get } from 'svelte/store';
 
+import { socketReads } from '../src/lib/adminSocket.js';
+
 import {
   acknowledgeFailedAttempts,
   beginRecoveryCodes,
@@ -28,54 +30,74 @@ function answer(status, body) {
   return { calls, fetcher };
 }
 
-test('the summary reads the failed attempts a sign-in reported', async () => {
-  const { calls, fetcher } = answer(200, {
-    failed_second_factor_attempts: 3, recovery_codes_remaining: 9, sign_in_history: HISTORY,
-  });
-  const expected = {
+// The session socket as the shown summary sees it: its topic's listeners, and each `security.summary` read answered.
+function socketWith(body) {
+  const listeners = new Set();
+  socketReads.watch = (_topic, listener) => {
+    listeners.add(listener);
+    return () => listeners.delete(listener);
+  };
+  const reads = [];
+  socketReads.call = async (method, params) => {
+    reads.push({ method, params });
+    return new Response(JSON.stringify(body()), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  const announce = (cause, revision) => {
+    for (const listener of [...listeners]) listener('security/summary', cause, { epoch: 'a'.repeat(32), revision });
+  };
+  return { reads, announce };
+}
+
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+test('the summary shown is read over the session socket and read again when Admin says it changed', async () => {
+  let failed = 3;
+  const socket = socketWith(() => ({
+    failed_second_factor_attempts: failed, recovery_codes_remaining: 9, sign_in_history: HISTORY,
+  }));
+  const seen = [];
+  const stop = securitySummary.subscribe((value) => seen.push(value));
+  socket.announce('open', 1);
+  await flush();
+  assert.deepEqual(get(securitySummary), {
     failedAttempts: 3,
     recoveryCodesRemaining: 9,
     signIns: { previous: { at: '2026-10-08T21:14:00Z', origin: 'http://127.0.0.1:7777' }, failuresSince: 2 },
-  };
-
-  assert.deepEqual(await loadSecuritySummary(fetcher), expected);
-  assert.deepEqual(get(securitySummary), expected);
-  // The summary is the session socket's `security.summary` read (ADR-0114).
-  assert.deepEqual(calls[0], { url: 'security.summary', init: {} });
-  clearSecuritySummary();
-  assert.equal(get(securitySummary), null);
-});
-
-test('a summary that answers after the session changed is never shown in the next one', async () => {
-  let release;
-  const held = new Promise((resolve) => { release = resolve; });
-  const loading = loadSecuritySummary(async () => {
-    await held;
-    return new Response(JSON.stringify({
-      failed_second_factor_attempts: 3, recovery_codes_remaining: 9, sign_in_history: HISTORY,
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   });
+  assert.deepEqual(socket.reads, [{ method: 'security.summary', params: {} }]);
+  failed = 4;
+  socket.announce('changed', 2);
+  await flush();
+  assert.equal(get(securitySummary).failedAttempts, 4);
+  stop();
+  // The session's end forgets it.
   clearSecuritySummary();
-  release();
-  await loading;
   assert.equal(get(securitySummary), null);
 });
 
-test('an acknowledgment names exactly the attempts the Supervisor saw', async () => {
+test('an acknowledgment names exactly the attempts the Supervisor saw, and the summary is read again after it', async () => {
+  const socket = socketWith(() => ({
+    failed_second_factor_attempts: 0, recovery_codes_remaining: 10, sign_in_history: null,
+  }));
+  const stop = securitySummary.subscribe(() => {});
+  socket.announce('open', 1);
+  await flush();
   const { calls, fetcher } = answer(200, {
     failed_second_factor_attempts: 1, recovery_codes_remaining: 10, sign_in_history: null,
   });
-
-  assert.deepEqual(await acknowledgeFailedAttempts(fetcher, 3), {
-    failedAttempts: 1, recoveryCodesRemaining: 10, signIns: null,
-  });
+  await acknowledgeFailedAttempts(fetcher, 3);
   assert.equal(calls[0].url, '/api/admin/security/failures');
   assert.equal(calls[0].init.method, 'POST');
   assert.deepEqual(JSON.parse(calls[0].init.body), { acknowledged: 3 });
+  // What shows is the summary read afterwards, never the acknowledgment's own answer.
+  assert.equal(socket.reads.length, 2);
+  assert.equal(get(securitySummary).failedAttempts, 0);
   for (const seen of [0, -1, 1.5, '3', 1_000_001]) {
     await assert.rejects(acknowledgeFailedAttempts(fetcher, seen), /Invalid sign-in security request/);
   }
   assert.equal(calls.length, 1);
+  stop();
+  clearSecuritySummary();
 });
 
 test('a refused or malformed answer fails closed', async () => {
@@ -127,15 +149,11 @@ test('replacing the codes starts with the password and spends one second factor 
   const passkey = answer(202, { methods: ['totp', 'passkey'], passkey_options: { challenge: 'c' } });
   assert.deepEqual(await beginRecoveryCodes(passkey.fetcher, 'a password'), { passkey: { challenge: 'c' } });
 
-  securitySummary.set({ failedAttempts: 0, recoveryCodesRemaining: 2 });
   const replaced = answer(200, { recovery_codes: CODES });
   assert.deepEqual(await replaceRecoveryCodes(replaced.fetcher, { code: '123456' }), CODES);
   assert.equal(replaced.calls[0].url, '/api/admin/recovery-codes');
   assert.deepEqual(JSON.parse(replaced.calls[0].init.body), { code: '123456' });
-  assert.equal(get(securitySummary).recoveryCodesRemaining, 10);
-  clearSecuritySummary();
   assert.deepEqual(await replaceRecoveryCodes(answer(200, { recovery_codes: CODES }).fetcher, { credential: {} }), CODES);
-  assert.equal(get(securitySummary), null);
 });
 
 test('a refused or malformed confirmation is a closed error and nothing invalid is sent', async () => {
