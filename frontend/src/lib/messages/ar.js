@@ -814,6 +814,7 @@ export default {
     rename: 'إعادة التسمية',
     renameLabel: 'اسم {team}',
     renameFailed: 'تعذّرت إعادة تسمية الـ Team.',
+    renameInvalid: 'أدخل اسمًا للـ Team لا يتجاوز 80 حرفًا.',
     deleteTeam: 'حذف',
     open: 'فتح قائمة الفرق',
     close: 'إغلاق قائمة الفرق',

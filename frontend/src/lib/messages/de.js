@@ -814,6 +814,7 @@ export default {
     rename: 'Umbenennen',
     renameLabel: 'Name für {team}',
     renameFailed: 'Das Team konnte nicht umbenannt werden.',
+    renameInvalid: 'Gib einen Team-Namen mit höchstens 80 Zeichen ein.',
     deleteTeam: 'Löschen',
     open: 'Team-Liste öffnen',
     close: 'Team-Liste schließen',

@@ -814,6 +814,7 @@ export default {
     rename: '重命名',
     renameLabel: '{team} 的名称',
     renameFailed: '无法重命名该 Team。',
+    renameInvalid: '请输入不超过 80 个字符的 Team 名称。',
     deleteTeam: '删除',
     open: '打开团队列表',
     close: '关闭团队列表',

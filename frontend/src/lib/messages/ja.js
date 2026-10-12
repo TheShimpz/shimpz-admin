@@ -814,6 +814,7 @@ export default {
     rename: '名前を変更',
     renameLabel: '{team} の名前',
     renameFailed: 'Team の名前を変更できませんでした。',
+    renameInvalid: '80 文字以内の Team 名を入力してください。',
     deleteTeam: '削除',
     open: 'チーム一覧を開く',
     close: 'チーム一覧を閉じる',

@@ -4417,10 +4417,40 @@ test('a Local Team is renamed in place: Enter saves by id, Escape keeps the name
   // While the name is saving, the field keeps focus but cannot be edited, so no later draft is silently lost.
   await expect(again).toHaveAttribute('readonly', '');
   releaseRefusal();
-  await expect(page.getByText('Another Team already has this name.')).toBeVisible();
+  await expect(page.getByText('The Team could not be renamed.')).toBeVisible();
   await expect(again).not.toHaveAttribute('readonly', '');
   await expect(again).toBeFocused();
   await expect(again).toHaveValue('Sales');
+});
+
+test('a Team name that cannot be saved is explained in the interface language and stays to be corrected', async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('shimpz_lang', 'pt'));
+  await routeScenario(page, 'ready');
+  const renames = [];
+  await page.route('**/api/teams/marketing', async (route) => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    renames.push(route.request().postDataJSON());
+    return route.fulfill({ status: 400, json: { detail: 'team name has no usable characters' } });
+  });
+  const copy = messages.pt.teamNavigation;
+  await page.goto('/chat/?team=marketing');
+  const navigation = page.locator('.shell-sidebar');
+  await navigation.getByRole('button', { name: copy.actions.replace('{team}', 'Marketing') }).click();
+  await page.getByRole('menuitem', { name: copy.rename }).click();
+  const field = navigation.getByRole('textbox', { name: copy.renameLabel.replace('{team}', 'Marketing') });
+  // Team counts a name in code points, at most 80.
+  await field.fill('x'.repeat(81));
+  await page.keyboard.press('Enter');
+  const notice = page.locator('.admin-toast');
+  await expect(notice).toContainText(copy.renameInvalid);
+  await expect(field).toBeFocused();
+  expect(renames).toEqual([]);
+
+  await field.fill('Vendas');
+  await page.keyboard.press('Enter');
+  await expect(notice).toContainText(copy.renameFailed);
+  await expect(notice).not.toContainText('team name has no usable characters');
+  expect(renames).toEqual([{ team_name: 'Vendas' }]);
 });
 
 test('a Team name is shown exactly as written in every label that names it', async ({ page }) => {

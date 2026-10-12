@@ -10,6 +10,7 @@
   import TeamActionsMenu from '#lib/TeamActionsMenu.svelte';
   import { renameTeam, reorderTeams, teamContext } from '#lib/teamContext.js';
   import TeamRoutinesDialog from '#lib/TeamRoutinesDialog.svelte';
+  import { canonicalTeamName } from '#lib/validate.js';
 
   let {
     active = '',
@@ -74,12 +75,26 @@
     field?.select();
   }
 
+  function admissibleName(name) {
+    try {
+      canonicalTeamName(name.normalize('NFC'));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async function commitRename(team, restoreFocus) {
     if (renaming !== team.id || renameSaving) return;
     const name = renameDraft.trim();
     if (!name || name === team.name) {
       renaming = '';
       if (restoreFocus) await focusTeamLink(team.id);
+      return;
+    }
+    // A name Team would refuse is explained in the interface language and stays in the field to be corrected.
+    if (!admissibleName(name)) {
+      showAdminNotice({ tone: 'error', label: copy.rename, message: copy.renameInvalid });
       return;
     }
     renameSaving = true;
@@ -93,8 +108,8 @@
       const restore = stillHere();
       if (renaming === team.id) renaming = '';
       if (restore) await focusTeamLink(team.id);
-    } catch (error) {
-      showAdminNotice({ tone: 'error', label: copy.rename, message: error?.message || copy.renameFailed });
+    } catch {
+      showAdminNotice({ tone: 'error', label: copy.rename, message: copy.renameFailed });
       if (stillHere()) document.getElementById(renameFieldId(team.id))?.focus();
     } finally {
       renameSaving = false;

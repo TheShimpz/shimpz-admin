@@ -814,6 +814,7 @@ export default {
     rename: 'Renomear',
     renameLabel: 'Nome para {team}',
     renameFailed: 'Não foi possível renomear o Team.',
+    renameInvalid: 'Digite um nome de Team com até 80 caracteres.',
     deleteTeam: 'Excluir',
     open: 'Abrir a lista de Times',
     close: 'Fechar a lista de Times',
