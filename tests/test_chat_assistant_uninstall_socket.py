@@ -4,6 +4,7 @@ import asyncio
 import concurrent.futures
 import importlib
 import json
+import threading
 import unittest
 from unittest import mock
 
@@ -104,6 +105,45 @@ class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
                     ("assistant-uninstall", None),
                 ],
             )
+
+        asyncio.run(scenario())
+
+    def test_a_stop_that_crosses_the_proposal_or_its_uninstall_answers_nothing(self) -> None:
+        # The browser sends Stop while the proposal that ended its turn, or the uninstall it approved, is on its way:
+        # nothing is running that a Stop ends, so nothing answers it and the uninstall ends with its own result.
+        async def scenario() -> None:
+            route: concurrent.futures.Future[object] = concurrent.futures.Future()
+            release = threading.Event()
+
+            def uninstall(_proposal):
+                release.wait(timeout=2)
+                return self.chat_socket.lifecycle.assistant_uninstall.UninstallResult(200, True)
+
+            with (
+                mock.patch.object(self.chat_socket.local, "turn") as turn,
+                mock.patch.object(self.chat_socket.local, "stop") as stop,
+                mock.patch.object(self.chat_socket.lifecycle, "submit_route", return_value=route),
+                mock.patch.object(self.chat_socket.lifecycle.assistant_uninstall, "uninstall", side_effect=uninstall),
+            ):
+                websocket = await self._open()
+                await websocket.send_json(chat_socket_fixtures.chat_frame("Desinstala o Cloudflare"))
+                route.set_result(self._uninstall_result())
+                proposed = await websocket.next_json()
+                self.assertEqual(proposed["state"], "proposed")
+                await websocket.send_json({"type": "stop"})
+                with self.assertRaises(TimeoutError):
+                    await websocket.next_message(wait_seconds=0.05)
+
+                await websocket.send_json(chat_socket_fixtures.chat_frame("Pode desinstalar!"))
+                self.assertEqual((await websocket.next_json())["state"], "uninstalling")
+                await websocket.send_json({"type": "stop"})
+                with self.assertRaises(TimeoutError):
+                    await websocket.next_message(wait_seconds=0.05)
+                release.set()
+                self.assertEqual((await websocket.next_json())["state"], "uninstalled")
+                stop.assert_not_called()
+                turn.assert_not_called()
+                await websocket.disconnect()
 
         asyncio.run(scenario())
 

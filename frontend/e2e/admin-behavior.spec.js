@@ -177,6 +177,7 @@ async function routeReadyChat(page, {
   assistantUninstallWasRemoved = true,
   failUninstallDecision = false,
   holdAssistantUninstall = false,
+  holdUninstallProposal = false,
   holdAssistantInventoryRefresh = false,
   holdPostInstallInventory = false,
   disconnectHumanResponse = false,
@@ -253,6 +254,7 @@ async function routeReadyChat(page, {
   let completeAssistantPlan = () => {};
   let releaseAssistantPlan = () => {};
   let releaseAssistantUninstall = () => {};
+  let releaseUninstallProposal = () => {};
   let releaseReply = () => {};
   let releaseProgressStart = () => {};
   let releaseProgressFinish = () => {};
@@ -750,7 +752,7 @@ async function routeReadyChat(page, {
         if (assistantUninstall && assistantInstalled) {
           if (!uninstallProposed) {
             uninstallProposed = true;
-            socket.send(JSON.stringify({
+            const propose = () => socket.send(JSON.stringify({
               type: 'assistant-uninstall',
               state: 'proposed',
               proposal_id: 'e'.repeat(32),
@@ -759,6 +761,8 @@ async function routeReadyChat(page, {
               expires_in: 120,
               assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
             }));
+            if (holdUninstallProposal) releaseUninstallProposal = propose;
+            else propose();
             return;
           }
           if (failUninstallDecision) {
@@ -902,6 +906,7 @@ async function routeReadyChat(page, {
     completeAssistantPlan: () => completeAssistantPlan(),
     releaseAssistantPlan: () => releaseAssistantPlan(),
     releaseAssistantUninstall: () => releaseAssistantUninstall(),
+    releaseUninstallProposal: () => releaseUninstallProposal(),
     releaseAssistantInventory: () => releaseAssistantInventory(),
     releaseAssistantIcon: () => releaseAssistantIcon(),
     releaseInferenceWrite: () => releaseInferenceWrite(),
@@ -2914,6 +2919,26 @@ for (const [interruption, interrupt] of [
     expect(chat.chatFrames().map((frame) => frame.message)).toEqual(['Uninstall the Cloudflare Assistant']);
   });
 }
+
+test('a Stop that crosses an uninstall proposal leaves the proposal to answer', async ({ page }) => {
+  // Admin answers nothing to a Stop that finds the turn already ended by its proposal.
+  const chat = await routeReadyChat(page, { assistantUninstall: true, holdUninstallProposal: true, holdStop: true });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'Uninstall the Cloudflare Assistant');
+  await composer.press('Enter');
+  await page.getByRole('button', { name: 'Stop', exact: true }).click();
+  chat.releaseUninstallProposal();
+
+  const task = page.locator('[data-slot="chat-task"]');
+  const uninstall = task.getByRole('button', { name: 'Uninstall Shimpz Cloudflare' });
+  await expect(uninstall).toBeEnabled();
+  await expect(page.getByText('The secure chat response was invalid.')).toHaveCount(0);
+  await uninstall.click();
+  await expect(task).toHaveAttribute('data-state', 'complete');
+  expect(chat.chatFrames().map((frame) => frame.message)).toEqual(['Uninstall the Cloudflare Assistant', 'yes']);
+  expect(chat.chatConnections()).toBe(1);
+});
 
 test('never falls back to the Store icon when model context leaves an uninstall card', async ({ page }) => {
   const chat = await routeReadyChat(page, {

@@ -705,9 +705,6 @@ async def _dispatch_stop(websocket: WebSocket, connection: _Connection, team_id:
             await websocket.close(code=1008)
             raise WebSocketDisconnect(1008)
         return
-    if connection.active is None and connection.pending_challenge_id is None:
-        # A Stop that crossed its turn's terminal finds nothing to stop; that turn already ended exactly once.
-        return
     if connection.active is None:
         history_id = connection.pending_history_id
         if history_id is None:
@@ -735,6 +732,15 @@ async def _dispatch(
     authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
 ) -> None:
     frame_type = frame.get("type")
+    if (
+        frame == {"type": "stop"}
+        and connection.sync_task is None
+        and connection.active is None
+        and connection.pending_challenge_id is None
+    ):
+        # Nothing runs that a Stop ends: it crossed its turn's terminal (a reply, guidance, or an uninstall proposal),
+        # or an approved uninstall that ends with its own result. That turn already ended exactly once.
+        return
     if connection.lifecycle is not None:
         await _send_event(websocket, _error_terminal(409, "an Assistant lifecycle operation is already active"))
         return

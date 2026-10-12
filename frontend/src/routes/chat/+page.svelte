@@ -1445,7 +1445,8 @@
           if (!busy || syncing) throw new Error('unexpected Assistant lifecycle event');
           capabilityObjective = null;
           const receipt = turnReceipt();
-          if (stopping) throw new Error('unexpected Assistant lifecycle event');
+          // A Stop may cross a proposal or the uninstall it approved; Admin answers that Stop with nothing, so the
+          // lifecycle event is applied as it is and ends the stop.
           const terminal = applyLifecycleEvent(incoming, receipt);
           stopping = false;
           resetProgress();
