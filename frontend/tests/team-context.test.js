@@ -1279,3 +1279,26 @@ test('requests for the inventory share one read, and one made while it runs gets
   await waiting;
   assert.equal(reads, 3);
 });
+
+test('a Team is renamed while its inventory is read again', async () => {
+  clearTeamContext();
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const fetcher = fixtureFetcher({
+    'teams.rename marketing': async () => response(200, { team_id: 'marketing', team_name: 'Growth' }),
+  });
+  await loadTeamContext(fetcher, 'marketing');
+  const slow = fixtureFetcher({
+    'teams.rename marketing': async () => response(200, { team_id: 'marketing', team_name: 'Growth' }),
+    'assistants.list marketing': async () => {
+      await held;
+      return response(200, { assistants: [] });
+    },
+  });
+  const refreshing = refreshTeamInventory(slow);
+  assert.equal(get(teamContext).phase, 'loading');
+  assert.equal((await renameTeam(slow, 'marketing', 'Growth')).name, 'Growth');
+  release();
+  await refreshing;
+  assert.equal(get(teamContext).teams.find((team) => team.id === 'marketing').name, 'Growth');
+});

@@ -475,7 +475,8 @@ export async function renameTeam(id, name) {
   canonicalTeamName(canonicalName, 'Enter a valid Team name.');
   const current = get(teamContext);
   const target = current.teams.find((team) => team.id === canonicalId);
-  if (!target || current.phase !== 'ready') throw new LocalApiError('Invalid local Team request.');
+  // A Team the list shows can be renamed while an inventory or selection read runs; a whole-context load shows none.
+  if (!target) throw new LocalApiError('Invalid local Team request.');
   if (target.name === canonicalName) return target;
   const epoch = contextEpoch;
   const response = await socketReads.call('teams.rename', { team_id: canonicalId, body: { team_name: canonicalName } });
