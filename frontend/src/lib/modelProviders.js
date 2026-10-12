@@ -44,9 +44,9 @@ function validSelection(provider, model) {
   return PROVIDER_IDS.has(provider) && EXPECTED_CATALOG[provider].models.some((entry) => entry.id === model);
 }
 
-/** Read masked provider state. A response containing any secret-shaped extra field fails closed. */
-export async function listModelProviders() {
-  const response = await socketReads.call('models.list', {});
+/** Read masked provider state with `call`. A response containing any secret-shaped extra field fails closed. */
+export async function listModelProviders(call = socketReads.call) {
+  const response = await call('models.list', {});
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'Model provider settings are unavailable.'), response.status);
@@ -64,12 +64,12 @@ export async function listModelProviders() {
   return body.providers;
 }
 
-/** Read only provider/model metadata from one Team. A 409 means it has no selection yet. */
-export async function loadInference(teamId) {
+/** Read only provider/model metadata from one Team with `call`. A 409 means it has no selection yet. */
+export async function loadInference(teamId, call = socketReads.call) {
   if (typeof teamId !== 'string' || !TEAM_ID_RE.test(teamId)) {
     throw new LocalApiError('Invalid Team inference request.');
   }
-  const response = await socketReads.call('inference.read', { team_id: teamId });
+  const response = await call('inference.read', { team_id: teamId });
   const body = await jsonObject(response);
   if (response.status === 409) return null;
   if (!response.ok) {
@@ -107,7 +107,10 @@ async function saveInference(teamId, setup) {
   }
 }
 
-/** Save a key to the backend first, then send only provider/model to the Team controller. */
+/**
+ * Save a key to the backend first, then send only provider/model to the Team controller. The answers are checked, but
+ * what a screen shows comes from its next reads of the providers and the selection, never from these answers.
+ */
 export async function saveModelSetup(teamId, setup, providers) {
   if (
     typeof teamId !== 'string' ||
@@ -124,8 +127,6 @@ export async function saveModelSetup(teamId, setup, providers) {
     throw new LocalApiError('Invalid model provider settings.');
   }
   const apiKey = typeof setup.apiKey === 'string' ? setup.apiKey.trim() : '';
-  let providerState = current;
-
   if (apiKey) {
     const credentialResponse = await socketReads.call(
       'models.save',
@@ -138,19 +139,8 @@ export async function saveModelSetup(teamId, setup, providers) {
     if (!validProvider(credentialBody) || credentialBody.id !== setup.provider || !credentialBody.configured) {
       throw new LocalApiError('The model provider response is invalid.', credentialResponse.status);
     }
-    providerState = credentialBody;
   } else if (!current.configured) {
     throw new LocalApiError('Add an API key for the selected provider.');
   }
-
-  try {
-    await saveInference(teamId, setup);
-  } catch (error) {
-    // A key saved before the selection failed stays saved, so the caller must not ask for it again.
-    const failure = error instanceof LocalApiError
-      ? error
-      : new LocalApiError('The Team model selection could not be saved.');
-    throw Object.assign(failure, { providerState });
-  }
-  return { providerState, inference: { provider: setup.provider, model: setup.model } };
+  await saveInference(teamId, setup);
 }

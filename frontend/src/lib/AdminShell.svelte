@@ -12,8 +12,6 @@
   import SessionExpiryWarning from '#lib/SessionExpiryWarning.svelte';
   import { SESSION_ENDED, setSessionContext } from '#lib/sessionContext.js';
   import SupervisorMenu from '#lib/SupervisorMenu.svelte';
-  import { refreshInference, refreshProviders } from '#lib/modelContext.js';
-  import { teamContext } from '#lib/teamContext.js';
   import TeamDialogs from '#lib/TeamDialogs.svelte';
   import TeamNavigation from '#lib/TeamNavigation.svelte';
   import TeamSidebar from '#lib/TeamSidebar.svelte';
@@ -75,39 +73,12 @@
     }
   }
 
-  // The selected Team's model selection changed elsewhere: the shown one follows it.
-  function inferenceChanged(teamId) {
-    return (_topic, cause) => {
-      if (cause === 'changed' || cause === 'reopen') refreshInference(teamId).catch(() => {});
-    };
-  }
-
-  // A provider key of the Space changed (a save that finished after its socket dropped, another tab): the providers
-  // are read again.
-  function providersChanged(_topic, cause) {
-    if (cause === 'changed' || cause === 'reopen') refreshProviders().catch(() => {});
-  }
-
-  let watchedTeam = $derived(authenticated ? $teamContext.selectedTeamId : '');
-
-  $effect(() => {
-    const teamId = watchedTeam;
-    if (!teamId) return undefined;
-    const stops = [
-      watchTopic(`team/${teamId}/inference`, inferenceChanged(teamId)),
-    ];
-    return () => {
-      for (const stop of stops) stop();
-    };
-  });
-
   // Opened as the shell starts, before any screen inside it reads, and closed with it.
   if (untrack(() => authenticated)) {
     const disconnect = connectAdminSocket({ onSignedOut: () => sessionEnded?.() });
     // The person's own input, and nothing the page does on its own, keeps the session alive.
     const stops = [
       watchTopic('session', refreshSession),
-      watchTopic('space/models', providersChanged),
       trackActivity(),
     ];
     onDestroy(() => {

@@ -117,3 +117,44 @@ test('rejects inference models outside the provider catalog before saving', asyn
 test('treats unconfigured inference as empty', async () => {
   assert.equal(await via(async () => response(409, { detail: 'not configured' }), () => loadInference('team_1')), null);
 });
+
+test('every refused or malformed answer fails closed with its own message', async () => {
+  const answering = (status, body) => async () => response(status, body);
+  await assert.rejects(listModelProviders(answering(503, { detail: 'Team is unavailable' })), /Team is unavailable/);
+  await assert.rejects(listModelProviders(answering(200, { providers: [providers[0]] })), /invalid/);
+  await assert.rejects(listModelProviders(answering(200, { providers: [providers[0], providers[0]] })), /invalid/);
+
+  await assert.rejects(loadInference('Not A Team', answering(200, {})), /Invalid Team inference request/);
+  await assert.rejects(loadInference('team_1', answering(404, { detail: 'Team not found' })), /Team not found/);
+  await assert.rejects(
+    loadInference('team_1', answering(200, { team_id: 'team_2', provider: 'openai', model: 'gpt-6-luna' })),
+    /invalid/,
+  );
+
+  const setup = { provider: 'openai', model: 'gpt-6-luna', apiKey: 'test-api-key-word' };
+  await assert.rejects(via(answering(200, {}), () => saveModelSetup('Not A Team', setup, providers)), /Invalid model/);
+  await assert.rejects(via(answering(200, {}), () => saveModelSetup('team_1', setup, providers.slice(1))), /Invalid model/);
+  await assert.rejects(
+    via(answering(400, { detail: 'API key was rejected by OpenAI' }), () => saveModelSetup('team_1', setup, providers)),
+    /rejected by OpenAI/,
+  );
+  await assert.rejects(
+    via(answering(200, { ...providers[0], configured: false }), () => saveModelSetup('team_1', setup, providers)),
+    /model provider response is invalid/,
+  );
+  await assert.rejects(
+    via(answering(200, {}), () => saveModelSetup('team_1', { ...setup, apiKey: '' }, providers)),
+    /Add an API key/,
+  );
+  const selection = { provider: 'anthropic', model: 'claude-sonnet-5-5', apiKey: '' };
+  await assert.rejects(
+    via(answering(503, { detail: 'Team is unavailable' }), () => saveModelSetup('team_1', selection, providers)),
+    /Team is unavailable/,
+  );
+  await assert.rejects(
+    via(answering(200, { team_id: 'team_1', provider: 'anthropic', model: 'claude-opus-5-5' }), () => (
+      saveModelSetup('team_1', selection, providers)
+    )),
+    /inference response is invalid/,
+  );
+});

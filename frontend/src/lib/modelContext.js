@@ -1,11 +1,12 @@
-import { get, writable } from 'svelte/store';
+// The shown Team's model context (ADR-0114): the Space's model providers and the Team's model selection, each a synced
+// value Admin announces (`space/models`, `team/{id}/inference`), with the one choice the person is about to save. A save
+// never writes the context: what Admin holds after it, read again, does. The Team opens once Admin holds both a
+// selection and its provider's key, whichever tab or lost answer stored them.
+import { derived, get, writable } from 'svelte/store';
 
 import { LocalApiError } from './localApi.js';
-import {
-  listModelProviders,
-  loadInference,
-  saveModelSetup,
-} from './modelProviders.js';
+import { listModelProviders, loadInference, saveModelSetup } from './modelProviders.js';
+import { synced, transientFailure } from './synced.js';
 import { publicError, TEAM_ID_RE } from './validate.js';
 
 function emptyContext() {
@@ -20,40 +21,121 @@ function emptyContext() {
   };
 }
 
-export const modelContext = writable(emptyContext());
+// The last transient failure of each read while it has no value yet: it is read again on its own meanwhile, and the
+// context says so rather than staying a load forever.
+const outage = writable({ providers: null, selection: null });
 
-let generation = 0;
-// Bumped only when the session clears: Team views change `generation`, but a saved key belongs to the session.
-let sessionEpoch = 0;
-let providerCatalogCache = null;
-let providerCatalogRequest = null;
-// The active Team view's persisted inference, as last loaded or saved by that view; null when it has none.
-let persisted = null;
-// A key save whose answer was lost may have stored the key. Keys are the Space's, not a Team view's, so whichever view
-// shows next reads the providers again, instead of the cached state the lost save may have changed.
-let providersUncertain = false;
-// Each selection read takes a number, so the newest one's answer alone is shown.
-let inferenceReads = 0;
-
-function cachedModelProviders() {
-  if (providersUncertain) {
-    providersUncertain = false;
-    providerCatalogCache = null;
-    providerCatalogRequest = null;
-  }
-  if (providerCatalogCache) return Promise.resolve(providerCatalogCache);
-  if (providerCatalogRequest) return providerCatalogRequest;
-  const request = listModelProviders()
-    .then((providers) => {
-      if (providerCatalogRequest === request) providerCatalogCache = providers;
-      return providers;
-    })
-    .finally(() => {
-      if (providerCatalogRequest === request) providerCatalogRequest = null;
-    });
-  providerCatalogRequest = request;
-  return request;
+function tracked(name, read, current = () => true) {
+  return async (call) => {
+    try {
+      const value = await read(call);
+      if (current()) outage.update((state) => ({ ...state, [name]: null }));
+      return value;
+    } catch (error) {
+      if (transientFailure(error) && current()) outage.update((state) => ({ ...state, [name]: error }));
+      throw error;
+    }
+  };
 }
+
+const providersValue = synced('space/models', tracked('providers', (call) => listModelProviders(call)));
+// The shown Team and its selection, read anew each time a Team view opens; `{ selection }` is null when it has none.
+const shownTeam = writable(null);
+// The shown Team's local state: a choice not yet saved, a save under way, and the failure of the last save.
+const local = writable({ teamId: '', choice: null, saving: false, error: '', errorCode: '' });
+// Bumped by every Team view and every save, so a save answered after the view changed leaves it alone.
+let views = 0;
+let saves = 0;
+// The Team views whose default selection this one stored, so it is stored at most once per view.
+let autoSelected = 0;
+
+function selectionValue(teamId) {
+  return synced(
+    `team/${teamId}/inference`,
+    tracked(
+      'selection',
+      async (call) => ({ selection: await loadInference(teamId, call) }),
+      () => get(shownTeam)?.teamId === teamId,
+    ),
+  );
+}
+
+const selectionState = derived(shownTeam, (shown, set) => {
+  if (!shown) {
+    set(null);
+    return undefined;
+  }
+  return shown.value.subscribe((state) => set({ teamId: shown.teamId, ...state }));
+});
+
+function selectedModel(provider, modelId) {
+  return provider?.models.find((entry) => entry.id === modelId) ?? null;
+}
+
+function refusal(state, transient) {
+  const error = state?.status === 'error' ? state.error : !state?.value ? transient : null;
+  return error ? publicError(error, 'The Team model settings are unavailable.') : null;
+}
+
+// Whether the shown Team has no selection yet while a provider already has a key: it then stores the default.
+function awaitingDefault(providers, selection, view) {
+  return Boolean(selection && selection.selection === null && !view.choice && providers.some((entry) => entry.configured));
+}
+
+function compute(providersState, selectionStateNow, view, transient) {
+  if (!view.teamId || selectionStateNow?.teamId !== view.teamId) return emptyContext();
+  const base = { ...emptyContext(), teamId: view.teamId };
+  const providers = providersState.value;
+  const selection = selectionStateNow.value;
+  const failed = refusal(providersState, transient.providers) ?? refusal(selectionStateNow, transient.selection);
+  if (!providers || !selection) {
+    if (view.saving) return { ...base, phase: 'saving' };
+    if (failed) return { ...base, phase: 'error', error: failed.message, errorCode: failed.code ?? '' };
+    return { ...base, phase: 'loading' };
+  }
+  const fallback = providers.find((entry) => entry.configured) ?? providers[0];
+  const chosen = view.choice ?? selection.selection ?? { provider: fallback.id, model: fallback.default_model };
+  const provider = providers.find((entry) => entry.id === chosen.provider);
+  if (!provider || !selectedModel(provider, chosen.model)) {
+    return { ...base, phase: 'error', providers, error: 'Team model settings are invalid.', errorCode: '' };
+  }
+  const stored = selection.selection;
+  const ready = Boolean(
+    !view.choice && stored && stored.provider === provider.id && stored.model === chosen.model && provider.configured,
+  );
+  const shown = { ...base, providers, provider: provider.id, model: chosen.model, ready };
+  if (view.saving) return { ...shown, phase: 'saving', ready: false };
+  if (ready) return { ...shown, phase: 'ready' };
+  if (view.error) return { ...shown, phase: 'error', error: view.error, errorCode: view.errorCode };
+  if (failed) return { ...shown, phase: 'error', error: failed.message, errorCode: failed.code ?? '' };
+  if (awaitingDefault(providers, selection, view)) return { ...shown, phase: 'loading' };
+  return { ...shown, phase: 'ready' };
+}
+
+const context = derived([providersValue, selectionState, local, outage], ([providers, selection, view, transient]) => (
+  compute(providers, selection, view, transient)
+));
+
+// A Team with no selection yet opens on the default model of a provider that already has a key, stored once per view.
+function storeDefault() {
+  const view = get(local);
+  const selection = get(selectionState);
+  const providers = get(providersValue).value;
+  if (autoSelected === views || view.saving || !providers || !selection?.value) return;
+  if (!awaitingDefault(providers, selection.value, view) || selection.teamId !== view.teamId) return;
+  autoSelected = views;
+  persist(view.teamId, '').catch(() => {});
+}
+
+/** The shown Team's model context: `{ phase, teamId, providers, provider, model, ready, error }`. */
+export const modelContext = {
+  subscribe(run) {
+    return context.subscribe((value) => {
+      run(value);
+      if (value.phase === 'loading' && value.providers.length) queueMicrotask(storeDefault);
+    });
+  },
+};
 
 function requireRequest(teamId) {
   if (typeof teamId !== 'string' || !TEAM_ID_RE.test(teamId)) {
@@ -61,271 +143,115 @@ function requireRequest(teamId) {
   }
 }
 
-function providerFrom(state, providerId = state.provider) {
-  return state.providers.find((entry) => entry.id === providerId) ?? null;
-}
-
-function selectedModel(provider, modelId) {
-  return provider?.models.find((entry) => entry.id === modelId) ?? null;
-}
-
-function persistedAndConfigured(state, provider) {
-  return Boolean(
-    provider?.configured &&
-    persisted?.teamId === state.teamId &&
-    persisted.provider === state.provider &&
-    persisted.model === state.model,
-  );
-}
-
-// The active Team view always shows the session's shared provider state and keeps its own selection. A provider
-// configured by another Team view's save opens this Team only when its selection is the one it has persisted.
-function reconcile(state) {
-  if (!providerCatalogCache) return state;
-  const provider = providerCatalogCache.find((entry) => entry.id === state.provider);
-  return {
-    ...state,
-    providers: providerCatalogCache,
-    ready: state.ready || persistedAndConfigured(state, provider),
-  };
-}
-
-// Applies a finished load or save only while it is still the current attempt, recording what that Team persisted.
-function settle(attempt, snapshot, saved) {
-  if (attempt !== generation) return snapshot;
-  if (saved) {
-    persisted = { teamId: snapshot.teamId, provider: saved.provider, model: saved.model };
-  }
-  const settled = reconcile(snapshot);
-  modelContext.set(settled);
-  replayAnnounced(settled.teamId);
-  return settled;
-}
-
-// A failed view keeps the failure's code beside its message: `outcome-unknown` when a save's answer was lost with
-// Admin's connection.
-function fail(attempt, error, state) {
-  const safe = publicError(error, 'The Team model settings are unavailable.');
-  if (attempt === generation) {
-    modelContext.set({ ...state, phase: 'error', ready: false, error: safe.message, errorCode: safe.code ?? '' });
-    replayAnnounced(state.teamId);
-  }
-  return safe;
-}
-
-// A selection change Admin announced while the view loaded or saved is read once it has settled, so it is never lost.
-let announcedWhileBusy = '';
-
-function replayAnnounced(teamId) {
-  if (!announcedWhileBusy || announcedWhileBusy !== teamId) return;
-  announcedWhileBusy = '';
-  queueMicrotask(() => refreshInference(teamId).catch(() => {}));
-}
-
+/** The session ended, or no Team is shown: forget everything read for it. */
 export function clearModelContext() {
-  generation += 1;
-  announcedWhileBusy = '';
-  inferenceReads += 1;
-  sessionEpoch += 1;
-  providerCatalogCache = null;
-  providerCatalogRequest = null;
-  providersUncertain = false;
-  persisted = null;
-  modelContext.set(emptyContext());
+  views += 1;
+  shownTeam.set(null);
+  local.set({ teamId: '', choice: null, saving: false, error: '', errorCode: '' });
+  outage.set({ providers: null, selection: null });
+  providersValue.reset();
 }
 
+/** The providers are read with the first Team view the shell shows; nothing needs reading ahead of it. */
 export function preloadModelProviders() {
-  return cachedModelProviders();
+  return Promise.resolve();
 }
 
-export async function loadModelContext(teamId) {
-  requireRequest(teamId);
-  const attempt = ++generation;
-  persisted = null;
-  const loading = { ...emptyContext(), phase: 'loading', teamId };
-  modelContext.set(loading);
-  try {
-    const [providers, inference] = await Promise.all([
-      cachedModelProviders(),
-      loadInference(teamId),
-    ]);
-    // A key save whose answer was lost while this view loaded may have changed the providers it read: read them again.
-    if (providersUncertain && attempt === generation) return loadModelContext(teamId);
-    const selected = inference
-      ? providers.find((entry) => entry.id === inference.provider)
-      : providers.find((entry) => entry.configured) ?? providers[0];
-    if (!selected) throw new LocalApiError('Model provider settings are invalid.');
-    const model = inference?.model ?? selected.default_model;
-    if (!selectedModel(selected, model)) throw new LocalApiError('Team model settings are invalid.');
-    let selectionReady = Boolean(inference && selected.configured);
-    if (!inference && selected.configured) {
-      await saveModelSetup(
-        teamId,
-        { provider: selected.id, model, apiKey: '' },
-        providers,
-      );
-      selectionReady = true;
-    }
-    const snapshot = {
-      phase: 'ready',
-      teamId,
-      providers,
-      provider: selected.id,
-      model,
-      ready: selectionReady,
-      error: '',
+// Settles with the shown Team's context once it is ready, or fails with its error; a Team view that changed meanwhile
+// fails it as changed.
+function settled(teamId) {
+  return new Promise((resolve, reject) => {
+    let done = false;
+    let stop = () => {};
+    const finish = (outcome) => {
+      done = true;
+      queueMicrotask(() => stop());
+      outcome();
     };
-    return settle(attempt, snapshot, inference ?? (selectionReady ? { provider: selected.id, model } : null));
-  } catch (error) {
-    throw fail(attempt, error, loading);
+    stop = modelContext.subscribe((value) => {
+      if (done) return;
+      if (value.teamId !== teamId) {
+        finish(() => reject(new LocalApiError('The local Team context changed.')));
+      } else if (value.phase === 'ready') {
+        finish(() => resolve(value));
+      } else if (value.phase === 'error') {
+        finish(() => reject(publicError(new LocalApiError(value.error), 'The Team model settings are unavailable.')));
+      }
+    });
+  });
+}
+
+/** Show one Team's model context; showing it again reads it again. Settles once it is ready or failed. */
+export function loadModelContext(teamId) {
+  requireRequest(teamId);
+  const shown = get(shownTeam);
+  if (shown?.teamId === teamId) {
+    local.update((current) => ({ ...current, error: '', errorCode: '' }));
+    void providersValue.refresh();
+    void shown.value.refresh();
+  } else {
+    views += 1;
+    local.set({ teamId, choice: null, saving: false, error: '', errorCode: '' });
+    outage.update((current) => ({ ...current, selection: null }));
+    shownTeam.set({ teamId, value: selectionValue(teamId) });
   }
+  return settled(teamId);
 }
 
 async function persist(teamId, apiKey = '') {
   requireRequest(teamId);
   const current = get(modelContext);
-  const selected = providerFrom(current);
+  const provider = current.providers.find((entry) => entry.id === current.provider);
   if (
     current.teamId !== teamId ||
-    !selected ||
-    !selectedModel(selected, current.model) ||
-    current.phase === 'loading' ||
-    current.phase === 'saving'
+    !provider ||
+    !selectedModel(provider, current.model) ||
+    current.phase === 'saving' ||
+    (current.phase === 'loading' && !current.providers.length)
   ) {
     throw new LocalApiError('Invalid Team model request.');
   }
-
-  const attempt = ++generation;
-  const epoch = sessionEpoch;
-  // Switching between configured selections keeps the chat open; only a new credential gates it.
-  const saving = { ...current, phase: 'saving', ready: current.ready && !apiKey, error: '' };
-  modelContext.set(saving);
+  const token = ++saves;
+  const ownView = views;
+  const mine = () => ownView === views && token === saves;
+  local.update((state) => ({ ...state, saving: true, error: '', errorCode: '' }));
+  const shown = get(shownTeam);
   try {
-    const result = await saveModelSetup(
-      teamId,
-      { provider: current.provider, model: current.model, apiKey },
-      current.providers,
-    );
-    const providers = withProviderState(current.providers, result.providerState);
-    publishProviderState(epoch, result.providerState);
-    const snapshot = {
-      ...saving,
-      phase: 'ready',
-      providers,
-      provider: result.inference.provider,
-      model: result.inference.model,
-      ready: true,
-      error: '',
-    };
-    return settle(attempt, snapshot, result.inference);
+    await saveModelSetup(teamId, { provider: current.provider, model: current.model, apiKey }, current.providers);
   } catch (error) {
-    const saved = error?.providerState;
-    const providers = saved ? withProviderState(saving.providers, saved) : saving.providers;
-    if (saved) publishProviderState(epoch, saved);
-    else if (apiKey && error?.code === 'outcome-unknown' && epoch === sessionEpoch) providersUncertain = true;
-    throw fail(attempt, error, { ...saving, providers });
+    const safe = publicError(error, 'The Team model selection could not be saved.');
+    // What Admin holds after a failed or lost save is read again; a lost answer is read once Admin is back.
+    void providersValue.refresh();
+    void shown?.value.refresh();
+    if (mine()) local.update((state) => ({ ...state, saving: false, error: safe.message, errorCode: safe.code ?? '' }));
+    throw safe;
   }
+  // The context shows what Admin holds once it is read again, never the save's own answer.
+  await Promise.all([providersValue.refresh(), shown?.value.refresh()]);
+  if (mine()) local.update((state) => ({ ...state, saving: false, choice: null }));
+  return get(modelContext);
 }
 
-function withProviderState(providers, providerState) {
-  return providers.map((entry) => (entry.id === providerState.id ? providerState : entry));
-}
-
-// A saved provider state enters the shared cache only within the session that saved it; it merges into the cache
-// so a Team switch or another provider's save in between is kept. A settled active Team view reconciles at once; a
-// view still loading or saving reconciles when it settles.
-function publishProviderState(epoch, providerState) {
-  if (epoch !== sessionEpoch || !providerCatalogCache) return;
-  providerCatalogCache = withProviderState(providerCatalogCache, providerState);
-  const current = get(modelContext);
-  if (current.phase === 'ready') modelContext.set(reconcile(current));
-}
-
+/** Save the key for the shown selection, when one is given, and store that selection for the Team. */
 export async function configureModelContext(teamId, apiKey = '') {
   return persist(teamId, typeof apiKey === 'string' ? apiKey.trim() : '');
 }
 
-/**
- * Admin says the Team's model selection changed (another tab, or this one): read it again and show a selection that
- * differs from the one shown. A view that is loading or saving keeps its own answer, which is the newer one.
- */
-export async function refreshInference(teamId) {
-  requireRequest(teamId);
-  const shown = get(modelContext);
-  // A save whose outcome was lost, or a load that failed, reads the whole context again, and so does a shown Team after
-  // a key save whose answer was lost in any Team's view: the providers are read again then. Nothing is sent again.
-  const uncertain = shown.teamId === teamId && providersUncertain && shown.phase === 'ready';
-  if ((shown.teamId === teamId && shown.phase === 'error') || uncertain) return loadModelContext(teamId);
-  const attempt = generation;
-  if (!settledFor(shown, teamId)) {
-    // A view still loading or saving reads it again once it settles.
-    if (shown.teamId === teamId && (shown.phase === 'loading' || shown.phase === 'saving')) announcedWhileBusy = teamId;
-    return shown;
-  }
-  // Of concurrent reads, only the newest may change the view: an older answer arriving last never overwrites it.
-  const read = ++inferenceReads;
-  const inference = await loadInference(teamId);
-  const current = get(modelContext);
-  if (read !== inferenceReads || attempt !== generation || !settledFor(current, teamId) || !inference) return current;
-  if (current.provider === inference.provider && current.model === inference.model) return current;
-  const selected = providerFrom(current, inference.provider);
-  if (!selected || !selectedModel(selected, inference.model)) return current;
-  persisted = { teamId, provider: inference.provider, model: inference.model };
-  const snapshot = { ...current, provider: selected.id, model: inference.model, ready: selected.configured, error: '' };
-  modelContext.set(snapshot);
-  return snapshot;
-}
-
-/**
- * Admin says a provider key of the Space changed (this tab, another one, or a save that finished after its socket
- * dropped): the providers are read again. A view that is loading reads them as it ends, and a saving view publishes its
- * own answer. A Team whose selection was never stored opens through a whole load, which stores the selection a newly
- * configured provider allows.
- */
-export async function refreshProviders() {
-  providersUncertain = true;
-  const shown = get(modelContext);
-  if (shown.phase !== 'ready' || !shown.teamId) return shown;
-  const attempt = generation;
-  await cachedModelProviders();
-  const current = get(modelContext);
-  if (attempt !== generation || current.phase !== 'ready') return current;
-  const selected = providerCatalogCache?.find((entry) => entry.id === current.provider);
-  if (selected?.configured && !current.ready && persisted?.teamId !== current.teamId) {
-    return loadModelContext(current.teamId);
-  }
-  const settled = reconcile(current);
-  const refreshed = { ...settled, ready: Boolean(selected?.configured) && settled.ready };
-  modelContext.set(refreshed);
-  return refreshed;
-}
-
-function settledFor(state, teamId) {
-  return state.teamId === teamId && state.phase === 'ready';
-}
-
+/** Choose a model for the shown Team: stored at once when its provider has a key, or held until the key is saved. */
 export async function selectTeamBrain(teamId, providerId, modelId) {
   requireRequest(teamId);
   const current = get(modelContext);
-  const selected = providerFrom(current, providerId);
+  const provider = current.providers.find((entry) => entry.id === providerId);
   if (
     current.teamId !== teamId ||
-    !selected ||
-    !selectedModel(selected, modelId) ||
+    !provider ||
+    !selectedModel(provider, modelId) ||
     current.phase === 'loading' ||
     current.phase === 'saving'
   ) {
     throw new LocalApiError('Invalid Team model request.');
   }
-  if (current.provider === selected.id && current.model === modelId) return current;
-  generation += 1;
-  modelContext.set({
-    ...current,
-    phase: 'ready',
-    provider: selected.id,
-    model: modelId,
-    ready: selected.configured && current.ready,
-    error: '',
-  });
-  return selected.configured ? persist(teamId) : get(modelContext);
+  if (current.provider === provider.id && current.model === modelId) return current;
+  local.update((state) => ({ ...state, choice: { provider: provider.id, model: modelId }, error: '', errorCode: '' }));
+  return provider.configured ? persist(teamId) : get(modelContext);
 }
