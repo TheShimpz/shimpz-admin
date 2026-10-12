@@ -103,6 +103,7 @@
   }
 
   function failProtocol(active) {
+    forgetSegments();
     socket = null;
     socketReady = false;
     busy = false;
