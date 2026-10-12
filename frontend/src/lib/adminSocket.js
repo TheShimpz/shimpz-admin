@@ -129,6 +129,8 @@ export const socketReads = { call };
 export const ACTIVITY_INTERVAL_MS = 60_000;
 const ACTIVITY_EVENTS = ['keydown', 'pointerdown', 'click', 'touchstart', 'wheel', 'input', 'compositionend'];
 let activityReported = -Infinity;
+// Whether Admin has not yet answered the last report with a renewed deadline; a socket lost meanwhile may have dropped it.
+let reportUnacknowledged = false;
 
 function reportActivity(event) {
   if (!event.isTrusted) return;
@@ -138,6 +140,7 @@ function reportActivity(event) {
   try {
     connection.send(JSON.stringify({ type: 'activity' }));
     activityReported = now;
+    reportUnacknowledged = true;
   } catch {
     // A socket that closed meanwhile reports nothing; the next input after it reopens does.
   }
@@ -394,6 +397,7 @@ function receive(text) {
       frame.absolute_seconds < 0
     ) throw new Error('invalid session deadlines');
     const now = performance.now();
+    reportUnacknowledged = false;
     sessionDeadlines.set({ idleAt: now + frame.idle_seconds * 1000, absoluteAt: now + frame.absolute_seconds * 1000 });
     return;
   }
@@ -517,8 +521,10 @@ function open() {
       return;
     }
     opened = true;
-    // A report the last socket took may never have reached Admin: the person's next input on this one reports at once.
-    activityReported = -Infinity;
+    // A report the last socket took and Admin never answered may never have reached it: the person's next input on this
+    // one reports at once. One Admin answered keeps the tab's minute.
+    if (reportUnacknowledged) activityReported = -Infinity;
+    reportUnacknowledged = false;
     const cause = everOpened ? 'reopen' : 'open';
     everOpened = true;
     clearTimeout(stableTimer);
@@ -576,6 +582,7 @@ export function disconnectAdminSocket() {
   epoch = '';
   for (const entry of watched.values()) entry.revision = 0;
   activityReported = -Infinity;
+  reportUnacknowledged = false;
   sessionDeadlines.set(null);
   setPhase('idle');
   socket?.close(1000, 'Signed out');
