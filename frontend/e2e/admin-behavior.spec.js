@@ -5913,6 +5913,8 @@ test.describe('Team Routines', () => {
     await expect(panel.getByRole('list', { name: 'Steps' }).locator('dd').first()).toHaveText('a\\u202eb');
     expect(await page.evaluate(() => document.body.textContent.includes('\u202e'))).toBe(false);
     await expect(panel.getByRole('button', { name: /^Show \d+ more steps?$/u })).toHaveCount(0);
+    // The Routine list the refused revision made the page read again is an automatic read, as every one here is.
+    expect(await laterCalls(page, 'routines.list', () => true, 0)).not.toContain(false);
   });
 
   test('a run view pages its own step records: a failed step, steps that never ran, and records read again once they changed', async ({ page }, testInfo) => {

@@ -392,7 +392,7 @@
         {/if}
       {:else if page === 'steps'}
         <RoutinePlan {teamId} {routine} {copy} names={$assistantNames} locale={$locale}
-          onchanged={() => loadTeamRoutines(call, teamId).catch(() => {})} />
+          onchanged={() => loadTeamRoutines(backgroundCall, teamId).catch(() => {})} />
       {:else}
         <ul class="runs" aria-label={copy.panel.runs}>
           {#each live as run (run.run_id)}
