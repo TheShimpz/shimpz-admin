@@ -166,7 +166,8 @@ function queueSubscription(method, topic, kept = false) {
 // A topic subscribed while the socket is open is read once its subscription is in place (`subscribed`), never before:
 // a change that lands between an earlier read and the subscription would otherwise never be heard of. A refused
 // subscription (a spent session budget, for instance) is not in place: nothing is announced, and its topics are asked
-// for again after a capped backoff, at most twice a minute once it is long, far inside the session's change budget.
+// for again after a capped backoff, at most twice a minute once it is long, far inside the session's change budget. A
+// refused unsubscription is asked for again the same way.
 function sendSubscription(method, topics, { announce = true } = {}) {
   if (!topics.length || adminSnapshot().phase !== 'open') return;
   const socket = connection;
@@ -174,19 +175,24 @@ function sendSubscription(method, topics, { announce = true } = {}) {
   const entries = () => topics.map((topic) => [topic, watched.get(topic)]).filter(([, entry]) => entry);
   if (subscribing) for (const [, entry] of entries()) entry.subscribing = true;
   const refused = () => {
-    if (!subscribing || socket !== connection) return;
-    for (const [, entry] of entries()) {
-      entry.subscribing = false;
-      entry.active = false;
+    if (socket !== connection) return;
+    if (subscribing) {
+      for (const [, entry] of entries()) {
+        entry.subscribing = false;
+        entry.active = false;
+      }
+    } else {
+      // Admin still holds a topic it refused to drop: dropping it is asked for again, so it never keeps its place.
+      for (const topic of topics) if (!watched.has(topic)) unsubscribing.add(topic);
     }
     retrySubscription();
   };
   backgroundCall(method, { topics }).then(async (response) => {
-    if (!subscribing) return;
     if (!response.ok) {
       refused();
       return;
     }
+    if (!subscribing) return;
     const body = await response.json();
     if (EPOCH_RE.test(body?.epoch)) adoptEpoch(body.epoch);
     subscribeAttempt = 0;
@@ -203,6 +209,8 @@ const SUBSCRIBE_RETRY_MS = 1_000;
 const MAX_SUBSCRIBE_RETRY_MS = 30_000;
 let subscribeRetry;
 let subscribeAttempt = 0;
+// Topics no screen watches any more that Admin refused to drop.
+const unsubscribing = new Set();
 
 function retrySubscription() {
   if (subscribeRetry) return;
@@ -210,6 +218,9 @@ function retrySubscription() {
   subscribeAttempt += 1;
   subscribeRetry = setTimeout(() => {
     subscribeRetry = undefined;
+    const stale = [...unsubscribing].filter((topic) => !watched.has(topic));
+    unsubscribing.clear();
+    sendSubscription('unsubscribe', stale);
     const topics = [...watched].filter(([, entry]) => !entry.active && !entry.subscribing).map(([topic]) => topic);
     sendSubscription('subscribe', topics);
   }, delay);
@@ -220,6 +231,7 @@ function forgetSubscriptions() {
   clearTimeout(subscribeRetry);
   subscribeRetry = undefined;
   subscribeAttempt = 0;
+  unsubscribing.clear();
   for (const entry of watched.values()) {
     entry.active = false;
     entry.subscribing = false;

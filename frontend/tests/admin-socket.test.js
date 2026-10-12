@@ -265,6 +265,25 @@ test('a refused subscription is not in place: nothing is announced, and it is as
   stopSecond();
 });
 
+test('a refused unsubscription is asked for again, so a forgotten topic never keeps its place', async () => {
+  const socket = connected();
+  const stop = watchTopic('team/research/history', () => {});
+  await flush();
+  socket.answer('subscribe', { epoch: EPOCH, topics: { 'team/research/history': 0 } });
+  await flush();
+  stop();
+  await flush();
+  socket.answer('unsubscribe', { detail: 'session call budget reached' }, 429);
+  await flush();
+  const asked = socket.sent.filter((frame) => frame.method === 'unsubscribe').length;
+  await new Promise((resolve) => setTimeout(resolve, 1_100));
+  const again = socket.sent.filter((frame) => frame.method === 'unsubscribe');
+  assert.equal(again.length, asked + 1);
+  assert.deepEqual(again.at(-1).params, { topics: ['team/research/history'] });
+  socket.answer('unsubscribe', { epoch: EPOCH, topics: {} });
+  await flush();
+});
+
 test('a subscription refused after a reopen is asked for again, and its readers read once it is in place', async () => {
   const socket = connected();
   const heard = [];
