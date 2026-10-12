@@ -1,7 +1,6 @@
 <script>
   import { Button, Modal, ShimpzBrand, WorkspaceShell } from '@shimpz/frontend';
   import { getContext, onDestroy, onMount, untrack } from 'svelte';
-  import { get } from 'svelte/store';
   import AdminNotice from '#lib/AdminNotice.svelte';
   import { adminSocket, connectAdminSocket, watchTopic } from '#lib/adminSocket.js';
   import { t } from '#lib/i18n.js';
@@ -12,7 +11,7 @@
   import SpaceResources from '#lib/SpaceResources.svelte';
   import { SESSION_ENDED, setSessionContext } from '#lib/sessionContext.js';
   import SupervisorMenu from '#lib/SupervisorMenu.svelte';
-  import { reloadTeamList, teamContext } from '#lib/teamContext.js';
+  import { teamListChanged } from '#lib/teamContext.js';
   import TeamDialogs from '#lib/TeamDialogs.svelte';
   import TeamNavigation from '#lib/TeamNavigation.svelte';
   import TeamSidebar from '#lib/TeamSidebar.svelte';
@@ -75,9 +74,9 @@
   }
 
   // Teams made or removed elsewhere (another tab, the CLI) change the list; a reopened socket reads it again too. The
-  // Team context reads it itself as the shell first opens.
+  // Team context reads it itself as the shell first opens, and reads a change announced while it loads once it is done.
   function refreshTeams(_topic, cause) {
-    if (cause !== 'open' && ['ready', 'error'].includes(get(teamContext).phase)) reloadTeamList(fetch).catch(() => {});
+    if (cause !== 'open') teamListChanged(fetch);
   }
 
   // Opened as the shell starts, before any screen inside it reads, and closed with it.

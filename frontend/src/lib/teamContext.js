@@ -169,6 +169,12 @@ let listVersion = 0;
 // Every admitted reorder and every order published from a save advances this, so a list re-read that began before
 // either never publishes an older order or membership over it.
 let orderRevision = 0;
+// Team list reads are numbered as they begin; `listBarrier` is the newest read published, or the read a context load or
+// clear began after. A re-read publishes only when it began after that, so of concurrent reads the newest one wins.
+let listReads = 0;
+let listBarrier = 0;
+// A Team list change Admin announced while the context loads is read once the load ends, so it is never dropped.
+let listChangedWhileLoading = null;
 
 function withRenames(teams, since) {
   return teams.map((team) => {
@@ -179,6 +185,7 @@ function withRenames(teams, since) {
 
 async function hydrate(fetcher, preferredId, attempt, previousId = '') {
   const since = renameClock;
+  const read = ++listReads;
   const [listed, catalog] = await Promise.all([
     listTeams(fetcher),
     listAssistantCatalog(fetcher),
@@ -195,6 +202,7 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
     };
     if (attempt === generation) {
       listVersion += 1;
+      listBarrier = Math.max(listBarrier, read);
       teamContext.set({
         phase: 'ready',
         ...snapshot,
@@ -211,6 +219,7 @@ async function hydrate(fetcher, preferredId, attempt, previousId = '') {
   const published = withRenames(listed, since);
   if (attempt === generation) {
     listVersion += 1;
+    listBarrier = Math.max(listBarrier, read);
     teamContext.set({
       phase: 'ready',
       teams: published,
@@ -235,6 +244,7 @@ async function loadContext(fetcher, preferredId) {
   const previousId = get(teamContext).selectedTeamId;
   const attempt = ++generation;
   listVersion += 1;
+  listBarrier = ++listReads;
   teamContext.set({ ...emptyContext(), phase: 'loading', inventory: 'loading' });
   try {
     return await hydrate(fetcher, canonicalPreferredId, attempt, previousId);
@@ -367,6 +377,8 @@ export function clearTeamContext() {
   generation += 1;
   contextEpoch += 1;
   listVersion += 1;
+  listBarrier = ++listReads;
+  listChangedWhileLoading = null;
   renamedAt.clear();
   reorder.desired = null;
   reorder.baseline = null;
@@ -511,13 +523,13 @@ export async function reloadTeamList(fetcher) {
   requireFetcher(fetcher);
   const since = renameClock;
   const epoch = contextEpoch;
-  const version = listVersion;
+  const read = ++listReads;
   const revision = orderRevision;
   const listed = await listTeams(fetcher, { background: true });
   const current = get(teamContext);
   if (
     epoch !== contextEpoch ||
-    version !== listVersion ||
+    read < listBarrier ||
     revision !== orderRevision ||
     (current.phase === 'loading' && !current.teams.length)
   ) return;
@@ -526,8 +538,30 @@ export async function reloadTeamList(fetcher) {
     return;
   }
   listVersion += 1;
+  listBarrier = read;
   teamContext.set({ ...current, teams: withRenames(listed, since) });
 }
+
+function settled(phase) {
+  return phase === 'ready' || phase === 'error';
+}
+
+/** Admin announced that the Team list changed: read it again now, or once the context has finished loading. */
+export function teamListChanged(fetcher) {
+  requireFetcher(fetcher);
+  if (!settled(get(teamContext).phase)) {
+    listChangedWhileLoading = fetcher;
+    return;
+  }
+  reloadTeamList(fetcher).catch(() => {});
+}
+
+teamContext.subscribe((state) => {
+  if (!listChangedWhileLoading || !settled(state.phase)) return;
+  const fetcher = listChangedWhileLoading;
+  listChangedWhileLoading = null;
+  reloadTeamList(fetcher).catch(() => {});
+});
 
 // Reordering is optimistic and serialized: the list moves at once, one save runs at a time, and moves made during a
 // save are coalesced into the next one. `baseline` is the last order Admin confirmed, the one a failure restores.

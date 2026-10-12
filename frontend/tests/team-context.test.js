@@ -28,6 +28,7 @@ const createTeam = using(context.createTeam);
 const deleteTeam = using(context.deleteTeam);
 const loadTeamContext = using(context.loadTeamContext);
 const reloadTeamList = using(context.reloadTeamList);
+const teamListChanged = using(context.teamListChanged);
 const reorderTeams = using(context.reorderTeams);
 const selectTeam = using(context.selectTeam);
 
@@ -1088,6 +1089,58 @@ test('a list re-read after an invalidation is an automatic read that never renew
   await reloadTeamList(recorded);
   // Opening the Team context is the person's own navigation; the re-read Admin's change caused is not.
   assert.deepEqual(reads, [false, true]);
+});
+
+// A fetcher whose Team list reads wait for the test to answer them, in any order.
+function heldListFetcher() {
+  const lists = [];
+  const { fetcher } = heldOrderFetcher();
+  let holding = false;
+  const held = async (url, options = {}) => {
+    if (url !== '/api/teams' || !holding) return fetcher(url, options);
+    return new Promise((resolve) => lists.push((ids) => resolve(response(200, { teams: listedTeams(ids) }))));
+  };
+  return { fetcher: held, lists, hold() { holding = true; } };
+}
+
+test('of two concurrent list re-reads the one that began last wins, whichever answers first', async () => {
+  for (const order of [[0, 1], [1, 0]]) {
+    clearTeamContext();
+    const { fetcher, lists, hold } = heldListFetcher();
+    await loadTeamContext(fetcher, 'support');
+    hold();
+    const older = reloadTeamList(fetcher);
+    const newer = reloadTeamList(fetcher);
+    await settle();
+    const answers = [['marketing', 'sales', 'support'], ['sales', 'support', 'marketing']];
+    for (const index of order) {
+      lists[index](answers[index]);
+      await settle();
+    }
+    await Promise.all([older, newer]);
+    assert.deepEqual(orderIds(), answers[1], `answered in the order ${order}`);
+  }
+});
+
+test('a Team list change announced while the context loads is read once the load ends', async () => {
+  const { fetcher, lists, hold } = heldListFetcher();
+  hold();
+  const loading = loadTeamContext(fetcher, 'support');
+  await settle();
+  teamListChanged(fetcher);
+  assert.equal(lists.length, 1);
+  lists[0](['marketing', 'support', 'sales']);
+  await loading;
+  await settle();
+  // The change is not dropped: the list is read again, in the background, after the load.
+  assert.equal(lists.length, 2);
+  lists[1](['sales', 'support', 'marketing']);
+  await settle();
+  assert.deepEqual(orderIds(), ['sales', 'support', 'marketing']);
+  // A change announced once the context is ready is read at once.
+  teamListChanged(fetcher);
+  await settle();
+  assert.equal(lists.length, 3);
 });
 
 test('a reorder that is not an exact permutation of the listed Teams is refused before any request', async () => {
