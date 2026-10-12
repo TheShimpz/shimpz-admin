@@ -69,6 +69,7 @@ export default {
     platformRollback: 'Mise à jour annulée',
     reconnecting: 'Reconnexion à Admin… Ce que vous voyez peut être obsolète, et les actions attendent le retour de la connexion.',
     reconnectFailed: 'Admin est toujours injoignable. Actualisez cette page pour vous reconnecter.',
+    outcomeUnknown: 'Admin s’est déconnecté avant de confirmer cette modification : elle a pu être faite ou non. Ce que vous voyez est relu dès le retour d’Admin.',
     sessionExpiring: {
       title: 'Votre session va bientôt se terminer',
       countdown: 'Votre session va se terminer dans {time}',

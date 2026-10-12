@@ -69,6 +69,7 @@ export default {
     platformRollback: '更新をロールバックしました',
     reconnecting: 'Admin に再接続しています… 表示内容が古い可能性があり、操作は接続が戻るまで待機します。',
     reconnectFailed: 'Admin に再接続できませんでした。このページを再読み込みして再接続してください。',
+    outcomeUnknown: 'Admin がこの変更を確認する前に切断されたため、変更が行われたかどうかは不明です。Admin が戻りしだい、表示内容を読み込み直します。',
     sessionExpiring: {
       title: 'まもなくセッションが終了します',
       countdown: 'セッションはあと{time}で終了します',

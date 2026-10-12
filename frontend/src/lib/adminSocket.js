@@ -82,6 +82,18 @@ function unavailable() {
   return new LocalApiError('Admin is reconnecting.', 0, 'socket-unavailable');
 }
 
+// A call Admin received and never answered before its socket closed: it may or may not have run, and is never replayed.
+export const OUTCOME_UNKNOWN = 'outcome-unknown';
+
+/** Whether a change failed because Admin disconnected before it answered: it may or may not have happened. */
+export function outcomeUnknown(error) {
+  return error instanceof LocalApiError && error.code === OUTCOME_UNKNOWN;
+}
+
+function lost() {
+  return new LocalApiError('Admin disconnected before it answered.', 0, OUTCOME_UNKNOWN);
+}
+
 // Calls a page makes while its socket opens for the first time wait for that open; nothing is shown yet to keep.
 const firstOpen = new Set();
 
@@ -92,25 +104,26 @@ function settleFirstOpen(isOpen) {
 
 /**
  * Ask Admin for one operation over the open socket. It is never queued behind a reconnect: while the socket reconnects
- * the call fails at once, and a socket that closes meanwhile fails it too, so a page re-reads rather than replays. Only
- * the tab's first open, before anything is on screen, is awaited.
+ * the call fails at once (`socket-unavailable`: it never reached Admin), and a socket that closes meanwhile fails it with
+ * `outcome-unknown`, so a page re-reads rather than replays: a change whose answer was lost may or may not have run. Only the tab's first open, before
+ * anything is on screen, is awaited. A long call may report once, through `onProgress`, that it started running.
  */
-export async function call(method, params = {}) {
+export async function call(method, params = {}, { onProgress } = {}) {
   if (snapshot.phase === 'connecting' && !opened) {
     const isOpen = await new Promise((resolve) => firstOpen.add(resolve));
     if (!isOpen) throw unavailable();
   }
-  return send(method, params);
+  return send(method, params, onProgress);
 }
 
-function send(method, params) {
+function send(method, params, onProgress) {
   if (!connection || connection.readyState !== WebSocket.OPEN || !opened) return Promise.reject(unavailable());
   if (pending.size >= MAX_IN_FLIGHT) return Promise.reject(new LocalApiError('Too many Admin requests.', 429));
   nextCall += 1;
   const id = `c${nextCall}`;
   const frame = { type: 'call', id, method, params };
   return new Promise((resolve, reject) => {
-    pending.set(id, { resolve, reject });
+    pending.set(id, { resolve, reject, onProgress });
     try {
       connection.send(JSON.stringify(frame));
     } catch {
@@ -390,6 +403,16 @@ function receive(text) {
     waiting.resolve(answer(frame));
     return;
   }
+  // A long call's own progress names its call; a chat channel's progress frame names its Team instead.
+  if (frame.type === 'progress' && !('team_id' in frame)) {
+    if (!exact(frame, ['type', 'id', 'state']) || !CALL_ID_RE.test(frame.id) || frame.state !== 'running') {
+      throw new Error('invalid progress');
+    }
+    const waiting = pending.get(frame.id);
+    if (!waiting) throw new Error('unexpected progress');
+    waiting.onProgress?.(frame.state);
+    return;
+  }
   if (frame.type === 'session') {
     if (
       !exact(frame, ['type', 'idle_seconds', 'absolute_seconds']) ||
@@ -492,7 +515,7 @@ async function closed(socket, code) {
   opened = false;
   clearTimeout(stableTimer);
   forgetSubscriptions();
-  rejectPending(unavailable());
+  rejectPending(lost());
   // A channel hears of the drop once the shell already shows that it reconnects, so a page never says it twice.
   if (code !== SIGNED_OUT) setPhase('reconnecting');
   for (const channel of channels.values()) channel.dropped(code);
@@ -581,7 +604,7 @@ export function disconnectAdminSocket() {
   connection = null;
   opened = false;
   forgetSubscriptions();
-  rejectPending(unavailable());
+  rejectPending(lost());
   for (const channel of [...channels.values()]) channel.dropped(1000);
   channels.clear();
   epoch = '';

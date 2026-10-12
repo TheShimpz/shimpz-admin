@@ -69,6 +69,7 @@ export default {
     platformRollback: 'Aktualisierung zurückgesetzt',
     reconnecting: 'Verbindung zu Admin wird wiederhergestellt… Was Sie sehen, ist womöglich veraltet, und Aktionen warten, bis die Verbindung zurück ist.',
     reconnectFailed: 'Admin ist weiterhin nicht erreichbar. Laden Sie diese Seite neu, um sich wieder zu verbinden.',
+    outcomeUnknown: 'Admin wurde getrennt, bevor es diese Änderung bestätigt hat. Sie wurde daher vielleicht ausgeführt, vielleicht nicht. Was Sie sehen, wird neu gelesen, sobald Admin wieder erreichbar ist.',
     sessionExpiring: {
       title: 'Ihre Sitzung endet gleich',
       countdown: 'Ihre Sitzung endet in {time}',

@@ -67,6 +67,7 @@ export default {
     platformRollback: 'Update rolled back',
     reconnecting: 'Reconnecting to Admin… What you see may be out of date, and actions wait until the connection is back.',
     reconnectFailed: 'Admin could not be reached again. Refresh this page to reconnect.',
+    outcomeUnknown: 'Admin disconnected before it confirmed this change, so it may or may not have been made. What you see is read again once Admin is back.',
     sessionExpiring: {
       title: 'Your session is about to end',
       countdown: 'Your session is about to end in {time}',

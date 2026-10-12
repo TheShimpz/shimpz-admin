@@ -69,6 +69,7 @@ export default {
     platformRollback: 'Atualização revertida',
     reconnecting: 'Reconectando ao Admin… O que você vê pode estar desatualizado, e as ações aguardam até a conexão voltar.',
     reconnectFailed: 'Não foi possível falar com o Admin de novo. Atualize esta página para reconectar.',
+    outcomeUnknown: 'O Admin se desconectou antes de confirmar esta alteração, então ela pode ou não ter sido feita. O que você vê é lido de novo assim que o Admin voltar.',
     sessionExpiring: {
       title: 'Sua sessão está prestes a terminar',
       countdown: 'Sua sessão está prestes a terminar em {time}',

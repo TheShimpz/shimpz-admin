@@ -69,6 +69,7 @@ export default {
     platformRollback: '更新已回滚',
     reconnecting: '正在重新连接 Admin… 您看到的内容可能已过时，操作将等待连接恢复。',
     reconnectFailed: '无法再次连接 Admin。请刷新此页面以重新连接。',
+    outcomeUnknown: 'Admin 在确认此更改之前断开了连接，因此更改可能已完成，也可能未完成。Admin 恢复后会重新读取你看到的内容。',
     sessionExpiring: {
       title: '会话即将结束',
       countdown: '会话将在{time}后结束',

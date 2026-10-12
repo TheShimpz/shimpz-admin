@@ -135,13 +135,39 @@ test('a call made while the first open is under way waits for it, and fails if i
   await assert.rejects(abandoned, (error) => error.code === 'socket-unavailable');
 });
 
-test('at most sixteen calls wait, and a close fails every pending call', async () => {
+test('at most sixteen calls wait, and a close fails every pending call with an unknown outcome', async () => {
   const socket = connected();
   const calls = Array.from({ length: 16 }, () => call('teams.list'));
   await flush();
   await assert.rejects(call('teams.list'), (error) => error.status === 429);
   socket.drop(1006);
-  for (const pending of calls) await assert.rejects(pending, (error) => error.code === 'socket-unavailable');
+  for (const pending of calls) await assert.rejects(pending, (error) => error.code === 'outcome-unknown');
+});
+
+test('a long call hears once that it started, and a progress frame for no pending call closes the socket', async () => {
+  const socket = connected();
+  const heard = [];
+  const pending = call('assistants.install', { team_id: 'marketing', body: {} }, { onProgress: (state) => heard.push(state) });
+  await flush();
+  const sent = socket.sent.findLast((frame) => frame.method === 'assistants.install');
+  socket.frame({ type: 'progress', id: sent.id, state: 'running' });
+  assert.deepEqual(heard, ['running']);
+  socket.answer('assistants.install', { assistant: 'shimpz-cloudflare', installed: true });
+  assert.equal((await pending).status, 200);
+  for (const frame of [
+    { type: 'progress', id: sent.id, state: 'running' },
+    { type: 'progress', id: 'c9999', state: 'done' },
+  ]) {
+    const other = connected();
+    const waiting = call('assistants.install', { team_id: 'marketing', body: {} });
+    await flush();
+    const id = other.sent.findLast((item) => item.method === 'assistants.install').id;
+    other.frame(frame.state === 'done' ? { ...frame, id } : frame);
+    assert.equal(other.closedWith, 1002, JSON.stringify(frame));
+    other.drop(1002);
+    await assert.rejects(waiting);
+    disconnectAdminSocket();
+  }
 });
 
 test('a malformed, unknown, or unexpected frame closes the socket', () => {
@@ -183,7 +209,7 @@ test('a watched topic is subscribed, re-read on each newer change and after a re
   // A new Admin process re-reads everything shown.
   socket.frame({ type: 'changed', topic: 'teams', epoch: 'b'.repeat(32), revision: 1 });
   assert.equal(heard.length, 2);
-  assert.throws(() => watchTopic('team/marketing/inventory', () => {}), /Invalid Admin topic/);
+  assert.throws(() => watchTopic('team/marketing/billing', () => {}), /Invalid Admin topic/);
   stop();
   stopOther();
   await flush();
