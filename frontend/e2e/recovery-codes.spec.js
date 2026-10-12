@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { expect, test } from '@playwright/test';
 
 import { accessibilityViolations } from './axe.js';
-import { routeScenario } from './scenarioRoutes.js';
+import { routeRead, routeScenario, sessionCalls } from './scenarioRoutes.js';
 import { recoveryCodeSet } from './securityScenarios.js';
 
 // Recovery codes (ADR-0051) against the built Admin with scenario fixtures (ADR-0087): shown once at enrollment, a sign-in
@@ -115,7 +115,6 @@ test('until the authenticator is enrolled again, a sign-in asks only for another
 
 test('Security replaces every recovery code after the password and an authenticator code', async ({ page }) => {
   await routeScenario(page, 'recovery-codes');
-  const sent = recordRequests(page, /^\/api\/admin\/recovery-codes/);
   await page.goto('/chat/');
 
   await page.getByRole('button', { name: 'Supervisor' }).click();
@@ -138,10 +137,13 @@ test('Security replaces every recovery code after the password and an authentica
   await expect(dialog).toBeHidden();
   // Closing returns to the Supervisor account that opened it.
   await expect(page.getByRole('button', { name: 'Supervisor' })).toBeFocused();
+  // Both steps go over the session socket (ADR-0114).
+  const sent = (await sessionCalls(page)).filter((call) => call.method.startsWith('recovery_codes.'))
+    .map((call) => [call.method, call.params.body]);
   expect(sent).toEqual([
-    ['/api/admin/recovery-codes/confirmation', { password: 'wrong password' }],
-    ['/api/admin/recovery-codes/confirmation', { password: PASSWORD }],
-    ['/api/admin/recovery-codes', { code: '123456' }],
+    ['recovery_codes.confirmation', { password: 'wrong password' }],
+    ['recovery_codes.confirmation', { password: PASSWORD }],
+    ['recovery_codes.replace', { code: '123456' }],
   ]);
 });
 
@@ -150,10 +152,10 @@ test('Security stays open while new recovery codes are generated and then shows 
   let release;
   const held = new Promise((resolve) => { release = resolve; });
   let replacing = false;
-  await page.route('**/api/admin/recovery-codes', async (route) => {
+  await routeRead(page, 'recovery_codes.replace', async () => {
     replacing = true;
     await held;
-    return route.fallback();
+    return undefined;
   });
   await page.goto('/chat/');
   await page.getByRole('button', { name: 'Supervisor' }).click();

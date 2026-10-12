@@ -54,10 +54,10 @@
     onclose?.();
   }
 
-  async function confirmed(operation, fetcher, proof) {
+  async function confirmed(operation, proof) {
     replacing = true;
     try {
-      return await operation(fetcher, proof);
+      return await operation(proof);
     } finally {
       replacing = false;
     }
@@ -94,7 +94,7 @@
           passkeyHint={$t('security.passkeyHint')}
           expired={$t('security.expired')}
           begin={beginRecoveryCodes}
-          complete={(fetcher, proof) => confirmed(replaceRecoveryCodes, fetcher, proof)}
+          complete={(proof) => confirmed(replaceRecoveryCodes, proof)}
           ondone={replaced}
           oncancel={() => (view = 'summary')}
         />
@@ -106,7 +106,7 @@
           passkeyHint={$t('security.rotatePasskeyHint')}
           expired={$t('security.rotateExpired')}
           begin={beginSupervisorKeyRotation}
-          complete={(fetcher, proof) => confirmed(rotateSupervisorKey, fetcher, proof)}
+          complete={(proof) => confirmed(rotateSupervisorKey, proof)}
           failures={{
             'supervisor-key-rotation-refused': $t('security.rotateRefused'),
             'supervisor-key-rotation-pending': $t('security.rotatePending'),

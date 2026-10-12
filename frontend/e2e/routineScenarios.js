@@ -435,18 +435,21 @@ function diagnostics(runId) {
   return { status: 200, json: { team_id: 'marketing', run_id: runId, diagnostics: items } };
 }
 
-/** The recovery card, its answers, and a run's execution details, for every scenario's Marketing Team. */
-export function routineRecoveryRoutes(state, method, path, body) {
-  const base = '/api/teams/marketing/routines';
-  const opened = path.match(new RegExp(`^${base}/incidents/([0-9a-f]{32})/(card|answer)$`));
-  if (opened && method === 'POST') {
+/**
+ * The recovery card, its answers, and a run's execution details, for every scenario's Marketing Team, as the session
+ * socket's `routines.card`, `routines.card_answer`, and `routines.diagnostics` (ADR-0114).
+ */
+export const ROUTINE_RECOVERY_METHODS = Object.freeze({
+  'routines.card': (state, params) => {
     state.incidents ??= [];
-    return opened[2] === 'card' ? card(state, opened[1]) : answer(state, opened[1], body);
-  }
-  const details = path.match(new RegExp(`^${base}/runs/([0-9a-f]{32})/diagnostics$`));
-  if (details && method === 'GET') return diagnostics(details[1]);
-  return null;
-}
+    return card(state, params.incident_id);
+  },
+  'routines.card_answer': (state, params) => {
+    state.incidents ??= [];
+    return answer(state, params.incident_id, params.body);
+  },
+  'routines.diagnostics': (_state, params) => diagnostics(params.run_id),
+});
 
 // What lifecycle runs did, step by step: their records, kept as one snapshot each.
 const SNAPSHOT = 'c'.repeat(32);
@@ -502,35 +505,34 @@ export function runStepsPage(runId, routineId, plan, records, { snapshot = SNAPS
   };
 }
 
+// A page of a Routine's current revision, refused when the reader names another.
+function planSteps(state, { routine_id: routineId, revision, offset }) {
+  const routine = state.routines.find((item) => item.routine_id === routineId);
+  const steps = state.plans?.[routineId];
+  if (!routine || !steps) return { status: 404, json: { code: 'routine-not-found' } };
+  if (Number(revision) !== routine.plan.revision) return { status: 409, json: { code: 'routine-revision-changed' } };
+  if (Number(offset) >= steps.length) return { status: 404, json: { code: 'routine-steps-not-found' } };
+  return { status: 200, json: planPage(routine.routine_id, routine.plan, steps, Number(offset)) };
+}
+
 /**
- * A Routine's plan pages and a run's step records (ADR-0092 amendment, 2026-10-05, scale): a page of the Routine's
- * current revision, refused when the reader names another, and a page of a run's one snapshot of records.
+ * A Routine's plan pages and a run's step records (ADR-0092 amendment, 2026-10-05, scale), as the session socket's
+ * `routines.plan_steps` and `routines.run_steps`: a page of the Routine's current revision, refused when the reader
+ * names another, and a page of a run's one snapshot of records.
  */
-export function routineStepRoutes(state, method, path) {
-  if (method !== 'GET') return null;
-  const base = '/api/teams/marketing/routines';
-  const plan = path.match(new RegExp(`^${base}/([0-9a-f]{32})/revisions/([0-9]+)/steps/([0-9]+)$`));
-  if (plan) {
-    const routine = state.routines.find((item) => item.routine_id === plan[1]);
-    const steps = state.plans?.[plan[1]];
-    if (!routine || !steps) return { status: 404, json: { code: 'routine-not-found' } };
-    if (Number(plan[2]) !== routine.plan.revision) return { status: 409, json: { code: 'routine-revision-changed' } };
-    if (Number(plan[3]) >= steps.length) return { status: 404, json: { code: 'routine-steps-not-found' } };
-    return { status: 200, json: planPage(routine.routine_id, routine.plan, steps, Number(plan[3])) };
-  }
-  const run = path.match(new RegExp(`^${base}/runs/([0-9a-f]{32})/steps/(latest|[0-9a-f]{32})/([0-9]+)$`));
-  if (run) {
-    const notice = state.history.find((entry) => entry.run_id === run[1]);
-    const records = RUN_RECORDS[run[1]];
+export const ROUTINE_STEP_METHODS = Object.freeze({
+  'routines.plan_steps': planSteps,
+  'routines.run_steps': (state, { run_id: runId, snapshot, offset }) => {
+    const notice = state.history.find((entry) => entry.run_id === runId);
+    const records = RUN_RECORDS[runId];
     // A completed run's notice names the revision it carried out; any other run carried out its Routine's current one.
     const plan = notice?.detail.plan ?? state.routines.find((item) => item.routine_id === notice?.routine_id)?.plan;
     if (!plan || !records) return { status: 404, json: { code: 'routine-run-steps-not-found' } };
-    if (run[2] !== 'latest' && run[2] !== SNAPSHOT) return { status: 409, json: { code: 'routine-run-changed' } };
-    if (Number(run[3]) >= records.length) return { status: 404, json: { code: 'routine-run-steps-not-found' } };
-    return { status: 200, json: runStepsPage(run[1], notice.routine_id, plan, records, { offset: Number(run[3]) }) };
-  }
-  return null;
-}
+    if (snapshot !== 'latest' && snapshot !== SNAPSHOT) return { status: 409, json: { code: 'routine-run-changed' } };
+    if (Number(offset) >= records.length) return { status: 404, json: { code: 'routine-run-steps-not-found' } };
+    return { status: 200, json: runStepsPage(runId, notice.routine_id, plan, records, { offset: Number(offset) }) };
+  },
+});
 
 // The owner's recorded Cloudflare watch (ADR-0101): it listed the zones, then the DNS records of the one zone whose
 // name is shimpz.com, every 30 seconds up to 1,000 times a day, showing the records after every run.
@@ -669,23 +671,22 @@ export function recordingReply(state, message, teamName) {
   return reply;
 }
 
-/**
- * Criar rotina and Cancelar for a card (ADR-0101): confirming a pending card creates its Routine with its created
- * notice; revoking it, or a card already gone, creates nothing. A used, revoked, or expired card is refused.
- */
-export function routineProposalRoutes(state, method, path, body) {
-  const match = path.match(/^\/api\/teams\/marketing\/routines\/proposals\/([0-9a-f]{32})$/);
-  if (!match || !['POST', 'DELETE'].includes(method)) return null;
-  const proposalId = match[1];
+function remainingProposals(state, proposalId) {
+  return Object.fromEntries(Object.entries(state.proposals ?? {}).filter(([key]) => key !== proposalId));
+}
+
+// Cancelar: revoking a card, or a card already gone, creates nothing.
+function revokeProposal(state, { proposal_id: proposalId }) {
+  state.proposals = remainingProposals(state, proposalId);
+  state.revoked = [...(state.revoked ?? []), proposalId];
+  return { status: 200, json: { team_id: 'marketing', proposal_id: proposalId, routine_id: null, status: 'revoked' } };
+}
+
+// Criar rotina: confirming a pending card creates its Routine with its created notice. A used, revoked, or expired
+// card is refused.
+function confirmProposal(state, { proposal_id: proposalId }) {
   const proposal = state.proposals?.[proposalId];
-  const remaining = Object.fromEntries(Object.entries(state.proposals ?? {}).filter(([key]) => key !== proposalId));
-  if (method === 'DELETE') {
-    if (body !== null) return { status: 422, json: { code: 'invalid-body' } };
-    state.proposals = remaining;
-    state.revoked = [...(state.revoked ?? []), proposalId];
-    return { status: 200, json: { team_id: 'marketing', proposal_id: proposalId, routine_id: null, status: 'revoked' } };
-  }
-  if (!body || typeof body !== 'object' || Object.keys(body).length) return { status: 422, json: { code: 'invalid-body' } };
+  const remaining = remainingProposals(state, proposalId);
   if (!proposal || Date.parse(proposal.expires_at) <= Date.now()) return { status: 409, json: { code: 'routine-proposal-expired' } };
   state.proposals = remaining;
   const routine = routineView({
@@ -703,3 +704,9 @@ export function routineProposalRoutes(state, method, path, body) {
   state.history = [...state.history, row(noticeId, routine, 'created', defined(routine), { at: instant(Date.now()) })];
   return { status: 200, json: { team_id: 'marketing', proposal_id: proposalId, routine_id: routine.routine_id, status: 'created' } };
 }
+
+/** Criar rotina and Cancelar for a card (ADR-0101), as the session socket's proposal operations. */
+export const ROUTINE_PROPOSAL_METHODS = Object.freeze({
+  'routines.proposal_confirm': confirmProposal,
+  'routines.proposal_revoke': revokeProposal,
+});

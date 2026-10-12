@@ -2,6 +2,7 @@
   import { Button } from '@shimpz/frontend';
   import { tick, untrack } from 'svelte';
 
+  import { call } from '#lib/adminSocket.js';
   import RoutineIcon from '#lib/RoutineIcon.svelte';
   import {
     dispositionWords,
@@ -48,7 +49,7 @@
     loading = true;
     try {
       while (ticket === reading && needsPage(steps.length, wanted, next)) {
-        const page = await readPlanSteps(fetch, teamId, routine.routine_id, plan, next);
+        const page = await readPlanSteps(call, teamId, routine.routine_id, plan, next);
         if (ticket !== reading) return;
         steps = [...steps, ...page.steps];
         next = page.next;

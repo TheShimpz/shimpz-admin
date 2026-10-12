@@ -2,10 +2,13 @@
   import { Notice, RadioField, TextField } from '@shimpz/frontend';
   import { get } from 'svelte/store';
 
+  import { call, commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import DialogAction from '#lib/DialogAction.svelte';
+  import { t } from '#lib/i18n.js';
   import { authenticateWithPasskey, passkeyFailure } from '#lib/passkey.js';
   import { beginRoutineDeletion, deleteRoutine, fillRoutineCopy, routineErrorMessage, RoutineError } from '#lib/routine.js';
   import { sessionContext } from '#lib/sessionContext.js';
+  import { LocalApiError } from '#lib/validate.js';
 
   // Deleting one Routine (ADR-0051, ADR-0086): the whole panel is this confirmation. Admin checks the Supervisor
   // password, then one second factor bound to this Routine, and only then asks Team to delete it. A code is the
@@ -61,6 +64,11 @@
       error = copy.unavailable;
     } else if (failure instanceof RoutineError) {
       error = routineErrorMessage(failure, errors);
+    } else if (outcomeUnknown(failure)) {
+      error = $t('shell.outcomeUnknown');
+    } else if (failure instanceof LocalApiError) {
+      // The socket dropped before the request left: nothing was asked, and the panel stays for another try.
+      error = copy.unavailable;
     } else {
       error = copy[passkeyFailure(failure) === 'canceled' ? 'passkeyCanceled' : 'passkeyFailed'];
     }
@@ -80,17 +88,17 @@
 
   async function submit(event) {
     event.preventDefault();
-    if (busy || !ready) return;
+    if (busy || !ready || !$commandsReady) return;
     busy = true;
     passwordError = codeError = error = '';
     let sent = false;
     try {
-      const offer = await beginRoutineDeletion(fetch, teamId, routineId, password);
+      const offer = await beginRoutineDeletion(call, teamId, routineId, password);
       const factor = live ? await proof(offer) : null;
       // A panel closed while the passkey was asked for never sends the deletion.
       if (!factor || !live) return;
       sent = true;
-      const { deleted } = await deleteRoutine(fetch, teamId, routineId, factor);
+      const { deleted } = await deleteRoutine(call, teamId, routineId, factor);
       password = code = '';
       ondone(deleted);
     } catch (failure) {
@@ -125,7 +133,7 @@
   </div>
   <footer class="foot">
     <DialogAction kind="cancel" type="button" disabled={busy} onclick={oncancel}>{copy.cancel}</DialogAction>
-    <DialogAction kind="danger" type="submit" disabled={busy || !ready}>{busy ? copy.deleting : copy.delete}</DialogAction>
+    <DialogAction kind="danger" type="submit" disabled={busy || !ready || !$commandsReady}>{busy ? copy.deleting : copy.delete}</DialogAction>
   </footer>
 </form>
 

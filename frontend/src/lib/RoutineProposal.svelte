@@ -1,7 +1,9 @@
 <script>
   import { Button } from '@shimpz/frontend';
 
+  import { call, commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import { assistantNames } from '#lib/assistantNames.js';
+  import { t } from '#lib/i18n.js';
   import { refreshTeamRoutines } from '#lib/routineContext.js';
   import {
     confirmRoutineProposal,
@@ -47,11 +49,11 @@
     working = true;
     error = '';
     try {
-      const result = await action(fetch, teamId, proposal.proposal_id);
+      const result = await action(call, teamId, proposal.proposal_id);
       answer = result.status;
       if (result.status !== 'revoked') await refreshTeamRoutines(teamId);
     } catch (failure) {
-      error = routineErrorMessage(failure, copy.errors);
+      error = outcomeUnknown(failure) ? $t('shell.outcomeUnknown') : routineErrorMessage(failure, copy.errors);
     } finally {
       working = false;
     }
@@ -138,9 +140,9 @@
   </ul>
 
   <div class="actions">
-      <Button size="sm" variant="secondary" type="button" disabled={working}
+      <Button size="sm" variant="secondary" type="button" disabled={working || !$commandsReady}
         onclick={() => settle(confirmRoutineProposal)}>{card.confirm}</Button>
-      <Button size="sm" variant="secondary" type="button" disabled={working}
+      <Button size="sm" variant="secondary" type="button" disabled={working || !$commandsReady}
         onclick={() => settle(revokeRoutineProposal)}>{card.cancel}</Button>
     </div>
     {#if working}<p class="dim" role="status">{card.working}</p>{/if}

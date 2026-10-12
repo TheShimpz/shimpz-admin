@@ -2,6 +2,7 @@
   import { Button } from '@shimpz/frontend';
   import { tick, untrack } from 'svelte';
 
+  import { call } from '#lib/adminSocket.js';
   import RoutineIcon from '#lib/RoutineIcon.svelte';
   import {
     attemptWords,
@@ -69,7 +70,7 @@
       while (ticket === reading && needsPage(steps.length, wanted, next)) {
         let page;
         try {
-          page = await readRunSteps(fetch, teamId, runId, bound, snapshot, next);
+          page = await readRunSteps(call, teamId, runId, bound, snapshot, next);
         } catch (error) {
           if (error?.code !== 'routine-run-changed' || restarts === RESTARTS) throw error;
           restarts += 1;

@@ -10,13 +10,13 @@ import {
   recordingReply,
   ROUTINE_QUESTIONS,
   routineLifecycleStart,
-  routineProposalRoutes,
-  routineRecoveryRoutes,
-  routineStepRoutes,
+  ROUTINE_PROPOSAL_METHODS,
+  ROUTINE_RECOVERY_METHODS,
+  ROUTINE_STEP_METHODS,
   routineView,
   setAside,
 } from './routineScenarios.js';
-import { recoveryCodeSet, securityRoutes, securityStart, securitySummary } from './securityScenarios.js';
+import { recoveryCodeSet, SECURITY_METHODS, securityRoutes, securityStart, securitySummary } from './securityScenarios.js';
 
 export const TEAM = { team_id: 'marketing', team_name: 'Marketing', status: 'running' };
 
@@ -335,44 +335,41 @@ function providers() {
 
 // Deleting a Routine (ADR-0051): any password but `wrong password` is the Supervisor's, then any six-digit code but
 // `000000` confirms it. The preview offers only the code, since it cannot answer a real passkey.
-function routineDeletion(method, path, body) {
-  const begin = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})\/deletion$/);
-  if (begin && method === 'POST') {
-    if (typeof body?.password !== 'string' || !body.password) return { status: 400, json: { detail: 'invalid' } };
-    if (body.password === 'wrong password') return { status: 401, json: { code: 'password-incorrect' } };
-    return { status: 202, json: { methods: ['totp'] } };
-  }
-  const routine = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})$/);
-  if (routine && method === 'DELETE' && body?.code === '000000') return { status: 401, json: { code: 'code-incorrect' } };
-  if (routine && method === 'DELETE' && !/^[0-9]{6}$/.test(body?.code ?? '')) {
-    return { status: 401, json: { code: 'authentication-expired' } };
-  }
-  return null;
+function beginRoutineDeletion(_state, { body }) {
+  if (typeof body?.password !== 'string' || !body.password) return { status: 400, json: { detail: 'invalid' } };
+  if (body.password === 'wrong password') return { status: 401, json: { code: 'password-incorrect' } };
+  return { status: 202, json: { methods: ['totp'] } };
 }
 
-function routineRoutes(state, method, path, body) {
-  const deletion = routineDeletion(method, path, body);
-  if (deletion) return deletion;
-  const resume = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})\/resume$/);
-  if (resume && method === 'POST') {
-    state.routines = state.routines.map((item) => (item.routine_id === resume[1] ? { ...item, state: 'active' } : item));
-    return ok({ team_id: 'marketing', routine_id: resume[1], paused: false });
+function deleteRoutine(state, { routine_id: routineId, body }) {
+  if (body?.code === '000000') return { status: 401, json: { code: 'code-incorrect' } };
+  if (!/^[0-9]{6}$/.test(body?.code ?? '')) return { status: 401, json: { code: 'authentication-expired' } };
+  // Deleting a Routine sets each of its held runs aside, as Team does.
+  for (const held of (state.incidents ?? []).filter((item) => item.routine_id === routineId)) {
+    setAside(state, held.incident_id, 'delete');
   }
-  const routine = path.match(/^\/api\/teams\/marketing\/routines\/([0-9a-f]{32})$/);
-  if (routine && method === 'DELETE') {
-    // Deleting a Routine sets each of its held runs aside, as Team does.
-    for (const held of (state.incidents ?? []).filter((item) => item.routine_id === routine[1])) {
-      setAside(state, held.incident_id, 'delete');
-    }
-    // Its last notice names it and closes its timeline.
-    const deleted = state.routines.find((item) => item.routine_id === routine[1]);
-    if (deleted) recordDeletion(state, deleted);
-    state.routines = state.routines.filter((item) => item.routine_id !== routine[1]);
-    state.runs = state.runs.filter((run) => run.routine_id !== routine[1]);
-    return ok({ team_id: 'marketing', routine_id: routine[1], deleted: true });
-  }
-  return null;
+  // Its last notice names it and closes its timeline.
+  const deleted = state.routines.find((item) => item.routine_id === routineId);
+  if (deleted) recordDeletion(state, deleted);
+  state.routines = state.routines.filter((item) => item.routine_id !== routineId);
+  state.runs = state.runs.filter((run) => run.routine_id !== routineId);
+  return ok({ team_id: 'marketing', routine_id: routineId, deleted: true });
 }
+
+function resumeRoutine(state, { routine_id: routineId }) {
+  state.routines = state.routines.map((item) => (item.routine_id === routineId ? { ...item, state: 'active' } : item));
+  return ok({ team_id: 'marketing', routine_id: routineId, paused: false });
+}
+
+// Marketing's Routine operations over the session socket (ADR-0114); every other listed Team has no Routine.
+const MARKETING_ROUTINE_METHODS = Object.freeze({
+  ...ROUTINE_RECOVERY_METHODS,
+  ...ROUTINE_STEP_METHODS,
+  ...ROUTINE_PROPOSAL_METHODS,
+  'routines.deletion': beginRoutineDeletion,
+  'routines.delete': deleteRoutine,
+  'routines.resume': resumeRoutine,
+});
 
 // `routines.list`: Marketing's Routines, runs, and held incidents; every other listed Team has none.
 function routinesList(state, teamId) {
@@ -658,6 +655,7 @@ const SPACE_METHODS = Object.freeze({
   'teams.reorder': (state, params) => reorderTeams(state, params.body),
   'space.resources': () => ok(SPACE_RESOURCES),
   'security.summary': (state) => securitySummary(state),
+  ...SECURITY_METHODS,
   'assistants.registry': () => ok({ assistants: ASSISTANTS }),
   'models.list': () => ok({ providers: providers() }),
   'decision.read': () => ok({ provider: 'typesafe', configured: false, masked: null }),
@@ -711,21 +709,23 @@ export function createScenario(name = 'ready', locale = 'en') {
       if (!state.session.authenticated) return null;
       if (Object.hasOwn(SPACE_METHODS, method)) return SPACE_METHODS[method](state, params);
       const listed = state.teams.some((team) => team.team_id === params.team_id);
+      if (listed && params.team_id === 'marketing' && Object.hasOwn(MARKETING_ROUTINE_METHODS, method)) {
+        return MARKETING_ROUTINE_METHODS[method](state, params);
+      }
       return listed && Object.hasOwn(TEAM_METHODS, method) ? TEAM_METHODS[method](state, params) : null;
     },
     // Whether the chat channel of this Team can attach: the preview answers every listed Team's chat.
     attachable(teamId) {
       return state.session.authenticated && state.teams.some((team) => team.team_id === teamId);
     },
-    // One HTTP request Admin still serves (the session and sign-in family, file uploads, and the Routine routes), or null.
+    // One HTTP request Admin still serves (the session and sign-in family and file uploads), or null.
     respond({ method = 'GET', path, body = null }) {
       if (path === '/api/session' && method === 'POST') return ok(state.session);
       const security = securityRoutes(state, method, path, body);
       if (security) return security;
       if (!state.session.authenticated || !state.teams.length) return null;
       if (path === '/api/teams/marketing/files' && method === 'POST') return uploadFile(state, body);
-      return routineRecoveryRoutes(state, method, path, body) ?? routineStepRoutes(state, method, path) ??
-        routineProposalRoutes(state, method, path, body) ?? routineRoutes(state, method, path, body);
+      return null;
     },
     // The chat channel: `message` returns the v7 frames to send back, in order.
     chat: {

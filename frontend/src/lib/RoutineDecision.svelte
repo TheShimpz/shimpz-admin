@@ -4,7 +4,8 @@
   import AssistantHumanRequestDialog from '#lib/AssistantHumanRequestDialog.svelte';
   import { assistantNames } from '#lib/assistantNames.js';
   import ChoiceList from '#lib/ChoiceList.svelte';
-  import { locale } from '#lib/i18n.js';
+  import { call, commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
+  import { locale, t } from '#lib/i18n.js';
   import { createHumanResponseFrame, parseChatEvent } from '#lib/localChat.js';
   import RoutineIcon from '#lib/RoutineIcon.svelte';
   import {
@@ -120,23 +121,29 @@
     return () => clearTimeout(timer);
   });
 
+  // A change Admin never answered because the socket dropped may or may not have happened, and says so.
+  function failed(error) {
+    return outcomeUnknown(error) ? $t('shell.outcomeUnknown') : routineErrorMessage(error, copy.errors);
+  }
+
   async function openCard() {
     // Reopening after an expiry clears only that notice; a verdict shown after an answer stays.
     if (expired) result = '';
     expired = false;
     try {
-      card = await openRoutineCard(fetch, teamId, runId);
+      card = await openRoutineCard(call, teamId, runId);
     } catch (error) {
       card = null;
       // A run already settled has nothing left to answer here; its newer notice replaces this one.
-      if (error?.code !== 'routine-incident-unavailable') result = routineErrorMessage(error, copy.errors);
+      if (error?.code !== 'routine-incident-unavailable') result = failed(error);
       else if (!onunavailable) finish('');
       else if (mounted) onunavailable();
     }
   }
 
   $effect(() => {
-    if (recoverable && wanted && !working) {
+    // A card opens while Admin is reachable; one wanted while the socket reconnects opens once it is back.
+    if (recoverable && wanted && !working && $commandsReady) {
       wanted = false;
       working = true;
       void openCard().finally(() => { working = false; });
@@ -188,11 +195,11 @@
     working = true;
     result = '';
     try {
-      const answered = await answerRoutineCard(fetch, teamId, runId, card, choice);
+      const answered = await answerRoutineCard(call, teamId, runId, card, choice);
       result = copy.card.requested;
       finish(result);
     } catch (error) {
-      result = routineErrorMessage(error, copy.errors);
+      result = failed(error);
     } finally {
       // The card was used or refused either way; while the run is still held, the next answer needs a fresh one.
       card = null;
@@ -209,7 +216,7 @@
       if (status !== 'frozen') finish(result, status === 'held');
       waitingIntegration = false;
     } catch (error) {
-      result = routineErrorMessage(error, copy.errors);
+      result = failed(error);
     } finally {
       challenge = null;
       working = false;
@@ -222,7 +229,7 @@
     try {
       // Team renders the request copy in the interface language selected when the run is reviewed (ADR-0091).
       const opened = await openRoutineChallenge(
-        fetch,
+        call,
         teamId,
         runId,
         $locale,
@@ -232,7 +239,7 @@
       waitingIntegration = opened.status === 'integrations-required';
       challenge = waitingIntegration ? null : opened.challenge;
     } catch (error) {
-      result = routineErrorMessage(error, copy.errors);
+      result = failed(error);
       challenge = null;
     } finally {
       working = false;
@@ -251,9 +258,9 @@
     working = true;
     let answered;
     try {
-      answered = await answerRoutineChallenge(fetch, teamId, runId, frame);
+      answered = await answerRoutineChallenge(call, teamId, runId, frame);
     } catch (error) {
-      result = routineErrorMessage(error, copy.errors);
+      result = failed(error);
       challenge = null;
       working = false;
       return;
@@ -325,12 +332,12 @@
           label: copy.card[choice],
           description: copy.card[HINTS[choice]],
         }))}
-        disabled={working}
+        disabled={working || !$commandsReady}
         onchoose={recover}
       />
     {:else if !working}
       <div class="actions">
-        <Button size="sm" variant="secondary" type="button" onclick={() => (wanted = true)}>
+        <Button size="sm" variant="secondary" type="button" disabled={!$commandsReady} onclick={() => (wanted = true)}>
           {expired ? copy.card.reopen : copy.list.retry}
         </Button>
       </div>
@@ -343,13 +350,13 @@
       <Button
         size="sm"
         type="button"
-        disabled={working}
-        onclick={() => settle(() => resumeRoutineIntegrations(fetch, teamId, runId))}
+        disabled={working || !$commandsReady}
+        onclick={() => settle(() => resumeRoutineIntegrations(call, teamId, runId))}
       >{working ? copy.run.working : copy.run.continue}</Button>
     </div>
   {:else}
     <div class="actions">
-      <Button size="sm" type="button" disabled={working} onclick={review}>
+      <Button size="sm" type="button" disabled={working || !$commandsReady} onclick={review}>
         {working ? copy.run.working : copy.run.review}
       </Button>
     </div>

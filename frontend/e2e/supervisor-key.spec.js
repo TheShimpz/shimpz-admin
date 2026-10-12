@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { routeScenario } from './scenarioRoutes.js';
+import { dropSessions, readsOf, routeRead, routeScenario, sessionCalls, waitForRead } from './scenarioRoutes.js';
 import { messages } from '../src/lib/messages.js';
 
 // Replacing the Supervisor signing key (ADR-0051) against the built Admin with scenario fixtures (ADR-0087): Security
@@ -8,13 +8,10 @@ import { messages } from '../src/lib/messages.js';
 const PASSWORD = 'violet otter lantern quartz 92';
 const copy = messages.en.security;
 
-function recordRequests(page) {
-  const bodies = [];
-  page.on('request', (request) => {
-    const url = new URL(request.url());
-    if (url.pathname.startsWith('/api/admin/supervisor-key')) bodies.push([url.pathname, request.postDataJSON()]);
-  });
-  return bodies;
+// The signing key operations the page asked for over its session socket (ADR-0114), in order.
+async function keyCalls(page) {
+  return (await sessionCalls(page)).filter((call) => call.method.startsWith('supervisor_key.'))
+    .map((call) => [call.method, call.params.body]);
 }
 
 async function replaceKey(page, password) {
@@ -30,7 +27,6 @@ async function replaceKey(page, password) {
 
 test('Security replaces the signing key after the password and an authenticator code', async ({ page }) => {
   await routeScenario(page, 'supervisor-key');
-  const sent = recordRequests(page);
   await page.goto('/chat/');
 
   const dialog = await replaceKey(page, 'wrong password');
@@ -40,10 +36,10 @@ test('Security replaces the signing key after the password and an authenticator 
 
   const key = dialog.getByRole('region', { name: copy.keyLabel });
   await expect(key.getByRole('status')).toContainText(copy.rotated);
-  expect(sent).toEqual([
-    ['/api/admin/supervisor-key/confirmation', { password: 'wrong password' }],
-    ['/api/admin/supervisor-key/confirmation', { password: PASSWORD }],
-    ['/api/admin/supervisor-key', { code: '123456' }],
+  expect(await keyCalls(page)).toEqual([
+    ['supervisor_key.confirmation', { password: 'wrong password' }],
+    ['supervisor_key.confirmation', { password: PASSWORD }],
+    ['supervisor_key.rotate', { code: '123456' }],
   ]);
 });
 
@@ -56,4 +52,17 @@ test('a replacement Team has not answered says the new key is kept and stays in 
   await expect(dialog.getByRole('button', { name: copy.rotate, exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: copy.cancel }).click();
   await expect(dialog.getByRole('region', { name: copy.keyLabel }).getByRole('status')).toHaveCount(0);
+});
+
+test('a replacement whose answer was lost says its outcome is unknown and is never sent again', async ({ page }) => {
+  await routeScenario(page, 'supervisor-key');
+  // Admin receives the confirmed replacement over the session socket, and the connection drops before it answers.
+  await routeRead(page, 'supervisor_key.rotate', () => new Promise(() => {}));
+  await page.goto('/chat/');
+
+  const dialog = await replaceKey(page, PASSWORD);
+  await waitForRead(page, 'supervisor_key.rotate');
+  await dropSessions(page);
+  await expect(dialog.getByRole('alert')).toContainText(messages.en.shell.outcomeUnknown);
+  expect(await readsOf(page, 'supervisor_key.rotate')).toHaveLength(1);
 });

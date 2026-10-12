@@ -10,6 +10,7 @@ import { localizedChallenge } from './localizedRequest.js';
 
 import {
   activityReports,
+  dropSessions,
   raiseTopic,
   readsOf,
   routeChat,
@@ -4361,10 +4362,10 @@ async function routeRoutines(
     },
   ] : [];
   // Every listed Routine's current revision projects the same plan, read page by page.
-  await page.route('**/api/teams/marketing/routines/*/revisions/*/steps/*', async (route) => {
-    const [routineId, , , , offset] = new URL(route.request().url()).pathname.split('/').slice(-5);
+  await routeRead(page, 'routines.plan_steps', ({ team_id: teamId, routine_id: routineId, offset }) => {
+    if (teamId !== 'marketing') return undefined;
     const routine = routines.find((item) => item.routine_id === routineId);
-    await route.fulfill({ json: planPage(routineId, routine.plan, ROUTINE_PLAN, Number(offset)) });
+    return ok(planPage(routineId, routine.plan, ROUTINE_PLAN, Number(offset)));
   });
   await routeRead(page, 'routines.list', (params) => {
     if (params.team_id !== 'marketing') return undefined;
@@ -4374,61 +4375,45 @@ async function routeRoutines(
     }
     return ok({ team_id: 'marketing', routines, runs, incidents });
   });
-  await page.route('**/api/teams/marketing/routines/*/resume', async (route) => {
-    const routineId = new URL(route.request().url()).pathname.split('/').at(-2);
-    calls.resumes.push(route.request().postDataJSON());
+  // Each Routine change goes over the session socket (ADR-0114); every call names the Marketing Team.
+  await routeRead(page, 'routines.resume', ({ routine_id: routineId }) => {
+    calls.resumes.push(routineId);
     routines = routines.map((routine) => (routine.routine_id === routineId ? { ...routine, state: 'active' } : routine));
-    await route.fulfill({ json: { team_id: 'marketing', routine_id: routineId, paused: false } });
+    return ok({ team_id: 'marketing', routine_id: routineId, paused: false });
   });
-  await page.route('**/api/teams/marketing/routines/*/pause', async (route) => {
-    const routineId = new URL(route.request().url()).pathname.split('/').at(-2);
-    calls.pauses.push(route.request().postDataJSON());
+  await routeRead(page, 'routines.pause', ({ routine_id: routineId }) => {
+    calls.pauses.push(routineId);
     routines = routines.map((routine) => (routine.routine_id === routineId ? { ...routine, state: 'paused' } : routine));
-    await route.fulfill({ json: { team_id: 'marketing', routine_id: routineId, paused: true } });
+    return ok({ team_id: 'marketing', routine_id: routineId, paused: true });
   });
-  await page.route('**/api/teams/marketing/routines/*/deletion', async (route) => {
-    const { password } = route.request().postDataJSON();
-    calls.begins.push(route.request().method());
+  await routeRead(page, 'routines.deletion', ({ routine_id: routineId, body: { password } }) => {
+    calls.begins.push(routineId);
     if (password === SUPERVISOR_PASSWORD && !(lockAfter && rejected >= lockAfter)) {
       const offer = passkey ? { methods: ['totp', 'passkey'], passkey_options: { challenge: 'Y2hhbGxlbmdl', allowCredentials: [], rpId: 'localhost', timeout: 180000, userVerification: 'required' } } : { methods: ['totp'] };
-      await route.fulfill({ status: 202, json: offer });
-      return;
+      return ok(offer, 202);
     }
     rejected += password === SUPERVISOR_PASSWORD ? 0 : 1;
-    if (lockAfter && rejected >= lockAfter) {
-      await route.fulfill({ status: 429, json: { code: 'authentication-locked', retry_after: 42 } });
-      return;
-    }
-    await route.fulfill({ status: 401, json: { code: 'password-incorrect' } });
+    if (lockAfter && rejected >= lockAfter) return ok({ code: 'authentication-locked', retry_after: 42 }, 429);
+    return ok({ code: 'password-incorrect' }, 401);
   });
-  await page.route(/\/api\/teams\/marketing\/routines\/[0-9a-f]{32}$/, async (route) => {
-    const routineId = new URL(route.request().url()).pathname.split('/').at(-1);
-    const proof = route.request().postDataJSON();
+  await routeRead(page, 'routines.delete', ({ routine_id: routineId, body: proof }) => {
     calls.deletes.push(proof);
-    if (proof.code === '000000') {
-      await route.fulfill({ status: 401, json: { code: 'code-incorrect' } });
-      return;
-    }
+    if (proof.code === '000000') return ok({ code: 'code-incorrect' }, 401);
     // While a run is still ending, Team keeps the Routine as deleting and answers false.
     routines = runEnding
       ? routines.map((routine) => (routine.routine_id === routineId ? { ...routine, deleting: true } : routine))
       : routines.filter((routine) => routine.routine_id !== routineId);
     // Deleting a Routine sets its held runs aside (ADR-0092).
     incidents = incidents.filter((item) => item.routine_id !== routineId);
-    await route.fulfill({ json: { team_id: 'marketing', routine_id: routineId, deleted: !runEnding } });
+    return ok({ team_id: 'marketing', routine_id: routineId, deleted: !runEnding });
   });
   // The held run's card. Rodar sets the run aside and lifts the pause.
-  await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
-    const incidentId = new URL(route.request().url()).pathname.split('/').at(-2);
-    await route.fulfill({ json: recoveryCard(incidentId) });
-  });
-  await page.route('**/api/teams/marketing/routines/incidents/*/answer', async (route) => {
-    const incidentId = new URL(route.request().url()).pathname.split('/').at(-2);
-    const answer = route.request().postDataJSON();
+  await routeRead(page, 'routines.card', ({ incident_id: incidentId }) => ok(recoveryCard(incidentId)));
+  await routeRead(page, 'routines.card_answer', ({ incident_id: incidentId, body: answer }) => {
     calls.answers.push(answer);
     incidents = incidents.filter((item) => item.incident_id !== incidentId);
     routines = routines.map((routine) => ({ ...routine, state: 'active' }));
-    await route.fulfill({ json: { team_id: 'marketing', incident_id: incidentId, choice: answer.choice, status: 'requested' } });
+    return ok({ team_id: 'marketing', incident_id: incidentId, choice: answer.choice, status: 'requested' });
   });
   return calls;
 }
@@ -4832,16 +4817,13 @@ test.describe('Team Routines', () => {
     return routed;
   }
 
-  function proposalCalls(page) {
-    const calls = [];
-    page.on('request', (request) => {
-      if (/\/routines\/proposals\//u.test(request.url())) calls.push([request.method(), request.postData()]);
-    });
-    return calls;
+  // The card's answers the page sent over its session socket (ADR-0114), in order.
+  async function proposalCalls(page) {
+    return (await readsOf(page, 'routines.proposal_confirm')).map(() => 'confirm')
+      .concat((await readsOf(page, 'routines.proposal_revoke')).map(() => 'revoke'));
   }
 
   test('a Routine card is confirmed with its Create button, which creates the Routine its notice then names', async ({ page }) => {
-    const calls = proposalCalls(page);
     const scenario = await recordRoutine(page);
     const card = page.getByRole('region', { name: 'Routine to create' });
     await expect(card).toContainText(ROUTINE_TEXT.en.card);
@@ -4856,7 +4838,7 @@ test.describe('Team Routines', () => {
     // Once created, the card is gone and nothing is left to answer.
     await expect(card).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Create Routine', exact: true })).toHaveCount(0);
-    await expect.poll(() => calls).toEqual([['POST', '{}']]);
+    await expect.poll(() => proposalCalls(page)).toEqual(['confirm']);
     const [routine] = scenario.call('routines.list', { team_id: 'marketing' }).json.routines;
     expect(routine.name).toBe(ROUTINE_TEXT.en.card);
 
@@ -4874,14 +4856,13 @@ test.describe('Team Routines', () => {
   });
 
   test('a Routine card canceled with its Cancel button revokes it and creates nothing', async ({ page }) => {
-    const calls = proposalCalls(page);
     const scenario = await recordRoutine(page);
     const card = page.getByRole('region', { name: 'Routine to create' });
     await card.getByRole('button', { name: 'Cancel', exact: true }).click();
     // Once canceled, the card is gone and nothing is left to answer.
     await expect(card).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Create Routine', exact: true })).toHaveCount(0);
-    await expect.poll(() => calls).toEqual([['DELETE', null]]);
+    await expect.poll(() => proposalCalls(page)).toEqual(['revoke']);
     expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toEqual([]);
     await expect(page.locator('.routine-run')).toHaveCount(0);
   });
@@ -5072,9 +5053,9 @@ test.describe('Team Routines', () => {
     // deleted Routine leaves it with the read that succeeds.
     const calls = await routeRoutines(page, { listFailsAfterDelete: true, held: false });
     const diagnostics = [];
-    await page.route('**/api/teams/marketing/routines/runs/*/diagnostics', async (route) => {
-      diagnostics.push(new URL(route.request().url()).pathname);
-      await route.fulfill({ json: { team_id: 'marketing', run_id: failed, diagnostics: [] } });
+    await routeRead(page, 'routines.diagnostics', ({ run_id: runId }) => {
+      diagnostics.push(runId);
+      return ok({ team_id: 'marketing', run_id: failed, diagnostics: [] });
     });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
@@ -5115,17 +5096,17 @@ test.describe('Team Routines', () => {
     // Resume turns dispatch back on, and Pause turns it off again.
     await panel.getByRole('button', { name: 'Resume' }).click();
     await expect(panel.getByRole('button', { name: 'Pause' })).toBeVisible();
-    await expect.poll(() => calls.resumes).toEqual([{}]);
+    await expect.poll(() => calls.resumes).toEqual([ROUTINE_VIEW.routine_id]);
     await panel.getByRole('button', { name: 'Pause' }).click();
     await expect(panel.getByRole('button', { name: 'Resume' })).toBeVisible();
-    await expect.poll(() => calls.pauses).toEqual([{}]);
+    await expect.poll(() => calls.pauses).toEqual([ROUTINE_VIEW.routine_id]);
 
     // A recent run, on the Runs page, opens its execution details.
     await panel.getByRole('tab', { name: 'Runs' }).click();
     await panel.getByRole('button', { name: 'Execution details' }).click();
     const details = page.getByRole('dialog', { name: 'Execution details' });
     await expect(details).toContainText('No failed attempts were recorded for this run.');
-    await expect.poll(() => diagnostics).toEqual([`/api/teams/marketing/routines/runs/${failed}/diagnostics`]);
+    await expect.poll(() => diagnostics).toEqual([failed]);
     await details.getByRole('button', { name: 'Close' }).click();
     await expect(details).toHaveCount(0);
 
@@ -5172,7 +5153,7 @@ test.describe('Team Routines', () => {
     await confirm.getByRole('button', { name: 'Delete' }).click();
     await expect(panel).toHaveCount(0);
     await expect(list).toHaveCount(0);
-    await expect.poll(() => calls.begins).toEqual(['POST', 'POST', 'POST']);
+    await expect.poll(() => calls.begins).toEqual(Array(3).fill(ROUTINE_VIEW.routine_id));
     await expect.poll(() => calls.deletes).toEqual([{ code: '000000' }, { code: '123456' }]);
     // With no Routines left, focus returns to the Team's actions, whose menu no longer offers Routines.
     await expect(navigation.getByRole('button', { name: 'Actions for Marketing' })).toBeFocused();
@@ -5234,9 +5215,9 @@ test.describe('Team Routines', () => {
     const calls = await routeRoutines(page, { held: false, passkey: true });
     let release;
     const held = new Promise((resolve) => { release = resolve; });
-    await page.route(/\/api\/teams\/marketing\/routines\/[0-9a-f]{32}$/, async (route) => {
+    await routeRead(page, 'routines.delete', async () => {
       await held;
-      await route.fallback();
+      return undefined;
     });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
@@ -5254,7 +5235,7 @@ test.describe('Team Routines', () => {
     await panel.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
     await panel.getByRole('button', { name: 'Delete' }).click();
     await expect(panel.getByRole('alert')).toHaveText('The passkey request was canceled or timed out.');
-    await expect.poll(() => calls.begins).toEqual(['POST']);
+    await expect.poll(() => calls.begins).toEqual([ROUTINE_VIEW.routine_id]);
     expect(calls.deletes).toEqual([]);
 
     // With the code, the deletion is sent; while it is in flight neither Escape nor Cancel leaves the confirmation.
@@ -5326,23 +5307,22 @@ test.describe('Team Routines', () => {
     }];
     let incidents = [];
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
-    await page.route('**/api/teams/marketing/routines/runs/*/challenge', (route) => route.fulfill({
-      json: {
-        team_id: 'marketing',
-        run_id: run,
-        status: 'human-required',
-        challenge: {
-          type: 'human-required',
-          challenge_id: 'b'.repeat(32),
-          expires_in: 300,
-          assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
-          action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
-          ...localizedChallenge(humanRequest('approval')),
-        },
+    await routeRead(page, 'routines.challenge', () => ok({
+      team_id: 'marketing',
+      run_id: run,
+      status: 'human-required',
+      challenge: {
+        type: 'human-required',
+        challenge_id: 'b'.repeat(32),
+        expires_in: 300,
+        assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+        action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
+        ...localizedChallenge(humanRequest('approval')),
       },
     }));
     // Approving resumes the run, which Team then holds at a step whose effect is unknown.
-    await page.route(`**/api/teams/marketing/routines/runs/${run}/human`, async (route) => {
+    await routeRead(page, 'routines.human', (params) => {
+      if (params.run_id !== run) return undefined;
       runs = [{ ...runs[0], status: 'held', request_kind: null, assistant_id: null, action: null, position: null, steps: null }];
       incidents = [{
         incident_id: run,
@@ -5354,11 +5334,9 @@ test.describe('Team Routines', () => {
         position: { phase: 'replay', step: 2 },
         steps: 3,
       }];
-      await route.fulfill({ json: { team_id: 'marketing', run_id: run, status: 'held' } });
+      return ok({ team_id: 'marketing', run_id: run, status: 'held' });
     });
-    await page.route('**/api/teams/marketing/routines/incidents/*/card', (route) => route.fulfill({
-      json: recoveryCard(run, { nonce: 'e'.repeat(32) }),
-    }));
+    await routeRead(page, 'routines.card', () => ok(recoveryCard(run, { nonce: 'e'.repeat(32) })));
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
@@ -5384,15 +5362,14 @@ test.describe('Team Routines', () => {
     let incidents = [];
     const openings = [];
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
-    await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
-      openings.push(route.request().url());
+    await routeRead(page, 'routines.card', (params) => {
+      openings.push(params.incident_id);
       // Team has not indexed the incident at the first opening; it is listed from then on.
       if (openings.length === 1) {
         incidents = [{ incident_id: run, routine_id: ROUTINE_VIEW.routine_id, name: ROUTINE_VIEW.name, created_at: '2026-10-01T12:01:07Z', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 }];
-        await route.fulfill({ status: 404, json: { code: 'routine-incident-unavailable' } });
-        return;
+        return ok({ code: 'routine-incident-unavailable' }, 404);
       }
-      await route.fulfill({ json: recoveryCard(run, { nonce: 'e'.repeat(32) }) });
+      return ok(recoveryCard(run, { nonce: 'e'.repeat(32) }));
     });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
@@ -5416,13 +5393,14 @@ test.describe('Team Routines', () => {
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
     // Team has no card for the run that was held: the panel reads the Routine list again on its own.
     const cards = [];
-    await page.route('**/api/teams/marketing/routines/incidents/*/card', (route) => {
-      cards.push(route.request().url());
-      return route.fulfill({ status: 404, json: { code: 'routine-incident-unavailable' } });
+    await routeRead(page, 'routines.card', (params) => {
+      cards.push(params.incident_id);
+      return ok({ code: 'routine-incident-unavailable' }, 404);
     });
     const steps = [];
-    page.on('request', (request) => {
-      if (/\/steps\/\d+$/u.test(new URL(request.url()).pathname)) steps.push(request.url());
+    await routeRead(page, 'routines.plan_steps', (params) => {
+      steps.push(params.offset);
+      return undefined;
     });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
@@ -5459,17 +5437,17 @@ test.describe('Team Routines', () => {
     const answered = new Promise((resolve) => { release = resolve; });
     const openings = [];
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
-    await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
-      openings.push(route.request().url());
-      await route.fulfill({ json: recoveryCard(run, { nonce: 'e'.repeat(32) }) });
+    await routeRead(page, 'routines.card', (params) => {
+      openings.push(params.incident_id);
+      return ok(recoveryCard(run, { nonce: 'e'.repeat(32) }));
     });
     // Rodar starts a fresh run, which freezes for an approval that the Team lists before the answer itself is
     // delivered.
-    await page.route('**/api/teams/marketing/routines/incidents/*/answer', async (route) => {
+    await routeRead(page, 'routines.card_answer', async () => {
       runs = [{ ...runs[0], status: 'frozen', request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 }];
       incidents = [];
       await answered;
-      await route.fulfill({ json: { team_id: 'marketing', incident_id: run, choice: 'run', status: 'requested' } });
+      return ok({ team_id: 'marketing', incident_id: run, choice: 'run', status: 'requested' });
     });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
@@ -5666,16 +5644,14 @@ test.describe('Team Routines', () => {
       ['c'.repeat(32)]: [record(1, 'list-zones', [])],
       [other]: [record(1, 'list-zones', []), record(2, 'list-dns-records', null)],
     };
-    await page.route('**/api/teams/marketing/routines/runs/*/steps/*/*', (route) => {
-      const runId = new URL(route.request().url()).pathname.split('/').at(-4);
-      return route.fulfill({ json: runStepsPage(runId, ROUTINE_VIEW.routine_id, runId === other ? twoSteps : plan, records[runId]) });
-    });
+    await routeRead(page, 'routines.run_steps', ({ run_id: runId }) => (
+      ok(runStepsPage(runId, ROUTINE_VIEW.routine_id, runId === other ? twoSteps : plan, records[runId]))
+    ));
     const diagnostics = [];
-    await page.route('**/api/teams/marketing/routines/runs/*/diagnostics', async (route) => {
-      const runId = new URL(route.request().url()).pathname.split('/').at(-2);
+    await routeRead(page, 'routines.diagnostics', ({ run_id: runId }) => {
       diagnostics.push(runId);
-      await route.fulfill({
-        json: {
+      return ok(
+        {
           team_id: 'marketing',
           run_id: runId,
           diagnostics: [{
@@ -5697,7 +5673,7 @@ test.describe('Team Routines', () => {
             condition: null,
           }],
         },
-      });
+      );
     });
     await page.goto('/chat/?team=marketing');
     // No run reaches the chat; each opens from its Routine's history, newest first.
@@ -5790,10 +5766,10 @@ test.describe('Team Routines', () => {
     const scenario = await routeScenario(page, 'routine-lifecycle');
     const [watch] = scenario.call('routines.list', { team_id: 'marketing' }).json.routines;
     let refusals = 1;
-    await page.route(`**/api/teams/marketing/routines/${watch.routine_id}/revisions/*/steps/*`, (route) => {
-      if (refusals === 0) return route.fallback();
+    await routeRead(page, 'routines.plan_steps', (params) => {
+      if (params.routine_id !== watch.routine_id || refusals === 0) return undefined;
       refusals -= 1;
-      return route.fulfill({ status: 503, json: { detail: 'unavailable' } });
+      return ok({ detail: 'unavailable' }, 503);
     });
     await page.goto('/chat/?team=marketing');
     const navigation = await openTeamNavigation(page);
@@ -5820,9 +5796,9 @@ test.describe('Team Routines', () => {
     const [watch] = scenario.call('routines.list', { team_id: 'marketing' }).json.routines;
     expect(watch.plan.steps).toBe(120);
     const read = [];
-    page.on('request', (request) => {
-      const match = new URL(request.url()).pathname.match(/\/revisions\/(\d+)\/steps\/(\d+)$/u);
-      if (match) read.push(`${match[1]}/${match[2]}`);
+    await routeRead(page, 'routines.plan_steps', ({ revision, offset }) => {
+      read.push(`${revision}/${offset}`);
+      return undefined;
     });
     await page.goto('/chat/?team=marketing');
     const navigation = await openTeamNavigation(page);
@@ -5880,14 +5856,14 @@ test.describe('Team Routines', () => {
     const revised = planSummary(steps, 2);
     let changed = false;
     const read = [];
-    await page.route(`**/api/teams/marketing/routines/${watch.routine_id}/revisions/*/steps/*`, (route) => {
-      const [revision, , offset] = new URL(route.request().url()).pathname.split('/').slice(-3);
+    await routeRead(page, 'routines.plan_steps', ({ routine_id: routineId, revision, offset }) => {
+      if (routineId !== watch.routine_id) return undefined;
       read.push(`${revision}/${offset}`);
       if (revision === '1') {
         changed = true;
-        return route.fulfill({ status: 409, json: { code: 'routine-revision-changed' } });
+        return ok({ code: 'routine-revision-changed' }, 409);
       }
-      return route.fulfill({ json: planPage(watch.routine_id, revised, steps, Number(offset)) });
+      return ok(planPage(watch.routine_id, revised, steps, Number(offset)));
     });
     // Once Team refused the old revision, the Routine list names the new one.
     await routeRead(page, 'routines.list', (params) => (changed && params.team_id === 'marketing'
@@ -5933,9 +5909,7 @@ test.describe('Team Routines', () => {
       },
     });
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
-    await page.route('**/api/teams/marketing/routines/runs/*/diagnostics', (route) => route.fulfill({
-      json: { team_id: 'marketing', run_id: run, diagnostics: [] },
-    }));
+    await routeRead(page, 'routines.diagnostics', () => ok({ team_id: 'marketing', run_id: run, diagnostics: [] }));
     // Fifty-nine steps were done, Stop cut the next one, the one after failed, one record is gone, and the run never
     // started the rest.
     const gap = (position, kind) => ({
@@ -5961,14 +5935,13 @@ test.describe('Team Routines', () => {
     let latest = 0;
     const OLD = 'c'.repeat(32);
     const NEW = 'e'.repeat(32);
-    await page.route('**/api/teams/marketing/routines/runs/*/steps/*/*', (route) => {
-      const [snapshot, offset] = new URL(route.request().url()).pathname.split('/').slice(-2);
+    await routeRead(page, 'routines.run_steps', ({ snapshot, offset }) => {
       read.push(`${snapshot === 'latest' ? 'latest' : snapshot[0]}/${offset}`);
       // The snapshot read first changed before its second page was read.
-      if (snapshot === OLD && offset === '64') return route.fulfill({ status: 409, json: { code: 'routine-run-changed' } });
+      if (snapshot === OLD && offset === '64') return ok({ code: 'routine-run-changed' }, 409);
       if (snapshot === 'latest') latest += 1;
       const current = snapshot === 'latest' ? (latest === 1 ? OLD : NEW) : snapshot;
-      return route.fulfill({ json: runStepsPage(run, ROUTINE_VIEW.routine_id, plan, records, { snapshot: current, offset: Number(offset) }) });
+      return ok(runStepsPage(run, ROUTINE_VIEW.routine_id, plan, records, { snapshot: current, offset: Number(offset) }));
     });
     await page.goto('/chat/?team=marketing');
     const panel = await openRoutinePanel(page);
@@ -6011,9 +5984,9 @@ test.describe('Team Routines', () => {
     const [watch, , daily] = routines;
     const status = messages.en.routine.result.status;
     const read = [];
-    page.on('request', (request) => {
-      const match = new URL(request.url()).pathname.match(/\/runs\/([0-9a-f]{32})\/steps\/(latest|[0-9a-f]{32})\/(\d+)$/u);
-      if (match) read.push(`${match[1][0]}:${match[2] === 'latest' ? 'latest' : 'snapshot'}/${match[3]}`);
+    await routeRead(page, 'routines.run_steps', ({ run_id: runId, snapshot, offset }) => {
+      read.push(`${runId[0]}:${snapshot === 'latest' ? 'latest' : 'snapshot'}/${offset}`);
+      return undefined;
     });
     await page.goto('/chat/?team=marketing');
     const panel = await openRoutinePanel(page, daily.name);
@@ -6197,26 +6170,20 @@ test.describe('Team Routines', () => {
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines, runs: [], incidents }) : undefined));
     const opened = [];
     const answers = [];
-    await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
-      const incidentId = new URL(route.request().url()).pathname.split('/').at(-2);
+    await routeRead(page, 'routines.card', ({ incident_id: incidentId }) => {
       opened.push(incidentId);
       // Team's card names its current step, which the transcript row may not show yet.
       const action = incidentId === held ? 'create-dns-record' : 'replace-dns-record';
-      await route.fulfill({ json: recoveryCard(incidentId, { nonce: String(opened.length).repeat(32), action }) });
+      return ok(recoveryCard(incidentId, { nonce: String(opened.length).repeat(32), action }));
     });
     // The paused run's first answer finds its card stale; everything else settles its run and lifts its Routine's pause.
-    await page.route('**/api/teams/marketing/routines/incidents/*/answer', async (route) => {
-      const incidentId = new URL(route.request().url()).pathname.split('/').at(-2);
-      const answer = route.request().postDataJSON();
+    await routeRead(page, 'routines.card_answer', ({ incident_id: incidentId, body: answer }) => {
       answers.push(answer);
-      if (incidentId === paused && answers.length === 2) {
-        await route.fulfill({ status: 409, json: { code: 'routine-card-stale' } });
-        return;
-      }
+      if (incidentId === paused && answers.length === 2) return ok({ code: 'routine-card-stale' }, 409);
       const settled = incidents.find((item) => item.incident_id === incidentId);
       incidents = incidents.filter((item) => item !== settled);
       routines = routines.map((routine) => (routine.routine_id === settled.routine_id ? { ...routine, state: 'active' } : routine));
-      await route.fulfill({ json: { team_id: 'marketing', incident_id: incidentId, choice: answer.choice, status: 'requested' } });
+      return ok({ team_id: 'marketing', incident_id: incidentId, choice: answer.choice, status: 'requested' });
     });
     await page.goto('/chat/?team=marketing');
     // The chat shows no run; the Team's Routines button says a Routine needs the person, and opening one is the card.
@@ -6276,9 +6243,7 @@ test.describe('Team Routines', () => {
       },
     });
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [{ ...ROUTINE_VIEW, state: 'paused' }], runs: [], incidents: [heldIncident(held)] }) : undefined));
-    await page.route('**/api/teams/marketing/routines/incidents/*/card', (route) => route.fulfill({
-      json: recoveryCard(held, { failure: { message, truncated: true } }),
-    }));
+    await routeRead(page, 'routines.card', () => ok(recoveryCard(held, { failure: { message, truncated: true } })));
     await page.goto('/chat/?team=marketing');
     const panel = await openRoutinePanel(page);
     await panel.getByText('See the technical error').click();
@@ -6321,9 +6286,9 @@ test.describe('Team Routines', () => {
         attempt(2, null, 'exit-status:1'),
       ],
     };
-    await page.route('**/api/teams/marketing/routines/runs/*/diagnostics', async (route) => {
-      requested.push(new URL(route.request().url()).pathname);
-      await route.fulfill({ json: answer });
+    await routeRead(page, 'routines.diagnostics', ({ run_id: runId }) => {
+      requested.push(runId);
+      return ok(answer);
     });
     await page.goto('/chat/?team=marketing');
     // The run never reaches the transcript; its details are in its Routine's panel.
@@ -6341,7 +6306,7 @@ test.describe('Team Routines', () => {
     await expect(dialog).toContainText('The Action exited with status 1.');
     await expect(dialog.locator('img, strong')).toHaveCount(0);
     expect(await page.evaluate(() => window.leaked)).toBeUndefined();
-    await expect.poll(() => requested).toEqual([`/api/teams/marketing/routines/runs/${failed}/diagnostics`]);
+    await expect.poll(() => requested).toEqual([failed]);
     expect(await accessibilityViolations(page)).toEqual([]);
     await dialog.getByRole('button', { name: 'Close' }).click();
     await expect(dialog).toHaveCount(0);
@@ -6370,13 +6335,11 @@ test.describe('Team Routines', () => {
       failure: null,
       condition: 'timeout',
     });
-    await page.route('**/api/teams/marketing/routines/runs/*/diagnostics', (route) => route.fulfill({
-      json: { team_id: 'marketing', run_id: failed, diagnostics: [
-        attempt('718293a4b5c6', { phase: 'replay', step: 2 }),
-        attempt('718293a4b5c7', { phase: 'replay', step: 5 }),
-        attempt('718293a4b5c8', { phase: 'replay', step: 7 }),
-      ] },
-    }));
+    await routeRead(page, 'routines.diagnostics', () => ok({ team_id: 'marketing', run_id: failed, diagnostics: [
+      attempt('718293a4b5c6', { phase: 'replay', step: 2 }),
+      attempt('718293a4b5c7', { phase: 'replay', step: 5 }),
+      attempt('718293a4b5c8', { phase: 'replay', step: 7 }),
+    ] }));
     await page.goto('/chat/?team=marketing');
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
@@ -6769,15 +6732,12 @@ test.describe('Team Routines', () => {
     const incidents = [heldIncident(held, heldRoutine)];
     const resumed = [];
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines, runs: [], incidents }) : undefined));
-    await page.route('**/api/teams/marketing/routines/*/resume', async (route) => {
-      const routineId = new URL(route.request().url()).pathname.split('/').at(-2);
+    await routeRead(page, 'routines.resume', ({ routine_id: routineId }) => {
       resumed.push(routineId);
       routines = routines.map((routine) => (routine.routine_id === routineId ? { ...routine, state: 'active' } : routine));
-      await route.fulfill({ json: { team_id: 'marketing', routine_id: routineId, paused: false } });
+      return ok({ team_id: 'marketing', routine_id: routineId, paused: false });
     });
-    await page.route('**/api/teams/marketing/routines/incidents/*/card', (route) => route.fulfill({
-      json: recoveryCard(held, { nonce: '1'.repeat(32) }),
-    }));
+    await routeRead(page, 'routines.card', () => ok(recoveryCard(held, { nonce: '1'.repeat(32) })));
     await page.goto('/chat/?team=marketing');
     // No run reaches the chat, so nothing there resumes a Routine.
     await expect(page.locator('.routine-run')).toHaveCount(0);
@@ -6794,6 +6754,24 @@ test.describe('Team Routines', () => {
     expect(resumed).toEqual([ROUTINE_VIEW.routine_id]);
   });
 
+  test('a Routine change whose answer was lost says its outcome is unknown and is never sent again', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
+    await routeReadyChat(page);
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [{ ...ROUTINE_VIEW, state: 'paused' }], runs: [], incidents: [] }) : undefined));
+    // Admin receives the resume over the session socket, and the connection drops before its answer arrives.
+    await routeRead(page, 'routines.resume', () => new Promise(() => {}));
+    await page.goto('/chat/?team=marketing');
+    const panel = await openRoutinePanel(page);
+    const resume = panel.getByRole('button', { name: 'Resume' });
+    await resume.click();
+    await waitForRead(page, 'routines.resume');
+    await dropSessions(page);
+    await expect(panel.getByText(messages.en.shell.outcomeUnknown)).toBeVisible();
+    // Once Admin is back the change is offered again; nothing sent it a second time.
+    await expect(resume).toBeEnabled({ timeout: 20_000 });
+    expect(await readsOf(page, 'routines.resume')).toHaveLength(1);
+  });
+
   test('an expired recovery card is withdrawn and only a person opens a fresh one', async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const held = 'b'.repeat(32);
@@ -6807,15 +6785,13 @@ test.describe('Team Routines', () => {
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [{ ...ROUTINE_VIEW, state: 'paused' }], runs: [], incidents: [heldIncident(held)] }) : undefined));
     let opened = 0;
     const answers = [];
-    await page.route('**/api/teams/marketing/routines/incidents/*/card', async (route) => {
+    await routeRead(page, 'routines.card', () => {
       opened += 1;
-      await route.fulfill({ json: recoveryCard(held, { nonce: String(opened).repeat(32) }) });
+      return ok(recoveryCard(held, { nonce: String(opened).repeat(32) }));
     });
-    await page.route('**/api/teams/marketing/routines/incidents/*/answer', async (route) => {
-      answers.push(route.request().postDataJSON());
-      await route.fulfill({
-        json: { team_id: 'marketing', incident_id: held, choice: 'run', status: 'requested' },
-      });
+    await routeRead(page, 'routines.card_answer', ({ body }) => {
+      answers.push(body);
+      return ok({ team_id: 'marketing', incident_id: held, choice: 'run', status: 'requested' });
     });
     await page.goto('/chat/?team=marketing');
     const panel = await openRoutinePanel(page);
@@ -6852,37 +6828,35 @@ test.describe('Team Routines', () => {
     const answers = [];
     const resumes = [];
     const openings = [];
-    await page.route('**/api/teams/marketing/routines/runs/*/challenge', async (route) => {
-      const runId = new URL(route.request().url()).pathname.split('/')[6];
-      openings.push(route.request().postDataJSON());
-      await route.fulfill({
-        json: runId === run
-          ? {
-            team_id: 'marketing',
-            run_id: run,
-            status: 'human-required',
-            challenge: {
-              type: 'human-required',
-              challenge_id: 'b'.repeat(32),
-              expires_in: 300,
-              assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
-              action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
-              ...localizedChallenge(humanRequest('approval')),
-            },
-          }
-          : { team_id: 'marketing', run_id: runId, status: 'integrations-required' },
-      });
+    await routeRead(page, 'routines.challenge', ({ run_id: runId, body }) => {
+      openings.push(body);
+      return ok(runId === run
+        ? {
+          team_id: 'marketing',
+          run_id: run,
+          status: 'human-required',
+          challenge: {
+            type: 'human-required',
+            challenge_id: 'b'.repeat(32),
+            expires_in: 300,
+            assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+            action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
+            ...localizedChallenge(humanRequest('approval')),
+          },
+        }
+        : { team_id: 'marketing', run_id: runId, status: 'integrations-required' });
     });
-    await page.route(`**/api/teams/marketing/routines/runs/${run}/human`, async (route) => {
-      answers.push(route.request().postDataJSON());
+    await routeRead(page, 'routines.human', ({ run_id: runId, body }) => {
+      if (runId !== run) return undefined;
+      answers.push(body);
       // The first approval resumes a run that freezes again for its next approval; the second completes it.
       const status = answers.length === 1 ? 'frozen' : 'done';
       if (status === 'done') runs = runs.filter((item) => item.run_id !== run);
-      await route.fulfill({ json: { team_id: 'marketing', run_id: run, status } });
+      return ok({ team_id: 'marketing', run_id: run, status });
     });
-    await page.route('**/api/teams/marketing/routines/runs/*/integrations', async (route) => {
-      resumes.push(route.request().method());
-      await route.fulfill({ json: { team_id: 'marketing', run_id: waiting, status: 'frozen' } });
+    await routeRead(page, 'routines.integrations', ({ run_id: runId }) => {
+      resumes.push(runId);
+      return ok({ team_id: 'marketing', run_id: waiting, status: 'frozen' });
     });
     await page.goto('/chat/?team=marketing');
     // No run reaches the chat: a run waiting for the person's approval or connection is found from the Team's
@@ -6921,7 +6895,7 @@ test.describe('Team Routines', () => {
     expect(resumes).toEqual([]);
     await auditPanel.getByRole('button', { name: 'Continue the run' }).click();
     await expect(auditPanel.getByRole('status')).toHaveText('The run continued: waiting for another answer');
-    expect(resumes).toEqual(['POST']);
+    expect(resumes).toEqual([waiting]);
     // Every opening names the interface language the request copy is rendered in (ADR-0091).
     expect(openings).toEqual(Array(5).fill({ locale: 'en' }));
   });
@@ -6939,32 +6913,29 @@ test.describe('Team Routines', () => {
     });
     let runs = [frozenRun(run, 'human')];
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents: [] }) : undefined));
-    await page.route('**/api/teams/marketing/routines/runs/*/challenge', (route) => route.fulfill({
-      json: {
-        team_id: 'marketing',
-        run_id: run,
-        status: 'human-required',
-        challenge: {
-          type: 'human-required',
-          challenge_id: 'b'.repeat(32),
-          expires_in: 300,
-          assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
-          action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
-          ...localizedChallenge(humanRequest('auth:password')),
-        },
+    await routeRead(page, 'routines.challenge', () => ok({
+      team_id: 'marketing',
+      run_id: run,
+      status: 'human-required',
+      challenge: {
+        type: 'human-required',
+        challenge_id: 'b'.repeat(32),
+        expires_in: 300,
+        assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+        action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
+        ...localizedChallenge(humanRequest('auth:password')),
       },
     }));
     // The first password is refused and keeps the challenge open; the second authorizes the run, which completes.
     const answered = [];
-    await page.route('**/api/teams/marketing/routines/runs/*/human', async (route) => {
-      answered.push([new URL(route.request().url()).pathname.split('/').at(-2), route.request().postDataJSON()]);
+    await routeRead(page, 'routines.human', ({ run_id: runId, body }) => {
+      answered.push([runId, body]);
       if (answered.length === 1) {
         const rejection = { type: 'human-response-rejected', challenge_id: 'b'.repeat(32), reason: 'authentication-denied', attempts_remaining: 2, retry_after: 0 };
-        await route.fulfill({ status: 409, json: { code: 'authentication-denied', ...rejection } });
-        return;
+        return ok({ code: 'authentication-denied', ...rejection }, 409);
       }
       runs = [];
-      await route.fulfill({ json: { team_id: 'marketing', run_id: run, status: 'done' } });
+      return ok({ team_id: 'marketing', run_id: run, status: 'done' });
     });
     await page.goto('/chat/?team=marketing');
     // The chat shows no run; the Routines button says one needs the person.
@@ -7006,25 +6977,23 @@ test.describe('Team Routines', () => {
     // view each request asks for.
     await routeRead(page, 'history.page', (params) => (params.team_id === 'marketing' ? ok({ ...history, entries: historyView(history.entries, params.routine ?? null) }) : undefined));
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents: [] }) : undefined));
-    await page.route(`**/api/teams/marketing/routines/runs/${run}/challenge`, (route) => route.fulfill({
-      json: {
-        team_id: 'marketing',
-        run_id: run,
-        status: 'human-required',
-        challenge: {
-          type: 'human-required',
-          challenge_id: 'b'.repeat(32),
-          expires_in: 300,
-          assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
-          action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
-          ...localizedChallenge(humanRequest('approval')),
-        },
+    await routeRead(page, 'routines.challenge', () => ok({
+      team_id: 'marketing',
+      run_id: run,
+      status: 'human-required',
+      challenge: {
+        type: 'human-required',
+        challenge_id: 'b'.repeat(32),
+        expires_in: 300,
+        assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+        action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
+        ...localizedChallenge(humanRequest('approval')),
       },
     }));
     const answers = [];
-    await page.route(`**/api/teams/marketing/routines/runs/${run}/human`, async (route) => {
-      answers.push(route.request().postDataJSON());
-      await route.fulfill({ json: { team_id: 'marketing', run_id: run, status: 'done' } });
+    await routeRead(page, 'routines.human', ({ body }) => {
+      answers.push(body);
+      return ok({ team_id: 'marketing', run_id: run, status: 'done' });
     });
     await page.goto('/chat/?team=marketing');
     const rows = page.locator('.routine-run');
@@ -7332,35 +7301,32 @@ test('a frozen Routine run opens in the interface language and answers with the 
     }) : undefined));
   const openings = [];
   const answers = [];
-  await page.route(`**/api/teams/marketing/routines/runs/${run}/challenge`, async (route) => {
-    const opening = route.request().postDataJSON();
+  await routeRead(page, 'routines.challenge', ({ body: opening }) => {
     openings.push(opening);
-    await route.fulfill({
-      json: {
-        team_id: 'marketing',
-        run_id: run,
-        status: 'human-required',
-        challenge: {
-          type: 'human-required',
-          challenge_id: 'b'.repeat(32),
-          expires_in: 300,
-          assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
-          action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
-          // A Routine challenge carries no purpose: Team renders its request copy in the opening's language.
-          ...localizedChallenge(humanRequest('approval'), {
-            locale: opening.locale,
-            shown: {
-              title: 'Publicar as alterações de DNS revisadas?',
-              description: 'O Shimpz Cloudflare pausou antes de continuar esta Ação exata.',
-            },
-          }),
-        },
+    return ok({
+      team_id: 'marketing',
+      run_id: run,
+      status: 'human-required',
+      challenge: {
+        type: 'human-required',
+        challenge_id: 'b'.repeat(32),
+        expires_in: 300,
+        assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+        action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
+        // A Routine challenge carries no purpose: Team renders its request copy in the opening's language.
+        ...localizedChallenge(humanRequest('approval'), {
+          locale: opening.locale,
+          shown: {
+            title: 'Publicar as alterações de DNS revisadas?',
+            description: 'O Shimpz Cloudflare pausou antes de continuar esta Ação exata.',
+          },
+        }),
       },
     });
   });
-  await page.route(`**/api/teams/marketing/routines/runs/${run}/human`, async (route) => {
-    answers.push(route.request().postDataJSON());
-    await route.fulfill({ json: { team_id: 'marketing', run_id: run, status: 'done' } });
+  await routeRead(page, 'routines.human', ({ body }) => {
+    answers.push(body);
+    return ok({ team_id: 'marketing', run_id: run, status: 'done' });
   });
   await page.goto('/chat/?team=marketing');
   // The Routine's panel opens in the interface language and offers the review.

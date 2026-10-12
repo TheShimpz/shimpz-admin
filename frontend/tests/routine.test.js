@@ -397,18 +397,13 @@ test('a Routine card is admitted only whole, and its inputs say where each value
 
 test('Criar rotina confirms and Cancelar revokes exactly one card', async () => {
   const proposalId = PROPOSAL.proposal_id;
-  const path = `/api/teams/team_1/routines/proposals/${proposalId}`;
   const routineId = 'a'.repeat(32);
   let api = fetcher([[200, { team_id: 'team_1', proposal_id: proposalId, routine_id: routineId, status: 'created' }]]);
   assert.deepEqual(await confirmRoutineProposal(api.fetch, 'team_1', proposalId), { status: 'created', routineId });
-  assert.equal(api.calls[0].path, path);
-  assert.equal(api.calls[0].init.method, 'POST');
-  assert.equal(api.calls[0].init.body, '{}');
+  assert.deepEqual(api.calls, [{ method: 'routines.proposal_confirm', params: { team_id: 'team_1', proposal_id: proposalId } }]);
   api = fetcher([[200, { team_id: 'team_1', proposal_id: proposalId, routine_id: null, status: 'revoked' }]]);
   assert.deepEqual(await revokeRoutineProposal(api.fetch, 'team_1', proposalId), { status: 'revoked', routineId: null });
-  assert.equal(api.calls[0].path, path);
-  assert.equal(api.calls[0].init.method, 'DELETE');
-  assert.equal(api.calls[0].init.body, undefined);
+  assert.deepEqual(api.calls, [{ method: 'routines.proposal_revoke', params: { team_id: 'team_1', proposal_id: proposalId } }]);
   for (const [call, body] of [
     [confirmRoutineProposal, { team_id: 'team_1', proposal_id: proposalId, routine_id: null, status: 'revoked' }],
     [confirmRoutineProposal, { team_id: 'team_2', proposal_id: proposalId, routine_id: routineId, status: 'created' }],
@@ -557,10 +552,11 @@ test('Routines and runs are admitted only in their closed views', () => {
   }
 });
 
+// A session socket call stand-in (ADR-0114): each Routine operation and its params, answered in order.
 function fetcher(responses) {
   const calls = [];
-  const fetch = async (path, init) => {
-    calls.push({ path, init });
+  const fetch = async (method, params) => {
+    calls.push({ method, params });
     const [status, body] = responses.shift();
     return { ok: status < 300, status, async json() { return body; } };
   };
@@ -571,7 +567,7 @@ test('Routine requests go to exact Admin operations and admit only exact answers
   let api = fetcher([[200, { team_id: 'team_1', routines: [ROUTINE], runs: [FROZEN], incidents: [INCIDENT] }]]);
   assert.deepEqual(await listRoutines(api.fetch, 'team_1'), { routines: [ROUTINE], runs: [FROZEN], incidents: [INCIDENT] });
   // The list is the session socket's `routines.list` read (ADR-0114).
-  assert.deepEqual(api.calls, [{ path: 'routines.list', init: { team_id: 'team_1' } }]);
+  assert.deepEqual(api.calls, [{ method: 'routines.list', params: { team_id: 'team_1' } }]);
 
   const CODE = { code: '123456' };
   api = fetcher([[200, { team_id: 'team_1', routine_id: ROUTINE.routine_id, deleted: true }]]);
@@ -580,12 +576,14 @@ test('Routine requests go to exact Admin operations and admit only exact answers
     deleteRoutine(fetcher([[200, { team_id: 'team_1', routine_id: 'f'.repeat(32), deleted: true }]]).fetch, 'team_1', ROUTINE.routine_id, CODE),
     (error) => error.code === 'routine-response-invalid',
   );
-  assert.equal(api.calls[0].init.method, 'DELETE');
-  assert.equal(api.calls[0].init.body, JSON.stringify(CODE));
+  assert.deepEqual(api.calls[0], {
+    method: 'routines.delete',
+    params: { team_id: 'team_1', routine_id: ROUTINE.routine_id, body: CODE },
+  });
 
   api = fetcher([[200, { team_id: 'team_1', routine_id: ROUTINE.routine_id, paused: false }]]);
   assert.equal(await resumeRoutine(api.fetch, 'team_1', ROUTINE.routine_id), false);
-  assert.equal(api.calls[0].path, `/api/teams/team_1/routines/${ROUTINE.routine_id}/resume`);
+  assert.deepEqual(api.calls[0], { method: 'routines.resume', params: { team_id: 'team_1', routine_id: ROUTINE.routine_id } });
 
   const empty = { team_id: 'team_1', routines: [], runs: [], incidents: [] };
   for (const [call, responses] of [
@@ -966,10 +964,8 @@ test('a frozen run is opened, answered, and resumed only through exact answers',
     status: 'human-required',
     challenge,
   });
-  assert.equal(api.calls[0].path, `/api/teams/team_1/routines/runs/${run}/challenge`);
   // Opening names exactly the interface language the request copy renders in (ADR-0091).
-  assert.deepEqual(JSON.parse(api.calls[0].init.body), { locale: 'pt' });
-  assert.equal(api.calls[0].init.headers['Content-Type'], 'application/json');
+  assert.deepEqual(api.calls[0], { method: 'routines.challenge', params: { team_id: 'team_1', run_id: run, body: { locale: 'pt' } } });
   for (const locale of [null, 'pt-BR', 'PT', undefined]) {
     api = fetcher([]);
     await assert.rejects(openRoutineChallenge(api.fetch, 'team_1', run, locale, () => null), RoutineError);
@@ -990,7 +986,7 @@ test('a frozen run is opened, answered, and resumed only through exact answers',
   const frame = { type: 'human-response', challenge_id: 'b'.repeat(32), decision: 'deny' };
   api = fetcher([[200, { team_id: 'team_1', run_id: run, status: 'denied' }]]);
   assert.deepEqual(await answerRoutineChallenge(api.fetch, 'team_1', run, frame), { status: 'denied' });
-  assert.deepEqual(JSON.parse(api.calls[0].init.body), frame);
+  assert.deepEqual(api.calls[0], { method: 'routines.human', params: { team_id: 'team_1', run_id: run, body: frame } });
   const rejection = { type: 'human-response-rejected', challenge_id: 'b'.repeat(32), reason: 'authentication-denied', attempts_remaining: 2, retry_after: 0 };
   api = fetcher([[409, { code: 'authentication-denied', ...rejection }]]);
   assert.deepEqual(await answerRoutineChallenge(api.fetch, 'team_1', run, frame), { rejection });
@@ -1008,7 +1004,7 @@ test('a frozen run is opened, answered, and resumed only through exact answers',
   );
   api = fetcher([[200, { team_id: 'team_1', run_id: run, status: 'frozen' }]]);
   assert.equal(await resumeRoutineIntegrations(api.fetch, 'team_1', run), 'frozen');
-  assert.equal(api.calls[0].path, `/api/teams/team_1/routines/runs/${run}/integrations`);
+  assert.deepEqual(api.calls[0], { method: 'routines.integrations', params: { team_id: 'team_1', run_id: run } });
 });
 
 test('a Routine plan projection bounds text in Unicode code points, as Team does', () => {
@@ -1146,10 +1142,10 @@ test("a Routine's steps are read page by page for exactly the revision its summa
   assert.equal(first.steps.length, 64);
   assert.equal(first.next, 64);
   assert.equal((await readPlanSteps(api.fetch, 'team_1', routineId, LONG, 64)).next, null);
-  assert.deepEqual(api.calls.map((call) => call.path), [
-    `/api/teams/team_1/routines/${routineId}/revisions/1/steps/0`,
-    `/api/teams/team_1/routines/${routineId}/revisions/1/steps/64`,
-  ]);
+  assert.deepEqual(api.calls, [0, 64].map((offset) => ({
+    method: 'routines.plan_steps',
+    params: { team_id: 'team_1', routine_id: routineId, revision: '1', offset: String(offset) },
+  })));
   // A page of another Routine, revision, digest, size, or offset is never combined with this one.
   for (const [body, offset] of [
     [{ ...planPage(0, 64), routine_id: 'c'.repeat(32) }, 0],
@@ -1217,10 +1213,10 @@ test("a run's step records are admitted only for its own revision and one snapsh
   // latest admits the snapshot Team names; a later page asks for exactly that snapshot.
   assert.deepEqual((await readRunSteps(api.fetch, 'team_1', run, plan, 'latest', 0)).steps, steps);
   assert.equal((await readRunSteps(api.fetch, 'team_1', run, plan, SNAPSHOT, 0)).snapshot, SNAPSHOT);
-  assert.deepEqual(api.calls.map((call) => call.path), [
-    `/api/teams/team_1/routines/runs/${run}/steps/latest/0`,
-    `/api/teams/team_1/routines/runs/${run}/steps/${SNAPSHOT}/0`,
-  ]);
+  assert.deepEqual(api.calls, ['latest', SNAPSHOT].map((snapshot) => ({
+    method: 'routines.run_steps',
+    params: { team_id: 'team_1', run_id: run, snapshot, offset: '0' },
+  })));
   // A stopped attempt was cut by Stop or the run's deadline; it carries its Action and inputs like a failed one.
   for (const status of ['done', 'failed', 'stopped', 'waiting']) {
     assert.ok(isRunStep({ ...RECORDED, status }, REPLAY_1, 2), status);
@@ -1352,9 +1348,13 @@ test('a recovery card shows its recorded failure, offers exactly Rodar and Exclu
   const opened = await openRoutineCard(api.fetch, 'team_1', INCIDENT.incident_id);
   assert.deepEqual(opened, card);
   assert.deepEqual(await answerRoutineCard(api.fetch, 'team_1', INCIDENT.incident_id, opened, 'run'), answered);
-  assert.equal(api.calls[0].path, `/api/teams/team_1/routines/incidents/${INCIDENT.incident_id}/card`);
-  assert.equal(api.calls[1].path, `/api/teams/team_1/routines/incidents/${INCIDENT.incident_id}/answer`);
-  assert.deepEqual(JSON.parse(api.calls[1].init.body), { nonce: card.nonce, choice: 'run' });
+  assert.deepEqual(api.calls, [
+    { method: 'routines.card', params: { team_id: 'team_1', incident_id: INCIDENT.incident_id } },
+    {
+      method: 'routines.card_answer',
+      params: { team_id: 'team_1', incident_id: INCIDENT.incident_id, body: { nonce: card.nonce, choice: 'run' } },
+    },
+  ]);
   // A card outside the replay phase is refused.
   const astray = {
     ...card, position: { phase: 'other', step: 2 },
@@ -1472,7 +1472,7 @@ test("a run's execution details admit exactly Team's diagnostics view for that r
   for (const diagnostics of [[], [ATTEMPT], [ATTEMPT, transport, later]]) {
     const api = fetcher([[200, { team_id: 'team_1', run_id: RUN_ID, diagnostics: structuredClone(diagnostics) }]]);
     assert.deepEqual(await readRunDiagnostics(api.fetch, 'team_1', RUN_ID), diagnostics);
-    assert.equal(api.calls[0].path, `/api/teams/team_1/routines/runs/${RUN_ID}/diagnostics`);
+    assert.deepEqual(api.calls, [{ method: 'routines.diagnostics', params: { team_id: 'team_1', run_id: RUN_ID } }]);
   }
   const failure = ATTEMPT.failure;
   for (const diagnostic of [
@@ -1578,8 +1578,7 @@ test('Pausar and Retomar admit only exactly that Routine in the asked state', as
   const routineId = 'a'.repeat(32);
   let api = fetcher([[200, { team_id: 'team_1', routine_id: routineId, paused: true }]]);
   assert.equal(await pauseRoutine(api.fetch, 'team_1', routineId), true);
-  assert.equal(api.calls[0].path, `/api/teams/team_1/routines/${routineId}/pause`);
-  assert.equal(api.calls[0].init.method, 'POST');
+  assert.deepEqual(api.calls, [{ method: 'routines.pause', params: { team_id: 'team_1', routine_id: routineId } }]);
   await assert.rejects(
     pauseRoutine(fetcher([[200, { team_id: 'team_1', routine_id: routineId, paused: false }]]).fetch, 'team_1', routineId),
     (error) => error.code === 'routine-response-invalid',
@@ -1606,12 +1605,12 @@ test('a Routine summary keeps each filled value apart and says how far off the n
 });
 
 test('a Routine deletion starts with the password and admits only the factors Admin offers', async () => {
-  const path = `/api/teams/team_1/routines/${ROUTINE.routine_id}/deletion`;
   let api = fetcher([[202, { methods: ['totp'] }]]);
   assert.deepEqual(await beginRoutineDeletion(api.fetch, 'team_1', ROUTINE.routine_id, 'secret words'), { passkey: null });
-  assert.equal(api.calls[0].path, path);
-  assert.equal(api.calls[0].init.method, 'POST');
-  assert.equal(api.calls[0].init.body, JSON.stringify({ password: 'secret words' }));
+  assert.deepEqual(api.calls, [{
+    method: 'routines.deletion',
+    params: { team_id: 'team_1', routine_id: ROUTINE.routine_id, body: { password: 'secret words' } },
+  }]);
   const options = { challenge: 'abc' };
   api = fetcher([[202, { methods: ['totp', 'passkey'], passkey_options: options }]]);
   assert.deepEqual(await beginRoutineDeletion(api.fetch, 'team_1', ROUTINE.routine_id, 'secret words'), { passkey: options });

@@ -1,6 +1,7 @@
 <script>
   import { DialogFrame, Modal, Notice } from '@shimpz/frontend';
 
+  import { call } from '#lib/adminSocket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { locale } from '#lib/i18n.js';
   import RoutineRunSteps from '#lib/RoutineRunSteps.svelte';
@@ -38,7 +39,7 @@
     let current = true;
     diagnostics = null;
     error = '';
-    readRunDiagnostics(fetch, teamId, runId)
+    readRunDiagnostics(call, teamId, runId)
       .then((value) => { if (current) diagnostics = value; })
       .catch((failure) => { if (current) error = routineErrorMessage(failure, errors); });
     return () => { current = false; };

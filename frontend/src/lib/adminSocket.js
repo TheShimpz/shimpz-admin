@@ -139,6 +139,10 @@ const CHANGES = new Set([
   'assistants.install', 'assistants.install_local', 'assistants.uninstall', 'models.save', 'models.remove',
   'decision.save', 'decision.remove', 'integrations.authorize', 'integrations.complete', 'integrations.cancel',
   'integrations.disconnect', 'stored_inputs.clear', 'files.delete',
+  'routines.pause', 'routines.resume', 'routines.deletion', 'routines.delete', 'routines.card', 'routines.card_answer',
+  'routines.challenge', 'routines.human', 'routines.integrations', 'routines.proposal_confirm',
+  'routines.proposal_revoke', 'security.acknowledge', 'recovery_codes.confirmation', 'recovery_codes.replace',
+  'supervisor_key.confirmation', 'supervisor_key.rotate',
   'subscribe', 'unsubscribe', 'chat.attach', 'chat.detach',
 ]);
 

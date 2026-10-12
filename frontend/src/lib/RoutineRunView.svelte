@@ -1,4 +1,5 @@
 <script>
+  import { call } from '#lib/adminSocket.js';
   import { assistantNames } from '#lib/assistantNames.js';
   import { locale } from '#lib/i18n.js';
   import RoutineModal from '#lib/RoutineModal.svelte';
@@ -56,7 +57,7 @@
     let current = true;
     diagnostics = null;
     unavailable = false;
-    readRunDiagnostics(fetch, team, runId)
+    readRunDiagnostics(call, team, runId)
       .then((value) => { if (current) diagnostics = value; })
       .catch(() => { if (current) unavailable = true; });
     return () => { current = false; };

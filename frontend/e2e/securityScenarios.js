@@ -132,56 +132,51 @@ function loginRoutes(state, method, path, body) {
   return null;
 }
 
-function signedInRoutes(state, method, path, body) {
-  if (!state.session.authenticated) return null;
-  const security = state.security;
-  if (path === '/api/admin/security/failures' && method === 'POST') {
+// The signed-in Supervisor's security operations over the session socket (ADR-0114): acknowledging the refused attempts,
+// and replacing the recovery codes or the signing key, each with the password and then one second factor.
+export const SECURITY_METHODS = Object.freeze({
+  'security.acknowledge': (state, { body }) => {
     const seen = body?.acknowledged;
     if (!Number.isSafeInteger(seen) || seen < 1 || Object.keys(body).length !== 1) {
       return refused(400, { detail: 'request body must contain only a positive acknowledged count' });
     }
-    security.failedAttempts = Math.max(security.failedAttempts - seen, 0);
-    return ok(summary(security));
-  }
-  if (path === '/api/admin/recovery-codes/confirmation' && method === 'POST') {
-    if (!password(body)) return refused(401, { code: 'password-incorrect' });
-    security.ticket = 'operation';
-    return accepted({ methods: ['totp'] });
-  }
-  if (path === '/api/admin/recovery-codes' && method === 'POST') {
-    if (security.ticket !== 'operation') return refused(401, { code: 'authentication-expired' });
+    state.security.failedAttempts = Math.max(state.security.failedAttempts - seen, 0);
+    return ok(summary(state.security));
+  },
+  'recovery_codes.confirmation': (state, { body }) => begin(state.security, 'recovery-codes', body),
+  'recovery_codes.replace': (state, { body }) => {
+    const security = state.security;
+    if (security.ticket !== 'recovery-codes') return refused(401, { code: 'authentication-expired' });
     security.ticket = null;
     if (!authenticatorCode(body)) return refused(401, { code: 'code-incorrect' });
     return ok({ recovery_codes: freshSet(security) });
-  }
-  return supervisorKeyRoutes(security, method, path, body);
-}
-
-// Replacing the Supervisor signing key (ADR-0051): the same confirmation, then Team's answer.
-function supervisorKeyRoutes(security, method, path, body) {
-  if (path === '/api/admin/supervisor-key/confirmation' && method === 'POST') {
-    if (!password(body)) return refused(401, { code: 'password-incorrect' });
-    security.ticket = 'supervisor-key';
-    return accepted({ methods: ['totp'] });
-  }
-  if (path === '/api/admin/supervisor-key' && method === 'POST') {
+  },
+  // Replacing the Supervisor signing key (ADR-0051): the same confirmation, then Team's answer.
+  'supervisor_key.confirmation': (state, { body }) => begin(state.security, 'supervisor-key', body),
+  'supervisor_key.rotate': (state, { body }) => {
+    const security = state.security;
     if (security.ticket !== 'supervisor-key') return refused(401, { code: 'authentication-expired' });
     security.ticket = null;
     if (!authenticatorCode(body)) return refused(401, { code: 'code-incorrect' });
     if (security.keyRotation === 'pending') return refused(503, { code: 'supervisor-key-rotation-pending' });
     security.keysReplaced += 1;
     return ok({ rotated: true });
-  }
-  return null;
+  },
+});
+
+// A confirmation begins with the password and offers the authenticator code; the socket keeps one pending ticket.
+function begin(security, operation, body) {
+  if (!password(body)) return refused(401, { code: 'password-incorrect' });
+  security.ticket = operation;
+  return accepted({ methods: ['totp'] });
 }
 
-/** Answer the authentication and security routes, or null for a request they do not cover. */
 /** The `security.summary` read: what the Supervisor's sign-ins and second factors look like now. */
 export function securitySummary(state) {
   return ok(summary(state.security));
 }
 
+/** Answer the sign-in routes that issue the session, or null for a request they do not cover. */
 export function securityRoutes(state, method, path, body) {
-  return setupRoutes(state, method, path, body) ?? loginRoutes(state, method, path, body) ??
-    signedInRoutes(state, method, path, body);
+  return setupRoutes(state, method, path, body) ?? loginRoutes(state, method, path, body);
 }

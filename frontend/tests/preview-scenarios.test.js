@@ -30,26 +30,12 @@ import { via } from './socketStub.js';
 // Each interface language's own catalog of this copy.
 const routineMessages = Object.fromEntries(Object.entries(messages).map(([code, catalog]) => [code, catalog.routine]));
 
-const ROUTINES = '/api/teams/marketing/routines';
+const ROUTINE = 'a'.repeat(32);
 
 // A session socket read answered from the scenario, as the preview's socket answers it (ADR-0114).
 function reader(scenario) {
   return async (method, params) => {
     const answer = scenario.call(method, params);
-    return { ok: answer.status < 300, status: answer.status, async json() { return answer.json; } };
-  };
-}
-
-// A fetch that answers from the scenario, as the preview installs it in the browser.
-function adapter(scenario) {
-  return async (target, init = {}) => {
-    const url = new URL(target, 'http://admin');
-    const answer = scenario.respond({
-      method: init.method ?? 'GET',
-      path: url.pathname,
-      query: url.searchParams,
-      body: init.body ? JSON.parse(init.body) : null,
-    });
     return { ok: answer.status < 300, status: answer.status, async json() { return answer.json; } };
   };
 }
@@ -70,7 +56,7 @@ test('scenarios never share state, and a caller cannot mutate one through a resp
   const first = createScenario('routines');
   const second = createScenario('routines');
   first.call('routines.list', { team_id: 'marketing' }).json.routines[0].name = 'changed';
-  first.respond({ method: 'DELETE', path: `${ROUTINES}/${'a'.repeat(32)}`, body: { code: '123456' } });
+  first.call('routines.delete', { team_id: 'marketing', routine_id: ROUTINE, body: { code: '123456' } });
   const untouched = second.call('routines.list', { team_id: 'marketing' }).json;
   assert.equal(untouched.routines.length, 2);
   assert.notEqual(untouched.routines[0].name, 'changed');
@@ -89,7 +75,7 @@ test('a recording turn carries the Cloudflare card; Criar rotina creates its Rou
   assert.equal(card.steps[1].inputs[0].item, '/id');
   // Nothing is created until the person confirms.
   assert.deepEqual(scenario.call('routines.list', { team_id: 'marketing' }).json.routines, []);
-  assert.deepEqual(await confirmRoutineProposal(adapter(scenario), 'marketing', card.proposal_id), {
+  assert.deepEqual(await confirmRoutineProposal(reader(scenario), 'marketing', card.proposal_id), {
     status: 'created',
     routineId: scenario.call('routines.list', { team_id: 'marketing' }).json.routines[0].routine_id,
   });
@@ -97,12 +83,12 @@ test('a recording turn carries the Cloudflare card; Criar rotina creates its Rou
   assert.equal(routine.name, card.name);
   // A used card answers once; a second confirmation is refused as expired.
   await assert.rejects(
-    confirmRoutineProposal(adapter(scenario), 'marketing', card.proposal_id),
+    confirmRoutineProposal(reader(scenario), 'marketing', card.proposal_id),
     (error) => error.code === 'routine-proposal-expired',
   );
   const [second] = scenario.chat.message(frame(ROUTINE_TEXT.pt.request));
   const revoked = parseChatEvent(second, 'marketing', 'Marketing').routine_proposal;
-  assert.equal((await revokeRoutineProposal(adapter(scenario), 'marketing', revoked.proposal_id)).status, 'revoked');
+  assert.equal((await revokeRoutineProposal(reader(scenario), 'marketing', revoked.proposal_id)).status, 'revoked');
   assert.equal((await listRoutines(reader(scenario), 'marketing')).routines.length, 1);
   // The transcript keeps each card with its reply, and the created notice names the Routine.
   const { entries } = scenario.call('history.page', { team_id: 'marketing' }).json;
@@ -151,7 +137,7 @@ test('a paused Routine resumes and the chat socket answers a sync', () => {
   const listed = scenario.call('routines.list', { team_id: 'marketing' }).json;
   assert.equal(listed.incidents.length, 1);
   assert.equal(listed.routines[0].state, 'paused');
-  const resumed = scenario.respond({ method: 'POST', path: `${ROUTINES}/${'a'.repeat(32)}/resume`, body: {} });
+  const resumed = scenario.call('routines.resume', { team_id: 'marketing', routine_id: ROUTINE });
   assert.equal(resumed.json.paused, false);
   assert.equal(scenario.call('routines.list', { team_id: 'marketing' }).json.routines[0].state, 'active');
   assert.deepEqual(scenario.chat.message({ type: 'sync' }), [{ type: 'sync-empty' }]);
@@ -275,7 +261,7 @@ test('every listed Team answers its read-only views, and an unlisted one fails c
     assert.equal(scenario.call(method, { team_id: 'oracle' }), null, method);
   }
   assert.equal(scenario.respond({ method: 'GET', path: '/api/teams/neo/unknown' }), null);
-  assert.equal(scenario.respond({ method: 'POST', path: '/api/teams/neo/routines', body: {} }), null);
+  assert.equal(scenario.call('routines.resume', { team_id: 'neo', routine_id: ROUTINE }), null);
 });
 
 test('every listed Team answers its chat with a reply the parser admits, and an unlisted one never attaches', () => {
@@ -349,31 +335,31 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
   assert.ok(listed.routines.some((routine) => routine.state === 'paused'));
   const [held, paused] = listed.incidents;
   // The weekly Routine's update hit a Cloudflare account out of credits; the card shows it as a likely credits cause.
-  const card = await openRoutineCard(adapter(scenario), 'marketing', held.incident_id);
+  const card = await openRoutineCard(reader(scenario), 'marketing', held.incident_id);
   assert.deepEqual(card.choices, ['run', 'delete']);
   assert.deepEqual([card.evidence, failureCause(card.diagnostic)], ['recorded', 'credits']);
-  assert.equal(failureCause((await openRoutineCard(adapter(scenario), 'marketing', paused.incident_id)).diagnostic), 'auth');
+  assert.equal(failureCause((await openRoutineCard(reader(scenario), 'marketing', paused.incident_id)).diagnostic), 'auth');
   // Rodar sets the weekly one's held run aside.
-  assert.equal((await answerRoutineCard(adapter(scenario), 'marketing', held.incident_id, card, 'run')).status, 'requested');
+  assert.equal((await answerRoutineCard(reader(scenario), 'marketing', held.incident_id, card, 'run')).status, 'requested');
   assert.equal((await listRoutines(reader(scenario), 'marketing')).incidents.length, 1);
   const rows = scenario.call('history.page', { team_id: 'marketing', routine: held.routine_id }).json.entries;
   const setAside = parseRoutineRunEntry(rows.find((entry) => entry.run_id === held.incident_id));
   assert.deepEqual([setAside.outcome, setAside.detail.choice], ['user-skipped', 'run']);
   const failed = entries.find((entry) => entry.outcome === 'failed');
-  assert.equal((await readRunDiagnostics(adapter(scenario), 'marketing', failed.run_id)).length, 3);
+  assert.equal((await readRunDiagnostics(reader(scenario), 'marketing', failed.run_id)).length, 3);
   // Every listed Routine's steps read page by page for its own revision; the 120-step watch takes two pages, and a
   // revision that is no longer current is refused.
   for (const routine of listed.routines) {
-    const pages = [await readPlanSteps(adapter(scenario), 'marketing', routine.routine_id, routine.plan, 0)];
+    const pages = [await readPlanSteps(reader(scenario), 'marketing', routine.routine_id, routine.plan, 0)];
     while (pages.at(-1).next !== null) {
-      pages.push(await readPlanSteps(adapter(scenario), 'marketing', routine.routine_id, routine.plan, pages.at(-1).next));
+      pages.push(await readPlanSteps(reader(scenario), 'marketing', routine.routine_id, routine.plan, pages.at(-1).next));
     }
     assert.equal(pages.flatMap((page) => page.steps).length, routine.plan.steps);
   }
   assert.ok(listed.routines.some((routine) => routine.plan.steps === 120));
   const [watch] = listed.routines;
   await assert.rejects(
-    readPlanSteps(adapter(scenario), 'marketing', watch.routine_id, { ...watch.plan, revision: 2 }, 0),
+    readPlanSteps(reader(scenario), 'marketing', watch.routine_id, { ...watch.plan, revision: 2 }, 0),
     (error) => error.code === 'routine-revision-changed',
   );
   // Runs with and without a shown result, and a failed run whose notice names no plan, have their own step records,
@@ -382,12 +368,12 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
   assert.equal(recorded.length, 4);
   for (const entry of recorded) {
     const binding = runBinding(entry.routine_id, entry.detail.plan ?? null);
-    const page = await readRunSteps(adapter(scenario), 'marketing', entry.run_id, binding, 'latest', 0);
+    const page = await readRunSteps(reader(scenario), 'marketing', entry.run_id, binding, 'latest', 0);
     const bound = pageBinding(page);
     assert.equal(page.steps.length, Math.min(64, page.total));
-    assert.deepEqual(await readRunSteps(adapter(scenario), 'marketing', entry.run_id, bound, page.snapshot, 0), page);
+    assert.deepEqual(await readRunSteps(reader(scenario), 'marketing', entry.run_id, bound, page.snapshot, 0), page);
     await assert.rejects(
-      readRunSteps(adapter(scenario), 'marketing', entry.run_id, bound, 'e'.repeat(32), 0),
+      readRunSteps(reader(scenario), 'marketing', entry.run_id, bound, 'e'.repeat(32), 0),
       (error) => error.code === 'routine-run-changed',
     );
   }
@@ -466,19 +452,19 @@ test('the attachment previews hold only uploads, replies, and approvals the real
 
 test('the preview confirms a Routine deletion with a password and a code, and refuses the wrong ones', () => {
   const scenario = createScenario('routines');
-  const routine = `${ROUTINES}/${'a'.repeat(32)}`;
-  assert.deepEqual(scenario.respond({ method: 'POST', path: `${routine}/deletion`, body: { password: 'wrong password' } }), {
+  const routine = { team_id: 'marketing', routine_id: ROUTINE };
+  assert.deepEqual(scenario.call('routines.deletion', { ...routine, body: { password: 'wrong password' } }), {
     status: 401,
     json: { code: 'password-incorrect' },
   });
-  assert.deepEqual(scenario.respond({ method: 'POST', path: `${routine}/deletion`, body: { password: 'any other' } }), {
+  assert.deepEqual(scenario.call('routines.deletion', { ...routine, body: { password: 'any other' } }), {
     status: 202,
     json: { methods: ['totp'] },
   });
-  assert.equal(scenario.respond({ method: 'DELETE', path: routine, body: { code: '000000' } }).json.code, 'code-incorrect');
-  assert.equal(scenario.respond({ method: 'DELETE', path: routine }).json.code, 'authentication-expired');
+  assert.equal(scenario.call('routines.delete', { ...routine, body: { code: '000000' } }).json.code, 'code-incorrect');
+  assert.equal(scenario.call('routines.delete', { ...routine, body: {} }).json.code, 'authentication-expired');
   assert.equal(scenario.call('routines.list', { team_id: 'marketing' }).json.routines.length, 2);
-  assert.equal(scenario.respond({ method: 'DELETE', path: routine, body: { code: '123456' } }).json.deleted, true);
+  assert.equal(scenario.call('routines.delete', { ...routine, body: { code: '123456' } }).json.deleted, true);
   assert.equal(scenario.call('routines.list', { team_id: 'marketing' }).json.routines.length, 1);
 });
 

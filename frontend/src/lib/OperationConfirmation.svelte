@@ -2,16 +2,19 @@
   import { Notice, RadioField, TextField } from '@shimpz/frontend';
   import { get } from 'svelte/store';
 
+  import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n.js';
   import { authenticateWithPasskey, passkeyFailure } from '#lib/passkey.js';
   import { SecurityError } from '#lib/security.js';
   import { sessionContext } from '#lib/sessionContext.js';
+  import { LocalApiError } from '#lib/validate.js';
 
   // A confirmed Supervisor operation (ADR-0051), such as replacing the recovery codes or the signing key: the Supervisor
   // password, then one second factor bound to it. A code is the default; a passkey is offered beside it only where this
-  // address has one. `begin(fetch, password)` resolves to the offer, `complete(fetch, proof)` to what `ondone` receives,
-  // and `failures` words the operation's own refusal codes.
+  // address has one. `begin(password)` resolves to the offer, `complete(proof)` to what `ondone` receives, and
+  // `failures` words the operation's own refusal codes. Both go over the Admin session socket, so the confirmation is
+  // offered only while it is open; one it lost before Admin answered may or may not have happened, and says so.
   let {
     lead,
     action,
@@ -70,6 +73,10 @@
       error = $t('security.passkeyFailed');
     } else if (failure instanceof SecurityError) {
       error = $t('security.unavailable');
+    } else if (outcomeUnknown(failure)) {
+      error = $t('shell.outcomeUnknown');
+    } else if (failure instanceof LocalApiError) {
+      error = $t('security.unavailable');
     } else {
       error = $t(passkeyFailure(failure) === 'canceled' ? 'security.passkeyCanceled' : 'security.passkeyFailed');
     }
@@ -89,15 +96,15 @@
 
   async function submit(event) {
     event.preventDefault();
-    if (busy || !ready) return;
+    if (busy || !ready || !$commandsReady) return;
     busy = true;
     passwordError = codeError = error = '';
     try {
-      const offer = await begin(fetch, password);
+      const offer = await begin(password);
       const factor = live ? await proof(offer) : null;
       // A dialog closed while the passkey was asked for never runs the operation.
       if (!factor || !live) return;
-      const result = await complete(fetch, factor);
+      const result = await complete(factor);
       password = code = '';
       ondone(result);
     } catch (failure) {
@@ -129,7 +136,7 @@
   {#if error}<Notice variant="error">{error}</Notice>{/if}
   <footer class="foot">
     <DialogAction kind="cancel" type="button" disabled={busy} onclick={oncancel}>{$t('security.cancel')}</DialogAction>
-    <DialogAction kind="confirm" type="submit" disabled={busy || !ready}>{busy ? working : action}</DialogAction>
+    <DialogAction kind="confirm" type="submit" disabled={busy || !ready || !$commandsReady}>{busy ? working : action}</DialogAction>
   </footer>
 </form>
 

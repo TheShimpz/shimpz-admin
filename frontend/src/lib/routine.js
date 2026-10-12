@@ -314,10 +314,14 @@ function ofPlan(page, plan) {
  * summary names, and the offset asked for. Team refuses a revision that is no longer current
  * (`routine-revision-changed`), so pages of two revisions are never combined.
  */
-export async function readPlanSteps(fetcher, teamId, routineId, plan, offset) {
+export async function readPlanSteps(call, teamId, routineId, plan, offset) {
   if (!isSummary(plan)) throw new RoutineError('routine-request-invalid');
-  const path = `/${opaque(routineId)}/revisions/${revisionPath(plan.revision)}/steps/${offsetPath(offset)}`;
-  const body = await request(fetcher, teamPath(teamId, path));
+  const body = await request(call, 'routines.plan_steps', {
+    team_id: team(teamId),
+    routine_id: opaque(routineId),
+    revision: revisionPath(plan.revision),
+    offset: offsetPath(offset),
+  });
   return view(body, ['routine_id', 'revision', 'plan_digest', 'total', 'offset', 'steps', 'next'], (item) =>
     item.routine_id === routineId && ofPlan(item, plan) && item.offset === offset && isPageOf(item, isPlanStep));
 }
@@ -410,12 +414,16 @@ function isBinding(value) {
  * `snapshot` of its retained records. `latest` asks for the current snapshot, which the page names; any other page is
  * admitted only for exactly that snapshot, and Team refuses one whose records changed since (`routine-run-changed`).
  */
-export async function readRunSteps(fetcher, teamId, runId, binding, snapshot, offset) {
+export async function readRunSteps(call, teamId, runId, binding, snapshot, offset) {
   if (!isBinding(binding) || (snapshot !== 'latest' && (typeof snapshot !== 'string' || !SNAPSHOT_RE.test(snapshot)))) {
     throw new RoutineError('routine-request-invalid');
   }
-  const path = `/runs/${opaque(runId)}/steps/${snapshot}/${offsetPath(offset)}`;
-  const body = await request(fetcher, teamPath(teamId, path));
+  const body = await request(call, 'routines.run_steps', {
+    team_id: team(teamId),
+    run_id: opaque(runId),
+    snapshot,
+    offset: offsetPath(offset),
+  });
   const keys = [
     'team_id', 'run_id', 'routine_id', 'revision', 'plan_digest', 'total', 'snapshot', 'ended', 'offset', 'steps',
     'next',
@@ -569,17 +577,14 @@ export function parseIncidentView(value) {
     isHeldStep(item));
 }
 
-async function request(fetcher, path, init = {}) {
-  if (typeof fetcher !== 'function') throw new RoutineError('routine-request-invalid');
-  const response = await fetcher(path, {
-    cache: 'no-store',
-    ...init,
-    headers: { Accept: 'application/json', ...(init.body ? { 'Content-Type': 'application/json' } : {}) },
-  });
-  return admitted(response);
+// One Routine operation over the Admin session socket (ADR-0114): `call(method, params)` answers as the socket does.
+// A change the socket lost before Admin answered rejects with `outcome-unknown` and is never replayed.
+async function request(call, method, params) {
+  if (typeof call !== 'function') throw new RoutineError('routine-request-invalid');
+  return admitted(await call(method, params));
 }
 
-// Admin's answer, an HTTP response or a session socket result: its body, or the refusal it names.
+// Admin's answer, a session socket result: its body, or the refusal it names.
 async function admitted(response) {
   const body = await jsonObject(response);
   if (!response.ok) {
@@ -590,9 +595,9 @@ async function admitted(response) {
   return body;
 }
 
-function teamPath(teamId, suffix = '') {
+function team(teamId) {
   if (typeof teamId !== 'string' || !TEAM_ID_RE.test(teamId)) throw new RoutineError('routine-request-invalid');
-  return `/api/teams/${encodeURIComponent(teamId)}/routines${suffix}`;
+  return teamId;
 }
 
 function opaque(value) {
@@ -621,9 +626,7 @@ function deleted(body, teamId, routineId = null) {
 }
 
 export async function listRoutines(read, teamId) {
-  if (typeof read !== 'function') throw new RoutineError('routine-request-invalid');
-  teamPath(teamId);
-  const body = await admitted(await read('routines.list', { team_id: teamId }));
+  const body = await request(read, 'routines.list', { team_id: team(teamId) });
   if (
     !exact(body, ['team_id', 'routines', 'runs', 'incidents']) ||
     body.team_id !== teamId ||
@@ -645,11 +648,12 @@ export async function listRoutines(read, teamId) {
  * Deleting a Routine starts with the Supervisor password (ADR-0051). Admin answers with the second factors it accepts
  * for this one Routine: always `totp`, and `passkey` with its options when this address has one.
  */
-export async function beginRoutineDeletion(fetcher, teamId, routineId, password) {
+export async function beginRoutineDeletion(call, teamId, routineId, password) {
   if (typeof password !== 'string' || password.length < 1) throw new RoutineError('routine-request-invalid');
-  const body = await request(fetcher, teamPath(teamId, `/${opaque(routineId)}/deletion`), {
-    method: 'POST',
-    body: JSON.stringify({ password }),
+  const body = await request(call, 'routines.deletion', {
+    team_id: team(teamId),
+    routine_id: opaque(routineId),
+    body: { password },
   });
   const methods = body.methods;
   const passkey = Array.isArray(methods) && methods.length === 2 && methods[0] === 'totp' && methods[1] === 'passkey';
@@ -662,22 +666,17 @@ export async function beginRoutineDeletion(fetcher, teamId, routineId, password)
 }
 
 /** Spend the started deletion on exactly one second factor, `{ code }` or `{ credential }`; Admin then asks Team. */
-export async function deleteRoutine(fetcher, teamId, routineId, proof) {
+export async function deleteRoutine(call, teamId, routineId, proof) {
   const byCode = exact(proof, ['code']) && /^[0-9]{6}$/.test(proof.code);
   const byPasskey = exact(proof, ['credential']) && proof.credential && typeof proof.credential === 'object';
   if (!byCode && !byPasskey) throw new RoutineError('routine-request-invalid');
-  return deleted(
-    await request(fetcher, teamPath(teamId, `/${opaque(routineId)}`), { method: 'DELETE', body: JSON.stringify(proof) }),
-    teamId,
-    routineId,
-  );
+  const params = { team_id: team(teamId), routine_id: opaque(routineId), body: proof };
+  return deleted(await request(call, 'routines.delete', params), teamId, routineId);
 }
 
-async function setPaused(fetcher, teamId, routineId, paused) {
-  const body = await request(fetcher, teamPath(teamId, `/${opaque(routineId)}/${paused ? 'pause' : 'resume'}`), {
-    method: 'POST',
-    body: JSON.stringify({}),
-  });
+async function setPaused(call, teamId, routineId, paused) {
+  const params = { team_id: team(teamId), routine_id: opaque(routineId) };
+  const body = await request(call, paused ? 'routines.pause' : 'routines.resume', params);
   if (!exact(body, ['team_id', 'routine_id', 'paused']) || body.team_id !== teamId || body.routine_id !== routineId
     || body.paused !== paused) {
     throw new RoutineError('routine-response-invalid');
@@ -686,13 +685,13 @@ async function setPaused(fetcher, teamId, routineId, paused) {
 }
 
 /** Turn a paused Routine's dispatch back on; an unresolved incident still holds it until its card settles it. */
-export function resumeRoutine(fetcher, teamId, routineId) {
-  return setPaused(fetcher, teamId, routineId, false);
+export function resumeRoutine(call, teamId, routineId) {
+  return setPaused(call, teamId, routineId, false);
 }
 
 /** Turn a Routine's dispatch off until it is resumed; a run already going finishes. */
-export function pauseRoutine(fetcher, teamId, routineId) {
-  return setPaused(fetcher, teamId, routineId, true);
+export function pauseRoutine(call, teamId, routineId) {
+  return setPaused(call, teamId, routineId, true);
 }
 
 /**
@@ -857,22 +856,20 @@ function parseCard(body, teamId, incidentId) {
 }
 
 /** Open a held run's recovery card for the signed-in person; its nonce answers it once within five minutes. */
-export async function openRoutineCard(fetcher, teamId, incidentId) {
-  const body = await request(fetcher, teamPath(teamId, `/incidents/${opaque(incidentId)}/card`), {
-    method: 'POST',
-    body: JSON.stringify({}),
-  });
+export async function openRoutineCard(call, teamId, incidentId) {
+  const body = await request(call, 'routines.card', { team_id: team(teamId), incident_id: opaque(incidentId) });
   return parseCard(body, teamId, incidentId);
 }
 
 /** Answer an open card with Rodar; returns what Team did. Excluir is the confirmed deletion instead. */
-export async function answerRoutineCard(fetcher, teamId, incidentId, card, choice) {
+export async function answerRoutineCard(call, teamId, incidentId, card, choice) {
   if (!CARD_ANSWERS.includes(choice) || typeof card?.nonce !== 'string' || !NONCE_RE.test(card.nonce)) {
     throw new RoutineError('routine-request-invalid');
   }
-  const body = await request(fetcher, teamPath(teamId, `/incidents/${opaque(incidentId)}/answer`), {
-    method: 'POST',
-    body: JSON.stringify({ nonce: card.nonce, choice }),
+  const body = await request(call, 'routines.card_answer', {
+    team_id: team(teamId),
+    incident_id: opaque(incidentId),
+    body: { nonce: card.nonce, choice },
   });
   return view(body, ['team_id', 'incident_id', 'choice', 'status'], (item) =>
     item.team_id === teamId &&
@@ -1273,12 +1270,9 @@ export function newerRoutineEntries(shown, entries) {
  * Open a frozen run's fresh challenge, or learn that it waits for an Integration. Team renders the request copy in the
  * interface language named here, so a different language always opens a fresh challenge (ADR-0091).
  */
-export async function openRoutineChallenge(fetcher, teamId, runId, locale, parseChallenge) {
+export async function openRoutineChallenge(call, teamId, runId, locale, parseChallenge) {
   if (!isLocale(locale)) throw new RoutineError('routine-request-invalid');
-  const body = await request(fetcher, teamPath(teamId, `/runs/${opaque(runId)}/challenge`), {
-    method: 'POST',
-    body: JSON.stringify({ locale }),
-  });
+  const body = await request(call, 'routines.challenge', { team_id: team(teamId), run_id: opaque(runId), body: { locale } });
   if (exact(body, ['team_id', 'run_id', 'status']) && body.status === 'integrations-required'
     && body.team_id === teamId && body.run_id === runId) {
     return { status: 'integrations-required' };
@@ -1311,14 +1305,13 @@ function resumed(body, teamId, runId) {
   return body.status;
 }
 
-/** Answer the open challenge with chat's exact human-response frame; the run then resumes or ends. */
-export async function answerRoutineChallenge(fetcher, teamId, runId, frame) {
-  const response = await fetcher(teamPath(teamId, `/runs/${opaque(runId)}/human`), {
-    method: 'POST',
-    cache: 'no-store',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify(frame),
-  });
+/**
+ * Answer the open challenge with chat's exact human-response frame; the run then resumes or ends. Admin answers once the
+ * run stops again, which may take as long as the run's active time; a socket lost meanwhile leaves the outcome unknown.
+ */
+export async function answerRoutineChallenge(call, teamId, runId, frame) {
+  if (typeof call !== 'function') throw new RoutineError('routine-request-invalid');
+  const response = await call('routines.human', { team_id: team(teamId), run_id: opaque(runId), body: frame });
   const body = await jsonObject(response);
   // A wrong password keeps the challenge open, as in chat.
   if (response.status === 409 && ['authentication-denied', 'authentication-locked'].includes(body.code)) {
@@ -1333,8 +1326,8 @@ export async function answerRoutineChallenge(fetcher, teamId, runId, frame) {
   return { status: resumed(body, teamId, runId) };
 }
 
-export async function resumeRoutineIntegrations(fetcher, teamId, runId) {
-  const body = await request(fetcher, teamPath(teamId, `/runs/${opaque(runId)}/integrations`), { method: 'POST' });
+export async function resumeRoutineIntegrations(call, teamId, runId) {
+  const body = await request(call, 'routines.integrations', { team_id: team(teamId), run_id: opaque(runId) });
   return resumed(body, teamId, runId);
 }
 
@@ -1424,8 +1417,8 @@ function diagnosticOrder(left, right) {
 }
 
 /** One run's execution details for exactly the Team and run asked for, oldest attempt first, each attempt once. */
-export async function readRunDiagnostics(fetcher, teamId, runId) {
-  const body = await request(fetcher, teamPath(teamId, `/runs/${opaque(runId)}/diagnostics`));
+export async function readRunDiagnostics(call, teamId, runId) {
+  const body = await request(call, 'routines.diagnostics', { team_id: team(teamId), run_id: opaque(runId) });
   return view(body, ['team_id', 'run_id', 'diagnostics'], (item) =>
     item.team_id === teamId &&
     item.run_id === runId &&
@@ -1666,16 +1659,13 @@ function answered(body, teamId, proposalId, statuses) {
 }
 
 /** Criar rotina: the person's one confirmation that creates or changes the Routine a card shows. */
-export async function confirmRoutineProposal(fetcher, teamId, proposalId) {
-  const body = await request(fetcher, teamPath(teamId, `/proposals/${opaque(proposalId)}`), {
-    method: 'POST',
-    body: JSON.stringify({}),
-  });
+export async function confirmRoutineProposal(call, teamId, proposalId) {
+  const body = await request(call, 'routines.proposal_confirm', { team_id: team(teamId), proposal_id: opaque(proposalId) });
   return answered(body, teamId, proposalId, ['created', 'changed']);
 }
 
 /** Cancelar: revoke a card, so nothing it shows can be created; an absent card is already revoked. */
-export async function revokeRoutineProposal(fetcher, teamId, proposalId) {
-  const body = await request(fetcher, teamPath(teamId, `/proposals/${opaque(proposalId)}`), { method: 'DELETE' });
+export async function revokeRoutineProposal(call, teamId, proposalId) {
+  const body = await request(call, 'routines.proposal_revoke', { team_id: team(teamId), proposal_id: opaque(proposalId) });
   return answered(body, teamId, proposalId, ['revoked']);
 }

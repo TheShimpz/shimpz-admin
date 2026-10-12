@@ -1,13 +1,13 @@
 import { derived } from 'svelte/store';
 
+import { socketReads } from './adminSocket.js';
 import { LocalApiError, safeApiError } from './localApi.js';
 import { synced } from './synced.js';
 import { exactKeys, isInstant, jsonObject } from './validate.js';
 
 // The Supervisor's own sign-in security (ADR-0051): the refused second-factor attempts a sign-in reported, kept until
-// the Supervisor acknowledges them, and the single-use recovery codes left.
-const FAILURES = '/api/admin/security/failures';
-const RECOVERY_CODES = '/api/admin/recovery-codes';
+// the Supervisor acknowledges them, and the single-use recovery codes left. Every read and change goes over the Admin
+// session socket (ADR-0114); a change it lost before Admin answered rejects with `outcome-unknown`, never replayed.
 const MAX_COUNT = 1_000_000;
 export const RECOVERY_CODE_COUNT = 10;
 const RECOVERY_CODE_RE = /^[0-9a-hjkmnp-tv-z]{4}-[0-9a-hjkmnp-tv-z]{4}-[0-9a-hjkmnp-tv-z]{4}$/;
@@ -76,17 +76,11 @@ const summaryValue = synced('security/summary', loadSecuritySummary);
 export const securitySummary = derived(summaryValue, (state) => state.value);
 
 /** Acknowledge exactly the failed attempts the Supervisor saw; any reported since stay. */
-export function acknowledgeFailedAttempts(fetcher, seen) {
+export function acknowledgeFailedAttempts(seen) {
   if (!Number.isSafeInteger(seen) || seen < 1 || seen > MAX_COUNT) {
     return Promise.reject(new LocalApiError('Invalid sign-in security request.'));
   }
-  if (typeof fetcher !== 'function') return Promise.reject(new LocalApiError('Invalid sign-in security request.'));
-  const answer = fetcher(FAILURES, {
-    method: 'POST',
-    cache: 'no-store',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ acknowledged: seen }),
-  });
+  const answer = socketReads.call('security.acknowledge', { body: { acknowledged: seen } });
   // The summary shown is the one read after Admin announces the acknowledgment.
   return validated(answer, 'The acknowledgment could not be saved.').then(() => summaryValue.refresh());
 }
@@ -124,14 +118,8 @@ export class SecurityError extends Error {
   }
 }
 
-async function confirmation(fetcher, url, payload) {
-  if (typeof fetcher !== 'function') throw new SecurityError('request-invalid');
-  const response = await fetcher(url, {
-    method: 'POST',
-    cache: 'no-store',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+async function confirmation(method, payload) {
+  const response = await socketReads.call(method, { body: payload });
   const body = await jsonObject(response);
   if (!response.ok) {
     const code = typeof body.code === 'string' && REFUSAL_RE.test(body.code) ? body.code : 'request-failed';
@@ -143,9 +131,9 @@ async function confirmation(fetcher, url, payload) {
 }
 
 // A confirmed operation starts with the Supervisor password; Admin offers the second factor that confirms it.
-async function beginOperation(fetcher, url, password) {
+async function beginOperation(method, password) {
   if (typeof password !== 'string' || password.length < 1) throw new SecurityError('request-invalid');
-  const body = await confirmation(fetcher, url, { password });
+  const body = await confirmation(method, { password });
   const methods = JSON.stringify(body.methods);
   if (methods === '["totp"]' && exactKeys(body, ['methods'])) return { passkey: null };
   if (methods === '["totp","passkey"]' && exactKeys(body, ['methods', 'passkey_options']) && body.passkey_options
@@ -156,21 +144,21 @@ async function beginOperation(fetcher, url, password) {
 }
 
 /** Start replacing the recovery codes with the Supervisor password. */
-export function beginRecoveryCodes(fetcher, password) {
-  return beginOperation(fetcher, `${RECOVERY_CODES}/confirmation`, password);
+export function beginRecoveryCodes(password) {
+  return beginOperation('recovery_codes.confirmation', password);
 }
 
 // Spend a started confirmation on one second factor, `{ code }` or `{ credential }`.
-function completeOperation(fetcher, url, proof) {
+function completeOperation(method, proof) {
   const byCode = exactKeys(proof, ['code']) && /^[0-9]{6}$/.test(proof.code);
   const byPasskey = exactKeys(proof, ['credential']) && proof.credential && typeof proof.credential === 'object';
   if (!byCode && !byPasskey) return Promise.reject(new SecurityError('request-invalid'));
-  return confirmation(fetcher, url, proof);
+  return confirmation(method, proof);
 }
 
 /** Spend the started confirmation on one second factor and receive the new set once. */
-export async function replaceRecoveryCodes(fetcher, proof) {
-  const body = await completeOperation(fetcher, RECOVERY_CODES, proof);
+export async function replaceRecoveryCodes(proof) {
+  const body = await completeOperation('recovery_codes.replace', proof);
   const codes = exactKeys(body, ['recovery_codes']) ? recoveryCodes(body.recovery_codes) : null;
   if (!codes) throw new SecurityError('response-invalid');
   void summaryValue.refresh();
@@ -179,11 +167,10 @@ export async function replaceRecoveryCodes(fetcher, proof) {
 
 // The Supervisor's signing key (ADR-0051): Team verifies every Supervisor request under the key it pins, and replaces
 // that pin only when the current key signs the change. Replacing it is a confirmed operation.
-const SUPERVISOR_KEY = '/api/admin/supervisor-key';
 
 /** Start replacing the Supervisor signing key with the Supervisor password. */
-export function beginSupervisorKeyRotation(fetcher, password) {
-  return beginOperation(fetcher, `${SUPERVISOR_KEY}/confirmation`, password);
+export function beginSupervisorKeyRotation(password) {
+  return beginOperation('supervisor_key.confirmation', password);
 }
 
 /**
@@ -191,8 +178,8 @@ export function beginSupervisorKeyRotation(fetcher, password) {
  * `supervisor-key-rotation-refused` (Team kept the current key), `supervisor-key-rotation-pending` (the new key is
  * saved and Admin keeps asking Team), or `supervisor-key-rotation-busy` (another replacement is in progress).
  */
-export async function rotateSupervisorKey(fetcher, proof) {
-  const body = await completeOperation(fetcher, SUPERVISOR_KEY, proof);
+export async function rotateSupervisorKey(proof) {
+  const body = await completeOperation('supervisor_key.rotate', proof);
   if (!exactKeys(body, ['rotated']) || body.rotated !== true) throw new SecurityError('response-invalid');
   return true;
 }

@@ -29,7 +29,7 @@
     untilWords,
   } from '#lib/routine.js';
   import { refreshTeamRoutines } from '#lib/routineContext.js';
-  import { call } from '#lib/adminSocket.js';
+  import { call, commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import RoutineDecision from '#lib/RoutineDecision.svelte';
   import RoutineDeletion from '#lib/RoutineDeletion.svelte';
   import RoutinePlan from '#lib/RoutinePlan.svelte';
@@ -233,7 +233,7 @@
       await action();
       await refreshTeamRoutines(teamId);
     } catch (failure) {
-      error = routineErrorMessage(failure, copy.errors);
+      error = outcomeUnknown(failure) ? $t('shell.outcomeUnknown') : routineErrorMessage(failure, copy.errors);
     } finally {
       busy = false;
     }
@@ -322,13 +322,13 @@
     {#if !routine.deleting}
       <div class="actions">
         {#if routine.state === 'paused'}
-          <Button class="act act--resume" variant="ghost" size="sm" iconOnly type="button" disabled={busy}
+          <Button class="act act--resume" variant="ghost" size="sm" iconOnly type="button" disabled={busy || !$commandsReady}
             aria-label={copy.list.resume} title={copy.list.resume}
-            onclick={() => act(() => resumeRoutine(fetch, teamId, routine.routine_id))}><RoutineIcon name="play" /></Button>
+            onclick={() => act(() => resumeRoutine(call, teamId, routine.routine_id))}><RoutineIcon name="play" /></Button>
         {:else}
-          <Button class="act act--pause" variant="ghost" size="sm" iconOnly type="button" disabled={busy}
+          <Button class="act act--pause" variant="ghost" size="sm" iconOnly type="button" disabled={busy || !$commandsReady}
             aria-label={copy.panel.pause} title={copy.panel.pause}
-            onclick={() => act(() => pauseRoutine(fetch, teamId, routine.routine_id))}><RoutineIcon name="pause" /></Button>
+            onclick={() => act(() => pauseRoutine(call, teamId, routine.routine_id))}><RoutineIcon name="pause" /></Button>
         {/if}
         <Button class="act act--delete" variant="ghost" size="sm" iconOnly type="button" disabled={busy} bind:element={deleteButton}
           aria-label={copy.list.delete} title={copy.list.delete} onclick={() => (confirming = true)}><RoutineIcon name="trash" /></Button>

@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { get } from 'svelte/store';
 
-import { socketReads } from '../src/lib/adminSocket.js';
+import { OUTCOME_UNKNOWN, socketReads } from '../src/lib/adminSocket.js';
+import { LocalApiError } from '../src/lib/validate.js';
 
 import {
   acknowledgeFailedAttempts,
@@ -21,12 +22,15 @@ import {
 const HISTORY = { previous: { at: '2026-10-08T21:14:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 2 };
 const CODES = Array.from({ length: 10 }, (_, index) => `abcd-efgh-jk${String(index).padStart(2, '0')}`);
 
+// One answer of the session socket: `fetcher` answers a read handed to it, and it answers every change, which goes
+// over the socket, as `socketReads.call` from now on. `calls` records each `{ method, params }`.
 function answer(status, body) {
   const calls = [];
-  const fetcher = async (url, init) => {
-    calls.push({ url, init });
+  const fetcher = async (method, params) => {
+    calls.push({ method, params });
     return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   };
+  socketReads.call = fetcher;
   return { calls, fetcher };
 }
 
@@ -82,20 +86,24 @@ test('an acknowledgment names exactly the attempts the Supervisor saw, and the s
   const stop = securitySummary.subscribe(() => {});
   socket.announce('open', 1);
   await flush();
-  const { calls, fetcher } = answer(200, {
-    failed_second_factor_attempts: 1, recovery_codes_remaining: 10, sign_in_history: null,
-  });
-  await acknowledgeFailedAttempts(fetcher, 3);
-  assert.equal(calls[0].url, '/api/admin/security/failures');
-  assert.equal(calls[0].init.method, 'POST');
-  assert.deepEqual(JSON.parse(calls[0].init.body), { acknowledged: 3 });
+  const reads = socketReads.call;
+  const acknowledged = [];
+  socketReads.call = async (method, params) => {
+    if (method !== 'security.acknowledge') return reads(method, params);
+    acknowledged.push(params);
+    return new Response(JSON.stringify({
+      failed_second_factor_attempts: 1, recovery_codes_remaining: 10, sign_in_history: null,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  await acknowledgeFailedAttempts(3);
+  assert.deepEqual(acknowledged, [{ body: { acknowledged: 3 } }]);
   // What shows is the summary read afterwards, never the acknowledgment's own answer.
   assert.equal(socket.reads.length, 2);
   assert.equal(get(securitySummary).failedAttempts, 0);
   for (const seen of [0, -1, 1.5, '3', 1_000_001]) {
-    await assert.rejects(acknowledgeFailedAttempts(fetcher, seen), /Invalid sign-in security request/);
+    await assert.rejects(acknowledgeFailedAttempts(seen), /Invalid sign-in security request/);
   }
-  assert.equal(calls.length, 1);
+  assert.equal(acknowledged.length, 1);
   stop();
   clearSecuritySummary();
 });
@@ -143,60 +151,73 @@ test('a recovery set is exactly ten distinct codes in their written form', () =>
 
 test('replacing the codes starts with the password and spends one second factor for the new set', async () => {
   const offer = answer(202, { methods: ['totp'] });
-  assert.deepEqual(await beginRecoveryCodes(offer.fetcher, 'a password'), { passkey: null });
-  assert.equal(offer.calls[0].url, '/api/admin/recovery-codes/confirmation');
-  assert.deepEqual(JSON.parse(offer.calls[0].init.body), { password: 'a password' });
-  const passkey = answer(202, { methods: ['totp', 'passkey'], passkey_options: { challenge: 'c' } });
-  assert.deepEqual(await beginRecoveryCodes(passkey.fetcher, 'a password'), { passkey: { challenge: 'c' } });
+  assert.deepEqual(await beginRecoveryCodes('a password'), { passkey: null });
+  assert.deepEqual(offer.calls, [{ method: 'recovery_codes.confirmation', params: { body: { password: 'a password' } } }]);
+  answer(202, { methods: ['totp', 'passkey'], passkey_options: { challenge: 'c' } });
+  assert.deepEqual(await beginRecoveryCodes('a password'), { passkey: { challenge: 'c' } });
 
   const replaced = answer(200, { recovery_codes: CODES });
-  assert.deepEqual(await replaceRecoveryCodes(replaced.fetcher, { code: '123456' }), CODES);
-  assert.equal(replaced.calls[0].url, '/api/admin/recovery-codes');
-  assert.deepEqual(JSON.parse(replaced.calls[0].init.body), { code: '123456' });
-  assert.deepEqual(await replaceRecoveryCodes(answer(200, { recovery_codes: CODES }).fetcher, { credential: {} }), CODES);
+  assert.deepEqual(await replaceRecoveryCodes({ code: '123456' }), CODES);
+  assert.deepEqual(replaced.calls, [{ method: 'recovery_codes.replace', params: { body: { code: '123456' } } }]);
+  answer(200, { recovery_codes: CODES });
+  assert.deepEqual(await replaceRecoveryCodes({ credential: {} }), CODES);
 });
 
 test('a refused or malformed confirmation is a closed error and nothing invalid is sent', async () => {
-  const refused = answer(429, { code: 'authentication-locked', retry_after: 60 });
-  await assert.rejects(beginRecoveryCodes(refused.fetcher, 'a password'), (error) => (
+  answer(429, { code: 'authentication-locked', retry_after: 60 });
+  await assert.rejects(beginRecoveryCodes('a password'), (error) => (
     error instanceof SecurityError && error.code === 'authentication-locked' && error.status === 429 && error.retryAfter === 60
   ));
-  await assert.rejects(beginRecoveryCodes(answer(500, { code: 'Not A Code', retry_after: 1e9 }).fetcher, 'p'), (error) => (
-    error.code === 'request-failed' && error.retryAfter === 0
-  ));
+  answer(500, { code: 'Not A Code', retry_after: 1e9 });
+  await assert.rejects(beginRecoveryCodes('p'), (error) => error.code === 'request-failed' && error.retryAfter === 0);
   for (const body of [{ methods: ['passkey'] }, { methods: ['totp'], extra: 1 }, { methods: ['totp', 'passkey'] }]) {
-    await assert.rejects(beginRecoveryCodes(answer(202, body).fetcher, 'p'), /response-invalid/);
+    answer(202, body);
+    await assert.rejects(beginRecoveryCodes('p'), /response-invalid/);
   }
-  await assert.rejects(beginRecoveryCodes(answer(202, {}).fetcher, ''), /request-invalid/);
-  await assert.rejects(beginRecoveryCodes(null, 'p'), /request-invalid/);
+  const nothing = answer(202, {});
+  await assert.rejects(beginRecoveryCodes(''), /request-invalid/);
   for (const proof of [{}, { code: '12345' }, { code: '123456', credential: {} }, { credential: null }]) {
-    await assert.rejects(replaceRecoveryCodes(answer(200, {}).fetcher, proof), /request-invalid/);
+    await assert.rejects(replaceRecoveryCodes(proof), /request-invalid/);
   }
-  await assert.rejects(replaceRecoveryCodes(answer(200, { recovery_codes: CODES.slice(1) }).fetcher, { code: '123456' }),
-    /response-invalid/);
-  await assert.rejects(replaceRecoveryCodes(answer(200, { recovery_codes: CODES, x: 1 }).fetcher, { code: '123456' }),
-    /response-invalid/);
+  assert.deepEqual(nothing.calls, []);
+  answer(200, { recovery_codes: CODES.slice(1) });
+  await assert.rejects(replaceRecoveryCodes({ code: '123456' }), /response-invalid/);
+  answer(200, { recovery_codes: CODES, x: 1 });
+  await assert.rejects(replaceRecoveryCodes({ code: '123456' }), /response-invalid/);
 });
 
 test('replacing the signing key starts with the password and resolves only when Team pins the new key', async () => {
   const offer = answer(202, { methods: ['totp'] });
-  assert.deepEqual(await beginSupervisorKeyRotation(offer.fetcher, 'a password'), { passkey: null });
-  assert.equal(offer.calls[0].url, '/api/admin/supervisor-key/confirmation');
+  assert.deepEqual(await beginSupervisorKeyRotation('a password'), { passkey: null });
+  assert.deepEqual(offer.calls, [{ method: 'supervisor_key.confirmation', params: { body: { password: 'a password' } } }]);
   const rotated = answer(200, { rotated: true });
-  assert.equal(await rotateSupervisorKey(rotated.fetcher, { code: '123456' }), true);
-  assert.equal(rotated.calls[0].url, '/api/admin/supervisor-key');
-  assert.deepEqual(JSON.parse(rotated.calls[0].init.body), { code: '123456' });
+  assert.equal(await rotateSupervisorKey({ code: '123456' }), true);
+  assert.deepEqual(rotated.calls, [{ method: 'supervisor_key.rotate', params: { body: { code: '123456' } } }]);
   for (const [status, code] of [
     [503, 'supervisor-key-rotation-pending'],
     [409, 'supervisor-key-rotation-refused'],
     [409, 'supervisor-key-rotation-busy'],
   ]) {
-    await assert.rejects(rotateSupervisorKey(answer(status, { code }).fetcher, { code: '123456' }), (error) => (
+    answer(status, { code });
+    await assert.rejects(rotateSupervisorKey({ code: '123456' }), (error) => (
       error instanceof SecurityError && error.code === code && error.status === status
     ));
   }
   for (const body of [{}, { rotated: false }, { rotated: true, key_sha256: 'a' }]) {
-    await assert.rejects(rotateSupervisorKey(answer(200, body).fetcher, { code: '123456' }), /response-invalid/);
+    answer(200, body);
+    await assert.rejects(rotateSupervisorKey({ code: '123456' }), /response-invalid/);
   }
-  await assert.rejects(rotateSupervisorKey(answer(200, {}).fetcher, { code: '12' }), /request-invalid/);
+  await assert.rejects(rotateSupervisorKey({ code: '12' }), /request-invalid/);
+});
+
+test('a confirmation the socket lost before Admin answered is never replayed', async () => {
+  const lost = new LocalApiError('Admin disconnected before it answered.', 0, OUTCOME_UNKNOWN);
+  let sent = 0;
+  socketReads.call = async () => {
+    sent += 1;
+    throw lost;
+  };
+  await assert.rejects(rotateSupervisorKey({ code: '123456' }), (error) => error === lost);
+  await assert.rejects(beginRecoveryCodes('a password'), (error) => error === lost);
+  assert.equal(sent, 2);
 });

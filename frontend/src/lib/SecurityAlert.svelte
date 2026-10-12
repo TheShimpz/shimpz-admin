@@ -1,5 +1,6 @@
 <script>
   import { Notice } from '@shimpz/frontend';
+  import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n.js';
   import { acknowledgeFailedAttempts, securitySummary } from '#lib/security.js';
@@ -16,9 +17,9 @@
     busy = true;
     error = '';
     try {
-      await acknowledgeFailedAttempts(fetch, count);
-    } catch {
-      error = $t('security.acknowledgeFailed');
+      await acknowledgeFailedAttempts(count);
+    } catch (failure) {
+      error = $t(outcomeUnknown(failure) ? 'shell.outcomeUnknown' : 'security.acknowledgeFailed');
     } finally {
       busy = false;
     }
@@ -31,7 +32,7 @@
     <Notice variant="warning" title={$t('security.alertTitle')}>
       <p>{$t('security.alertMessage', { count })}</p>
       {#if error}<p class="error" role="alert">{error}</p>{/if}
-      <DialogAction kind="confirm" type="button" size="sm" disabled={busy} onclick={acknowledge}>
+      <DialogAction kind="confirm" type="button" size="sm" disabled={busy || !$commandsReady} onclick={acknowledge}>
         {busy ? $t('security.acknowledging') : $t('security.acknowledge')}
       </DialogAction>
     </Notice>
