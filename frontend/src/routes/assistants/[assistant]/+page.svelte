@@ -182,7 +182,7 @@
   let dialogSecondaryLabel = $derived(
     ['install', 'uninstall'].includes(dialogMode)
       ? dialogAction === 'uninstall' ? storeCopy.assistantActionCancel : actionCopy.cancel
-      : $t('integration.close'),
+      : $t('shell.close'),
   );
 
   function settleInitialView() {

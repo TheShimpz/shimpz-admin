@@ -13,7 +13,7 @@
   let { defaultDurationMs = DEFAULT_ADMIN_NOTICE_DURATION_MS } = $props();
   let host = $state();
   let paused = $state(false);
-  let closeLabel = $derived($t('integration.close'));
+  let closeLabel = $derived($t('shell.close'));
   let safeDefaultDurationMs = $derived(validAdminNoticeDuration(defaultDurationMs) ? defaultDurationMs : DEFAULT_ADMIN_NOTICE_DURATION_MS);
   let durationMs = $derived($adminNotice?.durationMs ?? safeDefaultDurationMs);
 
