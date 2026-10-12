@@ -24,11 +24,9 @@ from team import order as team_order
 log = logging.getLogger("shimpz-admin")
 
 
-def _seen(status: int, body: object) -> object:
+def _seen(status: int, body: dict[str, object]) -> object:
     """A watched answer as the page sees it: Team's per-request trace identifier is never part of a change."""
-    if isinstance(body, dict):
-        body = {field: value for field, value in body.items() if field != "trace_id"}
-    return status, body
+    return status, {field: value for field, value in body.items() if field != "trace_id"}
 
 
 def _resources() -> object:
