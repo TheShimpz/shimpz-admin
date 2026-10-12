@@ -3,6 +3,7 @@ import {
   ASSISTANT_LIMIT_REACHED,
   codePointLength,
   CONTROL_RE,
+  exactEnvelope,
   exactKeys,
   isAssistantId,
   isIdentifier,
@@ -11,7 +12,6 @@ import {
   PUBLIC_CREATOR_RE,
   SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
-  TRACE_ID_RE,
 } from './validate.js';
 import { socketReads } from './adminSocket.js';
 import { AssistantPageError, canonicalPageCopy } from './assistantPage.js';
@@ -333,10 +333,8 @@ export async function listLocalAssistantSnapshots(call = socketReads.call) {
       response.status,
     );
   }
-  const responseKeys = 'trace_id' in body ? ['assistants', 'trace_id'] : ['assistants'];
   if (
-    !exactKeys(body, responseKeys) ||
-    ('trace_id' in body && (typeof body.trace_id !== 'string' || !TRACE_ID_RE.test(body.trace_id))) ||
+    !exactEnvelope(body, ['assistants']) ||
     !Array.isArray(body.assistants) ||
     body.assistants.length > MAX_LOCAL_ASSISTANTS
   ) {
@@ -432,17 +430,15 @@ export async function installLocalAssistant(teamId, imageId, { onProgress } = {}
   }
   const keys = ['assistant', 'image_id', 'installed', 'provenance', 'unpublished'];
   if ('updated' in body) keys.push('updated');
-  if ('trace_id' in body) keys.push('trace_id');
   if (
-    !exactKeys(body, keys) ||
+    !exactEnvelope(body, keys) ||
     typeof body.assistant !== 'string' ||
     !ASSISTANT_ID_RE.test(body.assistant) ||
     body.image_id !== imageId ||
     typeof body.installed !== 'boolean' ||
     ('updated' in body && typeof body.updated !== 'boolean') ||
     body.provenance !== 'local' ||
-    body.unpublished !== true ||
-    ('trace_id' in body && (typeof body.trace_id !== 'string' || !TRACE_ID_RE.test(body.trace_id)))
+    body.unpublished !== true
   ) {
     throw new LocalApiError('The Local Assistant installation returned an invalid response.', response.status);
   }
@@ -474,12 +470,8 @@ export async function uninstallAssistant(teamId, assistantId) {
       response.status,
     );
   }
-  const expectedKeys = 'trace_id' in body
-    ? ['assistant', 'trace_id', 'uninstalled']
-    : ['assistant', 'uninstalled'];
   if (
-    !exactKeys(body, expectedKeys) ||
-    ('trace_id' in body && (typeof body.trace_id !== 'string' || !TRACE_ID_RE.test(body.trace_id))) ||
+    !exactEnvelope(body, ['assistant', 'uninstalled']) ||
     body.assistant !== assistantId ||
     typeof body.uninstalled !== 'boolean'
   ) {

@@ -69,6 +69,14 @@ export function exactKeys(value, expected) {
   return actual.length === wanted.length && actual.every((key, index) => key === wanted[index]);
 }
 
+/** Exactly `keys`, and Team's trace id beside them only when it is one. */
+export function exactEnvelope(value, keys) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const traced = 'trace_id' in value;
+  return exactKeys(value, traced ? [...keys, 'trace_id'] : keys) &&
+    (!traced || (typeof value.trace_id === 'string' && TRACE_ID_RE.test(value.trace_id)));
+}
+
 export function publicError(error, fallback) {
   if (error instanceof LocalApiError && error.message && error.message.length <= 300) return error;
   return new LocalApiError(fallback);
