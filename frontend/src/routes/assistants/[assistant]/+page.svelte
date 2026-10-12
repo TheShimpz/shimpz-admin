@@ -14,6 +14,7 @@
   import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
   import LocalAssistantInstallDialog from '#lib/LocalAssistantInstallDialog.svelte';
   import {
+    backgroundFetch,
     installAssistant,
     installLocalAssistant,
     listLocalAssistantSnapshots,
@@ -308,10 +309,11 @@
   });
 
   // The Team's installed Assistants read again from Team, or null when that exact Team's inventory could not be read.
+  // The page reads it on its own after an install or uninstall, so it never renews the session.
   async function readInventory(team) {
     if ($teamContext.selectedTeamId !== team.id) return null;
     try {
-      return (await refreshTeamInventory(fetch)).installedAssistants;
+      return (await refreshTeamInventory(backgroundFetch)).installedAssistants;
     } catch {
       return null;
     }

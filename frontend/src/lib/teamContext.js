@@ -176,6 +176,14 @@ let listReads = 0;
 let listBarrier = 0;
 // A Team list change Admin announced while the context loads is read once the load ends, so it is never dropped.
 let listChangedWhileLoading = null;
+// Whether the selected Team was chosen by the page itself (its Team removed elsewhere) rather than by the person: the
+// reads that open it are then automatic too, and never renew the session.
+let automaticSelection = false;
+
+/** Whether the page, not the person, selected the current Team; the reads that open it are then background reads. */
+export function selectedAutomatically() {
+  return automaticSelection;
+}
 
 function withRenames(teams, since) {
   return teams.map((team) => {
@@ -185,6 +193,7 @@ function withRenames(teams, since) {
 }
 
 async function hydrate(fetcher, preferredId, attempt, previousId = '') {
+  automaticSelection = fetcher.background === true;
   const since = renameClock;
   const read = ++listReads;
   const [listed, catalog] = await Promise.all([
@@ -266,6 +275,7 @@ async function select(fetcher, id) {
     throw new LocalApiError('Invalid local Team request.');
   }
   const attempt = ++generation;
+  automaticSelection = false;
   teamContext.set({
     ...current,
     phase: 'loading',

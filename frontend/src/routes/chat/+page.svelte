@@ -47,7 +47,7 @@
   import { sessionContext } from '#lib/sessionContext.js';
   import ShimpzThinking from '#lib/ShimpzThinking.svelte';
   import { backgroundFetch } from '#lib/localApi.js';
-  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teamContext.js';
+  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, selectedAutomatically, teamContext } from '#lib/teamContext.js';
   import { ASSISTANT_LIMIT_REACHED } from '#lib/validate.js';
   import {
     authorizeAssistantIntegration,
@@ -544,7 +544,8 @@
 
   async function hydrateHistory(teamId, generation) {
     try {
-      const page = await listChatHistory(call, teamId);
+      // A Team the page selected itself (its Team removed elsewhere) opens with an automatic read.
+      const page = await listChatHistory(selectedAutomatically() ? backgroundCall : call, teamId);
       if (generation !== historyGeneration || chatTeamId !== teamId) return;
       const team = $teamContext.teams.find((entry) => entry.id === teamId);
       if (!team) throw new Error(copy.loadFailed);

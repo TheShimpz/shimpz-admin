@@ -11,7 +11,8 @@
     modelContext,
     preloadModelProviders,
   } from '#lib/modelContext.js';
-  import { loadTeamContext, selectTeam, teamContext } from '#lib/teamContext.js';
+  import { backgroundFetch } from '#lib/localApi.js';
+  import { loadTeamContext, selectTeam, selectedAutomatically, teamContext } from '#lib/teamContext.js';
   import { TEAM_ID_RE } from '#lib/validate.js';
 
   let { active = '' } = $props();
@@ -63,7 +64,8 @@
     if (!teamId) {
       if ($modelContext.teamId) clearModelContext();
     } else if ($modelContext.teamId !== teamId || $modelContext.phase === 'idle') {
-      loadModelContext(fetch, teamId).catch(() => {});
+      // A Team the page selected itself opens with automatic reads.
+      loadModelContext(selectedAutomatically() ? backgroundFetch : fetch, teamId).catch(() => {});
     }
   });
 

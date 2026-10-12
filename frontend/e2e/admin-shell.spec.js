@@ -479,9 +479,16 @@ test('a selected Team removed elsewhere reloads the Team context without renewin
   removed = true;
   await raiseTopic(page, 'teams');
   await expect(navigation.getByRole('link', { name: 'Marketing', exact: true })).toHaveCount(0);
-  await expect.poll(() => requests.length).toBeGreaterThan(0);
+  // The Team selected in its place opens: its model settings and its chat history are read, automatically too.
+  const replacement = (path) => /^\/api\/teams\/(?!marketing\/)[a-z0-9_]+\/inference$/.test(path);
+  await expect.poll(() => requests.some((request) => replacement(request.path))).toBe(true);
+  const histories = async () => (await sessionFrames(page)).filter((frame) => (
+    frame.type === 'call' && frame.method === 'history.page' && frame.params.team_id !== 'marketing'
+  ));
+  await expect.poll(async () => (await histories()).length).toBeGreaterThan(0);
   expect(requests.map((request) => request.background)).not.toContain(false);
   expect(await laterCalls(page, 'teams.list')).not.toContain(false);
+  expect((await histories()).map((frame) => frame.background === true)).not.toContain(false);
 });
 
 test('reads the Local release status at open and when Admin says it changed, never on a timer', async ({ page }) => {

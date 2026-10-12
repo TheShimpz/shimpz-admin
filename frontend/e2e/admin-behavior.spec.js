@@ -5798,6 +5798,7 @@ test.describe('Team Routines', () => {
       refusals -= 1;
       return route.fulfill({ status: 503, json: { detail: 'unavailable' } });
     });
+    const requests = recordRequests(page);
     await page.goto('/chat/?team=marketing');
     const navigation = await openTeamNavigation(page);
     await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
@@ -5814,6 +5815,9 @@ test.describe('Team Routines', () => {
     await reread;
     await expect(steps).toHaveCount(10);
     await expect(panel.getByText(messages.en.routine.plan.unavailable)).toHaveCount(0);
+    // Opening the plan was the person's read; the retry the page started itself is automatic.
+    const reads = requests.filter((request) => /\/steps\/\d+$/u.test(request.path));
+    expect(reads.map((request) => request.background)).toEqual([false, true]);
   });
 
   test("a 120-step Routine's plan shows its summary at once and reads its steps page by page as they are revealed", { tag: '@slow' }, async ({ page }, testInfo) => {
