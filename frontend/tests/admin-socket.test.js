@@ -632,6 +632,18 @@ test('coming online retries a dropped socket at once instead of waiting out its 
   assert.equal(get(adminSocket).phase, 'idle');
 });
 
+test('coming online while a dropped socket still checks its session retries as soon as that check ends', async () => {
+  const socket = connected();
+  // The close's session check is still under way: no backoff is waiting yet to be cut short.
+  socket.drop(1006);
+  window.dispatchEvent(new Event('online'));
+  const before = FakeSocket.opened.length;
+  await flush();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(FakeSocket.opened.length, before + 1);
+  disconnectAdminSocket();
+});
+
 test('the browser going offline is told beside the phase, and a tab coming into view retries at once', async () => {
   const socket = connected();
   assert.equal(get(commandsReady), true);

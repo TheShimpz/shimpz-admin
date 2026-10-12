@@ -531,7 +531,8 @@ function scheduleReconnect() {
   setPhase(now - reconnectSince >= RECONNECT_WINDOW_MS ? 'failed' : 'reconnecting');
   // Jitter spreads the tabs of one browser, and of several, across each step of the backoff.
   const step = Math.min(FIRST_RECONNECT_DELAY_MS * (2 ** Math.min(reconnectAttempt, 7)), MAX_RECONNECT_DELAY_MS);
-  const delay = step * (0.75 + Math.random() * 0.25);
+  const delay = retryAtOnce ? 0 : step * (0.75 + Math.random() * 0.25);
+  retryAtOnce = false;
   reconnectAttempt += 1;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = undefined;
@@ -539,11 +540,17 @@ function scheduleReconnect() {
   }, delay);
 }
 
-// The browser came online or the tab became visible: a socket waiting out its backoff tries again at once.
+// The browser came online or the tab became visible: a socket waiting out its backoff tries again at once, and one
+// whose attempt is still under way (an upgrade, or the session check after a close) skips the wait that follows it.
+let retryAtOnce = false;
+
 function reconnectNow() {
   if (!options) return;
   adminSocket.update((value) => ({ ...value, offline: browserOffline() }));
-  if (!reconnectTimer) return;
+  if (!reconnectTimer) {
+    retryAtOnce = !opened;
+    return;
+  }
   clearTimeout(reconnectTimer);
   reconnectTimer = undefined;
   open();
@@ -682,6 +689,7 @@ export function disconnectAdminSocket() {
   clearTimeout(reconnectTimer);
   clearTimeout(stableTimer);
   reconnectTimer = undefined;
+  retryAtOnce = false;
   const socket = connection;
   connection = null;
   opened = false;
