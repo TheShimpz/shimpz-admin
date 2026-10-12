@@ -604,7 +604,8 @@
       if (viewport && viewport === turnsViewport) {
         viewport.scrollTop = previousTop + viewport.scrollHeight - previousHeight;
       }
-      clearError();
+      // Only an earlier page's own failure ends with it; any other error on screen stays.
+      if (error === copy.loadFailed) clearError();
     } catch (reason) {
       if (generation === historyGeneration && chatTeamId === teamId) {
         olderHistoryFailed = true;

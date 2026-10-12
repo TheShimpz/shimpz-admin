@@ -1814,6 +1814,27 @@ test('loads earlier history only when the transcript is scrolled to its top', as
   await expect(turns).not.toHaveAttribute('aria-describedby');
 });
 
+test('earlier history that arrives keeps an unrelated chat error on screen', async ({ page }) => {
+  const cursor = 'AAAAAAAAAAI';
+  const chat = await routeReadyChat(page, {
+    history: longHistory('f', 12, cursor),
+    olderHistory: longHistory('e', 12, null),
+    terminalError: true,
+  });
+  await page.goto('/chat/');
+  await expect(page.getByText('Recent answer 12', { exact: false })).toBeInViewport();
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await fillWhenReady(page, composer, 'Run the report');
+  await composer.press('Enter');
+  const failure = page.getByRole('alert').filter({ hasText: 'synthetic runtime failure' });
+  await expect(failure).toBeVisible();
+
+  await page.locator('.turns').evaluate((element) => { element.scrollTop = 0; });
+  await expect.poll(() => chat.historyRequests()).toEqual([null, cursor]);
+  await expect(page.getByText('Earlier question 12', { exact: true })).toBeAttached();
+  await expect(failure).toBeVisible();
+});
+
 test('keeps the message at the top of the transcript where it was once earlier history arrives @browser-sensitive', async ({ page }) => {
   const cursor = 'AAAAAAAAAAI';
   await routeReadyChat(page, {
