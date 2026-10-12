@@ -606,9 +606,8 @@ def offer_operation(asker: Asker, context: Context, subject: str) -> tuple[dict[
     try:
         return _operation_offer(token, origin, generation, context), token
     except _STATE_FAILURES:
-        # The offer could not be made, so its ticket is spent before anyone could hold it.
-        with contextlib.suppress(tickets.TicketError):
-            context.ticket_store.consume(token, "operation", subject, asker.binding)
+        # The offer could not be made, so its ticket and any passkey challenge are spent before anyone could hold them.
+        discard_operation(token, context)
         raise _unavailable() from None
 
 
@@ -672,8 +671,11 @@ def _confirmed(
     try:
         ticket = context.ticket_store.consume(confirmation.token, "operation", subject, asker.binding)
     except tickets.TicketError:
+        # A ticket refused for another operation or socket is spent, and so is its passkey challenge.
+        _discard_challenge(confirmation.token, context)
         raise OperationRefusedError(401, "authentication-expired") from None
     if ticket.origin != asker.origin or state.factor_generation() != ticket.generation:
+        _discard_challenge(confirmation.token, context)
         raise OperationRefusedError(401, "authentication-expired")
     _operation_second_factor(confirmation.method, confirmation.value, confirmation.token, ticket, context)
     session = auth.verify_session(state.get().get("session_secret", ""), asker.session)

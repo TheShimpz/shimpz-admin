@@ -130,6 +130,42 @@ class RoutineDeletionTests(StepUpCase):
         self.assertEqual(results[1]["body"], {"code": "authentication-expired"})
         self.team_delete.assert_not_called()
 
+    def test_a_refused_or_unofferable_confirmation_leaves_no_ticket_or_passkey_challenge(self) -> None:
+        def bump() -> None:
+            data = self.state.get()
+            self.state._write({**data, "factor_generation": int(data["factor_generation"]) + 1})
+
+        async def scenario(complete: tuple[str, dict], between=None) -> tuple[list[int], int, int]:
+            websocket = await self._connect()
+            statuses = [(await websocket.result(*_deletion(ROUTINE)))["status"]]
+            if between is not None:
+                await asyncio.to_thread(between)
+            statuses.append((await websocket.result(*complete))["status"])
+            left = (len(self.context.ticket_store._records), len(self.context.challenge_store._records))
+            await websocket.disconnect()
+            return statuses, *left
+
+        with (
+            mock.patch.object(self.local_auth, "passkey_registered", return_value=True),
+            mock.patch.object(self.state, "active_passkeys", return_value=[{"credential_id": "credential"}]),
+            mock.patch.object(self.passkeys, "authentication_options", return_value={"challenge": "x"}),
+        ):
+            # A ticket presented for another operation, or with factors changed since it was offered.
+            another = asyncio.run(scenario(_delete({"code": "123456"}, OTHER)))
+            changed = asyncio.run(scenario(_delete({"code": "123456"}), bump))
+        self.assertEqual(another, ([202, 401], 0, 0))
+        self.assertEqual(changed, ([202, 401], 0, 0))
+        # An offer that could not be made after its challenge was issued.
+        with (
+            mock.patch.object(self.local_auth, "passkey_registered", return_value=True),
+            mock.patch.object(self.state, "active_passkeys", return_value=[{"credential_id": "credential"}]),
+            mock.patch.object(self.passkeys, "authentication_options", side_effect=OSError("unreadable")),
+            self.assertLogs("shimpz-admin", level="WARNING"),
+        ):
+            self.assertEqual(self.answer(self.run_calls(_deletion())[0]), (503, {"code": "authentication-unavailable"}))
+        self.assertEqual((self.context.ticket_store._records, self.context.challenge_store._records), ({}, {}))
+        self.team_delete.assert_not_called()
+
     def test_a_confirmation_begun_again_replaces_the_one_before_it(self) -> None:
         offer = {"challenge": "x"}
 
