@@ -66,7 +66,8 @@ export default {
     languageMenu: 'Language',
     platformRollback: 'Update rolled back',
     reconnecting: 'Reconnecting to Admin… What you see may be out of date, and actions wait until the connection is back.',
-    reconnectFailed: 'Admin could not be reached again. Refresh this page to reconnect.',
+    reconnectFailed: "Admin can't be reached. Shimpz keeps trying to reconnect.",
+    offline: "You're offline. Shimpz reconnects when the connection is back.",
     outcomeUnknown: 'Admin disconnected before it confirmed this change, so it may or may not have been made. What you see is read again once Admin is back.',
     sessionExpiring: {
       title: 'Your session is about to end',
@@ -83,6 +84,7 @@ export default {
     resourceOk: 'All systems normal',
     resourceReconnecting: 'Reconnecting…',
     resourceUnreachable: 'Admin unreachable',
+    resourceOffline: 'Offline',
     resourceServiceStopped: 'A service is stopped',
     resourceMemoryNearlyFull: 'Memory nearly full',
     resourceMemoryFull: 'Memory full',

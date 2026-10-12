@@ -68,7 +68,8 @@ export default {
     languageMenu: '语言',
     platformRollback: '更新已回滚',
     reconnecting: '正在重新连接 Admin… 您看到的内容可能已过时，操作将等待连接恢复。',
-    reconnectFailed: '无法再次连接 Admin。请刷新此页面以重新连接。',
+    reconnectFailed: "无法连接 Admin。Shimpz 会继续尝试重新连接。",
+    offline: "你已离线。连接恢复后 Shimpz 会重新连接。",
     outcomeUnknown: 'Admin 在确认此更改之前断开了连接，因此更改可能已完成，也可能未完成。Admin 恢复后会重新读取你看到的内容。',
     sessionExpiring: {
       title: '会话即将结束',
@@ -85,6 +86,7 @@ export default {
     resourceOk: '所有系统正常',
     resourceReconnecting: '正在重新连接…',
     resourceUnreachable: '无法连接 Admin',
+    resourceOffline: '离线',
     resourceServiceStopped: '有服务已停止',
     resourceMemoryNearlyFull: '内存即将用满',
     resourceMemoryFull: '内存已满',

@@ -10,7 +10,9 @@
   let resources = $derived($signal);
   // While Admin cannot be reached the line says so, as the shell's notice does, instead of the last known summary.
   let connection = $derived(
-    $adminSocket.phase === 'failed'
+    ['reconnecting', 'failed'].includes($adminSocket.phase) && $adminSocket.offline
+      ? { level: 'alert', message: 'shell.resourceOffline' }
+      : $adminSocket.phase === 'failed'
       ? { level: 'alert', message: 'shell.resourceUnreachable' }
       : $adminSocket.phase === 'reconnecting'
         ? { level: 'warn', message: 'shell.resourceReconnecting' }

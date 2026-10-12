@@ -2,7 +2,7 @@
   import { onMount, tick } from 'svelte';
   import { Button, StatusBadge, TextField, TextLink } from '@shimpz/frontend';
 
-  import { outcomeUnknown } from '#lib/adminSocket.js';
+  import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/composerPanel.js';
   import {
     knownDecisionProvider,
@@ -30,7 +30,8 @@
   const KEYS_URL = 'https://console.typesafe.ai/keys';
 
   let copy = $derived($t('brainMenu').fast);
-  let saving = $derived(fast.phase === 'saving');
+  // A change is offered only while Admin is connected.
+  let saving = $derived(fast.phase === 'saving' || !$commandsReady);
   let status = $derived(fast.configured ? $t('brainMenu.fast.on', { masked: fast.masked }) : copy.off);
   let triggerLabel = $derived(fast.phase === 'ready' ? `${copy.label}: ${status}` : copy.label);
 

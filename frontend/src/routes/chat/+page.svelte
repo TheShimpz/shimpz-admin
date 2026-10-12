@@ -271,10 +271,8 @@
       ? `${thinking} ${localizedEventLabel(currentProgress, copy.progress, { teamName, assistantNames })}`
       : busy ? thinking : '',
   );
-  let contextLoading = $derived(
-    $teamContext.phase === 'idle' || $teamContext.phase === 'loading' || historyHydrating,
-  );
   let contextFailed = $derived($teamContext.phase === 'error');
+  let teamsKnownEmpty = $derived($teamContext.phase === 'ready' && $teamContext.teams.length === 0 && !historyHydrating);
   let contextErrorDetail = $derived(
     contextFailed &&
       typeof $teamContext.error === 'string' &&
@@ -715,11 +713,6 @@
   // A history change held back while the conversation was in motion is read once it is idle again.
   $effect(() => {
     if (historyChanged && chatTeamId && !historyHydrating && routineMergeIdle()) void refreshRoutineNotices(chatTeamId);
-  });
-
-  // The shell's socket gave up reconnecting: the conversation stays readable, and a reload is the way back.
-  $effect(() => {
-    if ($adminSocket.phase === 'failed' && chatTeamId) setError(copy.connectionFailed);
   });
 
   $effect(() => {
@@ -2730,12 +2723,13 @@
     {/if}
   {:else}
     <section class="empty-state" aria-live="polite">
+      <!-- "No Team yet" only once the Team list is known to be empty; until then it is loading, or why it failed. -->
       <EmptyState
-        title={contextLoading ? copy.loading : copy.emptyTeams}
+        title={teamsKnownEmpty ? copy.emptyTeams : contextFailed ? copy.loadFailed : copy.loading}
       >
-        {#if visibleError}
+        {#if visibleError && (visibleError !== copy.loadFailed || visibleErrorDetail)}
           <Notice class="chat-empty-error" variant="error">
-            <strong>{visibleError}</strong>
+            {#if visibleError !== copy.loadFailed}<strong>{visibleError}</strong>{/if}
             {#if visibleErrorDetail}<code>{copy.technicalDetail}: {visibleErrorDetail}</code>{/if}
           </Notice>
         {/if}

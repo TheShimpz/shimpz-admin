@@ -7,7 +7,7 @@
 
   import { t } from '#lib/i18n.js';
   import { loadTeamRoutines, retainTeamRoutines, routineContext } from '#lib/routineContext.js';
-  import { call, outcomeUnknown } from '#lib/adminSocket.js';
+  import { call, commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import TeamActionsMenu from '#lib/TeamActionsMenu.svelte';
   import { renameTeam, reorderTeams, teamContext } from '#lib/teamContext.js';
   import TeamRoutinesDialog from '#lib/TeamRoutinesDialog.svelte';
@@ -86,7 +86,8 @@
   }
 
   async function commitRename(team, restoreFocus) {
-    if (renaming !== team.id || renameSaving) return;
+    // While Admin reconnects the name stays in its field, to be saved once Admin is back.
+    if (renaming !== team.id || renameSaving || !$commandsReady) return;
     const name = renameDraft.trim();
     if (!name || name === team.name) {
       renaming = '';
@@ -162,7 +163,7 @@
 
   // Teams keep the Supervisor's order: drag a Team by its name, or press Alt+ArrowUp / Alt+ArrowDown on it. The order
   // moves at once and is saved behind it; a refusal restores the last saved order.
-  let canReorder = $derived($teamContext.teams.length > 1);
+  let canReorder = $derived($teamContext.teams.length > 1 && $commandsReady);
   let announcement = $state('');
   let list = $state();
 

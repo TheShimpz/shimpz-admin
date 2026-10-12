@@ -5,6 +5,7 @@
     Notice,
     TextField,
   } from '@shimpz/frontend';
+  import { commandsReady } from '#lib/adminSocket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { locale, t } from '#lib/i18n.js';
   import {
@@ -189,7 +190,7 @@
               <DialogAction
                 kind="confirm"
                 type="button"
-                disabled={submitting}
+                disabled={submitting || !$commandsReady}
                 aria-label={`${$t('assistantIntegrations.authorize', { provider: requirementProvider })} — ${requirement.name}`}
                 onclick={() => authorize(requirement)}
               >
@@ -210,11 +211,11 @@
     {#snippet footer()}
       <DialogAction kind="cancel" type="button" disabled={submitting} onclick={close}>{copy.cancel}</DialogAction>
       {#if awaitingCompletion}
-        <DialogAction kind="confirm" type="button" disabled={submitting || !completionCode.trim()} onclick={complete}>
+        <DialogAction kind="confirm" type="button" disabled={submitting || !$commandsReady || !completionCode.trim()} onclick={complete}>
           {submitting ? copy.completing : copy.complete}
         </DialogAction>
       {:else if hasSingleRequirement}
-        <DialogAction kind="confirm" type="button" disabled={submitting} onclick={() => authorize(nextRequirement)}>
+        <DialogAction kind="confirm" type="button" disabled={submitting || !$commandsReady} onclick={() => authorize(nextRequirement)}>
           {$t(
             submitting
               ? 'assistantIntegrations.authorizing'

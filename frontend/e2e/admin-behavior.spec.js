@@ -2478,7 +2478,7 @@ test('an uninstall and the reads it causes never report the person\'s activity',
   expect(await activityReports(page)).toBe(0);
 });
 
-test('a chat socket that opens and is closed again keeps backing off and then reports the failure', async ({ page }) => {
+test('a chat socket that opens and is closed again keeps backing off and says once that Admin cannot be reached', async ({ page }) => {
   await routeScenario(page, 'ready');
   // Admin accepts the socket and closes it after the page's first frame, as when it cannot check the session.
   let connections = 0;
@@ -2492,19 +2492,24 @@ test('a chat socket that opens and is closed again keeps backing off and then re
   });
   await freezeClock(page);
   await page.goto('/chat/?team=marketing');
-  const interrupted = page.getByText(messages.en.shell.reconnecting);
-  const failed = page.getByText('The secure chat connection could not be established. Refresh this page to try again.');
+  const reconnecting = page.getByText(messages.en.shell.reconnecting);
+  const unreachable = page.getByText(messages.en.shell.reconnectFailed);
   // Each step waits until the page saw the close, then runs its clock past the longest backoff.
   for (let step = 0; step < 40; step += 1) {
     await expect.poll(() => syncs).toBe(connections);
-    await expect(interrupted.or(failed)).toBeVisible();
-    if (await failed.isVisible()) break;
+    await expect(reconnecting.or(unreachable)).toBeVisible();
+    if (await unreachable.isVisible()) break;
     const before = connections;
-    await page.clock.runFor(10_000);
+    await page.clock.runFor(30_000);
     await expect.poll(() => connections).toBeGreaterThan(before);
   }
-  await expect(failed).toBeVisible();
+  await expect(unreachable).toBeVisible();
+  // The backoff kept the retries few, the chat said nothing of its own, and the socket keeps trying.
   expect(connections).toBeLessThan(25);
+  await expect(page.getByText(messages.en.chatPage.connectionFailed)).toHaveCount(0);
+  const before = connections;
+  await page.clock.runFor(30_000);
+  await expect.poll(() => connections).toBeGreaterThan(before);
 });
 
 test('a protocol violation ends the install it interrupts like a dropped connection', async ({ page }) => {

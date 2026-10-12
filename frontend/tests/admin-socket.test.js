@@ -53,6 +53,11 @@ class FakeSocket {
 }
 
 globalThis.WebSocket = FakeSocket;
+// The page's connectivity events: coming online or back into view retries a dropped socket at once.
+globalThis.window = new EventTarget();
+let browserOnline = true;
+Object.defineProperty(globalThis.navigator, 'onLine', { configurable: true, get: () => browserOnline });
+globalThis.document = Object.assign(new EventTarget(), { visibilityState: 'visible' });
 globalThis.location = { protocol: 'http:', host: '127.0.0.1:7777' };
 let sessionAnswer = { authenticated: true };
 globalThis.fetch = async () => ({ ok: true, json: async () => sessionAnswer });
@@ -62,6 +67,8 @@ const {
   ACTIVITY_INTERVAL_MS,
   adminSocket,
   call,
+  commandsReady,
+  outcomeUnknown,
   connectAdminSocket,
   disconnectAdminSocket,
   openChatChannel,
@@ -104,7 +111,7 @@ test('a socket that does not speak the protocol is closed', () => {
   assert.equal(FakeSocket.opened[0].closedWith, 1002);
 });
 
-test('a call answers like a response, and fails at once while the socket is not open', async () => {
+test('a call answers like a response, and fails at once while no session socket is wanted', async () => {
   await assert.rejects(call('teams.list'), (error) => error.code === 'socket-unavailable');
   const socket = connected();
   const pending = call('teams.list', {});
@@ -135,13 +142,42 @@ test('a call made while the first open is under way waits for it, and fails if i
   await assert.rejects(abandoned, (error) => error.code === 'socket-unavailable');
 });
 
-test('at most sixteen calls wait, and a close fails every pending call with an unknown outcome', async () => {
+test('at most sixteen calls wait, and a close fails every pending change with an unknown outcome', async () => {
   const socket = connected();
-  const calls = Array.from({ length: 16 }, () => call('teams.list'));
+  const calls = Array.from({ length: 16 }, () => call('teams.rename', { team_id: 'marketing', body: {} }));
   await flush();
   await assert.rejects(call('teams.list'), (error) => error.status === 429);
   socket.drop(1006);
   for (const pending of calls) await assert.rejects(pending, (error) => error.code === 'outcome-unknown');
+});
+
+test('a read waits while the socket reconnects and is asked again when its answer was lost; a change never waits', async () => {
+  const socket = connected();
+  const lostRead = call('history.page', { team_id: 'marketing' });
+  await flush();
+  socket.drop(1006);
+  await flush();
+  assert.equal(get(adminSocket).phase, 'reconnecting');
+  // While it reconnects, a new read waits and a change fails at once, never queued.
+  const waiting = call('teams.list', {});
+  await assert.rejects(call('teams.delete', { team_id: 'marketing', body: {} }), (error) => error.code === 'socket-unavailable');
+  await new Promise((resolve) => setTimeout(resolve, 600));
+  const reopened = FakeSocket.opened.at(-1);
+  assert.notEqual(reopened, socket);
+  reopened.open();
+  await flush();
+  reopened.answer('history.page', { entries: [], before: null });
+  reopened.answer('teams.list', { teams: [] });
+  assert.equal((await lostRead).status, 200);
+  assert.equal((await waiting).status, 200);
+  // Each read was sent once on the reopened socket, and the change never reached it.
+  assert.deepEqual(reopened.sent.filter((frame) => frame.type === 'call').map((frame) => frame.method).sort(), ['history.page', 'teams.list']);
+  // A read still waiting when the session ends fails.
+  reopened.drop(1006);
+  await flush();
+  const abandoned = call('teams.list', {});
+  disconnectAdminSocket();
+  await assert.rejects(abandoned, (error) => error.code === 'socket-unavailable');
 });
 
 test('a long call hears once that it started, and a progress frame for no pending call closes the socket', async () => {
@@ -577,4 +613,54 @@ test('the session\'s deadlines are read from Admin\'s clock, and a malformed one
   } finally {
     clock.mock.restore();
   }
+});
+
+test('coming online retries a dropped socket at once instead of waiting out its backoff', async () => {
+  const socket = connected();
+  socket.drop(1006);
+  await flush();
+  const before = FakeSocket.opened.length;
+  window.dispatchEvent(new Event('online'));
+  assert.equal(FakeSocket.opened.length, before + 1);
+  FakeSocket.opened.at(-1).open();
+  assert.equal(get(adminSocket).phase, 'open');
+  // An open socket has nothing to retry, and a signed-out page listens no more.
+  window.dispatchEvent(new Event('online'));
+  assert.equal(FakeSocket.opened.length, before + 1);
+  disconnectAdminSocket();
+  window.dispatchEvent(new Event('offline'));
+  assert.equal(get(adminSocket).phase, 'idle');
+});
+
+test('the browser going offline is told beside the phase, and a tab coming into view retries at once', async () => {
+  const socket = connected();
+  assert.equal(get(commandsReady), true);
+  browserOnline = false;
+  window.dispatchEvent(new Event('offline'));
+  assert.deepEqual(get(adminSocket), { phase: 'open', offline: true });
+  socket.drop(1006);
+  await flush();
+  assert.equal(get(commandsReady), false);
+  assert.deepEqual(get(adminSocket), { phase: 'reconnecting', offline: true });
+  // Hidden tabs wait out the backoff; a tab the person looks at again retries at once.
+  document.visibilityState = 'hidden';
+  const before = FakeSocket.opened.length;
+  document.dispatchEvent(new Event('visibilitychange'));
+  assert.equal(FakeSocket.opened.length, before);
+  document.visibilityState = 'visible';
+  browserOnline = true;
+  document.dispatchEvent(new Event('visibilitychange'));
+  assert.equal(FakeSocket.opened.length, before + 1);
+  FakeSocket.opened.at(-1).open();
+  assert.deepEqual(get(adminSocket), { phase: 'open', offline: false });
+});
+
+test('only a change Admin never answered has an unknown outcome', async () => {
+  const socket = connected();
+  const change = call('teams.rename', { team_id: 'marketing', body: { team_name: 'Growth' } });
+  socket.drop(1006);
+  const lost = await change.catch((error) => error);
+  assert.equal(outcomeUnknown(lost), true);
+  assert.equal(outcomeUnknown(new Error('outcome-unknown')), false);
+  assert.equal(outcomeUnknown(await call('teams.delete', { team_id: 'marketing', body: {} }).catch((error) => error)), false);
 });

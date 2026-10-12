@@ -1,8 +1,9 @@
 // The Admin session socket (ADR-0114): one connection per tab, owned by the Admin shell, carrying every bounded read,
 // every invalidation, and each attached Team's chat channel. Admin re-checks the page's Origin and session before each
-// frame; this client never queues a call while the socket is not open, keeps the last state readable while it
-// reconnects, and re-reads every subscribed topic when it reopens.
-import { writable } from 'svelte/store';
+// frame. While the socket reconnects, the last state stays readable, a read waits for the socket and runs once it is
+// back, and a change is never queued: it stays disabled. Every subscribed topic is read again when the socket reopens,
+// and the socket never stops reconnecting while the session lasts.
+import { derived, writable } from 'svelte/store';
 
 import { LocalApiError } from './validate.js';
 
@@ -22,19 +23,25 @@ const CHAT_CLIENT_TYPES = new Set(['chat', 'resume-task', 'stop', 'sync', 'human
 // The `shimpz.chat.v7` server frames whose own shape names their Team; on every other frame `team_id` is the channel's.
 const NATIVE_TEAM_FRAMES = new Set(['done', 'assistant-install-plan', 'assistant-guidance']);
 const NATIVE_UNINSTALL_STATES = new Set(['proposed', 'uninstalled']);
-// A Local release swap restarts Admin for about half a minute, so a dropped socket keeps reconnecting with a capped
-// backoff for long enough to cover it; only a connection that stayed open restores the backoff.
+// A dropped socket reconnects for as long as the session lasts, with a jittered exponential backoff from 0.4 s up to
+// 30 s, and at once when the browser comes online or the tab becomes visible; only a connection that stayed open
+// restores the backoff. Past the time a Local release swap takes, the shell says Admin cannot be reached (`failed`).
 export const RECONNECT_WINDOW_MS = 150_000;
-const MAX_RECONNECT_DELAY_MS = 10_000;
+const FIRST_RECONNECT_DELAY_MS = 400;
+const MAX_RECONNECT_DELAY_MS = 30_000;
 const STABLE_CONNECTION_MS = 10_000;
 const SESSION_PROBE_TIMEOUT_MS = 5_000;
 const SIGNED_OUT = 4401;
 
 /**
  * `phase` is `idle` (signed out or not started), `connecting` (the first open), `open`, `reconnecting` (the last
- * state stays on screen and commands wait), or `failed` (reconnecting gave up; a reload is needed).
+ * state stays on screen and changes are disabled), or `failed` (Admin has been unreachable for long; reconnecting
+ * goes on). `offline` says the browser itself has no network.
  */
-export const adminSocket = writable({ phase: 'idle' });
+export const adminSocket = writable({ phase: 'idle', offline: false });
+
+/** Whether a change may be offered now: only while the socket is open, since a change is never queued. */
+export const commandsReady = derived(adminSocket, ($socket) => $socket.phase === 'open');
 
 let connection = null;
 let options = null;
@@ -52,9 +59,15 @@ let reconnectSince = 0;
 let opened = false;
 let everOpened = false;
 
+function browserOffline() {
+  return typeof navigator !== 'undefined' && navigator.onLine === false;
+}
+
 function setPhase(phase) {
-  adminSocket.set({ phase });
+  adminSocket.set({ phase, offline: browserOffline() });
   if (phase !== 'connecting') settleFirstOpen(phase === 'open');
+  if (phase === 'open') settleReaders(true);
+  if (phase === 'idle') settleReaders(false);
 }
 
 function socketUrl() {
@@ -102,18 +115,61 @@ function settleFirstOpen(isOpen) {
   firstOpen.clear();
 }
 
+// Reads waiting for the socket to open: each settles true once it is open, false once the session ended.
+const readers = new Set();
+
+function settleReaders(isOpen) {
+  for (const reader of readers) reader(isOpen);
+  readers.clear();
+}
+
+function socketIsOpen() {
+  return opened && connection?.readyState === WebSocket.OPEN;
+}
+
+async function socketOpen() {
+  if (!options) throw unavailable();
+  if (!await new Promise((resolve) => readers.add(resolve))) throw unavailable();
+}
+
+// The operations that change state (ADR-0114 decision 5): never queued, never replayed. What the socket itself holds
+// (subscriptions and attached chat channels) is restored by the socket when it reopens.
+const CHANGES = new Set([
+  'teams.create', 'teams.rename', 'teams.reorder', 'teams.delete', 'inference.save', 'action_confirmation.save',
+  'assistants.install', 'assistants.install_local', 'assistants.uninstall', 'models.save', 'models.remove',
+  'decision.save', 'decision.remove', 'integrations.authorize', 'integrations.complete', 'integrations.cancel',
+  'integrations.disconnect', 'stored_inputs.clear', 'files.delete',
+  'subscribe', 'unsubscribe', 'chat.attach', 'chat.detach',
+]);
+
 /**
- * Ask Admin for one operation over the open socket. It is never queued behind a reconnect: while the socket reconnects
- * the call fails at once (`socket-unavailable`: it never reached Admin), and a socket that closes meanwhile fails it with
- * `outcome-unknown`, so a page re-reads rather than replays: a change whose answer was lost may or may not have run. Only the tab's first open, before
- * anything is on screen, is awaited. A long call may report once, through `onProgress`, that it started running.
+ * Ask Admin for one operation. A read waits while the socket reconnects and runs once it is back; a read whose answer
+ * the socket lost is asked again, since reading changes nothing. A change is never queued behind a reconnect: while
+ * the socket reconnects it fails at once (`socket-unavailable`: it never reached Admin), and a socket that closes
+ * meanwhile fails it with `outcome-unknown`, so a page re-reads rather than replays it. Only the tab's first open is
+ * awaited for a change. Either fails once the session ended. A long call may report once, through `onProgress`, that
+ * it started running.
  */
 export async function call(method, params = {}, { onProgress } = {}) {
+  if (!CHANGES.has(method)) return read(method, params);
   if (snapshot.phase === 'connecting' && !opened) {
     const isOpen = await new Promise((resolve) => firstOpen.add(resolve));
     if (!isOpen) throw unavailable();
   }
   return send(method, params, onProgress);
+}
+
+async function read(method, params) {
+  for (;;) {
+    // An open socket sends the read at once, in the caller's own turn.
+    if (!socketIsOpen()) await socketOpen();
+    try {
+      return await send(method, params);
+    } catch (error) {
+      if (!(error instanceof LocalApiError) || ![OUTCOME_UNKNOWN, 'socket-unavailable'].includes(error.code)) throw error;
+      if (!options) throw unavailable();
+    }
+  }
 }
 
 function send(method, params, onProgress) {
@@ -472,17 +528,41 @@ function scheduleReconnect() {
   if (!options || reconnectTimer) return;
   const now = performance.now();
   if (reconnectAttempt === 0) reconnectSince = now;
-  if (now - reconnectSince >= RECONNECT_WINDOW_MS) {
-    setPhase('failed');
-    return;
-  }
-  setPhase('reconnecting');
-  const delay = Math.min(400 * (2 ** Math.min(reconnectAttempt, 5)), MAX_RECONNECT_DELAY_MS);
+  setPhase(now - reconnectSince >= RECONNECT_WINDOW_MS ? 'failed' : 'reconnecting');
+  // Jitter spreads the tabs of one browser, and of several, across each step of the backoff.
+  const step = Math.min(FIRST_RECONNECT_DELAY_MS * (2 ** Math.min(reconnectAttempt, 7)), MAX_RECONNECT_DELAY_MS);
+  const delay = step * (0.75 + Math.random() * 0.25);
   reconnectAttempt += 1;
   reconnectTimer = setTimeout(() => {
     reconnectTimer = undefined;
     open();
   }, delay);
+}
+
+// The browser came online or the tab became visible: a socket waiting out its backoff tries again at once.
+function reconnectNow() {
+  if (!options) return;
+  adminSocket.update((value) => ({ ...value, offline: browserOffline() }));
+  if (!reconnectTimer) return;
+  clearTimeout(reconnectTimer);
+  reconnectTimer = undefined;
+  open();
+}
+
+function offlineChanged() {
+  adminSocket.update((value) => ({ ...value, offline: browserOffline() }));
+}
+
+function visibilityChanged() {
+  if (document.visibilityState === 'visible') reconnectNow();
+}
+
+function listenForConnectivity(listening) {
+  if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
+  const method = listening ? 'addEventListener' : 'removeEventListener';
+  window[method]('online', reconnectNow);
+  window[method]('offline', offlineChanged);
+  globalThis.document?.[method]?.('visibilitychange', visibilityChanged);
 }
 
 // Only an answered session check that reports no authentication ends the session; an unreachable or failing Admin is
@@ -588,6 +668,7 @@ export function connectAdminSocket({ onSignedOut }) {
   generation += 1;
   everOpened = false;
   reconnectAttempt = 0;
+  listenForConnectivity(true);
   setPhase('connecting');
   open();
   return disconnectAdminSocket;
@@ -597,6 +678,7 @@ export function connectAdminSocket({ onSignedOut }) {
 export function disconnectAdminSocket() {
   generation += 1;
   options = null;
+  listenForConnectivity(false);
   clearTimeout(reconnectTimer);
   clearTimeout(stableTimer);
   reconnectTimer = undefined;

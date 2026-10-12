@@ -9,6 +9,7 @@
     ScrollArea,
     Toolbar,
   } from '@shimpz/frontend';
+  import { commandsReady } from '#lib/adminSocket.js';
   import { locale, t } from '#lib/i18n.js';
   import { loadAssistantSummary } from '#lib/localAssistantIcons.js';
   import { assistantIntegrationProviderLabel } from '#lib/localChat.js';
@@ -142,7 +143,7 @@
               <Toolbar>
                 <Button
                   type="button"
-                  disabled={Boolean(working)}
+                  disabled={Boolean(working) || !$commandsReady}
                   aria-label={`${$t('assistantIntegrations.authorize', { provider: requirementProvider })} — ${requirement.name}`}
                   onclick={() => connect(pending.challenge_id, requirement)}
                 >
@@ -231,7 +232,7 @@
                 variant="danger"
                 size="compact"
                 type="button"
-                disabled={Boolean(working)}
+                disabled={Boolean(working) || !$commandsReady}
                 onclick={() => clearStoredInput(item)}
               >
                 {working === itemKey ? copy.storedInputClearing : copy.storedInputClear}

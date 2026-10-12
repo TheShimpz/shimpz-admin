@@ -68,7 +68,8 @@ export default {
     languageMenu: '言語',
     platformRollback: '更新をロールバックしました',
     reconnecting: 'Admin に再接続しています… 表示内容が古い可能性があり、操作は接続が戻るまで待機します。',
-    reconnectFailed: 'Admin に再接続できませんでした。このページを再読み込みして再接続してください。',
+    reconnectFailed: "Admin に接続できません。Shimpz は再接続を試み続けています。",
+    offline: "オフラインです。接続が戻ると Shimpz が再接続します。",
     outcomeUnknown: 'Admin がこの変更を確認する前に切断されたため、変更が行われたかどうかは不明です。Admin が戻りしだい、表示内容を読み込み直します。',
     sessionExpiring: {
       title: 'まもなくセッションが終了します',
@@ -85,6 +86,7 @@ export default {
     resourceOk: '全システム正常',
     resourceReconnecting: '再接続中…',
     resourceUnreachable: 'Admin に接続できません',
+    resourceOffline: 'オフライン',
     resourceServiceStopped: '停止中のサービスあり',
     resourceMemoryNearlyFull: 'メモリがほぼ満杯',
     resourceMemoryFull: 'メモリが満杯',

@@ -9,6 +9,8 @@
     snapshots = [],
     team = null,
     busy = false,
+    // Whether a change may be sent now; while Admin reconnects the install waits for it.
+    ready = true,
     error = '',
     onconfirm = () => {},
     oncancel = () => {},
@@ -34,7 +36,7 @@
 
   function submit(event) {
     event.preventDefault();
-    if (!busy && snapshot && team) onconfirm();
+    if (!busy && ready && snapshot && team) onconfirm();
   }
 </script>
 
@@ -84,7 +86,7 @@
         <DialogAction kind="cancel" type="button" disabled={busy} onclick={oncancel}>
           {copy.assistantActionCancel}
         </DialogAction>
-        <DialogAction kind="confirm" type="submit" disabled={busy || !snapshot || !team}>
+        <DialogAction kind="confirm" type="submit" disabled={busy || !ready || !snapshot || !team}>
           {busy ? copy.localInstalling : copy.localInstall}
         </DialogAction>
       {/snippet}

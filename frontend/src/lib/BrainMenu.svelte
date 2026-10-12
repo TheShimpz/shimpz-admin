@@ -2,7 +2,7 @@
   import { Button, ChoiceItem } from '@shimpz/frontend';
 
   import { showAdminNotice } from '#lib/adminNotice.js';
-  import { outcomeUnknown } from '#lib/adminSocket.js';
+  import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/composerPanel.js';
   import { t } from '#lib/i18n.js';
   import { modelContext, selectTeamBrain } from '#lib/modelContext.js';
@@ -34,7 +34,7 @@
   );
   let busy = $derived(['idle', 'loading', 'saving'].includes($modelContext.phase));
   let unavailable = $derived(
-    disabled || !$teamContext.selectedTeamId || $teamContext.phase === 'loading' || busy,
+    disabled || !$teamContext.selectedTeamId || $teamContext.phase === 'loading' || busy || !$commandsReady,
   );
   let triggerLabel = $derived(
     selected

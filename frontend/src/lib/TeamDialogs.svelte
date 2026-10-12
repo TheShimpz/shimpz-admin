@@ -3,7 +3,7 @@
   import { page } from '$app/state';
 
   import { DialogFrame, Modal, Notice, TextField } from '@shimpz/frontend';
-  import { outcomeUnknown } from '#lib/adminSocket.js';
+  import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { showAdminNotice } from '#lib/adminNotice.js';
   import { t } from '#lib/i18n.js';
@@ -72,7 +72,7 @@
 
   async function submitCreate(event) {
     event.preventDefault();
-    if (creating || !teamName.trim()) return;
+    if (creating || !$commandsReady || !teamName.trim()) return;
     creating = true;
     createError = '';
     try {
@@ -106,7 +106,7 @@
   async function submitDelete(event) {
     event.preventDefault();
     const target = deletingTeam;
-    if (deleting || !target || deleteName !== target.name || !supervisorPassword) return;
+    if (deleting || !$commandsReady || !target || deleteName !== target.name || !supervisorPassword) return;
     deleting = true;
     deleteError = '';
     deleteErrorDetail = '';
@@ -194,7 +194,7 @@
         <DialogAction
           kind="danger"
           type="submit"
-          disabled={deleting || !deletingTeam || deleteName !== deletingTeam.name || !supervisorPassword}
+          disabled={deleting || !$commandsReady || !deletingTeam || deleteName !== deletingTeam.name || !supervisorPassword}
         >{deleting ? copy.deleting : copy.deleteAction}</DialogAction>
       {/snippet}
     </DialogFrame>
@@ -221,7 +221,7 @@
         {#if !requiresTeam}
           <DialogAction kind="cancel" type="button" onclick={closeCreate} disabled={creating}>{copy.cancel}</DialogAction>
         {/if}
-        <DialogAction kind="confirm" type="submit" disabled={creating || !teamName.trim()}>{creating ? copy.creating : copy.create}</DialogAction>
+        <DialogAction kind="confirm" type="submit" disabled={creating || !$commandsReady || !teamName.trim()}>{creating ? copy.creating : copy.create}</DialogAction>
       {/snippet}
     </DialogFrame>
   </form>

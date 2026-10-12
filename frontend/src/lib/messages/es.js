@@ -68,7 +68,8 @@ export default {
     languageMenu: 'Idioma',
     platformRollback: 'Actualización revertida',
     reconnecting: 'Reconectando con Admin… Lo que ves puede estar desactualizado, y las acciones esperan hasta que vuelva la conexión.',
-    reconnectFailed: 'No se pudo volver a contactar con Admin. Actualiza esta página para reconectar.',
+    reconnectFailed: "No se puede acceder a Admin. Shimpz sigue intentando reconectar.",
+    offline: "Estás sin conexión. Shimpz se reconecta cuando vuelva la conexión.",
     outcomeUnknown: 'Admin se desconectó antes de confirmar este cambio, así que puede que se haya hecho o no. Lo que ves se vuelve a leer en cuanto Admin regrese.',
     sessionExpiring: {
       title: 'Tu sesión está a punto de terminar',
@@ -85,6 +86,7 @@ export default {
     resourceOk: 'Todos los sistemas normales',
     resourceReconnecting: 'Reconectando…',
     resourceUnreachable: 'Admin inaccesible',
+    resourceOffline: 'Sin conexión',
     resourceServiceStopped: 'Servicio detenido',
     resourceMemoryNearlyFull: 'Memoria casi llena',
     resourceMemoryFull: 'Memoria llena',

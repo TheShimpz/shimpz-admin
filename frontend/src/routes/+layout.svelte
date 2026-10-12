@@ -6,6 +6,7 @@
   import { onMount, setContext, tick } from 'svelte';
   import AdminShell from '#lib/AdminShell.svelte';
   import AuthScreen from '#lib/AuthScreen.svelte';
+  import { adminSocket } from '#lib/adminSocket.js';
   import BootScreen from '#lib/BootScreen.svelte';
   import { clearAdminNotice } from '#lib/adminNotice.js';
   import { forgetDecisionProvider } from '#lib/decisionProvider.js';
@@ -54,6 +55,8 @@
   let exactAssistantsRoute = $derived(/^\/assistants(?:\/[a-z][a-z0-9-]*)?\/?$/.test(page.url.pathname));
   let initialStateSettled = $derived.by(() => {
     if (phase !== 'ready') return sessionSettled;
+    // Admin could not be reached: the shell says so over the page's own loading state, which fills in once it is back.
+    if (['reconnecting', 'failed'].includes($adminSocket.phase)) return true;
     if (!['ready', 'error'].includes($teamContext.phase)) return false;
     if (exactAssistantsRoute) return assistantsViewSettled || assistantsViewDeadlineReached;
     if ($teamContext.phase === 'error') return true;

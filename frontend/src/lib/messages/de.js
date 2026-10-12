@@ -68,7 +68,8 @@ export default {
     languageMenu: 'Sprache',
     platformRollback: 'Aktualisierung zurückgesetzt',
     reconnecting: 'Verbindung zu Admin wird wiederhergestellt… Was Sie sehen, ist womöglich veraltet, und Aktionen warten, bis die Verbindung zurück ist.',
-    reconnectFailed: 'Admin ist weiterhin nicht erreichbar. Laden Sie diese Seite neu, um sich wieder zu verbinden.',
+    reconnectFailed: "Admin ist nicht erreichbar. Shimpz versucht weiter, die Verbindung wiederherzustellen.",
+    offline: "Sie sind offline. Shimpz verbindet sich neu, sobald die Verbindung zurück ist.",
     outcomeUnknown: 'Admin wurde getrennt, bevor es diese Änderung bestätigt hat. Sie wurde daher vielleicht ausgeführt, vielleicht nicht. Was Sie sehen, wird neu gelesen, sobald Admin wieder erreichbar ist.',
     sessionExpiring: {
       title: 'Ihre Sitzung endet gleich',
@@ -85,6 +86,7 @@ export default {
     resourceOk: 'Alle Systeme normal',
     resourceReconnecting: 'Verbinde neu…',
     resourceUnreachable: 'Admin nicht erreichbar',
+    resourceOffline: 'Offline',
     resourceServiceStopped: 'Dienst gestoppt',
     resourceMemoryNearlyFull: 'Speicher fast voll',
     resourceMemoryFull: 'Speicher voll',

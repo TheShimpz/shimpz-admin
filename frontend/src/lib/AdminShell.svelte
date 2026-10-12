@@ -226,8 +226,11 @@
     <div class:chat-layout={chat} class="authenticated-content">
       <div class="admin-notice-region">
         {#if reconnecting}
-          <p class="socket-status" class:failed={$adminSocket.phase === 'failed'} role="status">
-            {$t($adminSocket.phase === 'failed' ? 'shell.reconnectFailed' : 'shell.reconnecting')}
+          <!-- The one place that speaks about Admin's connection; pages never add their own. -->
+          <p class="socket-status" class:failed={$adminSocket.phase === 'failed' || $adminSocket.offline} role="status">
+            {$t($adminSocket.offline
+              ? 'shell.offline'
+              : $adminSocket.phase === 'failed' ? 'shell.reconnectFailed' : 'shell.reconnecting')}
           </p>
         {/if}
         <SecurityAlert /><AdminNotice />

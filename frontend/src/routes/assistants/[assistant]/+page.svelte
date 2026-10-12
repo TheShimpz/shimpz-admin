@@ -7,7 +7,7 @@
   import { getContext, onMount, untrack } from 'svelte';
   import { ActionLink, AssistantIcon, Button, Disclosure, Notice, Skeleton, TextLink } from '@shimpz/frontend';
   import { showAdminNotice } from '#lib/adminNotice.js';
-  import { outcomeUnknown, watchTopic } from '#lib/adminSocket.js';
+  import { commandsReady, outcomeUnknown, watchTopic } from '#lib/adminSocket.js';
   import AssistantActionDialog from '#lib/AssistantActionDialog.svelte';
   import { actionGroups, continuingText, pageTarget } from '#lib/assistantPage.js';
   import { CREATOR_LINK_ICONS, CREATOR_LINK_NAMES } from '#lib/creatorLinkIcons.js';
@@ -538,14 +538,14 @@
         <div class="cta">
           <span class="target"><span class="team-label">{pageCopy.team}</span><span class="team-name">{activeTeam.name}</span></span>
           {#if target.mode === 'installed'}
-            <Button variant="danger" size="lg" disabled={busy} onclick={beginUninstall}>
+            <Button variant="danger" size="lg" disabled={busy || !$commandsReady} onclick={beginUninstall}>
               {pageCopy.uninstall}<svg class="cta-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" /></svg>
             </Button>
           {:else}
             <Button
               variant="primary"
               size="lg"
-              disabled={busy || refused || (target.mode === 'local' && detailsPhase === 'loading')}
+              disabled={busy || refused || !$commandsReady || (target.mode === 'local' && detailsPhase === 'loading')}
               aria-busy={Boolean(installingImage)}
               onclick={target.mode === 'local' ? beginLocalInstall : beginInstall}
             >
@@ -661,7 +661,7 @@
   primaryLabel={dialogPrimaryLabel}
   secondaryLabel={dialogSecondaryLabel}
   primaryVisible={['install', 'uninstall', 'error'].includes(dialogMode)}
-  primaryDisabled={!dialogTarget}
+  primaryDisabled={!dialogTarget || !$commandsReady}
   {busy}
   destructive={dialogAction === 'uninstall'}
   onconfirm={confirmAssistantAction}
@@ -673,6 +673,7 @@
   snapshots={localDialogTarget ? [localDialogTarget.group.primary, ...localDialogTarget.group.alternatives] : []}
   team={localDialogTarget?.team ?? null}
   busy={Boolean(installingImage)}
+  ready={$commandsReady}
   error={localDialogError}
   onconfirm={installLocalSnapshot}
   oncancel={closeLocalInstall}

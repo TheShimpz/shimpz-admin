@@ -68,7 +68,8 @@ export default {
     languageMenu: 'اللغة',
     platformRollback: 'تم التراجع عن التحديث',
     reconnecting: 'جارٍ إعادة الاتصال بـ Admin… قد يكون ما تراه قديمًا، وتنتظر الإجراءات حتى يعود الاتصال.',
-    reconnectFailed: 'تعذّر الوصول إلى Admin مجددًا. حدّث هذه الصفحة لإعادة الاتصال.',
+    reconnectFailed: "تعذّر الوصول إلى Admin. يواصل Shimpz محاولة إعادة الاتصال.",
+    offline: "أنت غير متصل. سيعيد Shimpz الاتصال عند عودة الاتصال.",
     outcomeUnknown: 'انقطع اتصال Admin قبل أن يؤكد هذا التغيير، لذلك ربما تم أو لم يتم. سيُعاد تحميل ما تراه بمجرد عودة Admin.',
     sessionExpiring: {
       title: 'جلستك على وشك الانتهاء',
@@ -85,6 +86,7 @@ export default {
     resourceOk: 'جميع الأنظمة طبيعية',
     resourceReconnecting: 'جارٍ إعادة الاتصال…',
     resourceUnreachable: 'تعذّر الوصول إلى Admin',
+    resourceOffline: 'غير متصل',
     resourceServiceStopped: 'خدمة متوقفة',
     resourceMemoryNearlyFull: 'الذاكرة ممتلئة تقريبًا',
     resourceMemoryFull: 'الذاكرة ممتلئة',
