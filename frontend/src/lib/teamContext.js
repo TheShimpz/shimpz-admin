@@ -94,10 +94,11 @@ function preferredTeamId(value) {
   return value;
 }
 
-// The Team list is read over the Admin session socket (ADR-0114); the rest of the context still over HTTP.
-async function listTeams(fetcher) {
+// The Team list is read over the Admin session socket (ADR-0114); the rest of the context still over HTTP. A read Admin's
+// own change caused is `background`: it never renews the session's idle time.
+async function listTeams(fetcher, { background = false } = {}) {
   requireFetcher(fetcher);
-  const response = await socketReads.call('teams.list', {});
+  const response = await socketReads.call('teams.list', {}, { background });
   const body = await jsonObject(response);
   if (!response.ok) {
     throw new LocalApiError(safeApiError(body, 'The local Team inventory is unavailable.'), response.status);
@@ -502,8 +503,9 @@ async function putTeamOrder(fetcher, ids) {
 }
 
 /**
- * Re-read only the Team list after Admin refused an order for stale membership: the selection, catalog, and inventory
- * stay as they are unless the selected Team itself is gone, which reloads the whole context.
+ * Re-read only the Team list after Admin changed it or refused an order for stale membership: the selection, catalog,
+ * and inventory stay as they are unless the selected Team itself is gone, which reloads the whole context. The re-read
+ * is automatic, so it never renews the session's idle time.
  */
 export async function reloadTeamList(fetcher) {
   requireFetcher(fetcher);
@@ -511,7 +513,7 @@ export async function reloadTeamList(fetcher) {
   const epoch = contextEpoch;
   const version = listVersion;
   const revision = orderRevision;
-  const listed = await listTeams(fetcher);
+  const listed = await listTeams(fetcher, { background: true });
   const current = get(teamContext);
   if (
     epoch !== contextEpoch ||

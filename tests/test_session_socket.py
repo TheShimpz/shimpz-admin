@@ -675,6 +675,30 @@ class SessionSocketWatcherTests(SessionSocketCase):
         asyncio.run(scenario())
 
 
+class SessionSocketWatchedValueTests(SessionSocketCase):
+    def test_a_watched_read_compares_only_what_the_page_sees_never_teams_per_request_trace(self) -> None:
+        watcher_module = __import__("session.watcher", fromlist=["watcher"])
+        bridge = self.calls.team_order.bridge
+        listed = [{"team_id": "team_1", "team_name": "Marketing", "status": "running"}]
+        failed = {"detail": "Team is unavailable"}
+        for topic, patched, status, body in (
+            ("teams", "list_teams", 200, {"teams": listed}),
+            ("teams", "list_teams", 503, failed),
+            ("space/resources", "_call", 503, failed),
+        ):
+            with self.subTest(topic=topic, status=status):
+                answers = [bridge.TeamResponse(status, {**body, "trace_id": trace}) for trace in ("a" * 32, "b" * 32)]
+                with (
+                    mock.patch.object(bridge, patched, side_effect=answers),
+                    mock.patch.object(self.calls.team_order, "load", return_value=None),
+                ):
+                    first = watcher_module.WATCHED[topic].read()
+                    second = watcher_module.WATCHED[topic].read()
+                # Two reads of an unchanged value differ only in their trace, so the watcher raises nothing.
+                self.assertEqual(first, second)
+                self.assertNotIn("a" * 32, json.dumps(first))
+
+
 class SessionSocketReadParityTests(SessionSocketCase):
     """Each read answers what its HTTP route answered: the same handler, validation, and failures."""
 

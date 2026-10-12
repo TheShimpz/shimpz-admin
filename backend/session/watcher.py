@@ -8,6 +8,7 @@ it), and raises the topic only when the value changed.
 
 import asyncio
 import contextlib
+import json
 import logging
 import time
 from collections.abc import Callable
@@ -23,14 +24,21 @@ from team import order as team_order
 log = logging.getLogger("shimpz-admin")
 
 
+def _seen(status: int, body: object) -> object:
+    """A watched answer as the page sees it: Team's per-request trace identifier is never part of a change."""
+    if isinstance(body, dict):
+        body = {field: value for field, value in body.items() if field != "trace_id"}
+    return status, body
+
+
 def _resources() -> object:
     response = team.space_resources()
-    return response.status, response.body
+    return _seen(response.status, response.body)
 
 
 def _teams() -> object:
     response = team_order.listing()
-    return response.status_code, response.body
+    return _seen(response.status_code, json.loads(response.body))
 
 
 def _release() -> object:

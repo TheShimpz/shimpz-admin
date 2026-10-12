@@ -187,7 +187,7 @@ class WatcherReadTests(unittest.TestCase):
             self.assertEqual(watcher._resources(), (200, {"services_total": 1}))
         listing = types.SimpleNamespace(status_code=200, body=b'{"teams":[]}')
         with mock.patch.object(watcher.team_order, "listing", return_value=listing):
-            self.assertEqual(watcher._teams(), (200, b'{"teams":[]}'))
+            self.assertEqual(watcher._teams(), (200, {"teams": []}))
         with mock.patch.object(watcher.platform_release, "read_status", return_value={"ordinal": 1}):
             self.assertEqual(watcher._release(), {"ordinal": 1})
         with mock.patch.object(
