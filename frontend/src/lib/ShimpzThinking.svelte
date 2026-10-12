@@ -15,6 +15,8 @@
     progressLabels = {},
     teamName = 'Team',
     assistantNames = new Map(),
+    // When the turn started (ms since the epoch): the turn owns it, so the count survives this view being shown again.
+    startedAt = Date.now(),
   } = $props();
   let elapsed = $state(0);
 
@@ -29,8 +31,8 @@
   }
 
   onMount(() => {
-    const startedAt = Date.now();
-    const update = () => { elapsed = Math.floor((Date.now() - startedAt) / 1000); };
+    const update = () => { elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000)); };
+    update();
     const timer = setInterval(update, 1000);
     return () => clearInterval(timer);
   });

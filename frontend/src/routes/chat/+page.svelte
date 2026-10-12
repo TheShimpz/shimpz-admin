@@ -90,6 +90,14 @@
   let turns = $state.raw([]);
   let nextRenderKey = 0;
   let busy = $state(false);
+  // When the turn in flight started, as this page observed it: its thinking view counts from here, also after a human
+  // or Integration request hid it for a while.
+  let turnStartedAt = $state(0);
+
+  function beginTurn() {
+    if (!busy) turnStartedAt = Date.now();
+    busy = true;
+  }
   // Assistants the current turn's continuing install plan proved running; a just-in-time request may reach the
   // browser, or be redelivered after a same-Team reconnect, before the asynchronous Team inventory refresh reflects
   // them. Cleared at every terminal result, empty sync, protocol error, new message, and Team change.
@@ -1173,7 +1181,7 @@
     integrationsDialogOpen = true;
     oauthFailedOnReturn = false;
     integrationsOpen = false;
-    busy = true;
+    beginTurn();
     syncing = false;
     stopping = false;
     retainSegment();
@@ -1189,7 +1197,7 @@
     humanRejection = undefined;
     humanWorking = false;
     integrationsOpen = false;
-    busy = true;
+    beginTurn();
     syncing = false;
     stopping = false;
     retainSegment();
@@ -1333,7 +1341,7 @@
         if (incoming.type === 'progress') {
           if (!busy && !syncing) throw new Error('unexpected progress frame');
           if (incoming.seq !== progressSequence + 1) throw new Error('out-of-order progress frame');
-          if (syncing) busy = true;
+          if (syncing) beginTurn();
           progressSequence = incoming.seq;
           progressEvents.push(incoming);
           extendExecutionProjection(progressProjection, incoming);
@@ -1946,7 +1954,7 @@
       setError(reason instanceof Error ? reason.message : copy.loadFailed);
       return false;
     }
-    busy = true;
+    beginTurn();
     forgetSegments();
     resetProgress();
     clearError();
@@ -2504,6 +2512,7 @@
                     progressLabels={copy.progress}
                     {teamName}
                     {assistantNames}
+                    startedAt={turnStartedAt}
                   />
                 {/if}
               {:else if index === exchanges.length - 1 && busy && !lifecycleWorking && !integrationChallenge && !humanChallenge}
@@ -2516,6 +2525,7 @@
                   progressLabels={copy.progress}
                   {teamName}
                   {assistantNames}
+                  startedAt={turnStartedAt}
                 />
               {/if}
             </section>

@@ -3441,6 +3441,23 @@ test('updates the Action human request countdown without a page refresh', async 
   await expect(dialog.getByRole('timer')).toHaveText('Expires in 4:57');
 });
 
+test('the elapsed time of a turn keeps counting across an Action request it waited on', async ({ page }) => {
+  await freezeClock(page, new Date('2026-08-09T12:00:00Z'));
+  await routeReadyChat(page, { humanKind: 'approval', holdHumanResponse: true });
+  await page.goto('/chat/');
+  await page.getByRole('textbox', { name: 'Send', exact: true }).fill('Continue');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
+  await expect(dialog).toBeVisible();
+  await page.clock.runFor(7_000);
+  await dialog.getByRole('button', { name: 'Approve action' }).click();
+
+  const thinking = page.getByRole('group', { name: 'I’m processing…' });
+  await expect(thinking.getByText('Elapsed time · 00:07')).toBeVisible();
+  await page.clock.runFor(1_000);
+  await expect(thinking.getByText('Elapsed time · 00:08')).toBeVisible();
+});
+
 test('closes and reconciles an expired Action human request', async ({ page }) => {
   await freezeClock(page, new Date('2026-08-09T12:00:00Z'));
   const contract = await routeReadyChat(page, { humanKind: 'approval', humanExpiresIn: 3 });
