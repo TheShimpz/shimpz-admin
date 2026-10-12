@@ -16,11 +16,16 @@ envelope included, at most 1 MiB.
   `result {id, status, body}`. A read of a topic's state also carries that topic, the process `epoch`, and the
   topic `revision` taken before the read. At most 16 calls are in flight per socket. Every parameter is a string of
   at most 128 characters, except `topics` and a request `body`: one JSON object whose compact UTF-8 size keeps the
-  operation's own bound (`BODY_BYTES`: a Team name 1 KiB, a Team order or deletion 8 KiB, every other body 16 KiB),
-  or the call is answered 413. A status and body are exactly what the operation always answered; an empty answer is
-  `{}`.
-- `progress {id, state: "running"}` says once that a long call (`LONG_METHODS`, an Assistant install) started; its
-  result follows when it ends, or is lost with the socket and never replayed.
+  operation's own bound (`BODY_BYTES`: a Team name or an acknowledgment 1 KiB; a Team order or deletion, a
+  confirmation's password, and the recovery codes' or signing key's second factor 8 KiB; every other body 16 KiB), or
+  the call is answered 413. A status and body are exactly what the operation always answered; an empty answer is
+  `{}`. A Supervisor confirmation (`routines.deletion` then `routines.delete`, `recovery_codes.confirmation` then
+  `recovery_codes.replace`, `supervisor_key.confirmation` then `supervisor_key.rotate`) starts with the password and
+  completes with one second factor on the same socket: its one-use ticket stays with that socket, never in a frame, and
+  dies with the socket or its session.
+- `progress {id, state: "running"}` says once that a long call (`LONG_METHODS`: an Assistant install, or a held
+  Routine run resuming after a human answer or a connected Integration) started; its result follows when it ends, or
+  is lost with the socket and never replayed.
 - `activity {}` (exactly `{"type": "activity"}`) is the page's report of the person's own input, at most once a minute
   per tab. It is the only frame, and nothing over HTTP, that restarts the session's idle time; Admin ignores one that
   arrives within 30 seconds of the session's last renewal, from any tab, and it never revives an expired session or

@@ -23,13 +23,20 @@
       {"type": "call", "id": "c17", "method": "store.catalog", "params": {"locale": "en"}},
       {"type": "call", "id": "c18", "method": "store.catalog", "params": {"locale": "en", "cursor": "12.0123456789abcdef0123456789abcdef"}},
       {"type": "call", "id": "c19", "method": "integrations.cancel", "params": {"team_id": "marketing", "challenge_id": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
-      {"type": "call", "id": "c20", "method": "subscribe", "params": {"topics": ["assistants/registry", "local-assistants", "team/marketing/inventory", "team/marketing/inference"]}}
+      {"type": "call", "id": "c20", "method": "subscribe", "params": {"topics": ["assistants/registry", "local-assistants", "team/marketing/inventory", "team/marketing/inference"]}},
+      {"type": "call", "id": "c21", "method": "routines.run_steps", "params": {"team_id": "marketing", "run_id": "dddddddddddddddddddddddddddddddd", "snapshot": "latest", "offset": "64"}},
+      {"type": "call", "id": "c22", "method": "routines.human", "params": {"team_id": "marketing", "run_id": "dddddddddddddddddddddddddddddddd", "body": {"type": "human-response", "challenge_id": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "decision": "deny"}}},
+      {"type": "call", "id": "c23", "method": "routines.deletion", "params": {"team_id": "marketing", "routine_id": "cccccccccccccccccccccccccccccccc", "body": {"password": "a supervisor passphrase"}}},
+      {"type": "call", "id": "c24", "method": "recovery_codes.replace", "params": {"body": {"code": "123456"}}},
+      {"type": "call", "id": "c25", "method": "security.acknowledge", "params": {"body": {"acknowledged": 3}}}
     ],
     "invalid": [
       {"type": "call", "id": "", "method": "teams.list", "params": {}},
       {"type": "call", "id": "has space", "method": "teams.list", "params": {}},
       {"type": "call", "id": "c1", "method": "teams.destroy", "params": {}},
       {"type": "call", "id": "c1", "method": "teams.list", "params": {"extra": "x"}},
+      {"type": "call", "id": "c1", "method": "routines.run_steps", "params": {"team_id": "marketing", "run_id": "dddddddddddddddddddddddddddddddd", "snapshot": "latest", "offset": 64}},
+      {"type": "call", "id": "c1", "method": "recovery_codes.replace", "params": {"body": {"code": "123456"}, "ticket": "t"}},
       {"type": "call", "id": "c1", "method": "teams.list"},
       {"type": "call", "id": "c1", "method": "teams.list", "params": {}, "extra": 1},
       {"type": "call", "id": "c1", "method": "history.page", "params": {}},
