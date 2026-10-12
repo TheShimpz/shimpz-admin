@@ -205,6 +205,36 @@ test('a watched topic is subscribed, re-read on each newer change and after a re
   assert.equal(socket.sent.at(-1).method, 'subscribe');
 });
 
+test('a new Admin process starts every topic again: its revisions are never compared with the last one', async () => {
+  const socket = connected();
+  const heard = [];
+  watchTopic('teams', (_topic, cause) => heard.push(cause));
+  watchTopic('session', (_topic, cause) => heard.push(cause));
+  await flush();
+  socket.answer('subscribe', { epoch: EPOCH, topics: { teams: 10, session: 4 } });
+  await flush();
+  heard.length = 0;
+  const next = 'b'.repeat(32);
+  // The first change of the new process re-reads everything shown, and each newer change of it is heard again.
+  socket.frame({ type: 'changed', topic: 'teams', epoch: next, revision: 1 });
+  assert.deepEqual(heard.splice(0), ['changed', 'changed']);
+  socket.frame({ type: 'changed', topic: 'teams', epoch: next, revision: 1 });
+  socket.frame({ type: 'changed', topic: 'teams', epoch: next, revision: 2 });
+  socket.frame({ type: 'changed', topic: 'session', epoch: next, revision: 1 });
+  assert.deepEqual(heard.splice(0), ['changed', 'changed']);
+  // A reopened socket's subscription in a new process starts its revisions there too.
+  socket.drop(1012);
+  await flush();
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  const reopened = FakeSocket.opened.at(-1);
+  reopened.open();
+  reopened.answer('subscribe', { epoch: 'c'.repeat(32), topics: { teams: 0, session: 0 } });
+  await flush();
+  heard.length = 0;
+  reopened.frame({ type: 'changed', topic: 'teams', epoch: 'c'.repeat(32), revision: 1 });
+  assert.deepEqual(heard, ['changed']);
+});
+
 test('a topic value reads once its subscription is in place, at a change, and once more after a change mid-read', async () => {
   const socket = connected();
   let reads = 0;

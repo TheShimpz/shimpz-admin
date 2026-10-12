@@ -170,7 +170,7 @@ function sendSubscription(method, topics, { announce = true } = {}) {
   backgroundCall(method, { topics }).then(async (response) => {
     if (method !== 'subscribe') return;
     const body = response.ok ? await response.json() : null;
-    if (!epoch && EPOCH_RE.test(body?.epoch)) epoch = body.epoch;
+    if (EPOCH_RE.test(body?.epoch)) adoptEpoch(body.epoch);
     for (const topic of topics) {
       const entry = watched.get(topic);
       if (!entry) continue;
@@ -310,15 +310,24 @@ function receive(text) {
   if (channel?.attached || channel?.attaching) channel.deliver(chatEvent(frame));
 }
 
+// A new Admin process numbers every topic from the start again: each revision known from the last one is forgotten, so
+// none of them hides a newer change. Says whether an earlier process's revisions were known.
+function adoptEpoch(next) {
+  if (next === epoch) return false;
+  const restarted = epoch !== '';
+  epoch = next;
+  for (const entry of watched.values()) entry.revision = 0;
+  return restarted;
+}
+
 function changed(frame) {
-  // A new Admin process starts every topic again: everything shown is re-read.
-  if (epoch && frame.epoch !== epoch) {
-    epoch = frame.epoch;
+  const entry = watched.get(frame.topic);
+  // A new Admin process may have changed anything: everything shown is re-read.
+  if (adoptEpoch(frame.epoch)) {
+    if (entry) entry.revision = frame.revision;
     for (const topic of watched.keys()) notify(topic);
     return;
   }
-  const entry = watched.get(frame.topic);
-  epoch = frame.epoch;
   if (!entry || frame.revision <= entry.revision) return;
   entry.revision = frame.revision;
   notify(frame.topic);
