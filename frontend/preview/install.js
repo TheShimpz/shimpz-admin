@@ -44,7 +44,13 @@ try {
   // Without storage the preview starts from the scenario's own order.
 }
 // One session socket call, answered by the scenario; a Team order it saved is kept for the next reload.
+// `?data=unavailable` (preview only): Admin is reachable but answers its reads 503 for the first 15 s, as when Team is
+// briefly unavailable, so the shared availability message shows and then clears by itself.
+const DATA_UNAVAILABLE = new URL(location.href).searchParams.get('data') === 'unavailable';
+const DATA_STARTED = Date.now();
+
 function previewCall(method, params) {
+  if (DATA_UNAVAILABLE && Date.now() - DATA_STARTED < 15_000) return { status: 503, json: { detail: 'unavailable' } };
   const answer = scenario.call(method, params);
   if (ORDER_KEY && answer?.status === 200 && method === 'teams.reorder') {
     try {
