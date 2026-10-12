@@ -18,8 +18,11 @@ function validState(body) {
 
 // The state this session last read or saved. The key is Space-wide and changes only through this module, so the
 // composer control shows it again without asking; it still reads it each time it opens. The session's end forgets it,
-// and an answer to a request made before that is never remembered.
+// and an answer to a request made before that is never remembered; nor is one to a request older than the remembered
+// state's, so a slow read never overwrites a later save.
 let remembered = null;
+let rememberedOrder = 0;
+let order = 0;
 let epoch = 0;
 
 /** The decision provider state this session last read or saved, or null. */
@@ -31,17 +34,23 @@ export function knownDecisionProvider() {
 export function forgetDecisionProvider() {
   epoch += 1;
   remembered = null;
+  rememberedOrder = 0;
 }
 
 async function request(fetcher, init, fallback) {
   if (typeof fetcher !== 'function') throw new LocalApiError('Invalid decision provider request.');
   const started = epoch;
+  order += 1;
+  const position = order;
   const response = await fetcher(ENDPOINT, { cache: 'no-store', ...init });
   const body = await jsonObject(response);
   if (!response.ok) throw new LocalApiError(safeApiError(body, fallback), response.status);
   if (!validState(body)) throw new LocalApiError('Decision provider settings are invalid.', response.status);
   const state = { configured: body.configured, masked: body.masked };
-  if (started === epoch) remembered = state;
+  if (started === epoch && position > rememberedOrder) {
+    remembered = state;
+    rememberedOrder = position;
+  }
   return state;
 }
 

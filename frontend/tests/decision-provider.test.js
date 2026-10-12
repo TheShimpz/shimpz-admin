@@ -98,3 +98,13 @@ test('the session remembers the state it last read or saved, and forgets it when
   assert.deepEqual(await late, { configured: true, masked: '••••cdef' });
   assert.equal(knownDecisionProvider(), null);
 });
+
+test('a read that started before a save never overwrites the saved state', async () => {
+  forgetDecisionProvider();
+  let answer;
+  const slowRead = loadDecisionProvider(async () => new Promise((resolve) => { answer = resolve; }));
+  await saveDecisionKey(recorder(200, { provider: 'typesafe', configured: true, masked: '••••6789' }).fetcher, KEY);
+  answer(response(200, { provider: 'typesafe', configured: false, masked: null }));
+  assert.deepEqual(await slowRead, { configured: false, masked: null });
+  assert.deepEqual(knownDecisionProvider(), { configured: true, masked: '••••6789' });
+});
