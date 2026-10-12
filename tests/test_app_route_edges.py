@@ -1,6 +1,7 @@
 """Bounded JSON and thin Team route edges for the Admin HTTP application."""
 
 import asyncio
+import importlib
 import json
 import sys
 import unittest
@@ -63,24 +64,25 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         ):
             self.assert_sync_status(400, lambda: self.admin_app.model_provider_delete("invalid"))
 
-    def test_platform_release_route_is_a_read_only_local_projection(self) -> None:
+    def test_the_platform_release_read_is_a_read_only_local_projection(self) -> None:
+        self.platform_release = importlib.import_module("space.release")
         status = {
             "release": f"ghcr.io/theshimpz/shimpz-local-release@sha256:{'a' * 64}",
             "ordinal": 42,
             "checked_at": 1_786_229_541,
             "outcome": "current",
         }
-        with mock.patch.object(self.admin_app.platform_release, "read_status", return_value=status):
+        with mock.patch.object(self.platform_release, "read_status", return_value=status):
             self.assertEqual(
-                self.admin_app.platform_release.status_response(),
+                self.platform_release.status_response(),
                 {**status, "checked_at": "2026-08-08T22:52:21Z"},
             )
         with mock.patch.object(
-            self.admin_app.platform_release,
+            self.platform_release,
             "read_status",
-            side_effect=self.admin_app.platform_release.PlatformReleaseUnavailableError,
+            side_effect=self.platform_release.PlatformReleaseUnavailableError,
         ):
-            self.assert_sync_status(503, self.admin_app.platform_release.status_response)
+            self.assert_sync_status(503, self.platform_release.status_response)
 
     def test_bounded_json_rejects_media_length_stream_and_document_violations(self) -> None:
         self.assert_status(415, self.admin_app._bounded_json_object(_request(body=b"{}")))
@@ -216,7 +218,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         # Local Team confirms the current name itself (ADR-0088); Admin forwards the typed name.
         confirmed.assert_called_once_with("team_1", payload["team_name"])
 
-    def test_chat_history_is_team_gated_and_never_cached(self) -> None:
+    def test_the_history_read_is_team_gated_and_never_cached(self) -> None:
         page = {
             "entries": [{"id": "a" * 32 + ":user", "kind": "message", "role": "user", "text": "Hello"}],
             "before": None,
@@ -225,7 +227,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             mock.patch.object(self.admin_app.team, "resolve_team_name", return_value="Marketing"),
             mock.patch.object(self.admin_app.chat_history, "page", return_value=page) as loaded,
         ):
-            response = self.admin_app.team_chat_history("marketing", None)
+            response = self.admin_app.chat_history_http.page("marketing", None)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["Cache-Control"], "no-store")
         self.assertEqual(json.loads(response.body), page)
@@ -235,7 +237,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             mock.patch.object(self.admin_app.team, "resolve_team_name", return_value="Marketing"),
             mock.patch.object(self.admin_app.chat_history, "page", return_value=page) as loaded,
         ):
-            self.assertEqual(self.admin_app.team_chat_history("marketing", None, "a" * 32).status_code, 200)
+            self.assertEqual(self.admin_app.chat_history_http.page("marketing", None, "a" * 32).status_code, 200)
         loaded.assert_called_once_with("marketing", before=None, routine="a" * 32)
 
         missing = self.admin_app.team.TeamResponse(404, {"detail": "Team not found"})
@@ -243,7 +245,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             mock.patch.object(self.admin_app.team, "resolve_team_name", return_value=missing),
             mock.patch.object(self.admin_app.chat_history, "page") as loaded,
         ):
-            response = self.admin_app.team_chat_history("marketing", None)
+            response = self.admin_app.chat_history_http.page("marketing", None)
         self.assertEqual(response.status_code, 404)
         loaded.assert_not_called()
 

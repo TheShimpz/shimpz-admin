@@ -1,0 +1,62 @@
+{
+  "version": 1,
+  "subprotocol": "shimpz.admin.v1",
+  "path": "/api/session/ws",
+  "calls": {
+    "valid": [
+      {"type": "call", "id": "c1", "method": "teams.list", "params": {}},
+      {"type": "call", "id": "c-2_x", "method": "teams.list", "params": {}, "background": true},
+      {"type": "call", "id": "c3", "method": "history.page", "params": {"team_id": "marketing"}},
+      {"type": "call", "id": "c4", "method": "history.page", "params": {"team_id": "marketing", "before": "AAAAAAAAAMg", "routine": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+      {"type": "call", "id": "c5", "method": "routines.list", "params": {"team_id": "marketing"}},
+      {"type": "call", "id": "c6", "method": "space.resources", "params": {}, "background": false},
+      {"type": "call", "id": "c7", "method": "platform.release", "params": {}},
+      {"type": "call", "id": "c8", "method": "security.summary", "params": {}},
+      {"type": "call", "id": "c9", "method": "subscribe", "params": {"topics": ["teams", "team/marketing/history", "team/marketing/routines", "space/resources", "platform/release", "security/summary", "session"]}},
+      {"type": "call", "id": "c10", "method": "unsubscribe", "params": {"topics": ["team/marketing/history"]}},
+      {"type": "call", "id": "c11", "method": "chat.attach", "params": {"team_id": "marketing", "locale": "en"}},
+      {"type": "call", "id": "c12", "method": "chat.detach", "params": {"team_id": "marketing"}}
+    ],
+    "invalid": [
+      {"type": "call", "id": "", "method": "teams.list", "params": {}},
+      {"type": "call", "id": "has space", "method": "teams.list", "params": {}},
+      {"type": "call", "id": "c1", "method": "teams.delete", "params": {}},
+      {"type": "call", "id": "c1", "method": "teams.list", "params": {"extra": "x"}},
+      {"type": "call", "id": "c1", "method": "teams.list"},
+      {"type": "call", "id": "c1", "method": "teams.list", "params": {}, "background": "yes"},
+      {"type": "call", "id": "c1", "method": "teams.list", "params": {}, "extra": 1},
+      {"type": "call", "id": "c1", "method": "history.page", "params": {}},
+      {"type": "call", "id": "c1", "method": "history.page", "params": {"team_id": 7}},
+      {"type": "call", "id": "c1", "method": "subscribe", "params": {"topics": []}},
+      {"type": "call", "id": "c1", "method": "subscribe", "params": {"topics": ["teams", "teams"]}},
+      {"type": "call", "id": "c1", "method": "subscribe", "params": {"topics": ["team/Marketing/history"]}},
+      {"type": "call", "id": "c1", "method": "subscribe", "params": {"topics": ["team/marketing/inventory"]}},
+      {"type": "call", "id": "c1", "method": "chat.attach", "params": {"team_id": "marketing"}}
+    ]
+  },
+  "chat": {
+    "valid": [
+      {"frame": {"type": "sync", "team_id": "marketing", "locale": "en"}, "team_id": "marketing", "v7": {"type": "sync", "locale": "en"}},
+      {"frame": {"type": "stop", "team_id": "marketing"}, "team_id": "marketing", "v7": {"type": "stop"}}
+    ],
+    "invalid": [
+      {"type": "stop"},
+      {"type": "stop", "team_id": "Marketing"},
+      {"type": "done", "team_id": "marketing"}
+    ]
+  },
+  "server": {
+    "result": {"type": "result", "id": "c1", "status": 200, "body": {"teams": []}, "topic": "teams", "epoch": "0123456789abcdef0123456789abcdef", "revision": 3},
+    "refused": {"type": "result", "id": "c2", "status": 429, "body": {"detail": "too many calls in flight"}},
+    "changed": {"type": "changed", "topic": "team/marketing/history", "epoch": "0123456789abcdef0123456789abcdef", "revision": 4},
+    "chat": [
+      {"type": "sync-empty", "team_id": "marketing"},
+      {"type": "stopped", "team_id": "marketing"},
+      {"type": "done", "team_id": "marketing", "team_name": "Marketing", "reply": "The campaign is ready.", "clarification": null}
+    ]
+  },
+  "topics": {
+    "valid": ["teams", "space/resources", "platform/release", "security/summary", "session", "team/marketing/history", "team/team_1/routines"],
+    "invalid": ["", "team", "team/marketing", "team/Marketing/history", "team/marketing/inventory", "teams/", "Teams"]
+  }
+}

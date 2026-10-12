@@ -5,6 +5,7 @@ transcript write is idempotent per version.
 """
 
 from history import store as history
+from session import topics
 
 from routine import team
 
@@ -23,6 +24,9 @@ def deliver() -> int:
                     raise history.HistoryUnavailableError("a Routine notice conflicts with its transcript row")
             if batch["notices"]:
                 team.acknowledge(batch["notices"])
+        # A notice reports a run or a Routine whose state changed, so each Team's Routine list changed too.
+        for team_id in sorted({notice["team_id"] for notice in batch["notices"]}):
+            topics.team_changed(team_id, "routines")
         written += len(batch["notices"])
         if not batch["more"]:
             return written

@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 
 import state
+from session import topics
 
 from protocol.http.v1.websocket import canonical_origin
 
@@ -157,6 +158,8 @@ def record(event: str, *, outcome: str, origin: str | None = None, method: str |
         except (OSError, AuditUnavailableError) as exc:
             _failure = AuditUnavailableError("the authentication journal could not be written")
             raise _failure from exc
+    # Every journaled sign-in, refusal, or factor change can change the sign-in security summary a session shows.
+    topics.changed("security/summary")
 
 
 class HistoryUnavailableError(RuntimeError):

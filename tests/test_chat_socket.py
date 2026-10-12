@@ -43,71 +43,6 @@ _wait_for_thread = chat_socket_fixtures.wait_for_thread
 
 
 class ChatWebSocketTests(ChatWebSocketCase):
-    def test_origin_subprotocol_and_session_are_required_before_accept(self) -> None:
-        async def scenario() -> None:
-            with mock.patch.object(self.admin_app, "_session_current", side_effect=AssertionError("auth must not run")):
-                denied = _Socket(self.admin_app.app, origin="http://localhost:7777.evil.test")
-                self.assertEqual(await denied.start(), {"type": "websocket.close", "code": 4403, "reason": ""})
-                await denied.finish()
-
-            wrong_protocol = _Socket(self.admin_app.app, token=self.token, protocols=["shimpz.chat.v1"])
-            self.assertEqual(
-                await wrong_protocol.start(),
-                {"type": "websocket.close", "code": 4406, "reason": ""},
-            )
-            await wrong_protocol.finish()
-
-            extra_protocol = _Socket(
-                self.admin_app.app,
-                token=self.token,
-                protocols=["shimpz.chat.v7", "shimpz.chat.v6"],
-            )
-            self.assertEqual(
-                await extra_protocol.start(),
-                {"type": "websocket.close", "code": 4406, "reason": ""},
-            )
-            await extra_protocol.finish()
-
-            anonymous = _Socket(self.admin_app.app)
-            self.assertEqual(await anonymous.start(), {"type": "websocket.close", "code": 4401, "reason": ""})
-            await anonymous.finish()
-
-            authenticated = await self._open()
-            await authenticated.disconnect()
-
-        asyncio.run(scenario())
-
-    def test_password_bound_external_origin_is_resolved_for_each_handshake(self) -> None:
-        async def scenario() -> None:
-            before = _Socket(
-                self.admin_app.app,
-                token=self.token,
-                origin="https://developer.example.test",
-            )
-            self.assertEqual(await before.start(), {"type": "websocket.close", "code": 4403, "reason": ""})
-            await before.finish()
-
-            self.assertEqual(
-                self.admin_app.state.bind_browser_origin("https://developer.example.test"),
-                "learned",
-            )
-            admitted = await self._open(origin="https://developer.example.test")
-            await admitted.disconnect()
-
-            self.assertEqual(
-                self.admin_app.state.bind_browser_origin("https://next.example.test"),
-                "replaced",
-            )
-            stale = _Socket(
-                self.admin_app.app,
-                token=self.token,
-                origin="https://developer.example.test",
-            )
-            self.assertEqual(await stale.start(), {"type": "websocket.close", "code": 4403, "reason": ""})
-            await stale.finish()
-
-        asyncio.run(scenario())
-
     def test_chat_frame_requires_one_exact_bounded_assistant_scope(self) -> None:
         async def scenario() -> None:
             websocket = await self._open()
@@ -150,60 +85,6 @@ class ChatWebSocketTests(ChatWebSocketCase):
 
         asyncio.run(scenario())
 
-    def test_a_chat_operation_is_activity_and_an_idle_session_closes_its_socket(self) -> None:
-        auth = self.admin_app.auth
-        now = [0.0]
-
-        async def scenario() -> None:
-            websocket = await self._open()
-            now[0] = auth.IDLE_SECONDS - 60
-            await websocket.send_json({"type": "stop"})
-            # A waiting socket rechecks its session and stays open while the session is current.
-            await asyncio.sleep(0.3)
-            now[0] = auth.IDLE_SECONDS + 60
-            self.assertTrue(auth.SESSIONS.current(self.token, activity=False))
-            now[0] = 2 * auth.IDLE_SECONDS
-            self.assertEqual(await self._closed(websocket), 4401)
-            await websocket.finish()
-
-        sessions = auth.SessionActivity(clock=lambda: now[0])
-        sessions.register(self.token)
-        with (
-            mock.patch.object(auth, "SESSIONS", sessions),
-            mock.patch.object(self.chat_socket, "SESSION_CHECK_SECONDS", 0.05),
-        ):
-            asyncio.run(scenario())
-
-    def test_an_unattended_page_reconnecting_across_the_idle_deadline_is_closed(self) -> None:
-        auth = self.admin_app.auth
-        now = [0.0]
-
-        async def scenario() -> None:
-            websocket = await self._open()
-            now[0] = auth.IDLE_SECONDS - 60
-            # A reconnecting page sends sync on its own; it is checked against the session but does not renew it.
-            await websocket.send_json({"type": "sync", "locale": "en"})
-            await asyncio.sleep(0.3)
-            now[0] = auth.IDLE_SECONDS + 60
-            self.assertEqual(await self._closed(websocket), 4401)
-            await websocket.finish()
-            self.assertFalse(auth.SESSIONS.current(self.token, activity=False))
-
-        sessions = auth.SessionActivity(clock=lambda: now[0])
-        sessions.register(self.token)
-        with (
-            mock.patch.object(auth, "SESSIONS", sessions),
-            mock.patch.object(self.chat_socket, "SESSION_CHECK_SECONDS", 0.05),
-        ):
-            asyncio.run(scenario())
-
-    @staticmethod
-    async def _closed(websocket) -> int:
-        """Read past the socket's events to its close, returning the close code."""
-        while (message := await websocket.next_message())["type"] != "websocket.close":
-            pass
-        return message["code"]
-
     def test_session_authority_unavailability_uses_retryable_close_code(self) -> None:
         async def scenario() -> None:
             unavailable = self.admin_app.SessionEvidenceUnavailableError()
@@ -219,48 +100,6 @@ class ChatWebSocketTests(ChatWebSocketCase):
                     {"type": "websocket.close", "code": 1013, "reason": ""},
                 )
                 await websocket.finish()
-
-        asyncio.run(scenario())
-
-    def test_invalid_duplicate_and_oversized_frames_fail_closed(self) -> None:
-        async def rejected_frame(text: str, event: dict, close_code: int) -> None:
-            websocket = await self._open()
-            await websocket.send_text(text)
-            self.assertEqual(await websocket.next_json(), event)
-            self.assertEqual(
-                await websocket.next_message(),
-                {"type": "websocket.close", "code": close_code, "reason": ""},
-            )
-            await websocket.finish()
-
-        async def scenario() -> None:
-            self.assertEqual(self.chat_socket.MAX_FRAME_BYTES, 128 * 1024)
-            await rejected_frame(
-                '{"type":"chat","message":"first","message":"second"}',
-                {
-                    "type": "error",
-                    "status": 400,
-                    "detail": "WebSocket frame must be valid unique-key JSON",
-                },
-                1007,
-            )
-            await rejected_frame(
-                "x" * (self.chat_socket.MAX_FRAME_BYTES + 1),
-                {"type": "error", "status": 413, "detail": "WebSocket frame too large"},
-                1009,
-            )
-
-            binary = await self._open()
-            await binary.send_bytes(b'{"type":"stop"}')
-            self.assertEqual(
-                await binary.next_json(),
-                {"type": "error", "status": 415, "detail": "WebSocket frame must be text JSON"},
-            )
-            self.assertEqual(
-                await binary.next_message(),
-                {"type": "websocket.close", "code": 1003, "reason": ""},
-            )
-            await binary.finish()
 
         asyncio.run(scenario())
 

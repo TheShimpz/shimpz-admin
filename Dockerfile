@@ -86,7 +86,7 @@ COPY --link backend/chat/assets.py backend/chat/assistant_install.py backend/cha
     backend/chat/human.py backend/chat/lanes.py backend/chat/lifecycle.py backend/chat/local.py \
     backend/chat/payloads.py \
     backend/chat/projection.py backend/chat/socket.py \
-    backend/chat/socket_boundary.py backend/chat/task_resume.py \
+    backend/chat/task_resume.py \
     backend/chat/local_catalog.py backend/chat/store_catalog.py ./chat/
 COPY --link backend/chat/delivery/challenge.py backend/chat/delivery/plan.py \
     backend/chat/delivery/progress.py backend/chat/delivery/route.py \
@@ -99,6 +99,8 @@ COPY --link backend/integrations/assistants.py backend/integrations/cloudflare.p
 COPY --link backend/space/host_reset.py backend/space/release.py backend/space/reset.py backend/space/supervisor_key.py ./space/
 COPY --link backend/routine/answer.py backend/routine/delivery.py backend/routine/http.py backend/routine/manage.py backend/routine/scheduler.py \
     backend/routine/team.py ./routine/
+COPY --link backend/session/budget.py backend/session/calls.py backend/session/outbound.py backend/session/registry.py \
+    backend/session/socket.py backend/session/topics.py backend/session/watcher.py ./session/
 COPY --link backend/team/assets.py backend/team/bridge.py backend/team/files.py backend/team/http.py backend/team/inference.py backend/team/names.py \
     backend/team/order.py backend/team/snapshots.py backend/team/summary.py backend/team/transport.py ./team/
 COPY --link backend/protocol/http/v1/challenge.py backend/protocol/http/v1/identifiers.py \
@@ -108,6 +110,7 @@ COPY --link backend/protocol/http/v1/challenge.py backend/protocol/http/v1/ident
     backend/protocol/http/v1/routine_notice.py backend/protocol/http/v1/routine_proposal.py \
     backend/protocol/http/v1/routine_run.py backend/protocol/http/v1/strict_json.py \
     backend/protocol/http/v1/supervisor.py backend/protocol/http/v1/turn.py backend/protocol/http/v1/websocket.py ./protocol/http/v1/
+COPY --link backend/protocol/socket/v1/frames.py ./protocol/socket/v1/
 # UI_DIR in app.py resolves to backend/../frontend/build
 COPY --link --from=ui /w/build /app/frontend/build
 

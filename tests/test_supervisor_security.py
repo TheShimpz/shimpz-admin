@@ -341,11 +341,31 @@ class SecurityRouteTests(unittest.TestCase):
         )
         return self._cookie(confirmed, "shimpz_admin")
 
+    def _summary(self, request: Request) -> types.SimpleNamespace:
+        """Read the sign-in security summary over a session socket opened with the request's cookies.
+
+        A socket the session cannot open answers as the HTTP gate would have: 401.
+        """
+        socket_fixtures = __import__("tests.chat_socket_fixtures", fromlist=["chat_socket_fixtures"])
+
+        async def read() -> types.SimpleNamespace:
+            websocket = socket_fixtures.Socket(self.admin_app.app, token=request.cookies.get("shimpz_admin", ""))
+            opened = await websocket.start()
+            if opened["type"] == "websocket.close":
+                await websocket.finish()
+                return types.SimpleNamespace(status_code=401 if opened["code"] == 4401 else 503, body=b"{}")
+            result = await websocket.result("security.summary", {}, background=True)
+            await websocket.disconnect()
+            return types.SimpleNamespace(status_code=result["status"], body=json.dumps(result["body"]).encode())
+
+        return asyncio.run(read())
+
     def _gated(self, request: Request):
         """Send one request through the Admin gate to its route, answering a route's refusal as FastAPI does."""
         app = self.admin_app
+        if (request.method, request.url.path) == ("GET", "/api/admin/security"):
+            return self._summary(request)
         endpoint = {
-            ("GET", "/api/admin/security"): app.security.summary,
             ("POST", "/api/admin/security/failures"): app.security.acknowledge_failures,
             ("POST", "/api/admin/recovery-codes/confirmation"): app.recovery_codes_confirmation,
             ("POST", "/api/admin/recovery-codes"): app.recovery_codes_replace,
@@ -374,7 +394,6 @@ class SecurityRouteTests(unittest.TestCase):
         self.assertEqual(
             (summary.status_code, body), (200, {"failed_second_factor_attempts": 1, "recovery_codes_remaining": 10})
         )
-        self.assertEqual(summary.headers["cache-control"], "no-store")
         # The sign-in before this one was the setup, and one code was refused since.
         self.assertEqual((history["previous"]["origin"], history["failures_since"]), (ORIGIN, 1))
         self.assertRegex(history["previous"]["at"], r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")

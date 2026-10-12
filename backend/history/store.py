@@ -15,6 +15,7 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 from history import context as conversation_context
+from session import topics
 
 from chat import assistant_install, store_catalog
 from protocol.http.v1 import payload as team_contract
@@ -226,7 +227,9 @@ def _append(
                 "DELETE FROM resumable_turn WHERE team_id = ? AND turn_id = ?",
                 (team_id, finish_turn),
             )
-        return committed
+    if committed:
+        topics.team_changed(team_id, "history")
+    return committed
 
 
 # Serializes Routine notice delivery with Team deletion and Space reset, including their transcript cleanup, so a
@@ -276,6 +279,7 @@ def append_routine_notice(notice: object) -> bool:
             "INSERT INTO transcript (team_id, event_key, payload, provenance, created_at) VALUES (?, ?, ?, 'plain', ?)",
             (team_id, event_key, encoded, admitted["created_at"]),
         )
+    topics.team_changed(team_id, "history")
     return True
 
 
@@ -916,7 +920,8 @@ def clear_team(team_id: object) -> int:
     with _database() as database:
         cursor = database.execute("DELETE FROM transcript WHERE team_id = ?", (canonical_team,))
         database.execute("DELETE FROM resumable_turn WHERE team_id = ?", (canonical_team,))
-        return cursor.rowcount
+    topics.team_changed(canonical_team, "history")
+    return cursor.rowcount
 
 
 def clear_all() -> int:

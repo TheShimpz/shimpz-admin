@@ -3,6 +3,7 @@
 import asyncio
 import concurrent.futures
 import contextlib
+import importlib
 import sys
 import threading
 import unittest
@@ -305,11 +306,12 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
             executor.submit(lambda: None)
         permit.release.assert_called_once_with()
 
+        browser = importlib.import_module("browser")
         with (
-            mock.patch.dict(socket.socket_boundary.os.environ, {"SHIMPZ_ADMIN_ALLOWED_ORIGINS": "bad"}),
+            mock.patch.dict(browser.os.environ, {"SHIMPZ_ADMIN_ALLOWED_ORIGINS": "bad"}),
             self.assertRaises(RuntimeError),
         ):
-            socket._configured_origins()
+            browser.configured_origins()
 
     def test_projection_and_send_helpers_fail_closed(self) -> None:
         self.assertIsNone(socket._stop_accepted(object(), "team_1"))
@@ -506,34 +508,6 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
 
         asyncio.run(scenario())
 
-    def test_admission_maps_origin_authority_and_team_id_failures(self) -> None:
-        async def session_ok(_cookies) -> bool:
-            return True
-
-        async def scenario() -> None:
-            websocket = mock.AsyncMock()
-            websocket.headers = {"origin": "https://example.test"}
-            websocket.scope = {"subprotocols": [socket.CHAT_SUBPROTOCOL]}
-            websocket.cookies = {}
-            self.assertIsNone(
-                await socket._admit(
-                    websocket,
-                    "team_1",
-                    session_ok,
-                    lambda: (_ for _ in ()).throw(RuntimeError("offline")),
-                )
-            )
-            self.assertIsNone(
-                await socket._admit(
-                    websocket,
-                    "Bad",
-                    session_ok,
-                    lambda: frozenset({"https://example.test"}),
-                )
-            )
-
-        asyncio.run(scenario())
-
     def test_remaining_delivery_and_sync_failure_edges_are_terminal(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
@@ -541,12 +515,6 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
             connection = socket._Connection()
             self.assertFalse(await socket._send_sync_event(websocket, connection, {"type": "sync-empty"}))
             self.assertTrue(connection.closed)
-
-            pending_future: concurrent.futures.Future[object] = concurrent.futures.Future()
-            closed = socket._Connection(closed=True)
-            turn = socket._Turn(pending_future, "chat")
-            with mock.patch.object(socket, "_request_stop", return_value=None):
-                await socket._stop_closed_turn(websocket, closed, turn, "team_1")
 
             websocket = mock.AsyncMock()
             detached = socket._Connection()
@@ -736,31 +704,23 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
 
         asyncio.run(scenario())
 
-    def test_server_cleanup_accepts_an_already_finished_turn_without_tasks(self) -> None:
+    def test_channel_cleanup_accepts_an_already_finished_turn_without_tasks(self) -> None:
         async def scenario() -> None:
-            websocket = mock.AsyncMock()
-            websocket.cookies = {}
             future: concurrent.futures.Future[object] = concurrent.futures.Future()
             future.set_result(object())
-            connection = socket._Connection(active=socket._Turn(future, "chat"))
-            with (
-                mock.patch.object(socket, "_admit", new=mock.AsyncMock(return_value="team_1")),
-                mock.patch.object(socket, "_Connection", return_value=connection),
-                mock.patch.object(
-                    socket,
-                    "receive_bounded_json",
-                    new=mock.AsyncMock(side_effect=socket.WebSocketDisconnect),
-                ),
-            ):
-                await socket.serve(
-                    websocket,
-                    "team_1",
-                    session_ok=mock.AsyncMock(return_value=True),
-                    session_current=mock.AsyncMock(return_value=True),
-                    request_scope=lambda _cookies: contextlib.nullcontext(),
-                    allowed_origins=lambda: frozenset(),
-                    authenticate=mock.AsyncMock(return_value=human.AuthenticationResult("verified")),
-                )
+            transport = socket.Transport("team_1", mock.Mock(), mock.Mock())
+            channel = socket.Channel(
+                transport,
+                "team_1",
+                request_scope=contextlib.nullcontext,
+                authenticate=mock.AsyncMock(return_value=human.AuthenticationResult("verified")),
+            )
+            channel.connection.active = socket._Turn(future, "chat")
+            await channel.close()
+            self.assertTrue(channel.connection.closed)
+            # A closed channel admits no further frame.
+            channel.submit({"type": "stop"})
+            self.assertTrue(channel._frames.empty())
 
         asyncio.run(scenario())
 

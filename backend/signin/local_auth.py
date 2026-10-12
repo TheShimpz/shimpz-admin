@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import cast
 
+import browser
 import state
 import supervisor
 from fastapi import HTTPException, Request
@@ -17,7 +18,6 @@ from signin import audit, auth
 from space import supervisor_key
 from team import http as team_http
 
-from chat import socket as chat_socket
 from protocol.http.v1.websocket import canonical_origin
 
 log = logging.getLogger("shimpz-admin")
@@ -55,7 +55,7 @@ def _request_origin(request: Request) -> str | None:
     origin = canonical_origin(raw)
     if origin is None or origin != raw:
         raise HTTPException(status_code=403, detail="request Origin is invalid")
-    if origin in chat_socket.STATIC_ORIGINS or origin.startswith("https://"):
+    if origin in browser.STATIC_ORIGINS or origin.startswith("https://"):
         return origin
     raise HTTPException(status_code=403, detail="request Origin is not admitted")
 
@@ -450,7 +450,7 @@ def passkey_enrollment_available(origin: str | None) -> bool:
         passkeys.rp_id_for_origin(origin)
     except passkeys.PasskeyUnavailableError:
         return False
-    return origin in chat_socket.STATIC_ORIGINS or origin == state.browser_origin()
+    return origin in browser.STATIC_ORIGINS or origin == state.browser_origin()
 
 
 def passkey_registered(origin: str | None) -> bool:
@@ -543,7 +543,7 @@ def _operation_origin(request: Request) -> str:
         origin = _request_origin(request)
     except HTTPException:
         origin = None
-    if origin is None or (origin not in chat_socket.STATIC_ORIGINS and origin != state.browser_origin()):
+    if origin is None or (origin not in browser.STATIC_ORIGINS and origin != state.browser_origin()):
         raise OperationRefusedError(403, "authentication-origin-refused")
     return origin
 

@@ -23,6 +23,7 @@ from typing import cast
 import supervisor
 from mfa import passkeys as webauthn
 from mfa import recovery, totp
+from session import topics
 from signin import auth
 
 from protocol.http.v1.websocket import canonical_origin
@@ -141,11 +142,15 @@ def _mutate(
     """
     with _STORE_LOCK:
         data = _read()
+        secret = data.get("session_secret")
         result = update(data)
         if should_write(result):
             if journal is not None:
                 journal(result)
             _write(data)
+            # A rotated session secret ends every session at once; whatever a session holds open ends with it.
+            if data.get("session_secret") != secret:
+                auth.SESSIONS.end_all()
         return result
 
 
@@ -363,7 +368,11 @@ def bind_browser_origin(origin: str) -> str:
         data["browser_origin"] = origin
         return "learned" if current is None else "replaced"
 
-    return str(_mutate(bind, lambda result: result != "unchanged"))
+    transition = str(_mutate(bind, lambda result: result != "unchanged"))
+    if transition != "unchanged":
+        # The admitted origins changed, and with them what the session bootstrap answers.
+        topics.changed("session")
+    return transition
 
 
 def begin_supervisor_setup(password: str, *, now: int | None = None) -> totp.Enrollment:

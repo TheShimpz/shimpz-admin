@@ -14,7 +14,7 @@ from websockets.exceptions import InvalidStatus
 
 
 class ChatWebSocketRuntimeTests(ChatWebSocketCase):
-    def test_real_uvicorn_negotiates_v3_and_delivers_one_public_terminal(self) -> None:
+    def test_real_uvicorn_negotiates_the_session_socket_and_closes_it_at_logout(self) -> None:
         async def scenario() -> None:
             listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -39,9 +39,12 @@ class ChatWebSocketRuntimeTests(ChatWebSocketCase):
                     self.fail("Uvicorn did not start")
                 await asyncio.sleep(0.01)
 
-            uri = f"ws://127.0.0.1:{port}/api/teams/team_1/chat/ws"
+            uri = f"ws://127.0.0.1:{port}/api/session/ws"
             headers = {"Cookie": f"shimpz_admin={self.token}"}
             response = completed_turn("hello from the Team")
+            empty = self.chat_socket._SyncSnapshot(
+                "integration", self.chat_socket.team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
+            )
             try:
                 with self.assertRaises(InvalidStatus):
                     await websockets.connect(
@@ -49,24 +52,42 @@ class ChatWebSocketRuntimeTests(ChatWebSocketCase):
                         origin="http://localhost:7777",
                         additional_headers=headers,
                     )
-                with mock.patch.object(self.chat_socket.local, "turn", return_value=response):
+                with (
+                    mock.patch.object(self.chat_socket.local, "turn", return_value=response),
+                    mock.patch.object(self.chat_socket, "_sync_snapshot", return_value=empty),
+                ):
                     async with websockets.connect(
                         uri,
                         origin="http://localhost:7777",
-                        subprotocols=["shimpz.chat.v7"],
+                        subprotocols=["shimpz.admin.v1"],
                         additional_headers=headers,
                     ) as websocket:
-                        self.assertEqual(websocket.subprotocol, "shimpz.chat.v7")
+                        self.assertEqual(websocket.subprotocol, "shimpz.admin.v1")
+
+                        async def received() -> dict:
+                            return json.loads(await asyncio.wait_for(websocket.recv(), timeout=1))
+
                         await websocket.send(
-                            '{"type":"chat","message":"hello","files":[],"assistant_ids":[],'
-                            '"locale":"en","timezone":"America/Sao_Paulo"}'
+                            '{"type":"call","id":"a","method":"chat.attach",'
+                            '"params":{"team_id":"team_1","locale":"en"},"background":true}'
                         )
                         self.assertEqual(
-                            json.loads(await asyncio.wait_for(websocket.recv(), timeout=1)),
-                            done_frame("hello from the Team"),
+                            await received(),
+                            {"type": "result", "id": "a", "status": 200, "body": {"team_id": "team_1"}},
                         )
+                        self.assertEqual(await received(), {"type": "sync-empty", "team_id": "team_1"})
+                        await websocket.send(
+                            '{"type":"chat","team_id":"team_1","message":"hello","files":[],"assistant_ids":[],'
+                            '"locale":"en","timezone":"America/Sao_Paulo"}'
+                        )
+                        self.assertEqual(await received(), done_frame("hello from the Team"))
                         with self.assertRaises(TimeoutError):
                             await asyncio.wait_for(websocket.recv(), timeout=0.05)
+                        # Logging out closes the real connection at once, as signed out.
+                        await asyncio.to_thread(self.admin_app.state.revoke_sessions_for_logout, self.token)
+                        with self.assertRaises(websockets.exceptions.ConnectionClosed) as closed:
+                            await asyncio.wait_for(websocket.recv(), timeout=2)
+                        self.assertEqual(closed.exception.rcvd.code, 4401)
             finally:
                 server.should_exit = True
                 await asyncio.wait_for(server_task, timeout=3)

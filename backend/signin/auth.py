@@ -76,7 +76,8 @@ class SessionActivity:
     """The last Supervisor activity of each session this process issued, keyed by the token's digest.
 
     A session it never issued or no longer tracks is unknown and refused. Only activity moves `last_seen`, so a page
-    polling in the background cannot keep an unattended session alive.
+    polling in the background cannot keep an unattended session alive. Each listener hears which sessions stopped being
+    tracked (`None` for every session), whether they idled out, were evicted for capacity, or all ended at once.
     """
 
     def __init__(
@@ -91,19 +92,34 @@ class SessionActivity:
         self._capacity = capacity
         self._lock = threading.Lock()
         self._last_seen: dict[str, float] = {}
+        self._listeners: list[Callable[[frozenset[str] | None], None]] = []
 
     @staticmethod
     def _key(token: str) -> str:
-        return hashlib.sha256(token.encode("ascii")).hexdigest()
+        return session_key(token)
+
+    def listen(self, listener: Callable[[frozenset[str] | None], None]) -> None:
+        """Hear every session that stops being tracked, so what it holds open can end at once."""
+        self._listeners.append(listener)
+
+    def _ended(self, keys: frozenset[str] | None) -> None:
+        if keys == frozenset():
+            return
+        for listener in tuple(self._listeners):
+            listener(keys)
 
     def register(self, token: str) -> None:
         with self._lock:
             now = self._clock()
-            for key in [key for key, seen in self._last_seen.items() if now - seen >= self._idle_seconds]:
+            ended = {key for key, seen in self._last_seen.items() if now - seen >= self._idle_seconds}
+            for key in ended:
                 del self._last_seen[key]
             while len(self._last_seen) >= self._capacity:
-                del self._last_seen[min(self._last_seen, key=self._last_seen.__getitem__)]
+                evicted = min(self._last_seen, key=self._last_seen.__getitem__)
+                del self._last_seen[evicted]
+                ended.add(evicted)
             self._last_seen[self._key(token)] = now
+        self._ended(frozenset(ended))
 
     def current(self, token: str, *, activity: bool) -> bool:
         """Whether the session is tracked and not idle; Supervisor activity also restarts its idle time."""
@@ -113,12 +129,32 @@ class SessionActivity:
             seen = self._last_seen.get(key)
             if seen is None:
                 return False
-            if now - seen >= self._idle_seconds:
+            idle = now - seen >= self._idle_seconds
+            if idle:
                 del self._last_seen[key]
-                return False
-            if activity:
+            elif activity:
                 self._last_seen[key] = now
-            return True
+        if idle:
+            self._ended(frozenset({key}))
+            return False
+        return True
+
+    def idle_remaining(self, token: str) -> float | None:
+        """Seconds until the session idles out unless it is active meanwhile, or None when it is not tracked."""
+        with self._lock:
+            seen = self._last_seen.get(self._key(token))
+            return None if seen is None else max(0.0, seen + self._idle_seconds - self._clock())
+
+    def end_all(self) -> None:
+        """Every session ended, such as when the session secret rotated: none is tracked any more."""
+        with self._lock:
+            self._last_seen.clear()
+        self._ended(None)
+
+
+def session_key(token: str) -> str:
+    """The digest a session is tracked by; its token is never kept."""
+    return hashlib.sha256(token.encode("ascii")).hexdigest()
 
 
 SESSIONS = SessionActivity()
@@ -347,3 +383,15 @@ def verify_session(secret_hex: str, token: str, *, activity: bool = False) -> Se
     if evidence is None or not evidence.issued_at <= time.time() < evidence.expires_at:
         return None
     return evidence if SESSIONS.current(token, activity=activity) else None
+
+
+def session_remaining(secret_hex: str, token: str) -> float | None:
+    """Seconds until a current session ends unless it is active meanwhile, or None when it is not current.
+
+    That is its absolute or its idle expiry, whichever comes first.
+    """
+    evidence = _signed_evidence(secret_hex, token)
+    idle = SESSIONS.idle_remaining(token) if evidence is not None else None
+    if evidence is None or idle is None:
+        return None
+    return max(0.0, min(evidence.expires_at - time.time(), idle))

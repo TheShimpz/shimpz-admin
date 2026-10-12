@@ -12,6 +12,19 @@ from fastapi.responses import RedirectResponse
 
 from protocol.http.v1.websocket import canonical_origin
 
+_DEFAULT_ORIGINS = "http://127.0.0.1:7777,http://localhost:7777"
+
+
+def configured_origins() -> frozenset[str]:
+    """The exact first-party origins this Admin is configured to admit; anything else fails at startup."""
+    configured = os.environ.get("SHIMPZ_ADMIN_ALLOWED_ORIGINS", _DEFAULT_ORIGINS)
+    items = [item.strip() for item in configured.split(",")]
+    if not items or any(not item or canonical_origin(item) != item for item in items):
+        raise RuntimeError("SHIMPZ_ADMIN_ALLOWED_ORIGINS must contain exact HTTP(S) origins")
+    return frozenset(items)
+
+
+STATIC_ORIGINS = configured_origins()
 PERMISSIONS_POLICY = "camera=(), display-capture=(), geolocation=(), microphone=(), payment=(), usb=()"
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 

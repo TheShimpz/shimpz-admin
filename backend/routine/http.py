@@ -17,7 +17,6 @@ def register(
     confirmations: local_auth.Context,
 ) -> None:
     base = "/api/teams/{team_id}/routines"
-    application.add_api_route(base, routines_list, methods=["GET"])
     application.add_api_route(base + "/{routine_id}/deletion", deletion_route(confirmations), methods=["POST"])
     application.add_api_route(base + "/{routine_id}", delete_route(confirmations), methods=["DELETE"])
     application.add_api_route(base + "/runs/{run_id}/diagnostics", routine_diagnostics, methods=["GET"])

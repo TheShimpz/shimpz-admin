@@ -38,7 +38,7 @@ class ModelProviderRouteTests(unittest.TestCase):
         websocket_paths = {
             route.path for route in self.admin_app.app.routes if route.__class__.__name__ == "APIWebSocketRoute"
         }
-        self.assertIn("/api/teams/{team_id}/chat/ws", websocket_paths)
+        self.assertEqual(websocket_paths, {"/api/session/ws"})
         model_credential_routes = {
             (path, method)
             for path, method in routes

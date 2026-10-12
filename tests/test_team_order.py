@@ -705,7 +705,7 @@ class LifecycleCleanupTests(OrderCase):
     def test_the_list_route_projects_the_saved_order(self) -> None:
         self.saved("a")
         with mock.patch.object(team, "list_teams", return_value=_inventory("b", "a")):
-            response = self.admin_app.teams_list()
+            response = self.admin_app.team_order.listing()
         self.assertEqual(json.loads(response.body)["teams"], _teams("b", "a"))
         self.assertEqual(response.headers["Cache-Control"], "no-store")
 
@@ -725,7 +725,6 @@ class TeamOrderStackTests(_LiveTeamCase):
         order_path = self.root / "team-order.json"
         with mock.patch.dict(os.environ, {"SHIMPZ_TEAM_ORDER_STORE": str(order_path)}):
             document = self._run_asgi_probe("team-order", Path(__file__).resolve())
-        self.assertEqual(document["anonymous_list"], [401, "no-store"])
         self.assertEqual(document["anonymous_reorder"], [401, "no-store"])
         self.assertEqual(document["no_origin"], [403, "no-store"])
         self.assertEqual(document["newest_first"], [200, "no-store", ["b", "a"]])
@@ -781,15 +780,21 @@ def _run_asgi_probe() -> None:
         teams = [item["team_id"] for item in payload["teams"]] if "teams" in payload else None
         return [start["status"], response_headers.get("cache-control"), teams]
 
+    def listed() -> list[object]:
+        """The Team list the session socket's `teams.list` reads, under the session's authority."""
+        with admin_app._team_session_scope({admin_app.COOKIE: token}):
+            response = admin_app.team_order.listing()
+        teams = [item["team_id"] for item in json.loads(response.body)["teams"]]
+        return [response.status_code, response.headers.get("cache-control"), teams]
+
     async def scenario() -> dict[str, object]:
         reorder = b'{"team_ids":["a","b"]}'
         return {
-            "anonymous_list": (await send("GET", "/api/teams", session=False))[:2],
             "anonymous_reorder": (await send("PUT", "/api/teams/order", reorder, session=False))[:2],
             "no_origin": (await send("PUT", "/api/teams/order", reorder, sent_origin=False))[:2],
-            "newest_first": await send("GET", "/api/teams"),
+            "newest_first": await asyncio.to_thread(listed),
             "reordered": await send("PUT", "/api/teams/order", reorder),
-            "saved_order": await send("GET", "/api/teams"),
+            "saved_order": await asyncio.to_thread(listed),
             "stale": await send("PUT", "/api/teams/order", b'{"team_ids":["a"]}'),
         }
 

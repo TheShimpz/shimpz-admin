@@ -1,14 +1,9 @@
 """The Space's read-only resource signal Admin projects from Team for the Supervisor's console."""
 
-import asyncio
-import json
 import sys
 import unittest
 from pathlib import Path
 from unittest import mock
-
-import app_import
-from http_request import LOOPBACK, http_request, through_gate
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -56,31 +51,6 @@ class SpaceResourceBridgeTests(unittest.TestCase):
     def test_passes_a_team_failure_through(self) -> None:
         failure = transport.TeamResponse(503, {"error": "Docker is unavailable", "code": "docker-unavailable"})
         self.assertIs(self.project(failure), failure)
-
-
-class SpaceResourceRouteTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        cls.admin_app = app_import.load_app(app_import.temporary_root(cls))
-
-    def test_the_route_answers_the_projection(self) -> None:
-        self.assertIn(("/api/space/resources", "GET"), app_import.route_methods(self.admin_app))
-        routes = self.admin_app.app.routes
-        route = next(route for route in routes if getattr(route, "path", "") == "/api/space/resources")
-        with mock.patch.object(bridge, "space_resources", return_value=transport.TeamResponse(200, SIGNAL)):
-            response = route.endpoint()
-        self.assertEqual((response.status_code, json.loads(response.body)), (200, SIGNAL))
-
-    def test_the_route_requires_the_local_admin_session(self) -> None:
-        self.assertNotIn("/api/space/resources", self.admin_app.OPEN_API)
-
-        async def should_not_run(_request):
-            self.fail("an unauthenticated request reached the Space resources route")
-
-        response = asyncio.run(
-            through_gate(self.admin_app, http_request("/api/space/resources", LOOPBACK, method="GET"), should_not_run)
-        )
-        self.assertEqual(response.status_code, 401)
 
 
 if __name__ == "__main__":

@@ -1,8 +1,7 @@
-"""Bounded, session-authenticated WebSocket transport for local Team chat.
+"""The chat channel of the Admin session socket: `shimpz.chat.v7` for one attached Team (ADR-0114).
 
-The browser speaks only ``shimpz.chat.v7``. Provider and Assistant secrets stay behind
-:mod:`chat.local`; this module admits one mutating operation per socket, keeps Stop responsive on its
-own bounded worker lane, and projects controller state onto small, exact public schemas.
+Provider and Assistant secrets stay behind :mod:`chat.local`; this module admits one mutating operation per channel,
+keeps Stop responsive on its own bounded worker lane, and projects controller state onto small, exact public schemas.
 """
 
 import asyncio
@@ -32,21 +31,13 @@ from chat import (
     lifecycle,
     local,
     projection,
-    socket_boundary,
     task_resume,
 )
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
-CHAT_SUBPROTOCOL = "shimpz.chat.v7"
-MAX_FRAME_BYTES = socket_boundary.MAX_FRAME_BYTES
 MAX_PUBLIC_ERROR_CHARS = projection.MAX_PUBLIC_ERROR_CHARS
 STOP_RESULT_WAIT_SECONDS = 15
-# How often a socket waiting for its next frame checks that its session has not ended, e.g. by staying idle too long.
-SESSION_CHECK_SECONDS = 60
-# The frames a person sends. Anything else, such as the sync a page sends on its own whenever it reconnects, is checked
-# against the session without renewing it, so an unattended page that keeps reconnecting still idles out.
-USER_OPERATIONS = frozenset({"chat", "resume-task", "stop", "human-response"})
 FrameError = chat_ws_common.FrameError
 log = logging.getLogger("shimpz-admin")
 
@@ -57,19 +48,13 @@ _SYNC_EXECUTOR = lanes.SYNC
 BoundedThreadPoolExecutor = lanes.BoundedThreadPoolExecutor
 
 
-canonical_origin = socket_boundary.canonical_origin
-_configured_origins = socket_boundary.configured_origins
-receive_bounded_json = socket_boundary.receive_bounded_json
-_session_status = socket_boundary.session_status
-
-
-STATIC_ORIGINS = _configured_origins()
 _Turn = connection.Turn
 _Connection = connection.Connection
 _SyncSnapshot = connection.SyncSnapshot
 _request_identity = connection.request_identity
 # A retry, resend, or reconnect of a send whose identity Team would no longer admit is refused, never renewed.
 _error_terminal = projection.error_terminal
+error_terminal = projection.error_terminal
 _projected_event = projection.projected_event
 turn_terminal = projection.turn_terminal
 integration_challenge_event = projection.integration_challenge_event
@@ -140,23 +125,6 @@ async def _await_turn_response(
     return team.TeamResponse(502, {}) if result is None else result
 
 
-async def _stop_closed_turn(
-    websocket: WebSocket,
-    connection: _Connection,
-    turn: _Turn,
-    team_id: str,
-) -> None:
-    if not connection.closed or turn.terminal_sent or turn.future is None or turn.future.done():
-        return
-    stop_task = _request_stop(websocket, connection, turn, team_id, emit=False)
-    if stop_task is not None:
-        with contextlib.suppress(asyncio.CancelledError, TimeoutError):
-            await asyncio.wait_for(
-                asyncio.shield(stop_task),
-                timeout=STOP_RESULT_WAIT_SECONDS,
-            )
-
-
 async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Turn, team_id: str) -> None:
     try:
         response = team.TeamResponse(502, {})
@@ -176,7 +144,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
                     asyncio.shield(turn.stop_task),
                     timeout=STOP_RESULT_WAIT_SECONDS,
                 )
-        await _stop_closed_turn(websocket, connection, turn, team_id)
+        # A channel that closed meanwhile stops its turn as it closes (`_close_connection`).
         if connection.closed or turn.terminal_sent:
             return
         challenge, challenge_type = _first_challenge(response, team_id)
@@ -782,56 +750,6 @@ def _sync_locale(frame: dict[str, object]) -> str | None:
     return team_contract.canonical_locale(frame["locale"]) if set(frame) == {"type", "locale"} else None
 
 
-def _has_subprotocol(websocket: WebSocket) -> bool:
-    protocols = websocket.scope.get("subprotocols", [])
-    return protocols == [CHAT_SUBPROTOCOL]
-
-
-async def _admit(
-    websocket: WebSocket,
-    team_id: object,
-    session_current: Callable[[Mapping[str, str]], Awaitable[bool]],
-    allowed_origins: Callable[[], frozenset[str]],
-) -> str | None:
-    origin = canonical_origin(websocket.headers.get("origin"))
-    try:
-        admitted_origins = allowed_origins()
-    except Exception:
-        log.exception("chat WebSocket origin authority is unavailable")
-        await websocket.close(code=1013)
-        return None
-    if origin is None or origin not in admitted_origins:
-        log.info("chat WebSocket origin denied: %s", origin[:200] if origin is not None else "invalid")
-        await websocket.close(code=4403)
-        return None
-    if not _has_subprotocol(websocket):
-        await websocket.close(code=4406)
-        return None
-    try:
-        canonical_id = team.canonical_team_id(team_id)
-    except team.TeamRequestError:
-        await websocket.close(code=4400)
-        return None
-    session_status = await _session_status(session_current, websocket.cookies)
-    if session_status != "active":
-        await websocket.close(code=1013 if session_status == "unavailable" else 4401)
-        return None
-    return canonical_id
-
-
-async def _next_frame(
-    websocket: WebSocket, session_current: Callable[[Mapping[str, str]], Awaitable[bool]]
-) -> dict[str, object] | str:
-    """Wait for the next frame, or return the session status that ended while the socket waited."""
-    while True:
-        try:
-            return await asyncio.wait_for(receive_bounded_json(websocket), timeout=SESSION_CHECK_SECONDS)
-        except TimeoutError:
-            session_status = await _session_status(session_current, websocket.cookies)
-            if session_status != "active":
-                return session_status
-
-
 async def _close_connection(
     websocket: WebSocket,
     connection: _Connection,
@@ -859,51 +777,66 @@ async def _close_connection(
     await lifecycle.close(connection)
 
 
-async def serve(
-    websocket: WebSocket,
-    team_id: object,
-    *,
-    session_ok: Callable[[Mapping[str, str]], Awaitable[bool]],
-    session_current: Callable[[Mapping[str, str]], Awaitable[bool]],
-    request_scope: Callable[[Mapping[str, str]], contextlib.AbstractContextManager[None]],
-    allowed_origins: Callable[[], frozenset[str]],
-    authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
-) -> None:
-    """Serve one authenticated local chat socket without letting it outlive its Admin session.
+class Transport:
+    """One attached Team's chat channel on its session socket, as the `shimpz.chat.v7` delivery code writes to it.
 
-    `session_ok` checks the session before each user operation, which is Supervisor activity; `session_current` checks
-    it without counting as activity on admission, before an automatic frame, and while the socket waits, so an idle
-    session closes its socket.
+    Every frame sent carries the Team's `team_id`. Where a v7 socket closed itself, the whole session socket closes.
     """
-    canonical_id = await _admit(websocket, team_id, session_current, allowed_origins)
-    if canonical_id is None:
-        return
 
-    with request_scope(websocket.cookies):
-        await websocket.accept(subprotocol=CHAT_SUBPROTOCOL)
-        connection = _Connection()
+    def __init__(self, team_id: str, send: Callable[[dict[str, object]], None], close: Callable[[int], None]) -> None:
+        self._team_id = team_id
+        self._send = send
+        self._close = close
+
+    async def send_json(self, event: dict[str, object]) -> None:
+        self._send(event)
+
+    async def close(self, code: int = 1000) -> None:
+        self._close(code)
+
+
+class Channel:
+    """One Team's logical chat connection on a session socket, with today's per-connection state (ADR-0114).
+
+    Frames run in arrival order, one at a time, under the current Supervisor authority bound again for each frame, so
+    a long dispatch never holds the session socket's receive loop. Closing the channel stops its active work exactly as
+    a closed v7 socket did.
+    """
+
+    def __init__(
+        self,
+        transport: Transport,
+        team_id: str,
+        *,
+        request_scope: Callable[[], contextlib.AbstractContextManager[None]],
+        authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
+    ) -> None:
+        self.transport = transport
+        self.team_id = team_id
+        self.connection = _Connection()
+        self._scope = request_scope
+        self._authenticate = authenticate
+        self._frames: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+        self._task = asyncio.create_task(self._run())
+
+    def submit(self, frame: dict[str, object]) -> None:
+        """Queue one admitted v7 frame for this Team, in arrival order."""
+        if not self.connection.closed:
+            self._frames.put_nowait(frame)
+
+    async def _run(self) -> None:
         try:
             while True:
-                try:
-                    frame = await _next_frame(websocket, session_current)
-                except FrameError as exc:
-                    await _send_event(websocket, _error_terminal(exc.status, exc.detail))
-                    connection.closed = True
-                    await websocket.close(code=exc.close_code)
-                    return
-                # A session can expire, idle out, or be rotated while a socket is open. Revalidating it before
-                # every operation, and while waiting for one, prevents that connection from extending authority.
-                if isinstance(frame, str):
-                    session_status = frame
-                else:
-                    check = session_ok if frame.get("type") in USER_OPERATIONS else session_current
-                    session_status = await _session_status(check, websocket.cookies)
-                if session_status != "active":
-                    connection.closed = True
-                    await websocket.close(code=1013 if session_status == "unavailable" else 4401)
-                    return
-                await _dispatch(websocket, connection, canonical_id, frame, authenticate)
+                frame = await self._frames.get()
+                with self._scope():
+                    await _dispatch(self.transport, self.connection, self.team_id, frame, self._authenticate)
         except WebSocketDisconnect, RuntimeError, OSError:
-            connection.closed = True
-        finally:
-            await _close_connection(websocket, connection, canonical_id)
+            self.connection.closed = True
+
+    async def close(self) -> None:
+        """Stop the channel and every operation it runs, as a closed v7 socket did."""
+        self.connection.closed = True
+        self._task.cancel()
+        await asyncio.gather(self._task, return_exceptions=True)
+        with self._scope():
+            await _close_connection(self.transport, self.connection, self.team_id)

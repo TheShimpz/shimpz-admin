@@ -63,8 +63,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.local, "pending_integrations", return_value=augmented),
                 mock.patch.object(self.chat_socket.local, "resume_integrations") as resume,
             ):
-                websocket = await self._open()
-                await websocket.send_json({"type": "sync", "locale": "en"})
+                websocket = await self._open(synchronized=False)
                 error = await websocket.next_json()
                 self.assertEqual(error["type"], "error")
                 self.assertEqual(error["status"], 502)
@@ -81,8 +80,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.local, "pending_integrations", return_value=empty),
                 mock.patch.object(self.chat_socket.local, "resume_integrations") as resume,
             ):
-                websocket = await self._open()
-                await websocket.send_json({"type": "sync", "locale": "en"})
+                websocket = await self._open(synchronized=False)
                 self.assertEqual(await websocket.next_json(), {"type": "sync-empty"})
                 resume.assert_not_called()
                 await websocket.disconnect()
@@ -108,8 +106,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.local, "turn", return_value=completed) as turn,
             ):
                 self._bind_history("Expired integration")
-                websocket = await self._open()
-                await websocket.send_json({"type": "sync", "locale": "en"})
+                websocket = await self._open(synchronized=False)
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
                 await websocket.send_json({"type": "sync", "locale": "en"})
                 self.assertEqual(await websocket.next_json(), {"type": "sync-empty"})
@@ -144,8 +141,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
                 history_id = self.admin_app.chat_history.new_turn_id()
                 self.admin_app.chat_history.append_user("team_1", history_id, "Publish after OAuth")
                 self.admin_app.chat_history.bind_resumable_turn("team_1", history_id)
-                websocket = await self._open()
-                await websocket.send_json({"type": "sync", "locale": "en"})
+                websocket = await self._open(synchronized=False)
                 self.assertEqual(
                     [await websocket.next_json() for _index in range(4)],
                     [
@@ -194,8 +190,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.local, "stop") as stop,
             ):
                 self._bind_history("Resume integration")
-                websocket = await self._open()
-                await websocket.send_json({"type": "sync", "locale": "en"})
+                websocket = await self._open(synchronized=False)
                 await _wait_for_thread(started)
                 await websocket.disconnect()
                 stop.assert_not_called()
@@ -234,8 +229,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.local, "stop") as stop,
             ):
                 self._bind_history("Stop resumed integration")
-                websocket = await self._open()
-                await websocket.send_json({"type": "sync", "locale": "en"})
+                websocket = await self._open(synchronized=False)
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
                 await websocket.send_json({"type": "sync", "locale": "en"})
                 await _wait_for_thread(started)
@@ -304,8 +298,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
                     side_effect=RuntimeError("must not escape"),
                 ),
             ):
-                websocket = await self._open()
-                await websocket.send_json({"type": "sync", "locale": "en"})
+                websocket = await self._open(synchronized=False)
                 self.assertEqual(
                     await websocket.next_json(),
                     {"type": "error", "status": 502, "detail": "local chat request failed"},

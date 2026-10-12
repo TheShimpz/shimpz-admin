@@ -19,6 +19,17 @@ class TicketError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
+class Binding:
+    """The one session socket, and its session, a step-up ticket issued over that socket belongs to (ADR-0114).
+
+    A ticket with a binding dies with the socket or the session, beside every binding a ticket already has.
+    """
+
+    session: str
+    socket: str
+
+
+@dataclass(frozen=True, slots=True)
 class Ticket:
     """Private evidence binding password verification to one second-factor attempt."""
 
@@ -27,6 +38,7 @@ class Ticket:
     generation: int
     expires_at: float
     subject: str = ""
+    binding: Binding | None = None
 
 
 class TicketStore:
@@ -51,7 +63,9 @@ class TicketStore:
         for token in tuple(key for key, value in self._records.items() if value.expires_at <= now):
             self._records.pop(token, None)
 
-    def issue(self, purpose: str, origin: str | None, generation: int, subject: str = "") -> str:
+    def issue(
+        self, purpose: str, origin: str | None, generation: int, subject: str = "", binding: Binding | None = None
+    ) -> str:
         if (
             purpose not in PURPOSES
             or type(generation) is not int
@@ -67,20 +81,26 @@ class TicketStore:
             token = secrets.token_urlsafe(32)
             while token in self._records:
                 token = secrets.token_urlsafe(32)
-            self._records[token] = Ticket(purpose, origin, generation, now + self._ttl, subject)
+            self._records[token] = Ticket(purpose, origin, generation, now + self._ttl, subject, binding)
             return token
 
-    def consume(self, token: object, purpose: str, subject: str = "") -> Ticket:
-        """Take one ticket once; a ticket presented for another purpose or subject is spent all the same."""
+    def consume(self, token: object, purpose: str, subject: str = "", binding: Binding | None = None) -> Ticket:
+        """Take one ticket once; one presented for another purpose, subject, or socket is spent all the same."""
         if not isinstance(token, str) or not 32 <= len(token) <= 64 or not token.isascii():
             raise TicketError("password ticket is unavailable")
         now = self._clock()
         with self._lock:
             self._expire(now)
             ticket = self._records.pop(token, None)
-        if ticket is None or ticket.purpose != purpose or ticket.subject != subject:
+        if ticket is None or ticket.purpose != purpose or ticket.subject != subject or ticket.binding != binding:
             raise TicketError("password ticket is unavailable")
         return ticket
+
+    def revoke(self, binding: Binding) -> None:
+        """Invalidate every outstanding ticket of one socket, which closed or whose session ended."""
+        with self._lock:
+            for token in tuple(key for key, value in self._records.items() if value.binding == binding):
+                self._records.pop(token, None)
 
     def clear(self) -> None:
         """Invalidate every outstanding ticket after an authentication-state change."""

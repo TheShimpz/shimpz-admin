@@ -22,7 +22,6 @@ SESSION_COOKIE = "shimpz_admin"
 
 
 def register(app: FastAPI) -> None:
-    app.add_api_route("/api/admin/security", summary, methods=["GET"])
     app.add_api_route("/api/admin/security/failures", acknowledge_failures, methods=["POST"])
 
 
@@ -44,16 +43,13 @@ def _history(session: str) -> dict[str, object] | None:
         return None
 
 
-def _summary(session: str) -> dict[str, object]:
+def summary_for(session: str) -> dict[str, object]:
+    """The sign-in security summary the session socket's `security.summary` and an acknowledgment answer."""
     return {
         "failed_second_factor_attempts": state.unacknowledged_second_factor_failures(),
         "recovery_codes_remaining": state.recovery_codes_remaining(),
         "sign_in_history": _history(session),
     }
-
-
-async def summary(request: Request) -> JSONResponse:
-    return _response(await run_in_threadpool(_summary, request.cookies.get(SESSION_COOKIE, "")))
 
 
 async def acknowledge_failures(request: Request) -> JSONResponse:
@@ -62,4 +58,4 @@ async def acknowledge_failures(request: Request) -> JSONResponse:
     if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= state.MAX_SECOND_FACTOR_FAILURES:
         raise HTTPException(status_code=400, detail="request body must contain only a positive acknowledged count")
     await run_in_threadpool(state.acknowledge_second_factor_failures, count)
-    return await summary(request)
+    return _response(await run_in_threadpool(summary_for, request.cookies.get(SESSION_COOKIE, "")))

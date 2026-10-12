@@ -31,9 +31,10 @@ import models
 import state
 import supervisor
 from history import http as chat_history_http
+from session import socket as session_socket
+from session import topics as session_topics
 from signin import audit, auth, local_auth, security
 from space import host_reset, supervisor_key
-from space import release as platform_release
 from space import reset as space_reset
 from team import assets as team_assets
 from team import bridge as team
@@ -48,7 +49,6 @@ from team import summary as team_summary
 from action import stored_input as action_stored_input
 from chat import assets as chat_assets
 from chat import human as chat_human
-from chat import socket as chat_socket
 from integrations import assistants as integrations
 from integrations import handoff as handoff_store
 from protocol.http.v1 import websocket as chat_ws_common
@@ -135,7 +135,6 @@ async def _lifespan(application: FastAPI):
 
 
 app = FastAPI(title="shimpz-admin", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
-platform_release.register(app)
 routine_http.register(app, _AUTHENTICATE_ACTION_REQUEST, _LOCAL_AUTH_CONTEXT)
 team_inference.register(app)
 team_assets.register(app)
@@ -219,7 +218,7 @@ def _materialize_local_supervisor() -> None:
 
 
 def _allowed_browser_origins() -> frozenset[str]:
-    origins = set(chat_socket.STATIC_ORIGINS)
+    origins = set(browser.STATIC_ORIGINS)
     if (browser_origin := state.browser_origin()) is not None:
         origins.add(browser_origin)
     return frozenset(origins)
@@ -247,13 +246,18 @@ def _session_evidence(cookies, *, activity: bool = False) -> dict[str, object] |
 
 
 async def _session_active(cookies) -> bool:
-    """A chat operation is Supervisor activity and restarts the session's idle time."""
+    """A person's own socket call or chat frame is Supervisor activity and restarts the session's idle time."""
     return _session_evidence(cookies, activity=True) is not None
 
 
 async def _session_current(cookies) -> bool:
-    """Admitting or watching a chat socket checks its session without counting as Supervisor activity."""
+    """Admitting a session socket, its automatic reads, and its watcher check the session without renewing it."""
     return _session_evidence(cookies) is not None
+
+
+def _session_remaining(cookies) -> float | None:
+    """Seconds until the socket's session expires unless it is active meanwhile; a socket's timer closes it then."""
+    return auth.session_remaining(state.get().get("session_secret", ""), cookies.get(COOKIE, ""))
 
 
 def _supervisor_activity(request: Request) -> bool:
@@ -275,11 +279,11 @@ def _team_session_scope(cookies, *, authority_kind: str = "session"):
 
 
 def _socket_origins() -> frozenset[str]:
-    """The origins a page may open the chat socket to; unreadable state narrows them to the static ones."""
+    """The origins a page may open the session socket to; unreadable state narrows them to the static ones."""
     try:
         return _allowed_browser_origins()
     except RuntimeError, OSError:
-        return chat_socket.STATIC_ORIGINS
+        return browser.STATIC_ORIGINS
 
 
 def _secure_response(response: Response) -> Response:
@@ -346,10 +350,15 @@ async def _gate(scope: Scope, receive: Receive, send: Send, application: ASGIApp
         await _refused(refusal)(scope, receive, send)
         return
     started = False
+    changed = session_topics.for_mutation(request.method, path)
 
     async def sending(message: Message) -> None:
         nonlocal started
         started = True
+        # A mutation Admin completed invalidates what it changed; every open session socket subscribed hears of it.
+        if message["type"] == "http.response.start" and 200 <= message["status"] < 300:
+            for topic in changed:
+                session_topics.changed(topic)
         await send(message)
 
     try:
@@ -367,7 +376,7 @@ class _SupervisorGate:
     """Admin's HTTP gate as plain ASGI middleware.
 
     It adds no task or body stream per request, and the Team session scope's context reaches the route itself.
-    WebSockets authenticate in the chat socket, and lifespan passes through.
+    WebSockets authenticate in the session socket, and lifespan passes through.
     """
 
     def __init__(self, application: ASGIApp) -> None:
@@ -564,7 +573,9 @@ def _team_delete_with_history(team_id: str, action) -> team.TeamResponse:
 def _space_reset_with_history(action) -> team.TeamResponse:
     # Admin owns the saved Team order, so a Space reset clears it with the history.
     with team_order.LOCK:
-        return team_order.space_reset(chat_history_http.space_reset(action))
+        response = team_order.space_reset(chat_history_http.space_reset(action))
+    session_topics.changed("teams")
+    return response
 
 
 def _space_reset_response(action) -> JSONResponse:
@@ -602,7 +613,6 @@ async def local_space_reset(request: Request):
 
 
 app.add_api_route("/api/space", local_space_reset, methods=["DELETE"])
-app.add_api_route("/api/space/resources", lambda: team_http.response(team.space_resources), methods=["GET"])
 
 
 # Teams and Assistants stay outside OPEN_API. Admin keeps Supervisor authentication while this
@@ -641,11 +651,6 @@ app.add_api_route("/api/model-providers/{provider}", model_provider_delete, meth
 decision.register(app)
 
 
-@app.get("/api/teams")
-def teams_list():
-    return team_order.listing()
-
-
 team_names.register(app)
 team_order.register(app)
 
@@ -669,24 +674,23 @@ async def teams_destroy(team_id: str, request: Request):
     )
 
 
-@app.websocket("/api/teams/{team_id}/chat/ws")
-async def team_chat_ws(websocket: WebSocket, team_id: str):
-    await chat_socket.serve(
-        websocket,
-        team_id,
-        session_ok=_session_active,
+def _session_gate() -> session_socket.Gate:
+    """What Admin's HTTP gate decides, handed to one session socket as it opens."""
+    return session_socket.Gate(
         session_current=_session_current,
-        request_scope=_team_session_scope,
+        session_active=_session_active,
         allowed_origins=_allowed_browser_origins,
+        request_scope=_team_session_scope,
+        session_remaining=_session_remaining,
         authenticate=_AUTHENTICATE_ACTION_REQUEST,
+        revoke_tickets=_LOCAL_AUTH_CONTEXT.ticket_store.revoke,
+        cookie=COOKIE,
     )
 
 
-def team_chat_history(team_id: str, before: str | None = None, routine: str | None = None):
-    return chat_history_http.page(team_id, before, routine)
-
-
-app.add_api_route("/api/teams/{team_id}/chat/history", team_chat_history, methods=["GET"])
+@app.websocket(session_socket.frames.PATH)
+async def session_ws(websocket: WebSocket):
+    await session_socket.serve(websocket, _session_gate())
 
 
 @app.get("/api/teams/{team_id}/assistant-integrations")

@@ -54,26 +54,52 @@ def human_response(value: object, *, challenge_id: str = CHALLENGE_ID) -> dict[s
     return {"type": "human-response", "challenge_id": challenge_id, "decision": "submit", "value": value}
 
 
+# The v7 server frames whose own shape names their Team; every other chat frame carries `team_id` only on the session
+# socket's chat channel, so the fixture strips it after checking it, and suites compare the exact v7 frame.
+_NATIVE_TEAM_FRAMES = frozenset({"done", "assistant-install-plan", "assistant-guidance"})
+_NATIVE_UNINSTALL_STATES = frozenset({"proposed", "uninstalled"})
+CHAT_CLIENT_TYPES = frozenset({"chat", "resume-task", "stop", "sync", "human-response"})
+
+
+def v7_event(frame: dict[str, object], team_id: str) -> dict[str, object]:
+    """The `shimpz.chat.v7` frame a channel frame carries, after proving it names the attached Team."""
+    if frame.get("team_id") != team_id:
+        raise AssertionError(f"chat frame names another Team: {frame!r}")
+    native = frame.get("type") in _NATIVE_TEAM_FRAMES or (
+        frame.get("type") == "assistant-uninstall" and frame.get("state") in _NATIVE_UNINSTALL_STATES
+    )
+    return frame if native else {key: value for key, value in frame.items() if key != "team_id"}
+
+
 class Socket:
-    """Small in-memory ASGI WebSocket used by the chat contract suites."""
+    """Small in-memory ASGI client of the Admin session socket, attached to one Team's chat channel.
+
+    `send_json` adds the attached Team's `team_id` to a chat frame, and `next_json` checks and strips it again, so a
+    chat suite reads the exact `shimpz.chat.v7` frames; `next_frame` returns any frame as Admin sent it.
+    """
 
     def __init__(
         self,
         application,
         *,
         token: str = "",
-        origin: str = "http://localhost:7777",
+        origin: str | None = "http://localhost:7777",
         protocols: list[str] | None = None,
         team_id: str = "team_1",
         fail_send_type: str = "",
+        headers: list[tuple[bytes, bytes]] | None = None,
     ) -> None:
-        offered = ["shimpz.chat.v7"] if protocols is None else protocols
-        headers = [(b"host", b"localhost:7777"), (b"origin", origin.encode("ascii"))]
+        offered = ["shimpz.admin.v1"] if protocols is None else protocols
+        sent = [(b"host", b"localhost:7777")]
+        if origin is not None:
+            sent.append((b"origin", origin.encode("ascii")))
         if offered:
-            headers.append((b"sec-websocket-protocol", ", ".join(offered).encode("ascii")))
+            sent.append((b"sec-websocket-protocol", ", ".join(offered).encode("ascii")))
         if token:
-            headers.append((b"cookie", f"shimpz_admin={token}".encode("ascii")))
-        path = f"/api/teams/{team_id}/chat/ws"
+            sent.append((b"cookie", f"shimpz_admin={token}".encode("ascii")))
+        sent.extend(headers or ())
+        path = "/api/session/ws"
+        self.team_id = team_id
         self._scope = {
             "type": "websocket",
             "asgi": {"version": "3.0", "spec_version": "2.5"},
@@ -83,7 +109,7 @@ class Socket:
             "raw_path": path.encode("ascii"),
             "query_string": b"",
             "root_path": "",
-            "headers": headers,
+            "headers": sent,
             "client": ("127.0.0.1", 12345),
             "server": ("127.0.0.1", 7777),
             "subprotocols": offered,
@@ -95,6 +121,7 @@ class Socket:
         self._outgoing: asyncio.Queue = asyncio.Queue()
         self._task: asyncio.Task | None = None
         self._fail_send_type = fail_send_type
+        self._calls = 0
         self.send_failed = threading.Event()
 
     async def _send(self, message: dict) -> None:
@@ -113,11 +140,17 @@ class Socket:
     async def next_message(self, wait_seconds: float = EXPECTED_FRAME_SECONDS) -> dict:
         return await asyncio.wait_for(self._outgoing.get(), timeout=wait_seconds)
 
-    async def next_json(self, wait_seconds: float = EXPECTED_FRAME_SECONDS) -> dict:
+    async def next_frame(self, wait_seconds: float = EXPECTED_FRAME_SECONDS) -> dict:
+        """The next frame exactly as Admin sent it."""
         message = await self.next_message(wait_seconds)
         if message.get("type") != "websocket.send" or "text" not in message:
             raise AssertionError(f"expected a text WebSocket frame, got {message!r}")
         return json.loads(message["text"])
+
+    async def next_json(self, wait_seconds: float = EXPECTED_FRAME_SECONDS) -> dict:
+        """The next frame, a chat frame as the exact v7 frame it carries."""
+        frame = await self.next_frame(wait_seconds)
+        return frame if frame.get("type") in {"result", "changed"} else v7_event(frame, self.team_id)
 
     async def send_text(self, text: str) -> None:
         await self._incoming.put({"type": "websocket.receive", "text": text})
@@ -126,7 +159,49 @@ class Socket:
         await self._incoming.put({"type": "websocket.receive", "bytes": value})
 
     async def send_json(self, value: object) -> None:
+        if isinstance(value, dict) and value.get("type") in CHAT_CLIENT_TYPES and "team_id" not in value:
+            value = {**value, "team_id": self.team_id}
         await self.send_text(json.dumps(value, separators=(",", ":")))
+
+    async def call(self, method: str, params: dict[str, object], *, background: bool = False) -> str:
+        """Send one call and return its id."""
+        self._calls += 1
+        call_id = f"call-{self._calls}"
+        frame: dict[str, object] = {"type": "call", "id": call_id, "method": method, "params": params}
+        if background:
+            frame["background"] = True
+        await self.send_json(frame)
+        return call_id
+
+    async def result(self, method: str, params: dict[str, object], *, background: bool = False) -> dict:
+        """Call one method and return its result, which must be the next frame."""
+        call_id = await self.call(method, params, background=background)
+        frame = await self.next_frame()
+        if frame.get("type") != "result" or frame.get("id") != call_id:
+            raise AssertionError(f"expected the result of {call_id}, got {frame!r}")
+        return frame
+
+    async def attach(self, locale: str = "en", *, synchronized: bool = True) -> None:
+        """Attach the Team's chat channel and read its result and the empty sync it then performs.
+
+        Unless `synchronized`, the attach's sync runs against whatever the suite set up and its frames are the suite's
+        to read, as the first sync of a v7 socket was.
+        """
+        if not synchronized:
+            result = await self.result("chat.attach", {"team_id": self.team_id, "locale": locale}, background=True)
+            if result["status"] != 200:
+                raise AssertionError(f"attach failed: {result!r}")
+            return
+        socket_module = importlib.import_module("chat.socket")
+        empty = socket_module._SyncSnapshot(
+            "integration", socket_module.team.TeamResponse(200, {"team_id": self.team_id, "status": "none"})
+        )
+        with mock.patch.object(socket_module, "_sync_snapshot", return_value=empty):
+            result = await self.result("chat.attach", {"team_id": self.team_id, "locale": locale}, background=True)
+            if result["status"] != 200:
+                raise AssertionError(f"attach failed: {result!r}")
+            if await self.next_json() != {"type": "sync-empty"}:
+                raise AssertionError("attach did not synchronize the channel")
 
     async def disconnect(self) -> None:
         await self._incoming.put({"type": "websocket.disconnect", "code": 1000})

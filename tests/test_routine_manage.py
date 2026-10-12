@@ -236,7 +236,7 @@ class RoutineRouteTests(unittest.TestCase):
         routine_http.register(local, mock.AsyncMock(), local_auth.Context())
         # A recorded Routine is created by its card's one confirmation, or revoked (ADR-0101). Deleting one is the
         # Supervisor's password route then the second-factor DELETE (ADR-0051).
-        self.assertEqual(sum("routines" in route.path for route in local.routes), 15)
+        self.assertEqual(sum("routines" in route.path for route in local.routes), 14)
         ok = team.TeamResponse(200, {"ok": True})
         with mock.patch.multiple(
             manage,

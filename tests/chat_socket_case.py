@@ -38,13 +38,14 @@ class ChatWebSocketCase(unittest.TestCase):
         cls.team = importlib.import_module("team.bridge")
         previous_store = cls.admin_app.state.STORE_PATH
         previous_history_store = cls.admin_app.chat_history.STORE_PATH
-        previous_origins = cls.chat_socket.STATIC_ORIGINS
+        browser = importlib.import_module("browser")
+        previous_origins = browser.STATIC_ORIGINS
         cls.admin_app.state.STORE_PATH = cls.root / "admin.json"
         cls.admin_app.chat_history.STORE_PATH = cls.root / "chat-history.sqlite3"
-        cls.chat_socket.STATIC_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
+        browser.STATIC_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
         cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
         cls.addClassCleanup(setattr, cls.admin_app.chat_history, "STORE_PATH", previous_history_store)
-        cls.addClassCleanup(setattr, cls.chat_socket, "STATIC_ORIGINS", previous_origins)
+        cls.addClassCleanup(setattr, browser, "STATIC_ORIGINS", previous_origins)
 
     def setUp(self) -> None:
         self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
@@ -107,12 +108,16 @@ class ChatWebSocketCase(unittest.TestCase):
 
     @staticmethod
     def _accepted(message: dict) -> bool:
-        return message == {"type": "websocket.accept", "subprotocol": "shimpz.chat.v7", "headers": []}
+        return message == {"type": "websocket.accept", "subprotocol": "shimpz.admin.v1", "headers": []}
 
-    async def _open(self, **options) -> chat_socket_fixtures.Socket:
-        """Open one Supervisor-authenticated socket and require the exact chat subprotocol acceptance."""
+    async def _open(self, *, synchronized: bool = True, **options) -> chat_socket_fixtures.Socket:
+        """Open one Supervisor-authenticated session socket and attach its Team's chat channel.
+
+        Unless `synchronized`, the attach's own sync is the suite's first sync and its frames follow.
+        """
         websocket = chat_socket_fixtures.Socket(self.admin_app.app, token=self.token, **options)
         self.assertTrue(self._accepted(await websocket.start()))
+        await websocket.attach(synchronized=synchronized)
         return websocket
 
 

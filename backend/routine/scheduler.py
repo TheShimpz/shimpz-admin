@@ -18,6 +18,7 @@ from concurrent.futures import ThreadPoolExecutor
 import state
 import supervisor
 from history import store as history
+from session import topics
 
 from routine import delivery, team
 
@@ -109,6 +110,7 @@ class RoutineScheduler:
                 if claimed is None:
                     return
                 self._workers.submit(self._run, claimed, identity, long)
+                topics.team_changed(claimed["team_id"], "routines")
                 # The slot, and the long slot for a long run, are now the run's own; the worker frees them.
                 held = self._slots.acquire(blocking=False)
         finally:
@@ -146,6 +148,7 @@ class RoutineScheduler:
             if long:
                 self._long.release()
             self._slots.release()
+            topics.team_changed(claimed["team_id"], "routines")
             # A finished run frees a slot and may make the next one due: claim again soon, not at the next interval.
             self._due_at = time.time()
             self._wake.set()
