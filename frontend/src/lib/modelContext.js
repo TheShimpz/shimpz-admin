@@ -134,6 +134,8 @@ export async function loadModelContext(teamId) {
       cachedModelProviders(),
       loadInference(teamId),
     ]);
+    // A key save whose answer was lost while this view loaded may have changed the providers it read: read them again.
+    if (providersUncertain && attempt === generation) return loadModelContext(teamId);
     const selected = inference
       ? providers.find((entry) => entry.id === inference.provider)
       : providers.find((entry) => entry.configured) ?? providers[0];

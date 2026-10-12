@@ -181,6 +181,46 @@ test('a provider key whose answer was lost after a Team switch is read again for
   expect(await readsOf(page, 'models.save')).toHaveLength(1);
 });
 
+test('a provider key whose answer was lost while the next Team still loads is read again once that Team loads', async ({ page }) => {
+  const scenario = await routeScenario(page, 'ready');
+  const providers = scenario.call('models.list', {}).json.providers;
+  let stored = false;
+  await routeRead(page, 'models.list', () => ({
+    status: 200,
+    json: { providers: providers.map((entry) => ({ ...entry, configured: stored, masked: stored ? '••••word' : null })) },
+  }));
+  await routeRead(page, 'models.save', () => {
+    stored = true;
+    return new Promise(() => {});
+  });
+  // Trinity's first selection read never answers: the connection drops while Trinity still loads.
+  let trinityHeld = false;
+  await routeRead(page, 'inference.read', ({ team_id: teamId }) => {
+    if (teamId !== 'trinity' || trinityHeld) return undefined;
+    trinityHeld = true;
+    return new Promise(() => {});
+  });
+  let refusing = false;
+  await refuseWhile(page, () => refusing);
+  await page.goto('/chat/?team=marketing');
+  const key = page.getByLabel(messages.en.providerSetup.key);
+  await expect(key).toBeFocused();
+  await key.fill('test-provider-key-word');
+  await page.getByRole('button', { name: messages.en.providerSetup.saveKey }).click();
+  await waitForRead(page, 'models.save');
+
+  await page.locator('.shell-sidebar').getByRole('link', { name: 'Trinity', exact: true }).click();
+  await waitForRead(page, 'inference.read', (params) => params.team_id === 'trinity');
+  refusing = true;
+  await dropSessions(page);
+  await expect(page.getByText(shell.reconnecting)).toBeVisible();
+  refusing = false;
+
+  // Trinity finishes loading once Admin is back, reads the providers again, and opens with the stored key.
+  await expect(page.getByRole('textbox', { name: chatPage.send, exact: true })).toBeEnabled({ timeout: 20_000 });
+  expect(await readsOf(page, 'models.save')).toHaveLength(1);
+});
+
 test('a fast-routing key whose answer was lost says its outcome is unknown and shows the key Admin holds once back', async ({ page }) => {
   await routeScenario(page, 'ready');
   let stored = false;

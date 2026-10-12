@@ -565,3 +565,44 @@ test('a key save whose answer was lost after a Team switch reads the providers a
   await via(fetcher, () => refreshInference('support'));
   assert.equal(providerReads, 2);
 });
+
+test('a key save whose answer is lost while the next Team still loads reads the providers again as that load ends', async () => {
+  let keySaved = false;
+  let providerReads = 0;
+  let lose;
+  let releaseSupport;
+  const marketing = fixtureFetcher('marketing', { provider: 'anthropic', model: 'claude-sonnet-5-5' });
+  const support = fixtureFetcher('support', { provider: 'anthropic', model: 'claude-sonnet-5-5' });
+  const fetcher = async (method, params = {}) => {
+    if (method === 'models.list') {
+      providerReads += 1;
+      return response(200, { providers: providers.map((entry) => (
+        entry.id === 'anthropic' && keySaved ? { ...entry, configured: true, masked: '••••test' } : entry
+      )) });
+    }
+    if (method === 'models.save') {
+      keySaved = true;
+      return new Promise((_resolve, reject) => {
+        lose = () => reject(new LocalApiError('Admin disconnected before it answered.', 0, 'outcome-unknown'));
+      });
+    }
+    if (params.team_id === 'support' && method === 'inference.read' && !releaseSupport) {
+      // The support Team's first selection read answers only after the save's answer was lost.
+      await new Promise((resolve) => { releaseSupport = resolve; });
+    }
+    return params.team_id === 'support' ? support(method, params) : marketing(method, params);
+  };
+  await load(fetcher, 'marketing');
+  const saving = configure(fetcher, 'marketing', 'sk-ant-test-0123456789');
+  const loading = load(fetcher, 'support');
+  lose();
+  await assert.rejects(saving, (error) => error.code === 'outcome-unknown');
+  // Admin reopens while the support view still loads: nothing reads its selection yet.
+  await via(fetcher, () => refreshInference('support'));
+  releaseSupport();
+  await loading;
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(get(modelContext).phase, 'ready');
+  assert.equal(get(modelContext).ready, true);
+  assert.equal(providerReads, 2);
+});
