@@ -50,6 +50,7 @@ let stableTimer;
 let reconnectAttempt = 0;
 let reconnectSince = 0;
 let opened = false;
+let everOpened = false;
 
 function setPhase(phase) {
   adminSocket.set({ phase });
@@ -128,10 +129,29 @@ export function backgroundCall(method, params = {}) {
 /** The reads screens make through the socket; a unit test may stand in for them. */
 export const socketReads = { call, backgroundCall };
 
-function notify(topic) {
+// Why a listener hears of its topic: `changed` (Admin raised it), `open` (the tab's first open, when every screen reads
+// what it shows), or `reopen` (anything may have changed while the socket was closed).
+function notify(topic, cause = 'changed') {
   const entry = watched.get(topic);
   if (!entry) return;
-  for (const listener of entry.listeners) listener(topic);
+  for (const listener of entry.listeners) listener(topic, cause);
+}
+
+// Topics watched or forgotten in one turn of the page share one subscription change.
+const queued = { subscribe: new Set(), unsubscribe: new Set(), scheduled: false };
+
+function queueSubscription(method, topic) {
+  const other = method === 'subscribe' ? 'unsubscribe' : 'subscribe';
+  if (!queued[other].delete(topic)) queued[method].add(topic);
+  if (queued.scheduled) return;
+  queued.scheduled = true;
+  queueMicrotask(() => {
+    queued.scheduled = false;
+    for (const change of ['unsubscribe', 'subscribe']) {
+      sendSubscription(change, [...queued[change]]);
+      queued[change].clear();
+    }
+  });
 }
 
 function sendSubscription(method, topics) {
@@ -157,8 +177,8 @@ function adminSnapshot() {
 }
 
 /**
- * Hear every change of one topic, and once whenever the socket reopens (when anything may have changed). The listener
- * reads the topic again; returns the function that stops listening.
+ * Hear every change of one topic, and once when the socket opens and whenever it reopens. The listener reads the topic
+ * again, `(topic, cause)` with the cause `changed`, `open`, or `reopen`; returns the function that stops listening.
  */
 export function watchTopic(topic, listener) {
   if (!TOPIC_RE.test(topic)) throw new LocalApiError('Invalid Admin topic.');
@@ -167,14 +187,14 @@ export function watchTopic(topic, listener) {
     if (watched.size >= MAX_SUBSCRIPTIONS) throw new LocalApiError('Too many Admin topics.');
     entry = { listeners: new Set(), revision: 0 };
     watched.set(topic, entry);
-    sendSubscription('subscribe', [topic]);
+    queueSubscription('subscribe', topic);
   }
   entry.listeners.add(listener);
   return () => {
     entry.listeners.delete(listener);
     if (entry.listeners.size || watched.get(topic) !== entry) return;
     watched.delete(topic);
-    sendSubscription('unsubscribe', [topic]);
+    queueSubscription('unsubscribe', topic);
   };
 }
 
@@ -361,6 +381,8 @@ function open() {
       return;
     }
     opened = true;
+    const cause = everOpened ? 'reopen' : 'open';
+    everOpened = true;
     clearTimeout(stableTimer);
     stableTimer = setTimeout(() => {
       if (socket === connection) reconnectAttempt = 0;
@@ -369,8 +391,8 @@ function open() {
     const topics = [...watched.keys()];
     if (topics.length) sendSubscription('subscribe', topics);
     for (const channel of channels.values()) channel.attach();
-    // Anything may have changed while the socket was closed: every topic shown is read again.
-    for (const topic of topics) notify(topic);
+    // Every topic shown is read now: for the first time, or again since anything may have changed while it was closed.
+    for (const topic of topics) notify(topic, cause);
   };
   socket.onmessage = (event) => {
     if (socket !== connection) return;
@@ -390,6 +412,7 @@ export function connectAdminSocket({ onSignedOut }) {
   disconnectAdminSocket();
   options = { onSignedOut };
   generation += 1;
+  everOpened = false;
   reconnectAttempt = 0;
   setPhase('connecting');
   open();

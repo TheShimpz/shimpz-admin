@@ -102,9 +102,9 @@ For a static UI-only run, build `frontend/` with Node.js 26 and run `node perf/a
 
 `screens.mjs` measures the main screens of the built UI the way `first-load.mjs` serves it: `e2e/serveBuild.mjs` on
 port 4173 with Admin's enforced policy and no compression, and the shared e2e scenarios answering every API call and
-socket. Team, Brain, and provider timing are excluded. Every sample is a fresh browser context (1440×1000, en-US), and
+the session socket. Team, Brain, and provider timing are excluded. Every sample is a fresh browser context (1440×1000, en-US), and
 each measurement prints one JSON line with p50 and nearest-rank p95 over `SHIMPZ_PERF_SAMPLES` samples (default 5).
-`SHIMPZ_PERF_PARTS` selects a comma-separated subset of its four parts:
+`SHIMPZ_PERF_PARTS` selects a comma-separated subset of its six parts:
 
 - `loads`: a cold load of sign-in, an empty chat, a chat with 64 history entries, the Assistants catalog, an
   Assistant page, and the Routines scenario's chat. It reports the time to the screen's key element (`readyMs`),
@@ -112,11 +112,16 @@ each measurement prints one JSON line with p50 and nearest-rank p95 over `SHIMPZ
   main-thread task time, DOM elements, and the script files and their bytes the load fetched (`scriptFiles`,
   `scriptBytes`; served uncompressed, so transferred and parsed bytes are equal), all read after a 1.2 s settle
   window. `apiCounts` is the median count of
-  each `METHOD /path` the load made, and `unanswered` lists the calls the scenario does not answer (it fails them
-  closed with 503).
+  each `METHOD /path` the load made and each session socket frame (`SOCKET method` for a call, `SOCKET type` for a chat
+  frame), and `unanswered` lists the calls the scenario does not answer (it fails them closed with 503).
 - `team-switch`: five sidebar switches between the `ready` scenario's Teams, from the click to the next Team's
   composer, with the task time, layouts, and API calls until the switch settles. `apiCountsAway` and `apiCountsBack`
   are the calls of the first switch away from Marketing and the switch back.
+- `idle`: an open chat with Routines (the `routine-lifecycle` scenario) left alone for one minute of the page's own
+  clock, after its load settled: every HTTP request and session socket frame it sends (`apiCalls`, `apiCounts`).
+- `freshness`: Admin writes a Routine notice into the Team's history and raises `team/{id}/history` on the session
+  socket; the time from that change to the row on screen, as the page records it (`freshnessMs`). Admin's own
+  latency to learn of the change (the RoutineScheduler's write) is excluded.
 - `typing`: 73 keys typed into the composer 30 ms apart on an empty chat and on transcripts of 64 and 256 entries.
   It reports each key's input-to-next-animation-frame latency, pooled over the samples, and the task, script, style,
   and layout time per key.

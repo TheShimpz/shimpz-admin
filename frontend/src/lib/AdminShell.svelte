@@ -60,8 +60,10 @@
   const sessionEnded = getContext(SESSION_ENDED);
   let reconnecting = $derived(['reconnecting', 'failed'].includes($adminSocket.phase));
 
-  // What the session bootstrap answers changed (an admitted origin, for instance): read it again over HTTP.
-  async function refreshSession() {
+  // What the session bootstrap answers changed (an admitted origin, for instance): read it again over HTTP. The sign-in
+  // flow read it just before the socket first opened.
+  async function refreshSession(_topic, cause) {
+    if (cause === 'open') return;
     try {
       const response = await fetch('/api/session', { method: 'POST', cache: 'no-store' });
       const session = response.ok ? await response.json() : null;
@@ -72,9 +74,10 @@
     }
   }
 
-  // Teams made or removed elsewhere (another tab, the CLI) change the list; a reopened socket reads it again too.
-  function refreshTeams() {
-    if (['ready', 'error'].includes(get(teamContext).phase)) reloadTeamList(fetch).catch(() => {});
+  // Teams made or removed elsewhere (another tab, the CLI) change the list; a reopened socket reads it again too. The
+  // Team context reads it itself as the shell first opens.
+  function refreshTeams(_topic, cause) {
+    if (cause !== 'open' && ['ready', 'error'].includes(get(teamContext).phase)) reloadTeamList(fetch).catch(() => {});
   }
 
   // Opened as the shell starts, before any screen inside it reads, and closed with it.

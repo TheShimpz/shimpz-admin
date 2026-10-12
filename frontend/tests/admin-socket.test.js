@@ -162,7 +162,13 @@ test('a malformed, unknown, or unexpected frame closes the socket', () => {
 test('a watched topic is subscribed, re-read on each newer change and after a reopen, and unsubscribed', async () => {
   const socket = connected();
   const heard = [];
-  const stop = watchTopic('team/marketing/history', (topic) => heard.push(topic));
+  const stop = watchTopic('team/marketing/history', (topic, cause) => heard.push(cause === 'changed' ? topic : cause));
+  // Topics watched in one turn share one subscription.
+  const stopOther = watchTopic('teams', () => {});
+  await flush();
+  assert.deepEqual(socket.sent.filter((frame) => frame.method === 'subscribe').map((frame) => frame.params.topics), [
+    ['team/marketing/history', 'teams'],
+  ]);
   socket.answer('subscribe', { epoch: EPOCH, topics: { 'team/marketing/history': 3 } });
   await flush();
   socket.frame({ type: 'changed', topic: 'team/marketing/history', epoch: EPOCH, revision: 3 });
@@ -175,8 +181,15 @@ test('a watched topic is subscribed, re-read on each newer change and after a re
   assert.equal(heard.length, 2);
   assert.throws(() => watchTopic('team/marketing/inventory', () => {}), /Invalid Admin topic/);
   stop();
-  assert.deepEqual(socket.sent.at(-1).params, { topics: ['team/marketing/history'] });
+  stopOther();
+  await flush();
+  assert.deepEqual(socket.sent.at(-1).params, { topics: ['team/marketing/history', 'teams'] });
   assert.equal(socket.sent.at(-1).method, 'unsubscribe');
+  // A topic watched and forgotten in the same turn changes no subscription.
+  const sent = socket.sent.length;
+  watchTopic('session', () => {})();
+  await flush();
+  assert.equal(socket.sent.length, sent);
 });
 
 test('a topic value reads when shown, at a change, and once more when a change lands during a read', async () => {
@@ -202,9 +215,14 @@ test('a topic value reads when shown, at a change, and once more when a change l
 
 test('a close asks Admin about the session: signed out ends it, signed in reconnects and re-reads', async () => {
   const ended = mock.fn();
-  let socket = connected(ended);
   const heard = [];
-  watchTopic('teams', () => heard.push('teams'));
+  FakeSocket.opened.length = 0;
+  connectAdminSocket({ onSignedOut: ended });
+  watchTopic('teams', (_topic, cause) => heard.push(cause));
+  let socket = FakeSocket.opened.at(-1);
+  socket.open();
+  // The first open reads what is shown; a reopen reads it again.
+  assert.deepEqual(heard, ['open']);
   sessionAnswer = { authenticated: true };
   socket.drop(1006);
   await flush();
@@ -214,7 +232,7 @@ test('a close asks Admin about the session: signed out ends it, signed in reconn
   socket.open();
   await flush();
   assert.equal(get(adminSocket).phase, 'open');
-  assert.ok(heard.includes('teams'));
+  assert.deepEqual(heard, ['open', 'reopen']);
   assert.equal(socket.sent[0].method, 'subscribe');
 
   sessionAnswer = { authenticated: false };
