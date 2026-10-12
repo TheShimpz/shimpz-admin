@@ -550,45 +550,6 @@ class SessionSocketTopicTests(SessionSocketCase):
 
         asyncio.run(scenario())
 
-    def test_each_admin_mutation_names_exactly_what_it_changed(self) -> None:
-        for method, path, expected in (
-            ("DELETE", "/api/space", ("teams",)),
-            ("POST", "/api/teams/team_1/routines/" + "a" * 32 + "/pause", ("team/team_1/routines",)),
-            ("DELETE", "/api/teams/team_1/routines/proposals/" + "a" * 32, ("team/team_1/routines",)),
-            ("POST", "/api/admin/security/failures", ("security/summary",)),
-            ("POST", "/api/admin/recovery-codes", ("security/summary",)),
-            ("GET", "/api/teams/team_1/routines", ()),
-            ("POST", "/api/teams/team_1/files", ()),
-        ):
-            with self.subTest(method=method, path=path):
-                self.assertEqual(self.topics.for_mutation(method, path), expected)
-
-    def test_a_successful_gated_mutation_raises_its_topic_and_a_refused_one_does_not(self) -> None:
-        http_request = __import__("tests.http_request", fromlist=["http_request"])
-
-        async def scenario() -> None:
-            websocket = await self._subscribed("team/team_1/routines")
-
-            async def answer(status: int):
-                from fastapi.responses import JSONResponse
-
-                return JSONResponse({}, status_code=status)
-
-            path = "/api/teams/team_1/routines/" + "a" * 32 + "/pause"
-            for status in (409, 200):
-                request = http_request.http_request(
-                    path,
-                    http_request.LOOPBACK,
-                    headers=[(b"cookie", f"shimpz_admin={self.token}".encode()), (b"origin", b"http://localhost:7777")],
-                )
-                await http_request.through_gate(self.admin_app, request, lambda _request, status=status: answer(status))
-            await self._changed(websocket, "team/team_1/routines")
-            with self.assertRaises(TimeoutError):
-                await websocket.next_frame(0.2)
-            await websocket.disconnect()
-
-        asyncio.run(scenario())
-
     def test_routine_notices_and_runs_raise_the_teams_routines(self) -> None:
         delivery = __import__("routine.delivery", fromlist=["delivery"])
         changed = []
@@ -736,7 +697,7 @@ class SessionSocketReadParityTests(SessionSocketCase):
         async def scenario() -> None:
             websocket = await self._connect()
             with mock.patch.object(
-                self.methods.routine_http.manage,
+                self.methods.routines.manage,
                 "list_routines",
                 return_value=team_response(503, {"detail": "Team is unavailable"}),
             ):

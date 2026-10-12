@@ -3,7 +3,8 @@
 A method answers exactly as its HTTP route did: the same validation, Team identity checks, limits, executors, and audit.
 Every operation that reads or changes Team state runs on a lane worker that checks the socket's Origin and session
 again when its turn comes. A Team deletion confirms the Supervisor password first, within sign-in's own limiter and
-lockout and journaled with the socket's bound Origin, exactly as its route did with the request's.
+lockout and journaled with the socket's bound Origin, exactly as its route did with the request's. A Team's Routines
+are `session.routines`, and the Supervisor's two-step operations `session.stepup`.
 """
 
 import sys
@@ -15,7 +16,7 @@ import models
 from fastapi import HTTPException
 from history import http as history_http
 from protocol.socket.v1 import frames
-from session import lane, topics, watcher
+from session import lane, routines, stepup, topics, watcher
 from signin import security
 from space import release as platform_release
 from team import bridge as team
@@ -31,7 +32,6 @@ from action import stored_input
 from chat import assets as chat_assets
 from integrations import assistants as integrations
 from integrations import authorization
-from routine import http as routine_http
 
 if TYPE_CHECKING:
     from session.socket import SessionSocket
@@ -95,8 +95,33 @@ async def _resources(socket: SessionSocket, _params: dict[str, object]) -> Answe
     return await lane.run(socket, team_http.response, team.space_resources)
 
 
+def security_summary(session: str) -> dict[str, object]:
+    """The session's sign-in security summary; a session that ended meanwhile is signed out."""
+    try:
+        return security.summary_for(session)
+    except security.SessionEndedError:
+        raise HTTPException(status_code=401, detail="unauthenticated") from None
+
+
+def acknowledge_failures(session: str, payload: dict) -> dict[str, object]:
+    """Acknowledge exactly the refused attempts the Supervisor saw, answering the summary after it."""
+    count = security.acknowledged_count(payload)
+    if count is None:
+        raise HTTPException(status_code=400, detail="request body must contain only a positive acknowledged count")
+    try:
+        summary = security.acknowledge(session, count)
+    except security.SessionEndedError:
+        raise HTTPException(status_code=401, detail="unauthenticated") from None
+    topics.changed("security/summary")
+    return summary
+
+
 async def _security(socket: SessionSocket, _params: dict[str, object]) -> Answer:
-    return await lane.run(socket, security.summary_for, _session(socket))
+    return await lane.run(socket, security_summary, _session(socket))
+
+
+async def _acknowledge(socket: SessionSocket, params: dict[str, object]) -> Answer:
+    return await lane.run(socket, acknowledge_failures, _session(socket), params["body"])
 
 
 # Teams
@@ -204,10 +229,14 @@ METHODS: dict[str, Method] = {
     "teams.reorder": _on_lane(team_order, "save", "body"),
     "teams.delete": _team_delete,
     "history.page": _on_lane(history_http, "page", "team_id", "before", "routine"),
-    "routines.list": _on_lane(routine_http, "routines_list", "team_id"),
     "space.resources": _resources,
     "platform.release": _on_lane(platform_release, "status_response"),
     "security.summary": _security,
+    "security.acknowledge": _acknowledge,
+    "recovery_codes.confirmation": stepup.recovery_codes_confirmation,
+    "recovery_codes.replace": stepup.recovery_codes_replace,
+    "supervisor_key.confirmation": stepup.supervisor_key_confirmation,
+    "supervisor_key.rotate": stepup.supervisor_key_rotate,
     "inference.read": _on_lane(team_inference, "status", "team_id"),
     "inference.save": _on_lane(team_inference, "configure", "team_id", "body"),
     "assistants.registry": _on_lane(team_summary, "assistants_list"),
@@ -242,12 +271,26 @@ METHODS: dict[str, Method] = {
     "unsubscribe": _unsubscribe,
     "chat.attach": _attach,
     "chat.detach": _detach,
+    **routines.METHODS,
 }
+
+
+def _installer(operation: str) -> Callable[[SessionSocket, str, dict[str, object]], Awaitable[Answer]]:
+    async def method(socket: SessionSocket, call_id: str, params: dict[str, object]) -> Answer:
+        return await _install(socket, call_id, getattr(team, operation), params)
+
+    return method
+
+
 # Long calls also take the call's own id, so they can tell the page when they start.
-LONG_METHODS = {"assistants.install": "install_assistant", "assistants.install_local": "install_local_assistant"}
+LONG_METHODS = {
+    "assistants.install": _installer("install_assistant"),
+    "assistants.install_local": _installer("install_local_assistant"),
+    **routines.LONG_METHODS,
+}
 
 
 async def dispatch(socket: SessionSocket, call_id: str, method: str, params: dict[str, object]) -> Answer:
     if method in LONG_METHODS:
-        return await _install(socket, call_id, getattr(team, LONG_METHODS[method]), params)
+        return await LONG_METHODS[method](socket, call_id, params)
     return await METHODS[method](socket, params)

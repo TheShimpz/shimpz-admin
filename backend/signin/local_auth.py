@@ -141,10 +141,10 @@ async def recheck_password(origin: str | None, password: object, context: Contex
         raise
 
 
-def _ticket(request: Request, context: Context, purpose: str, subject: str = "") -> tuple[str, tickets.Ticket]:
+def _ticket(request: Request, context: Context, purpose: str) -> tuple[str, tickets.Ticket]:
     token = request.cookies.get(TICKET_COOKIE, "")
     try:
-        ticket = context.ticket_store.consume(token, purpose, subject)
+        ticket = context.ticket_store.consume(token, purpose)
     except tickets.TicketError:
         raise HTTPException(
             status_code=401,
@@ -527,23 +527,29 @@ class OperationRefusedError(Exception):
         self.retry_after = retry_after
 
 
-def operation_refusal(error: OperationRefusedError) -> JSONResponse:
-    """The browser's view of a refusal: its code and, for a lockout, when to try again."""
+def operation_refusal(error: OperationRefusedError) -> tuple[int, dict[str, object]]:
+    """The page's view of a refusal: its status, its code and, for a lockout, when to try again."""
     body: dict[str, object] = {"code": error.code}
     if error.retry_after:
         body["retry_after"] = error.retry_after
-    response = _response(body, error.status)
-    if error.retry_after:
-        response.headers["Retry-After"] = str(error.retry_after)
-    return response
+    return error.status, body
 
 
-def _operation_origin(request: Request) -> str:
+@dataclass(frozen=True, slots=True)
+class Asker:
+    """Who asks for a confirmed operation: the session socket's bound Origin, its session, and its ticket binding.
+
+    A ticket issued to the asker is bound to that one socket and session (ADR-0114 decision 6) beside every binding an
+    operation ticket already has, and the socket keeps it: the page never holds it.
+    """
+
+    origin: str | None
+    session: str = field(repr=False)
+    binding: tickets.Binding
+
+
+def _operation_origin(origin: str | None) -> str:
     """An operation is confirmed only from a browser origin Admin already admits, never one it would learn."""
-    try:
-        origin = _request_origin(request)
-    except HTTPException:
-        origin = None
     if origin is None or (origin not in browser.STATIC_ORIGINS and origin != state.browser_origin()):
         raise OperationRefusedError(403, "authentication-origin-refused")
     return origin
@@ -566,46 +572,57 @@ def _unavailable() -> OperationRefusedError:
     return OperationRefusedError(503, "authentication-unavailable")
 
 
-async def begin_operation(request: Request, context: Context, subject: str) -> JSONResponse:
-    """Verify the password for one exact operation and offer its second factor, as login does (ADR-0051)."""
-    payload = await _json_object(request)
+def operation_password(payload: dict) -> object:
+    """The one password a confirmation starts with; any other body is the request's own 400."""
     if set(payload) != {"password"}:
         raise HTTPException(status_code=400, detail="request body must contain only password")
-    try:
-        return await _begin_operation(request, context, subject, payload["password"])
-    except _STATE_FAILURES:
-        raise _unavailable() from None
+    return payload["password"]
 
 
-async def _begin_operation(request: Request, context: Context, subject: str, password: object) -> JSONResponse:
-    origin = _operation_origin(request)
-    if state.authentication_state() != auth.RECORD_STATE_CONFIGURED:
-        raise OperationRefusedError(409, "authentication-unavailable")
+async def verify_operation_password(asker: Asker, context: Context, password: object) -> None:
+    """Verify the password one exact operation starts with, as login does, within sign-in's limiter (ADR-0051)."""
     try:
+        origin = _operation_origin(asker.origin)
+        if state.authentication_state() != auth.RECORD_STATE_CONFIGURED:
+            raise OperationRefusedError(409, "authentication-unavailable")
         await _verify_password(password, context, origin)
     except HTTPException as exc:
         if exc.status_code == 429:
             retry_after = int((exc.headers or {}).get("Retry-After", "1"))
             raise OperationRefusedError(429, "authentication-locked", retry_after) from None
         raise OperationRefusedError(401, "password-incorrect") from None
-    generation = state.factor_generation()
+    except _STATE_FAILURES:
+        raise _unavailable() from None
+
+
+def offer_operation(asker: Asker, context: Context, subject: str) -> tuple[dict[str, object], str]:
+    """After the password, offer the operation's second factor: the offer, and the ticket the asker's socket keeps."""
     try:
-        token = context.ticket_store.issue("operation", origin, generation, subject)
-    except tickets.TicketError:
+        origin = _operation_origin(asker.origin)
+        generation = state.factor_generation()
+        token = context.ticket_store.issue("operation", origin, generation, subject, asker.binding)
+    except (tickets.TicketError, *_STATE_FAILURES):
         raise _unavailable() from None
     try:
-        body = _operation_offer(token, origin, generation, context)
+        return _operation_offer(token, origin, generation, context), token
     except _STATE_FAILURES:
         # The offer could not be made, so its ticket is spent before anyone could hold it.
         with contextlib.suppress(tickets.TicketError):
-            context.ticket_store.consume(token, "operation", subject)
+            context.ticket_store.consume(token, "operation", subject, asker.binding)
         raise _unavailable() from None
-    response = _response(body, 202)
-    _set_ticket(response, token, origin)
-    return response
 
 
-def _operation_factor(payload: dict) -> tuple[str, object]:
+def discard_operation(token: str, context: Context) -> None:
+    """Spend a pending operation ticket nobody will complete, and its passkey challenge with it."""
+    if not token:
+        return
+    with contextlib.suppress(tickets.TicketError):
+        context.ticket_store.consume(token, "operation")
+    _discard_challenge(token, context)
+
+
+def operation_factor(payload: dict) -> tuple[str, object]:
+    """The one second factor a confirmation is completed with; any other body is the request's own 400."""
     if set(payload) == {"code"} and isinstance(payload["code"], str):
         return "totp", payload["code"]
     if set(payload) == {"credential"}:
@@ -639,53 +656,66 @@ def _operation_second_factor(method: str, value: object, token: str, ticket: tic
         raise OperationRefusedError(401, "passkey-suspended")
 
 
-def _confirmed(request: Request, context: Context, subject: str, method: str, value: object) -> None:
-    _operation_origin(request)
+@dataclass(frozen=True, slots=True)
+class Confirmation:
+    """One completion of a confirmed operation: the ticket its asker's socket kept and the second factor offered."""
+
+    token: str = field(repr=False)
+    method: str
+    value: object = field(repr=False)
+
+
+def _confirmed(
+    asker: Asker, context: Context, subject: str, confirmation: Confirmation, current: Callable[[], bool]
+) -> None:
+    _operation_origin(asker.origin)
     try:
-        token, ticket = _ticket(request, context, "operation", subject)
-    except HTTPException:
+        ticket = context.ticket_store.consume(confirmation.token, "operation", subject, asker.binding)
+    except tickets.TicketError:
         raise OperationRefusedError(401, "authentication-expired") from None
-    _operation_second_factor(method, value, token, ticket, context)
-    session = auth.verify_session(state.get().get("session_secret", ""), request.cookies.get(SESSION_COOKIE, ""))
-    if session is None:
+    if ticket.origin != asker.origin or state.factor_generation() != ticket.generation:
+        raise OperationRefusedError(401, "authentication-expired")
+    _operation_second_factor(confirmation.method, confirmation.value, confirmation.token, ticket, context)
+    session = auth.verify_session(state.get().get("session_secret", ""), asker.session)
+    if session is None or not current():
         raise OperationRefusedError(401, "authentication-expired")
 
 
 def confirm_operation[T](
-    request: Request, context: Context, subject: str, payload: dict, dispatch: Callable[[], T]
+    asker: Asker,
+    context: Context,
+    subject: str,
+    confirmation: Confirmation,
+    current: Callable[[], bool],
+    dispatch: Callable[[], T],
 ) -> T:
     """Spend the operation's one ticket on exactly one second factor, then dispatch the operation, or raise a refusal.
 
-    Nothing here issues a session or learns a browser origin. The request's own session is rechecked after the factor
-    and immediately before `dispatch`, in this same call, so a session revoked meanwhile never reaches the operation.
+    Nothing here issues a session or learns a browser origin. The asker's session, and with `current` its socket and
+    the socket's Origin, are rechecked after the factor and immediately before `dispatch`, in this same call, so a
+    session revoked or a socket closed meanwhile never reaches the operation.
     """
-    method, value = _operation_factor(payload)
     try:
-        _confirmed(request, context, subject, method, value)
+        _confirmed(asker, context, subject, confirmation, current)
     except _STATE_FAILURES:
         raise _unavailable() from None
-    log.info("Supervisor operation confirmed with %s", "TOTP" if method == "totp" else "a passkey")
+    log.info("Supervisor operation confirmed with %s", "TOTP" if confirmation.method == "totp" else "a passkey")
     return dispatch()
 
 
-def regenerate_recovery_codes(request: Request, context: Context, payload: dict) -> JSONResponse:
+def regenerate_recovery_codes(origin: str | None, context: Context) -> tuple[int, dict[str, object]]:
     """Replace every recovery code once the operation's second factor confirmed it, returning the new set once.
 
-    Run on a worker thread: the confirmation and the set's ten derivations both block.
+    Run on a worker thread: the set's ten derivations block.
     """
-
-    def regenerate() -> JSONResponse:
-        codes = recovery.new_set()
-        origin = canonical_origin(request.headers.get("origin"))
-        state.replace_recovery_codes(
-            codes.record,
-            journal=lambda _result: audit.record("recovery-codes-generated", outcome="ok", origin=origin),
-        )
-        context.factor_changed()
-        log.info("Local Supervisor recovery codes replaced")
-        return _response({"recovery_codes": list(codes.codes)})
-
-    return confirm_operation(request, context, RECOVERY_CODES_SUBJECT, payload, regenerate)
+    codes = recovery.new_set()
+    state.replace_recovery_codes(
+        codes.record,
+        journal=lambda _result: audit.record("recovery-codes-generated", outcome="ok", origin=origin),
+    )
+    context.factor_changed()
+    log.info("Local Supervisor recovery codes replaced")
+    return 200, {"recovery_codes": list(codes.codes)}
 
 
 # How a rotation ended, as the browser reads it: Team pins the new key, kept the current one, or has not answered yet.
@@ -697,26 +727,20 @@ _ROTATION_ANSWERS = {
 
 
 def rotate_supervisor_key(
-    request: Request, context: Context, payload: dict, recovery_retry: supervisor_key.Recovery | None
-) -> JSONResponse:
+    asker: Asker, recovery_retry: supervisor_key.Recovery | None
+) -> tuple[int, dict[str, object]]:
     """Replace the Supervisor's signing key once the operation's second factor confirmed it (ADR-0051).
 
-    Run on a worker thread: the confirmation blocks, and so do Team's answers. A rotation Team has not answered yet
-    stays open and is retried in the background.
+    Run on a worker thread: Team's answers block. A rotation Team has not answered yet stays open and is retried in
+    the background.
     """
-
-    def rotate() -> JSONResponse:
-        origin = canonical_origin(request.headers.get("origin"))
-        try:
-            outcome = supervisor_key.rotate(request.cookies.get(SESSION_COOKIE, ""), origin)
-        except state.SupervisorKeyRotationError:
-            return _response({"code": "supervisor-key-rotation-busy"}, 409)
-        except (*_STATE_FAILURES, audit.AuditUnavailableError):
-            log.warning("Local Supervisor key rotation is unavailable")
-            return _response({"code": "supervisor-key-unavailable"}, 503)
-        if outcome is supervisor_key.Outcome.PENDING and recovery_retry is not None:
-            recovery_retry.wake()
-        status, body = _ROTATION_ANSWERS[outcome]
-        return _response(body, status)
-
-    return confirm_operation(request, context, SUPERVISOR_KEY_SUBJECT, payload, rotate)
+    try:
+        outcome = supervisor_key.rotate(asker.session, asker.origin)
+    except state.SupervisorKeyRotationError:
+        return 409, {"code": "supervisor-key-rotation-busy"}
+    except (*_STATE_FAILURES, audit.AuditUnavailableError):
+        log.warning("Local Supervisor key rotation is unavailable")
+        return 503, {"code": "supervisor-key-unavailable"}
+    if outcome is supervisor_key.Outcome.PENDING and recovery_retry is not None:
+        recovery_retry.wake()
+    return _ROTATION_ANSWERS[outcome]

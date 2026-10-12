@@ -97,11 +97,11 @@ COPY --link backend/history/context.py backend/history/delivery.py backend/histo
 COPY --link backend/integrations/assistants.py backend/integrations/authorization.py backend/integrations/cloudflare.py \
     backend/integrations/handoff.py ./integrations/
 COPY --link backend/space/host_reset.py backend/space/release.py backend/space/reset.py backend/space/supervisor_key.py ./space/
-COPY --link backend/routine/answer.py backend/routine/delivery.py backend/routine/http.py backend/routine/manage.py backend/routine/scheduler.py \
+COPY --link backend/routine/answer.py backend/routine/delivery.py backend/routine/manage.py backend/routine/scheduler.py \
     backend/routine/team.py ./routine/
 COPY --link backend/session/budget.py backend/session/calls.py backend/session/lane.py backend/session/methods.py \
-    backend/session/outbound.py backend/session/registry.py backend/session/socket.py backend/session/topics.py \
-    backend/session/watcher.py ./session/
+    backend/session/outbound.py backend/session/registry.py backend/session/routines.py backend/session/socket.py \
+    backend/session/stepup.py backend/session/topics.py backend/session/watcher.py ./session/
 COPY --link backend/team/assets.py backend/team/bridge.py backend/team/files.py backend/team/http.py backend/team/inference.py backend/team/names.py \
     backend/team/order.py backend/team/snapshots.py backend/team/summary.py backend/team/transport.py ./team/
 COPY --link backend/protocol/http/v1/challenge.py backend/protocol/http/v1/identifiers.py \

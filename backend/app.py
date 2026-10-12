@@ -19,7 +19,6 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, RedirectResponse, Response
-from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -30,7 +29,7 @@ import supervisor
 from history import http as chat_history_http
 from session import socket as session_socket
 from session import topics as session_topics
-from signin import audit, auth, local_auth, security
+from signin import audit, auth, local_auth
 from space import host_reset, supervisor_key
 from space import reset as space_reset
 from team import assets as team_assets
@@ -45,7 +44,6 @@ from integrations import assistants as integrations
 from integrations import authorization
 from integrations import handoff as handoff_store
 from protocol.http.v1 import websocket as chat_ws_common
-from routine import http as routine_http
 from routine import scheduler as routine_scheduler
 
 log = logging.getLogger("shimpz-admin")
@@ -122,9 +120,7 @@ async def _lifespan(application: FastAPI):
 
 
 app = FastAPI(title="shimpz-admin", docs_url=None, redoc_url=None, openapi_url=None, lifespan=_lifespan)
-routine_http.register(app, _AUTHENTICATE_ACTION_REQUEST, _LOCAL_AUTH_CONTEXT)
 team_assets.register(app)
-security.register(app)
 app.add_api_route(
     "/api/assistants/{assistant_id}/catalog-icon",
     chat_assets.assistant_icon,
@@ -306,15 +302,10 @@ async def _gate(scope: Scope, receive: Receive, send: Send, application: ASGIApp
         await _refused(refusal)(scope, receive, send)
         return
     started = False
-    changed = session_topics.for_mutation(request.method, path)
 
     async def sending(message: Message) -> None:
         nonlocal started
         started = True
-        # A mutation Admin completed invalidates what it changed; every open session socket subscribed hears of it.
-        if message["type"] == "http.response.start" and 200 <= message["status"] < 300:
-            for topic in changed:
-                session_topics.changed(topic)
         await send(message)
 
     try:
@@ -440,63 +431,6 @@ async def local_recovery_enrollment(request: Request):
         return await local_auth.confirm_recovery_enrollment(request, _LOCAL_AUTH_CONTEXT)
 
 
-async def recovery_codes_confirmation(request: Request):
-    """Replacing the recovery codes starts with the Supervisor password, as any confirmed operation does (ADR-0051)."""
-
-    async def begin() -> JSONResponse:
-        try:
-            return await local_auth.begin_operation(request, _LOCAL_AUTH_CONTEXT, local_auth.RECOVERY_CODES_SUBJECT)
-        except local_auth.OperationRefusedError as exc:
-            return local_auth.operation_refusal(exc)
-
-    return await team_http.no_store(begin)
-
-
-async def recovery_codes_replace(request: Request):
-    async def replace() -> JSONResponse:
-        payload = await team_http.bounded_json_object(request, local_auth.MAX_BODY_BYTES)
-        try:
-            response = await run_in_threadpool(
-                local_auth.regenerate_recovery_codes, request, _LOCAL_AUTH_CONTEXT, payload
-            )
-        except local_auth.OperationRefusedError as exc:
-            response = local_auth.operation_refusal(exc)
-        # The ticket is spent either way; a stale cookie would only be refused.
-        response.delete_cookie(local_auth.TICKET_COOKIE, path="/api/")
-        return response
-
-    return await team_http.no_store(replace)
-
-
-async def supervisor_key_confirmation(request: Request):
-    """Rotating the Supervisor key starts with the Supervisor password, as any confirmed operation does (ADR-0051)."""
-
-    async def begin() -> JSONResponse:
-        try:
-            return await local_auth.begin_operation(request, _LOCAL_AUTH_CONTEXT, local_auth.SUPERVISOR_KEY_SUBJECT)
-        except local_auth.OperationRefusedError as exc:
-            return local_auth.operation_refusal(exc)
-
-    return await team_http.no_store(begin)
-
-
-async def supervisor_key_rotate(request: Request):
-    async def rotate() -> JSONResponse:
-        payload = await team_http.bounded_json_object(request, local_auth.MAX_BODY_BYTES)
-        retry = getattr(app.state, "supervisor_key_recovery", None)
-        try:
-            response = await run_in_threadpool(
-                local_auth.rotate_supervisor_key, request, _LOCAL_AUTH_CONTEXT, payload, retry
-            )
-        except local_auth.OperationRefusedError as exc:
-            response = local_auth.operation_refusal(exc)
-        # The ticket is spent either way; a stale cookie would only be refused.
-        response.delete_cookie(local_auth.TICKET_COOKIE, path="/api/")
-        return response
-
-    return await team_http.no_store(rotate)
-
-
 async def local_passkey_registration_begin(request: Request):
     return await local_auth.begin_passkey_registration(request, _LOCAL_AUTH_CONTEXT)
 
@@ -511,10 +445,6 @@ app.add_api_route("/api/login/totp", local_login_totp, methods=["POST"])
 app.add_api_route("/api/login/passkey", local_login_passkey, methods=["POST"])
 app.add_api_route("/api/login/recovery", local_login_recovery, methods=["POST"])
 app.add_api_route("/api/login/recovery/totp", local_recovery_enrollment, methods=["POST"])
-app.add_api_route("/api/admin/recovery-codes/confirmation", recovery_codes_confirmation, methods=["POST"])
-app.add_api_route("/api/admin/recovery-codes", recovery_codes_replace, methods=["POST"])
-app.add_api_route("/api/admin/supervisor-key/confirmation", supervisor_key_confirmation, methods=["POST"])
-app.add_api_route("/api/admin/supervisor-key", supervisor_key_rotate, methods=["POST"])
 app.add_api_route("/api/admin/passkeys/registration", local_passkey_registration_begin, methods=["POST"])
 app.add_api_route("/api/admin/passkeys", local_passkey_registration_complete, methods=["POST"])
 
@@ -578,7 +508,7 @@ def _session_gate() -> session_socket.Gate:
         session_deadlines=_session_deadlines,
         authenticate=_AUTHENTICATE_ACTION_REQUEST,
         recheck_password=partial(local_auth.recheck_password, context=_LOCAL_AUTH_CONTEXT),
-        revoke_tickets=_LOCAL_AUTH_CONTEXT.ticket_store.revoke,
+        confirmations=_LOCAL_AUTH_CONTEXT,
         cookie=COOKIE,
     )
 

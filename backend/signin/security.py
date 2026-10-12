@@ -10,32 +10,20 @@ never dismissed unseen.
 import logging
 
 import state
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import JSONResponse
 from signin import audit, auth
-from team import http as team_http
 
 log = logging.getLogger("shimpz-admin")
-MAX_BODY_BYTES = 1024
-SESSION_COOKIE = "shimpz_admin"
 
 
-def register(app: FastAPI) -> None:
-    app.add_api_route("/api/admin/security/failures", acknowledge_failures, methods=["POST"])
-
-
-def _response(body: dict[str, object]) -> JSONResponse:
-    response = JSONResponse(body)
-    response.headers["Cache-Control"] = "no-store"
-    return response
+class SessionEndedError(RuntimeError):
+    """The session the summary was asked for is no longer current."""
 
 
 def _history(session: str) -> dict[str, object] | None:
     """The sign-in before this session's and the refused attempts since, or None while the journal is unreadable."""
     evidence = auth.verify_session(state.get()["session_secret"], session)
     if evidence is None:
-        raise HTTPException(status_code=401, detail="unauthenticated")
+        raise SessionEndedError("the session is no longer current")
     try:
         return audit.sign_in_history(evidence.issued_at)
     except OSError, audit.HistoryUnavailableError:
@@ -52,10 +40,15 @@ def summary_for(session: str) -> dict[str, object]:
     }
 
 
-async def acknowledge_failures(request: Request) -> JSONResponse:
-    payload = await team_http.bounded_json_object(request, MAX_BODY_BYTES)
+def acknowledged_count(payload: dict) -> int | None:
+    """The positive count an acknowledgment names, as its only member, or None."""
     count = payload.get("acknowledged") if set(payload) == {"acknowledged"} else None
     if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= state.MAX_SECOND_FACTOR_FAILURES:
-        raise HTTPException(status_code=400, detail="request body must contain only a positive acknowledged count")
-    await run_in_threadpool(state.acknowledge_second_factor_failures, count)
-    return _response(await run_in_threadpool(summary_for, request.cookies.get(SESSION_COOKIE, "")))
+        return None
+    return count
+
+
+def acknowledge(session: str, count: int) -> dict[str, object]:
+    """Acknowledge exactly the refused attempts the Supervisor saw, and answer the summary after it."""
+    state.acknowledge_second_factor_failures(count)
+    return summary_for(session)

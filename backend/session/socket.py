@@ -22,7 +22,7 @@ from mfa import tickets
 from protocol.socket.v1 import frames
 from session import budget, calls, registry, topics, watcher
 from session.outbound import Outbound, OutboundOverflowError
-from signin import auth
+from signin import auth, local_auth
 
 from chat import socket as chat_channel
 from protocol.http.v1 import payload as team_contract
@@ -55,7 +55,8 @@ class Gate:
     authenticate: Callable[[str, str], Awaitable[object]]
     # Confirms the Supervisor password within sign-in's limiter and lockout, journaling a refusal with this Origin.
     recheck_password: Callable[[str | None, object], Awaitable[None]]
-    revoke_tickets: Callable[[tickets.Binding], None]
+    # Sign-in's limiter and the one-use tickets and passkey challenges of the Supervisor's confirmed operations.
+    confirmations: local_auth.Context
     cookie: str
 
 
@@ -111,6 +112,8 @@ class SessionSocket:
         self.close_code = 1000
         self.loop = asyncio.get_running_loop()
         self.step_up = tickets.Binding(session, secrets.token_hex(16))
+        # The one-use ticket of the confirmed operation last begun over this socket; the page never holds it.
+        self.ticket = ""
         self.handle = registry.Handle(
             session,
             self.step_up.socket,
@@ -194,8 +197,11 @@ class SessionSocket:
         return True
 
     async def authorized(self) -> bool:
-        """Before a waiting call or chat frame runs: its Origin and session are still current, never renewing it."""
-        return await self._authorized()
+        """Before a waiting call or chat frame runs: the socket is open and its Origin and session are still current.
+
+        It never renews the session, and a socket that closed meanwhile runs nothing more.
+        """
+        return not self.closed.is_set() and await self._authorized()
 
     # Chat channels
 
@@ -365,7 +371,8 @@ class SessionSocket:
         the browser before a slow Stop of a chat channel can delay it.
         """
         registry.REGISTRY.remove(self.handle)
-        self.gate.revoke_tickets(self.step_up)
+        self.gate.confirmations.ticket_store.revoke(self.step_up)
+        local_auth.discard_operation(self.ticket, self.gate.confirmations)
         for task in (*workers, *self.calls.values()):
             task.cancel()
         # No chat frame dispatches any more, and each channel starts stopping its work before anything waits.

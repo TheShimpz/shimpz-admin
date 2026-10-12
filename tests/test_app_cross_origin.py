@@ -20,7 +20,6 @@ from test_team_bridge_assistants import (
 ADMIN = "http://127.0.0.1:7777"
 BOUNDARY = "shimpz-admin-upload-boundary"
 MULTIPART = f"multipart/form-data; boundary={BOUNDARY}"
-PAUSE = "/api/teams/team_1/routines/" + "a" * 32 + "/pause"
 REFUSED = {"status": 403, "body": {"detail": "browser origin is not admitted"}}
 
 # What a browser sends for each initiating page; SameSite treats the first two as the Admin's own site.
@@ -37,22 +36,18 @@ ADMIN_PAGE = {"sec-fetch-site": "same-origin", "origin": ADMIN}
 
 
 class CrossOriginGateTests(_LiveTeamCase):
-    def test_only_the_admin_page_may_upload_a_file_or_change_team_state(self) -> None:
+    def test_only_the_admin_page_may_upload_a_file(self) -> None:
         _TeamHandler.responder = staticmethod(lambda _method, _path, _body: (409, b'{"detail":"held"}'))
         document = self._run_asgi_probe("cross-origin", Path(__file__).resolve())
 
         for page in PAGES:
             with self.subTest(page=page):
                 self.assertEqual(document[f"upload:{page}"], REFUSED)
-                self.assertEqual(document[f"pause:{page}"], REFUSED)
         # Team's own answer reaching the browser proves the gate let the request through: a safe read never changes
-        # state, so the session alone admits it, and the Admin page's own upload and Routine pause pass.
-        for passed in ("read:cross_site", "upload:admin_page", "pause:admin_page"):
+        # state, so the session alone admits it, and the Admin page's own upload passes.
+        for passed in ("read:cross_site", "upload:admin_page"):
             self.assertEqual(document[passed]["status"], 409, passed)
-        self.assertEqual(
-            [request["method"] for request in _TeamHandler.requests],
-            ["GET", "POST", "POST"],
-        )
+        self.assertEqual([request["method"] for request in _TeamHandler.requests], ["GET", "POST"])
         self.assertEqual(_TeamHandler.requests[1]["path"], "/v1/teams/team_1/files")
 
 
@@ -71,7 +66,6 @@ def _run_asgi_probe() -> None:
         for page, headers in {**PAGES, "admin_page": ADMIN_PAGE}.items():
             upload_headers = {**headers, "content-type": MULTIPART}
             results[f"upload:{page}"] = await send("POST", "/api/teams/team_1/files", upload, upload_headers)
-            results[f"pause:{page}"] = await send("POST", PAUSE, b"", headers)
         return results
 
     print(json.dumps(asyncio.run(scenario())))

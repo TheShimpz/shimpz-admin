@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from fastapi import HTTPException
 from session import budget, calls, lane, methods, outbound, registry, socket, topics, watcher
-from signin import audit, auth
+from signin import audit, auth, local_auth
 
 
 def _gate(**overrides) -> socket.Gate:
@@ -28,7 +28,7 @@ def _gate(**overrides) -> socket.Gate:
         "session_deadlines": lambda _cookies: (60.0, 600.0),
         "authenticate": mock.AsyncMock(),
         "recheck_password": mock.AsyncMock(),
-        "revoke_tickets": mock.Mock(),
+        "confirmations": local_auth.Context(),
         "cookie": "shimpz_admin",
     }
     return socket.Gate(**{**values, **overrides})

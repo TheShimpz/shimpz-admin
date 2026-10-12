@@ -5,7 +5,6 @@ monotonic revision within this process's epoch, so a read can say which revision
 stale one. Any thread may raise a change: listeners schedule their own delivery.
 """
 
-import re
 import secrets
 import threading
 from collections.abc import Callable
@@ -55,22 +54,3 @@ def listen(listener: Listener) -> None:
 def forget(listener: Listener) -> None:
     with _lock:
         _listeners.discard(listener)
-
-
-_TEAM_PATH = re.compile(r"/api/teams/([a-z0-9_]{1,40})(/.*)?")
-_UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
-
-
-def for_mutation(method: str, path: str) -> tuple[str, ...]:
-    """The topics an Admin HTTP mutation that succeeded changed: the Team list, a Team's Routines, or sign-in security.
-
-    Every other change Admin makes is a session call that raises its own topics. A Team's history changes as Admin's
-    history store commits it, and every session change rotates the session secret.
-    """
-    if method not in _UNSAFE_METHODS:
-        return ()
-    if path == "/api/space":
-        return ("teams",)
-    if (match := _TEAM_PATH.fullmatch(path)) is not None and (match[2] or "").startswith("/routines/"):
-        return (f"team/{match[1]}/routines",)
-    return ("security/summary",) if path.startswith("/api/admin/") else ()

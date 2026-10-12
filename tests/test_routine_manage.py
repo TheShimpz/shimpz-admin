@@ -1,26 +1,19 @@
 """A Local Supervisor's Routine management admits Team's answers only in their closed protocol views (ADR-0086)."""
 
-import asyncio
 import json
 import sys
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from fastapi import FastAPI
-from starlette.requests import Request
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from http_request import LOOPBACK, http_request, json_headers
-from signin import local_auth
 from team import bridge as team
 from team import transport
 
 from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import routine_notice as routine_notice_contract
-from routine import http as routine_http
 from routine import manage
 
 VECTORS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["routine_views"]
@@ -40,13 +33,6 @@ REVOKED = {"team_id": "team_1", "proposal_id": ID, "routine_id": None, "status":
 
 def answer(body: dict[str, object], status: int = 200) -> team.TeamResponse:
     return team.TeamResponse(status, {**body, "trace_id": TRACE} if status < 300 else body)
-
-
-def request(payload: object, application: object = None) -> Request:
-    body = json.dumps(payload).encode()
-    built = http_request("/", LOOPBACK, body=body, headers=json_headers(body))
-    built.scope["app"] = application or FastAPI()
-    return built
 
 
 class RoutineManageTests(unittest.TestCase):
@@ -228,71 +214,6 @@ class RoutineManageTests(unittest.TestCase):
                 with self.assertRaises(team.TeamRequestError):
                     refused()
         call.assert_not_called()
-
-
-class RoutineRouteTests(unittest.TestCase):
-    def test_routes_are_registered_and_never_cached(self) -> None:
-        local = FastAPI()
-        routine_http.register(local, mock.AsyncMock(), local_auth.Context())
-        # A recorded Routine is created by its card's one confirmation, or revoked (ADR-0101). Deleting one is the
-        # Supervisor's password route then the second-factor DELETE (ADR-0051).
-        self.assertEqual(sum("routines" in route.path for route in local.routes), 14)
-        ok = team.TeamResponse(200, {"ok": True})
-        with mock.patch.multiple(
-            manage,
-            list_routines=mock.Mock(return_value=ok),
-            delete=mock.Mock(return_value=ok),
-            resume=mock.Mock(return_value=ok),
-            open_card=mock.Mock(return_value=ok),
-            answer_card=mock.Mock(return_value=ok),
-            diagnostics=mock.Mock(return_value=ok),
-            pause=mock.Mock(return_value=ok),
-            plan_steps=mock.Mock(return_value=ok),
-            run_steps=mock.Mock(return_value=ok),
-            confirm_proposal=mock.Mock(return_value=ok),
-            revoke_proposal=mock.Mock(return_value=ok),
-        ):
-            chosen = {"nonce": "c" * 32, "choice": "run"}
-            # A successful answer wakes the scheduler, so a Rodar run is claimed at once.
-            scheduled = FastAPI()
-            scheduled.state.routine_scheduler = mock.Mock()
-            responses = [
-                routine_http.routines_list("team_1"),
-                asyncio.run(routine_http.routine_resume("team_1", ID)),
-                asyncio.run(routine_http.routine_card("team_1", ID)),
-                asyncio.run(routine_http.routine_diagnostics("team_1", ID)),
-                asyncio.run(routine_http.routine_pause("team_1", ID)),
-                asyncio.run(routine_http.routine_plan_steps("team_1", ID, "2", "0")),
-                asyncio.run(routine_http.routine_run_steps("team_1", ID, "latest", "0")),
-                asyncio.run(routine_http.routine_card_answer("team_1", ID, request(chosen, scheduled))),
-                asyncio.run(routine_http.routine_proposal_confirm("team_1", ID, request({}, scheduled))),
-                asyncio.run(routine_http.routine_proposal_confirm("team_1", ID, request({}))),
-                asyncio.run(routine_http.routine_proposal_revoke("team_1", ID)),
-            ]
-            # A Rodar answer and a confirmed card each wake the scheduler, so the new run is claimed at once.
-            self.assertEqual(scheduled.state.routine_scheduler.wake.call_count, 2)
-            manage.revoke_proposal.assert_called_once_with("team_1", ID)
-            manage.answer_card.assert_called_once_with("team_1", ID, chosen)
-            manage.open_card.assert_called_once_with("team_1", ID)
-            manage.diagnostics.assert_called_once_with("team_1", ID)
-            manage.plan_steps.assert_called_once_with("team_1", ID, "2", "0")
-            manage.run_steps.assert_called_once_with("team_1", ID, "latest", "0")
-        for response in responses:
-            self.assertEqual((response.status_code, response.headers["Cache-Control"]), (200, "no-store"))
-
-    def test_only_an_answered_card_wakes_the_scheduler_and_none_is_needed(self) -> None:
-        chosen = {"nonce": "c" * 32, "choice": "run"}
-        stale = team.TeamResponse(409, {"code": "routine-card-stale"})
-        scheduled = FastAPI()
-        scheduled.state.routine_scheduler = mock.Mock()
-        with mock.patch.object(manage, "answer_card", return_value=stale):
-            refused = asyncio.run(routine_http.routine_card_answer("team_1", ID, request(chosen, scheduled)))
-        self.assertEqual((refused.status_code, refused.headers["Cache-Control"]), (409, "no-store"))
-        scheduled.state.routine_scheduler.wake.assert_not_called()
-        # An Admin without a running scheduler still answers the card; nothing is woken.
-        with mock.patch.object(manage, "answer_card", return_value=team.TeamResponse(200, {"ok": True})):
-            answered = asyncio.run(routine_http.routine_card_answer("team_1", ID, request(chosen)))
-        self.assertEqual((answered.status_code, answered.headers["Cache-Control"]), (200, "no-store"))
 
 
 if __name__ == "__main__":

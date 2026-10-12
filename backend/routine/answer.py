@@ -5,12 +5,12 @@ answer is checked against it and an authentication request is verified here, as 
 the Supervisor's session with the Team's model key.
 """
 
-import asyncio
 import contextlib
 import itertools
 import threading
 import time
 from collections.abc import Awaitable, Callable, Iterator
+from dataclasses import dataclass, field
 from http import HTTPStatus
 
 from team import bridge as team
@@ -210,8 +210,21 @@ def _resume(canonical: str, run: str, action: str, payload: dict[str, object], a
     return _resumed(response, canonical, run)
 
 
-async def answer(team_id: object, run_id: object, frame: object, authenticate: Authenticate) -> team.TeamResponse:
-    """One exact answer to the run's open challenge; the run then resumes, or ends denied."""
+@dataclass(frozen=True, slots=True)
+class Answered:
+    """An answer Admin checked against its open challenge and authenticated, ready to resume its run."""
+
+    team_id: str
+    run_id: str
+    payload: dict[str, object] = field(repr=False)
+    assurance: dict[str, str] | None
+    failure: tuple[int, str] | None
+
+
+async def authenticated(
+    team_id: object, run_id: object, frame: object, authenticate: Authenticate
+) -> team.TeamResponse | Answered:
+    """One exact answer to the run's open challenge, authenticated as in chat, or why it cannot resume the run."""
     canonical, run = _run(team_id, run_id)
     canonical_frame = chat_ws_common.canonical_human_response(frame)
     key = (canonical, run, canonical_frame["challenge_id"])
@@ -224,10 +237,17 @@ async def answer(team_id: object, run_id: object, frame: object, authenticate: A
         # A wrong password keeps the challenge open until its own expiry for another attempt, as in chat.
         _restore(key, deadline, request, generation)
         return team.TeamResponse(HTTPStatus.CONFLICT, {"code": rejection["reason"], **rejection})
-    # The run replays for up to its active time; the Supervisor's session binding travels with the worker thread.
-    result = await asyncio.to_thread(_resume, canonical, run, "human", payload, assurance)
-    if failure is not None:
-        return team.TeamResponse(failure[0], {"code": "human-authentication-unavailable"})
+    return Answered(canonical, run, payload, assurance, failure)
+
+
+def resume_answered(answered: Answered) -> team.TeamResponse:
+    """The run resumes, or ends denied; it replays for up to its active time, so this runs on a worker thread.
+
+    The Supervisor's session binding travels with the worker thread.
+    """
+    result = _resume(answered.team_id, answered.run_id, "human", answered.payload, answered.assurance)
+    if answered.failure is not None:
+        return team.TeamResponse(answered.failure[0], {"code": "human-authentication-unavailable"})
     return result
 
 

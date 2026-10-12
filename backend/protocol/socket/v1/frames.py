@@ -79,13 +79,33 @@ METHODS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "files.list": (_TEAM, _NONE),
     "files.delete": (frozenset({"team_id", "file_id"}), _NONE),
     "store.catalog": (frozenset({"locale"}), frozenset({"cursor"})),
+    "routines.pause": (frozenset({"team_id", "routine_id"}), _NONE),
+    "routines.resume": (frozenset({"team_id", "routine_id"}), _NONE),
+    "routines.deletion": (frozenset({"team_id", "routine_id", "body"}), _NONE),
+    "routines.delete": (frozenset({"team_id", "routine_id", "body"}), _NONE),
+    "routines.plan_steps": (frozenset({"team_id", "routine_id", "revision", "offset"}), _NONE),
+    "routines.run_steps": (frozenset({"team_id", "run_id", "snapshot", "offset"}), _NONE),
+    "routines.diagnostics": (frozenset({"team_id", "run_id"}), _NONE),
+    "routines.card": (frozenset({"team_id", "incident_id"}), _NONE),
+    "routines.card_answer": (frozenset({"team_id", "incident_id", "body"}), _NONE),
+    "routines.challenge": (frozenset({"team_id", "run_id", "body"}), _NONE),
+    "routines.human": (frozenset({"team_id", "run_id", "body"}), _NONE),
+    "routines.integrations": (frozenset({"team_id", "run_id"}), _NONE),
+    "routines.proposal_confirm": (frozenset({"team_id", "proposal_id"}), _NONE),
+    "routines.proposal_revoke": (frozenset({"team_id", "proposal_id"}), _NONE),
+    "security.acknowledge": (frozenset({"body"}), _NONE),
+    "recovery_codes.confirmation": (frozenset({"body"}), _NONE),
+    "recovery_codes.replace": (frozenset({"body"}), _NONE),
+    "supervisor_key.confirmation": (frozenset({"body"}), _NONE),
+    "supervisor_key.rotate": (frozenset({"body"}), _NONE),
     "subscribe": (frozenset({"topics"}), _NONE),
     "unsubscribe": (frozenset({"topics"}), _NONE),
     "chat.attach": (frozenset({"team_id", "locale"}), _NONE),
     "chat.detach": (_TEAM, _NONE),
 }
 # The most bytes each method's request body takes as compact UTF-8 JSON: the bound its operation always had (a Team
-# name 1 KiB, a Team order or deletion 8 KiB, every other body 16 KiB). A larger body is answered 413.
+# name or an acknowledgment 1 KiB; a Team order or deletion, a confirmation's password, and the recovery codes' or
+# signing key's second factor 8 KiB; every other body 16 KiB). A larger body is answered 413.
 BODY_BYTES = {
     "teams.create": 1 * KIB,
     "teams.rename": 1 * KIB,
@@ -98,9 +118,20 @@ BODY_BYTES = {
     "decision.save": 16 * KIB,
     "integrations.authorize": 16 * KIB,
     "integrations.complete": 16 * KIB,
+    "routines.deletion": 8 * KIB,
+    "routines.delete": 16 * KIB,
+    "routines.card_answer": 16 * KIB,
+    "routines.challenge": 16 * KIB,
+    "routines.human": 16 * KIB,
+    "security.acknowledge": 1 * KIB,
+    "recovery_codes.confirmation": 8 * KIB,
+    "recovery_codes.replace": 8 * KIB,
+    "supervisor_key.confirmation": 8 * KIB,
+    "supervisor_key.rotate": 8 * KIB,
 }
-# A long call keeps its result pending while it runs and says once, with `progress`, that it started.
-LONG_METHODS = frozenset({"assistants.install", "assistants.install_local"})
+# A long call keeps its result pending while it runs and says once, with `progress`, that it started: an Assistant
+# install, and a held Routine run resuming after a human answer or a connected Integration.
+LONG_METHODS = frozenset({"assistants.install", "assistants.install_local", "routines.human", "routines.integrations"})
 
 
 def _team_topic(name: str):

@@ -8,13 +8,9 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from fastapi import HTTPException
-from starlette.requests import Request
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from http_request import LOOPBACK, http_request, json_headers
 from team import bridge as team
 from team import transport
 from test_chat_human_projection import INPUT, _fingerprinted, _request, _response
@@ -23,7 +19,6 @@ from tests.localized_request import localization, rendered_for
 from chat import human
 from chat import local as chat_local
 from routine import answer, manage
-from routine import http as routine_http
 
 RUN = "d" * 32
 CHALLENGE = "b" * 32
@@ -39,9 +34,10 @@ def resumed(status: str = "done", run: str = RUN) -> team.TeamResponse:
     return team.TeamResponse(200, {"team_id": "team_1", "run_id": run, "status": status, "trace_id": TRACE})
 
 
-def body_request(payload: object) -> Request:
-    raw = json.dumps(payload).encode()
-    return http_request("/", LOOPBACK, body=raw, headers=json_headers(raw))
+async def answered(frame: dict[str, object], authenticate) -> team.TeamResponse:
+    """An answer as the session socket's method makes it: authenticated, then the run resumed."""
+    checked = await answer.authenticated("team_1", RUN, frame, authenticate)
+    return checked if isinstance(checked, team.TeamResponse) else answer.resume_answered(checked)
 
 
 class RoutineAnswerTests(unittest.TestCase):
@@ -65,7 +61,7 @@ class RoutineAnswerTests(unittest.TestCase):
     def respond(self, frame: dict[str, object], authenticate=None, resume=None) -> tuple[team.TeamResponse, mock.Mock]:
         authenticate = authenticate or mock.AsyncMock()
         with mock.patch.object(transport, "_call_stream", return_value=resume or resumed()) as stream:
-            result = asyncio.run(answer.answer("team_1", RUN, frame, authenticate))
+            result = asyncio.run(answered(frame, authenticate))
         return result, stream
 
     def test_an_opened_challenge_is_projected_like_chat_and_answered_once(self) -> None:
@@ -398,31 +394,6 @@ class RoutineAnswerTests(unittest.TestCase):
         self.assertEqual(answer._OPENINGS, {})
         self.open()
         self.assertEqual(answer._OPENINGS, {})
-
-    def test_routes_bind_chat_password_authority_and_refuse_malformed_answers(self) -> None:
-        authenticate = mock.AsyncMock()
-        route = routine_http.human_route(authenticate)
-        ok = team.TeamResponse(200, {"ok": True})
-        with (
-            mock.patch.object(answer, "answer", new=mock.AsyncMock(return_value=ok)) as answered,
-            mock.patch.object(answer, "open_challenge", return_value=ok) as opened,
-            mock.patch.object(answer, "resume_integrations", return_value=ok),
-        ):
-            responses = [
-                asyncio.run(route("team_1", RUN, body_request({"type": "human-response"}))),
-                asyncio.run(routine_http.routine_challenge("team_1", RUN, body_request({"locale": "ja"}))),
-                asyncio.run(routine_http.routine_integrations("team_1", RUN)),
-            ]
-        self.assertIs(answered.call_args.args[3], authenticate)
-        self.assertEqual(opened.call_args.args, ("team_1", RUN, {"locale": "ja"}))
-        for response in responses:
-            self.assertEqual((response.status_code, response.headers["Cache-Control"]), (200, "no-store"))
-        with (
-            mock.patch.object(answer, "answer", new=mock.AsyncMock(side_effect=team.TeamRequestError("x"))),
-            self.assertRaises(HTTPException) as refused,
-        ):
-            asyncio.run(route("team_1", RUN, body_request({})))
-        self.assertEqual(refused.exception.status_code, 400)
 
 
 if __name__ == "__main__":

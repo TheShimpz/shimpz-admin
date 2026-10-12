@@ -1,7 +1,7 @@
 """Bounded same-origin HTTP adaptation for Team controller responses."""
 
 import json
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Iterator
 from contextlib import contextmanager
 
 from fastapi import HTTPException, Request
@@ -53,13 +53,3 @@ async def bounded_json_object(
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="request body must be a JSON object")
     return payload
-
-
-async def no_store(handler: Callable[[], Awaitable[JSONResponse]]) -> JSONResponse:
-    """Answer without caching; a refusal is no-store too."""
-    try:
-        response = await handler()
-    except HTTPException as exc:
-        raise HTTPException(exc.status_code, exc.detail, headers={"Cache-Control": "no-store"}) from None
-    response.headers["Cache-Control"] = "no-store"
-    return response

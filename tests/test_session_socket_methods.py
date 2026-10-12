@@ -23,6 +23,9 @@ CODE = "c1." + "b" * 43 + "." + "d" * 64
 EXTERNAL = "https://developer.example.test"
 TRACE = "a" * 32
 INFERENCE = {"team_id": "team_1", "provider": "openai", "model": "gpt-6.1-sol", "trace_id": TRACE}
+ROUTINE = "c" * 32
+RUN = "d" * 32
+NONCE = "e" * 32
 
 
 def _provider_url(callback: str) -> str:
@@ -82,6 +85,29 @@ SAMPLES = {
     "files.list": {"team_id": "team_1"},
     "files.delete": {"team_id": "team_1", "file_id": "f" * 32},
     "store.catalog": {"locale": "en"},
+    "routines.pause": {"team_id": "team_1", "routine_id": ROUTINE},
+    "routines.resume": {"team_id": "team_1", "routine_id": ROUTINE},
+    "routines.deletion": {"team_id": "team_1", "routine_id": ROUTINE, "body": {"password": PASSWORD}},
+    "routines.delete": {"team_id": "team_1", "routine_id": ROUTINE, "body": {"code": "123456"}},
+    "routines.plan_steps": {"team_id": "team_1", "routine_id": ROUTINE, "revision": "2", "offset": "0"},
+    "routines.run_steps": {"team_id": "team_1", "run_id": RUN, "snapshot": "latest", "offset": "0"},
+    "routines.diagnostics": {"team_id": "team_1", "run_id": RUN},
+    "routines.card": {"team_id": "team_1", "incident_id": ROUTINE},
+    "routines.card_answer": {"team_id": "team_1", "incident_id": ROUTINE, "body": {"nonce": NONCE, "choice": "run"}},
+    "routines.challenge": {"team_id": "team_1", "run_id": RUN, "body": {"locale": "en"}},
+    "routines.human": {
+        "team_id": "team_1",
+        "run_id": RUN,
+        "body": {"type": "human-response", "challenge_id": CHALLENGE, "decision": "deny"},
+    },
+    "routines.integrations": {"team_id": "team_1", "run_id": RUN},
+    "routines.proposal_confirm": {"team_id": "team_1", "proposal_id": ROUTINE},
+    "routines.proposal_revoke": {"team_id": "team_1", "proposal_id": ROUTINE},
+    "security.acknowledge": {"body": {"acknowledged": 1}},
+    "recovery_codes.confirmation": {"body": {"password": PASSWORD}},
+    "recovery_codes.replace": {"body": {"code": "123456"}},
+    "supervisor_key.confirmation": {"body": {"password": PASSWORD}},
+    "supervisor_key.rotate": {"body": {"code": "123456"}},
 }
 # What a full lane answers for each method: 429, except the Store catalog's own single-worker executor, which always
 # answered 503.
@@ -235,6 +261,19 @@ class SessionMethodAuthorityTests(SessionMethodCase):
         self.assertEqual(self.calls.frames.BODY_BYTES["teams.create"], 1024)
         self.assertEqual(self.calls.frames.BODY_BYTES["teams.reorder"], 8 * 1024)
         self.assertEqual(self.calls.frames.BODY_BYTES["models.save"], self.team.MAX_JSON_BODY_BYTES)
+        # A confirmation's password and the recovery codes' or signing key's second factor kept the ceremony's 8 KiB, a
+        # Routine deletion's second factor and a held run's answer J16, and an acknowledgment 1 KiB.
+        bounds = self.calls.frames.BODY_BYTES
+        for method in (
+            "routines.deletion",
+            "recovery_codes.confirmation",
+            "recovery_codes.replace",
+            "supervisor_key.rotate",
+        ):
+            self.assertEqual(bounds[method], self.admin_app.local_auth.MAX_BODY_BYTES)
+        for method in ("routines.delete", "routines.human", "routines.challenge", "routines.card_answer"):
+            self.assertEqual(bounds[method], self.team.MAX_JSON_BODY_BYTES)
+        self.assertEqual(bounds["security.acknowledge"], 1024)
 
     def test_every_team_method_refuses_an_invalid_team_id_before_team(self) -> None:
         team_methods = {method: params for method, params in SAMPLES.items() if "team_id" in params}
@@ -250,6 +289,47 @@ class SessionMethodAuthorityTests(SessionMethodCase):
 
         asyncio.run(scenario())
         self.assertEqual(self.team_calls, [])
+
+
+class SecurityAcknowledgmentTests(SessionMethodCase):
+    """Acknowledging refused sign-in attempts keeps its route's validation and answers the summary after it."""
+
+    def test_an_acknowledgment_names_a_positive_count_and_raises_the_summary(self) -> None:
+        async def scenario() -> tuple[list[dict], dict, dict]:
+            websocket = await self._connect()
+            await websocket.result("subscribe", {"topics": ["security/summary"]})
+            refused = [
+                await websocket.result("security.acknowledge", {"body": body})
+                for body in (
+                    {},
+                    {"acknowledged": 0},
+                    {"acknowledged": True},
+                    {"acknowledged": "1"},
+                    {"acknowledged": 1, "x": 1},
+                )
+            ]
+            await websocket.call("security.acknowledge", {"body": {"acknowledged": 1}})
+            frames = [await websocket.next_frame(), await websocket.next_frame()]
+            await websocket.disconnect()
+            changed, result = sorted(frames, key=lambda frame: frame["type"])
+            return refused, changed, result
+
+        refused, changed, result = asyncio.run(scenario())
+        detail = {"detail": "request body must contain only a positive acknowledged count"}
+        self.assertEqual(
+            {(frame["status"], json.dumps(frame["body"])) for frame in refused}, {(400, json.dumps(detail))}
+        )
+        self.assertEqual((changed["type"], changed["topic"]), ("changed", "security/summary"))
+        self.assertEqual((result["status"], result["body"]["failed_second_factor_attempts"]), (200, 0))
+
+    def test_a_session_that_ended_meanwhile_is_signed_out(self) -> None:
+        for read in (
+            lambda: self.methods.security_summary("v3:not-a-session"),
+            lambda: self.methods.acknowledge_failures("v3:not-a-session", {"acknowledged": 1}),
+        ):
+            with self.assertRaises(self.methods.HTTPException) as refused:
+                read()
+            self.assertEqual((refused.exception.status_code, refused.exception.detail), (401, "unauthenticated"))
 
 
 class TeamDeletionTests(SessionMethodCase):
