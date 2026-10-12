@@ -234,6 +234,29 @@ test('cancelling stops the uploads in flight and sending waits for none of them'
   await expect.poll(() => held).toHaveLength(1);
 });
 
+test('leaving the chat stops its uploads: the one in flight is aborted and the queued ones never start', async ({ page }) => {
+  const { attach } = await openChat(page, 'attachments');
+  const held = [];
+  const aborted = [];
+  page.on('requestfailed', (request) => {
+    if (new URL(request.url()).pathname === '/api/teams/marketing/files') aborted.push(request.failure()?.errorText);
+  });
+  await page.route('**/api/teams/marketing/files', (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    held.push(route);
+    return undefined;
+  });
+  await choose(page, attach, [textFile('first.md'), textFile('second.md'), textFile('third.md')]);
+  await expect.poll(() => held).toHaveLength(1);
+
+  await page.locator('.shell-sidebar').getByRole('link', { name: 'Open the Store for Marketing' }).click();
+  await expect(page).toHaveURL(/\/assistants/);
+  await expect.poll(() => aborted).toHaveLength(1);
+  await held[0].fulfill({ status: 201, contentType: 'application/json', body: '{}' }).catch(() => {});
+  await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  expect(held).toHaveLength(1);
+});
+
 // Holds every file read the page starts once `holdAttachmentReads` is set, until `releaseAttachmentReads` runs; the
 // release settles after the held reads and the work they resume have finished. `releaseAttachmentReads(true)` makes
 // the held reads fail instead.

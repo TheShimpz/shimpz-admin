@@ -2204,6 +2204,8 @@
       historyGeneration += 1;
       closeSocket();
       clearLifecycleIconCaptures();
+      // Files belong to the message being written here; leaving the chat stops their uploads.
+      clearAttachments();
     };
   });
 </script>
