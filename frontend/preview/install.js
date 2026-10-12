@@ -127,6 +127,14 @@ function previewChat(teamId) {
   });
 }
 
+// Preview-only states that a live Admin reaches only with time or a broken connection: `?session=expiring` starts the
+// session 125 s before its idle expiry (the warning shows after about 5 s and Stay signed in renews it), and
+// `?socket=reconnecting` drops the socket after 3 s and refuses to reopen for about 20 s.
+const PREVIEW_PARAMS = new URL(location.href).searchParams;
+const SESSION_EXPIRING = PREVIEW_PARAMS.get('session') === 'expiring';
+const SOCKET_RECONNECTING = PREVIEW_PARAMS.get('socket') === 'reconnecting';
+const PREVIEW_STARTED = Date.now();
+
 class SessionSocket extends EventTarget {
   static CONNECTING = 0;
   static OPEN = 1;
@@ -146,10 +154,23 @@ class SessionSocket extends EventTarget {
       send: (text) => setTimeout(() => this.#emit('message', new MessageEvent('message', { data: text })), 0),
       close: (code, reason) => this.close(code, reason),
     }, { call: (method, params) => scenario.call(method, params), chat: previewChat });
+    const refused = SOCKET_RECONNECTING && Date.now() - PREVIEW_STARTED > 1000 && Date.now() - PREVIEW_STARTED < 23000;
     setTimeout(() => {
+      if (refused) {
+        this.readyState = SessionSocket.CLOSED;
+        this.#emit('close', new CloseEvent('close', { code: 1006, reason: '', wasClean: false }));
+        return;
+      }
       this.readyState = SessionSocket.OPEN;
       this.#emit('open', new Event('open'));
+      if (SESSION_EXPIRING) this.#deadline(125);
+      if (SOCKET_RECONNECTING && Date.now() - PREVIEW_STARTED < 1000) setTimeout(() => this.close(1006), 3000);
     }, 0);
+  }
+
+  #deadline(idleSeconds) {
+    const data = JSON.stringify({ type: 'session', idle_seconds: idleSeconds, absolute_seconds: 80000 });
+    setTimeout(() => this.#emit('message', new MessageEvent('message', { data })), 0);
   }
 
   #emit(type, event) {
@@ -159,7 +180,12 @@ class SessionSocket extends EventTarget {
   }
 
   send(data) {
-    if (this.readyState === SessionSocket.OPEN) void this.session.receive(data);
+    if (this.readyState !== SessionSocket.OPEN) return;
+    if (JSON.parse(data)?.type === 'activity') {
+      if (SESSION_EXPIRING) this.#deadline(3600);
+      return;
+    }
+    void this.session.receive(data);
   }
 
   close(code = 1000, reason = '') {
