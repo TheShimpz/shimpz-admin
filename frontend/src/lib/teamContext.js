@@ -507,7 +507,10 @@ export async function reloadTeamList() {
     revision !== orderRevision ||
     (current.phase === 'loading' && !current.teams.length)
   ) return;
-  if (current.selectedTeamId && !listed.some((team) => team.id === current.selectedTeamId)) {
+  // The selected Team is gone, or none was selected and a Team now exists (one made elsewhere, or one whose creation
+  // answer was lost): the whole context loads again and opens an available Team.
+  const selectedGone = current.selectedTeamId && !listed.some((team) => team.id === current.selectedTeamId);
+  if (selectedGone || (!current.selectedTeamId && listed.length)) {
     await loadTeamContext('');
     return;
   }

@@ -718,6 +718,29 @@ test('deleting the last Team rehydrates an authoritative empty context', async (
   });
 });
 
+test('a first Team whose creation answer was lost opens once the Team list is read again', async () => {
+  let created = false;
+  const fetcher = fixtureFetcher({
+    '/api/teams': async (options) => {
+      if (options.method === 'POST') {
+        // Team created it, and Admin's connection dropped before its answer arrived.
+        created = true;
+        throw new LocalApiError('Admin disconnected before it answered.', 0, 'outcome-unknown');
+      }
+      return response(200, { teams: created ? [{ team_id: 'growth', team_name: 'Growth', status: 'running' }] : [] });
+    },
+    '/api/teams/growth/assistants': async () => response(200, { assistants: [] }),
+  });
+  await loadTeamContext(fetcher, '');
+  assert.equal(get(teamContext).teams.length, 0);
+  await assert.rejects(createTeam(fetcher, 'Growth'), (error) => error.code === 'outcome-unknown');
+
+  await reloadTeamList(fetcher);
+  assert.equal(get(teamContext).phase, 'ready');
+  assert.equal(get(teamContext).selectedTeamId, 'growth');
+  assert.equal(get(teamContext).inventory, 'ready');
+});
+
 test('rejects ambiguous Team creation responses without trusting their identity', async () => {
   for (const body of [
     {
