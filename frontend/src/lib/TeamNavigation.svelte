@@ -6,6 +6,7 @@
   import { showAdminNotice } from '#lib/adminNotice.js';
 
   import { t } from '#lib/i18n.js';
+  import { CIRCLES, PATHS } from '#lib/icons.js';
   import { retainTeamRoutines, routineContext } from '#lib/routineContext.js';
   import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import TeamActionsMenu from '#lib/TeamActionsMenu.svelte';
@@ -496,7 +497,7 @@
                     aria-haspopup="dialog"
                     onclick={() => (routinesOpen = team.id)}
                   >
-                    <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+                    <svg class="glitch-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx={CIRCLES.clock[0]} cy={CIRCLES.clock[1]} r={CIRCLES.clock[2]}></circle><path d={PATHS.clock[0]}></path></svg>
                   </Button>
                   {#if attention}<span class="attention" aria-hidden="true"></span>{/if}
                   </span>

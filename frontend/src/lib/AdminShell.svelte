@@ -4,6 +4,7 @@
   import AdminNotice from '#lib/AdminNotice.svelte';
   import { adminSocket, connectAdminSocket, trackActivity, watchTopic } from '#lib/adminSocket.js';
   import { warmAssistantSources } from '#lib/assistantSources.js';
+  import { PATHS } from '#lib/icons.js';
   import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
   import { teamContext } from '#lib/teamContext.js';
   import { dataUnavailable } from '#lib/synced.js';
@@ -205,7 +206,7 @@
         <div class="team-drawer-head">
           <h2 id="team-drawer-title">{$t('teamNavigation.label')}</h2>
           <Button variant="ghost" size="sm" iconOnly type="button" aria-label={$t('teamNavigation.close')} onclick={closeTeamDrawer}>
-            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+            <svg class="menu-icon" viewBox="0 0 24 24" aria-hidden="true"><path d={PATHS.close.join('')}></path></svg>
           </Button>
         </div>
         <TeamNavigation

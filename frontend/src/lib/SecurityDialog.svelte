@@ -5,6 +5,7 @@
   import { tick } from 'svelte';
 
   import { locale, t } from '#lib/i18n.js';
+  import { PATHS } from '#lib/icons.js';
   import RecoveryCodes from '#lib/RecoveryCodes.svelte';
   import OperationConfirmation from '#lib/OperationConfirmation.svelte';
   import {
@@ -78,7 +79,7 @@
     <header class="head">
       <h2 id={`${id}-title`}>{$t('security.title')}</h2>
       <Button variant="ghost" size="sm" iconOnly type="button" aria-label={$t('security.close')} title={$t('security.close')} disabled={replacing} onclick={close}>
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"></path></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d={PATHS.close.join('')}></path></svg>
       </Button>
     </header>
     <div class="body">
