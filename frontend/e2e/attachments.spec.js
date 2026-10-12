@@ -111,6 +111,26 @@ test('a pasted file and a dropped file join the message, and pasted text still r
   expect(chatMessages(scenario)[0].files).toHaveLength(2);
 });
 
+test('a file dropped outside the composer is kept from opening in place of Admin and joins nothing', async ({ page }) => {
+  await openChat(page, 'attachments');
+  // A file drag the page leaves to the browser makes it open the file in place of Admin, ending the chat.
+  const handled = await page.evaluate(() => Object.fromEntries(['.turns', 'body'].map((selector) => {
+    const data = new DataTransfer();
+    data.items.add(new File(['dropped notes'], 'dropped.txt', { type: 'text/plain' }));
+    const over = new DragEvent('dragover', { bubbles: true, cancelable: true, dataTransfer: data });
+    const drop = new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: data });
+    const target = document.querySelector(selector);
+    target.dispatchEvent(over);
+    target.dispatchEvent(drop);
+    return [selector, { over: over.defaultPrevented, drop: drop.defaultPrevented, effect: over.dataTransfer.dropEffect }];
+  })));
+  expect(handled).toEqual({
+    '.turns': { over: true, drop: true, effect: 'none' },
+    body: { over: true, drop: true, effect: 'none' },
+  });
+  await expect(attachmentList(page)).toHaveCount(0);
+});
+
 test('a file removed from the message is not sent with it', async ({ page }) => {
   const { scenario, composer, attach, send } = await openChat(page, 'attachments');
   await choose(page, attach, [textFile('keep.md'), textFile('drop.md')]);

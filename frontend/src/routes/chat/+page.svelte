@@ -1877,6 +1877,14 @@
     if (!event.currentTarget.contains(event.relatedTarget)) attachmentDragging = false;
   }
 
+  // A file drag the composer did not take (dropped elsewhere, or while files cannot join a message) is refused here;
+  // left to the browser, it would open the file in place of Admin.
+  function refuseFileDrop(event) {
+    if (!carriesFiles(event) || event.defaultPrevented) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'none';
+  }
+
   function dropAttachments(event) {
     if (!carriesFiles(event)) return;
     event.preventDefault();
@@ -2211,6 +2219,7 @@
 </script>
 
 <svelte:head><title>{teamName} — Shimpz Admin</title></svelte:head>
+<svelte:window ondragover={refuseFileDrop} ondrop={refuseFileDrop} />
 
 <div class="chat-route" bind:this={chatRoute}>
   <h1 class="sr-only">{copy.title}</h1>
