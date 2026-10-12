@@ -488,10 +488,19 @@ test('the person\'s trusted input is reported at most once a minute, and only wh
     socket.failSend = false;
     input('wheel');
     assert.equal(socket.sent.filter((frame) => frame.type === 'activity').length, 3);
+    // A report the dropped socket may never have delivered does not hold back the person's next input after it
+    // reopens: that input is reported at once.
+    socket.drop(1006);
+    await flush();
+    await new Promise((resolve) => setTimeout(resolve, 450));
+    const reopened = FakeSocket.opened.at(-1);
+    reopened.open();
+    input('keydown');
+    assert.deepEqual(reopened.sent.filter((frame) => frame.type === 'activity'), [{ type: 'activity' }]);
     stop();
     clock.mock.mockImplementation(() => 1_000_000 + 3 * ACTIVITY_INTERVAL_MS);
     input('keydown');
-    assert.equal(socket.sent.filter((frame) => frame.type === 'activity').length, 3);
+    assert.equal(reopened.sent.filter((frame) => frame.type === 'activity').length, 1);
   } finally {
     clock.mock.restore();
     stop();

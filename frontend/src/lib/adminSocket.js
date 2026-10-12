@@ -517,6 +517,8 @@ function open() {
       return;
     }
     opened = true;
+    // A report the last socket took may never have reached Admin: the person's next input on this one reports at once.
+    activityReported = -Infinity;
     const cause = everOpened ? 'reopen' : 'open';
     everOpened = true;
     clearTimeout(stableTimer);
