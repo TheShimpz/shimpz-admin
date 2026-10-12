@@ -299,7 +299,10 @@ async function select(fetcher, id) {
  */
 export async function refreshTeamInventory(fetcher) {
   requireFetcher(fetcher);
+  const epoch = contextEpoch;
   if (listOperation) await listOperation.catch(() => {});
+  // A session that ended meanwhile cleared the context; the next one loads its own, so nothing is published into it.
+  if (epoch !== contextEpoch) throw new LocalApiError('The local Team context changed.');
   const current = get(teamContext);
   if (!current.selectedTeamId) {
     teamContext.set({

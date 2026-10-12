@@ -350,6 +350,40 @@ for (const operation of ['create', 'delete']) {
   });
 }
 
+test('a refresh waiting on a Team operation when the session ends publishes nothing into the next one', async () => {
+  await loadTeamContext(fixtureFetcher(), 'marketing');
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const fetcher = fixtureFetcher({
+    '/api/teams': async (options) => {
+      if (options.method !== 'POST') return response(200, { teams: [] });
+      await held;
+      return response(201, { created: true, team_id: 'growth', team_name: 'Growth', status: 'running' });
+    },
+  });
+  const creating = createTeam(fetcher, 'Growth');
+  const refreshing = refreshTeamInventory(fetcher);
+  clearTeamContext();
+  release();
+  await creating.catch(() => {});
+  await assert.rejects(refreshing, (error) => error instanceof LocalApiError);
+
+  // The next session's sidebar still finds an unloaded context and reads its Teams.
+  assert.equal(get(teamContext).phase, 'idle');
+  assert.deepEqual(get(teamContext).teams, []);
+
+  // Neither does a refresh whose own read answers after the session ended.
+  await loadTeamContext(fixtureFetcher(), 'marketing');
+  let answer;
+  const late = new Promise((resolve) => { answer = resolve; });
+  const reading = refreshTeamInventory(fixtureFetcher({ '/api/teams/marketing/assistants': async () => late }));
+  clearTeamContext();
+  answer(response(200, { assistants: [installedAssistant('salesnator')] }));
+  await reading;
+  assert.equal(get(teamContext).phase, 'idle');
+  assert.deepEqual(get(teamContext).teams, []);
+});
+
 test('creates a Team with the exact payload, validates the response, and refreshes its inventory', async () => {
   const calls = [];
   const fetcher = fixtureFetcher({
