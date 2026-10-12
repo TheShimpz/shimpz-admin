@@ -70,12 +70,6 @@ export function extendExecutionProjection(projection, event) {
   appendStep(projection, event, key, event.elapsed_ms);
 }
 
-export function executionSteps(events) {
-  const projection = createExecutionProjection();
-  for (const event of events) extendExecutionProjection(projection, event);
-  return projection.steps;
-}
-
 // The receipt of one logical turn (ADR-0082): Team's measured steps of every segment the page observed, then one row
 // for the rest of Team's clock (the gaps between steps, the person's wait during a pause, and anything this page never
 // observed), so the rows add up to the turn's duration exactly, in whole milliseconds. Admin's own steps run outside
@@ -89,24 +83,6 @@ export function receiptSteps(events, durationMs) {
   const measured = steps.reduce((sum, step) => sum + (Number.isSafeInteger(step.elapsed_ms) ? step.elapsed_ms : 0), 0);
   const rest = durationMs - measured;
   return rest > 0 ? [...steps, { key: 'rest', identity: 'rest', origin: 'team', phase: 'rest', elapsed_ms: rest }] : steps;
-}
-
-export function executionStepCount(events) {
-  const active = new Map();
-  let count = 0;
-  for (const event of events) {
-    const key = identity(event);
-    if (event.state === 'started') {
-      active.set(key, (active.get(key) ?? 0) + 1);
-      count += 1;
-      continue;
-    }
-    const depth = active.get(key) ?? 0;
-    if (depth > 1) active.set(key, depth - 1);
-    else if (depth === 1) active.delete(key);
-    else count += 1;
-  }
-  return count;
 }
 
 export function technicalStepLabel(step) {

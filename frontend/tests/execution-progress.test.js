@@ -3,8 +3,6 @@ import test from 'node:test';
 
 import {
   createExecutionProjection,
-  executionSteps,
-  executionStepCount,
   extendExecutionProjection,
   formatExecutionDuration,
   localizedEventLabel,
@@ -15,8 +13,15 @@ import {
 import { CHAT_PROGRESS_PHASES } from '../src/lib/localChat.js';
 import { messages } from '../src/lib/messages.js';
 
+// The steps one projection makes of a whole event list, extended one event at a time as the chat page does.
+function projected(events) {
+  const projection = createExecutionProjection();
+  for (const event of events) extendExecutionProjection(projection, event);
+  return projection.steps;
+}
+
 test('pairs repeated measured operations without inventing workflow stages', () => {
-  const steps = executionSteps([
+  const steps = projected([
     { seq: 1, origin: 'team', phase: 'model', state: 'started' },
     { seq: 2, origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 1200 },
     {
@@ -51,8 +56,7 @@ test('incremental projection preserves nested pairing, orphan finishes, and narr
   const projection = createExecutionProjection();
   for (const [index, event] of events.entries()) {
     extendExecutionProjection(projection, event);
-    assert.deepEqual(projection.steps, executionSteps(events.slice(0, index + 1)));
-    assert.equal(executionStepCount(events.slice(0, index + 1)), projection.steps.length);
+    assert.deepEqual(projection.steps, projected(events.slice(0, index + 1)));
     assert.equal(projection.currentIndex,
       projection.steps.findLastIndex((step) => step.elapsed_ms === null));
   }
@@ -183,7 +187,7 @@ test('turns repeated Action calls into one truthful contextual narrative', () =>
     teamName: 'Marketing',
     assistantNames: new Map([['shimpz-cloudflare', 'Shimpz Cloudflare']]),
   };
-  const narrative = executionSteps(events).map((step) => localizedStepLabel(step, TEST_NARRATIVE, context));
+  const narrative = projected(events).map((step) => localizedStepLabel(step, TEST_NARRATIVE, context));
 
   assert.deepEqual(narrative, [
     'admin-preparation',
@@ -199,7 +203,7 @@ test('turns repeated Action calls into one truthful contextual narrative', () =>
 });
 
 test('renders a resumed partial stream without inventing an absolute round', () => {
-  const steps = executionSteps([
+  const steps = projected([
     { seq: 1, origin: 'team', phase: 'action-preparation', state: 'started' },
     {
       seq: 2, origin: 'team', phase: 'action', state: 'started', assistant_id: 'helper',
@@ -214,7 +218,7 @@ test('renders a resumed partial stream without inventing an absolute round', () 
 });
 
 test('a narrative shows an Assistant name exactly as written, isolated, whatever characters it holds', () => {
-  const [step] = executionSteps([{
+  const [step] = projected([{
     seq: 1, origin: 'team', phase: 'action', state: 'started', assistant_id: 'helper',
     action: 'lookup', index: 1, total: 1,
   }]);
@@ -227,7 +231,7 @@ test('a narrative shows an Assistant name exactly as written, isolated, whatever
 });
 
 test('narrates the final context check truthfully for a Brain-only turn', () => {
-  const steps = executionSteps([
+  const steps = projected([
     { seq: 1, origin: 'team', phase: 'team-context', state: 'started' },
     { seq: 2, origin: 'team', phase: 'model', state: 'started' },
     { seq: 3, origin: 'team', phase: 'team-context', state: 'started' },
@@ -270,13 +274,13 @@ test('every locale resolves every narrative variant without placeholder remnants
   }
 });
 
-test('counts the same observed rows when a finish has no observed start', () => {
-  const events = [
+test('a finish with no observed start still makes one row', () => {
+  const steps = projected([
     { seq: 1, origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 5 },
-  ];
+  ]);
 
-  assert.equal(executionStepCount(events), executionSteps(events).length);
-  assert.equal(executionStepCount(events), 1);
+  assert.equal(steps.length, 1);
+  assert.equal(steps[0].elapsed_ms, 5);
 });
 
 test('a receipt lists Team\'s steps of every segment and adds up to the turn duration exactly', () => {
