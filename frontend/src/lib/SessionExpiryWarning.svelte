@@ -60,7 +60,7 @@
   }
 </script>
 
-<Modal bind:element={dialog} class="session-expiry" size="lg" labelledBy={`${id}-title`} role="alertdialog"
+<Modal bind:element={dialog} class="session-expiry" labelledBy={`${id}-title`} role="alertdialog"
   aria-describedby={`${id}-body`} oncancel={cancel}>
   <!-- The shared dialog frame gives the warning the same chamfered geometry and line as every other dialog. -->
   <DialogFrame title={$t('shell.sessionExpiring.title')} titleId={`${id}-title`}>
@@ -78,6 +78,7 @@
 <style>
   p { margin: 0; color: var(--shimpz-color-text-muted); }
   .countdown { font-variant-numeric: tabular-nums; }
-  /* The countdown title stays on one line, at nearly the frame's own title size, in every interface language. */
-  :global(.session-expiry .shimpz-dialog-frame h2) { font-size: 1.4rem; }
+  /* The largest size at which the countdown title stays on one line at the default dialog width in every interface
+     language (Portuguese and Spanish are the longest). */
+  :global(.session-expiry .shimpz-dialog-frame h2) { font-size: 1.2rem; }
 </style>
