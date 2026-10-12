@@ -237,6 +237,7 @@ export const sessionDeadlines = writable(null);
 function notify(topic, cause = 'changed') {
   const entry = watched.get(topic);
   if (!entry) return;
+  if (cause === 'changed') entry.notified = entry.revision;
   for (const listener of entry.listeners) listener(topic, cause);
 }
 
@@ -311,6 +312,7 @@ function sendSubscription(method, topics, { announce = true } = {}) {
       if (Number.isSafeInteger(body?.topics?.[topic])) entry.revision = Math.max(entry.revision, body.topics[topic]);
       entry.active = true;
       if (announce) notify(topic, 'subscribed');
+      stale(topic);
     }
   }).catch(refused);
 }
@@ -367,7 +369,9 @@ export function watchTopic(topic, listener) {
   let entry = watched.get(topic);
   if (!entry) {
     if (watched.size >= MAX_SUBSCRIPTIONS) throw new LocalApiError('Too many Admin topics.');
-    entry = { listeners: new Set(), revision: 0, active: false, subscribing: false };
+    // `read` is the newest revision a read of the topic reflected (-1 before any), and `notified` the newest one its
+    // listeners were told changed.
+    entry = { listeners: new Set(), revision: 0, active: false, subscribing: false, read: -1, notified: 0 };
     watched.set(topic, entry);
     // A subscription Admin still holds from a moment ago is in place already.
     entry.active = queueSubscription('subscribe', topic);
@@ -456,7 +460,9 @@ function receive(text) {
     const waiting = pending.get(frame.id);
     if (!waiting) throw new Error('unexpected result');
     pending.delete(frame.id);
+    if (revised) readRevision(frame);
     waiting.resolve(answer(frame));
+    if (revised) stale(frame.topic);
     return;
   }
   // A long call's own progress names its call; a chat channel's progress frame names its Team instead.
@@ -501,13 +507,28 @@ function receive(text) {
   if (channel?.attached || channel?.attaching) channel.deliver(chatEvent(frame));
 }
 
+// A read's result says which revision of its topic it reflects.
+function readRevision(frame) {
+  if (epoch === '') adoptEpoch(frame.epoch);
+  const entry = watched.get(frame.topic);
+  if (entry && frame.epoch === epoch) entry.read = Math.max(entry.read, frame.revision);
+}
+
+// A read that reflects an older revision than the subscription now in place missed a change made before the
+// subscription took hold, which no `changed` frame will announce: its listeners are told it changed, once.
+function stale(topic) {
+  const entry = watched.get(topic);
+  if (!entry?.active || entry.read < 0) return;
+  if (entry.read < entry.revision && entry.notified < entry.revision) notify(topic);
+}
+
 // A new Admin process numbers every topic from the start again: each revision known from the last one is forgotten, so
 // none of them hides a newer change. Says whether an earlier process's revisions were known.
 function adoptEpoch(next) {
   if (next === epoch) return false;
   const restarted = epoch !== '';
   epoch = next;
-  for (const entry of watched.values()) entry.revision = 0;
+  for (const entry of watched.values()) Object.assign(entry, { revision: 0, read: -1, notified: 0 });
   return restarted;
 }
 
@@ -698,7 +719,7 @@ export function disconnectAdminSocket() {
   for (const channel of [...channels.values()]) channel.dropped(1000);
   channels.clear();
   epoch = '';
-  for (const entry of watched.values()) entry.revision = 0;
+  for (const entry of watched.values()) Object.assign(entry, { revision: 0, read: -1, notified: 0 });
   activityReported = -Infinity;
   reportUnacknowledged = false;
   sessionDeadlines.set(null);

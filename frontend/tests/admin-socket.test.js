@@ -223,6 +223,39 @@ test('a malformed, unknown, or unexpected frame closes the socket', () => {
   }
 });
 
+test('a read that reflects an older revision than the subscription it watches is told to read again', async () => {
+  const socket = connected();
+  const heard = [];
+  const stop = watchTopic('local-assistants', (_topic, cause) => heard.push(cause));
+  // The page's own read goes out before its subscription is in place, and reflects revision 2.
+  const reading = call('snapshots.list', {});
+  await flush();
+  socket.answer('snapshots.list', { assistants: [] }, 200, { topic: 'local-assistants', epoch: EPOCH, revision: 2 });
+  await reading;
+  // A change landed in between: the subscription is at revision 3, so the read is stale and is repeated once.
+  socket.answer('subscribe', { epoch: EPOCH, topics: { 'local-assistants': 3 } });
+  await flush();
+  assert.deepEqual(heard.splice(0), ['subscribed', 'changed']);
+  // A read that reflects the subscribed revision is current: nothing more is asked for.
+  const again = call('snapshots.list', {});
+  await flush();
+  socket.answer('snapshots.list', { assistants: [] }, 200, { topic: 'local-assistants', epoch: EPOCH, revision: 3 });
+  await again;
+  await flush();
+  assert.deepEqual(heard, []);
+  // An older read answered after a change was announced asks for nothing more: that change already asked for a read.
+  const late = call('snapshots.list', {});
+  await flush();
+  socket.frame({ type: 'changed', topic: 'local-assistants', epoch: EPOCH, revision: 5 });
+  assert.deepEqual(heard.splice(0), ['changed']);
+  socket.answer('snapshots.list', { assistants: [] }, 200, { topic: 'local-assistants', epoch: EPOCH, revision: 4 });
+  await late;
+  await flush();
+  assert.deepEqual(heard, []);
+  stop();
+  disconnectAdminSocket();
+});
+
 test('a watched topic is subscribed, re-read on each newer change and after a reopen, and unsubscribed', async () => {
   const socket = connected();
   const heard = [];
