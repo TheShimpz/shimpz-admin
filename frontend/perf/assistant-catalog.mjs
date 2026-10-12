@@ -55,6 +55,8 @@ function fixture(count) {
     assistant_version: '1.0.0',
     name: `Local Assistant ${index + 1}`,
     summary: 'A measured local snapshot.',
+    admission: 'admissible',
+    reason: null,
     actions: ['inspect'],
     integrations: [],
     declared_creators: ['@creator'],
@@ -68,9 +70,14 @@ function fixture(count) {
     assistant_id: `bench-public-${index + 1}`,
     assistant_version: '1.0.0',
     creators: ['@creator'],
+    description: 'A measured public Assistant with one read-only Action.',
     icon_digest: `sha256:${'b'.repeat(64)}`,
+    actions: [{ id: 'inspect', effect: 'read_only', description: 'Inspect the measured state.' }],
+    integrations: [],
+    links: {},
     name: `Published Assistant ${index + 1}`,
     source_digest: `sha256:${'a'.repeat(64)}`,
+    stored_inputs: [],
     summary: 'A measured public Assistant.',
   }));
   return { local, published };
@@ -100,6 +107,14 @@ function apiBody(path, data) {
     checked_at: '2026-09-23T00:00:00Z',
     outcome: 'current',
   };
+  if (path === '/api/admin/security') return {
+    failed_second_factor_attempts: 0, recovery_codes_remaining: 10,
+    sign_in_history: { previous: { at: '2026-09-23T00:00:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 0 },
+  };
+  if (path === '/api/space/resources') return {
+    services_running: 7, services_total: 7, memory_used_bytes: 429_496_730, memory_total_bytes: 4 * 2 ** 30,
+    storage_used_bytes: 1_395_864_371, storage_total_bytes: 64 * 2 ** 30,
+  };
   if (path === '/api/teams') return {
     teams: [{ team_id: teamId, team_name: 'Performance Team', status: 'running' }],
   };
@@ -111,9 +126,20 @@ function apiBody(path, data) {
     model: modelCatalog.providers.find((provider) => provider.id === modelCatalog.default_provider).default_model,
   };
   if (path === `/api/teams/${teamId}/assistant-integrations`) return { integrations: [] };
+  if (path === `/api/teams/${teamId}/routines`) return { team_id: teamId, routines: [], runs: [], incidents: [] };
   if (path === '/api/assistant-catalog') return { version: 1, locale: 'en', assistants: data.published };
   if (path === '/api/local-assistants') return { assistants: data.local, trace_id: 'c'.repeat(32) };
+  if (/^\/api\/local-assistants\/[0-9a-f]{64}\/summary$/.test(path)) {
+    return { locale: 'en', summary: 'A measured local snapshot.' };
+  }
   return null;
+}
+
+// Requests the closed fixture does not answer; any of them fails the run instead of skewing a sample.
+const unexpectedRequests = new Set();
+
+function requireAnsweredRequests() {
+  if (unexpectedRequests.size) throw new Error(`Unanswered benchmark requests: ${[...unexpectedRequests].join(', ')}`);
 }
 
 async function mockApi(page, data) {
@@ -134,6 +160,7 @@ async function mockApi(page, data) {
       return;
     }
     const body = apiBody(path, data);
+    if (body === null) unexpectedRequests.add(`${route.request().method()} ${path}`);
     await route.fulfill({
       status: body === null ? 404 : 200,
       contentType: 'application/json',
@@ -158,7 +185,7 @@ function observePresentation(expectedCards) {
     const boot = document.querySelector('[data-slot="boot-screen"]');
     if (boot) observed.bootSeen = true;
     const catalog = document.querySelector('section.assistant-catalog');
-    const cardCount = catalog?.querySelectorAll('article').length ?? 0;
+    const cardCount = catalog?.querySelectorAll('a.assistant-row').length ?? 0;
     if (cardCount === expectedCards && !catalog?.querySelector('.assistant-catalog-loading')) {
       mark('cardsInDom');
     }
@@ -166,7 +193,8 @@ function observePresentation(expectedCards) {
     if (observed.bootHidden !== null && cardCount === expectedCards) {
       requestAnimationFrame(() => mark('cardsVisibleFrame'));
     }
-    if (cardCount === expectedCards && catalog.querySelectorAll('article img[src^="blob:"]').length === expectedCards) {
+    const icons = catalog?.querySelectorAll('a.assistant-row img[src^="blob:"]').length ?? 0;
+    if (cardCount === expectedCards && icons === expectedCards) {
       mark('iconSourcesReady');
     }
   };
@@ -240,7 +268,11 @@ async function sample(page, cdp, mode, count, index) {
       const state = window.__assistantPerf;
       return state && state.cardsInDom !== null && state.bootHidden !== null && state.cardsVisibleFrame !== null
         && state.iconSourcesReady !== null;
-    }, null, { timeout: 15000 });
+    }, null, { timeout: 15000 }).catch((error) => {
+      requireAnsweredRequests();
+      throw error;
+    });
+    requireAnsweredRequests();
     const result = await page.evaluate(() => ({
       marks: window.__assistantPerf,
       resources: performance.getEntriesByType('resource').map((entry) => ({
