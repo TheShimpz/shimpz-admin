@@ -135,7 +135,7 @@ async function socketOpen() {
 // The operations that change state (ADR-0114 decision 5): never queued, never replayed. What the socket itself holds
 // (subscriptions and attached chat channels) is restored by the socket when it reopens.
 const CHANGES = new Set([
-  'teams.create', 'teams.rename', 'teams.reorder', 'teams.delete', 'inference.save', 'action_confirmation.save',
+  'teams.create', 'teams.rename', 'teams.reorder', 'teams.delete', 'inference.save',
   'assistants.install', 'assistants.install_local', 'assistants.uninstall', 'models.save', 'models.remove',
   'decision.save', 'decision.remove', 'integrations.authorize', 'integrations.complete', 'integrations.cancel',
   'integrations.disconnect', 'stored_inputs.clear', 'files.delete',

@@ -52,8 +52,6 @@ SAMPLES = {
     "security.summary": {},
     "inference.read": {"team_id": "team_1"},
     "inference.save": {"team_id": "team_1", "body": {"provider": "openai", "model": "gpt-6.1-sol"}},
-    "action_confirmation.read": {"team_id": "team_1"},
-    "action_confirmation.save": {"team_id": "team_1", "body": {"confirm_mutating": False}},
     "assistants.registry": {},
     "assistants.list": {"team_id": "team_1"},
     "assistants.install": {"team_id": "team_1", "body": {"assistant_id": "hello-pulse", "source_digest": DIGEST}},
@@ -361,7 +359,6 @@ class SessionMethodTopicTests(SessionMethodCase):
                 {"team/team_1/inventory", "assistants/registry"},
             ),
             ("inference.save", INFERENCE, {"team/team_1/inference"}),
-            ("action_confirmation.save", {"team_id": "team_1", "confirm_mutating": False}, {"team/team_1/inference"}),
         ):
             body = (
                 answer

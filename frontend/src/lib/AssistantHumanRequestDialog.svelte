@@ -10,7 +10,7 @@
   import { attachmentKind, identifierName } from '#lib/attachments.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n.js';
-  import { CONFIRMATION_KIND, displayedHumanRequest } from '#lib/localChat.js';
+  import { displayedHumanRequest } from '#lib/localChat.js';
 
   let {
     open = $bindable(false),
@@ -40,9 +40,6 @@
   let request = $derived(challenge ? displayedHumanRequest(challenge) : undefined);
   let kind = $derived(request?.kind ?? '');
   let isAuth = $derived(kind.startsWith('auth:'));
-  // Team's own confirmation of a mutating Action (ADR-0112) carries no Assistant copy: Admin words its card.
-  let isConfirmation = $derived(kind === CONFIRMATION_KIND);
-  let actionName = $derived(identifierName(challenge?.action?.id));
   let isStoredInput = $derived(kind === 'input:password' && Boolean(request?.stored_input));
   let rejected = $derived(Boolean(rejection));
   // Lead with why this task needs the pause, as the Brain wrote it for this conversation. A Stored Input request is
@@ -51,22 +48,17 @@
     rejected
       ? request?.description
       : challenge?.purpose
-        ?? (isStoredInput
-          ? $t('humanRequest.storedInputNeed', { assistant: challenge?.assistant?.name ?? '' })
-          : isConfirmation ? confirmationLead : request?.description),
-  );
-  let confirmationLead = $derived(
-    $t('humanRequest.confirmationLead', { assistant: challenge?.assistant?.name ?? '', action: actionName }),
+        ?? (isStoredInput ? $t('humanRequest.storedInputNeed', { assistant: challenge?.assistant?.name ?? '' }) : request?.description),
   );
   // The Brain's purpose explains why; it never replaces the Assistant's own description of what will be authorized,
   // so any other request keeps that scope visible beside the purpose.
   let scope = $derived(
     !rejected && !isStoredInput && challenge?.purpose && request?.description !== challenge.purpose
-      ? (isConfirmation ? confirmationLead : request?.description ?? '')
+      ? request?.description ?? ''
       : '',
   );
   // The Action's validated input as Team rendered it: literal escaped rows, each shortened row marked, and the count
-  // of arguments past the last row, so nothing it will run with is hidden silently (ADR-0112).
+  // of arguments past the last row, so nothing it will run with is hidden silently (ADR-0115).
   let input = $derived(rejected ? null : challenge?.input ?? null);
   // An authorization request may name the one original file its approved Action receives, with any metadata embedded
   // in it; the person sees exactly that file before authorizing (ADR-0093).
@@ -101,7 +93,7 @@
       ? (locked ? copy.lockedTitle : copy.deniedTitle)
       : isStoredInput
         ? challenge?.assistant?.name ?? ''
-        : isConfirmation ? copy.confirmationTitle : request?.title,
+        : request?.title,
   );
   // A Stored Input field keeps the Action's own label, rendered in the interface language, so each of several keys
   // one Assistant needs is named apart; Admin supplies only the placeholder.
@@ -114,7 +106,7 @@
       : '',
   );
   let primaryLabel = $derived(
-    isConfirmation ? copy.confirm : kind === 'approval' ? copy.approve : isAuth ? copy.authorize : copy.submit,
+    kind === 'approval' ? copy.approve : isAuth ? copy.authorize : copy.submit,
   );
   let displayedSeconds = $derived(
     challenge?.challenge_id === countdownChallengeId
@@ -209,10 +201,6 @@
   function submit(event) {
     event.preventDefault();
     if (working || !challenge) return;
-    if (isConfirmation) {
-      onrespond({ decision: 'submit', value: true });
-      return;
-    }
     if (!fieldValid) {
       validationError = copy.invalid;
       return;
@@ -317,7 +305,7 @@
       <div class="request-state" bind:this={stateStatus} tabindex="-1">
         <Notice>{copy.validating}</Notice>
       </div>
-    {:else if !isConfirmation}
+    {:else}
       <div bind:this={fieldsContainer}>
         <ActionRequestFields
           request={fieldRequest}

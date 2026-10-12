@@ -1,5 +1,5 @@
-// Team's confirmation of a mutating Action (ADR-0112) in the built Admin with scenario fixtures (ADR-0087): Admin words
-// the card, shows the Action's validated input exactly as Team rendered it, and answers with `true` or a denial.
+// An Action's declared approval (ADR-0115) in the built Admin with scenario fixtures (ADR-0087): the card shows the
+// Action's validated input exactly as Team rendered it and answers with `true` or a denial.
 import { expect, test } from '@playwright/test';
 
 import { accessibilityViolations } from './axe.js';
@@ -19,17 +19,17 @@ async function sendMessage(page, message) {
   await send.click();
 }
 
-async function openConfirmation(page) {
-  const scenario = await routeScenario(page, 'action-confirmation');
+async function openApproval(page) {
+  const scenario = await routeScenario(page, 'approval-input');
   await page.goto('/chat/?team=marketing');
   await sendMessage(page, 'Add the SPF record for example.com');
-  const dialog = page.getByRole('dialog', { name: copy.confirmationTitle });
+  const dialog = page.getByRole('dialog', { name: 'Create the SPF record?' });
   await expect(dialog).toBeVisible();
   return { scenario, dialog };
 }
 
-test('Team confirmation lists every input row as literal text, marks a shortened row, and counts the rest', async ({ page }) => {
-  const { scenario, dialog } = await openConfirmation(page);
+test('An approval lists every input row as literal text, marks a shortened row, and counts the rest', async ({ page }) => {
+  const { scenario, dialog } = await openApproval(page);
   const input = dialog.getByRole('region', { name: copy.inputLabel });
   // Sixteen rows in Team's order; markup in a value is text, never an element.
   await expect(input.getByRole('term')).toHaveCount(16);
@@ -43,10 +43,10 @@ test('Team confirmation lists every input row as literal text, marks a shortened
   await expect(input.getByRole('definition').first()).not.toContainText(copy.inputTruncated);
   // The arguments past the sixteenth row are counted, never dropped silently.
   await expect(input).toContainText(copy.inputOmitted.replace('{count}', '3'));
-  // The confirmation card's one accessibility scan.
+  // The approval card's one accessibility scan.
   expect(await accessibilityViolations(page)).toEqual([]);
 
-  await dialog.getByRole('button', { name: copy.confirm, exact: true }).click();
+  await dialog.getByRole('button', { name: copy.approve, exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText('Done — the DNS record was created.')).toBeVisible();
   const responses = scenario.chatFrames().filter((frame) => frame.type === 'human-response');
@@ -55,8 +55,8 @@ test('Team confirmation lists every input row as literal text, marks a shortened
   ]);
 });
 
-test('Cancel answers Team confirmation with a denial', async ({ page }) => {
-  const { scenario, dialog } = await openConfirmation(page);
+test('Cancel answers the approval with a denial', async ({ page }) => {
+  const { scenario, dialog } = await openApproval(page);
   await dialog.getByRole('button', { name: copy.cancel, exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText('Ok — I stopped that Action.')).toBeVisible();

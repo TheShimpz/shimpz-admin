@@ -317,9 +317,6 @@ export default {
     },
   },
   humanRequest: {
-    confirm: 'تأكيد',
-    confirmationTitle: 'أكّد هذا الـ Action',
-    confirmationLead: 'سيشغّل {assistant} الإجراء {action} الذي يغيّر شيئًا. لا يعمل إلا بعد أن تؤكّد.',
     inputLabel: 'المدخلات',
     inputTruncated: 'مختصر',
     inputOmitted: '{count} حقول أخرى غير معروضة',

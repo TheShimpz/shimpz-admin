@@ -229,14 +229,14 @@ const STARTS = {
     runs: [],
     human: 'confirm',
   }),
-  // Team's own confirmation of a mutating Action (ADR-0112): Admin words the card, and it lists the Action's input as
-  // Team rendered it, with one shortened row and the count of fields past the sixteenth.
-  'action-confirmation': () => ({
+  // An Action's declared approval lists the Action's input as Team rendered it (ADR-0115), with one shortened row and
+  // the count of fields past the sixteenth.
+  'approval-input': () => ({
     session: authenticatedLocalSession(),
     teams: [TEAM],
     routines: [],
     runs: [],
-    human: 'team-confirmation',
+    human: 'input',
   }),
   // Chat attachments (ADR-0093): files upload to the Team, and a reply to a message with files names the Actions
   // Team withheld for them; an install request with files gets the attachment-free guidance.
@@ -558,8 +558,8 @@ function confirmChallenge(locale) {
   };
 }
 
-// Team's confirmation card rows: escaped canonical JSON text per argument, in name order (ADR-0112).
-const CONFIRMATION_INPUT = Object.freeze({
+// An approval card's input rows: escaped canonical JSON text per argument, in name order (ADR-0115).
+const APPROVAL_INPUT = Object.freeze({
   fields: [
     { name: 'comment', value: '"<b>Set by Shimpz</b>"', truncated: false },
     { name: 'content', value: `"v=spf1 include:_spf.example.com \\u202e ${'x'.repeat(340)}`, truncated: true },
@@ -572,25 +572,23 @@ const CONFIRMATION_INPUT = Object.freeze({
   ],
   omitted: 3,
 });
+const INPUT_REQUEST = Object.freeze({
+  kind: 'approval',
+  ordinal: 0,
+  title: 'Create the SPF record?',
+  description: 'Cloudflare will add one TXT record to example.com.',
+  fingerprint: 'a'.repeat(64),
+});
 
-function teamConfirmationChallenge(locale) {
+function inputApprovalChallenge(locale) {
   return {
     type: 'human-required',
     challenge_id: 'f'.repeat(32),
     expires_in: 180,
     assistant: { id: 'shimpz-cloudflare', name: 'Cloudflare', version: '0.4.4' },
     action: { id: 'create-dns-record', summary: 'Create one DNS record.' },
-    request: {
-      kind: 'confirmation',
-      ordinal: 0,
-      policy: 'mutating-actions',
-      binding: 'a'.repeat(64),
-      fingerprint: 'f'.repeat(64),
-    },
-    rendered: {},
-    locale,
-    pack_digest: `sha256:${'5'.repeat(64)}`,
-    input: structuredClone(CONFIRMATION_INPUT),
+    ...localizedChallenge(INPUT_REQUEST, { locale }),
+    input: structuredClone(APPROVAL_INPUT),
   };
 }
 
@@ -599,7 +597,7 @@ const HUMAN_CHALLENGES = Object.freeze({
   confirm: confirmChallenge,
   file: fileApprovalChallenge,
   'stored-input': storedInputChallenge,
-  'team-confirmation': teamConfirmationChallenge,
+  input: inputApprovalChallenge,
 });
 
 // The pending request in the language a chat or sync frame names, as Team reopens it.
@@ -761,7 +759,7 @@ export function createScenario(name = 'ready', locale = 'en') {
               : {
                 approval: `Done — published with ${frame.value}.`,
                 confirm: 'Done — the DNS record was updated.',
-                'team-confirmation': 'Done — the DNS record was created.',
+                input: 'Done — the DNS record was created.',
                 file: 'Done — Contract.pdf is in the R2 bucket “contracts”.',
               }[state.human] ?? 'Done — the search ran with your key.',
             clarification: null,

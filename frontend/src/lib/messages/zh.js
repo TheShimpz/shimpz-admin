@@ -317,9 +317,6 @@ export default {
     },
   },
   humanRequest: {
-    confirm: '确认',
-    confirmationTitle: '确认此 Action',
-    confirmationLead: '{assistant} 即将运行 {action}，它会更改某些内容。只有在你确认后才会运行。',
     inputLabel: '输入',
     inputTruncated: '已缩短',
     inputOmitted: '另有 {count} 个字段未显示',

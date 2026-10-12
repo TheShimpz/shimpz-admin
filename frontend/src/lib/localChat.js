@@ -86,12 +86,8 @@ export const HUMAN_REQUEST_KINDS = Object.freeze([
   'auth:password',
 ]);
 const HUMAN_AUTH_KINDS = new Set(HUMAN_REQUEST_KINDS.filter((kind) => kind.startsWith('auth:')));
-// Team's own confirmation of a mutating Action that declares no authorization (ADR-0112): it names only its policy and
-// the SHA-256 of the exact call it binds, references no catalog copy, and Admin words its card.
-export const CONFIRMATION_KIND = 'confirmation';
-const CONFIRMATION_POLICY = 'mutating-actions';
-// The requests whose card may show the Action's validated input; Team's confirmation always shows it.
-const INPUT_KINDS = new Set([CONFIRMATION_KIND, 'approval', ...HUMAN_AUTH_KINDS]);
+// The requests whose card may show the Action's validated input: an Action's declared authorization (ADR-0115).
+const INPUT_KINDS = new Set(['approval', ...HUMAN_AUTH_KINDS]);
 // The bounds of that input's rows (Team HTTP challenge.canonical_input_projection).
 const INPUT_PROJECTION_MAX_FIELDS = 16;
 const INPUT_PROJECTION_NAME_CHARS = 128;
@@ -447,25 +443,6 @@ export function canonicalPurpose(value) {
   return value;
 }
 
-function canonicalConfirmationRequest(value) {
-  if (
-    !exactKeys(value, ['kind', 'ordinal', 'policy', 'binding', 'fingerprint']) ||
-    value.ordinal !== 0 ||
-    value.policy !== CONFIRMATION_POLICY ||
-    typeof value.binding !== 'string' ||
-    !/^[0-9a-f]{64}$/.test(value.binding) ||
-    typeof value.fingerprint !== 'string' ||
-    !/^[0-9a-f]{64}$/.test(value.fingerprint)
-  ) throw new LocalApiError('The local chat response is invalid.');
-  return {
-    kind: CONFIRMATION_KIND,
-    ordinal: 0,
-    policy: CONFIRMATION_POLICY,
-    binding: value.binding,
-    fingerprint: value.fingerprint,
-  };
-}
-
 function projectedText(value, maximum) {
   return typeof value === 'string' && value.length > 0 && codePointLength(value) <= maximum &&
     !UNPRINTABLE_RE.test(value);
@@ -483,7 +460,7 @@ function codePointOrder(left, right) {
 }
 
 /**
- * The rows of an Action's validated input a confirmation card shows (ADR-0112): at most 16 `{name, value, truncated}`
+ * The rows of an Action's validated input an authorization card shows (ADR-0115): at most 16 `{name, value, truncated}`
  * rows of literal escaped text in strictly ascending name order, and the count of arguments past the last row.
  */
 export function canonicalInputProjection(value) {
@@ -510,7 +487,6 @@ export function canonicalInputProjection(value) {
 }
 
 function canonicalHumanRequest(value) {
-  if (value?.kind === CONFIRMATION_KIND) return canonicalConfirmationRequest(value);
   const base = canonicalHumanRequestBase(value);
   const baseKeys = ['kind', 'ordinal', 'title', 'description', 'fingerprint'];
   if (base.kind === 'approval' || HUMAN_AUTH_KINDS.has(base.kind)) {
@@ -1456,8 +1432,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     // only for a Stored Input request, the help text and help link its reviewed Assistant declared. The rendered copy,
     // its concrete locale, and the language pack's digest are required beside the canonical request (ADR-0091).
     // An authorization request may also disclose the one original file its approved Action receives (ADR-0093).
-    // Every chat confirmation card may show the Action's validated input, and Team's own confirmation always does
-    // (ADR-0112).
+    // A chat authorization card may show the Action's validated input (ADR-0115).
     const optional = ['purpose', 'help', 'help_url', 'file', 'input'].filter((key) => Object.hasOwn(value, key));
     if (
       !exactKeys(value, [
@@ -1481,10 +1456,9 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     if (optional.includes('file') && request.kind !== 'approval' && !HUMAN_AUTH_KINDS.has(request.kind)) {
       throw new LocalApiError('The local chat response is invalid.');
     }
-    if (
-      (optional.includes('input') && !INPUT_KINDS.has(request.kind)) ||
-      (request.kind === CONFIRMATION_KIND && !optional.includes('input'))
-    ) throw new LocalApiError('The local chat response is invalid.');
+    if (optional.includes('input') && !INPUT_KINDS.has(request.kind)) {
+      throw new LocalApiError('The local chat response is invalid.');
+    }
     return {
       type: 'human-required',
       challenge_id: value.challenge_id,

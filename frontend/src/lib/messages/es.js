@@ -317,9 +317,6 @@ export default {
     },
   },
   humanRequest: {
-    confirm: 'Confirmar',
-    confirmationTitle: 'Confirma este Action',
-    confirmationLead: '{assistant} va a ejecutar {action}, que cambia algo. Solo se ejecuta después de que lo confirmes.',
     inputLabel: 'Entrada',
     inputTruncated: 'Acortado',
     inputOmitted: '{count} campos más sin mostrar',

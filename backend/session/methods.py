@@ -187,8 +187,6 @@ METHODS: dict[str, Method] = {
     "security.summary": _security,
     "inference.read": _on_lane(team_inference, "status", "team_id"),
     "inference.save": _on_lane(team_inference, "configure", "team_id", "body"),
-    "action_confirmation.read": _on_lane(team_inference, "action_confirmation_status", "team_id"),
-    "action_confirmation.save": _on_lane(team_inference, "action_confirmation_configure", "team_id", "body"),
     "assistants.registry": _on_lane(team_summary, "assistants_list"),
     "assistants.list": _team_call(team, "list_installed_assistants", "team_id"),
     "assistants.uninstall": _team_call(team, "uninstall_assistant", "team_id", "assistant_id"),

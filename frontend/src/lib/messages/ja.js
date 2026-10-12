@@ -317,9 +317,6 @@ export default {
     },
   },
   humanRequest: {
-    confirm: '確認',
-    confirmationTitle: 'この Action を確認',
-    confirmationLead: '{assistant} が {action} を実行しようとしています。これは何かを変更します。確認するまで実行されません。',
     inputLabel: '入力',
     inputTruncated: '短縮済み',
     inputOmitted: '表示されていないフィールドがあと {count} 件あります',

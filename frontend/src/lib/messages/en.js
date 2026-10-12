@@ -315,9 +315,6 @@ export default {
     },
   },
   humanRequest: {
-    confirm: 'Confirm',
-    confirmationTitle: 'Confirm this Action',
-    confirmationLead: '{assistant} is about to run {action}, which changes something. It runs only after you confirm.',
     inputLabel: 'Input',
     inputTruncated: 'Shortened',
     inputOmitted: '{count} more fields not shown',
