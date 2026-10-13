@@ -91,7 +91,7 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
         # The validated build writes the same commit outside the served tree, with the tree's normalized time.
         self.assertIn(
             'RUN test -n "$SOURCE_REVISION" && \\\n    pnpm build && \\\n'
-            "    printf '%s\\n' \"$SOURCE_REVISION\" > /w/revision && \\\n"
+            '    printf \'%s %s\\n\' "$SOURCE_REVISION" "$SOURCE_DATE_EPOCH" > /w/revision && \\\n'
             '    find /w/build /w/revision -depth -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +\n',
             stages["ui"],
         )

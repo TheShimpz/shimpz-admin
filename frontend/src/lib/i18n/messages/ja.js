@@ -59,7 +59,7 @@ export default {
     languageCurrent: '言語：{name}',
     languageMenu: '言語',
     platformRollback: '更新をロールバックしました',
-    versionStale: '新しいアプリのバージョンがあります。更新してください',
+    versionStale: '新しいアプリのバージョン（{version}）があります。更新してください',
     versionReload: '更新',
     reconnecting: 'Admin に再接続しています… 表示内容が古い可能性があり、操作は接続が戻るまで待機します。',
     reconnectFailed: "Admin に接続できません。Shimpz は再接続を試み続けています。",

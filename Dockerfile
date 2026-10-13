@@ -28,12 +28,12 @@ COPY frontend/ ./
 # Python stage consumes only this tree and the revision file beside it.
 ARG SOURCE_DATE_EPOCH=0
 # The commit the sidebar's Admin version names (frontend/src/lib/space/version.js); an image always names one. The
-# build validates it, and the backend gets the same commit from /w/revision, outside the served tree, so its session
-# socket can tell a page built from another commit that it is stale.
+# build validates it, and the backend gets the same commit and its commit time from /w/revision, outside the served
+# tree, so its session socket can tell a page built from another commit that it is stale and name the new version.
 ARG SOURCE_REVISION
 RUN test -n "$SOURCE_REVISION" && \
     pnpm build && \
-    printf '%s\n' "$SOURCE_REVISION" > /w/revision && \
+    printf '%s %s\n' "$SOURCE_REVISION" "$SOURCE_DATE_EPOCH" > /w/revision && \
     find /w/build /w/revision -depth -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
 
 # ── stage 3: resolve target-platform Python dependencies ───────────────────────────────────────

@@ -26,8 +26,9 @@ MAX_REVISION = 2**53 - 1
 
 CALL_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 EPOCH_RE = re.compile(r"[0-9a-f]{32}\Z")
-# The full commit id an Admin build names.
+# The full commit id an Admin build names, and the latest commit time (UTC seconds) a version name can show.
 SOURCE_REVISION_RE = re.compile(r"[0-9a-f]{40}\Z")
+MAX_SOURCE_TIME = 253_402_300_799
 TOPIC_RE = re.compile(
     r"(?:teams|space/(?:models|decision)|platform/release|security/summary|session|assistants/registry"
     r"|local-assistants"
@@ -266,21 +267,29 @@ def progress(call_id: str) -> dict[str, object]:
     return {"type": "progress", "id": call_id, "state": "running"}
 
 
-def session(idle_seconds: float, absolute_seconds: float, source_revision: str | None) -> dict[str, object]:
+def session(idle_seconds: float, absolute_seconds: float, source: tuple[str, int] | None) -> dict[str, object]:
     """The session's two deadlines, in whole seconds from now on Admin's clock: idle and absolute expiry.
 
-    It also names the commit this Admin was built from, or null for a run that names none, so a page built from another
-    commit knows it is stale; every socket hears it when it opens, so a reconnect that reaches a new Admin hears it too.
+    It also names the commit this Admin was built from and that commit's time, or nulls for a run that names none, so a
+    page built from another commit knows it is stale and names the new version; every socket hears it when it opens, so
+    a reconnect that reaches a new Admin hears it too.
     """
-    if source_revision is not None and (
-        not isinstance(source_revision, str) or SOURCE_REVISION_RE.fullmatch(source_revision) is None
+    if source is not None and not (
+        isinstance(source, tuple)
+        and len(source) == 2
+        and isinstance(source[0], str)
+        and SOURCE_REVISION_RE.fullmatch(source[0]) is not None
+        and type(source[1]) is int
+        and 0 < source[1] <= MAX_SOURCE_TIME
     ):
-        raise ValueError("invalid Admin source revision")
+        raise ValueError("invalid Admin source build")
+    revision, time = source if source is not None else (None, None)
     return {
         "type": "session",
         "idle_seconds": int(idle_seconds),
         "absolute_seconds": int(absolute_seconds),
-        "source_revision": source_revision,
+        "source_revision": revision,
+        "source_time": time,
     }
 
 

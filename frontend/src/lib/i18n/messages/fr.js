@@ -59,7 +59,7 @@ export default {
     languageCurrent: 'Langue : {name}',
     languageMenu: 'Langue',
     platformRollback: 'Mise à jour annulée',
-    versionStale: 'Une nouvelle version de l’app est disponible, veuillez mettre à jour',
+    versionStale: 'Une nouvelle version de l’app ({version}) est disponible, veuillez mettre à jour',
     versionReload: 'Mettre à jour',
     reconnecting: 'Reconnexion à Admin… Ce que vous voyez peut être obsolète, et les actions attendent le retour de la connexion.',
     reconnectFailed: "Admin est injoignable. Shimpz continue d’essayer de se reconnecter.",

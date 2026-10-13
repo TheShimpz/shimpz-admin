@@ -199,9 +199,13 @@ class FrontendSessionSocketParityTests(unittest.TestCase):
         self.assertEqual(socket_frames.ACTIVITY, {"type": "activity"})
         self.assertIn("connection.send(JSON.stringify({ type: 'activity' }));", source)
         self.assertEqual(
-            set(socket_frames.session(1, 2, None)), {"type", "idle_seconds", "absolute_seconds", "source_revision"}
+            set(socket_frames.session(1, 2, None)),
+            {"type", "idle_seconds", "absolute_seconds", "source_revision", "source_time"},
         )
-        self.assertIn("exact(frame, ['type', 'idle_seconds', 'absolute_seconds', 'source_revision'])", source)
+        self.assertIn(
+            "exact(frame, ['type', 'idle_seconds', 'absolute_seconds', 'source_revision', 'source_time'])", source
+        )
+        self.assertIn(f"const MAX_SOURCE_TIME = {socket_frames.MAX_SOURCE_TIME:_};", source)
         match = re.search(r"^const SOURCE_REVISION_RE = (.+);$", source, re.MULTILINE)
         self.assertIsNotNone(match)
         self.assertEqual(match[1], "/^" + socket_frames.SOURCE_REVISION_RE.pattern.removesuffix(r"\Z") + "$/")

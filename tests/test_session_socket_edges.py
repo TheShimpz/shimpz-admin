@@ -293,14 +293,25 @@ class SourceRevisionTests(unittest.TestCase):
     def test_the_build_commit_is_read_exactly_or_refused(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "revision"
-            self.assertIsNone(socket.source_revision(path))
-            path.write_bytes(b"a" * 40 + b"\n")
-            self.assertEqual(socket.source_revision(path), "a" * 40)
-            for content in (b"a" * 40, b"A" * 40 + b"\n", b"a" * 39 + b"\n", b"a" * 40 + b"\n\n", b""):
+            self.assertIsNone(socket.source_build(path))
+            path.write_bytes(b"a" * 40 + b" 1791884573\n")
+            self.assertEqual(socket.source_build(path), ("a" * 40, 1_791_884_573))
+            for content in (
+                b"a" * 40 + b"\n",
+                b"a" * 40 + b" 1791884573",
+                b"A" * 40 + b" 1791884573\n",
+                b"a" * 39 + b" 1791884573\n",
+                b"a" * 40 + b" 0\n",
+                b"a" * 40 + b" 01791884573\n",
+                b"a" * 40 + b" 999999999999\n",
+                b"a" * 40 + b"  1791884573\n",
+                b"a" * 40 + b" 1791884573\n\n",
+                b"",
+            ):
                 with self.subTest(content=content):
                     path.write_bytes(content)
                     with self.assertRaises(RuntimeError):
-                        socket.source_revision(path)
+                        socket.source_build(path)
 
 
 class WatcherReadTests(unittest.TestCase):

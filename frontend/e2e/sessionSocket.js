@@ -6,6 +6,8 @@
 export const SESSION_SOCKET_PATH = '/api/session/ws';
 export const SESSION_PROTOCOL = 'shimpz.admin.v1';
 const EPOCH = '5'.repeat(32);
+// The commit time a scripted Admin names with its commit.
+export const SOURCE_TIME = 1_791_884_573;
 // The `shimpz.chat.v7` server frames whose own shape names their Team; every other frame gains it on the channel.
 const NATIVE_TEAM_FRAMES = new Set(['done', 'assistant-install-plan', 'assistant-guidance']);
 const NATIVE_UNINSTALL_STATES = new Set(['proposed', 'uninstalled']);
@@ -34,6 +36,11 @@ export function serveSession(transport, handlers, revisions = new Map()) {
   const frames = [];
   let closed = false;
   const sourceRevision = () => handlers.sourceRevision?.() ?? null;
+  // A named commit comes with its commit time, as an image build writes both.
+  const source = () => {
+    const revision = sourceRevision();
+    return { source_revision: revision, source_time: revision === null ? null : SOURCE_TIME };
+  };
 
   function send(frame) {
     if (!closed) transport.send(JSON.stringify(frame));
@@ -110,7 +117,7 @@ export function serveSession(transport, handlers, revisions = new Map()) {
     }
     if (frame.type === 'activity') {
       const renewed = session.onActivity?.();
-      if (renewed) send({ type: 'session', ...renewed, source_revision: sourceRevision() });
+      if (renewed) send({ type: 'session', ...renewed, ...source() });
       return;
     }
     const channel = channels.get(frame.team_id);
@@ -137,7 +144,7 @@ export function serveSession(transport, handlers, revisions = new Map()) {
         type: 'session',
         idle_seconds: idleSeconds,
         absolute_seconds: absoluteSeconds,
-        source_revision: sourceRevision(),
+        ...source(),
       });
     },
     subscribed: (topic) => topics.has(topic),

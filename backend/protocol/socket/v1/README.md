@@ -30,10 +30,11 @@ envelope included, at most 1 MiB.
   per tab. It is the only frame, and nothing over HTTP, that restarts the session's idle time; Admin ignores one that
   arrives within 30 seconds of the session's last renewal, from any tab, and it never revives an expired session or
   moves its absolute expiry.
-- `session {idle_seconds, absolute_seconds, source_revision}` tells the page, on Admin's clock, how long the session
-  has until it idles out and until its absolute expiry: once the socket opens and whenever the session's idle time
-  restarts. `source_revision` is the full commit id (40 lowercase hexadecimal characters) this Admin was built from,
-  or null for a run that names none; a page built from another commit shows that it is stale and offers to reload.
+- `session {idle_seconds, absolute_seconds, source_revision, source_time}` tells the page, on Admin's clock, how long
+  the session has until it idles out and until its absolute expiry: once the socket opens and whenever the session's
+  idle time restarts. `source_revision` is the full commit id (40 lowercase hexadecimal characters) this Admin was
+  built from and `source_time` that commit's time in whole UTC seconds (1 to 253402300799), both null for a run that
+  names none; a page built from another commit shows that it is stale, names the new version, and offers to update.
   Every socket hears it as it opens, so a reconnect that reaches a new Admin learns its commit.
 - `changed {topic, epoch, revision}` is an invalidation only: the client reads the topic again through `call`.
 - The chat channel carries the `shimpz.chat.v7` frames of `.context/SHIMPZ_CHAT_V7.md`, each with the attached Team's

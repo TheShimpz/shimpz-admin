@@ -6,12 +6,16 @@ import { expect, test } from '@playwright/test';
 import { messages } from '../src/lib/i18n/catalogs.js';
 import { buildVersion } from '../src/lib/space/version.js';
 import { dropSessions, routeScenario, routeSourceRevision } from './scenarioRoutes.js';
+import { SOURCE_TIME } from './sessionSocket.js';
 
 // The commit this build names: the gate builds and runs the suite with the same SOURCE_DATE_EPOCH and SOURCE_REVISION.
 const OWN = process.env.SOURCE_REVISION ?? '';
 const OTHER = OWN === 'b'.repeat(40) ? 'c'.repeat(40) : 'b'.repeat(40);
 const reload = { name: messages.en.shell.versionReload };
-const staleNotice = (page) => page.getByRole('status').filter({ hasText: messages.en.shell.versionStale });
+// The bar names the version of the Admin the page reaches.
+const staleNotice = (page) => page.getByRole('status').filter({
+  hasText: messages.en.shell.versionStale.replace('{version}', buildVersion(String(SOURCE_TIME), OTHER)),
+});
 
 test.beforeEach(() => {
   expect(OWN, 'the suite runs against a build that names its commit (SOURCE_REVISION)').toMatch(/^[0-9a-f]{40}$/);

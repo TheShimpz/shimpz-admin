@@ -212,6 +212,8 @@ const SESSION_EXPIRING = PREVIEW_PARAMS.get('session') === 'expiring';
 const SOCKET_RECONNECTING = PREVIEW_PARAMS.get('socket') === 'reconnecting';
 const VERSION_STALE = PREVIEW_PARAMS.get('version') === 'stale';
 const SERVED_REVISION = VERSION_STALE ? 'b'.repeat(40) : __ADMIN_REVISION__;
+// The commit time the scripted Admin names with its commit.
+const PREVIEW_SOURCE_TIME = 1_791_884_573;
 const PREVIEW_STARTED = Date.now();
 
 // Admin keeps topic revisions for its whole process: every scripted socket of the page shares them.
@@ -254,6 +256,7 @@ class SessionSocket extends EventTarget {
   #deadline(idleSeconds) {
     const data = JSON.stringify({
       type: 'session', idle_seconds: idleSeconds, absolute_seconds: 80000, source_revision: SERVED_REVISION,
+      source_time: SERVED_REVISION === null ? null : PREVIEW_SOURCE_TIME,
     });
     setTimeout(() => this.#emit('message', new MessageEvent('message', { data })), 0);
   }

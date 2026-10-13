@@ -18,6 +18,8 @@ const MAX_SUBSCRIPTIONS = 64;
 const MAX_ATTACHED_TEAMS = 4;
 const EPOCH_RE = /^[0-9a-f]{32}$/;
 const SOURCE_REVISION_RE = /^[0-9a-f]{40}$/;
+// The latest commit time, in UTC seconds, a version name can show.
+const MAX_SOURCE_TIME = 253_402_300_799;
 const CALL_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const TOPIC_RE = /^(?:teams|space\/(?:models|decision)|platform\/release|security\/summary|session|assistants\/registry|local-assistants|team\/[a-z0-9_]{1,40}\/(?:routines|history|inventory|inference|integrations))$/;
 // The chat-channel frames a client sends; every one carries its Team's `team_id`.
@@ -262,10 +264,11 @@ export function trackActivity(target = document) {
 export const sessionDeadlines = writable(null);
 
 /**
- * The commit the Admin this tab last reached was built from, as its session frame names it, or null while no Admin has
- * named one. It stays across a reconnect until the reopened socket names its own, and a signed-out tab forgets it.
+ * The build the Admin this tab last reached names in its session frame, `{ revision, time }` (its commit and that
+ * commit's time in UTC seconds), or null while no Admin has named one. It stays across a reconnect until the reopened
+ * socket names its own, and a signed-out tab forgets it.
  */
-export const servedRevision = writable(null);
+export const servedBuild = writable(null);
 
 // Why a listener hears of its topic: `changed` (Admin raised it), `open` (the tab's first open, when every screen reads
 // what it shows), or `reopen` (anything may have changed while the socket was closed).
@@ -474,15 +477,19 @@ function receive(text) {
   }
   if (frame.type === 'session') {
     if (
-      !exact(frame, ['type', 'idle_seconds', 'absolute_seconds', 'source_revision']) ||
+      !exact(frame, ['type', 'idle_seconds', 'absolute_seconds', 'source_revision', 'source_time']) ||
       !Number.isSafeInteger(frame.idle_seconds) ||
       !Number.isSafeInteger(frame.absolute_seconds) ||
       frame.idle_seconds < 0 ||
       frame.absolute_seconds < 0 ||
-      !(frame.source_revision === null ||
-        (typeof frame.source_revision === 'string' && SOURCE_REVISION_RE.test(frame.source_revision)))
+      !((frame.source_revision === null && frame.source_time === null) ||
+        (typeof frame.source_revision === 'string' &&
+          SOURCE_REVISION_RE.test(frame.source_revision) &&
+          Number.isSafeInteger(frame.source_time) &&
+          frame.source_time > 0 &&
+          frame.source_time <= MAX_SOURCE_TIME))
     ) throw new Error('invalid session deadlines');
-    servedRevision.set(frame.source_revision);
+    servedBuild.set(frame.source_revision === null ? null : { revision: frame.source_revision, time: frame.source_time });
     const now = performance.now();
     if (openingDeadline) openingDeadline = false;
     else reportUnacknowledged = false;
@@ -702,7 +709,7 @@ export function disconnectAdminSocket() {
   activityReported = -Infinity;
   reportUnacknowledged = false;
   sessionDeadlines.set(null);
-  servedRevision.set(null);
+  servedBuild.set(null);
   setPhase('idle');
   socket?.close(1000, 'Signed out');
 }

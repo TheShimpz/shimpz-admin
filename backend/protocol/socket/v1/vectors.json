@@ -71,8 +71,8 @@
     "result": {"type": "result", "id": "c1", "status": 200, "body": {"teams": []}, "topic": "teams", "epoch": "0123456789abcdef0123456789abcdef", "revision": 3},
     "refused": {"type": "result", "id": "c2", "status": 429, "body": {"detail": "too many calls in flight"}},
     "progress": {"type": "progress", "id": "c15", "state": "running"},
-    "session": {"type": "session", "idle_seconds": 3480, "absolute_seconds": 82800, "source_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
-    "session_unnamed": {"type": "session", "idle_seconds": 3480, "absolute_seconds": 82800, "source_revision": null},
+    "session": {"type": "session", "idle_seconds": 3480, "absolute_seconds": 82800, "source_revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "source_time": 1791884573},
+    "session_unnamed": {"type": "session", "idle_seconds": 3480, "absolute_seconds": 82800, "source_revision": null, "source_time": null},
     "changed": {"type": "changed", "topic": "team/marketing/history", "epoch": "0123456789abcdef0123456789abcdef", "revision": 4},
     "chat": [
       {"type": "sync-empty", "team_id": "marketing"},

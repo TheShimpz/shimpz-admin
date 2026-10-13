@@ -43,22 +43,27 @@ EXPIRY_MARGIN_SECONDS = 0.05
 SESSION_CHECK_SECONDS = 60
 
 SessionCheck = Callable[[Mapping[str, str]], Awaitable[bool]]
-# The commit the Admin image was built from, which its build writes beside the UI it built from the same commit.
+# The commit the Admin image was built from and its commit time, which its build writes beside the UI it built from the
+# same commit.
 REVISION_FILE = Path(__file__).resolve().parents[1] / "revision"
 
 
-def source_revision(path: Path = REVISION_FILE) -> str | None:
-    """This Admin's build commit, or None without a build (a working tree or a test); a malformed one fails."""
+def source_build(path: Path = REVISION_FILE) -> tuple[str, int] | None:
+    """This Admin's build commit and commit time, or None without a build (a working tree or a test).
+
+    A malformed file fails.
+    """
     try:
         content = path.read_bytes()
     except FileNotFoundError:
         return None
-    if re.fullmatch(rb"[0-9a-f]{40}\n", content) is None:
+    match = re.fullmatch(rb"([0-9a-f]{40}) ([1-9][0-9]{0,11})\n", content)
+    if match is None or int(match[2]) > frames.MAX_SOURCE_TIME:
         raise RuntimeError("the Admin source revision file is malformed")
-    return content[:40].decode("ascii")
+    return match[1].decode("ascii"), int(match[2])
 
 
-SOURCE_REVISION = source_revision()
+SOURCE_BUILD = source_build()
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,7 +183,7 @@ class SessionSocket:
             deadlines = None
         if deadlines is not None:
             with contextlib.suppress(OutboundOverflowError):
-                self.send(frames.session(*deadlines, SOURCE_REVISION))
+                self.send(frames.session(*deadlines, SOURCE_BUILD))
 
     def progress(self, call_id: str) -> None:
         """A long call started running (on the socket's loop): its result follows when it ends."""

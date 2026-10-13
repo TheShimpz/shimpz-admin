@@ -2,7 +2,7 @@
   import { Button, Modal, ShimpzBrand, WorkspaceShell } from '@shimpz/frontend';
   import { getContext, onDestroy, onMount, untrack } from 'svelte';
   import AdminNotice from '#lib/shell/Notice.svelte';
-  import { adminSocket, connectAdminSocket, servedRevision, trackActivity, watchTopic } from '#lib/session/socket.js';
+  import { adminSocket, connectAdminSocket, servedBuild, trackActivity, watchTopic } from '#lib/session/socket.js';
   import { warmAssistantSources } from '#lib/assistants/sources.js';
   import { PATHS } from '#lib/icons.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
@@ -11,7 +11,7 @@
   import { locale, t } from '#lib/i18n/index.js';
   import LocaleMenu from '#lib/i18n/LocaleMenu.svelte';
   import PlatformReleaseStatus from '#lib/space/ReleaseStatus.svelte';
-  import { reloadFresh, versionState } from '#lib/space/version.js';
+  import { buildVersion, reloadFresh, versionState } from '#lib/space/version.js';
   import SecurityAlert from '#lib/auth/SecurityAlert.svelte';
   import SecurityDialog from '#lib/auth/SecurityDialog.svelte';
   import SessionExpiryWarning from '#lib/session/ExpiryWarning.svelte';
@@ -75,7 +75,9 @@
 
   // A tab built from another commit than the Admin it reaches is stale: it says so over every page and reloads only when
   // the person asks, since a reload would lose a draft or a turn under way.
-  let stale = $derived(versionState(__ADMIN_REVISION__, $servedRevision) === 'stale');
+  let stale = $derived(versionState(__ADMIN_REVISION__, $servedBuild?.revision ?? null) === 'stale');
+  // The version the Admin it reaches was built as, named as the sidebar names a version.
+  let servedVersion = $derived($servedBuild ? buildVersion(String($servedBuild.time), $servedBuild.revision) : '');
 
   // What the session bootstrap answers changed (an admitted origin, for instance): read it again over HTTP. The sign-in
   // flow read it just before the socket first opened.
@@ -228,7 +230,7 @@
         {/if}
         {#if stale}
           <p class="version-status" role="status">
-            <span>{$t('shell.versionStale')}</span>
+            <span>{$t('shell.versionStale', { version: servedVersion })}</span>
             <Button size="sm" type="button" onclick={reloadFresh}>{$t('shell.versionReload')}</Button>
           </p>
         {/if}
