@@ -3,7 +3,7 @@
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n.js';
-  import { acknowledgeFailedAttempts, securitySummary } from '#lib/security.js';
+  import { acknowledgeFailedAttempts, securitySummary } from '#lib/auth/security.js';
 
   // The second-factor attempts refused since the previous sign-in (ADR-0051). The report stays on every page until the
   // Supervisor acknowledges the exact count it shows; one refused meanwhile keeps it on screen. The summary is read over

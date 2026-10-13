@@ -6,7 +6,7 @@
   import { onMount, setContext, tick } from 'svelte';
   import { writable } from 'svelte/store';
   import AdminShell from '#lib/shell/Shell.svelte';
-  import AuthScreen from '#lib/AuthScreen.svelte';
+  import AuthScreen from '#lib/auth/Screen.svelte';
   import { adminSocket } from '#lib/session/socket.js';
   import { dataUnavailable } from '#lib/session/synced.js';
   import BootScreen from '#lib/shell/BootScreen.svelte';
@@ -16,9 +16,9 @@
   import { locale, LOCALES, t } from '#lib/i18n.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { clearModelContext, modelContext } from '#lib/modelContext.js';
-  import { authenticateWithPasskey, passkeyFailure, registerPasskey } from '#lib/passkey.js';
+  import { authenticateWithPasskey, passkeyFailure, registerPasskey } from '#lib/auth/passkey.js';
   import { clearTeamRoutines } from '#lib/routineContext.js';
-  import { clearSecuritySummary, recoveryCodes as validRecoveryCodes } from '#lib/security.js';
+  import { clearSecuritySummary, recoveryCodes as validRecoveryCodes } from '#lib/auth/security.js';
   import { clearSessionContext, readSession, SESSION_ENDED, setSessionContext } from '#lib/session/context.js';
   import { clearTeamContext, teamContext } from '#lib/teamContext.js';
 

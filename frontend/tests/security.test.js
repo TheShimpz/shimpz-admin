@@ -17,7 +17,7 @@ import {
   rotateSupervisorKey,
   SecurityError,
   securitySummary,
-} from '../src/lib/security.js';
+} from '../src/lib/auth/security.js';
 
 const HISTORY = { previous: { at: '2026-10-08T21:14:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 2 };
 const CODES = Array.from({ length: 10 }, (_, index) => `abcd-efgh-jk${String(index).padStart(2, '0')}`);

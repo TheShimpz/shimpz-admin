@@ -2,7 +2,7 @@
   import { Card, Notice, ShimpzBrand, TextField } from '@shimpz/frontend';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n.js';
-  import RecoveryCodes from '#lib/RecoveryCodes.svelte';
+  import RecoveryCodes from '#lib/auth/RecoveryCodes.svelte';
 
   let {
     phase,

@@ -6,7 +6,7 @@
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n.js';
   import { fill } from '#lib/i18n/fill.js';
-  import { authenticateWithPasskey, passkeyFailure } from '#lib/passkey.js';
+  import { authenticateWithPasskey, passkeyFailure } from '#lib/auth/passkey.js';
   import { beginRoutineDeletion, deleteRoutine, RoutineError } from '#lib/routines/protocol.js';
   import { routineErrorMessage } from '#lib/routines/words.js';
   import { sessionContext } from '#lib/session/context.js';

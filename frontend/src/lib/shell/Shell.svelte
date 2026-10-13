@@ -11,8 +11,8 @@
   import { locale, t } from '#lib/i18n.js';
   import LocaleMenu from '#lib/LocaleMenu.svelte';
   import PlatformReleaseStatus from '#lib/PlatformReleaseStatus.svelte';
-  import SecurityAlert from '#lib/SecurityAlert.svelte';
-  import SecurityDialog from '#lib/SecurityDialog.svelte';
+  import SecurityAlert from '#lib/auth/SecurityAlert.svelte';
+  import SecurityDialog from '#lib/auth/SecurityDialog.svelte';
   import SpaceResources from '#lib/SpaceResources.svelte';
   import SessionExpiryWarning from '#lib/session/ExpiryWarning.svelte';
   import { readSession, SESSION_ENDED, setSessionContext } from '#lib/session/context.js';

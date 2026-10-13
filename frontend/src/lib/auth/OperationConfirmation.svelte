@@ -5,8 +5,8 @@
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n.js';
-  import { authenticateWithPasskey, passkeyFailure } from '#lib/passkey.js';
-  import { SecurityError } from '#lib/security.js';
+  import { authenticateWithPasskey, passkeyFailure } from '#lib/auth/passkey.js';
+  import { SecurityError } from '#lib/auth/security.js';
   import { sessionContext } from '#lib/session/context.js';
   import { LocalApiError } from '#lib/api.js';
 

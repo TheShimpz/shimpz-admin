@@ -6,15 +6,15 @@
 
   import { locale, t } from '#lib/i18n.js';
   import { PATHS } from '#lib/icons.js';
-  import RecoveryCodes from '#lib/RecoveryCodes.svelte';
-  import OperationConfirmation from '#lib/OperationConfirmation.svelte';
+  import RecoveryCodes from '#lib/auth/RecoveryCodes.svelte';
+  import OperationConfirmation from '#lib/auth/OperationConfirmation.svelte';
   import {
     beginRecoveryCodes,
     beginSupervisorKeyRotation,
     replaceRecoveryCodes,
     rotateSupervisorKey,
     securitySummary,
-  } from '#lib/security.js';
+  } from '#lib/auth/security.js';
 
   // The Supervisor's sign-in security settings (ADR-0051): how many recovery codes are left, and replacing them all.
   let { dialog = $bindable(), onclose } = $props();
