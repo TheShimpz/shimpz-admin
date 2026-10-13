@@ -667,13 +667,6 @@ export default {
       file: 'Fichier',
       disclosure: '{action} de {assistant} reçoit ce fichier original, avec les métadonnées qu\'il contient, comme l\'auteur, le lieu ou les dates.',
     },
-    restricted: {
-      title: 'Non utilisées à cause des pièces jointes',
-      lead: 'Ces Actions n\'ont pas été utilisées parce que ce message contenait des pièces jointes :',
-      item: '{assistant} · {action}',
-      more: '+{count} autres',
-      next: 'Pour les utiliser, renvoyez la demande sans pièces jointes.',
-    },
   },
   security: {
     alertTitle: 'Tentatives de connexion échouées',

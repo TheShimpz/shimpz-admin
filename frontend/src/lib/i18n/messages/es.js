@@ -667,13 +667,6 @@ export default {
       file: 'Archivo',
       disclosure: '{action} de {assistant} recibe este archivo original, con los metadatos que contenga, como autor, ubicación o fechas.',
     },
-    restricted: {
-      title: 'No usadas por los adjuntos',
-      lead: 'Estas Actions no se usaron porque este mensaje tenía adjuntos:',
-      item: '{assistant} · {action}',
-      more: '+{count} más',
-      next: 'Para usarlas, envía la solicitud de nuevo sin adjuntos.',
-    },
   },
   security: {
     alertTitle: 'Intentos de inicio de sesión fallidos',

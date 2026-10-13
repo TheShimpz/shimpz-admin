@@ -667,13 +667,6 @@ export default {
       file: 'Datei',
       disclosure: '{action} von {assistant} erhält diese Originaldatei mit allen darin enthaltenen Metadaten, etwa Autor, Ort oder Datum.',
     },
-    restricted: {
-      title: 'Wegen der Anhänge nicht genutzt',
-      lead: 'Diese Actions wurden nicht genutzt, weil die Nachricht Anhänge hatte:',
-      item: '{assistant} · {action}',
-      more: '+{count} weitere',
-      next: 'Um sie zu nutzen, sende die Anfrage erneut ohne Anhänge.',
-    },
   },
   security: {
     alertTitle: 'Fehlgeschlagene Anmeldeversuche',

@@ -667,13 +667,6 @@ export default {
       file: 'Arquivo',
       disclosure: '{action} do {assistant} recebe este arquivo original, com os metadados que ele tiver, como autor, local ou datas.',
     },
-    restricted: {
-      title: 'Não usados por causa dos anexos',
-      lead: 'Estes Actions não foram usados porque esta mensagem tinha anexos:',
-      item: '{assistant} · {action}',
-      more: '+{count} outros',
-      next: 'Para usá-los, envie o pedido de novo sem anexos.',
-    },
   },
   security: {
     alertTitle: 'Tentativas de entrada com falha',

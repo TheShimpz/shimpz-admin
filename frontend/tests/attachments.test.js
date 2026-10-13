@@ -12,7 +12,6 @@ import {
   parseFileDisclosure,
   uploadTeamFile,
 } from '../src/lib/chat/attachments/files.js';
-import { parseRestrictedActions } from '../src/lib/chat/attachments/restricted.js';
 import { listChatHistory } from '../src/lib/chat/history.js';
 import { parseChatEvent } from '../src/lib/chat/protocol.js';
 
@@ -20,14 +19,6 @@ const MIB = 1024 * 1024;
 const HISTORY_AT = '2026-10-02T21:15:00Z';
 const FILE_ID = 'f'.repeat(32);
 const SHA = 'a'.repeat(64);
-const RESTRICTED = {
-  actions: [
-    { assistant: 'shimpz-cloudflare', action: 'create-record' },
-    { assistant: 'shimpz-cloudflare', action: 'list-zones' },
-    { assistant: 'shimpz-mail', action: 'send' },
-  ],
-  total: 3,
-};
 const DISCLOSED = { id: FILE_ID, name: 'Contrato final.pdf', media_type: 'application/pdf', size: 482_133, sha256: SHA };
 
 function bytes(...values) {
@@ -117,48 +108,6 @@ test('admits only the exact file an authorization request discloses', () => {
   ]) assert.throws(() => parseFileDisclosure(invalid), /response is invalid/, JSON.stringify(invalid));
 });
 
-test('admits only exact, ordered, bounded withheld Action identities', () => {
-  assert.deepEqual(parseRestrictedActions(RESTRICTED), RESTRICTED);
-  assert.deepEqual(parseRestrictedActions({ ...RESTRICTED, total: 40 }).total, 40);
-  const many = Array.from({ length: 16 }, (_, index) => ({ assistant: 'shimpz-mail', action: `a${String(index).padStart(2, '0')}` }));
-  assert.equal(parseRestrictedActions({ actions: many, total: 16 }).actions.length, 16);
-  const wide = Array.from({ length: 16 }, (_, index) => ({
-    assistant: `a${String(index).padStart(2, '0')}${'x'.repeat(77)}`,
-    action: 'b'.repeat(60),
-  }));
-  for (const invalid of [
-    null,
-    { ...RESTRICTED, extra: 1 },
-    { actions: [], total: 0 },
-    { actions: [...many, { assistant: 'zz', action: 'zz' }], total: 17 },
-    { ...RESTRICTED, total: 2 },
-    { ...RESTRICTED, total: 2049 },
-    { ...RESTRICTED, total: '3' },
-    { actions: 'list', total: 1 },
-    { actions: [RESTRICTED.actions[1], RESTRICTED.actions[0]], total: 2 },
-    { actions: [RESTRICTED.actions[0], RESTRICTED.actions[0]], total: 2 },
-    { actions: [{ assistant: 'shimpz-mail' }], total: 1 },
-    { actions: [{ assistant: 'Shimpz', action: 'send' }], total: 1 },
-    { actions: [{ assistant: 'a'.repeat(81), action: 'send' }], total: 1 },
-    { actions: [{ assistant: 'shimpz-mail', action: 'Send' }], total: 1 },
-    { actions: [{ assistant: 'shimpz-mail', action: 'a'.repeat(129) }], total: 1 },
-    { actions: [{ assistant: 7, action: 'send' }], total: 1 },
-    { actions: wide, total: 16 },
-  ]) assert.throws(() => parseRestrictedActions(invalid), /response is invalid/, JSON.stringify(invalid));
-});
-
-function response(status, body) {
-  return { ok: status >= 200 && status < 300, status, async json() { return body; } };
-}
-
-const STORED = {
-  team_id: 'marketing',
-  file: { id: FILE_ID, name: 'notes.md', media_type: 'text/markdown', size: 12, sha256: SHA, created_at: 1_790_000_000 },
-  used_bytes: 12,
-  limit_bytes: 100,
-  remaining_bytes: 88,
-};
-
 test('uploads one file as the single multipart part Admin admits, and keeps only its metadata', async () => {
   const calls = [];
   const signal = new AbortController().signal;
@@ -244,36 +193,6 @@ test('a chat authorization request keeps the file it discloses; any other reques
     humanChallenge('input:text', { file: DISCLOSED }),
     humanChallenge('approval', { file: { ...DISCLOSED, size: 8 * MIB + 1 } }),
   ]) assert.throws(() => parseChatEvent(invalid, 'team_1', 'Marketing'), /response is invalid/);
-});
-
-test('a completed turn and its restored reply keep the Actions withheld for attachments', async () => {
-  const done = { type: 'done', team_id: 'team_1', team_name: 'Marketing', reply: 'Read.', clarification: null };
-  assert.deepEqual(
-    parseChatEvent({ ...done, restricted_actions: RESTRICTED }, 'team_1', 'Marketing').restricted_actions,
-    RESTRICTED,
-  );
-  assert.equal(Object.hasOwn(parseChatEvent(done, 'team_1', 'Marketing'), 'restricted_actions'), false);
-  for (const restricted of [null, {}, { ...RESTRICTED, total: 1 }]) {
-    assert.throws(
-      () => parseChatEvent({ ...done, restricted_actions: restricted }, 'team_1', 'Marketing'),
-      /response is invalid/,
-    );
-  }
-
-  const reply = {
-    id: `${'a'.repeat(32)}:reply`,
-    created_at: HISTORY_AT,
-    kind: 'message',
-    role: 'assistant',
-    text: 'Read.',
-    author: 'Marketing',
-  };
-  const history = (entry) => listChatHistory(async () => response(200, { entries: [entry], before: null }), 'marketing');
-  assert.deepEqual((await history({ ...reply, restricted_actions: RESTRICTED })).entries[0].restricted_actions, RESTRICTED);
-  for (const entry of [
-    { ...reply, restricted_actions: { ...RESTRICTED, total: 0 } },
-    { id: `${'a'.repeat(32)}:user`, created_at: HISTORY_AT, kind: 'message', role: 'user', text: 'hi', restricted_actions: RESTRICTED },
-  ]) await assert.rejects(history(entry), /history is invalid/);
 });
 
 test('both attachment guidance codes are admitted live and from history', async () => {

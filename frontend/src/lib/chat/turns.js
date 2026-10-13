@@ -41,7 +41,6 @@ export function replyFields(source) {
   return {
     ...(source.clarification ? { clarification: source.clarification } : {}),
     ...(source.usage ? { usage: taskUsageSummary(source.usage) } : {}),
-    ...(source.restricted_actions ? { restricted: source.restricted_actions } : {}),
     ...(source.routine_proposal ? { routineProposal: source.routine_proposal } : {}),
     ...(source.routine_refusal ? { routineRefusal: source.routine_refusal } : {}),
     ...(source.routine_question ? { routineQuestion: source.routine_question } : {}),

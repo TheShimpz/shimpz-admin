@@ -62,14 +62,7 @@ test('files chosen from the button upload to the Team and reach it only as the m
   await expect(page.locator('#chat-composer')).toHaveValue('');
   await expect(page.locator('form').getByRole('list', { name: EN.list })).toHaveCount(0);
 
-  // The reply names, by Assistant and Action, what the files withheld and how to use it without them.
-  const note = page.getByRole('note', { name: EN.restricted.title });
-  await expect(note.getByRole('listitem')).toHaveText([
-    'Shimpz Cloudflare · Create DNS record',
-    'Shimpz Cloudflare · Purge cache',
-    '+1 more',
-  ]);
-  await expect(note).toContainText(EN.restricted.next);
+  await expect(page.getByText('The contract renews on 1 March', { exact: false })).toBeVisible();
   expect(await accessibilityViolations(page)).toEqual([]);
 });
 
@@ -446,6 +439,6 @@ test('attachments work in a right-to-left interface', async ({ page }) => {
   await expect(list.getByRole('listitem')).toHaveCount(1);
   await composer.fill('لخّص الملف');
   await send.click();
-  await expect(page.getByRole('note', { name: AR.restricted.title })).toBeVisible();
+  await expect(page.getByText('The contract renews on 1 March', { exact: false })).toBeVisible();
   expect(chatMessages(scenario)[0].files).toHaveLength(1);
 });

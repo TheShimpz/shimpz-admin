@@ -39,8 +39,6 @@ _TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarificati
 DONE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification"})
 # A completed turn may also say what it consumed: its elapsed time and model tokens, for presentation only.
 USAGE_FIELD = "usage"
-# The Actions a completed turn withheld for its attachment content, named for guidance only (ADR-0093).
-RESTRICTED_FIELD = "restricted_actions"
 # A recording turn ends with the card of the Routine it recorded, for the person to confirm, with what Team must ask
 # the person first, or with why it made none (ADR-0101 sections 2 and 5); only one, and never beside a clarification.
 PROPOSAL_FIELD = "routine_proposal"
@@ -51,7 +49,7 @@ ROUTINE_FIELDS = {
     REFUSAL_FIELD: routine_proposal_contract.canonical_refusal,
     QUESTION_FIELD: routine_proposal_contract.canonical_question,
 }
-_OPTIONAL_DONE_FIELDS = frozenset({USAGE_FIELD, RESTRICTED_FIELD, *ROUTINE_FIELDS})
+_OPTIONAL_DONE_FIELDS = frozenset({USAGE_FIELD, *ROUTINE_FIELDS})
 _STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})
 _INTEGRATION_CHALLENGE_RESPONSE_FIELDS = frozenset(
     {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements", "trace_id"}
@@ -698,12 +696,6 @@ def _project_turn(
         usage = team_contract.canonical_turn_usage(usage)
         if usage is None:
             return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
-    restricted = None
-    if RESTRICTED_FIELD in response.body:
-        # The Actions withheld for attachment content are identities only; they must match the closed Team shape.
-        restricted = team_contract.canonical_restricted_actions(response.body[RESTRICTED_FIELD])
-        if restricted is None:
-            return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
     routine = admit_routine_fields(response.body, clarification)
     if routine is None:
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
@@ -734,7 +726,6 @@ def _project_turn(
             "reply": reply,
             "clarification": clarification,
             **({USAGE_FIELD: usage} if usage is not None else {}),
-            **({RESTRICTED_FIELD: restricted} if restricted is not None else {}),
             **routine,
         },
     )

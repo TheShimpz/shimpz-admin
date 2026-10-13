@@ -110,29 +110,6 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
 
-    def test_a_reply_keeps_the_actions_its_attachments_withheld_for_reload(self) -> None:
-        restricted = {"actions": [{"assistant": "shimpz-cloudflare", "action": "list-zones"}], "total": 3}
-        turn_id = self._admitted()
-        done = done_event("The contract names two zones.")
-        for invalid in (None, {**restricted, "total": 0}, {"actions": [], "total": 0}):
-            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
-                history.append_reply("marketing", turn_id, {**done, "restricted_actions": invalid})
-        self.assertTrue(history.append_reply("marketing", turn_id, {**done, "restricted_actions": restricted}))
-        entry = history.page("marketing")["entries"][-1]
-        self.assertEqual(entry["restricted_actions"], restricted)
-        tampered = self._admitted()
-        self.assertTrue(history.append_reply("marketing", tampered, done))
-        stored = {
-            "kind": "message",
-            "role": "assistant",
-            "text": "x",
-            "author": "Marketing",
-            "restricted_actions": {**restricted, "total": 0},
-        }
-        self._store_payload(f"{tampered}:reply", stored)
-        with self.assertRaises(history.HistoryUnavailableError):
-            history.page("marketing")
-
     def test_a_projected_reply_commits_its_routine_card_refusal_or_question(self) -> None:
         """The socket commits the frozen projection of Team's reply as it relays it, Routine outcomes included."""
         vectors = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())

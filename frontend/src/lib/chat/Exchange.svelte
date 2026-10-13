@@ -10,7 +10,6 @@
   import ExecutionReceipt from '#lib/chat/progress/Receipt.svelte';
   import { locale, t } from '#lib/i18n/index.js';
   import Markdown from '#lib/chat/Markdown.svelte';
-  import RestrictedActionsNote from '#lib/chat/attachments/RestrictedNote.svelte';
   import { refusalWords } from '#lib/routines/words.js';
   import RoutineProposal from '#lib/routines/Proposal.svelte';
   import RoutineQuestion from '#lib/routines/Question.svelte';
@@ -145,9 +144,6 @@
         teamName={assistantTurn.author}
         {assistantNames}
       />
-      {#if assistantTurn.restricted}
-        <RestrictedActionsNote restricted={assistantTurn.restricted} {assistantNames} />
-      {/if}
       <!-- A recording turn's Routine card, what Team asks first, or why it made none; a reload shows it again. -->
       {#if assistantTurn.routineQuestion && exchange.user}
         <RoutineQuestion

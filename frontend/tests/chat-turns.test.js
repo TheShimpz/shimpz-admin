@@ -77,14 +77,13 @@ test('a reply carries the same fields from a live frame and from its stored row'
   const source = {
     clarification: { question: 'Which zone?' },
     usage,
-    restricted_actions: { actions: [], total: 0 },
     routine_proposal: { proposal_id: 'p' },
     routine_refusal: { code: 'x' },
     routine_question: { code: 'y' },
   };
   const fields = replyFields(source);
   assert.deepEqual(Object.keys(fields), [
-    'clarification', 'usage', 'restricted', 'routineProposal', 'routineRefusal', 'routineQuestion',
+    'clarification', 'usage', 'routineProposal', 'routineRefusal', 'routineQuestion',
   ]);
   assert.equal(fields.usage.durationMs, 1200);
   assert.deepEqual(replyFields({}), {});

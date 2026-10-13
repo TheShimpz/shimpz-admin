@@ -67,7 +67,7 @@ export function recordAttachedTurn(state, frame, reply) {
     const { name, media_type: type, size } = state.files.find((item) => item.id === id);
     return { id, name, media_type: type, size };
   });
-  const { reply: text, team_name: author, usage, restricted_actions: restricted } = reply;
+  const { reply: text, team_name: author, usage } = reply;
   state.history = [
     ...state.history,
     { id: `${turn}:user`, created_at: at, kind: 'message', role: 'user', text: frame.message, files },
@@ -79,7 +79,6 @@ export function recordAttachedTurn(state, frame, reply) {
       text,
       author,
       usage: structuredClone(usage),
-      restricted_actions: structuredClone(restricted),
     },
   ];
 }
@@ -90,7 +89,7 @@ const LIFECYCLE_GUIDANCE = Object.freeze({
   pt: 'Anexos não podem ser usados para instalar ou remover Assistentes. Envie esse pedido de novo sem anexos.',
 });
 
-// A message that carried readable files: Team read them, and withheld every Action that does not ask a person first.
+// A message that carried readable files: Team read them and answered.
 export function attachmentReply(teamName, frame) {
   const message = typeof frame.message === 'string' ? frame.message : '';
   if (/\b(?:instal|install|uninstall|desinstal|remov)/iu.test(message)) {
@@ -109,13 +108,6 @@ export function attachmentReply(teamName, frame) {
       + 'The contract renews on 1 March and its notice period is 60 days.',
     clarification: null,
     usage: { duration_ms: 4810, models: [{ provider: 'openai', model: 'gpt-6-luna', input_tokens: 9_400, output_tokens: 210 }] },
-    restricted_actions: {
-      actions: [
-        { assistant: 'shimpz-cloudflare', action: 'create-dns-record' },
-        { assistant: 'shimpz-cloudflare', action: 'purge-cache' },
-      ],
-      total: 3,
-    },
   };
 }
 

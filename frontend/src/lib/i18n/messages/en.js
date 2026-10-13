@@ -680,13 +680,6 @@ export default {
       file: 'File',
       disclosure: '{action} from {assistant} receives this original file, with any metadata inside it, such as author, location, or dates.',
     },
-    restricted: {
-      title: 'Not used because of the attachments',
-      lead: 'These Actions weren\'t used because this message had attachments:',
-      item: '{assistant} · {action}',
-      more: '+{count} more',
-      next: 'To use them, send the request again without attachments.',
-    },
   },
   // The Supervisor's own sign-in security (ADR-0051): refused second-factor attempts reported after sign-in, and the
   // single-use recovery codes that re-enroll a lost authenticator.

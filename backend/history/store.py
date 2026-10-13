@@ -27,7 +27,7 @@ from protocol.http.v1 import websocket as chat_ws_common
 
 STORE_PATH = Path(os.environ.get("SHIMPZ_CHAT_HISTORY_STORE") or "/data/chat-history.sqlite3")
 # Version 10 keeps each Assistant card's Creator and version, and its provenance for an uninstall.
-SCHEMA_VERSION = 10
+SCHEMA_VERSION = 11
 # A row's provenance is server-owned: `attached` marks every row of a turn whose message carried attachments, which
 # never enters a conversation projection (ADR-0093); every other row is `plain`. An attached user row keeps the
 # references of the files its message carried, exactly what the transcript shows of them and never their content.
@@ -150,7 +150,7 @@ def _initialize(database: sqlite3.Connection) -> None:
             team_id TEXT PRIMARY KEY,
             turn_id TEXT NOT NULL UNIQUE
         );
-        PRAGMA user_version = 10;
+        PRAGMA user_version = 11;
         """
     )
 
@@ -352,7 +352,7 @@ def append_reply(team_id: object, turn_id: object, event: object) -> bool:
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
     fields = {"type", "team_id", "team_name", "reply", "clarification"}
-    optional = {"usage", "restricted_actions", *_ROUTINE_REPLY_FIELDS}
+    optional = {"usage", *_ROUTINE_REPLY_FIELDS}
     if not isinstance(event, Mapping) or set(event) - optional != fields:
         raise ValueError("chat history reply event is invalid")
     if event["type"] != "done" or event["team_id"] != canonical_team:
@@ -372,12 +372,6 @@ def append_reply(team_id: object, turn_id: object, event: object) -> bool:
             raise ValueError("chat history reply event is invalid")
         # Stored so a reload shows what the turn consumed under its reply; it never enters the Brain window.
         entry["usage"] = usage
-    if "restricted_actions" in event:
-        restricted = team_contract.canonical_restricted_actions(event["restricted_actions"])
-        if restricted is None:
-            raise ValueError("chat history reply event is invalid")
-        # Stored so a reload shows the same guidance for the Actions the attachments withheld (ADR-0093).
-        entry["restricted_actions"] = restricted
     # Stored so a reload shows the same Routine card or refusal under the reply (ADR-0101 section 5.2).
     entry.update(_routine_reply(event, entry.get("clarification")))
     return _append(
@@ -636,11 +630,6 @@ def _validate_stored_message(payload: dict[str, object]) -> None:
             or clarification != payload["clarification"]
             or payload.get("text") != team_contract.render_clarification(clarification)
         ):
-            raise ValueError("invalid stored message")
-    if role == "assistant" and "restricted_actions" in payload:
-        expected.add("restricted_actions")
-        restricted = team_contract.canonical_restricted_actions(payload["restricted_actions"])
-        if restricted is None or restricted != payload["restricted_actions"]:
             raise ValueError("invalid stored message")
     if role == "assistant" and "usage" in payload:
         expected.add("usage")

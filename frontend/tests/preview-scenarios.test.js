@@ -426,7 +426,7 @@ test('the attachment previews hold only uploads, replies, and approvals the real
 
   const frame = (message) => ({ type: 'chat', message, files: [stored.id], assistant_ids: [], locale: 'pt' });
   const [reply] = scenario.chat.message(frame('Quando o contrato renova?'));
-  assert.equal(parseChatEvent(reply, 'marketing', 'Marketing').restricted_actions.total, 3);
+  assert.equal(parseChatEvent(reply, 'marketing', 'Marketing').type, 'done');
   const [guidance] = scenario.chat.message(frame('Instale o Assistant do WhatsApp'));
   const parsed = parseChatEvent(guidance, 'marketing', 'Marketing');
   assert.equal(parsed.code, 'assistant-lifecycle-attachments');

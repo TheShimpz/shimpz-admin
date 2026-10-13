@@ -667,13 +667,6 @@ export default {
       file: '文件',
       disclosure: '{assistant} 的 {action} 会收到这个原始文件，包括其中的元数据，例如作者、位置或日期。',
     },
-    restricted: {
-      title: '因附件未使用',
-      lead: '由于这条消息带有附件，以下 Actions 未被使用：',
-      item: '{assistant} · {action}',
-      more: '另外 {count} 个',
-      next: '要使用它们，请不带附件重新发送请求。',
-    },
   },
   security: {
     alertTitle: '登录失败尝试',

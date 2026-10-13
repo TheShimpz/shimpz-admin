@@ -667,13 +667,6 @@ export default {
       file: 'ファイル',
       disclosure: '{assistant} の {action} は、作成者、場所、日付などの埋め込みメタデータを含む、この元のファイルを受け取ります。',
     },
-    restricted: {
-      title: '添付ファイルのため未使用',
-      lead: 'このメッセージに添付ファイルがあったため、次の Actions は使われませんでした：',
-      item: '{assistant} · {action}',
-      more: 'ほか {count} 件',
-      next: '使うには、添付ファイルなしでもう一度リクエストを送信してください。',
-    },
   },
   security: {
     alertTitle: 'サインインの失敗',

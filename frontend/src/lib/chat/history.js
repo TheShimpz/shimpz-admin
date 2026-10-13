@@ -1,5 +1,4 @@
 import { parseFileReferences } from './attachments/files.js';
-import { parseRestrictedActions } from './attachments/restricted.js';
 import { parseClarification, renderClarification } from './clarification.js';
 import {
   CHAT_TEXT_CONTROL_RE,
@@ -111,8 +110,6 @@ function messageEntry(value, suffix, status) {
   const clarified = assistant && Object.hasOwn(value, 'clarification');
   // What the turn consumed is kept with its reply only; it is the same closed shape as the done frame's.
   const used = assistant && Object.hasOwn(value, 'usage');
-  // The Actions withheld for the turn's attachments are kept with its reply only, in the done frame's closed shape.
-  const withheld = assistant && Object.hasOwn(value, 'restricted_actions');
   // A recording turn's Routine card, question, or refusal is kept with its reply, so a reload shows it again (ADR-0101).
   const routineKeys = assistant
     ? ['routine_proposal', 'routine_refusal', 'routine_question'].filter((key) => Object.hasOwn(value, key))
@@ -128,17 +125,14 @@ function messageEntry(value, suffix, status) {
       'text',
       ...(clarified ? ['clarification'] : []),
       ...(used ? ['usage'] : []),
-      ...(withheld ? ['restricted_actions'] : []),
       ...routineKeys,
     ]
     : ['id', 'kind', 'role', 'text', ...(attached ? ['files'] : [])];
   let usage = null;
-  let restricted = null;
   let files = null;
   let routine = {};
   try {
     if (used) usage = parseTaskUsage(value.usage);
-    if (withheld) restricted = parseRestrictedActions(value.restricted_actions);
     if (attached) files = parseFileReferences(value.files);
     if (routineKeys.length) routine = parseRoutineReply(value, value.clarification ?? null);
   } catch {
@@ -171,7 +165,6 @@ function messageEntry(value, suffix, status) {
     ...(assistant ? { author: publicText(value.author, MAX_TEAM_NAME_CHARS, status) } : {}),
     ...(clarification ? { clarification } : {}),
     ...(usage ? { usage } : {}),
-    ...(restricted ? { restricted_actions: restricted } : {}),
     ...(files ? { files } : {}),
     ...routine,
   };

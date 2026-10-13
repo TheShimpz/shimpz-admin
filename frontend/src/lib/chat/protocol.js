@@ -3,7 +3,6 @@
 // human-request challenge Routines reuse for frozen runs. Any other shape throws.
 
 import { parseFileDisclosure } from './attachments/files.js';
-import { parseRestrictedActions } from './attachments/restricted.js';
 import { parseClarification, renderClarification } from './clarification.js';
 import { parseTaskUsage } from './usage.js';
 import {
@@ -875,13 +874,10 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
   if (value.type === 'done') {
     let clarification = null;
     let usage = null;
-    let restricted = null;
     let routine = {};
     try {
       clarification = parseClarification(value.clarification);
       usage = parseTaskUsage(value.usage);
-      // The Actions Team withheld because the message's attachments were readable; never anything to run.
-      if (Object.hasOwn(value, 'restricted_actions')) restricted = parseRestrictedActions(value.restricted_actions);
       routine = parseRoutineReply(value, clarification);
     } catch {
       throw new LocalApiError('The local chat response is invalid.');
@@ -892,7 +888,6 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     const doneKeys = ['type', 'team_id', 'team_name', 'reply', 'clarification'];
     // `usage` is optional: Team reports it only when a model call of the turn reported usage.
     if (Object.hasOwn(value, 'usage')) doneKeys.push('usage');
-    if (restricted) doneKeys.push('restricted_actions');
     doneKeys.push(...Object.keys(routine));
     if (
       !exactKeys(value, doneKeys) ||
@@ -914,7 +909,6 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       reply: value.reply,
       clarification,
       ...(usage ? { usage } : {}),
-      ...(restricted ? { restricted_actions: restricted } : {}),
       ...routine,
     };
   }
