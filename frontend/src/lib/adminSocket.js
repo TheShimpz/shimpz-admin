@@ -5,6 +5,7 @@
 // and the socket never stops reconnecting while the session lasts.
 import { derived, writable } from 'svelte/store';
 
+import { readSession } from './sessionContext.js';
 import { LocalApiError, TEAM_ID_RE } from './validate.js';
 
 // The protocol's own bounds (backend/protocol/socket/v1/frames.py), pinned by the Admin parity test.
@@ -565,13 +566,7 @@ function listenForConnectivity(listening) {
 // the outage reconnecting exists to ride out.
 async function signedOut() {
   try {
-    const response = await fetch('/api/session', {
-      method: 'POST',
-      cache: 'no-store',
-      signal: AbortSignal.timeout(SESSION_PROBE_TIMEOUT_MS),
-    });
-    if (!response.ok) return false;
-    const session = await response.json();
+    const session = await readSession({ signal: AbortSignal.timeout(SESSION_PROBE_TIMEOUT_MS) });
     return session?.authenticated === false;
   } catch {
     return false;

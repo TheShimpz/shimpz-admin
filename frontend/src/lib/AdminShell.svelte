@@ -15,7 +15,7 @@
   import SecurityDialog from '#lib/SecurityDialog.svelte';
   import SpaceResources from '#lib/SpaceResources.svelte';
   import SessionExpiryWarning from '#lib/SessionExpiryWarning.svelte';
-  import { SESSION_ENDED, setSessionContext } from '#lib/sessionContext.js';
+  import { readSession, SESSION_ENDED, setSessionContext } from '#lib/sessionContext.js';
   import SupervisorMenu from '#lib/SupervisorMenu.svelte';
   import TeamDialogs from '#lib/TeamDialogs.svelte';
   import TeamNavigation from '#lib/TeamNavigation.svelte';
@@ -78,8 +78,7 @@
   async function refreshSession(_topic, cause) {
     if (cause === 'open') return;
     try {
-      const response = await fetch('/api/session', { method: 'POST', cache: 'no-store' });
-      const session = response.ok ? await response.json() : null;
+      const session = await readSession();
       if (session?.authenticated === false) sessionEnded?.();
       else if (session?.authenticated === true) setSessionContext(session);
     } catch {

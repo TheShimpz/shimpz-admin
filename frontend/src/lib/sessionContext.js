@@ -10,6 +10,12 @@ export function clearSessionContext() {
   sessionContext.set(emptyContext());
 }
 
+/** Admin's answer to the session bootstrap, read past every cache: its body when Admin answered it, otherwise null. */
+export async function readSession({ signal } = {}) {
+  const response = await fetch('/api/session', { method: 'POST', cache: 'no-store', signal });
+  return response.ok ? response.json() : null;
+}
+
 export function setSessionContext(session) {
   const mode = session?.oauth_completion_mode;
   if (mode !== 'automatic' && mode !== 'code' && mode !== null) {

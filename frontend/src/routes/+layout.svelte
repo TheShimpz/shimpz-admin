@@ -19,7 +19,7 @@
   import { authenticateWithPasskey, passkeyFailure, registerPasskey } from '#lib/passkey.js';
   import { clearTeamRoutines } from '#lib/routineContext.js';
   import { clearSecuritySummary, recoveryCodes as validRecoveryCodes } from '#lib/security.js';
-  import { clearSessionContext, SESSION_ENDED, setSessionContext } from '#lib/sessionContext.js';
+  import { clearSessionContext, readSession, SESSION_ENDED, setSessionContext } from '#lib/sessionContext.js';
   import { clearTeamContext, teamContext } from '#lib/teamContext.js';
 
   let { children } = $props();
@@ -133,9 +133,8 @@
     error = '';
 
     try {
-      const response = await fetch('/api/session', { method: 'POST', cache: 'no-store' });
-      if (!response.ok) throw new Error('session unavailable');
-      const session = await response.json();
+      const session = await readSession();
+      if (!session) throw new Error('session unavailable');
       if (check !== sessionCheck) return;
       if (session?.profile !== 'local') throw new Error('invalid session profile');
       const authenticationState = session?.authentication_state;
