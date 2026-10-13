@@ -1,11 +1,11 @@
 <script>
   import { Button, Modal, ShimpzBrand, WorkspaceShell } from '@shimpz/frontend';
   import { getContext, onDestroy, onMount, untrack } from 'svelte';
-  import AdminNotice from '#lib/AdminNotice.svelte';
+  import AdminNotice from '#lib/shell/Notice.svelte';
   import { adminSocket, connectAdminSocket, trackActivity, watchTopic } from '#lib/session/socket.js';
   import { warmAssistantSources } from '#lib/assistantSources.js';
   import { PATHS } from '#lib/icons.js';
-  import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
+  import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { teamContext } from '#lib/teamContext.js';
   import { dataUnavailable } from '#lib/session/synced.js';
   import { locale, t } from '#lib/i18n.js';
@@ -16,7 +16,7 @@
   import SpaceResources from '#lib/SpaceResources.svelte';
   import SessionExpiryWarning from '#lib/session/ExpiryWarning.svelte';
   import { readSession, SESSION_ENDED, setSessionContext } from '#lib/session/context.js';
-  import SupervisorMenu from '#lib/SupervisorMenu.svelte';
+  import SupervisorMenu from '#lib/shell/SupervisorMenu.svelte';
   import TeamDialogs from '#lib/TeamDialogs.svelte';
   import TeamNavigation from '#lib/TeamNavigation.svelte';
   import TeamSidebar from '#lib/TeamSidebar.svelte';

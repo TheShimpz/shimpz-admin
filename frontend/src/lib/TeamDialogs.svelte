@@ -5,7 +5,7 @@
   import { DialogFrame, Modal, Notice, TextField } from '@shimpz/frontend';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
-  import { showAdminNotice } from '#lib/adminNotice.js';
+  import { showAdminNotice } from '#lib/shell/notice.js';
   import { t } from '#lib/i18n.js';
   import { LocalApiError } from '#lib/api.js';
   import { createTeam, deleteTeam, teamContext } from '#lib/teamContext.js';

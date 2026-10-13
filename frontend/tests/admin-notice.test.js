@@ -9,7 +9,7 @@ import {
   createAdminNoticeTimer,
   dismissAdminNotice,
   showAdminNotice,
-} from '../src/lib/adminNotice.js';
+} from '../src/lib/shell/notice.js';
 
 test.afterEach(clearAdminNotice);
 

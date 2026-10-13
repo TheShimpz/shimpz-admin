@@ -6,7 +6,7 @@
   import { page } from '$app/state';
   import { getContext, untrack } from 'svelte';
   import { ActionLink, AssistantIcon, Button, Disclosure, Notice, Skeleton, TextLink } from '@shimpz/frontend';
-  import { showAdminNotice } from '#lib/adminNotice.js';
+  import { showAdminNotice } from '#lib/shell/notice.js';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import AssistantActionDialog from '#lib/AssistantActionDialog.svelte';
   import { acquireIcon, localIcon, publicIcon } from '#lib/assistantIconCache.js';
@@ -15,7 +15,7 @@
   import { installedDetails, publicCatalog, snapshotDetails, stagedSnapshots } from '#lib/assistantSources.js';
   import { CREATOR_LINK_ICONS, CREATOR_LINK_NAMES } from '#lib/creatorLinkIcons.js';
   import { locale, t } from '#lib/i18n.js';
-  import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
+  import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import LocalAssistantInstallDialog from '#lib/LocalAssistantInstallDialog.svelte';
   import { installAssistant, installLocalAssistant, uninstallAssistant } from '#lib/localApi.js';
   import { isInadmissibleLocalPreview } from '#lib/localAssistantIcons.js';

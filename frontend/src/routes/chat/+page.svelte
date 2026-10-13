@@ -36,7 +36,7 @@
   } from '#lib/executionProgress.js';
   import { escapeMarkdownText } from '#lib/markdown.js';
   import { locale, t } from '#lib/i18n.js';
-  import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
+  import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { CLARIFICATION_LABELS } from '#lib/clarificationLabels.js';
   import { routineQuestionMessages } from '#lib/routineQuestionMessages.js';
   import { configureModelContext, loadModelContext, modelContext } from '#lib/modelContext.js';

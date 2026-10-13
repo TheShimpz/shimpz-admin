@@ -5,7 +5,7 @@
   import AssistantRow from '#lib/AssistantRow.svelte';
   import { acquireIcon, localIcon, MAX_CACHED_ICONS, publicIcon } from '#lib/assistantIconCache.js';
   import { publicCatalog, snapshotSummary, stagedSnapshots, syncedFamily } from '#lib/assistantSources.js';
-  import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
+  import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { locale, t } from '#lib/i18n.js';
   import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '#lib/localSnapshots.js';
   import { teamContext } from '#lib/teamContext.js';
