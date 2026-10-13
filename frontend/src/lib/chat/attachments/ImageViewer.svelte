@@ -92,7 +92,6 @@
     background:
       repeating-linear-gradient(to bottom, color-mix(in srgb, var(--shimpz-color-cyan) 4%, transparent) 0 1px, transparent 1px 3px),
       var(--shimpz-color-bg);
-    border: 1px solid var(--shimpz-color-border);
   }
 
   img {

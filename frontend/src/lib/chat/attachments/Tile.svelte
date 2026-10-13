@@ -117,9 +117,11 @@
 </li>
 
 <style>
-  /* Every tile is the same square, as wide as its grid column and never wider than 8rem. */
+  /* Every tile is the same square, as wide as its grid column and never wider than 8rem, cut like the controls; its
+     border and its image follow the same cut. */
   .attachment-tile {
     position: relative;
+    clip-path: var(--shimpz-control-shape);
     display: grid;
     width: 100%;
     max-width: 8rem;
@@ -134,6 +136,9 @@
 
   .attachment-tile :global(.shimpz-button.tile-open) {
     --button-border: transparent;
+    border: 0;
+    border-radius: 0 !important;
+    clip-path: none;
     width: 100%;
     height: 100%;
     min-height: 0;
