@@ -1,16 +1,8 @@
 // Chat attachments (ADR-0093): the composer's per-message admission, the browser's mirror of Team's readability rules,
 // the bounded upload through Admin, and the closed shapes Team discloses about files and withheld Actions.
-import {
-  codePointLength,
-  CONTROL_RE,
-  exactKeys,
-  isActionId,
-  isAssistantId,
-  jsonObject,
-  LocalApiError,
-  OPAQUE_ID_RE,
-  TEAM_ID_RE,
-} from './validate.js';
+import { exactKeys, jsonObject, LocalApiError } from './api.js';
+import { codePointLength, CONTROL_RE } from './grammar.js';
+import { isActionId, isAssistantId, OPAQUE_ID_RE, TEAM_ID_RE } from './ids.js';
 
 const KIB = 1024;
 const MIB = 1024 * KIB;

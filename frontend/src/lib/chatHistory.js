@@ -10,21 +10,16 @@ import {
 import { parseRoutineRunEntry } from './routine.js';
 import { parseTaskUsage } from './taskUsage.js';
 import { synced } from './synced.js';
+import { ASSISTANT_LIMIT_REACHED, exactKeys, jsonObject, LocalApiError, safeApiError } from './api.js';
+import { codePointLength, isInstant } from './grammar.js';
 import {
   ASSISTANT_ID_RE,
-  ASSISTANT_LIMIT_REACHED,
-  codePointLength,
-  exactKeys,
-  isInstant,
-  jsonObject,
-  LocalApiError,
   MAX_TEAM_NAME_CHARS,
   OPAQUE_ID_RE,
   PUBLIC_CREATOR_RE,
-  safeApiError,
   SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
-} from './validate.js';
+} from './ids.js';
 
 const PUBLIC_TEXT_CONTROL_RE = /[\p{C}\p{Zl}\p{Zp}]/u;
 const ENTRY_ID_RE = /^([0-9a-f]{32}):(user|reply|install|uninstall|guidance|routine)$/;

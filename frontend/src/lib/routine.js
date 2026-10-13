@@ -6,17 +6,9 @@ import { clockTime } from './chatDays.js';
 import { fill } from './i18n/fill.js';
 import { isLocale } from './locales.js';
 import { parseRunUsage } from './taskUsage.js';
-import {
-  codePointLength,
-  DIGEST_RE,
-  isActionId,
-  isAssistantId,
-  isIdentifier,
-  isInstant,
-  jsonObject,
-  OPAQUE_ID_RE,
-  TEAM_ID_RE,
-} from './validate.js';
+import { jsonObject } from './api.js';
+import { codePointLength, isInstant } from './grammar.js';
+import { DIGEST_RE, isActionId, isAssistantId, isIdentifier, OPAQUE_ID_RE, TEAM_ID_RE } from './ids.js';
 
 const ENCODER = new TextEncoder();
 

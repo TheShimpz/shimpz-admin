@@ -3,18 +3,9 @@ import { get, writable } from 'svelte/store';
 import { socketReads } from './adminSocket.js';
 import { listAssistantCatalog, listInstalledAssistants } from './localApi.js';
 import { synced } from './synced.js';
-import {
-  ASSISTANT_ID_RE,
-  canonicalTeamName,
-  codePointLength,
-  exactKeys,
-  jsonObject,
-  LocalApiError,
-  publicError,
-  safeApiError,
-  TEAM_ID_RE,
-  TRACE_ID_RE,
-} from './validate.js';
+import { exactKeys, jsonObject, LocalApiError, publicError, safeApiError } from './api.js';
+import { codePointLength, CONTROL_RE } from './grammar.js';
+import { ASSISTANT_ID_RE, MAX_TEAM_NAME_CHARS, TEAM_ID_RE, TRACE_ID_RE } from './ids.js';
 
 const MAX_TEAMS = 128;
 const MAX_PASSWORD_CHARS = 4096;
@@ -71,6 +62,20 @@ function preferredTeamId(value) {
   if (value === '') return '';
   if (typeof value !== 'string' || !TEAM_ID_RE.test(value)) {
     throw new LocalApiError('Invalid local Team request.');
+  }
+  return value;
+}
+
+/** A Team's display name exactly as Team admits it, or a thrown LocalApiError carrying `message`. */
+export function canonicalTeamName(value, message = 'The local Team inventory is invalid.') {
+  if (
+    typeof value !== 'string' ||
+    !value ||
+    value !== value.trim() ||
+    codePointLength(value) > MAX_TEAM_NAME_CHARS ||
+    CONTROL_RE.test(value)
+  ) {
+    throw new LocalApiError(message);
   }
   return value;
 }

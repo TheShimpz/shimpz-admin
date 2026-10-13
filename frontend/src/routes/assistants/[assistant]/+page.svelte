@@ -21,7 +21,8 @@
   import { isInadmissibleLocalPreview } from '#lib/localAssistantIcons.js';
   import { groupLocalAssistantSnapshots } from '#lib/localSnapshots.js';
   import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teamContext.js';
-  import { ASSISTANT_ID_RE, ASSISTANT_LIMIT_REACHED, TEAM_ID_RE } from '#lib/validate.js';
+  import { ASSISTANT_LIMIT_REACHED } from '#lib/api.js';
+  import { ASSISTANT_ID_RE, TEAM_ID_RE } from '#lib/ids.js';
 
   const initialViewReadiness = getContext(INITIAL_VIEW_READINESS);
 

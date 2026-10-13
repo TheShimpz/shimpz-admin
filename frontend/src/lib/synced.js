@@ -8,7 +8,7 @@
 import { derived, writable } from 'svelte/store';
 
 import { socketReads } from './adminSocket.js';
-import { LocalApiError } from './validate.js';
+import { LocalApiError } from './api.js';
 
 export const RETRY_FIRST_MS = 1_000;
 const RETRY_MAX_MS = 30_000;

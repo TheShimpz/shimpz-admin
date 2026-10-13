@@ -3,7 +3,7 @@ import test from 'node:test';
 import { get } from 'svelte/store';
 
 import { OUTCOME_UNKNOWN, socketReads } from '../src/lib/adminSocket.js';
-import { LocalApiError } from '../src/lib/validate.js';
+import { LocalApiError } from '../src/lib/api.js';
 
 import {
   acknowledgeFailedAttempts,

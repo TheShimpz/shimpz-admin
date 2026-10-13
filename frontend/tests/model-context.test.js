@@ -12,7 +12,7 @@ import {
   selectTeamBrain,
 } from '../src/lib/modelContext.js';
 import { RETRY_FIRST_MS } from '../src/lib/synced.js';
-import { LocalApiError } from '../src/lib/validate.js';
+import { LocalApiError } from '../src/lib/api.js';
 import { response } from './socketStub.js';
 
 const EPOCH = 'a'.repeat(32);

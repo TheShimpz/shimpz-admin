@@ -16,7 +16,7 @@ from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import turn as turn_contract
 
 LOCAL_CHAT = ROOT / "frontend" / "src" / "lib" / "localChat.js"
-VALIDATE = ROOT / "frontend" / "src" / "lib" / "validate.js"
+IDS = ROOT / "frontend" / "src" / "lib" / "ids.js"
 LIB = ROOT / "frontend" / "src" / "lib"
 # The browser's copies of Team chat-turn bounds, which it cannot import, each pinned to its one Team definition.
 TURN_BOUNDS = {
@@ -27,7 +27,7 @@ TURN_BOUNDS = {
         "MAX_GUIDANCE_REPLY_CHARS": turn_contract.MAX_INTENT_ROUTE_REPLY_CHARS,
         "MAX_ASSISTANTS": team_contract.MAX_CHAT_ASSISTANTS,
     },
-    "validate.js": {
+    "ids.js": {
         "MAX_TEAM_NAME_CHARS": team_contract.MAX_TEAM_NAME_CHARS,
     },
     "teamContext.js": {
@@ -147,7 +147,7 @@ class FrontendTurnBoundParityTests(unittest.TestCase):
 
 class FrontendIdentifierParityTests(unittest.TestCase):
     def test_the_browser_identifier_kinds_are_the_team_identifiers(self) -> None:
-        source = VALIDATE.read_text(encoding="utf-8")
+        source = IDS.read_text(encoding="utf-8")
 
         def exported(name: str) -> str:
             match = re.search(rf"^export const {name} = (.+);$", source, re.MULTILINE)

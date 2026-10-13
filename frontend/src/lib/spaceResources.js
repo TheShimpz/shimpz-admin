@@ -1,4 +1,5 @@
-import { exactKeys, isCount, jsonObject } from './validate.js';
+import { exactKeys, jsonObject } from './api.js';
+import { isCount } from './grammar.js';
 
 // The Team protocol's resource signal (`resources.canonical_space_resources`): its closed fields and bounds.
 const FIELDS = [

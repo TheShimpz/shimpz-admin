@@ -8,7 +8,7 @@ import { fill } from '../i18n/fill.js';
 import { escapeMarkdownText } from '../markdown.js';
 import { attachmentKind } from '../attachments.js';
 import { taskUsageSummary } from '../taskUsage.js';
-import { ASSISTANT_LIMIT_REACHED } from '../validate.js';
+import { ASSISTANT_LIMIT_REACHED } from '../api.js';
 
 /** Turns as exchanges: a user message with the reply that answered it, or a reply that opens one on its own. */
 export function groupExchanges(turns) {

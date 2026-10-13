@@ -6,7 +6,7 @@ import { writable } from 'svelte/store';
 
 import { listRoutines, RoutineError } from './routine.js';
 import { synced } from './synced.js';
-import { LocalApiError } from './validate.js';
+import { LocalApiError } from './api.js';
 
 /**
  * Team id -> the Team's listed Routines, runs, and unresolved incidents, and whether its newest listing was refused; a

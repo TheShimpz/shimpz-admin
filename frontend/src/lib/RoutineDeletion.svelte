@@ -9,7 +9,7 @@
   import { authenticateWithPasskey, passkeyFailure } from '#lib/passkey.js';
   import { beginRoutineDeletion, deleteRoutine, routineErrorMessage, RoutineError } from '#lib/routine.js';
   import { sessionContext } from '#lib/sessionContext.js';
-  import { LocalApiError } from '#lib/validate.js';
+  import { LocalApiError } from '#lib/api.js';
 
   // Deleting one Routine (ADR-0051, ADR-0086): the whole panel is this confirmation. Admin checks the Supervisor
   // password, then one second factor bound to this Routine, and only then asks Team to delete it. A code is the

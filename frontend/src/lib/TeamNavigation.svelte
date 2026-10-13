@@ -12,7 +12,7 @@
   import TeamActionsMenu from '#lib/TeamActionsMenu.svelte';
   import { renameTeam, reorderTeams, teamContext } from '#lib/teamContext.js';
   import TeamRoutinesDialog from '#lib/TeamRoutinesDialog.svelte';
-  import { canonicalTeamName } from '#lib/validate.js';
+  import { canonicalTeamName } from '#lib/teamContext.js';
 
   let {
     active = '',

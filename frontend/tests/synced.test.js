@@ -5,7 +5,7 @@ import { get } from 'svelte/store';
 
 import { socketReads } from '../src/lib/adminSocket.js';
 import { dataUnavailable, RETRY_FIRST_MS, synced, transientFailure } from '../src/lib/synced.js';
-import { LocalApiError } from '../src/lib/validate.js';
+import { LocalApiError } from '../src/lib/api.js';
 import { response } from './socketStub.js';
 
 const EPOCH = 'a'.repeat(32);

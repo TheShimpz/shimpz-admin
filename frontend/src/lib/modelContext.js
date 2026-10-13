@@ -6,7 +6,8 @@ import { derived, get, writable } from 'svelte/store';
 
 import { listModelProviders, loadInference, saveModelSetup } from './modelProviders.js';
 import { synced } from './synced.js';
-import { LocalApiError, publicError, TEAM_ID_RE } from './validate.js';
+import { LocalApiError, publicError } from './api.js';
+import { TEAM_ID_RE } from './ids.js';
 
 function emptyContext() {
   return {

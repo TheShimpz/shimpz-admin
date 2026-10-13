@@ -10,7 +10,7 @@ import {
   pageTarget,
 } from '../src/lib/assistantPage.js';
 import { loadAssistantDetails, loadLocalAssistantDetails } from '../src/lib/localAssistantIcons.js';
-import { LocalApiError } from '../src/lib/validate.js';
+import { LocalApiError } from '../src/lib/api.js';
 import { via } from './socketStub.js';
 
 // Pages are read over the session socket; a stub answers each call as the call result Admin sends.

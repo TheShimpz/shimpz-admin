@@ -2,7 +2,8 @@ import { derived } from 'svelte/store';
 
 import { socketReads } from './adminSocket.js';
 import { synced } from './synced.js';
-import { exactKeys, isInstant, jsonObject, LocalApiError, safeApiError } from './validate.js';
+import { exactKeys, jsonObject, LocalApiError, safeApiError } from './api.js';
+import { isInstant } from './grammar.js';
 
 // The Supervisor's own sign-in security (ADR-0051): the refused second-factor attempts a sign-in reported, kept until
 // the Supervisor acknowledges them, and the single-use recovery codes left. Every read and change goes over the Admin

@@ -2,19 +2,9 @@ import { socketReads } from './adminSocket.js';
 import { AssistantPageError, canonicalPageCopy, isDisplayText, SUMMARY_CHARS } from './assistantPage.js';
 import { catalogIconUrl } from './assistants/icons.js';
 import { isLocale } from './locales.js';
-import {
-  ASSISTANT_ID_RE,
-  codePointLength,
-  CONTROL_RE,
-  DIGEST_RE,
-  exactKeys,
-  jsonObject,
-  LocalApiError,
-  PUBLIC_CREATOR_RE,
-  safeApiError,
-  SEMANTIC_VERSION_RE,
-  TEAM_ID_RE,
-} from './validate.js';
+import { exactKeys, jsonObject, LocalApiError, safeApiError } from './api.js';
+import { codePointLength, CONTROL_RE } from './grammar.js';
+import { ASSISTANT_ID_RE, DIGEST_RE, PUBLIC_CREATOR_RE, SEMANTIC_VERSION_RE, TEAM_ID_RE } from './ids.js';
 
 const MAX_CONCURRENT_ICONS = 2;
 const MAX_ICON_BYTES = 1024 * 1024;

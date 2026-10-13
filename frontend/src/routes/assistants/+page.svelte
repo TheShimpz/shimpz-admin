@@ -9,7 +9,7 @@
   import { locale, t } from '#lib/i18n.js';
   import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '#lib/localSnapshots.js';
   import { teamContext } from '#lib/teamContext.js';
-  import { TEAM_ID_RE } from '#lib/validate.js';
+  import { TEAM_ID_RE } from '#lib/ids.js';
 
   const ICON_PRESENTATION_BUDGET_MS = 1500;
   // How far beyond the screen a row's icon is already shown, so scrolling meets icons that are ready.

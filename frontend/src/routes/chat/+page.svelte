@@ -43,7 +43,7 @@
   import { sessionContext } from '#lib/sessionContext.js';
   import ShimpzThinking from '#lib/ShimpzThinking.svelte';
   import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teamContext.js';
-  import { ASSISTANT_LIMIT_REACHED } from '#lib/validate.js';
+  import { ASSISTANT_LIMIT_REACHED } from '#lib/api.js';
   import {
     authorizeAssistantIntegration,
     capabilityContinuation,

@@ -8,7 +8,7 @@
   import { authenticateWithPasskey, passkeyFailure } from '#lib/passkey.js';
   import { SecurityError } from '#lib/security.js';
   import { sessionContext } from '#lib/sessionContext.js';
-  import { LocalApiError } from '#lib/validate.js';
+  import { LocalApiError } from '#lib/api.js';
 
   // A confirmed Supervisor operation (ADR-0051), such as replacing the recovery codes or the signing key: the Supervisor
   // password, then one second factor bound to it. A code is the default; a passkey is offered beside it only where this

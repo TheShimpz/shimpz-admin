@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { localizedChallenge } from '../e2e/localizedRequest.js';
 import { parseChatEvent } from '../src/lib/localChat.js';
-import { isActionId, isAssistantId, isIdentifier } from '../src/lib/validate.js';
+import { isActionId, isAssistantId, isIdentifier } from '../src/lib/ids.js';
 
 const CHALLENGE_ID = 'b'.repeat(32);
 const ACTIONS = ['dns.read', 'zone_get', 'a'.repeat(128)];

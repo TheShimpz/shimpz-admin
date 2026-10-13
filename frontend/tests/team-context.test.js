@@ -5,7 +5,7 @@ import { get } from 'svelte/store';
 
 import * as context from '../src/lib/teamContext.js';
 import { socketReads } from '../src/lib/adminSocket.js';
-import { LocalApiError } from '../src/lib/validate.js';
+import { LocalApiError } from '../src/lib/api.js';
 import { RETRY_FIRST_MS } from '../src/lib/synced.js';
 
 const { clearTeamContext, teamContext } = context;

@@ -1,20 +1,14 @@
+import { ASSISTANT_LIMIT_REACHED, exactEnvelope, exactKeys, jsonObject, LocalApiError, safeApiError } from './api.js';
+import { codePointLength, CONTROL_RE } from './grammar.js';
 import {
   ASSISTANT_ID_RE,
-  ASSISTANT_LIMIT_REACHED,
-  codePointLength,
-  CONTROL_RE,
   DIGEST_RE,
-  exactEnvelope,
-  exactKeys,
   isAssistantId,
   isIdentifier,
-  jsonObject,
-  LocalApiError,
   PUBLIC_CREATOR_RE,
-  safeApiError,
   SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
-} from './validate.js';
+} from './ids.js';
 import { socketReads } from './adminSocket.js';
 import { AssistantPageError, canonicalPageCopy, SUMMARY_CHARS } from './assistantPage.js';
 import { isLocale } from './locales.js';

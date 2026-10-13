@@ -4,7 +4,7 @@ import test from 'node:test';
 import { clockTime } from '../src/lib/chatDays.js';
 import { listChatHistory } from '../src/lib/chatHistory.js';
 import { parseChatEvent } from '../src/lib/localChat.js';
-import { LocalApiError } from '../src/lib/validate.js';
+import { LocalApiError } from '../src/lib/api.js';
 import {
   answerRoutineCard,
   failureCause,

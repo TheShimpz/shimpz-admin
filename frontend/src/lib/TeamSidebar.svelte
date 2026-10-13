@@ -11,7 +11,7 @@
     modelContext,
   } from '#lib/modelContext.js';
   import { loadTeamContext, selectTeam, teamContext } from '#lib/teamContext.js';
-  import { TEAM_ID_RE } from '#lib/validate.js';
+  import { TEAM_ID_RE } from '#lib/ids.js';
 
   let { active = '' } = $props();
 

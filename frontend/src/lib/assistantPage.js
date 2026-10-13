@@ -2,7 +2,9 @@
 // links, every Action with its effect and localized description, and the credentials it keeps. One validator admits
 // them from Team's details (a staged snapshot or an installed binding) and from the public catalog entry alike.
 import { HELP_URL_PATTERN } from './localChat.js';
-import { codePointLength, exactKeys, isIdentifier } from './validate.js';
+import { exactKeys } from './api.js';
+import { codePointLength } from './grammar.js';
+import { isIdentifier } from './ids.js';
 
 // The Creator's link kinds in their display order.
 const LINK_KINDS = ['site', 'github', 'x', 'youtube', 'linkedin', 'instagram'];

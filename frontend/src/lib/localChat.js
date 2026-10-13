@@ -4,25 +4,20 @@ import { parseClarification, renderClarification } from './clarification.js';
 import { parseTaskUsage } from './taskUsage.js';
 import { browserTimezone, parseRoutineProposal, parseRoutineQuestion, parseRoutineRefusal } from './routine.js';
 import { isLocale } from './locales.js';
+import { ASSISTANT_LIMIT_REACHED, exactKeys, jsonObject, LocalApiError, safeApiError } from './api.js';
+import { codePointLength, CONTROL_RE } from './grammar.js';
 import {
   ASSISTANT_ID_RE,
-  ASSISTANT_LIMIT_REACHED,
-  codePointLength,
-  CONTROL_RE,
   DIGEST_RE,
-  exactKeys,
   isActionId,
   isAssistantId,
   isIdentifier,
-  jsonObject,
-  LocalApiError,
   MAX_TEAM_NAME_CHARS,
   OPAQUE_ID_RE,
   PUBLIC_CREATOR_RE,
-  safeApiError,
   SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
-} from './validate.js';
+} from './ids.js';
 
 export const CHAT_TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const SECRET_CONTROL_RE = /[\p{C}\p{Zl}\p{Zp}]/u;

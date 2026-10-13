@@ -1,4 +1,4 @@
-import { exactKeys, jsonObject } from './validate.js';
+import { exactKeys, jsonObject } from './api.js';
 
 // A published release set, or a developer release built on this host (ADR-0099).
 const RELEASE = /^(?:ghcr\.io\/theshimpz|localhost)\/shimpz-local-release@sha256:[0-9a-f]{64}$/;
