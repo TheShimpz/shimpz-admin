@@ -1,6 +1,7 @@
 // Returning to a Team's chat (ADR-0114, values a session keeps): the session keeps each recently shown Team's
 // conversation, so the chat opens it at once, checks it is still current, and only then attaches its channel; Send
-// still waits for the channel and a fresh inventory.
+// still waits for the channel and a fresh inventory. A Team's conversation not known yet shows the page's loading
+// indicator.
 import { expect, test } from '@playwright/test';
 
 import { messages } from '../src/lib/i18n/catalogs.js';
@@ -196,4 +197,22 @@ test('a page restored from the back-forward cache forgets the kept conversations
   await expect(composer(page)).toBeEnabled();
   await expect(page.getByText('Answer 2', { exact: true })).toBeVisible();
   await expect.poll(async () => (await readsOf(page, 'history.page')).length).toBeGreaterThan(reads);
+});
+
+test("a Team's conversation not known yet shows the page's loading status until it is read", async ({ page }) => {
+  await routeScenario(page, 'ready');
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await routeHistory(page, {
+    pages: { null: { entries: exchanges(1, 1), before: null } },
+    answer: () => held.then(() => undefined),
+  });
+  await page.goto('/chat/?team=marketing');
+  const loading = page.getByRole('status').filter({ hasText: chatPage.loading });
+  await expect(loading).toBeVisible();
+  await expect(page.locator('.conversation')).toHaveAttribute('inert', '');
+  release();
+  await expect(page.getByText('Answer 1', { exact: true })).toBeVisible();
+  await expect(loading).toHaveCount(0);
+  await expect(composer(page)).toBeEnabled();
 });

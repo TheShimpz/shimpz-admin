@@ -42,6 +42,7 @@
   import { configureModelContext, loadModelContext, modelContext } from '#lib/brain/context.js';
   import { sessionContext } from '#lib/session/context.js';
   import ShimpzThinking from '#lib/chat/progress/Thinking.svelte';
+  import PageLoading from '#lib/shell/Loading.svelte';
   import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teams/context.js';
   import { ASSISTANT_LIMIT_REACHED } from '#lib/api.js';
   import {
@@ -2017,17 +2018,17 @@
           onexpire={expireHumanRequest}
         />
         {#if historyHydrating}
-          <section class="history-loading" aria-live="polite">
-            <EmptyState title={copy.loading} />
+          <section class="history-loading">
+            <PageLoading label={copy.loading} />
           </section>
         {/if}
       </div>
     {:else}
-      <section class="empty-state" aria-live="polite">
-        <EmptyState title={copy.loading} />
+      <section class="empty-state">
+        <PageLoading label={copy.loading} />
       </section>
     {/if}
-  {:else}
+  {:else if teamsKnownEmpty || contextFailed || visibleError}
     <section class="empty-state" aria-live="polite">
       <!-- "No Team yet" only once the Team list is known to be empty; until then it is loading, or why it failed. -->
       <EmptyState
@@ -2040,6 +2041,10 @@
           </Notice>
         {/if}
       </EmptyState>
+    </section>
+  {:else}
+    <section class="empty-state">
+      <PageLoading label={copy.loading} />
     </section>
   {/if}
 </div>
