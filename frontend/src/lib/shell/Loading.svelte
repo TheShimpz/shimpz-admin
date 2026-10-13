@@ -2,8 +2,8 @@
   import { onMount } from 'svelte';
 
   // A page's own loading indicator, centred in the area it fills: nothing for the first moment, so a load that ends
-  // within it never flashes, then a chamfered track a cyan scan crosses (still when motion is reduced) and, for screen
-  // readers, `label` in the status region that was already in place.
+  // within it never flashes, then `label` over a chamfered track a cyan scan crosses (still when motion is reduced),
+  // in the status region that was already in place.
   let { label, delay = 150 } = $props();
   let shown = $state(false);
 
@@ -15,8 +15,10 @@
 
 <div class="page-loading" role="status">
   {#if shown}
-    <span class="sr-only">{label}</span>
-    <span class="track" aria-hidden="true"><span class="scan"></span></span>
+    <div class="loader">
+      <span class="label">{label}</span>
+      <span class="track" aria-hidden="true"><span class="scan"></span></span>
+    </div>
   {/if}
 </div>
 
@@ -29,6 +31,21 @@
     place-items: center;
   }
 
+  .loader {
+    display: grid;
+    justify-items: center;
+    gap: var(--gap-item);
+    animation: loader-in var(--shimpz-duration) var(--shimpz-ease) both;
+  }
+
+  .label {
+    color: var(--shimpz-color-text-muted);
+    font: 700 0.72rem/1.2 var(--shimpz-font-mono);
+    letter-spacing: 0.12em;
+    text-align: center;
+    text-transform: uppercase;
+  }
+
   /* A chamfered track, which a cyan scan crosses again and again, entering and leaving it whole. */
   .track {
     position: relative;
@@ -38,7 +55,6 @@
     border-radius: 0;
     clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 100%, 8px 100%);
     background: var(--shimpz-color-border);
-    animation: loader-in var(--shimpz-duration) var(--shimpz-ease) both;
   }
 
   /* The scan has the track's slant and fades in from its tail to a bright head. */
@@ -73,7 +89,7 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .track,
+    .loader,
     .scan {
       animation: none;
     }
