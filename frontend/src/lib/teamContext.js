@@ -1,8 +1,8 @@
 import { get, writable } from 'svelte/store';
 
-import { socketReads } from './adminSocket.js';
+import { socketReads } from './session/socket.js';
 import { listAssistantCatalog, listInstalledAssistants } from './localApi.js';
-import { synced } from './synced.js';
+import { synced } from './session/synced.js';
 import { exactKeys, jsonObject, LocalApiError, publicError, safeApiError } from './api.js';
 import { codePointLength, CONTROL_RE } from './grammar.js';
 import { ASSISTANT_ID_RE, MAX_TEAM_NAME_CHARS, TEAM_ID_RE, TRACE_ID_RE } from './ids.js';

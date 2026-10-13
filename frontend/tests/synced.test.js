@@ -3,8 +3,8 @@ import test, { mock } from 'node:test';
 
 import { get } from 'svelte/store';
 
-import { socketReads } from '../src/lib/adminSocket.js';
-import { dataUnavailable, RETRY_FIRST_MS, synced, transientFailure } from '../src/lib/synced.js';
+import { socketReads } from '../src/lib/session/socket.js';
+import { dataUnavailable, RETRY_FIRST_MS, synced, transientFailure } from '../src/lib/session/synced.js';
 import { LocalApiError } from '../src/lib/api.js';
 import { response } from './socketStub.js';
 

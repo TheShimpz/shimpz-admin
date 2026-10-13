@@ -3,7 +3,7 @@
   import { page } from '$app/state';
 
   import { DialogFrame, Modal, Notice, TextField } from '@shimpz/frontend';
-  import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
+  import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { showAdminNotice } from '#lib/adminNotice.js';
   import { t } from '#lib/i18n.js';

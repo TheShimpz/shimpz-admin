@@ -5,7 +5,7 @@
 import { derived, get, writable } from 'svelte/store';
 
 import { listModelProviders, loadInference, saveModelSetup } from './modelProviders.js';
-import { synced } from './synced.js';
+import { synced } from './session/synced.js';
 import { LocalApiError, publicError } from './api.js';
 import { TEAM_ID_RE } from './ids.js';
 

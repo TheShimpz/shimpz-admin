@@ -6,7 +6,7 @@
 <script>
   import { Button, DialogFrame, Modal } from '@shimpz/frontend';
 
-  import { sessionDeadlines } from '#lib/adminSocket.js';
+  import { sessionDeadlines } from '#lib/session/socket.js';
   import { locale, t } from '#lib/i18n.js';
 
   // Only the person's own input keeps the session alive (ADR-0114): a turn under way or a request waiting for them does

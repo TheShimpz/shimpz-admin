@@ -7,8 +7,8 @@
 // the value: its own read after Admin announces the change does (`refresh()` waits for that read).
 import { derived, writable } from 'svelte/store';
 
-import { socketReads } from './adminSocket.js';
-import { LocalApiError } from './api.js';
+import { socketReads } from './socket.js';
+import { LocalApiError } from '../api.js';
 
 export const RETRY_FIRST_MS = 1_000;
 const RETRY_MAX_MS = 30_000;

@@ -1,7 +1,7 @@
 <script>
   import { DialogFrame, Modal, Notice } from '@shimpz/frontend';
 
-  import { call } from '#lib/adminSocket.js';
+  import { call } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { locale } from '#lib/i18n.js';
   import { fill } from '#lib/i18n/fill.js';

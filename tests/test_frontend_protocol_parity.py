@@ -167,7 +167,7 @@ class FrontendSessionSocketParityTests(unittest.TestCase):
     """The browser's copies of the session socket protocol stay the Admin-owned protocol's (ADR-0114)."""
 
     def test_the_browser_session_socket_bounds_and_topics_are_the_protocol_s(self) -> None:
-        source = (LIB / "adminSocket.js").read_text(encoding="utf-8")
+        source = (LIB / "session" / "socket.js").read_text(encoding="utf-8")
 
         def constant(name: str) -> str:
             match = re.search(rf"^(?:export )?const {name} = (.+);$", source, re.MULTILINE)
@@ -195,7 +195,7 @@ class FrontendSessionSocketParityTests(unittest.TestCase):
         self.assertEqual(socket_frames.CHAT_TYPES, {"chat", "resume-task", "stop", "sync", "human-response"})
 
     def test_the_browser_reports_activity_and_reads_deadlines_in_the_protocol_s_frames(self) -> None:
-        source = (LIB / "adminSocket.js").read_text(encoding="utf-8")
+        source = (LIB / "session" / "socket.js").read_text(encoding="utf-8")
         self.assertEqual(socket_frames.ACTIVITY, {"type": "activity"})
         self.assertIn("connection.send(JSON.stringify({ type: 'activity' }));", source)
         self.assertEqual(set(socket_frames.session(1, 2)), {"type", "idle_seconds", "absolute_seconds"})

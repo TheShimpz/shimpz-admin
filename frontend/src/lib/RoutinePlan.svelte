@@ -2,7 +2,7 @@
   import { Button } from '@shimpz/frontend';
   import { tick, untrack } from 'svelte';
 
-  import { call } from '#lib/adminSocket.js';
+  import { call } from '#lib/session/socket.js';
   import RoutineIcon from '#lib/RoutineIcon.svelte';
   import { fill } from '#lib/i18n/fill.js';
   import { humanizeId } from '#lib/ids.js';

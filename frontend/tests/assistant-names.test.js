@@ -5,7 +5,7 @@ import { get } from 'svelte/store';
 
 import { assistantNames } from '../src/lib/assistantNames.js';
 import { clearTeamContext, loadTeamContext, refreshTeamInventory } from '../src/lib/teamContext.js';
-import { socketReads } from '../src/lib/adminSocket.js';
+import { socketReads } from '../src/lib/session/socket.js';
 import { response, via } from './socketStub.js';
 
 // Every topic the Team context watches is subscribed at once.

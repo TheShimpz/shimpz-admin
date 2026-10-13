@@ -62,7 +62,7 @@ globalThis.location = { protocol: 'http:', host: '127.0.0.1:7777' };
 let sessionAnswer = { authenticated: true };
 globalThis.fetch = async () => ({ ok: true, json: async () => sessionAnswer });
 
-const socketModule = await import('../src/lib/adminSocket.js');
+const socketModule = await import('../src/lib/session/socket.js');
 const {
   ACTIVITY_INTERVAL_MS,
   adminSocket,

@@ -28,7 +28,7 @@
   import { newerRoutineEntries } from '#lib/routines/protocol.js';
   import { questionWords } from '#lib/routines/words.js';
   import { showTeamRoutines } from '#lib/routineContext.js';
-  import { adminSocket, call, commandsReady, openChatChannel, outcomeUnknown } from '#lib/adminSocket.js';
+  import { adminSocket, call, commandsReady, openChatChannel, outcomeUnknown } from '#lib/session/socket.js';
   import {
     createExecutionProjection,
     extendExecutionProjection,
@@ -40,7 +40,7 @@
   import { CLARIFICATION_LABELS } from '#lib/clarificationLabels.js';
   import { routineQuestionMessages } from '#lib/routineQuestionMessages.js';
   import { configureModelContext, loadModelContext, modelContext } from '#lib/modelContext.js';
-  import { sessionContext } from '#lib/sessionContext.js';
+  import { sessionContext } from '#lib/session/context.js';
   import ShimpzThinking from '#lib/ShimpzThinking.svelte';
   import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teamContext.js';
   import { ASSISTANT_LIMIT_REACHED } from '#lib/api.js';

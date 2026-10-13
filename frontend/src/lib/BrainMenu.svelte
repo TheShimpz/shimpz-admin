@@ -2,7 +2,7 @@
   import { Button, ChoiceItem } from '@shimpz/frontend';
 
   import { showAdminNotice } from '#lib/adminNotice.js';
-  import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
+  import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/composerPanel.js';
   import { t } from '#lib/i18n.js';
   import { modelContext, selectTeamBrain } from '#lib/modelContext.js';

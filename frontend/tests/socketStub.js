@@ -1,6 +1,6 @@
 // The unit tests' stand-in for the Admin session socket (ADR-0114): each operation a module asks for goes to the stub
 // the test installed, `(method, params, options) => answer`, where an answer reads like a call result.
-import { socketReads } from '../src/lib/adminSocket.js';
+import { socketReads } from '../src/lib/session/socket.js';
 
 /** A call result as the socket client gives it: `ok`, `status`, and a JSON body. */
 export function response(status, body) {

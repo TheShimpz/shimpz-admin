@@ -7,7 +7,7 @@
   import { getContext, untrack } from 'svelte';
   import { ActionLink, AssistantIcon, Button, Disclosure, Notice, Skeleton, TextLink } from '@shimpz/frontend';
   import { showAdminNotice } from '#lib/adminNotice.js';
-  import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
+  import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import AssistantActionDialog from '#lib/AssistantActionDialog.svelte';
   import { acquireIcon, localIcon, publicIcon } from '#lib/assistantIconCache.js';
   import { installedIconUrl } from '#lib/assistants/icons.js';

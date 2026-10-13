@@ -10,7 +10,7 @@ import {
 } from './chat/protocol.js';
 import { parseRoutineRunEntry } from './routines/protocol.js';
 import { parseTaskUsage } from './taskUsage.js';
-import { synced } from './synced.js';
+import { synced } from './session/synced.js';
 import { ASSISTANT_LIMIT_REACHED, exactKeys, jsonObject, LocalApiError, safeApiError } from './api.js';
 import { codePointLength, isInstant } from './grammar.js';
 import {

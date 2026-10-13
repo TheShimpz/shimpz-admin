@@ -19,7 +19,7 @@ import {
   loadLocalAssistantSummary,
 } from './localAssistantIcons.js';
 import { groupLocalAssistantSnapshots, projectPublishedAssistants } from './localSnapshots.js';
-import { synced } from './synced.js';
+import { synced } from './session/synced.js';
 
 const SNAPSHOTS = 'local-assistants';
 const inventory = (teamId) => `team/${teamId}/inventory`;

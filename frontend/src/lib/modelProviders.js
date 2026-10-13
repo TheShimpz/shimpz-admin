@@ -1,4 +1,4 @@
-import { socketReads } from './adminSocket.js';
+import { socketReads } from './session/socket.js';
 import MODEL_CATALOG from './modelCatalog.json' with { type: 'json' };
 import { exactKeys, jsonObject, LocalApiError, safeApiError } from './api.js';
 import { TEAM_ID_RE } from './ids.js';

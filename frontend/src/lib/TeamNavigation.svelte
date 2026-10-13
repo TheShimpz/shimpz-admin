@@ -8,7 +8,7 @@
   import { t } from '#lib/i18n.js';
   import { CIRCLES, PATHS } from '#lib/icons.js';
   import { retainTeamRoutines, routineContext } from '#lib/routineContext.js';
-  import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
+  import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import TeamActionsMenu from '#lib/TeamActionsMenu.svelte';
   import { renameTeam, reorderTeams, teamContext } from '#lib/teamContext.js';
   import TeamRoutinesDialog from '#lib/TeamRoutinesDialog.svelte';

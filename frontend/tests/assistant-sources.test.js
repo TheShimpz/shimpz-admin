@@ -3,7 +3,7 @@ import test, { afterEach, beforeEach } from 'node:test';
 
 import { get } from 'svelte/store';
 
-import { socketReads } from '../src/lib/adminSocket.js';
+import { socketReads } from '../src/lib/session/socket.js';
 import {
   clearAssistantSources,
   installedDetails,

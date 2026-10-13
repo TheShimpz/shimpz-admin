@@ -1,6 +1,6 @@
 <script>
   import { Button, FileInput, Notice, TextAreaField, TextField, Toolbar } from '@shimpz/frontend';
-  import { commandsReady } from '#lib/adminSocket.js';
+  import { commandsReady } from '#lib/session/socket.js';
   import { MAX_ATTACHMENTS } from '#lib/chat/attachments/files.js';
   import BrainMenu from '#lib/BrainMenu.svelte';
   import ComposerAttachments from '#lib/ComposerAttachments.svelte';

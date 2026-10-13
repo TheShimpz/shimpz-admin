@@ -28,7 +28,7 @@
     untilWords,
   } from '#lib/routines/words.js';
   import { refreshTeamRoutines } from '#lib/routineContext.js';
-  import { call, commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
+  import { call, commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import RoutineDecision from '#lib/RoutineDecision.svelte';
   import RoutineDeletion from '#lib/RoutineDeletion.svelte';
   import RoutinePlan from '#lib/RoutinePlan.svelte';

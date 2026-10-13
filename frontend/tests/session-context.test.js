@@ -7,7 +7,7 @@ import {
   clearSessionContext,
   sessionContext,
   setSessionContext,
-} from '../src/lib/sessionContext.js';
+} from '../src/lib/session/context.js';
 
 test('admits only Admin-projected OAuth completion modes', () => {
   for (const mode of ['automatic', 'code', null]) {

@@ -1,5 +1,5 @@
 <script>
-  import { call } from '#lib/adminSocket.js';
+  import { call } from '#lib/session/socket.js';
   import { assistantNames } from '#lib/assistantNames.js';
   import { locale } from '#lib/i18n.js';
   import RoutineModal from '#lib/RoutineModal.svelte';

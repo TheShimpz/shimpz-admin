@@ -1,7 +1,7 @@
 import { derived } from 'svelte/store';
 
-import { socketReads } from './adminSocket.js';
-import { synced } from './synced.js';
+import { socketReads } from './session/socket.js';
+import { synced } from './session/synced.js';
 import { exactKeys, jsonObject, LocalApiError, safeApiError } from './api.js';
 import { isInstant } from './grammar.js';
 

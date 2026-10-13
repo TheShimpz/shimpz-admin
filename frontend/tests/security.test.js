@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { get } from 'svelte/store';
 
-import { OUTCOME_UNKNOWN, socketReads } from '../src/lib/adminSocket.js';
+import { OUTCOME_UNKNOWN, socketReads } from '../src/lib/session/socket.js';
 import { LocalApiError } from '../src/lib/api.js';
 
 import {

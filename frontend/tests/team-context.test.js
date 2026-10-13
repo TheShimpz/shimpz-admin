@@ -4,9 +4,9 @@ import test, { mock } from 'node:test';
 import { get } from 'svelte/store';
 
 import * as context from '../src/lib/teamContext.js';
-import { socketReads } from '../src/lib/adminSocket.js';
+import { socketReads } from '../src/lib/session/socket.js';
 import { LocalApiError } from '../src/lib/api.js';
-import { RETRY_FIRST_MS } from '../src/lib/synced.js';
+import { RETRY_FIRST_MS } from '../src/lib/session/synced.js';
 
 const { clearTeamContext, teamContext } = context;
 const EPOCH = 'a'.repeat(32);

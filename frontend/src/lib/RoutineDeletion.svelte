@@ -2,14 +2,14 @@
   import { Notice, RadioField, TextField } from '@shimpz/frontend';
   import { get } from 'svelte/store';
 
-  import { call, commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
+  import { call, commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n.js';
   import { fill } from '#lib/i18n/fill.js';
   import { authenticateWithPasskey, passkeyFailure } from '#lib/passkey.js';
   import { beginRoutineDeletion, deleteRoutine, RoutineError } from '#lib/routines/protocol.js';
   import { routineErrorMessage } from '#lib/routines/words.js';
-  import { sessionContext } from '#lib/sessionContext.js';
+  import { sessionContext } from '#lib/session/context.js';
   import { LocalApiError } from '#lib/api.js';
 
   // Deleting one Routine (ADR-0051, ADR-0086): the whole panel is this confirmation. Admin checks the Supervisor

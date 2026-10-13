@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
 import { get } from 'svelte/store';
 
-import { socketReads } from '../src/lib/adminSocket.js';
+import { socketReads } from '../src/lib/session/socket.js';
 import {
   clearTeamRoutines,
   FOLLOWED_TEAMS,
@@ -11,7 +11,7 @@ import {
   routineContext,
   showTeamRoutines,
 } from '../src/lib/routineContext.js';
-import { RETRY_FIRST_MS } from '../src/lib/synced.js';
+import { RETRY_FIRST_MS } from '../src/lib/session/synced.js';
 
 const ROUTINE = {
   routine_id: 'a'.repeat(32),

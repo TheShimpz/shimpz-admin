@@ -5,9 +5,9 @@
 // and the socket never stops reconnecting while the session lasts.
 import { derived, writable } from 'svelte/store';
 
-import { readSession } from './sessionContext.js';
-import { LocalApiError } from './api.js';
-import { TEAM_ID_RE } from './ids.js';
+import { readSession } from './context.js';
+import { LocalApiError } from '../api.js';
+import { TEAM_ID_RE } from '../ids.js';
 
 // The protocol's own bounds (backend/protocol/socket/v1/frames.py), pinned by the Admin parity test.
 const ADMIN_SOCKET_PROTOCOL = 'shimpz.admin.v1';

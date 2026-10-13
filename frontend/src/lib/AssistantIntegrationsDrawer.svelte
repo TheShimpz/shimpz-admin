@@ -10,7 +10,7 @@
     Toolbar,
   } from '@shimpz/frontend';
   import { untrack } from 'svelte';
-  import { commandsReady } from '#lib/adminSocket.js';
+  import { commandsReady } from '#lib/session/socket.js';
   import { installedIconUrl } from '#lib/assistants/icons.js';
   import { installedSummary } from '#lib/assistantSources.js';
   import { locale, t } from '#lib/i18n.js';

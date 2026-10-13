@@ -7,8 +7,8 @@
   import { writable } from 'svelte/store';
   import AdminShell from '#lib/AdminShell.svelte';
   import AuthScreen from '#lib/AuthScreen.svelte';
-  import { adminSocket } from '#lib/adminSocket.js';
-  import { dataUnavailable } from '#lib/synced.js';
+  import { adminSocket } from '#lib/session/socket.js';
+  import { dataUnavailable } from '#lib/session/synced.js';
   import BootScreen from '#lib/BootScreen.svelte';
   import { clearAdminNotice } from '#lib/adminNotice.js';
   import { clearAssistantSources } from '#lib/assistantSources.js';
@@ -19,7 +19,7 @@
   import { authenticateWithPasskey, passkeyFailure, registerPasskey } from '#lib/passkey.js';
   import { clearTeamRoutines } from '#lib/routineContext.js';
   import { clearSecuritySummary, recoveryCodes as validRecoveryCodes } from '#lib/security.js';
-  import { clearSessionContext, readSession, SESSION_ENDED, setSessionContext } from '#lib/sessionContext.js';
+  import { clearSessionContext, readSession, SESSION_ENDED, setSessionContext } from '#lib/session/context.js';
   import { clearTeamContext, teamContext } from '#lib/teamContext.js';
 
   let { children } = $props();

@@ -5,7 +5,7 @@
 import { writable } from 'svelte/store';
 
 import { listRoutines, RoutineError } from './routines/protocol.js';
-import { synced } from './synced.js';
+import { synced } from './session/synced.js';
 import { LocalApiError } from './api.js';
 
 /**

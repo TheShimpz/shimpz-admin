@@ -3,9 +3,9 @@ import test, { mock } from 'node:test';
 
 import { get } from 'svelte/store';
 
-import { socketReads } from '../src/lib/adminSocket.js';
+import { socketReads } from '../src/lib/session/socket.js';
 import { historyHead, MAX_REFRESH_PAGES } from '../src/lib/chatHistory.js';
-import { RETRY_FIRST_MS } from '../src/lib/synced.js';
+import { RETRY_FIRST_MS } from '../src/lib/session/synced.js';
 
 const EPOCH = 'a'.repeat(32);
 const AT = '2026-10-02T21:15:00Z';

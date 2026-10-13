@@ -2,12 +2,12 @@
   import { Notice, RadioField, TextField } from '@shimpz/frontend';
   import { get } from 'svelte/store';
 
-  import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
+  import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n.js';
   import { authenticateWithPasskey, passkeyFailure } from '#lib/passkey.js';
   import { SecurityError } from '#lib/security.js';
-  import { sessionContext } from '#lib/sessionContext.js';
+  import { sessionContext } from '#lib/session/context.js';
   import { LocalApiError } from '#lib/api.js';
 
   // A confirmed Supervisor operation (ADR-0051), such as replacing the recovery codes or the signing key: the Supervisor

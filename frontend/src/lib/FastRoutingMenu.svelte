@@ -2,7 +2,7 @@
   import { tick } from 'svelte';
   import { Button, StatusBadge, TextField, TextLink } from '@shimpz/frontend';
 
-  import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
+  import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/composerPanel.js';
   import { decisionProvider, removeDecisionKey, saveDecisionKey } from '#lib/decisionProvider.js';
   import { t } from '#lib/i18n.js';

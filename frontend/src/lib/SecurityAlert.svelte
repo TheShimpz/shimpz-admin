@@ -1,6 +1,6 @@
 <script>
   import { Notice } from '@shimpz/frontend';
-  import { commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
+  import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n.js';
   import { acknowledgeFailedAttempts, securitySummary } from '#lib/security.js';

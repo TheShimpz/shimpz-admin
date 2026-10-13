@@ -1,7 +1,7 @@
 <script>
   import { locale, t } from '#lib/i18n.js';
-  import { adminSocket } from '#lib/adminSocket.js';
-  import { dataUnavailable, synced } from '#lib/synced.js';
+  import { adminSocket } from '#lib/session/socket.js';
+  import { dataUnavailable, synced } from '#lib/session/synced.js';
   import { fetchSpaceResources, resourceSegments, resourceStatus } from '#lib/spaceResources.js';
 
   // What leads the status line, such as the Admin version; it shows even while the status is unknown.

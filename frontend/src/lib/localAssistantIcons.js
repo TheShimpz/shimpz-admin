@@ -1,4 +1,4 @@
-import { socketReads } from './adminSocket.js';
+import { socketReads } from './session/socket.js';
 import { AssistantPageError, canonicalPageCopy, isDisplayText, SUMMARY_CHARS } from './assistantPage.js';
 import { catalogIconUrl } from './assistants/icons.js';
 import { isLocale } from './locales.js';

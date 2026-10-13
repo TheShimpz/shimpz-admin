@@ -2,12 +2,12 @@
 // their inventory, clearing a Stored Input, and the OAuth authorization that connects an Integration, whose start
 // address must be one Admin or shimpz.com trusts for exactly the reviewed Cloudflare scopes.
 
-import { socketReads } from '../adminSocket.js';
+import { socketReads } from '../session/socket.js';
 import { exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
 import { canonicalId, canonicalIntegrationScopes, canonicalPublicText, requireTeam } from '../chat/protocol.js';
 import { CONTROL_RE } from '../grammar.js';
 import { ASSISTANT_ID_RE, isIdentifier, OPAQUE_ID_RE, SEMANTIC_VERSION_RE } from '../ids.js';
-import { synced } from '../synced.js';
+import { synced } from '../session/synced.js';
 
 const MAX_INTEGRATIONS = 512;
 const MAX_STORED_INPUTS = 128;

@@ -9,7 +9,7 @@ import {
   SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
 } from './ids.js';
-import { socketReads } from './adminSocket.js';
+import { socketReads } from './session/socket.js';
 import { AssistantPageError, canonicalPageCopy, SUMMARY_CHARS } from './assistantPage.js';
 import { isLocale } from './locales.js';
 
