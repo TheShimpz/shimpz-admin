@@ -160,6 +160,9 @@
   let inventoryRetry = $state();
   // Whether the focus was last inside this chat (or the chat was just opened); only then may it return to the composer.
   let chatOwnsFocus = true;
+  // A navigation onto this chat asked for the composer: it takes the focus as soon as it is usable, even when it is still
+  // busy (reconnecting, its history being checked) at the moment the navigation ends.
+  let focusWanted = $state(false);
   let stopButton = $state();
   let turnsViewport = $state();
   let scrollRequest = 0;
@@ -806,6 +809,7 @@
       (focused && focused !== document.body) ||
       document.querySelector('dialog[open], :popover-open')
     ) return;
+    focusWanted = false;
     composerInput?.focus({ preventScroll: true });
   }
 
@@ -814,13 +818,19 @@
   function trackFocus(event) {
     if (event.target === document.body) return;
     chatOwnsFocus = Boolean(chatRoute?.contains(event.target));
+    // The person moved the focus themselves: the navigation's request for the composer lapses.
+    if (event.target !== composerInput) focusWanted = false;
   }
 
   // Every navigation that lands on this chat, its own Team's link clicked again included, leaves the focus on the body
   // once it completes: the composer takes it as soon as it is usable.
   afterNavigate(() => {
     chatOwnsFocus = true;
-    void focusComposer();
+    focusWanted = true;
+  });
+
+  $effect(() => {
+    if (focusWanted && mounted && chatTeamId && $modelContext.ready && !composerBusy && !integrationsOpen) void focusComposer();
   });
 
   async function saveProviderKey(event) {

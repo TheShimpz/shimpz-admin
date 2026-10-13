@@ -277,3 +277,18 @@ test('opening a Team from the Team list lands in its message field, from the Sto
   await returnToChat(page, 'Trinity');
   await expect(composer(page)).toBeFocused();
 });
+
+test('a Team opened while its message field is still busy hands it the focus once it is usable', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  await routeHistory(page, { pages: { null: { entries: exchanges(1, 2), before: null } } });
+  const sync = await routeSync(page);
+  await openChat(page);
+  await leaveForStore(page);
+  // The chat's channel answers only later, so the field is still busy when the navigation ends.
+  sync.holding = true;
+  await returnToChat(page);
+  await expect(composer(page)).toBeDisabled();
+  sync.release();
+  await expect(composer(page)).toBeEnabled();
+  await expect(composer(page)).toBeFocused();
+});

@@ -189,9 +189,10 @@
     display: flex;
     min-width: 0;
     padding: var(--gap-inside) var(--gap-item);
-    color: var(--shimpz-color-text);
-    background: color-mix(in srgb, var(--shimpz-color-bg) 78%, transparent);
+    color: #fff;
     font: 600 0.62rem/1.3 var(--shimpz-font-sans);
+    /* A dark outline keeps the name legible over any image, with no ground of its own. */
+    text-shadow: 0 0 2px #000, 0 0 3px #000, 0 1px 2px #000;
     pointer-events: none;
     white-space: nowrap;
     unicode-bidi: plaintext;
