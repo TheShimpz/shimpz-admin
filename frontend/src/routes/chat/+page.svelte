@@ -1,18 +1,15 @@
 <script>
   import { flushSync, getContext, onMount, tick } from 'svelte';
   import { readable } from 'svelte/store';
-  import { Button, EmptyState, FileInput, Message, Notice, ScrollArea, TextAreaField, TextField, Toolbar } from '@shimpz/frontend';
+  import { Button, EmptyState, FileInput, Notice, ScrollArea, TextAreaField, TextField, Toolbar } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '#lib/AssistantHumanRequestDialog.svelte';
-  import AttachmentChip from '#lib/AttachmentChip.svelte';
   import { MAX_ATTACHMENTS } from '#lib/attachments.js';
   import { MessageFiles } from '#lib/chat/attachments/upload.svelte.js';
   import ComposerAttachments from '#lib/ComposerAttachments.svelte';
-  import RestrictedActionsNote from '#lib/RestrictedActionsNote.svelte';
   import AssistantIntegrationsDialog from '#lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '#lib/AssistantIntegrationsDrawer.svelte';
-  import InstallPlan from '#lib/chat/lifecycle/InstallPlan.svelte';
+  import Exchange from '#lib/chat/Exchange.svelte';
   import { snapshotIcon } from '#lib/chat/lifecycle/snapshot.js';
-  import Uninstall from '#lib/chat/lifecycle/Uninstall.svelte';
   import { historyHead, listChatHistory } from '#lib/chatHistory.js';
   import {
     expiredTurns,
@@ -24,29 +21,21 @@
     lifecycleTurns,
     projectedChatError,
     replyFields,
-    shownUsage,
   } from '#lib/chat/turns.js';
   import BrainMenu from '#lib/BrainMenu.svelte';
   import FastRoutingMenu from '#lib/FastRoutingMenu.svelte';
-  import ClarificationCard from '#lib/ClarificationCard.svelte';
   import { clarifiedRequest, matchClarificationAnswers } from '#lib/clarification.js';
   import { promptHistoryStep } from '#lib/promptHistory.js';
-  import { formatTaskUsage, formatTaskUsageDetail } from '#lib/taskUsage.js';
-  import RoutineProposal from '#lib/RoutineProposal.svelte';
-  import RoutineQuestion from '#lib/RoutineQuestion.svelte';
-  import RoutineRunEntry from '#lib/RoutineRunEntry.svelte';
   import ChatDay from '#lib/ChatDay.svelte';
-  import { calendarDay, clockTime, exchangeDays, instantValue, turnInstants, untilNextDay } from '#lib/chatDays.js';
-  import { newerRoutineEntries, questionWords, refusalWords } from '#lib/routine.js';
+  import { calendarDay, exchangeDays, turnInstants, untilNextDay } from '#lib/chatDays.js';
+  import { newerRoutineEntries, questionWords } from '#lib/routine.js';
   import { showTeamRoutines } from '#lib/routineContext.js';
   import { adminSocket, call, commandsReady, openChatChannel, outcomeUnknown } from '#lib/adminSocket.js';
-  import ExecutionReceipt from '#lib/ExecutionReceipt.svelte';
   import {
     createExecutionProjection,
     extendExecutionProjection,
     localizedEventLabel,
   } from '#lib/executionProgress.js';
-  import Markdown from '#lib/Markdown.svelte';
   import { escapeMarkdownText } from '#lib/markdown.js';
   import { locale, t } from '#lib/i18n.js';
   import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
@@ -1812,165 +1801,47 @@
               {/if}
             </div>
           {/if}
-          <!-- When a message was sent or a reply completed, to the second, in the viewer's timezone. -->
-          {#snippet turnTime(turn)}
-            {@const instant = instantOf(turn)}
-            <span class="turn-at">{copy.timeAt}</span>
-            <time class="turn-time" datetime={instantValue(instant)}>{clockTime(instant, $locale)}</time>
+          <!-- The turn in flight's live progress, shown after its exchange. -->
+          {#snippet liveThinking()}
+            <ShimpzThinking
+              label={thinking}
+              steps={progressProjection.steps}
+              currentIndex={progressProjection.currentIndex}
+              elapsedText={copy.elapsed}
+              stagesText={copy.progressStages}
+              progressLabels={copy.progress}
+              {teamName}
+              {assistantNames}
+              startedAt={turnStartedAt}
+            />
           {/snippet}
           {#each exchanges as exchange, index (exchange.key)}
-            {@const userTurn = exchange.user}
-            {@const assistantTurn = exchange.assistant}
             {@const opensDay = days[index] !== days[index - 1]}
             {#if opensDay}
               <ChatDay day={days[index]} {today} locale={$locale} />
             {/if}
-            <!-- A Routine notice keeps its time on its own rail; every other reply shows when it was completed. -->
-            {#snippet replyTime()}{@render turnTime(assistantTurn)}{/snippet}
-            <section class="exchange">
-              {#if userTurn}
-                <Message variant="user" author={copy.you}>
-                  {#snippet meta()}{@render turnTime(userTurn)}{/snippet}
-                  {@const answer = clarificationAnswers.sent.get(index) ?? null}
-                  {#if userTurn.resumedObjective}
-                    <div class="resumed-task">
-                      <strong>{copy.install.resuming}</strong>
-                      <span>{userTurn.resumedObjective}</span>
-                    </div>
-                  {/if}
-                  {#if answer !== null}
-                    <!-- The question stays above its answer, so the person always sees what they replied to. -->
-                    <div class="clarification-reply">
-                      <p class="clarification-question">
-                        <span class="reply-label">{$t('clarify').questionLabel}</span>{answer.question}
-                      </p>
-                      <p><span class="reply-label">{$t('clarify').answered}</span>{answer.answer}</p>
-                    </div>
-                  {:else}
-                    <p>{userTurn.text}</p>
-                  {/if}
-                  {#if userTurn.files}
-                    <ul class="message-attachments" aria-label={attachCopy.list}>
-                      {#each userTurn.files as file (file.key)}
-                        <AttachmentChip name={file.name} size={file.size} kind={file.kind} note={file.note} sent />
-                      {/each}
-                    </ul>
-                  {/if}
-                </Message>
-              {/if}
-              {#if assistantTurn}
-                <!-- A Routine notice names its Routine in its own words; the chat already is the Team's. -->
-                <Message
-                  variant="assistant"
-                  author={assistantTurn.routineRun ? undefined : assistantTurn.author}
-                  meta={assistantTurn.routineRun ? undefined : replyTime}
-                >
-                  {@const clarifiedOriginal = clarifiedRequest(exchange)}
-                  {#if clarifiedOriginal !== null}
-                    <ClarificationCard
-                      clarification={assistantTurn.clarification}
-                      original={clarifiedOriginal}
-                      copy={$t('clarify')}
-                      answered={clarificationAnswers.given.get(index) ?? null}
-                      disabled={sendUnavailable}
-                      onanswer={(answer) => answerClarification(exchange, answer)}
-                    />
-                  {:else if assistantTurn.routineRun}
-                    <RoutineRunEntry
-                      entry={assistantTurn.routineRun}
-                      copy={$t('routine')}
-                      joinAbove={!opensDay && !userTurn && Boolean(exchanges[index - 1]?.assistant?.routineRun)}
-                      joinBelow={days[index + 1] === days[index] && !exchanges[index + 1]?.user &&
-                        Boolean(exchanges[index + 1]?.assistant?.routineRun)}
-                    />
-                  {:else if !assistantTurn.installPlan && (
-                    !assistantTurn.lifecycle || assistantTurn.lifecycle.state === 'proposed'
-                  )}
-                    <Markdown markdown={assistantTurn.text} variant="chat" />
-                  {/if}
-                  {#if assistantTurn.installPlan}
-                    <InstallPlan plan={assistantTurn.installPlan} teamId={chatTeamId} {words} />
-                  {/if}
-                  {#if assistantTurn.lifecycle}
-                    <Uninstall
-                      lifecycle={assistantTurn.lifecycle}
-                      author={assistantTurn.author}
-                      teamId={chatTeamId}
-                      {words}
-                      disabled={lifecycleDecisionDisabled}
-                      ondecide={submitLifecycleDecision}
-                    />
-                  {/if}
-                  <!-- With recorded steps, the usage line itself opens them: one line, its triangle beside it. -->
-                  {#snippet usageLine()}
-                    {@const shown = shownUsage(assistantTurn).usage}
-                    <span class="task-usage" title={formatTaskUsageDetail(shown, $locale, copy.usage)}>
-                      {formatTaskUsage(shown, $locale, copy.usage)}
-                    </span>
-                  {/snippet}
-                  {#if assistantTurn.usage && !shownUsage(assistantTurn).receipt}
-                    <p class="task-usage" title={formatTaskUsageDetail(assistantTurn.usage, $locale, copy.usage)}>
-                      {formatTaskUsage(assistantTurn.usage, $locale, copy.usage)}
-                    </p>
-                  {/if}
-                  <ExecutionReceipt
-                    line={assistantTurn.usage ? usageLine : undefined}
-                    durationMs={assistantTurn.usage?.durationMs}
-                    events={assistantTurn.receipt ?? []}
-                    label={copy.progressStagesExecuted}
-                    progressLabels={copy.progress}
-                    teamName={assistantTurn.author}
-                    {assistantNames}
-                  />
-                  {#if assistantTurn.restricted}
-                    <RestrictedActionsNote restricted={assistantTurn.restricted} {assistantNames} />
-                  {/if}
-                  <!-- A recording turn's Routine card, what Team asks first, or why it made none; a reload shows it again. -->
-                  {#if assistantTurn.routineQuestion && exchange.user}
-                    <RoutineQuestion
-                      question={assistantTurn.routineQuestion}
-                      original={exchange.user.text}
-                      copy={$t('routine').proposal}
-                      clarifyCopy={$t('clarify')}
-                      answered={clarificationAnswers.given.get(index) ?? null}
-                      disabled={sendUnavailable}
-                      onanswer={(answer) => answerClarification(exchange, answer)}
-                    />
-                  {:else if assistantTurn.routineProposal}
-                    <RoutineProposal teamId={selectedTeamId} proposal={assistantTurn.routineProposal}
-                      copy={$t('routine')} locale={$locale} />
-                  {:else if assistantTurn.routineRefusal}
-                    <p class="routine-refusal" role="note">{refusalWords(assistantTurn.routineRefusal, $t('routine').proposal)}</p>
-                  {/if}
-                </Message>
-                {#if index === exchanges.length - 1 && busy && assistantTurn.installPlan?.state === 'installed' && !integrationChallenge && !humanChallenge}
-                  <!-- An install that continues the requested task keeps showing that task's execution stages. -->
-                  <ShimpzThinking
-                    label={thinking}
-                    steps={progressProjection.steps}
-                    currentIndex={progressProjection.currentIndex}
-                    elapsedText={copy.elapsed}
-                    stagesText={copy.progressStages}
-                    progressLabels={copy.progress}
-                    {teamName}
-                    {assistantNames}
-                    startedAt={turnStartedAt}
-                  />
-                {/if}
-              {:else if index === exchanges.length - 1 && busy && !lifecycleWorking && !integrationChallenge && !humanChallenge}
-                <ShimpzThinking
-                  label={thinking}
-                  steps={progressProjection.steps}
-                  currentIndex={progressProjection.currentIndex}
-                  elapsedText={copy.elapsed}
-                  stagesText={copy.progressStages}
-                  progressLabels={copy.progress}
-                  {teamName}
-                  {assistantNames}
-                  startedAt={turnStartedAt}
-                />
-              {/if}
-            </section>
+            <!-- The last exchange shows the turn in flight, also after an install that continues the requested task. -->
+            <Exchange
+              {exchange}
+              {words}
+              {instantOf}
+              teamId={chatTeamId}
+              {selectedTeamId}
+              {assistantNames}
+              sentAnswer={clarificationAnswers.sent.get(index) ?? null}
+              givenAnswer={clarificationAnswers.given.get(index) ?? null}
+              answerDisabled={sendUnavailable}
+              joinAbove={!opensDay && !exchange.user && Boolean(exchanges[index - 1]?.assistant?.routineRun)}
+              joinBelow={days[index + 1] === days[index] && !exchanges[index + 1]?.user &&
+                Boolean(exchanges[index + 1]?.assistant?.routineRun)}
+              lifecycleDisabled={lifecycleDecisionDisabled}
+              onanswer={(answer) => answerClarification(exchange, answer)}
+              ondecide={submitLifecycleDecision}
+              thinking={index === exchanges.length - 1 && busy && !integrationChallenge && !humanChallenge &&
+                (exchange.assistant ? exchange.assistant.installPlan?.state === 'installed' : !lifecycleWorking)
+                ? liveThinking
+                : undefined}
+            />
           {/each}
         </ScrollArea>
 
@@ -2285,25 +2156,6 @@
     display: none;
   }
 
-  .exchange {
-    /* A Routine notice's timeline rail reaches back across this gap to the notice before it. */
-    --routine-rail-gap: var(--gap-group);
-    display: grid;
-    min-width: 0;
-    align-content: start;
-    gap: var(--gap-item);
-    margin-block-start: var(--routine-rail-gap);
-  }
-
-  .exchange:first-child,
-  :global(.chat-day + .exchange) {
-    margin-block-start: 0;
-  }
-
-  .exchange:last-child {
-    min-block-size: 100%;
-  }
-
   :global(.turns .shimpz-message--assistant) { align-self: stretch; color: var(--accent-alt); }
   :global(.turns .shimpz-message--user) { max-width: min(80%, 46rem); color: var(--accent); }
   :global(.turns [data-slot="message-content"] p) {
@@ -2314,66 +2166,11 @@
     overflow-wrap: anywhere;
   }
 
-  /* Inside the receipt's uppercase summary the usage keeps its own case and spacing. */
-  span.task-usage { margin: 0; text-transform: none; }
-  .task-usage {
-    margin: var(--gap-inside) 0 0;
-    color: var(--shimpz-color-text-dim);
-    font: 500 0.68rem/1.4 var(--shimpz-font-mono);
-    letter-spacing: 0.02em;
-    font-variant-numeric: tabular-nums;
-  }
-  .routine-refusal {
-    margin: var(--gap-item) 0 0;
-    color: var(--shimpz-color-text-muted);
-    font-size: 0.85rem;
-  }
   /* The time sits right after its author's name instead of across the message. */
   :global(.turns [data-slot="message-header"]) {
     justify-content: flex-start;
     gap: 1ch; /* one word space, the same as between "às" and the time */
   }
-  /* "às" reads as a word in the sentence "NEO às 10:30:00", not as part of the uppercase label. */
-  .turn-at {
-    text-transform: none;
-    letter-spacing: 0;
-    font-weight: 400;
-  }
-  /* Beside the author, as quiet as the day headers and the Routine rail's times: small dim digits that never shift. */
-  .turn-time {
-    font: 400 0.66rem/1.4 var(--shimpz-font-mono);
-    letter-spacing: 0.02em;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
-  .clarification-reply { display: grid; gap: var(--gap-item); margin: 0; }
-  .clarification-reply p { display: grid; gap: var(--gap-inside); margin: 0; }
-  .clarification-question { color: var(--shimpz-color-text-muted); }
-  .reply-label {
-    color: var(--shimpz-color-text-muted);
-    font-family: var(--shimpz-font-mono, ui-monospace, monospace);
-    font-size: 0.72rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-  .resumed-task {
-    display: grid;
-    gap: var(--gap-inside);
-    margin-bottom: var(--gap-item);
-    padding-left: var(--gap-group);
-    border-left: 2px solid currentColor;
-    color: var(--text-faint);
-    line-height: 1.45;
-  }
-
-  .resumed-task strong {
-    color: currentColor;
-    font-family: var(--font-mono);
-    font-size: 0.68rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
   :global(.assistant-lifecycle-task) {
     margin-block-start: var(--gap-group);
   }
@@ -2493,15 +2290,6 @@
     padding: var(--gap-item) var(--gap-group) 0;
     color: var(--shimpz-color-text-muted);
     font: 400 0.75rem/1.4 var(--shimpz-font-mono);
-  }
-
-  .message-attachments {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
-    gap: var(--gap-item);
-    margin: var(--gap-item) 0 0;
-    padding: 0;
-    list-style: none;
   }
 
   .composer-input :global(.composer-field) { gap: 0; }

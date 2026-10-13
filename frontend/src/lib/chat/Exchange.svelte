@@ -1,0 +1,256 @@
+<script>
+  import { Message } from '@shimpz/frontend';
+  import AttachmentChip from '#lib/AttachmentChip.svelte';
+  import { clockTime, instantValue } from '#lib/chatDays.js';
+  import InstallPlan from '#lib/chat/lifecycle/InstallPlan.svelte';
+  import Uninstall from '#lib/chat/lifecycle/Uninstall.svelte';
+  import { shownUsage } from '#lib/chat/turns.js';
+  import ClarificationCard from '#lib/ClarificationCard.svelte';
+  import { clarifiedRequest } from '#lib/clarification.js';
+  import ExecutionReceipt from '#lib/ExecutionReceipt.svelte';
+  import { locale, t } from '#lib/i18n.js';
+  import Markdown from '#lib/Markdown.svelte';
+  import RestrictedActionsNote from '#lib/RestrictedActionsNote.svelte';
+  import { refusalWords } from '#lib/routine.js';
+  import RoutineProposal from '#lib/RoutineProposal.svelte';
+  import RoutineQuestion from '#lib/RoutineQuestion.svelte';
+  import RoutineRunEntry from '#lib/RoutineRunEntry.svelte';
+  import { formatTaskUsage, formatTaskUsageDetail } from '#lib/taskUsage.js';
+
+  // One exchange of a Team's transcript: a person's message and the reply that answered it, either of them alone. The
+  // page owns the turns and every action; this shows them. `words` are the chat's (chat/turns.js); `instantOf` dates a
+  // turn; `sentAnswer` is the clarification answer this message sent, `givenAnswer` the one the reply's question got;
+  // `joinAbove` and `joinBelow` join a Routine notice's rail to its neighbours; `thinking`, when given, is the turn's
+  // live progress, shown after the exchange.
+  let {
+    exchange,
+    words,
+    instantOf,
+    teamId,
+    selectedTeamId,
+    assistantNames,
+    sentAnswer,
+    givenAnswer,
+    answerDisabled,
+    joinAbove,
+    joinBelow,
+    lifecycleDisabled,
+    onanswer,
+    ondecide,
+    thinking,
+  } = $props();
+
+  let userTurn = $derived(exchange.user);
+  let assistantTurn = $derived(exchange.assistant);
+</script>
+
+<!-- When a message was sent or a reply completed, to the second, in the viewer's timezone. -->
+{#snippet turnTime(turn)}
+  {@const instant = instantOf(turn)}
+  <span class="turn-at">{words.timeAt}</span>
+  <time class="turn-time" datetime={instantValue(instant)}>{clockTime(instant, $locale)}</time>
+{/snippet}
+<!-- A Routine notice keeps its time on its own rail; every other reply shows when it was completed. -->
+{#snippet replyTime()}{@render turnTime(assistantTurn)}{/snippet}
+<section class="exchange">
+  {#if userTurn}
+    <Message variant="user" author={words.you}>
+      {#snippet meta()}{@render turnTime(userTurn)}{/snippet}
+      {#if userTurn.resumedObjective}
+        <div class="resumed-task">
+          <strong>{words.install.resuming}</strong>
+          <span>{userTurn.resumedObjective}</span>
+        </div>
+      {/if}
+      {#if sentAnswer !== null}
+        <!-- The question stays above its answer, so the person always sees what they replied to. -->
+        <div class="clarification-reply">
+          <p class="clarification-question">
+            <span class="reply-label">{$t('clarify').questionLabel}</span>{sentAnswer.question}
+          </p>
+          <p><span class="reply-label">{$t('clarify').answered}</span>{sentAnswer.answer}</p>
+        </div>
+      {:else}
+        <p>{userTurn.text}</p>
+      {/if}
+      {#if userTurn.files}
+        <ul class="message-attachments" aria-label={$t('attachments').list}>
+          {#each userTurn.files as file (file.key)}
+            <AttachmentChip name={file.name} size={file.size} kind={file.kind} note={file.note} sent />
+          {/each}
+        </ul>
+      {/if}
+    </Message>
+  {/if}
+  {#if assistantTurn}
+    <!-- A Routine notice names its Routine in its own words; the chat already is the Team's. -->
+    <Message
+      variant="assistant"
+      author={assistantTurn.routineRun ? undefined : assistantTurn.author}
+      meta={assistantTurn.routineRun ? undefined : replyTime}
+    >
+      {@const clarifiedOriginal = clarifiedRequest(exchange)}
+      {#if clarifiedOriginal !== null}
+        <ClarificationCard
+          clarification={assistantTurn.clarification}
+          original={clarifiedOriginal}
+          copy={$t('clarify')}
+          answered={givenAnswer}
+          disabled={answerDisabled}
+          {onanswer}
+        />
+      {:else if assistantTurn.routineRun}
+        <RoutineRunEntry
+          entry={assistantTurn.routineRun}
+          copy={$t('routine')}
+          {joinAbove}
+          {joinBelow}
+        />
+      {:else if !assistantTurn.installPlan && (
+        !assistantTurn.lifecycle || assistantTurn.lifecycle.state === 'proposed'
+      )}
+        <Markdown markdown={assistantTurn.text} variant="chat" />
+      {/if}
+      {#if assistantTurn.installPlan}
+        <InstallPlan plan={assistantTurn.installPlan} {teamId} {words} />
+      {/if}
+      {#if assistantTurn.lifecycle}
+        <Uninstall
+          lifecycle={assistantTurn.lifecycle}
+          author={assistantTurn.author}
+          {teamId}
+          {words}
+          disabled={lifecycleDisabled}
+          {ondecide}
+        />
+      {/if}
+      <!-- With recorded steps, the usage line itself opens them: one line, its triangle beside it. -->
+      {#snippet usageLine()}
+        {@const shown = shownUsage(assistantTurn).usage}
+        <span class="task-usage" title={formatTaskUsageDetail(shown, $locale, words.usage)}>
+          {formatTaskUsage(shown, $locale, words.usage)}
+        </span>
+      {/snippet}
+      {#if assistantTurn.usage && !shownUsage(assistantTurn).receipt}
+        <p class="task-usage" title={formatTaskUsageDetail(assistantTurn.usage, $locale, words.usage)}>
+          {formatTaskUsage(assistantTurn.usage, $locale, words.usage)}
+        </p>
+      {/if}
+      <ExecutionReceipt
+        line={assistantTurn.usage ? usageLine : undefined}
+        durationMs={assistantTurn.usage?.durationMs}
+        events={assistantTurn.receipt ?? []}
+        label={words.progressStagesExecuted}
+        progressLabels={words.progress}
+        teamName={assistantTurn.author}
+        {assistantNames}
+      />
+      {#if assistantTurn.restricted}
+        <RestrictedActionsNote restricted={assistantTurn.restricted} {assistantNames} />
+      {/if}
+      <!-- A recording turn's Routine card, what Team asks first, or why it made none; a reload shows it again. -->
+      {#if assistantTurn.routineQuestion && exchange.user}
+        <RoutineQuestion
+          question={assistantTurn.routineQuestion}
+          original={exchange.user.text}
+          copy={$t('routine').proposal}
+          clarifyCopy={$t('clarify')}
+          answered={givenAnswer}
+          disabled={answerDisabled}
+          {onanswer}
+        />
+      {:else if assistantTurn.routineProposal}
+        <RoutineProposal teamId={selectedTeamId} proposal={assistantTurn.routineProposal}
+          copy={$t('routine')} locale={$locale} />
+      {:else if assistantTurn.routineRefusal}
+        <p class="routine-refusal" role="note">{refusalWords(assistantTurn.routineRefusal, $t('routine').proposal)}</p>
+      {/if}
+    </Message>
+  {/if}
+  {@render thinking?.()}
+</section>
+
+<style>
+  .exchange {
+    /* A Routine notice's timeline rail reaches back across this gap to the notice before it. */
+    --routine-rail-gap: var(--gap-group);
+    display: grid;
+    min-width: 0;
+    align-content: start;
+    gap: var(--gap-item);
+    margin-block-start: var(--routine-rail-gap);
+  }
+
+  .exchange:first-child,
+  :global(.chat-day) + .exchange {
+    margin-block-start: 0;
+  }
+
+  .exchange:last-child {
+    min-block-size: 100%;
+  }
+
+  /* Inside the receipt's uppercase summary the usage keeps its own case and spacing. */
+  span.task-usage { margin: 0; text-transform: none; }
+  .task-usage {
+    margin: var(--gap-inside) 0 0;
+    color: var(--shimpz-color-text-dim);
+    font: 500 0.68rem/1.4 var(--shimpz-font-mono);
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .routine-refusal {
+    margin: var(--gap-item) 0 0;
+    color: var(--shimpz-color-text-muted);
+    font-size: 0.85rem;
+  }
+  /* "às" reads as a word in the sentence "NEO às 10:30:00", not as part of the uppercase label. */
+  .turn-at {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+  }
+  /* Beside the author, as quiet as the day headers and the Routine rail's times: small dim digits that never shift. */
+  .turn-time {
+    font: 400 0.66rem/1.4 var(--shimpz-font-mono);
+    letter-spacing: 0.02em;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .clarification-reply { display: grid; gap: var(--gap-item); margin: 0; }
+  .clarification-reply p { display: grid; gap: var(--gap-inside); margin: 0; }
+  .clarification-question { color: var(--shimpz-color-text-muted); }
+  .reply-label {
+    color: var(--shimpz-color-text-muted);
+    font-family: var(--shimpz-font-mono, ui-monospace, monospace);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+  .resumed-task {
+    display: grid;
+    gap: var(--gap-inside);
+    margin-bottom: var(--gap-item);
+    padding-left: var(--gap-group);
+    border-left: 2px solid currentColor;
+    color: var(--text-faint);
+    line-height: 1.45;
+  }
+
+  .resumed-task strong {
+    color: currentColor;
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .message-attachments {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
+    gap: var(--gap-item);
+    margin: var(--gap-item) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+</style>
