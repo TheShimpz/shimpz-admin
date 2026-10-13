@@ -1,4 +1,4 @@
-// Admin interface copy in 日本語 (ja): every key of the English catalog (en.js, tests/i18n.test.js). i18n.js
+// Admin interface copy in 日本語 (ja): every key of the English catalog (en.js, tests/i18n.test.js). ../index.js
 // loads it as its own chunk only when it becomes the interface language.
 //
 // AI-authored — accurate, but worth a native pass before the public launch.

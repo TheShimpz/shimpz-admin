@@ -1,5 +1,5 @@
 // Every interface language's complete Admin catalog at once, for the tests and benchmarks that compare languages. The app
-// itself loads only the active language (i18n.js), each one its own chunk under messages/.
+// itself loads only the active language (index.js), each one its own chunk under messages/.
 import ar from './messages/ar.js';
 import de from './messages/de.js';
 import en from './messages/en.js';

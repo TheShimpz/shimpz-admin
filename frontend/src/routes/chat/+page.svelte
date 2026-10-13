@@ -193,7 +193,7 @@
   let placeholder = $derived($t('chatPage.placeholder', { team: teamName }));
   let thinking = $derived(copy.sending);
   let exchanges = $derived(groupExchanges(turns));
-  // Each exchange's calendar day in the viewer's timezone (chatDays.js says which time an item carries); a header
+  // Each exchange's calendar day in the viewer's timezone (chat/days.js says which time an item carries); a header
   // opens each day, and "today" moves at the viewer's midnight.
   const instantOf = turnInstants();
   let today = $state(calendarDay(Date.now()));

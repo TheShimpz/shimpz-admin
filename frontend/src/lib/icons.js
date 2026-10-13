@@ -1,5 +1,5 @@
 // The one stroke icon set of Admin (ADR-0086): 24-unit paths, drawn at one stroke weight, and the circles some icons
-// add. RoutineIcon draws them by name; any other icon that shows the same mark reads its data here.
+// add. routines/Icon.svelte draws them by name; any other icon that shows the same mark reads its data here.
 export const PATHS = {
   clock: ['M12 7v5l3 2'],
   pause: ['M9 6v12', 'M15 6v12'],

@@ -1,5 +1,5 @@
 // Admin interface copy in English, the canonical catalog: every other language implements each of its keys
-// (tests/i18n.test.js), and i18n.js falls back to it key by key. The app loads only the active language.
+// (tests/i18n.test.js), and ../index.js falls back to it key by key. The app loads only the active language.
 import { CLARIFICATION_LABELS } from '../../chat/clarificationLabels.js';
 import { routineQuestionMessages } from '../../routines/questionMessages.js';
 
@@ -588,7 +588,8 @@ export default {
       created: 'Routine created.',
       changed: 'Routine changed.',
       revoked: 'Nothing was created.',
-      // Every language's words stay loaded for the chat to match an answer in any of them (routineQuestionMessages.js).
+      // Every language's words stay loaded for the chat to match an answer in any of them
+      // (routines/questionMessages.js).
       questions: routineQuestionMessages.en,
       refusals: {
         unavailable: 'No Routine was created: this request can no longer record one. Ask again.',
@@ -823,7 +824,7 @@ export default {
     answered: 'Your answer',
     empty: 'Choose an option or write your answer.',
     tooLong: 'The request plus this answer is too long for one message. Shorten the answer.',
-    // The Team protocol's labels, the same in every language's catalog (clarificationLabels.js).
+    // The Team protocol's labels, the same in every language's catalog (chat/clarificationLabels.js).
     questionLabel: CLARIFICATION_LABELS.en.question,
     answerLabel: CLARIFICATION_LABELS.en.answer,
     answerFirst: 'Answer the question above to continue.',

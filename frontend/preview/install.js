@@ -20,8 +20,8 @@ function chosenScenario() {
   return SCENARIOS.includes(name) ? name : 'ready';
 }
 
-// The scenario's own texts are in the interface language Admin starts in (i18n.js); after switching the language, reload
-// the preview to see the scenario in it.
+// The scenario's own texts are in the interface language Admin starts in (i18n/index.js); after switching the
+// language, reload the preview to see the scenario in it.
 const scenario = createScenario(chosenScenario(), get(locale));
 // Switching the interface language reloads the preview, so the scenario's texts follow it.
 try {
