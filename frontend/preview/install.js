@@ -48,9 +48,16 @@ try {
 // briefly unavailable, so the shared availability message shows and then clears by itself.
 const DATA_UNAVAILABLE = new URL(location.href).searchParams.get('data') === 'unavailable';
 const DATA_STARTED = Date.now();
+// `?loading=slow` (preview only): every read of a Team's chat history takes 3 s, as with a slow Admin, so the chat's
+// loading indicator shows whenever a Team's conversation is not known yet; one the session kept opens at once.
+const LOADING_SLOW = new URL(location.href).searchParams.get('loading') === 'slow';
+const SLOW_HISTORY_MS = 3_000;
 
 function previewCall(method, params) {
   if (DATA_UNAVAILABLE && Date.now() - DATA_STARTED < 15_000) return { status: 503, json: { detail: 'unavailable' } };
+  if (LOADING_SLOW && method === 'history.page' && !params.routine) {
+    return new Promise((resolve) => setTimeout(() => resolve(scenario.call(method, params)), SLOW_HISTORY_MS));
+  }
   const answer = scenario.call(method, params);
   if (ORDER_KEY && answer?.status === 200 && method === 'teams.reorder') {
     try {
