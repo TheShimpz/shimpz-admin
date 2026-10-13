@@ -259,6 +259,14 @@ function observePresentation(expectedCards) {
     if (observed.bootHidden !== null && observed.cardsVisibleFrame !== null
       && observed.cardsInDom !== null && observed.iconSourcesReady !== null) observer.disconnect();
   };
+  // The rows the page shows icons for: on or within 400 px of the region the catalog scrolls in, at most 48.
+  const nearRows = (catalog) => {
+    let region = catalog;
+    while (region && !['auto', 'scroll'].includes(getComputedStyle(region).overflowY)) region = region.parentElement;
+    const fold = (region ?? document.documentElement).getBoundingClientRect().bottom + 400;
+    return [...catalog.querySelectorAll('a.assistant-row')].filter((row) => row.getBoundingClientRect().top <= fold)
+      .slice(0, 48);
+  };
   const inspect = () => {
     const boot = document.querySelector('[data-slot="boot-screen"]');
     if (boot) observed.bootSeen = true;
@@ -271,8 +279,8 @@ function observePresentation(expectedCards) {
     if (observed.bootHidden !== null && cardCount === expectedCards) {
       requestAnimationFrame(() => mark('cardsVisibleFrame'));
     }
-    const icons = catalog?.querySelectorAll('a.assistant-row img[src^="blob:"]').length ?? 0;
-    if (cardCount === expectedCards && icons === expectedCards) {
+    if (cardCount === expectedCards
+      && nearRows(catalog).every((row) => row.querySelector('img[src^="blob:"]'))) {
       mark('iconSourcesReady');
     }
   };
@@ -395,11 +403,19 @@ async function timedStoreVisit(page, expected) {
     if (!link) throw new Error('The Store link is missing.');
     const visit = { start: performance.now(), shown: null };
     window.__visit = visit;
+    // The rows the page shows icons for: on or within 400 px of the region the catalog scrolls in, at most 48.
+    const nearRows = (catalog) => {
+      let region = catalog;
+      while (region && !['auto', 'scroll'].includes(getComputedStyle(region).overflowY)) region = region.parentElement;
+      const fold = (region ?? document.documentElement).getBoundingClientRect().bottom + 400;
+      return [...catalog.querySelectorAll('a.assistant-row')].filter((row) => row.getBoundingClientRect().top <= fold)
+        .slice(0, 48);
+    };
     const check = () => {
       const catalog = document.querySelector('section.assistant-catalog');
       const rows = catalog?.querySelectorAll('a.assistant-row').length ?? 0;
-      const icons = [...(catalog?.querySelectorAll('a.assistant-row img[src^="blob:"]') ?? [])];
-      if (rows === count && icons.length === count && icons.every((icon) => icon.complete && icon.naturalWidth > 0)) {
+      const icons = rows === count ? nearRows(catalog).map((row) => row.querySelector('img[src^="blob:"]')) : [];
+      if (rows === count && icons.every((icon) => icon && icon.complete && icon.naturalWidth > 0)) {
         visit.shown = performance.now() - visit.start;
         return;
       }
