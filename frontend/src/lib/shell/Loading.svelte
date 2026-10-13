@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
 
   // A page's own loading indicator, centred in the area it fills: nothing for the first moment, so a load that ends
-  // within it never flashes, then `label` over a chamfered track a cyan scan crosses, both glitching (all still when
+  // within it never flashes, then `label`, glitching, over a chamfered track a cyan scan crosses (all still when
   // motion is reduced), in the status region that was already in place.
   let { label, delay = 150 } = $props();
   let shown = $state(false);
@@ -17,7 +17,7 @@
   {#if shown}
     <div class="loader">
       <span class="label">{label}</span>
-      <span class="glitch" aria-hidden="true"><span class="track"><span class="scan"></span></span></span>
+      <span class="track" aria-hidden="true"><span class="scan"></span></span>
     </div>
   {/if}
 </div>
@@ -38,8 +38,7 @@
     animation: loader-in var(--shimpz-duration) var(--shimpz-ease) both;
   }
 
-  /* The label and the track glitch in quick cyan and magenta bursts, a beat apart. The track glitches through a wrapper,
-     so the glitch's slices never replace the track's own shape. */
+  /* The label glitches in quick cyan and magenta bursts. */
   .label {
     animation: loader-glitch 1.43s steps(1, end) infinite;
     color: var(--shimpz-color-text-muted);
@@ -47,11 +46,6 @@
     letter-spacing: 0.12em;
     text-align: center;
     text-transform: uppercase;
-  }
-
-  .glitch {
-    display: grid;
-    animation: loader-glitch 1.43s 0.16s steps(1, end) infinite;
   }
 
   /* A chamfered track, which a cyan scan crosses again and again, entering and leaving it whole. */
@@ -142,7 +136,6 @@
   @media (prefers-reduced-motion: reduce) {
     .loader,
     .label,
-    .glitch,
     .scan {
       animation: none;
     }
