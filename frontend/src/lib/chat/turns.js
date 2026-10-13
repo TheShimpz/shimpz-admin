@@ -69,7 +69,9 @@ export function historyTurn(entry, author, renderKey, words) {
         ? {
           files: entry.files.map((file) => ({
             key: file.id,
+            id: file.id,
             name: file.name,
+            mediaType: file.media_type,
             size: file.size,
             kind: attachmentKind(file.media_type),
             note: '',

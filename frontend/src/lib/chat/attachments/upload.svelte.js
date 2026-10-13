@@ -149,7 +149,13 @@ export class MessageFiles {
           if (this.items.some((entry) => entry.key !== item.key && entry.id === stored.id)) {
             this.items = this.items.filter((entry) => entry.key !== item.key);
           } else {
-            this.#update(item.key, { state: 'ready', id: stored.id, name: stored.name, size: stored.size });
+            this.#update(item.key, {
+              state: 'ready',
+              id: stored.id,
+              name: stored.name,
+              mediaType: stored.media_type,
+              size: stored.size,
+            });
           }
           this.#finished += 1;
         } catch (reason) {

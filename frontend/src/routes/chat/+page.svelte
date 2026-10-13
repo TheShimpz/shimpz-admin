@@ -1599,7 +1599,11 @@
         text: normalized,
         ...(resumedObjective ? { resumedObjective } : {}),
         ...(files.length
-          ? { files: attached.map(({ key, name, size, kind, note }) => ({ key, name, size, kind, note })) }
+          ? {
+            files: attached.map(({ key, id, name, mediaType, size, kind, note }) => (
+              { key, id, name, mediaType, size, kind, note }
+            )),
+          }
           : {}),
       }];
       void revealLatestExchange();

@@ -105,7 +105,8 @@ test('a stored row becomes the turn the live conversation showed, carrying the r
   }, 'Marketing', 7, WORDS);
   assert.deepEqual(user, {
     renderKey: 7, historyId: 'u', createdAt: at, role: 'user', text: 'Hi',
-    files: [{ key: 'f'.repeat(32), name: 'a.png', size: 3, kind: 'image', note: '' }],
+    // The reference keeps the stored id and media type beside its render key, so the reloaded image can show again.
+    files: [{ key: 'f'.repeat(32), id: 'f'.repeat(32), name: 'a.png', mediaType: 'image/png', size: 3, kind: 'image', note: '' }],
   });
   const reply = historyTurn({ id: 'r', createdAt: at, kind: 'message', role: 'assistant', text: 'Yes', author: 'Neo' },
     'Marketing', 8, WORDS);
