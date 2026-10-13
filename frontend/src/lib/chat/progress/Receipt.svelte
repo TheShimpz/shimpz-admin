@@ -81,7 +81,7 @@
   }
 
   /* The steps read like the Store's terminal tree, at the receipt's own size: a drawn trunk with a branch into each
-     step, and each step one readout in neutral ink, cut corners and faint scanlines, its time last. */
+     step at the middle of its line, and each step one readout in neutral ink with cut corners, its time last. */
   ol {
     margin: var(--gap-item) 0 0;
     padding: 0;
@@ -91,7 +91,10 @@
   li {
     --tree: 2.4em;
     --trunk: 1.2em;
-    --elbow: 0.8em;
+    /* The middle of a step's line: the readout's top padding plus half its line height. */
+    --pad: 0.2em;
+    --line: 1.4;
+    --elbow: calc(var(--pad) + var(--line) * 0.5em);
     position: relative;
     display: grid;
     grid-template-columns: var(--tree) minmax(0, 1fr);
@@ -123,10 +126,9 @@
     justify-self: start;
     gap: var(--gap-item);
     max-width: 100%;
-    padding: 0.2em var(--gap-item);
-    background:
-      repeating-linear-gradient(0deg, color-mix(in oklab, var(--shimpz-color-text) 4%, transparent) 0 1px, transparent 1px 3px),
-      color-mix(in oklab, var(--shimpz-color-bg) 95%, var(--shimpz-color-text));
+    padding: var(--pad) var(--gap-item);
+    background: color-mix(in oklab, var(--shimpz-color-bg) 95%, var(--shimpz-color-text));
+    line-height: var(--line);
     clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
   }
 
