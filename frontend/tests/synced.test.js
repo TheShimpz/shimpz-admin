@@ -490,3 +490,108 @@ test('data no topic announces, kept for the session, is read again only once it 
     clock.mock.restore();
   }
 });
+
+// Whether `current()` has settled yet, and with what.
+function outcome(promise) {
+  const seen = { value: null };
+  void promise.then((result) => { seen.value = result; });
+  return seen;
+}
+
+test('each read is handed the value read before it, never one a read of an ended era would have made', async () => {
+  const socket = harness();
+  const lasts = [];
+  const value = synced('local-assistants', async (call, last) => {
+    lasts.push(last);
+    return [...(last ?? []), ...await snapshots(call)];
+  }, { retain: { maxAgeMs: Infinity } });
+  let screen = shown(value);
+  socket.announce('subscribed', 1);
+  socket.answer(0, { assistants: ['one'] }, 1);
+  await flush();
+  socket.announce('changed', 2);
+  screen.stop();
+  // The read the screen left ends after it left: what it built is never the base of the next read.
+  socket.answer(1, { assistants: ['late'] }, 2);
+  await flush();
+  screen = shown(value);
+  socket.announce('subscribed', 2);
+  socket.answer(2, { assistants: ['two'] }, 2);
+  await flush();
+  assert.deepEqual(lasts, [null, ['one'], ['one']]);
+  assert.deepEqual(get(value).value, ['one', 'two']);
+  screen.stop();
+});
+
+test('a kept value Admin still holds is current once subscribed, without a read', async () => {
+  const socket = harness();
+  const value = synced('local-assistants', snapshots, { retain: { maxAgeMs: Infinity } });
+  let screen = shown(value);
+  socket.announce('subscribed', 3);
+  socket.answer(0, { assistants: ['one'] }, 3);
+  await flush();
+  screen.stop();
+  screen = shown(value);
+  const known = outcome(value.current());
+  await flush();
+  assert.equal(known.value, null);
+  socket.announce('subscribed', 3);
+  await flush();
+  assert.equal(known.value, 'current');
+  assert.equal(socket.calls.length, 1);
+  screen.stop();
+});
+
+test('a stale kept value is current only after the read that succeeds, through failures and their retries', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const socket = harness();
+    const value = synced('local-assistants', snapshots, { retain: { maxAgeMs: Infinity } });
+    let screen = shown(value);
+    socket.announce('subscribed', 1);
+    socket.answer(0, { assistants: ['one'] }, 1);
+    await flush();
+    screen.stop();
+    screen = shown(value);
+    const known = outcome(value.current());
+    socket.announce('subscribed', 2);
+    socket.calls[1].resolve(response(503, { detail: 'busy' }));
+    await flush();
+    assert.equal(known.value, null);
+    // A change heard before the retry is due reads at once; its success makes the value current and drops the retry.
+    socket.announce('changed', 3);
+    socket.answer(2, { assistants: ['three'] }, 3);
+    await flush();
+    assert.equal(known.value, 'current');
+    mock.timers.tick(RETRY_FIRST_MS);
+    assert.equal(socket.calls.length, 3);
+    assert.equal((await value.current()), 'current');
+    screen.stop();
+  } finally {
+    mock.timers.reset();
+  }
+});
+
+test('a refused read, a screen leaving, and a reset each settle what waits for a current value', async () => {
+  const socket = harness();
+  const value = synced('local-assistants', snapshots, { retain: { maxAgeMs: Infinity } });
+  let screen = shown(value);
+  const refused = outcome(value.current());
+  socket.announce('subscribed', 1);
+  socket.calls[0].resolve(response(403, { detail: 'refused' }));
+  await flush();
+  assert.equal(refused.value, 'refused');
+  screen.stop();
+  assert.equal(await value.current(), 'gone');
+  screen = shown(value);
+  const left = outcome(value.current());
+  screen.stop();
+  await flush();
+  assert.equal(left.value, 'gone');
+  screen = shown(value);
+  const reset = outcome(value.current());
+  value.reset();
+  await flush();
+  assert.equal(reset.value, 'gone');
+  screen.stop();
+});

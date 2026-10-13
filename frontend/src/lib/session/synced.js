@@ -36,8 +36,10 @@ export function transientFailure(error) {
 }
 
 /**
- * A synced value: `read(call)` reads it with `call(method, params)`, which answers as the session socket does and
- * records the revisions of `topic` its results reflect. `topic` may be null for data no topic announces (the public
+ * A synced value: `read(call, last)` reads it with `call(method, params)`, which answers as the session socket does and
+ * records the revisions of `topic` its results reflect; `last` is the value it last read (null when it has none), so a
+ * value built on the one before it carries its own state, which a read whose era ended can never advance. `topic` may
+ * be null for data no topic announces (the public
  * Store catalog): it is read when shown and retried on failure. The store holds `{ status, value, error, failing }`:
  * `loading` until the first read ends, `ready` with the newest value, or `error` with the last value kept and the
  * failure of a read that will not succeed by itself (a refusal). A transient failure keeps the status and retries;
@@ -47,7 +49,10 @@ export function transientFailure(error) {
  * screen shows it at once: it drops only the reads under way and its retry, and stops watching its topic. Shown again,
  * it reads again only when it may be older than Admin's: its topic's revision moved since its read (Admin's revision is
  * in the subscription's acknowledgment), or it is older than `maxAgeMs`. `reset()` forgets it, as a session that ended
- * must; `size()` is the UTF-8 size of the answers its value was read from.
+ * must; `size()` is the UTF-8 size of the answers its value was read from. `current()` says when a shown value is known
+ * to be current: `'current'` once the subscription is in place and the value reflects what Admin acknowledged (at once
+ * when no read is needed; through transient failures it waits for the read that succeeds), `'refused'` when a read is
+ * refused, or `'gone'` when its reads end with the last screen leaving or a reset. It never asks for a read itself.
  */
 export function synced(topic, read, { initial = null, retain = null } = {}) {
   let value = initial;
@@ -73,6 +78,8 @@ export function synced(topic, read, { initial = null, retain = null } = {}) {
   let failing = null;
   // The last refusal, shown until a read succeeds: a transient failure since says nothing about whether it still holds.
   let refusal = null;
+  // Who waits to hear that the value is current (`current()`).
+  let currentWaiters = [];
   const empty = () => ({ status: 'loading', value: initial, error: null, failing: null });
   const token = {};
   // Every state published says whether this value is failing, so the shell's one message follows it.
@@ -85,6 +92,20 @@ export function synced(topic, read, { initial = null, retain = null } = {}) {
     if (!has) return true;
     if (!known.epoch) return false;
     return reflects.epoch !== known.epoch || reflects.revision < known.revision;
+  }
+
+  // Tell the waiters of `current()` what holds now, when something does.
+  function settleCurrent(outcome = null) {
+    if (!currentWaiters.length) return;
+    const known = outcome ?? (refusal
+      ? 'refused'
+      : (topic && !subscribed) || reading || retryTimer !== undefined || again || stale()
+        ? null
+        : 'current');
+    if (!known) return;
+    const waiters = currentWaiters;
+    currentWaiters = [];
+    for (const resolve of waiters) resolve(known);
   }
 
   function hear(knownNow) {
@@ -102,6 +123,11 @@ export function synced(topic, read, { initial = null, retain = null } = {}) {
     }, delay);
   }
 
+  function cancelRetry() {
+    clearTimeout(retryTimer);
+    retryTimer = undefined;
+  }
+
   async function once(owner) {
     again = false;
     const before = { ...known };
@@ -115,7 +141,7 @@ export function synced(topic, read, { initial = null, retain = null } = {}) {
       return response;
     };
     try {
-      const next = await read(call);
+      const next = await read(call, has ? value : null);
       if (owner !== era) return;
       value = next;
       has = true;
@@ -127,7 +153,7 @@ export function synced(topic, read, { initial = null, retain = null } = {}) {
         ? seen.reduce((oldest, item) => (item.revision < oldest.revision ? item : oldest))
         : before;
       retryAttempt = 0;
-      clearTimeout(retryTimer);
+      cancelRetry();
       failing = null;
       refusal = null;
       show({ status: 'ready', value, error: null, failing });
@@ -143,6 +169,7 @@ export function synced(topic, read, { initial = null, retain = null } = {}) {
       failing = null;
       refusal = error;
       show({ status: 'error', value, error, failing });
+      settleCurrent();
     }
   }
 
@@ -153,6 +180,7 @@ export function synced(topic, read, { initial = null, retain = null } = {}) {
         do await once(owner); while (again && owner === era);
       } finally {
         if (reading === current) reading = null;
+        if (owner === era) settleCurrent();
       }
     })();
     reading = current;
@@ -187,12 +215,13 @@ export function synced(topic, read, { initial = null, retain = null } = {}) {
     again = false;
     reading = null;
     retryAttempt = 0;
-    clearTimeout(retryTimer);
+    cancelRetry();
     failing = null;
     subscribed = false;
     waiting?.resolve();
     waiting = null;
     markFailing(token, false);
+    settleCurrent('gone');
   }
 
   // Forget everything read: the value, what it reflects, the reads under way, and the retry.
@@ -207,13 +236,14 @@ export function synced(topic, read, { initial = null, retain = null } = {}) {
     again = false;
     reading = null;
     retryAttempt = 0;
-    clearTimeout(retryTimer);
+    cancelRetry();
     failing = null;
     refusal = null;
     subscribed = false;
     waiting?.resolve();
     waiting = null;
     markFailing(token, false);
+    settleCurrent('gone');
   }
 
   // The last screen left: what it showed is protected data no other screen may see later without reading it again,
@@ -251,6 +281,7 @@ export function synced(topic, read, { initial = null, retain = null } = {}) {
         const done = refresh();
         if (asked) void done.then(asked.resolve, asked.resolve);
       }
+      settleCurrent();
     });
     return () => {
       stop();
@@ -268,5 +299,13 @@ export function synced(topic, read, { initial = null, retain = null } = {}) {
     if (!stopped) void refresh();
   }
 
-  return { subscribe: store.subscribe, refresh, reset, size: () => size };
+  /** Settles with whether the shown value is known to be current (see `synced`); at once with `'gone'` unless shown. */
+  function current() {
+    if (stopped) return Promise.resolve('gone');
+    const known = new Promise((resolve) => currentWaiters.push(resolve));
+    settleCurrent();
+    return known;
+  }
+
+  return { subscribe: store.subscribe, refresh, reset, current, size: () => size };
 }
