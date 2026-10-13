@@ -11,6 +11,7 @@ import {
   jsonObject,
   LocalApiError,
   PUBLIC_CREATOR_RE,
+  safeApiError,
   SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
 } from './validate.js';
@@ -30,13 +31,6 @@ const CATALOG_CURSOR_RE = /^[1-9][0-9]{0,3}\.[0-9a-f]{32}$/;
 // The Assistant summary is a short description of at most 80 characters, in every interface language.
 const CREATED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const CREATOR_RE = /^@[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
-
-export { LocalApiError };
-
-export function safeApiError(body, fallback) {
-  const candidate = body?.error ?? body?.detail;
-  return typeof candidate === 'string' && candidate.length <= 300 ? candidate : fallback;
-}
 
 /**
  * Project the controller-owned registry onto display-only Assistant identities. Admin sends only each identity and

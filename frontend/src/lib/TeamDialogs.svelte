@@ -7,7 +7,7 @@
   import DialogAction from '#lib/DialogAction.svelte';
   import { showAdminNotice } from '#lib/adminNotice.js';
   import { t } from '#lib/i18n.js';
-  import { LocalApiError } from '#lib/localApi.js';
+  import { LocalApiError } from '#lib/validate.js';
   import { createTeam, deleteTeam, teamContext } from '#lib/teamContext.js';
 
   let { onsettled = () => {} } = $props();

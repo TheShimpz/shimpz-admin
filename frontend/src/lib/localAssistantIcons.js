@@ -1,7 +1,6 @@
 import { socketReads } from './adminSocket.js';
 import { AssistantPageError, canonicalPageCopy, isDisplayText, SUMMARY_CHARS } from './assistantPage.js';
 import { catalogIconUrl } from './assistants/icons.js';
-import { LocalApiError, safeApiError } from './localApi.js';
 import { isLocale } from './locales.js';
 import {
   ASSISTANT_ID_RE,
@@ -10,7 +9,9 @@ import {
   DIGEST_RE,
   exactKeys,
   jsonObject,
+  LocalApiError,
   PUBLIC_CREATOR_RE,
+  safeApiError,
   SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
 } from './validate.js';

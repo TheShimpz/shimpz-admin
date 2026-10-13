@@ -12,7 +12,7 @@ import {
   mergedRoutineRuns,
   routineRuns,
 } from '../src/lib/chatHistory.js';
-import { LocalApiError } from '../src/lib/localApi.js';
+import { LocalApiError } from '../src/lib/validate.js';
 
 const TURN_A = 'a'.repeat(32);
 const TURN_B = 'b'.repeat(32);

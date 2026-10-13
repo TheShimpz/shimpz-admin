@@ -9,7 +9,6 @@ import {
 } from './localChat.js';
 import { parseRoutineRunEntry } from './routine.js';
 import { parseTaskUsage } from './taskUsage.js';
-import { LocalApiError, safeApiError } from './localApi.js';
 import { synced } from './synced.js';
 import {
   ASSISTANT_ID_RE,
@@ -18,9 +17,11 @@ import {
   exactKeys,
   isInstant,
   jsonObject,
+  LocalApiError,
   MAX_TEAM_NAME_CHARS,
   OPAQUE_ID_RE,
   PUBLIC_CREATOR_RE,
+  safeApiError,
   SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
 } from './validate.js';

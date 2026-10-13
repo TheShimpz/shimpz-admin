@@ -1,7 +1,7 @@
 import { get, writable } from 'svelte/store';
 
 import { socketReads } from './adminSocket.js';
-import { listAssistantCatalog, listInstalledAssistants, LocalApiError, safeApiError } from './localApi.js';
+import { listAssistantCatalog, listInstalledAssistants } from './localApi.js';
 import { synced } from './synced.js';
 import {
   ASSISTANT_ID_RE,
@@ -9,7 +9,9 @@ import {
   codePointLength,
   exactKeys,
   jsonObject,
+  LocalApiError,
   publicError,
+  safeApiError,
   TEAM_ID_RE,
   TRACE_ID_RE,
 } from './validate.js';

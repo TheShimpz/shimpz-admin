@@ -3,7 +3,6 @@ import { parseFileDisclosure, parseRestrictedActions } from './attachments.js';
 import { parseClarification, renderClarification } from './clarification.js';
 import { parseTaskUsage } from './taskUsage.js';
 import { browserTimezone, parseRoutineProposal, parseRoutineQuestion, parseRoutineRefusal } from './routine.js';
-import { LocalApiError, safeApiError } from './localApi.js';
 import { isLocale } from './locales.js';
 import {
   ASSISTANT_ID_RE,
@@ -16,9 +15,11 @@ import {
   isAssistantId,
   isIdentifier,
   jsonObject,
+  LocalApiError,
   MAX_TEAM_NAME_CHARS,
   OPAQUE_ID_RE,
   PUBLIC_CREATOR_RE,
+  safeApiError,
   SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
 } from './validate.js';

@@ -1,6 +1,5 @@
 // Chat attachments (ADR-0093): the composer's per-message admission, the browser's mirror of Team's readability rules,
 // the bounded upload through Admin, and the closed shapes Team discloses about files and withheld Actions.
-import { LocalApiError } from './localApi.js';
 import {
   codePointLength,
   CONTROL_RE,
@@ -8,6 +7,7 @@ import {
   isActionId,
   isAssistantId,
   jsonObject,
+  LocalApiError,
   OPAQUE_ID_RE,
   TEAM_ID_RE,
 } from './validate.js';

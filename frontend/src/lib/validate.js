@@ -85,6 +85,11 @@ export function exactEnvelope(value, keys) {
     (!traced || (typeof value.trace_id === 'string' && TRACE_ID_RE.test(value.trace_id)));
 }
 
+export function safeApiError(body, fallback) {
+  const candidate = body?.error ?? body?.detail;
+  return typeof candidate === 'string' && candidate.length <= 300 ? candidate : fallback;
+}
+
 export function publicError(error, fallback) {
   if (error instanceof LocalApiError && error.message && error.message.length <= 300) return error;
   return new LocalApiError(fallback);
