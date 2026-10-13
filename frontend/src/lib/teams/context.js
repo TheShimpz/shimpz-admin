@@ -1,7 +1,7 @@
 import { get, writable } from 'svelte/store';
 
 import { socketReads } from '../session/socket.js';
-import { listAssistantCatalog, listInstalledAssistants } from '../localApi.js';
+import { listAssistantCatalog, listInstalledAssistants } from '../assistants/api.js';
 import { synced } from '../session/synced.js';
 import { exactKeys, jsonObject, LocalApiError, publicError, safeApiError } from '../api.js';
 import { codePointLength, CONTROL_RE } from '../grammar.js';

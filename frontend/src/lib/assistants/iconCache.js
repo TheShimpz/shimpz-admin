@@ -4,7 +4,7 @@
 // screen pins the icons it shows and only unpins them when it leaves, so returning shows them at once; an icon no screen
 // shows is evicted, least recently used first, beyond the count and decoded-size bounds, and the session's end revokes
 // every one and drops every load under way.
-import { loadLocalAssistantIcon, loadPublicAssistantIcon } from './localAssistantIcons.js';
+import { loadLocalAssistantIcon, loadPublicAssistantIcon } from './preview.js';
 
 export const MAX_CACHED_ICONS = 48;
 // A canonical icon is 1024 by 1024 pixels, about 4 MiB decoded: the bound keeps 48 of them.

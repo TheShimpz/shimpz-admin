@@ -2,7 +2,7 @@
   import { Button } from '@shimpz/frontend';
 
   import { call, commandsReady, outcomeUnknown } from '#lib/session/socket.js';
-  import { assistantNames } from '#lib/assistantNames.js';
+  import { assistantNames } from '#lib/assistants/names.js';
   import { t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
   import { refreshTeamRoutines } from '#lib/routineContext.js';

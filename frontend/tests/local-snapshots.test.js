@@ -5,7 +5,7 @@ import {
   groupLocalAssistantSnapshots,
   projectPublishedAssistants,
   withoutLocallyStagedAssistants,
-} from '../src/lib/localSnapshots.js';
+} from '../src/lib/assistants/snapshots.js';
 
 function snapshot(assistantId, createdAt, imageCharacter) {
   return {

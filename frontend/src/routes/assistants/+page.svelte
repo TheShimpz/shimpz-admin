@@ -2,12 +2,12 @@
   import { page } from '$app/state';
   import { getContext, onMount, tick, untrack } from 'svelte';
   import { Button, Notice, Skeleton, Toolbar } from '@shimpz/frontend';
-  import AssistantRow from '#lib/AssistantRow.svelte';
-  import { acquireIcon, localIcon, MAX_CACHED_ICONS, publicIcon } from '#lib/assistantIconCache.js';
-  import { publicCatalog, snapshotSummary, stagedSnapshots, syncedFamily } from '#lib/assistantSources.js';
+  import AssistantRow from '#lib/assistants/Row.svelte';
+  import { acquireIcon, localIcon, MAX_CACHED_ICONS, publicIcon } from '#lib/assistants/iconCache.js';
+  import { publicCatalog, snapshotSummary, stagedSnapshots, syncedFamily } from '#lib/assistants/sources.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { locale, t } from '#lib/i18n/index.js';
-  import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '#lib/localSnapshots.js';
+  import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '#lib/assistants/snapshots.js';
   import { teamContext } from '#lib/teams/context.js';
   import { TEAM_ID_RE } from '#lib/ids.js';
 

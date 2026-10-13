@@ -19,8 +19,8 @@ import {
 } from '../src/lib/routines/protocol.js';
 import { failureCause, questionWords, refusalWords } from '../src/lib/routines/words.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
-import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from '../src/lib/localApi.js';
-import { loadAssistantDetails, loadLocalAssistantDetails, loadLocalAssistantSummary } from '../src/lib/localAssistantIcons.js';
+import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from '../src/lib/assistants/api.js';
+import { loadAssistantDetails, loadLocalAssistantDetails, loadLocalAssistantSummary } from '../src/lib/assistants/preview.js';
 import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
 import { ROUTINE_TEXT, routineLifecycleStart } from '../e2e/routineScenarios.js';
 import { via } from './socketStub.js';

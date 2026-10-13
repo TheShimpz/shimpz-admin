@@ -14,7 +14,7 @@ import {
   stagedSnapshots,
   syncedFamily,
   warmAssistantSources,
-} from '../src/lib/assistantSources.js';
+} from '../src/lib/assistants/sources.js';
 import { response } from './socketStub.js';
 
 const EPOCH = 'a'.repeat(32);

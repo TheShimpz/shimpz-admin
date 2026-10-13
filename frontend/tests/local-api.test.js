@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import * as api from '../src/lib/localApi.js';
+import * as api from '../src/lib/assistants/api.js';
 import { LocalApiError, safeApiError } from '../src/lib/api.js';
 import { via } from './socketStub.js';
 

@@ -12,7 +12,7 @@
     assistantIntegrationLabels,
     assistantIntegrationMessageParts,
     localizedIntegrationList,
-  } from '#lib/assistantIntegrationMessages.js';
+  } from '#lib/assistants/integrationMessages.js';
   import { assistantIntegrationProviderLabel } from '#lib/assistants/integrations.js';
 
   let {

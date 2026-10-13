@@ -1,5 +1,5 @@
-import { ASSISTANT_LIMIT_REACHED, exactEnvelope, exactKeys, jsonObject, LocalApiError, safeApiError } from './api.js';
-import { codePointLength, CONTROL_RE } from './grammar.js';
+import { ASSISTANT_LIMIT_REACHED, exactEnvelope, exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
+import { codePointLength, CONTROL_RE } from '../grammar.js';
 import {
   ASSISTANT_ID_RE,
   DIGEST_RE,
@@ -8,10 +8,10 @@ import {
   PUBLIC_CREATOR_RE,
   SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
-} from './ids.js';
-import { socketReads } from './session/socket.js';
-import { AssistantPageError, canonicalPageCopy, SUMMARY_CHARS } from './assistantPage.js';
-import { isLocale } from './i18n/locales.js';
+} from '../ids.js';
+import { socketReads } from '../session/socket.js';
+import { AssistantPageError, canonicalPageCopy, SUMMARY_CHARS } from './page.js';
+import { isLocale } from '../i18n/locales.js';
 
 const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
 const MAX_INSTALLED_ASSISTANTS = 128;

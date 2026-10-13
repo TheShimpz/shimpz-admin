@@ -8,8 +8,8 @@ import {
   canonicalPageCopy,
   continuingText,
   pageTarget,
-} from '../src/lib/assistantPage.js';
-import { loadAssistantDetails, loadLocalAssistantDetails } from '../src/lib/localAssistantIcons.js';
+} from '../src/lib/assistants/page.js';
+import { loadAssistantDetails, loadLocalAssistantDetails } from '../src/lib/assistants/preview.js';
 import { LocalApiError } from '../src/lib/api.js';
 import { via } from './socketStub.js';
 

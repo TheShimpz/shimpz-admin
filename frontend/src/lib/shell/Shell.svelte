@@ -3,7 +3,7 @@
   import { getContext, onDestroy, onMount, untrack } from 'svelte';
   import AdminNotice from '#lib/shell/Notice.svelte';
   import { adminSocket, connectAdminSocket, trackActivity, watchTopic } from '#lib/session/socket.js';
-  import { warmAssistantSources } from '#lib/assistantSources.js';
+  import { warmAssistantSources } from '#lib/assistants/sources.js';
   import { PATHS } from '#lib/icons.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { teamContext } from '#lib/teams/context.js';

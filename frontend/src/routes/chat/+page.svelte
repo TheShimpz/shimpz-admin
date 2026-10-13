@@ -2,10 +2,10 @@
   import { flushSync, getContext, onMount, tick } from 'svelte';
   import { readable } from 'svelte/store';
   import { Button, EmptyState, Notice, ScrollArea } from '@shimpz/frontend';
-  import AssistantHumanRequestDialog from '#lib/AssistantHumanRequestDialog.svelte';
+  import AssistantHumanRequestDialog from '#lib/assistants/HumanRequestDialog.svelte';
   import { MessageFiles } from '#lib/chat/attachments/upload.svelte.js';
-  import AssistantIntegrationsDialog from '#lib/AssistantIntegrationsDialog.svelte';
-  import AssistantIntegrationsDrawer from '#lib/AssistantIntegrationsDrawer.svelte';
+  import AssistantIntegrationsDialog from '#lib/assistants/IntegrationsDialog.svelte';
+  import AssistantIntegrationsDrawer from '#lib/assistants/IntegrationsDrawer.svelte';
   import Composer from '#lib/chat/Composer.svelte';
   import Exchange from '#lib/chat/Exchange.svelte';
   import { snapshotIcon } from '#lib/chat/lifecycle/snapshot.js';

@@ -10,16 +10,16 @@
 // forgets every one of them, with the session's icons, when the session ends.
 import { derived, readable } from 'svelte/store';
 
-import { clearIconCache, localIcon, MAX_CACHED_ICONS, preloadIcons, publicIcon } from './assistantIconCache.js';
-import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from './localApi.js';
+import { clearIconCache, localIcon, MAX_CACHED_ICONS, preloadIcons, publicIcon } from './iconCache.js';
+import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from './api.js';
 import {
   loadAssistantDetails,
   loadAssistantSummary,
   loadLocalAssistantDetails,
   loadLocalAssistantSummary,
-} from './localAssistantIcons.js';
-import { groupLocalAssistantSnapshots, projectPublishedAssistants } from './localSnapshots.js';
-import { synced } from './session/synced.js';
+} from './preview.js';
+import { groupLocalAssistantSnapshots, projectPublishedAssistants } from './snapshots.js';
+import { synced } from '../session/synced.js';
 
 const SNAPSHOTS = 'local-assistants';
 const inventory = (teamId) => `team/${teamId}/inventory`;

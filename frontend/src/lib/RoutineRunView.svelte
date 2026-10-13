@@ -1,6 +1,6 @@
 <script>
   import { call } from '#lib/session/socket.js';
-  import { assistantNames } from '#lib/assistantNames.js';
+  import { assistantNames } from '#lib/assistants/names.js';
   import { locale } from '#lib/i18n/index.js';
   import RoutineModal from '#lib/RoutineModal.svelte';
   import RoutineResult from '#lib/RoutineResult.svelte';

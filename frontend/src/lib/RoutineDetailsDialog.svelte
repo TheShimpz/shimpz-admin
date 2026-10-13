@@ -10,7 +10,7 @@
   } from '#lib/chatHistory.js';
   import { locale, t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
-  import { assistantNames } from '#lib/assistantNames.js';
+  import { assistantNames } from '#lib/assistants/names.js';
   import { pauseRoutine, resumeRoutine } from '#lib/routines/protocol.js';
   import {
     ATTENTION_STATUSES,

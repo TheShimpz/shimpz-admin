@@ -9,7 +9,7 @@ import {
   loadLocalAssistantIcon,
   loadLocalAssistantSummary,
   loadPublicAssistantIcon,
-} from '../src/lib/localAssistantIcons.js';
+} from '../src/lib/assistants/preview.js';
 import { LocalApiError } from '../src/lib/api.js';
 import { via } from './socketStub.js';
 

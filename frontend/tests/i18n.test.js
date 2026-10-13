@@ -8,7 +8,7 @@ import {
   assistantIntegrationLabels,
   assistantIntegrationMessageParts,
   localizedIntegrationList,
-} from '../src/lib/assistantIntegrationMessages.js';
+} from '../src/lib/assistants/integrationMessages.js';
 
 const expectedLocales = LOCALES.map(({ code }) => code);
 

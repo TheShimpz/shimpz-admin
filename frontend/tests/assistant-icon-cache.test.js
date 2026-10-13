@@ -9,7 +9,7 @@ import {
   MAX_CACHED_ICONS,
   preloadIcons,
   publicIcon,
-} from '../src/lib/assistantIconCache.js';
+} from '../src/lib/assistants/iconCache.js';
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const PNG = new Uint8Array([137, 80, 78, 71]);

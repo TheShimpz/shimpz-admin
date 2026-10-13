@@ -1,8 +1,8 @@
 <script>
   import { Button, Disclosure } from '@shimpz/frontend';
 
-  import AssistantHumanRequestDialog from '#lib/AssistantHumanRequestDialog.svelte';
-  import { assistantNames } from '#lib/assistantNames.js';
+  import AssistantHumanRequestDialog from '#lib/assistants/HumanRequestDialog.svelte';
+  import { assistantNames } from '#lib/assistants/names.js';
   import ChoiceList from '#lib/ChoiceList.svelte';
   import { call, commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import { locale, t } from '#lib/i18n/index.js';
