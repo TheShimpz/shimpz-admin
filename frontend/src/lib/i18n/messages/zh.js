@@ -149,7 +149,6 @@ export default {
     send: '发送',
     sending: '正在处理…',
     elapsed: '已用时间',
-    progressStages: '执行阶段',
     progressStagesExecuted: '已记录的执行阶段：{count}',
     progress: {
       awaiting: '等待执行',

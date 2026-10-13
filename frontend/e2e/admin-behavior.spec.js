@@ -1571,13 +1571,8 @@ test('finishing a measured span updates its duration and announcements across tu
   const liveStatus = page.locator('.conversation .live-status');
   await expect(liveStatus).toHaveAttribute('aria-live', 'polite');
   await expect(liveStatus).toHaveText(/In progress$/);
-  await thinking.locator('[data-slot="disclosure-trigger"]').click();
-  const step = thinking.locator('.ledger li');
-  await expect(step).toBeVisible();
-  await expect(step).toHaveClass(/active/);
+  await expect(thinking).toBeVisible();
   chat.releaseProgressFinish();
-  await expect(step).toHaveClass(/complete/);
-  await expect(step.locator('time')).toHaveText('19 ms');
   await expect(liveStatus).toHaveText(/Complete$/);
 
   chat.releaseReply();
@@ -1608,12 +1603,6 @@ test('overlapping progress returns the visible summary to the earlier active pha
     type: 'progress', seq: 3, origin: 'team', phase: 'team-context', state: 'finished', elapsed_ms: 9,
   });
   await expect(current).toContainText(/Admin prepares your request to send to me/);
-  await thinking.locator('[data-slot="disclosure-trigger"]').click();
-  const rows = thinking.locator('.ledger li');
-  await expect(rows).toHaveCount(2);
-  await expect(rows.first()).toHaveClass(/active/);
-  await expect(rows.last()).toHaveClass(/complete/);
-  await expect(rows.last().locator('time')).toHaveText('9 ms');
 
   chat.sendProgressEvent({
     type: 'progress', seq: 4, origin: 'admin', phase: 'admin-preparation',
@@ -1638,7 +1627,6 @@ test('shows a pending chat state before any server progress frame', async ({ pag
   const liveStatus = page.locator('.conversation .live-status');
   await expect(liveStatus).toHaveAttribute('aria-live', 'polite');
   await expect(liveStatus).toHaveText('I’m processing…');
-  await expect(thinking.locator('.ledger li')).toHaveCount(0);
   await expect(composer).toBeDisabled();
   await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
   await expect.poll(() => chat.chatFrames().length).toBe(1);

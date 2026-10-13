@@ -44,11 +44,12 @@
     {/snippet}
     {#if open}
       <ol>
-        {#each steps as step, index (step.key)}
+        {#each steps as step (step.key)}
           <li>
-            <span class="step-number" aria-hidden="true">{index + 1}</span>
-            <span class="step-copy">{localizedStepLabel(step, progressLabels, { teamName, assistantNames })}</span>
-            <time>{formatExecutionDuration(step.elapsed_ms)}</time>
+            <span class="tip">
+              <span class="step-copy">{localizedStepLabel(step, progressLabels, { teamName, assistantNames })}</span>
+              <time>{formatExecutionDuration(step.elapsed_ms)}</time>
+            </span>
           </li>
         {/each}
       </ol>
@@ -74,31 +75,63 @@
     text-transform: uppercase;
   }
 
-  .step-count,
-  .step-number {
+  .step-count {
     color: var(--accent);
     font-variant-numeric: tabular-nums;
   }
 
+  /* The steps read like the Store's terminal tree, at the receipt's own size: a drawn trunk with a branch into each
+     step, and each step one readout in neutral ink, cut corners and faint scanlines, its time last. */
   ol {
-    display: grid;
     margin: var(--gap-item) 0 0;
     padding: 0;
-    gap: var(--gap-item);
     list-style: none;
   }
 
   li {
+    --tree: 2.4em;
+    --trunk: 1.2em;
+    --elbow: 1.05em;
+    position: relative;
     display: grid;
-    min-width: 0;
-    grid-template-columns: 1.2rem minmax(0, 1fr) auto;
-    align-items: baseline;
-    gap: var(--gap-item);
+    grid-template-columns: var(--tree) minmax(0, 1fr);
+    align-items: start;
+    padding-block-end: var(--gap-inside);
   }
 
-  .step-number { text-align: end; }
+  li:last-child { padding-block-end: 0; }
+
+  li::before,
+  li::after {
+    position: absolute;
+    inset-inline-start: var(--trunk);
+    background: color-mix(in oklab, var(--shimpz-color-text-dim) 38%, transparent);
+    content: '';
+  }
+
+  li::before { top: 0; bottom: 0; width: 0.5px; }
+  li:first-child::before { top: calc(-1 * var(--gap-item)); }
+  li:last-child::before { bottom: auto; height: var(--elbow); }
+  li:only-child::before { height: calc(var(--elbow) + var(--gap-item)); }
+  li::after { top: var(--elbow); width: calc(var(--tree) - var(--trunk) - 2px); height: 0.5px; }
+
+  .tip {
+    --cut: 0.4rem;
+    display: flex;
+    grid-column: 2;
+    align-items: baseline;
+    justify-self: start;
+    gap: var(--gap-item);
+    max-width: 100%;
+    padding: var(--gap-inside) var(--gap-item);
+    background:
+      repeating-linear-gradient(0deg, color-mix(in oklab, var(--shimpz-color-text) 4%, transparent) 0 1px, transparent 1px 3px),
+      color-mix(in oklab, var(--shimpz-color-bg) 95%, var(--shimpz-color-text));
+    clip-path: polygon(0 0, calc(100% - var(--cut)) 0, 100% var(--cut), 100% 100%, var(--cut) 100%, 0 calc(100% - var(--cut)));
+  }
 
   .step-copy {
+    min-width: 0;
     color: var(--text-dim);
     overflow-wrap: anywhere;
   }

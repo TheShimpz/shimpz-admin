@@ -1913,7 +1913,6 @@
               steps={progressProjection.steps}
               currentIndex={progressProjection.currentIndex}
               elapsedText={copy.elapsed}
-              stagesText={copy.progressStages}
               progressLabels={copy.progress}
               {teamName}
               {assistantNames}

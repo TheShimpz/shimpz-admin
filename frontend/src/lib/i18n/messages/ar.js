@@ -149,7 +149,6 @@ export default {
     send: 'إرسال',
     sending: 'أعالج طلبك الآن…',
     elapsed: 'الوقت المنقضي',
-    progressStages: 'مراحل التنفيذ',
     progressStagesExecuted: 'المراحل المسجّلة: {count}',
     progress: {
       awaiting: 'في انتظار التنفيذ',

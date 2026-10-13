@@ -257,15 +257,7 @@ async function measure(browser, baseURL, count, control) {
     if (Math.abs(progressTaskMs - accountedTaskMs) > 0.05) {
       throw new Error('Chromium task metrics did not reconcile.');
     }
-    const liveRows = await page.locator('.thinking .ledger li').count();
-    if (liveRows !== (control ? 0 : Math.min(count / 2, 32))) {
-      throw new Error(`Expected live ledger rows for ${count} events; saw ${liveRows}.`);
-    }
     if (!control) {
-      const lastLive = await page.locator('.thinking .ledger li').last().textContent();
-      if (!lastLive.includes(finalPhase) || !lastLive.includes('2 ms')) {
-        throw new Error('Live ledger lost the final progress phase.');
-      }
       const announcement = await page.locator('.conversation .live-status').textContent();
       if (!announcement.includes(finalPhase)
         || !announcement.trimEnd().endsWith(copy.progress.states.finished)) {

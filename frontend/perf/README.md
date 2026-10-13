@@ -3,7 +3,7 @@
 Build `frontend/` with Node.js 26, then run the built Local chat benchmark from
 that directory. It alternates fresh Chromium contexts with and without the
 selected synthetic progress frames at the configured interval, and
-checks the live ledger's final row, final announcement, terminal reply, and
+checks the final announcement, terminal reply, and
 completed receipt. The page's session socket (`perf/sessionSocket.js`) runs in
 the page: chat frames are dispatched there synchronously, and the driver answers
 each read the page makes. The commands below use 128 events separated by 25 ms.
@@ -42,8 +42,8 @@ network timing, so its result does not measure complete chat latency.
 Set `SHIMPZ_PROGRESS_CASES=10` for the ordinary turn with no Actions: Admin
 preparation, initial Team context, model, final Team context, and Admin reply
 validation each emit one started/finished pair. The 36, 128, and 948-event
-cases exercise Action rounds. Each case retains the same final ledger,
-announcement, and receipt checks.
+cases exercise Action rounds. Each case retains the same final announcement and
+receipt checks.
 
 `acknowledgeFrameP50Ms` and `acknowledgeFrameP95Ms` time a Send click to the
 first animation-frame callback that sees the processing group in the DOM.

@@ -149,7 +149,6 @@ export default {
     send: '送信',
     sending: '処理しています…',
     elapsed: '経過時間',
-    progressStages: '実行ステージ',
     progressStagesExecuted: '記録された実行ステップ：{count}',
     progress: {
       awaiting: '実行を待機中',

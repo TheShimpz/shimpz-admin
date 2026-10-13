@@ -149,7 +149,6 @@ export default {
     send: 'Enviar',
     sending: 'Estou processando...',
     elapsed: 'Tempo decorrido',
-    progressStages: 'Etapas da execução',
     progressStagesExecuted: 'Etapas registradas: {count}',
     progress: {
       awaiting: 'Aguardando a execução',
