@@ -7,6 +7,7 @@
 
   import { t } from '#lib/i18n/index.js';
   import { CIRCLES, PATHS } from '#lib/icons.js';
+  import { forgetChatHistoriesExcept } from '#lib/chat/history.js';
   import { retainTeamRoutines, routineContext } from '#lib/routines/context.js';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import TeamActionsMenu from '#lib/teams/ActionsMenu.svelte';
@@ -157,7 +158,10 @@
   let routineTeams = $derived(JSON.stringify($teamContext.teams.map((team) => team.id).sort()));
 
   $effect(() => {
-    retainTeamRoutines(JSON.parse(routineTeams));
+    const listed = JSON.parse(routineTeams);
+    retainTeamRoutines(listed);
+    // A Team no longer listed (deleted, perhaps to be created again under the same id) shows no kept conversation.
+    forgetChatHistoriesExcept(listed);
   });
 
   // Teams keep the Supervisor's order: drag a Team by its name, or press Alt+ArrowUp / Alt+ArrowDown on it. The order

@@ -9,7 +9,7 @@
   import Composer from '#lib/chat/Composer.svelte';
   import Exchange from '#lib/chat/Exchange.svelte';
   import { snapshotIcon } from '#lib/chat/lifecycle/snapshot.js';
-  import { historyHead, listChatHistory } from '#lib/chat/history.js';
+  import { chatHistory, listChatHistory } from '#lib/chat/history.js';
   import {
     expiredTurns,
     friendlyChatError,
@@ -164,6 +164,9 @@
   let capabilityObjective = null;
   let promptHistoryIndex = -1;
   let historyLoading = $state(true);
+  // A conversation the session kept shows at once, readable, while the head checks it is still current: the chat
+  // connects, and the composer opens, only after that.
+  let historyChecking = $state(false);
   let historyWorking = $state(false);
   let historyBefore = $state(null);
   // Earlier history loads when the top of the transcript is in view, only after the opening scroll has settled.
@@ -212,7 +215,7 @@
   // first sync instead of accepting text for a moment and dropping what is typed when the sync starts.
   let socketOpening = $derived(Boolean(socket) && !socketReady);
   let composerBusy = $derived(
-    busy || syncing || socketOpening || lifecycleOutcomePending !== null || historyHydrating,
+    busy || syncing || socketOpening || lifecycleOutcomePending !== null || historyHydrating || historyChecking,
   );
   // The Brain and fast-routing menus stay open while Admin reconnects, so a change they sent can say how it ended; what
   // they would send waits for the connection on its own.
@@ -343,21 +346,27 @@
     progressSequence = 0;
   }
 
-  // The Team's newest history, as its head first reads it, opens the conversation. A history that could not be read says
-  // why and the chat connects without it; once the head reads it after all, the conversation opens from it.
-  async function hydrateHistory(teamId, generation, value, connect) {
+  // The turns of history rows, keeping the render identity of a row already shown.
+  function historyTurns(entries, team) {
+    const keys = new Map(turns.filter((turn) => turn.historyId).map((turn) => [turn.historyId, turn.renderKey]));
+    return entries.map((entry) => historyTurn(entry, team.name, keys.get(entry.id) ?? nextRenderKey++, words));
+  }
+
+  // The Team's conversation as its head holds it (`view`, as a reload would open it) opens the transcript. A history
+  // that could not be read says why and the chat connects without it; once the head reads it after all, the
+  // conversation opens from it.
+  async function hydrateHistory(teamId, generation, view, connect) {
     try {
       const team = $teamContext.teams.find((entry) => entry.id === teamId);
       if (!team) throw new Error(copy.loadFailed);
-      turns = value.entries.map((entry) => historyTurn(entry, team.name, nextRenderKey++, words));
-      historyBefore = value.before;
+      turns = historyTurns(view.entries, team);
+      historyBefore = view.before;
       historyLoading = false;
-      if (error === copy.loadFailed) clearError();
-      connect();
       if (turns.length > 0) await revealLatestExchange({ instant: true });
-      if (generation === historyGeneration && chatTeamId === teamId) olderHistoryArmed = true;
+      return true;
     } catch (reason) {
       failHydration(teamId, generation, reason, connect);
+      return false;
     }
   }
 
@@ -482,7 +491,10 @@
   }
 
   // The Team's history head and Routines are followed as the Team opens: the history is first read once its
-  // subscription is in place, so a Routine notice written meanwhile is never missed (ADR-0114).
+  // subscription is in place, so a Routine notice written meanwhile is never missed (ADR-0114). The session keeps the
+  // head (`chatHistory`), so a conversation shown before opens at once; the chat connects only once the head says it is
+  // current, and until then every value the head reads replaces the conversation, so nothing the channel restores is
+  // ever laid on a conversation older than Admin's.
   let stopTeamTopics = () => {};
 
   function watchTeam(teamId, generation) {
@@ -490,6 +502,7 @@
     stopTeamTopics = () => {};
     headQueue = [];
     headWaiting = 0;
+    historyChecking = false;
     if (!teamId) return;
     // The chat connects once, after the history opened the conversation or failed to.
     let connected = false;
@@ -498,23 +511,94 @@
       connected = true;
       connectSocket(teamId);
     };
+    const head = chatHistory(teamId);
+    const watching = () => generation === historyGeneration && mounted && chatTeamId === teamId;
     let hydrated = false;
     let failed = false;
-    const head = historyHead(teamId, {
-      failed: (reason) => {
-        if (hydrated || failed) return;
-        failed = true;
-        failHydration(teamId, generation, reason, connect);
-      },
-    });
     let applied = null;
+    let latest = null;
+    let refusal = null;
+
+    // Whether the head's value can open the conversation: one that outgrew what a session keeps is read again from its
+    // newest page first.
+    function opens(value) {
+      if (value.view) return true;
+      void head.restart();
+      return false;
+    }
+
+    async function settle(opened) {
+      for (;;) {
+        const outcome = await head.current();
+        if (!watching()) return;
+        if (outcome === 'refused') {
+          // As when the history could not be read at all: nothing of the kept conversation stays, and the chat
+          // connects without it; a later read opens the conversation.
+          turns = [];
+          historyBefore = null;
+          hydrated = false;
+          failed = true;
+          historyChecking = false;
+          historyLoading = false;
+          failHydration(teamId, generation, refusal ?? new Error(copy.loadFailed), connect);
+          return;
+        }
+        if (outcome === 'current' && latest?.view) break;
+        if (outcome === 'current') opens(latest);
+      }
+      const ok = await opened;
+      if (!watching()) return;
+      historyChecking = false;
+      if (!ok) return;
+      if (error === copy.loadFailed) clearError();
+      olderHistoryArmed = true;
+      connect();
+    }
+
     const stopHead = head.subscribe((state) => {
       if (generation !== historyGeneration) return;
-      if (state.status !== 'ready' || state.value === applied) return;
+      if (state.status === 'error') refusal = state.error;
+      if (state.status !== 'ready' || state.value === applied) {
+        if (state.status === 'error' || state.failing) {
+          if (!hydrated && !failed) {
+            failed = true;
+            failHydration(teamId, generation, state.error ?? state.failing, connect);
+          } else if (historyChecking) {
+            // The kept conversation stays readable while it is read again; the chat waits for the read.
+            setError(copy.loadFailed, (state.error ?? state.failing)?.message ?? copy.loadFailed);
+          }
+        }
+        return;
+      }
       applied = state.value;
+      latest = state.value;
       if (!hydrated) {
+        if (!opens(state.value)) return;
         hydrated = true;
-        void hydrateHistory(teamId, generation, state.value, connect);
+        const opened = hydrateHistory(teamId, generation, state.value.view, connect);
+        // A conversation opened after the chat already connected without it (its history failed at first) is shown as
+        // it is; otherwise the chat connects once it is current.
+        if (connected) {
+          void opened.then((ok) => {
+            if (!ok || !watching()) return;
+            if (error === copy.loadFailed) clearError();
+            olderHistoryArmed = true;
+          });
+          return;
+        }
+        historyChecking = true;
+        void settle(opened);
+        return;
+      }
+      if (historyChecking) {
+        const team = $teamContext.teams.find((entry) => entry.id === teamId);
+        if (!team || !opens(state.value)) return;
+        const viewport = turnsViewport;
+        const following = Boolean(viewport) &&
+          viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= FOLLOW_SLACK;
+        turns = historyTurns(state.value.view.entries, team);
+        historyBefore = state.value.view.before;
+        if (following) void revealLatestExchange({ instant: true });
         return;
       }
       headQueue.push(state.value);

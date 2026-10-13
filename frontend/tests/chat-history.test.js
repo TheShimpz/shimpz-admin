@@ -440,11 +440,12 @@ test('a refresh reads back only to the newest row it already read, and a newer v
   // Nothing written since: one page, nothing new.
   for (const entry of since.entries) seen.add(historyMark(entry));
   requested.length = 0;
-  assert.deepEqual(await historySince(fetcher, 'marketing', seen, { routine }), { entries: [], before: null });
+  assert.deepEqual(await historySince(fetcher, 'marketing', seen, { routine }), { entries: [], before: null, reached: true });
   assert.deepEqual(requested, [[null, routine]]);
   // The chat's view reads the same way, without a Routine; a history that ends first yields all of it.
   const ended = await historySince(async () => response(200, { entries: [chatRow(4)], before: null }), 'marketing', seen);
   assert.deepEqual(ended.entries.map((entry) => entry.id), [chatRow(4).id]);
+  assert.equal(ended.reached, false);
 });
 
 test('a refresh stops at its page bound with every row it read and the cursor to continue from', async () => {

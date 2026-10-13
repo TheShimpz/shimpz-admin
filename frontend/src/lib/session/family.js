@@ -63,6 +63,19 @@ export function sessionFamily(make, { maxEntries, maxBytes }) {
       }
       return entry.shared;
     },
+    /**
+     * Forget the value of every key but `keys`: a screen still showing one reads it again from the start, and it is
+     * forgotten once more when its last screen leaves.
+     */
+    forgetExcept(keys) {
+      const kept = new Set(keys);
+      for (const [key, entry] of [...entries]) {
+        if (kept.has(key)) continue;
+        entries.delete(key);
+        if (entry.users > 0) strays.add(entry);
+        entry.value.reset();
+      }
+    },
     clear() {
       for (const entry of [...entries.values(), ...strays]) entry.value.reset();
       entries.clear();

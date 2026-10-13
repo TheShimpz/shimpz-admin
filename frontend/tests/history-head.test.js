@@ -4,7 +4,14 @@ import test, { mock } from 'node:test';
 import { get } from 'svelte/store';
 
 import { socketReads } from '../src/lib/session/socket.js';
-import { historyHead, MAX_REFRESH_PAGES } from '../src/lib/chat/history.js';
+import {
+  chatHistory,
+  clearChatHistories,
+  forgetChatHistoriesExcept,
+  historyHead,
+  MAX_REFRESH_PAGES,
+  MAX_VIEW_ROWS,
+} from '../src/lib/chat/history.js';
 import { RETRY_FIRST_MS } from '../src/lib/session/synced.js';
 
 const EPOCH = 'a'.repeat(32);
@@ -183,4 +190,107 @@ test("a Routine's own head restarts from its newest page, and on request", async
   assert.equal(values.at(-1).restart, true);
   assert.equal(get(head).status, 'ready');
   stop();
+});
+
+test("the chat's view is the whole conversation a reload would open, with each row written since", async () => {
+  const api = socket();
+  const { values, stop } = follow(historyHead('marketing'));
+  api.announce('open', 1);
+  api.reads[0].answer([message(1), message(2)], { before: 'AAAAAAAAAMg' });
+  await flush();
+  assert.deepEqual(values[0].view.entries.map((entry) => entry.id), [message(1).id, message(2).id]);
+  assert.equal(values[0].view.before, 'AAAAAAAAAMg');
+  // The rows written since join the view; the cursor stays the opening one.
+  api.announce('changed', 2);
+  api.reads[1].answer([message(1), message(2), message(3)], { revision: 2 });
+  await flush();
+  const { view } = values.at(-1);
+  assert.deepEqual(view.entries.map((entry) => entry.id), [message(1).id, message(2).id, message(3).id]);
+  assert.equal(view.before, 'AAAAAAAAAMg');
+  assert.ok(view.bytes > 0);
+  stop();
+  // A Routine's own head keeps no view.
+  const routineHead = follow(historyHead('marketing', { routine: 'c'.repeat(32) }));
+  api.announce('open', 2);
+  api.reads[2].answer([run(4)], { revision: 2 });
+  await flush();
+  assert.equal(routineHead.values[0].view, null);
+  routineHead.stop();
+});
+
+test('a history that no longer holds any row read before replaces the conversation', async () => {
+  const api = socket();
+  const { values, stop } = follow(historyHead('marketing'));
+  api.announce('open', 1);
+  api.reads[0].answer([message(1), message(2)]);
+  await flush();
+  // The Team was deleted and one with the same id holds a new history: none of the rows read before is there.
+  api.announce('changed', 2);
+  api.reads[1].answer([message(7)], { revision: 2 });
+  await flush();
+  assert.deepEqual([values.at(-1).restart, ids(values.at(-1)), values.at(-1).before], [true, [message(7).id], null]);
+  assert.deepEqual(values.at(-1).view.entries.map((entry) => entry.id), [message(7).id]);
+  stop();
+});
+
+test('a view grown past its bound is dropped, and the head is then measured by the rows it holds', async () => {
+  const api = socket();
+  const head = historyHead('marketing');
+  const { values, stop } = follow(head);
+  api.announce('open', 1);
+  api.reads[0].answer([message(0)]);
+  await flush();
+  assert.equal(head.size(), values[0].view.bytes);
+  // More rows than a view keeps are written, over five pages read newest first back to the row read before.
+  const written = Array.from({ length: MAX_VIEW_ROWS }, (_, index) => message(index + 1));
+  const pages = [
+    written.slice(255), written.slice(191, 255), written.slice(127, 191), written.slice(63, 127),
+    [message(0), ...written.slice(0, 63)],
+  ];
+  api.announce('changed', 2);
+  for (const [index, page] of pages.entries()) {
+    api.reads[1 + index].answer(page, { before: `AAAAAAAA0${index + 1}A`, revision: 2 });
+    await flush();
+  }
+  assert.equal(values.at(-1).restart, false);
+  assert.equal(values.at(-1).entries.length, MAX_VIEW_ROWS);
+  assert.equal(values.at(-1).view, null);
+  assert.ok(head.size() > 0);
+  // A restart reads the newest page again, whose view is whole again.
+  const restarted = head.restart();
+  api.reads.at(-1).answer([message(300)], { revision: 2 });
+  await restarted;
+  assert.deepEqual(values.at(-1).view.entries.map((entry) => entry.id), [message(300).id]);
+  stop();
+});
+
+test("the session keeps each Team's chat, forgets a Team no longer listed, and forgets every one at its end", async () => {
+  const api = socket();
+  const head = chatHistory('marketing');
+  assert.equal(chatHistory('marketing').subscribe, head.subscribe);
+  let shown = follow(head);
+  api.announce('open', 1);
+  api.reads[0].answer([message(1)]);
+  await flush();
+  shown.stop();
+  // Shown again at the same revision: the conversation shows at once, and nothing is read.
+  shown = follow(head);
+  assert.deepEqual(ids(shown.values[0]), [message(1).id]);
+  api.announce('subscribed', 1);
+  assert.equal(await head.current(), 'current');
+  assert.equal(api.reads.length, 1);
+  shown.stop();
+  // A Team no longer listed is forgotten: shown again, it reads its history from the start.
+  forgetChatHistoriesExcept(['finance']);
+  shown = follow(head);
+  assert.equal(shown.values.length, 0);
+  api.announce('subscribed', 1);
+  assert.deepEqual(api.reads[1].params, { team_id: 'marketing' });
+  api.reads[1].answer([message(2)]);
+  await flush();
+  shown.stop();
+  clearChatHistories();
+  shown = follow(head);
+  assert.equal(shown.values.length, 0);
+  shown.stop();
 });

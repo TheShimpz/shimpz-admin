@@ -10,6 +10,7 @@ import {
 } from './protocol.js';
 import { parseRoutineRunEntry } from '../routines/protocol.js';
 import { parseTaskUsage } from './usage.js';
+import { sessionFamily } from '../session/family.js';
 import { synced } from '../session/synced.js';
 import { ASSISTANT_LIMIT_REACHED, exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
 import { codePointLength, isInstant } from '../grammar.js';
@@ -348,8 +349,9 @@ export function historyMark(entry) {
 /**
  * The history written after the newest row `seen` marks, oldest first, in the chat's view or with `routine` in that
  * Routine's own. Pages are read newest first until one holds a marked row or the history ends, at most
- * MAX_REFRESH_PAGES of them. A refresh that reaches its page bound first returns every row it read and the cursor it
- * stopped at as `before`, so what lies between stays reachable; otherwise `before` is null.
+ * MAX_REFRESH_PAGES of them; `reached` says whether a marked row was found. A refresh that reaches its page bound first
+ * returns every row it read and the cursor it stopped at as `before`, so what lies between stays reachable; otherwise
+ * `before` is null.
  */
 export async function historySince(read, teamId, seen, { routine = null } = {}) {
   const pages = [];
@@ -358,10 +360,10 @@ export async function historySince(read, teamId, seen, { routine = null } = {}) 
     const { entries, before } = await listChatHistory(read, teamId, cursor, { routine });
     const known = entries.findLastIndex((entry) => seen.has(historyMark(entry)));
     pages.unshift(entries.slice(known + 1));
-    if (known !== -1 || before === null) return { entries: pages.flat(), before: null };
+    if (known !== -1 || before === null) return { entries: pages.flat(), before: null, reached: known !== -1 };
     cursor = before;
   }
-  return { entries: pages.flat(), before: cursor };
+  return { entries: pages.flat(), before: cursor, reached: false };
 }
 
 // A refresh finds where the history it already read ends from the newest rows it read, so a reader keeps the marks of
@@ -417,49 +419,126 @@ export function mergedRoutineRuns(runs, arrived, routineId) {
   return [...fresh, ...runs.filter((entry) => !moved.has(entry.id))];
 }
 
+// A kept view of the chat holds at most this many rows, and this many UTF-8 bytes of them; a larger one is dropped, and
+// the chat then opens from the newest page again.
+export const MAX_VIEW_ROWS = 4 * MAX_PAGE_ENTRIES;
+export const MAX_VIEW_BYTES = 2 * 1024 * 1024;
+const encoder = new TextEncoder();
+
+function rowBytes(entries) {
+  return encoder.encode(JSON.stringify(entries)).byteLength;
+}
+
+// The chat's view as a reload would open it: `entries` (oldest first) and the cursor to the rows before them, or null
+// once it outgrew its bounds.
+function chatView(entries, before) {
+  if (entries.length > MAX_VIEW_ROWS) return null;
+  const bytes = rowBytes(entries);
+  return bytes > MAX_VIEW_BYTES ? null : { entries, before, bytes };
+}
+
+// The view with the rows written since it was read: a row written again (a Routine's newer version) moves to the end.
+function grownView(view, arrived) {
+  if (!view) return null;
+  if (!arrived.length) return view;
+  const moved = new Set(arrived.map((entry) => entry.id));
+  return chatView([...view.entries.filter((entry) => !moved.has(entry.id)), ...arrived], view.before);
+}
+
 /**
  * The newest rows of a Team's history as one synced value (`synced.js`) on the Team's history topic: the chat's view,
- * or with `routine` that Routine's own. Its first read is the newest page; each later read is the rows written since the
- * newest it read, back to them. A value is `{ restart: true, entries, before }` when it replaces what is shown (the
- * newest page and its cursor, or, in the chat's view, every row a refresh read when more was written than it reads, and
- * the cursor it stopped at), or `{ restart: false, entries }` with the rows written since, oldest first. Each value is
- * read after the one before it, so a screen applies them in order. `restart()` reads the newest page again, and
- * `failed(error)` hears every read that failed.
+ * or with `routine` that Routine's own. Its first read is the newest page; each later read is the rows written since
+ * the newest it read, back to them. A value is `{ restart: true, entries, before }` when it replaces what is shown
+ * (the newest page and its cursor, or, in the chat's view, every row a refresh read when more was written than it
+ * reads or when none of the rows it read before is there any more, and the cursor it stopped at), or
+ * `{ restart: false, entries }` with the rows written since, oldest first. Each value is read after the one before
+ * it, so a screen applies them in order. In the chat's view each value also carries `view`: the whole conversation as
+ * a reload would open it (see `chatView`), or null once it outgrew its bounds. Every value carries `marks`, where the
+ * next read reads back to; a value is built only from the one before it, so a read whose era ended changes nothing.
+ * `restart()` reads the newest page again, and `retain` keeps the value for the session (`synced.js`), with `size()`
+ * the bytes it holds.
  */
-export function historyHead(teamId, { routine = null, failed = () => {} } = {}) {
-  let marks = null;
+export function historyHead(teamId, { routine = null, retain = null } = {}) {
+  let restarting = false;
+  const chat = routine === null;
   const newest = async (call) => {
     const page = await listChatHistory(call, teamId, null, { routine });
-    marks = historyBoundary(new Set(), page.entries);
-    return { restart: true, entries: page.entries, before: page.before };
+    restarting = false;
+    return {
+      restart: true,
+      entries: page.entries,
+      before: page.before,
+      marks: historyBoundary(new Set(), page.entries),
+      view: chat ? chatView(page.entries, page.before) : null,
+    };
   };
-  const read = async (call) => {
-    if (marks === null) return newest(call);
-    const since = await historySince(call, teamId, marks, { routine });
-    if (since.before !== null) {
-      if (routine !== null) return newest(call);
-      marks = historyBoundary(new Set(), since.entries);
-      return { restart: true, entries: since.entries, before: since.before };
+  const read = async (call, last) => {
+    if (!last || restarting) return newest(call);
+    const since = await historySince(call, teamId, last.marks, { routine });
+    // More was written than one refresh reads, or none of the rows read before is there any more (the history was
+    // cleared): what the refresh read replaces what is shown.
+    const replaced = since.before !== null || (!since.reached && last.marks.size > 0);
+    if (replaced) {
+      if (!chat) return newest(call);
+      return {
+        restart: true,
+        entries: since.entries,
+        before: since.before,
+        marks: historyBoundary(new Set(), since.entries),
+        view: chatView(since.entries, since.before),
+      };
     }
-    marks = historyBoundary(marks, since.entries);
-    return { restart: false, entries: since.entries };
+    return {
+      restart: false,
+      entries: since.entries,
+      marks: historyBoundary(last.marks, since.entries),
+      view: chat ? grownView(last.view, since.entries) : null,
+    };
   };
-  // Every failed read is told to `failed`, also one the head reads again on its own: a screen that waits for the
-  // history (the chat, before it connects) need not wait for an outage to end.
-  const head = synced(`team/${teamId}/history`, async (call) => {
-    try {
-      return await read(call);
-    } catch (error) {
-      failed(error);
-      throw error;
-    }
-  });
+  const head = synced(`team/${teamId}/history`, read, { retain });
+  // The value last shown, which is the one a session keeps: its view, or the rows it holds without one.
+  let shown = null;
   return {
-    subscribe: head.subscribe,
+    subscribe(run, invalidate) {
+      return head.subscribe((state) => {
+        shown = state.value;
+        run(state);
+      }, invalidate);
+    },
     refresh: head.refresh,
+    current: head.current,
     restart() {
-      marks = null;
+      restarting = true;
       return head.refresh();
     },
+    reset() {
+      shown = null;
+      head.reset();
+    },
+    size: () => (shown ? shown.view?.bytes ?? rowBytes(shown.entries) : 0),
   };
+}
+
+// A session keeps the chat's view of the Teams shown last, so returning to one shows its conversation at once; it is
+// read again only when Admin says the history changed meanwhile (ADR-0114, values a session keeps).
+const MAX_KEPT_CHATS = 4;
+const MAX_KEPT_CHAT_BYTES = 8 * 1024 * 1024;
+const chats = sessionFamily(
+  (teamId) => historyHead(teamId, { retain: { maxAgeMs: Infinity } }),
+  { maxEntries: MAX_KEPT_CHATS, maxBytes: MAX_KEPT_CHAT_BYTES },
+);
+
+/** One Team's chat history head, kept for the session (see `historyHead`). */
+export function chatHistory(teamId) {
+  return chats.get(teamId);
+}
+
+/** Forget the kept chat of every Team but these: a Team no longer listed shows nothing from memory again. */
+export function forgetChatHistoriesExcept(teamIds) {
+  chats.forgetExcept(teamIds);
+}
+
+/** The session ended: forget every kept chat. */
+export function clearChatHistories() {
+  chats.clear();
 }

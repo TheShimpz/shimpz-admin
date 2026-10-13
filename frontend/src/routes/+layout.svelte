@@ -12,6 +12,7 @@
   import BootScreen from '#lib/shell/BootScreen.svelte';
   import { clearAdminNotice } from '#lib/shell/notice.js';
   import { clearAssistantSources } from '#lib/assistants/sources.js';
+  import { clearChatHistories } from '#lib/chat/history.js';
   import { forgetDecisionProvider } from '#lib/brain/decision.js';
   import { locale, LOCALES, t } from '#lib/i18n/index.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
@@ -129,6 +130,7 @@
     clearSecuritySummary();
     forgetDecisionProvider();
     clearAssistantSources();
+    clearChatHistories();
     phase = 'checking';
     error = '';
 
