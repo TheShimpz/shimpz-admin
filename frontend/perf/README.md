@@ -104,8 +104,12 @@ For a static UI-only run, build `frontend/` with Node.js 26 and run `node perf/a
 chat in a fresh context, waits until the page has sent nothing for a second (so what it reads at idle after boot is
 in), clicks the sidebar's Store link, and times on the page's clock the click to the first animation frame in which
 every row shows its decoded icon (`firstVisit`); it then returns to the chat and times a second visit (`repeatVisit`).
-A frame callback precedes paint, so both are lower bounds on the visible time. `iconsBeforeVisit` counts the icon
-requests made before the first click. `SHIMPZ_PERF_ICON_PX=1024` serves icons at the published 1024-pixel size (the
+A frame callback precedes paint, so both are lower bounds on the visible time. Each return to the chat (`chatReturn`
+after the first visit, `chatRepeatReturn` after the second) is timed from the click on the Team's link to the first
+frame in which the conversation shows every exchange of its 24-row history outside any loading state (`shown`), and to
+the first in which its composer also takes text (`ready`, after the chat channel attached and synchronized).
+`SHIMPZ_PERF_CONTROL_DELAY_MS` delays the socket's own subscriptions and chat attach, which answer at once by default.
+`iconsBeforeVisit` counts the icon requests made before the first click. `SHIMPZ_PERF_ICON_PX=1024` serves icons at the published 1024-pixel size (the
 default is one pixel), so decoding costs what it does for real icons:
 
 ```sh
