@@ -42,7 +42,7 @@
   import { configureModelContext, loadModelContext, modelContext } from '#lib/modelContext.js';
   import { sessionContext } from '#lib/session/context.js';
   import ShimpzThinking from '#lib/ShimpzThinking.svelte';
-  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teamContext.js';
+  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teams/context.js';
   import { ASSISTANT_LIMIT_REACHED } from '#lib/api.js';
   import {
     authorizeAssistantIntegration,

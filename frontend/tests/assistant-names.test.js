@@ -4,7 +4,7 @@ import test from 'node:test';
 import { get } from 'svelte/store';
 
 import { assistantNames } from '../src/lib/assistantNames.js';
-import { clearTeamContext, loadTeamContext, refreshTeamInventory } from '../src/lib/teamContext.js';
+import { clearTeamContext, loadTeamContext, refreshTeamInventory } from '../src/lib/teams/context.js';
 import { socketReads } from '../src/lib/session/socket.js';
 import { response, via } from './socketStub.js';
 

@@ -20,7 +20,7 @@
   import { installAssistant, installLocalAssistant, uninstallAssistant } from '#lib/localApi.js';
   import { isInadmissibleLocalPreview } from '#lib/localAssistantIcons.js';
   import { groupLocalAssistantSnapshots } from '#lib/localSnapshots.js';
-  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teamContext.js';
+  import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teams/context.js';
   import { ASSISTANT_LIMIT_REACHED } from '#lib/api.js';
   import { ASSISTANT_ID_RE, TEAM_ID_RE } from '#lib/ids.js';
 

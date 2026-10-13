@@ -4,7 +4,7 @@
 // never authority.
 import { derived } from 'svelte/store';
 
-import { teamContext } from './teamContext.js';
+import { teamContext } from './teams/context.js';
 
 /** Assistant id -> display name; empty until the catalog is read. */
 export const assistantNames = derived(

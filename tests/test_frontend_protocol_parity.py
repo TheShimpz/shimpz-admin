@@ -30,7 +30,7 @@ TURN_BOUNDS = {
     "ids.js": {
         "MAX_TEAM_NAME_CHARS": team_contract.MAX_TEAM_NAME_CHARS,
     },
-    "teamContext.js": {
+    "teams/context.js": {
         "MAX_TEAM_ASSISTANTS": team_contract.MAX_TEAM_ASSISTANTS,
     },
     "chat/attachments/files.js": {

@@ -6,7 +6,7 @@
   import { warmAssistantSources } from '#lib/assistantSources.js';
   import { PATHS } from '#lib/icons.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
-  import { teamContext } from '#lib/teamContext.js';
+  import { teamContext } from '#lib/teams/context.js';
   import { dataUnavailable } from '#lib/session/synced.js';
   import { locale, t } from '#lib/i18n.js';
   import LocaleMenu from '#lib/LocaleMenu.svelte';
@@ -17,9 +17,9 @@
   import SessionExpiryWarning from '#lib/session/ExpiryWarning.svelte';
   import { readSession, SESSION_ENDED, setSessionContext } from '#lib/session/context.js';
   import SupervisorMenu from '#lib/shell/SupervisorMenu.svelte';
-  import TeamDialogs from '#lib/TeamDialogs.svelte';
-  import TeamNavigation from '#lib/TeamNavigation.svelte';
-  import TeamSidebar from '#lib/TeamSidebar.svelte';
+  import TeamDialogs from '#lib/teams/Dialogs.svelte';
+  import TeamNavigation from '#lib/teams/Navigation.svelte';
+  import TeamSidebar from '#lib/teams/Sidebar.svelte';
 
   let { active = '', authenticated = false, children } = $props();
   let chat = $derived(active === 'chat');

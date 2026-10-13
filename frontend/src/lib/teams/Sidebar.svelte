@@ -10,7 +10,7 @@
     loadModelContext,
     modelContext,
   } from '#lib/modelContext.js';
-  import { loadTeamContext, selectTeam, teamContext } from '#lib/teamContext.js';
+  import { loadTeamContext, selectTeam, teamContext } from '#lib/teams/context.js';
   import { TEAM_ID_RE } from '#lib/ids.js';
 
   let { active = '' } = $props();

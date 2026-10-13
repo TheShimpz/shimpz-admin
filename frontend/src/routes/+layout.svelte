@@ -20,7 +20,7 @@
   import { clearTeamRoutines } from '#lib/routineContext.js';
   import { clearSecuritySummary, recoveryCodes as validRecoveryCodes } from '#lib/auth/security.js';
   import { clearSessionContext, readSession, SESSION_ENDED, setSessionContext } from '#lib/session/context.js';
-  import { clearTeamContext, teamContext } from '#lib/teamContext.js';
+  import { clearTeamContext, teamContext } from '#lib/teams/context.js';
 
   let { children } = $props();
 

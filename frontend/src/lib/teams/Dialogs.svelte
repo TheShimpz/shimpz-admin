@@ -8,7 +8,7 @@
   import { showAdminNotice } from '#lib/shell/notice.js';
   import { t } from '#lib/i18n.js';
   import { LocalApiError } from '#lib/api.js';
-  import { createTeam, deleteTeam, teamContext } from '#lib/teamContext.js';
+  import { createTeam, deleteTeam, teamContext } from '#lib/teams/context.js';
 
   let { onsettled = () => {} } = $props();
 

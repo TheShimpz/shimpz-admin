@@ -9,10 +9,10 @@
   import { CIRCLES, PATHS } from '#lib/icons.js';
   import { retainTeamRoutines, routineContext } from '#lib/routineContext.js';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
-  import TeamActionsMenu from '#lib/TeamActionsMenu.svelte';
-  import { renameTeam, reorderTeams, teamContext } from '#lib/teamContext.js';
+  import TeamActionsMenu from '#lib/teams/ActionsMenu.svelte';
+  import { renameTeam, reorderTeams, teamContext } from '#lib/teams/context.js';
   import TeamRoutinesDialog from '#lib/TeamRoutinesDialog.svelte';
-  import { canonicalTeamName } from '#lib/teamContext.js';
+  import { canonicalTeamName } from '#lib/teams/context.js';
 
   let {
     active = '',
