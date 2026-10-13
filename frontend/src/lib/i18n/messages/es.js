@@ -188,7 +188,7 @@ export default {
     timeAt: 'a las',
     stop: 'Detener',
     emptyTeams: 'Crea un Equipo con el botón + para empezar a conversar.',
-    loading: 'Cargando tu Equipo…',
+    loading: 'Cargando…',
     loadFailed: 'Los datos del chat local no están disponibles.',
     olderMessages: 'Cargar mensajes anteriores',
     olderLoading: 'Cargando mensajes anteriores…',

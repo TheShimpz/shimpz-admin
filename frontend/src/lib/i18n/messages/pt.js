@@ -188,7 +188,7 @@ export default {
     timeAt: 'às',
     stop: 'Parar',
     emptyTeams: 'Crie um Time com o botão + para começar a conversar.',
-    loading: 'Carregando seu Time…',
+    loading: 'Carregando…',
     loadFailed: 'Os dados do chat local estão indisponíveis.',
     olderMessages: 'Carregar mensagens anteriores',
     olderLoading: 'Carregando mensagens anteriores…',
