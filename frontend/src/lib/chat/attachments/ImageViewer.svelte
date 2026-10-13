@@ -1,10 +1,11 @@
 <script>
-  import { Button, Modal } from '@shimpz/frontend';
+  import { Button, DialogFrame, Modal } from '@shimpz/frontend';
   import { previewUrl } from '#lib/chat/attachments/previews.js';
   import { t } from '#lib/i18n/index.js';
 
-  // One sent image opened over the chat (ADR-0093): Team's sanitized rendition loaded again at its own size, never the
-  // thumbnail, fitted to the viewport under the file's literal name. The thumbnail stands in only when the rendition
+  // One sent image opened over the chat (ADR-0093) in the design system's dialog frame, filling the viewport within its
+  // margin: Team's sanitized rendition loaded again at its own size, never the thumbnail, fitted below the file's
+  // literal name. The thumbnail stands in only when the rendition
   // cannot load. Esc, a click on the backdrop, and Close each close it; whoever opened it gets focus back in `onclose`.
   let { teamId, fileId, name, thumbnail, onclose } = $props();
 
@@ -38,90 +39,68 @@
   }}
   onclick={closeOnBackdrop}
 >
-  <figure class="viewer">
-    <header class="viewer-head">
-      <h2 id={`${id}-title`}>{name}</h2>
-      <Button
-        class="viewer-close"
-        variant="ghost"
-        size="sm"
-        iconOnly
-        type="button"
-        aria-label={$t('attachments.closeImage')}
-        title={$t('attachments.closeImage')}
-        onclick={close}
-      >
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"></path></svg>
-      </Button>
-    </header>
-    <img
-      src={failed ? thumbnail.url : previewUrl(teamId, fileId)}
-      width={thumbnail.width}
-      height={thumbnail.height}
-      alt={name}
-      onerror={() => (failed = true)}
-    />
-  </figure>
+  <DialogFrame class="viewer" kicker={$t('attachments.kinds.image')} title={name} titleId={`${id}-title`}>
+    <figure class="stage">
+      <img
+        src={failed ? thumbnail.url : previewUrl(teamId, fileId)}
+        width={thumbnail.width}
+        height={thumbnail.height}
+        alt={name}
+        onerror={() => (failed = true)}
+      />
+    </figure>
+    {#snippet footer()}
+      <Button variant="secondary" type="button" onclick={close}>{$t('attachments.closeImage')}</Button>
+    {/snippet}
+  </DialogFrame>
 </Modal>
 
 <style>
-  .viewer {
-    display: flex;
-    flex-direction: column;
-    max-height: calc(100dvh - 2rem); /* the browser's own dialog margin, not rhythm */
-    margin: 0;
-    color: var(--shimpz-color-text);
-    background: var(--shimpz-color-surface);
-    border: 1px solid var(--shimpz-color-border);
+  /* The viewer fills the viewport, keeping the page's region margin on every side. */
+  :global(dialog.shimpz-modal.image-viewer) {
+    width: calc(100dvw - 2 * var(--gap-region));
+    max-width: none;
+    height: calc(100dvh - 2 * var(--gap-region));
+    max-height: none;
   }
 
-  .viewer-head {
-    display: flex;
-    flex: none;
-    align-items: center;
-    gap: var(--gap-item);
-    padding: var(--gap-inside) var(--gap-item) var(--gap-inside) var(--gap-panel);
-    border-block-end: 1px solid var(--shimpz-color-border);
+  :global(dialog.image-viewer .shimpz-dialog-frame.viewer) {
+    height: 100%;
+    max-height: none;
   }
 
-  h2 {
-    flex: 1 1 auto;
-    min-width: 0;
-    margin: 0;
+  :global(dialog.image-viewer .viewer h2) {
     overflow: hidden;
-    font: 600 0.9rem/1.3 var(--shimpz-font-sans);
     text-overflow: ellipsis;
     white-space: nowrap;
     unicode-bidi: plaintext;
   }
 
-  .viewer-head :global(.viewer-close) {
-    --button-color: var(--shimpz-color-text-dim);
-    --button-border: transparent;
-    flex: none;
+  :global(dialog.image-viewer .viewer > .body) {
+    display: flex;
+    overflow: hidden;
   }
 
-  .viewer-head :global(.viewer-close svg) {
-    width: 1rem;
-    height: 1rem;
-    fill: none;
-    stroke: currentColor;
-    stroke-linecap: round;
-    stroke-width: 1.5;
-  }
-
-  /* The image keeps its own proportions and fits the viewport below the header, never larger than it is. */
-  img {
-    display: block;
+  /* The image keeps its own proportions and fits the stage, never larger than it is. */
+  .stage {
+    display: flex;
     flex: 1 1 auto;
     min-height: 0;
-    width: auto;
-    height: auto;
-    max-inline-size: 100%;
-    max-block-size: calc(100dvh - 2rem - 3rem);
-    margin-inline: auto;
-    object-fit: contain;
+    margin: 0;
+    align-items: center;
+    justify-content: center;
+    background:
+      repeating-linear-gradient(to bottom, color-mix(in srgb, var(--shimpz-color-cyan) 4%, transparent) 0 1px, transparent 1px 3px),
+      var(--shimpz-color-bg);
+    border: 1px solid var(--shimpz-color-border);
   }
 
-  @media (forced-colors: active) { .viewer { border-color: CanvasText; } }
+  img {
+    display: block;
+    width: auto;
+    height: auto;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+  }
 </style>

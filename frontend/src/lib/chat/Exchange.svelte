@@ -247,17 +247,49 @@
     text-transform: uppercase;
   }
 
-  /* Image thumbnails sit side by side at their fixed size; a file's card takes a wider share of the row. */
+  /* Every attachment of a sent message is the same square in one grid: an image shows its thumbnail, any other file
+     its type mark with its type and size; a name shows as a label over the square's foot on hover. */
   .message-attachments {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-start;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 8rem);
     gap: var(--gap-item);
     margin: var(--gap-item) 0 0;
     padding: 0;
     list-style: none;
   }
 
-  .message-attachments > :global(.attachment-chip) { flex: 1 1 12rem; min-width: min(100%, 12rem); }
-  .message-attachments > :global(.attachment-thumbnail) { flex: 0 0 auto; }
+  .message-attachments > :global(.attachment-chip) {
+    position: relative;
+    display: grid;
+    width: 8rem;
+    height: 8rem;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: center;
+    justify-items: center;
+    gap: var(--gap-inside);
+    padding: var(--gap-item);
+    overflow: hidden;
+  }
+
+  .message-attachments > :global(.attachment-chip .attachment-mark) { width: 2rem; height: 2rem; }
+
+  .message-attachments > :global(.attachment-chip .attachment-text) { display: contents; }
+
+  .message-attachments > :global(.attachment-chip .attachment-details) { text-align: center; }
+
+  .message-attachments > :global(.attachment-chip .attachment-name) {
+    position: absolute;
+    inset: auto 0 0;
+    padding: var(--gap-inside) var(--gap-item);
+    overflow: hidden;
+    color: var(--shimpz-color-text);
+    background: color-mix(in srgb, var(--shimpz-color-bg) 78%, transparent);
+    font-size: 0.62rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity var(--shimpz-duration-fast) var(--shimpz-ease);
+  }
+
+  .message-attachments > :global(.attachment-chip:hover .attachment-name) { opacity: 1; }
 </style>
