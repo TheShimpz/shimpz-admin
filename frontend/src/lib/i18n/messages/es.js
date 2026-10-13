@@ -635,6 +635,8 @@ export default {
     list: 'Adjuntos',
     remove: 'Quitar del mensaje',
     removeNamed: 'Quitar {name} del mensaje',
+    openImage: 'Abrir {name}',
+    closeImage: 'Cerrar',
     hint: 'Los archivos se leen solo en este mensaje. Selecciónalos de nuevo para usarlos después.',
     drop: 'Suelta los archivos para adjuntarlos',
     reading: 'Leyendo archivos…',

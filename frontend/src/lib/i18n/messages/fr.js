@@ -635,6 +635,8 @@ export default {
     list: 'Pièces jointes',
     remove: 'Retirer du message',
     removeNamed: 'Retirer {name} du message',
+    openImage: 'Ouvrir {name}',
+    closeImage: 'Fermer',
     hint: 'Les fichiers ne sont lus que dans ce message. Sélectionnez-les à nouveau pour les réutiliser.',
     drop: 'Déposez les fichiers pour les joindre',
     reading: 'Lecture des fichiers…',

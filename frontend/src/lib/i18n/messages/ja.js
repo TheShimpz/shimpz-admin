@@ -635,6 +635,8 @@ export default {
     list: '添付ファイル',
     remove: 'メッセージから削除',
     removeNamed: '{name} をメッセージから削除',
+    openImage: '{name} を開く',
+    closeImage: '閉じる',
     hint: 'ファイルはこのメッセージでのみ読み取られます。後で使うときは、もう一度選択してください。',
     drop: 'ドロップして添付',
     reading: 'ファイルを読み込み中…',

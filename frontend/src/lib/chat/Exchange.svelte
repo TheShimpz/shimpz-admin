@@ -1,6 +1,8 @@
 <script>
   import { Message } from '@shimpz/frontend';
   import AttachmentChip from '#lib/chat/attachments/Chip.svelte';
+  import AttachmentThumbnail from '#lib/chat/attachments/Thumbnail.svelte';
+  import { previewable } from '#lib/chat/attachments/previews.js';
   import { clockTime, instantValue } from '#lib/chat/days.js';
   import InstallPlan from '#lib/chat/lifecycle/InstallPlan.svelte';
   import Uninstall from '#lib/chat/lifecycle/Uninstall.svelte';
@@ -75,7 +77,11 @@
       {#if userTurn.files}
         <ul class="message-attachments" aria-label={$t('attachments').list}>
           {#each userTurn.files as file (file.key)}
-            <AttachmentChip name={file.name} size={file.size} kind={file.kind} note={file.note} sent />
+            {#if previewable(teamId, file)}
+              <AttachmentThumbnail {teamId} {file} />
+            {:else}
+              <AttachmentChip name={file.name} size={file.size} kind={file.kind} note={file.note} sent />
+            {/if}
           {/each}
         </ul>
       {/if}

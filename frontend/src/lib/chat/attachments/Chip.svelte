@@ -5,7 +5,9 @@
 
   // One file as a quiet chip: a type mark, its literal name, then its type, size, and what Team reads of it. In the
   // composer it may still be uploading and can be removed from the message; in the transcript it is only a record.
+  // `element` is the chip itself, so a sent image's thumbnail can tell when it comes near the screen.
   let {
+    element = $bindable(),
     name,
     size,
     kind = 'file',
@@ -25,7 +27,7 @@
   );
 </script>
 
-<li class="attachment-chip" data-kind={kind} aria-busy={state === 'ready' ? undefined : 'true'}>
+<li bind:this={element} class="attachment-chip" data-kind={kind} aria-busy={state === 'ready' ? undefined : 'true'}>
   <svg class="attachment-mark" viewBox="0 0 24 24" aria-hidden="true">
     {#if kind === 'image'}
       <path d="M4.5 5.5h15v13h-15zM4.5 15.5l4.5-4.5 4 4 2.5-2.5 4 4"></path><circle cx="15.5" cy="9.5" r="1.4"></circle>

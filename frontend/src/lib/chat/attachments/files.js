@@ -16,7 +16,8 @@ const MAX_MESSAGE_BYTES = 32 * MIB;
 const MAX_MESSAGE_IMAGES = 4;
 const MAX_MESSAGE_TEXT_CHARACTERS = 131_072;
 const MAX_MESSAGE_TEXT_BYTES = 512 * KIB;
-const MAX_IMAGE_BYTES = 8 * MIB;
+// The largest image Team reads, for the model or as a sent message's thumbnail.
+export const MAX_IMAGE_BYTES = 8 * MIB;
 const MAX_PDF_BYTES = 8 * MIB;
 const MAX_TEXT_SOURCE_BYTES = 1 * MIB;
 const MAX_TEXT_CHARACTERS = 32_768;
