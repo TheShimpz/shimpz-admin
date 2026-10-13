@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { escapeMarkdownText, parseInline, parseMarkdown } from '../src/lib/markdown.js';
+import { escapeMarkdownText, parseInline, parseMarkdown } from '../src/lib/chat/markdown.js';
 
 test('keeps external display copy literal inside a Markdown response', () => {
   const source = '# Assistant [docs](https://example.com) `code` **bold** | value';

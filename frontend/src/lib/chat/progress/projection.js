@@ -1,4 +1,4 @@
-import { humanizeId } from './ids.js';
+import { humanizeId } from '../../ids.js';
 
 const MAX_DISPLAY_DURATION_MS = 24 * 60 * 60 * 1000;
 

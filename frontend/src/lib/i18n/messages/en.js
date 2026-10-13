@@ -1,6 +1,6 @@
 // Admin interface copy in English, the canonical catalog: every other language implements each of its keys
 // (tests/i18n.test.js), and i18n.js falls back to it key by key. The app loads only the active language.
-import { CLARIFICATION_LABELS } from '../../clarificationLabels.js';
+import { CLARIFICATION_LABELS } from '../../chat/clarificationLabels.js';
 import { routineQuestionMessages } from '../../routineQuestionMessages.js';
 
 export default {

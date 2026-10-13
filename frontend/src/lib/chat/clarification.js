@@ -1,7 +1,7 @@
 // One Brain multiple-choice clarification (ADR-0081). Answering sends one new user message that combines the
 // original request, the question, and the chosen answer; that message remains the only Action authority.
 
-import { codePointLength } from './grammar.js';
+import { codePointLength } from '../grammar.js';
 
 const MAX_QUESTION_CHARS = 240;
 const MAX_LABEL_CHARS = 80;

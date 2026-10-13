@@ -9,7 +9,7 @@ import {
   localizedStepLabel,
   receiptSteps,
   technicalStepLabel,
-} from '../src/lib/executionProgress.js';
+} from '../src/lib/chat/progress/projection.js';
 import { CHAT_PROGRESS_PHASES } from '../src/lib/chat/protocol.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 

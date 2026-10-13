@@ -3,11 +3,11 @@
 // function that adds a turn takes the one it should carry), the timers, and every request.
 //
 // `words` is the chat page's copy (`chatPage`) with `limit`, the localized Assistant-limit refusal, added.
-import { receiptSteps } from '../executionProgress.js';
+import { receiptSteps } from './progress/projection.js';
 import { fill } from '../i18n/fill.js';
-import { escapeMarkdownText } from '../markdown.js';
+import { escapeMarkdownText } from './markdown.js';
 import { attachmentKind } from './attachments/files.js';
-import { taskUsageSummary } from '../taskUsage.js';
+import { taskUsageSummary } from './usage.js';
 import { ASSISTANT_LIMIT_REACHED } from '../api.js';
 
 /** Turns as exchanges: a user message with the reply that answered it, or a reply that opens one on its own. */

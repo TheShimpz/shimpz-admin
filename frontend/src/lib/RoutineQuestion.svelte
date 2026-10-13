@@ -2,7 +2,7 @@
   import { tick } from 'svelte';
   import { Button, RadioField, TextField } from '@shimpz/frontend';
 
-  import { composeClarifiedRequest } from '#lib/clarification.js';
+  import { composeClarifiedRequest } from '#lib/chat/clarification.js';
   import { questionWords } from '#lib/routines/words.js';
 
   // What Team asks before a recorded Routine can become a card (ADR-0101). The person's answer is an ordinary send,

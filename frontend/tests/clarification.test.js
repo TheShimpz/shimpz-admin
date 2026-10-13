@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { listChatHistory } from '../src/lib/chatHistory.js';
+import { listChatHistory } from '../src/lib/chat/history.js';
 import {
   clarificationAnswer,
   clarifiedRequest,
@@ -10,7 +10,7 @@ import {
   matchClarificationAnswers,
   parseClarification,
   renderClarification,
-} from '../src/lib/clarification.js';
+} from '../src/lib/chat/clarification.js';
 import { parseChatEvent } from '../src/lib/chat/protocol.js';
 
 const ASKED = {

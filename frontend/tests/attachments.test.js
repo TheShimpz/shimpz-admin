@@ -13,7 +13,7 @@ import {
   uploadTeamFile,
 } from '../src/lib/chat/attachments/files.js';
 import { parseRestrictedActions } from '../src/lib/chat/attachments/restricted.js';
-import { listChatHistory } from '../src/lib/chatHistory.js';
+import { listChatHistory } from '../src/lib/chat/history.js';
 import { parseChatEvent } from '../src/lib/chat/protocol.js';
 
 const MIB = 1024 * 1024;

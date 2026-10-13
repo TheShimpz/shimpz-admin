@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import {
   calendarDay, clockTime, dayLabel, exchangeDays, instantValue, turnInstants, untilNextDay,
-} from '../src/lib/chatDays.js';
+} from '../src/lib/chat/days.js';
 import { LOCALES } from '../src/lib/i18n/locales.js';
 
 const SAO_PAULO = 'America/Sao_Paulo';

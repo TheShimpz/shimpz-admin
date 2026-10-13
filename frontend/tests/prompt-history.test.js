@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { promptHistoryStep } from '../src/lib/promptHistory.js';
+import { promptHistoryStep } from '../src/lib/chat/prompts.js';
 
 const prompts = ['First prompt', 'Second prompt'];
 const up = { key: 'ArrowUp' };

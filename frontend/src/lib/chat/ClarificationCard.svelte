@@ -2,7 +2,7 @@
   import { tick, untrack } from 'svelte';
   import { Button, RadioField, TextField } from '@shimpz/frontend';
 
-  import { composeClarifiedRequest } from '#lib/clarification.js';
+  import { composeClarifiedRequest } from '#lib/chat/clarification.js';
 
   // A Brain multiple-choice question (ADR-0081). Answering sends the original request with the chosen answer;
   // once the exchange holds that answer, the card shows only the question and the answer.

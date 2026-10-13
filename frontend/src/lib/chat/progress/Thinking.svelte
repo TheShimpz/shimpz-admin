@@ -4,7 +4,7 @@
   import {
     formatExecutionDuration,
     localizedStepLabel,
-  } from './executionProgress.js';
+  } from './projection.js';
 
   let {
     label = 'I’m processing…',

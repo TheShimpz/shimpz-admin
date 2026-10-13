@@ -9,7 +9,7 @@
   import Composer from '#lib/chat/Composer.svelte';
   import Exchange from '#lib/chat/Exchange.svelte';
   import { snapshotIcon } from '#lib/chat/lifecycle/snapshot.js';
-  import { historyHead, listChatHistory } from '#lib/chatHistory.js';
+  import { historyHead, listChatHistory } from '#lib/chat/history.js';
   import {
     expiredTurns,
     friendlyChatError,
@@ -21,10 +21,10 @@
     projectedChatError,
     replyFields,
   } from '#lib/chat/turns.js';
-  import { clarifiedRequest, matchClarificationAnswers } from '#lib/clarification.js';
-  import { promptHistoryStep } from '#lib/promptHistory.js';
-  import ChatDay from '#lib/ChatDay.svelte';
-  import { calendarDay, exchangeDays, turnInstants, untilNextDay } from '#lib/chatDays.js';
+  import { clarifiedRequest, matchClarificationAnswers } from '#lib/chat/clarification.js';
+  import { promptHistoryStep } from '#lib/chat/prompts.js';
+  import ChatDay from '#lib/chat/Day.svelte';
+  import { calendarDay, exchangeDays, turnInstants, untilNextDay } from '#lib/chat/days.js';
   import { newerRoutineEntries } from '#lib/routines/protocol.js';
   import { questionWords } from '#lib/routines/words.js';
   import { showTeamRoutines } from '#lib/routineContext.js';
@@ -33,15 +33,15 @@
     createExecutionProjection,
     extendExecutionProjection,
     localizedEventLabel,
-  } from '#lib/executionProgress.js';
-  import { escapeMarkdownText } from '#lib/markdown.js';
+  } from '#lib/chat/progress/projection.js';
+  import { escapeMarkdownText } from '#lib/chat/markdown.js';
   import { locale, t } from '#lib/i18n/index.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
-  import { CLARIFICATION_LABELS } from '#lib/clarificationLabels.js';
+  import { CLARIFICATION_LABELS } from '#lib/chat/clarificationLabels.js';
   import { routineQuestionMessages } from '#lib/routineQuestionMessages.js';
   import { configureModelContext, loadModelContext, modelContext } from '#lib/brain/context.js';
   import { sessionContext } from '#lib/session/context.js';
-  import ShimpzThinking from '#lib/ShimpzThinking.svelte';
+  import ShimpzThinking from '#lib/chat/progress/Thinking.svelte';
   import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teams/context.js';
   import { ASSISTANT_LIMIT_REACHED } from '#lib/api.js';
   import {

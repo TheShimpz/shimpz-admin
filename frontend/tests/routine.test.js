@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { clockTime } from '../src/lib/chatDays.js';
-import { listChatHistory } from '../src/lib/chatHistory.js';
+import { clockTime } from '../src/lib/chat/days.js';
+import { listChatHistory } from '../src/lib/chat/history.js';
 import { parseChatEvent } from '../src/lib/chat/protocol.js';
 import { LocalApiError } from '../src/lib/api.js';
 import { humanizeId } from '../src/lib/ids.js';

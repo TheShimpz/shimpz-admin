@@ -7,7 +7,7 @@
     MAX_ARRIVED_RUNS,
     mergedRoutineRuns,
     routineRuns,
-  } from '#lib/chatHistory.js';
+  } from '#lib/chat/history.js';
   import { locale, t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
   import { assistantNames } from '#lib/assistants/names.js';
@@ -37,7 +37,7 @@
   import RoutineIcon from '#lib/RoutineIcon.svelte';
   import RoutineModal from '#lib/RoutineModal.svelte';
   import RoutineTag from '#lib/RoutineTag.svelte';
-  import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '#lib/taskUsage.js';
+  import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '#lib/chat/usage.js';
 
   // One Routine in full (ADR-0086, ADR-0092). While a run waits for the person, the whole panel is that decision and
   // nothing else: a held run's recovery choices or a frozen run's approval, with what it needs to decide. Once it is

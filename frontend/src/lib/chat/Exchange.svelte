@@ -1,21 +1,21 @@
 <script>
   import { Message } from '@shimpz/frontend';
-  import AttachmentChip from '#lib/AttachmentChip.svelte';
-  import { clockTime, instantValue } from '#lib/chatDays.js';
+  import AttachmentChip from '#lib/chat/attachments/Chip.svelte';
+  import { clockTime, instantValue } from '#lib/chat/days.js';
   import InstallPlan from '#lib/chat/lifecycle/InstallPlan.svelte';
   import Uninstall from '#lib/chat/lifecycle/Uninstall.svelte';
   import { shownUsage } from '#lib/chat/turns.js';
-  import ClarificationCard from '#lib/ClarificationCard.svelte';
-  import { clarifiedRequest } from '#lib/clarification.js';
-  import ExecutionReceipt from '#lib/ExecutionReceipt.svelte';
+  import ClarificationCard from '#lib/chat/ClarificationCard.svelte';
+  import { clarifiedRequest } from '#lib/chat/clarification.js';
+  import ExecutionReceipt from '#lib/chat/progress/Receipt.svelte';
   import { locale, t } from '#lib/i18n/index.js';
-  import Markdown from '#lib/Markdown.svelte';
-  import RestrictedActionsNote from '#lib/RestrictedActionsNote.svelte';
+  import Markdown from '#lib/chat/Markdown.svelte';
+  import RestrictedActionsNote from '#lib/chat/attachments/RestrictedNote.svelte';
   import { refusalWords } from '#lib/routines/words.js';
   import RoutineProposal from '#lib/RoutineProposal.svelte';
   import RoutineQuestion from '#lib/RoutineQuestion.svelte';
   import RoutineRunEntry from '#lib/RoutineRunEntry.svelte';
-  import { formatTaskUsage, formatTaskUsageDetail } from '#lib/taskUsage.js';
+  import { formatTaskUsage, formatTaskUsageDetail } from '#lib/chat/usage.js';
 
   // One exchange of a Team's transcript: a person's message and the reply that answered it, either of them alone. The
   // page owns the turns and every action; this shows them. `words` are the chat's (chat/turns.js); `instantOf` dates a

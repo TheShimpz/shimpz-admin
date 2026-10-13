@@ -6,7 +6,7 @@
     PromptDialog,
     TextLink,
   } from '@shimpz/frontend';
-  import AttachmentChip from '#lib/AttachmentChip.svelte';
+  import AttachmentChip from '#lib/chat/attachments/Chip.svelte';
   import { attachmentKind } from '#lib/chat/attachments/files.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n/index.js';

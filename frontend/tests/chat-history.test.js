@@ -11,7 +11,7 @@ import {
   MAX_REFRESH_PAGES,
   mergedRoutineRuns,
   routineRuns,
-} from '../src/lib/chatHistory.js';
+} from '../src/lib/chat/history.js';
 import { LocalApiError } from '../src/lib/api.js';
 
 const TURN_A = 'a'.repeat(32);

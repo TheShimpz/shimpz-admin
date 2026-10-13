@@ -1,5 +1,5 @@
-import { parseFileReferences } from './chat/attachments/files.js';
-import { parseRestrictedActions } from './chat/attachments/restricted.js';
+import { parseFileReferences } from './attachments/files.js';
+import { parseRestrictedActions } from './attachments/restricted.js';
 import { parseClarification, renderClarification } from './clarification.js';
 import {
   CHAT_TEXT_CONTROL_RE,
@@ -7,12 +7,12 @@ import {
   MAX_MESSAGE_CHARS,
   MAX_REPLY_CHARS,
   parseRoutineReply,
-} from './chat/protocol.js';
-import { parseRoutineRunEntry } from './routines/protocol.js';
-import { parseTaskUsage } from './taskUsage.js';
-import { synced } from './session/synced.js';
-import { ASSISTANT_LIMIT_REACHED, exactKeys, jsonObject, LocalApiError, safeApiError } from './api.js';
-import { codePointLength, isInstant } from './grammar.js';
+} from './protocol.js';
+import { parseRoutineRunEntry } from '../routines/protocol.js';
+import { parseTaskUsage } from './usage.js';
+import { synced } from '../session/synced.js';
+import { ASSISTANT_LIMIT_REACHED, exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
+import { codePointLength, isInstant } from '../grammar.js';
 import {
   ASSISTANT_ID_RE,
   MAX_TEAM_NAME_CHARS,
@@ -20,7 +20,7 @@ import {
   PUBLIC_CREATOR_RE,
   SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
-} from './ids.js';
+} from '../ids.js';
 
 const PUBLIC_TEXT_CONTROL_RE = /[\p{C}\p{Zl}\p{Zp}]/u;
 const ENTRY_ID_RE = /^([0-9a-f]{32}):(user|reply|install|uninstall|guidance|routine)$/;

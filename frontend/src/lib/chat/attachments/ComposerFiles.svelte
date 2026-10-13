@@ -1,6 +1,6 @@
 <script>
   import { Button } from '@shimpz/frontend';
-  import AttachmentChip from '#lib/AttachmentChip.svelte';
+  import AttachmentChip from '#lib/chat/attachments/Chip.svelte';
   import { t } from '#lib/i18n/index.js';
 
   // The message's files above its text: each chip, the files still being read or uploaded with their one cancel, the

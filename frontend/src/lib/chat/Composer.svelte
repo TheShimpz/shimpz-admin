@@ -3,7 +3,7 @@
   import { commandsReady } from '#lib/session/socket.js';
   import { MAX_ATTACHMENTS } from '#lib/chat/attachments/files.js';
   import BrainMenu from '#lib/brain/Menu.svelte';
-  import ComposerAttachments from '#lib/ComposerAttachments.svelte';
+  import ComposerAttachments from '#lib/chat/attachments/ComposerFiles.svelte';
   import FastRoutingMenu from '#lib/brain/FastRoutingMenu.svelte';
   import { t } from '#lib/i18n/index.js';
   import { modelContext } from '#lib/brain/context.js';

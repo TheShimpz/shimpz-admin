@@ -3,7 +3,7 @@
 // confirms the card Team recorded from a chat turn.
 
 import { isLocale } from '../i18n/locales.js';
-import { parseRunUsage } from '../taskUsage.js';
+import { parseRunUsage } from '../chat/usage.js';
 import { jsonObject } from '../api.js';
 import { codePointLength, isInstant } from '../grammar.js';
 import { DIGEST_RE, isActionId, isAssistantId, isIdentifier, OPAQUE_ID_RE, TEAM_ID_RE } from '../ids.js';

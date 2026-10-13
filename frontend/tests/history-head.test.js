@@ -4,7 +4,7 @@ import test, { mock } from 'node:test';
 import { get } from 'svelte/store';
 
 import { socketReads } from '../src/lib/session/socket.js';
-import { historyHead, MAX_REFRESH_PAGES } from '../src/lib/chatHistory.js';
+import { historyHead, MAX_REFRESH_PAGES } from '../src/lib/chat/history.js';
 import { RETRY_FIRST_MS } from '../src/lib/session/synced.js';
 
 const EPOCH = 'a'.repeat(32);

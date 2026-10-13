@@ -4,8 +4,8 @@
 
 import { parseFileDisclosure } from './attachments/files.js';
 import { parseRestrictedActions } from './attachments/restricted.js';
-import { parseClarification, renderClarification } from '../clarification.js';
-import { parseTaskUsage } from '../taskUsage.js';
+import { parseClarification, renderClarification } from './clarification.js';
+import { parseTaskUsage } from './usage.js';
 import {
   browserTimezone,
   parseRoutineProposal,

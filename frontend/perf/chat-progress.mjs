@@ -7,7 +7,7 @@
 import { chromium } from '@playwright/test';
 import { preview } from 'vite';
 import catalog from '../src/lib/brain/catalog.json' with { type: 'json' };
-import { receiptSteps } from '../src/lib/executionProgress.js';
+import { receiptSteps } from '../src/lib/chat/progress/projection.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 import { answerCalls, installSessionSocket } from './sessionSocket.js';
 

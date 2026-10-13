@@ -1,7 +1,7 @@
 <script>
   import { Notice } from '@shimpz/frontend';
-  import MarkdownInline from '#lib/MarkdownInline.svelte';
-  import { parseMarkdown } from '#lib/markdown.js';
+  import MarkdownInline from '#lib/chat/MarkdownInline.svelte';
+  import { parseMarkdown } from '#lib/chat/markdown.js';
 
   let { markdown = '', variant = 'body' } = $props();
   let blocks = $derived(parseMarkdown(markdown, { chatNotices: variant === 'chat' }));

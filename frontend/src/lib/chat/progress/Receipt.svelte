@@ -4,7 +4,7 @@
     formatExecutionDuration,
     localizedStepLabel,
     receiptSteps,
-  } from './executionProgress.js';
+  } from './projection.js';
 
   let {
     events = [],

@@ -4,8 +4,8 @@
   import { lifecycleStatus, lifecycleVisualState } from '#lib/chat/turns.js';
   import AssistantMeta from '#lib/chat/lifecycle/AssistantMeta.svelte';
   import DialogAction from '#lib/DialogAction.svelte';
-  import Markdown from '#lib/Markdown.svelte';
-  import { escapeMarkdownText } from '#lib/markdown.js';
+  import Markdown from '#lib/chat/Markdown.svelte';
+  import { escapeMarkdownText } from '#lib/chat/markdown.js';
   import { t } from '#lib/i18n/index.js';
 
   // One Assistant uninstall a chat turn proposed (ADR-0066): its card with Cancel and Uninstall while it waits for the
