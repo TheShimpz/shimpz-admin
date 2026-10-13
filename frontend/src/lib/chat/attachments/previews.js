@@ -1,7 +1,7 @@
 // Thumbnails of the images a sent message carried, kept for the Supervisor session in memory only (ADR-0093). Each is
 // drawn from Team's sanitized rendition of the stored file, never the original: Admin serves that rendition `no-store`,
-// and the browser keeps only a small re-encoding of it, at most THUMBNAIL_EDGE device pixels on its long edge and never
-// larger than the rendition, as an object URL. At most MAX_LOADING renditions load at once and at most MAX_PREVIEWS
+// and the browser keeps only a small square re-encoding of its centre, at most THUMBNAIL_EDGE device pixels a side and
+// never larger than the rendition, as an object URL, with the rendition's own size for the viewer. At most MAX_LOADING renditions load at once and at most MAX_PREVIEWS
 // thumbnails are kept: one no message shows is evicted least recently used first, and beyond the bound a message keeps
 // its card. Every session check clears them, and a load that settles after one is discarded.
 import { attachmentKind, MAX_IMAGE_BYTES } from './files.js';
@@ -9,7 +9,7 @@ import { OPAQUE_ID_RE, TEAM_ID_RE } from '../../ids.js';
 
 export const MAX_PREVIEWS = 48;
 export const MAX_LOADING = 2;
-export const THUMBNAIL_EDGE = 480;
+export const THUMBNAIL_EDGE = 320;
 // Team's rendition never exceeds these (Team protocol/http/v1/turn.py); a larger answer is refused before it is drawn.
 const RENDITION_EDGE = 1_568;
 const RENDITION_PIXELS = 1_200_000;
@@ -43,9 +43,18 @@ export function previewable(teamId, file) {
 }
 
 /** The thumbnail's size: the rendition's own proportions, its long edge at most `edge`, never upscaled. */
-export function thumbnailSize(width, height, edge = THUMBNAIL_EDGE) {
-  const scale = Math.min(1, edge / Math.max(width, height));
-  return { width: Math.max(1, Math.round(width * scale)), height: Math.max(1, Math.round(height * scale)) };
+/**
+ * The centred square of a rendition that a thumbnail shows, filling its box edge to edge: the square's corner and side
+ * in the rendition, and the thumbnail's side, at most `edge` and never upscaled.
+ */
+export function squareCrop(width, height, edge = THUMBNAIL_EDGE) {
+  const side = Math.min(width, height);
+  return {
+    x: Math.floor((width - side) / 2),
+    y: Math.floor((height - side) / 2),
+    side,
+    size: Math.max(1, Math.min(edge, side)),
+  };
 }
 
 function abortError() {
@@ -89,19 +98,19 @@ export async function drawThumbnail(url, signal) {
     if (width < 1 || height < 1 || Math.max(width, height) > RENDITION_EDGE || width * height > RENDITION_PIXELS) {
       throw new Error('The image preview is invalid.');
     }
-    const size = thumbnailSize(width, height);
-    const bitmap = await createImageBitmap(image, {
-      resizeWidth: size.width,
-      resizeHeight: size.height,
+    const crop = squareCrop(width, height);
+    const bitmap = await createImageBitmap(image, crop.x, crop.y, crop.side, crop.side, {
+      resizeWidth: crop.size,
+      resizeHeight: crop.size,
       resizeQuality: 'high',
     });
     try {
       if (signal.aborted) throw abortError();
       const canvas = document.createElement('canvas');
-      canvas.width = size.width;
-      canvas.height = size.height;
+      canvas.width = crop.size;
+      canvas.height = crop.size;
       canvas.getContext('2d').drawImage(bitmap, 0, 0);
-      return { blob: await encoded(canvas), ...size };
+      return { blob: await encoded(canvas), width, height };
     } finally {
       bitmap.close();
     }

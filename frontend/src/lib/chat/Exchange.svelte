@@ -247,12 +247,17 @@
     text-transform: uppercase;
   }
 
+  /* Image thumbnails sit side by side at their fixed size; a file's card takes a wider share of the row. */
   .message-attachments {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 12rem), 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
     gap: var(--gap-item);
     margin: var(--gap-item) 0 0;
     padding: 0;
     list-style: none;
   }
+
+  .message-attachments > :global(.attachment-chip) { flex: 1 1 12rem; min-width: min(100%, 12rem); }
+  .message-attachments > :global(.attachment-thumbnail) { flex: 0 0 auto; }
 </style>

@@ -53,9 +53,9 @@ test('a sent image opens from its thumbnail and every way of closing it gives fo
   const opener = message.getByRole('button', { name: open('Harbour at dusk.jpg'), exact: true });
   await expect(opener.getByRole('img', { name: 'Harbour at dusk.jpg' })).toBeVisible();
   await expect(message.getByRole('button', { name: open('Team portrait.png'), exact: true })).toBeVisible();
-  // The thumbnail is the rendition's own proportions at 480 device pixels, drawn from one image load of it.
+  // The thumbnail is the rendition's centred square at 320 device pixels, drawn from one image load of it.
   const shape = await opener.getByRole('img').evaluate((image) => [image.naturalWidth, image.naturalHeight]);
-  expect(shape).toEqual([480, 320]);
+  expect(shape).toEqual([320, 320]);
   await expect.poll(() => requests.map((request) => request.path.split('/')[5]).sort()).toEqual(
     [PREVIEW_IMAGES.landscape, PREVIEW_IMAGES.portrait, PREVIEW_IMAGES.collected].sort(),
   );
