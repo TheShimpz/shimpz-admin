@@ -105,6 +105,7 @@
     {:else}
       <ComposerAttachments
         items={files.items}
+        teamId={files.teamId}
         progress={files.progress}
         reading={files.reading}
         error={files.error}

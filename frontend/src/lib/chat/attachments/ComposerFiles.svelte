@@ -1,12 +1,13 @@
 <script>
   import { Button } from '@shimpz/frontend';
-  import AttachmentChip from '#lib/chat/attachments/Chip.svelte';
+  import AttachmentTile from '#lib/chat/attachments/Tile.svelte';
   import { t } from '#lib/i18n/index.js';
 
-  // The message's files above its text: each chip, the files still being read or uploaded with their one cancel, the
-  // last refusal in plain words, and the reminder that files are read only in this message (ADR-0093).
+  // The message's files above its text, on their own ground: each a square tile as a sent message shows it, the files
+  // still being read or uploaded with their one cancel, and the last refusal in plain words (ADR-0093).
   let {
     items = [],
+    teamId = null,
     progress = null,
     reading = false,
     error = '',
@@ -22,14 +23,7 @@
     {#if items.length}
       <ul class="attachment-list" aria-label={copy.list}>
         {#each items as item (item.key)}
-          <AttachmentChip
-            name={item.name}
-            size={item.size}
-            kind={item.kind}
-            note={item.note}
-            state={item.state}
-            onremove={() => onremove(item.key)}
-          />
+          <AttachmentTile {teamId} file={item} status={item.state} onremove={() => onremove(item.key)} />
         {/each}
       </ul>
     {/if}
@@ -46,22 +40,22 @@
     {#if error}
       <p class="attachment-error" role="alert">{error}</p>
     {/if}
-    {#if items.length}
-      <p class="attachment-hint">{copy.hint}</p>
-    {/if}
   </div>
 {/if}
 
 <style>
+  /* The files sit on a ground of their own, set apart from the message text below them. */
   .composer-attachments {
     display: grid;
     gap: var(--gap-item);
-    padding: var(--gap-item) var(--gap-group) 0;
+    padding: var(--gap-item) var(--gap-group);
+    border-block-end: 1px solid var(--shimpz-color-border);
+    background: color-mix(in srgb, var(--shimpz-color-text) 7%, var(--shimpz-color-bg));
   }
 
   .attachment-list {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(min(100%, 13rem), 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(4rem, 5rem));
     gap: var(--gap-item);
     margin: 0;
     padding: 0;
@@ -82,13 +76,6 @@
     margin: 0;
     color: var(--shimpz-color-danger);
     font-size: 0.78rem;
-    line-height: 1.45;
-  }
-
-  .attachment-hint {
-    margin: 0;
-    color: var(--shimpz-color-text-dim);
-    font-size: 0.72rem;
     line-height: 1.45;
   }
 </style>

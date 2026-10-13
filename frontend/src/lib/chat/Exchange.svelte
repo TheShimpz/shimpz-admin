@@ -1,8 +1,6 @@
 <script>
   import { Message } from '@shimpz/frontend';
-  import AttachmentChip from '#lib/chat/attachments/Chip.svelte';
-  import AttachmentThumbnail from '#lib/chat/attachments/Thumbnail.svelte';
-  import { previewable } from '#lib/chat/attachments/previews.js';
+  import AttachmentTile from '#lib/chat/attachments/Tile.svelte';
   import { clockTime, instantValue } from '#lib/chat/days.js';
   import InstallPlan from '#lib/chat/lifecycle/InstallPlan.svelte';
   import Uninstall from '#lib/chat/lifecycle/Uninstall.svelte';
@@ -77,11 +75,7 @@
       {#if userTurn.files}
         <ul class="message-attachments" aria-label={$t('attachments').list}>
           {#each userTurn.files as file (file.key)}
-            {#if previewable(teamId, file)}
-              <AttachmentThumbnail {teamId} {file} />
-            {:else}
-              <AttachmentChip name={file.name} size={file.size} kind={file.kind} note={file.note} sent />
-            {/if}
+            <AttachmentTile {teamId} {file} />
           {/each}
         </ul>
       {/if}
@@ -247,49 +241,15 @@
     text-transform: uppercase;
   }
 
-  /* Every attachment of a sent message is the same square in one grid: an image shows its thumbnail, any other file
-     its type mark with its type and size; a name shows as a label over the square's foot on hover. */
+  /* Every attachment of a sent message is the same square tile in one grid whose filled columns stretch to the card's
+     edge, a tile never wider than 8rem. */
   .message-attachments {
     display: grid;
-    grid-template-columns: repeat(auto-fill, 8rem);
+    grid-template-columns: repeat(auto-fit, minmax(4rem, 1fr));
     gap: var(--gap-item);
     margin: var(--gap-item) 0 0;
     padding: 0;
     list-style: none;
   }
 
-  .message-attachments > :global(.attachment-chip) {
-    position: relative;
-    display: grid;
-    width: 8rem;
-    height: 8rem;
-    grid-template-columns: minmax(0, 1fr);
-    align-content: center;
-    justify-items: center;
-    gap: var(--gap-inside);
-    padding: var(--gap-item);
-    overflow: hidden;
-  }
-
-  .message-attachments > :global(.attachment-chip .attachment-mark) { width: 2rem; height: 2rem; }
-
-  .message-attachments > :global(.attachment-chip .attachment-text) { display: contents; }
-
-  .message-attachments > :global(.attachment-chip .attachment-details) { text-align: center; }
-
-  .message-attachments > :global(.attachment-chip .attachment-name) {
-    position: absolute;
-    inset: auto 0 0;
-    padding: var(--gap-inside) var(--gap-item);
-    overflow: hidden;
-    color: var(--shimpz-color-text);
-    background: color-mix(in srgb, var(--shimpz-color-bg) 78%, transparent);
-    font-size: 0.62rem;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    opacity: 0;
-    transition: opacity var(--shimpz-duration-fast) var(--shimpz-ease);
-  }
-
-  .message-attachments > :global(.attachment-chip:hover .attachment-name) { opacity: 1; }
 </style>

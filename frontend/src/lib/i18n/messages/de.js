@@ -636,7 +636,6 @@ export default {
     removeNamed: '{name} aus der Nachricht entfernen',
     openImage: '{name} öffnen',
     closeImage: 'Schließen',
-    hint: 'Dateien werden nur in dieser Nachricht gelesen. Wähle sie erneut aus, um sie später zu nutzen.',
     drop: 'Dateien zum Anhängen ablegen',
     reading: 'Dateien werden gelesen…',
     uploading: '{current} von {total} wird hochgeladen…',

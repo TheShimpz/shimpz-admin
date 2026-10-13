@@ -3566,9 +3566,9 @@ test('the elapsed time of a turn keeps counting across an Action request it wait
 
   const thinking = page.getByRole('group', { name: 'I’m processing…' });
   const elapsed = thinking.getByTitle('Elapsed time');
-  await expect(elapsed).toHaveText(/\b7 s$/);
+  await expect(elapsed).toHaveText(/^7 s\b/);
   await page.clock.runFor(1_000);
-  await expect(elapsed).toHaveText(/\b8 s$/);
+  await expect(elapsed).toHaveText(/^8 s\b/);
 });
 
 test('closes and reconciles an expired Action human request', async ({ page }) => {

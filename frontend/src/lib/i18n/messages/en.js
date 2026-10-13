@@ -649,7 +649,6 @@ export default {
     removeNamed: 'Remove {name} from message',
     openImage: 'Open {name}',
     closeImage: 'Close',
-    hint: 'Files are read only in this message. Select them again to use them later.',
     drop: 'Drop files to attach',
     reading: 'Reading files…',
     uploading: 'Uploading {current} of {total}…',
