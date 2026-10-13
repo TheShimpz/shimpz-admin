@@ -41,7 +41,7 @@
   /* The label and the track glitch in quick cyan and magenta bursts, a beat apart. The track glitches through a wrapper,
      so the glitch's slices never replace the track's own shape. */
   .label {
-    animation: loader-glitch 1.1s steps(1, end) infinite;
+    animation: loader-glitch 1.43s steps(1, end) infinite;
     color: var(--shimpz-color-text-muted);
     font: 700 0.72rem/1.2 var(--shimpz-font-mono);
     letter-spacing: 0.12em;
@@ -51,7 +51,7 @@
 
   .glitch {
     display: grid;
-    animation: loader-glitch 1.1s 0.12s steps(1, end) infinite;
+    animation: loader-glitch 1.43s 0.16s steps(1, end) infinite;
   }
 
   /* A chamfered track, which a cyan scan crosses again and again, entering and leaving it whole. */
