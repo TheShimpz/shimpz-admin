@@ -1,6 +1,8 @@
-"""A Team's files: the bounded browser upload stays HTTP; listing and deleting their metadata are session calls."""
+"""A Team's files: the bounded browser upload and an image's preview stay HTTP; their metadata are session calls."""
 
+import browser
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, Response
 from python_multipart.exceptions import ParseError
 from starlette.concurrency import run_in_threadpool
 from starlette.datastructures import UploadFile
@@ -73,6 +75,7 @@ async def bounded_multipart_file(request: Request) -> tuple[str, str, bytes]:
 
 def register(app: FastAPI) -> None:
     app.add_api_route("/api/teams/{team_id}/files", team_file_upload, methods=["POST"])
+    app.add_api_route("/api/teams/{team_id}/files/{file_id}/preview", team_file_preview, methods=["GET"])
 
 
 def team_files_list(team_id: str):
@@ -86,3 +89,19 @@ async def team_file_upload(team_id: str, request: Request):
 
 def team_file_delete(team_id: str, file_id: str):
     return team_http.response(lambda: team.delete_file(team_id, file_id))
+
+
+def team_file_preview(team_id: str, file_id: str, request: Request) -> Response:
+    """One Team file's sanitized image rendition for Admin's own page, never cached (ADR-0093).
+
+    Only the page's own image load or script read reaches Team; Admin forwards exactly a JPEG or PNG within the preview
+    bound, and otherwise a closed refusal.
+    """
+    headers = {"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"}
+    if not browser.same_origin_image(request):
+        return JSONResponse(status_code=403, content={"detail": "browser origin is not admitted"}, headers=headers)
+    with team_http.refused_as_bad_request():
+        result = team.file_preview(team_id, file_id)
+    if result.contents is None:
+        return JSONResponse(status_code=result.status, content=result.error, headers=headers)
+    return Response(content=result.contents, status_code=200, media_type=result.media_type, headers=headers)

@@ -173,6 +173,17 @@ def from_admin_page(request: Request, admitted_origins: Callable[[], frozenset[s
     return True
 
 
+def same_origin_image(request: Request) -> bool:
+    """Whether the browser says Admin's own page loads this as an image or reads it from a script (Fetch Metadata).
+
+    Exactly one `Sec-Fetch-Site: same-origin` and one `Sec-Fetch-Dest` of `image` or `empty` admit it; a navigation,
+    a frame, another site's page, and a client that sends neither header do not.
+    """
+    sites = request.headers.getlist("sec-fetch-site")
+    destinations = request.headers.getlist("sec-fetch-dest")
+    return sites == ["same-origin"] and len(destinations) == 1 and destinations[0] in {"image", "empty"}
+
+
 def oauth_completion_mode(select_mode: Callable[[], str]) -> str | None:
     """Project Admin's page-origin decision before the browser needs popup activation."""
     try:

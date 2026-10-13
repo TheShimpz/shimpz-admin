@@ -764,12 +764,14 @@ def _probe_routes(admin_app, token: str) -> dict[str, object]:
     routes = {
         (route.path, method) for route in admin_app.app.routes for method in (getattr(route, "methods", None) or set())
     }
-    # Only binary bytes stay HTTP: icons and file uploads. Every other Team and Assistant operation is a session call.
+    # Only binary bytes stay HTTP: icons, file uploads, and file previews. Every other Team and Assistant operation is a
+    # session call.
     expected = {
         ("/api/assistants/{assistant_id}/catalog-icon", "GET"),
         ("/api/teams/{team_id}/assistants/{assistant_id}/icon", "GET"),
         ("/api/local-assistants/{image_hash}/icon", "GET"),
         ("/api/teams/{team_id}/files", "POST"),
+        ("/api/teams/{team_id}/files/{file_id}/preview", "GET"),
     }
     status, body = asyncio.run(_asgi_request(admin_app, "GET", "/api/teams/team_1/assistants/hello-pulse/icon"))
     action_status, _action_body = asyncio.run(

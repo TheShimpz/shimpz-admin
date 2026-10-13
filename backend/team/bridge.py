@@ -33,6 +33,7 @@ _call = transport._call
 _call_raw = transport._call_raw
 _call_stream = transport._call_stream
 _call_asset = transport._call_asset
+_call_preview = transport._call_preview
 supervisor_session = transport.supervisor_session
 
 MAX_CHAT_JSON_BODY_BYTES = 128 * 1024
@@ -640,3 +641,30 @@ def delete_file(team_id: object, file_id: object) -> TeamResponse:
         kind="delete",
         expected_file_id=canonical_file_id,
     )
+
+
+# The closed refusals of a file preview Admin forwards: the file is absent or collected, has no preview, or the preview
+# could not run now; Team's busy answer keeps its bounded retry delay. Anything else is Team being unavailable.
+_PREVIEW_REFUSALS = {
+    404: frozenset({"file-not-found", "team-not-found"}),
+    422: frozenset({"file-preview-unsupported"}),
+    503: frozenset({"file-preview-busy", "file-preview-unavailable"}),
+}
+MAX_PREVIEW_RETRY_MS = 2000
+
+
+def file_preview(team_id: object, file_id: object) -> TeamAssetResponse:
+    """One Team file's sanitized image rendition, or its closed refusal (ADR-0093)."""
+    canonical_id = canonical_team_id(team_id)
+    canonical_file_id = payloads._canonical_id(file_id, field="file id", pattern=_FILE_ID_RE, maximum=32)
+    response = _call_preview(f"{_files_path(canonical_id, canonical_file_id)}/preview")
+    if response.contents is not None:
+        return response
+    code = response.error.get("code")
+    if response.status not in _PREVIEW_REFUSALS or code not in _PREVIEW_REFUSALS[response.status]:
+        return TeamAssetResponse(502, None, {"detail": "team unavailable"})
+    error: dict[str, object] = {"detail": "file preview unavailable", "code": code}
+    retry = response.error.get("retry_after_ms")
+    if code == "file-preview-busy" and type(retry) is int and 1 <= retry <= MAX_PREVIEW_RETRY_MS:
+        error["retry_after_ms"] = retry
+    return TeamAssetResponse(response.status, None, error)

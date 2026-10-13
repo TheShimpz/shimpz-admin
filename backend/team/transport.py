@@ -17,6 +17,7 @@ from urllib.parse import quote, urlparse
 import models
 import supervisor as local_supervisor
 
+from protocol.http.v1 import preview as preview_contract
 from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import supervisor as supervisor_contract
 from protocol.http.v1 import websocket as team_http
@@ -101,6 +102,7 @@ class TeamAssetResponse:
     status: int
     contents: bytes | None
     error: dict[str, object]
+    media_type: str = "image/png"
 
 
 ProgressSink = Callable[[dict[str, object]], None]
@@ -477,41 +479,54 @@ def _request(
     )
 
 
-def _decode_asset(response: http.client.HTTPResponse) -> TeamAssetResponse:
+def _decode_image(response: http.client.HTTPResponse, media_types: frozenset[str], maximum: int) -> TeamAssetResponse:
+    """One exactly framed image Team sent, or its JSON error; anything else is an invalid answer."""
     if response.status != HTTPStatus.OK:
         return TeamAssetResponse(response.status, None, _decode_response(response))
     content_type = (response.getheader("Content-Type") or "").partition(";")[0].strip().lower()
     raw_length = response.getheader("Content-Length")
-    if content_type != "image/png" or raw_length is None:
+    if content_type not in media_types or raw_length is None:
         raise OSError("invalid Team asset response")
     try:
         length = int(raw_length)
     except ValueError as exc:
         raise OSError("invalid Team asset response") from exc
-    if not 1 <= length <= MAX_ASSISTANT_ICON_BYTES:
+    if not 1 <= length <= maximum:
         raise OSError("invalid Team asset response")
-    contents = response.read(MAX_ASSISTANT_ICON_BYTES + 1)
+    contents = response.read(maximum + 1)
     if len(contents) != length:
         raise OSError("invalid Team asset response")
-    return TeamAssetResponse(HTTPStatus.OK, contents, {})
+    return TeamAssetResponse(HTTPStatus.OK, contents, {}, content_type)
 
 
-_ASSET_READING = _Reading(
-    "image/png",
-    _decode_asset,
-    lambda: TeamAssetResponse(HTTPStatus.BAD_GATEWAY, None, {"detail": "team unavailable"}),
-    "Team asset request",
-)
+def _decode_asset(response: http.client.HTTPResponse) -> TeamAssetResponse:
+    return _decode_image(response, frozenset({"image/png"}), MAX_ASSISTANT_ICON_BYTES)
 
 
-def _request_asset(method: str, path: str) -> TeamAssetResponse:
+def _decode_preview(response: http.client.HTTPResponse) -> TeamAssetResponse:
+    """A file preview: exactly a JPEG or PNG within the preview bound whose bytes carry that type's signature."""
+    result = _decode_image(response, frozenset(preview_contract.SIGNATURES), preview_contract.MAX_PREVIEW_BYTES)
+    if result.contents is not None and not result.contents.startswith(preview_contract.SIGNATURES[result.media_type]):
+        raise OSError("invalid Team asset response")
+    return result
+
+
+def _asset_unavailable() -> TeamAssetResponse:
+    return TeamAssetResponse(HTTPStatus.BAD_GATEWAY, None, {"detail": "team unavailable"})
+
+
+_ASSET_READING = _Reading("image/png", _decode_asset, _asset_unavailable, "Team asset request")
+_PREVIEW_READING = _Reading("image/jpeg, image/png", _decode_preview, _asset_unavailable, "Team file preview request")
+
+
+def _request_asset(method: str, path: str, reading: _Reading[TeamAssetResponse] = _ASSET_READING) -> TeamAssetResponse:
     return _exchange(
         method,
         path,
         _Entity(None, None),
         timeout=CONTROL_TIMEOUT_SECONDS,
         bindings=_NO_BINDINGS,
-        reading=_ASSET_READING,
+        reading=reading,
     )
 
 
@@ -599,6 +614,10 @@ def _call(
 
 def _call_asset(path: str) -> TeamAssetResponse:
     return _request_asset("GET", path)
+
+
+def _call_preview(path: str) -> TeamAssetResponse:
+    return _request_asset("GET", path, _PREVIEW_READING)
 
 
 def _call_stream(
