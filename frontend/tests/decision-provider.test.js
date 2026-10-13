@@ -10,7 +10,7 @@ import {
   loadDecisionProvider,
   removeDecisionKey,
   saveDecisionKey,
-} from '../src/lib/decisionProvider.js';
+} from '../src/lib/brain/decision.js';
 import { recorder, response, via } from './socketStub.js';
 
 const KEY = 'test-typesafe-key-word';

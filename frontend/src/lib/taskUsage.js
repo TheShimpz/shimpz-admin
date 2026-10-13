@@ -1,6 +1,6 @@
 // What one chat task cost: the model tokens every Brain call of the turn used and how long the turn took. Cost is an
 // estimate from the reviewed catalog prices; a model the catalog does not price contributes tokens but no cost.
-import MODEL_CATALOG from './modelCatalog.json' with { type: 'json' };
+import MODEL_CATALOG from './brain/catalog.json' with { type: 'json' };
 import { isCount } from './grammar.js';
 
 const MAX_DURATION_MS = 24 * 60 * 60 * 1000;

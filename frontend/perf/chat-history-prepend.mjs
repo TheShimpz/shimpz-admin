@@ -15,7 +15,7 @@
 // SHIMPZ_HISTORY_EXHAUST=1 makes the measured page the oldest one, so its prepend also removes the history sentinel.
 import { chromium } from '@playwright/test';
 import { preview } from 'vite';
-import catalog from '../src/lib/modelCatalog.json' with { type: 'json' };
+import catalog from '../src/lib/brain/catalog.json' with { type: 'json' };
 import { answerCalls, installSessionSocket } from './sessionSocket.js';
 
 const team = { team_id: 'perf_team', team_name: 'Performance Team', status: 'running' };

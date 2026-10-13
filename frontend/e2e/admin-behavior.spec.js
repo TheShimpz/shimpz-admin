@@ -36,7 +36,7 @@ async function routineNotice(page) {
 const HISTORY_AT = '2026-10-01T12:00:00Z';
 
 const modelCatalog = JSON.parse(
-  readFileSync(new URL('../src/lib/modelCatalog.json', import.meta.url), 'utf8'),
+  readFileSync(new URL('../src/lib/brain/catalog.json', import.meta.url), 'utf8'),
 );
 
 function localSession(overrides = {}) {

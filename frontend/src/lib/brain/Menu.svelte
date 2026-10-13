@@ -3,9 +3,9 @@
 
   import { showAdminNotice } from '#lib/shell/notice.js';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
-  import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/composerPanel.js';
+  import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/brain/panel.js';
   import { t } from '#lib/i18n.js';
-  import { modelContext, selectTeamBrain } from '#lib/modelContext.js';
+  import { modelContext, selectTeamBrain } from '#lib/brain/context.js';
   import { teamContext } from '#lib/teams/context.js';
 
   let { disabled = false } = $props();

@@ -12,10 +12,10 @@
   import BootScreen from '#lib/shell/BootScreen.svelte';
   import { clearAdminNotice } from '#lib/shell/notice.js';
   import { clearAssistantSources } from '#lib/assistantSources.js';
-  import { forgetDecisionProvider } from '#lib/decisionProvider.js';
+  import { forgetDecisionProvider } from '#lib/brain/decision.js';
   import { locale, LOCALES, t } from '#lib/i18n.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
-  import { clearModelContext, modelContext } from '#lib/modelContext.js';
+  import { clearModelContext, modelContext } from '#lib/brain/context.js';
   import { authenticateWithPasskey, passkeyFailure, registerPasskey } from '#lib/auth/passkey.js';
   import { clearTeamRoutines } from '#lib/routineContext.js';
   import { clearSecuritySummary, recoveryCodes as validRecoveryCodes } from '#lib/auth/security.js';

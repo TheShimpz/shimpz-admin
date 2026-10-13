@@ -1,6 +1,6 @@
-import { socketReads } from './session/socket.js';
-import { synced } from './session/synced.js';
-import { exactKeys, jsonObject, LocalApiError, safeApiError } from './api.js';
+import { socketReads } from '../session/socket.js';
+import { synced } from '../session/synced.js';
+import { exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
 
 // The Supervisor's optional TypeSafe key for the Jev intent fast path (ADR-0077). Only masked metadata crosses here.
 const PROVIDER = 'typesafe';

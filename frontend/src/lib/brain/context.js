@@ -4,10 +4,10 @@
 // selection and its provider's key, whichever tab or lost answer stored them.
 import { derived, get, writable } from 'svelte/store';
 
-import { listModelProviders, loadInference, saveModelSetup } from './modelProviders.js';
-import { synced } from './session/synced.js';
-import { LocalApiError, publicError } from './api.js';
-import { TEAM_ID_RE } from './ids.js';
+import { listModelProviders, loadInference, saveModelSetup } from './providers.js';
+import { synced } from '../session/synced.js';
+import { LocalApiError, publicError } from '../api.js';
+import { TEAM_ID_RE } from '../ids.js';
 
 function emptyContext() {
   return {

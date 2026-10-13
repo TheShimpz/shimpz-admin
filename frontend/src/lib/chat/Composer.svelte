@@ -2,11 +2,11 @@
   import { Button, FileInput, Notice, TextAreaField, TextField, Toolbar } from '@shimpz/frontend';
   import { commandsReady } from '#lib/session/socket.js';
   import { MAX_ATTACHMENTS } from '#lib/chat/attachments/files.js';
-  import BrainMenu from '#lib/BrainMenu.svelte';
+  import BrainMenu from '#lib/brain/Menu.svelte';
   import ComposerAttachments from '#lib/ComposerAttachments.svelte';
-  import FastRoutingMenu from '#lib/FastRoutingMenu.svelte';
+  import FastRoutingMenu from '#lib/brain/FastRoutingMenu.svelte';
   import { t } from '#lib/i18n.js';
-  import { modelContext } from '#lib/modelContext.js';
+  import { modelContext } from '#lib/brain/context.js';
 
   // The chat's composer: the message with its files, or the Brain's key while the selected provider has none, and its
   // tools (attach, the Brain and fast-routing menus, Integrations), then Send, or Stop while a turn runs. The page owns

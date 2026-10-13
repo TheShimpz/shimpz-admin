@@ -9,7 +9,7 @@
     clearModelContext,
     loadModelContext,
     modelContext,
-  } from '#lib/modelContext.js';
+  } from '#lib/brain/context.js';
   import { loadTeamContext, selectTeam, teamContext } from '#lib/teams/context.js';
   import { TEAM_ID_RE } from '#lib/ids.js';
 

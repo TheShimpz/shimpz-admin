@@ -1,7 +1,7 @@
 // Admin API scenarios shared by the browser tests and the preview (ADR-0087). A scenario is a pure factory: each call
 // returns fresh state, answers only the requests it declares, and returns null for anything else so the caller fails
 // closed. Nothing here reaches a real Admin, Team, Brain, or provider.
-import modelCatalog from '../src/lib/modelCatalog.json' with { type: 'json' };
+import modelCatalog from '../src/lib/brain/catalog.json' with { type: 'json' };
 import { attachmentReply, fileApprovalChallenge, recordAttachedTurn, uploadFile } from './attachmentScenarios.js';
 import { catalogBindingAnswer, catalogImageAnswer, catalogInventory, catalogSnapshots } from './catalogScenario.js';
 import { localizedChallenge } from './localizedRequest.js';

@@ -3,8 +3,8 @@
   import { Button, StatusBadge, TextField, TextLink } from '@shimpz/frontend';
 
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
-  import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/composerPanel.js';
-  import { decisionProvider, removeDecisionKey, saveDecisionKey } from '#lib/decisionProvider.js';
+  import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/brain/panel.js';
+  import { decisionProvider, removeDecisionKey, saveDecisionKey } from '#lib/brain/decision.js';
   import { t } from '#lib/i18n.js';
 
   // The optional Jev key (ADR-0077) in its own composer control. Only Local Admin custodies it; the caller renders

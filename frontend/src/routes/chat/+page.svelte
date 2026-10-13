@@ -39,7 +39,7 @@
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { CLARIFICATION_LABELS } from '#lib/clarificationLabels.js';
   import { routineQuestionMessages } from '#lib/routineQuestionMessages.js';
-  import { configureModelContext, loadModelContext, modelContext } from '#lib/modelContext.js';
+  import { configureModelContext, loadModelContext, modelContext } from '#lib/brain/context.js';
   import { sessionContext } from '#lib/session/context.js';
   import ShimpzThinking from '#lib/ShimpzThinking.svelte';
   import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teams/context.js';

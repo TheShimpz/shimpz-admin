@@ -15,7 +15,7 @@ import { networkInterfaces } from 'node:os';
 import { performance } from 'node:perf_hooks';
 import { crc32, deflateSync } from 'node:zlib';
 import { preview } from 'vite';
-import modelCatalog from '../src/lib/modelCatalog.json' with { type: 'json' };
+import modelCatalog from '../src/lib/brain/catalog.json' with { type: 'json' };
 import { installSessionSocket } from './sessionSocket.js';
 
 if (Number(process.versions.node.split('.')[0]) !== 26) throw new Error('This benchmark requires Node.js 26.');

@@ -6,7 +6,7 @@ import { accessibilityViolations } from './axe.js';
 import { readsOf, routeChat, routeRead, waitForRead } from './scenarioRoutes.js';
 
 const modelCatalog = JSON.parse(
-  readFileSync(new URL('../src/lib/modelCatalog.json', import.meta.url), 'utf8'),
+  readFileSync(new URL('../src/lib/brain/catalog.json', import.meta.url), 'utf8'),
 );
 
 function localSession(overrides = {}) {

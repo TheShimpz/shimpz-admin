@@ -10,7 +10,7 @@ import {
   loadModelContext,
   modelContext,
   selectTeamBrain,
-} from '../src/lib/modelContext.js';
+} from '../src/lib/brain/context.js';
 import { RETRY_FIRST_MS } from '../src/lib/session/synced.js';
 import { LocalApiError } from '../src/lib/api.js';
 import { response } from './socketStub.js';

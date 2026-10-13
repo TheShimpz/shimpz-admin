@@ -5,7 +5,7 @@ import {
   listModelProviders,
   loadInference,
   saveModelSetup,
-} from '../src/lib/modelProviders.js';
+} from '../src/lib/brain/providers.js';
 import { response, via } from './socketStub.js';
 
 const providers = [
