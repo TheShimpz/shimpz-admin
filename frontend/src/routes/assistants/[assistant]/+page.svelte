@@ -151,6 +151,13 @@
   let isLocal = $derived(target.mode === 'local' || (target.mode === 'installed' && installed?.provenance === 'local'));
   let refused = $derived(target.mode === 'local' && detailsPhase === 'refused');
   let loading = $derived(!sourcesSettled || $teamContext.phase === 'idle' || $teamContext.phase === 'loading');
+  // Nothing appears piece by piece: until the Team and the Assistant's sources are known a skeleton in the page's own
+  // shape stands in for all of it; then the icon, name, and action show together, and until the details arrive their
+  // line and the page body stay skeletons.
+  let pending = $derived(loading);
+  let detailsPending = $derived(
+    !loading && validAssistant && !['missing', 'unverified'].includes(target.mode) && detailsPhase === 'loading',
+  );
 
   let dialogTitle = $derived(
     dialogAction === 'uninstall'
@@ -458,16 +465,47 @@
 
 <svelte:head><title>{shownName} — Shimpz Admin</title></svelte:head>
 
-<article class="sheet" aria-busy={loading || detailsPhase === 'loading'}>
+{#snippet bodySkeleton()}
+  <div class="layout" aria-hidden="true">
+    <div class="main">
+      <div class="block">
+        <Skeleton height="1.6rem" width="70%" />
+        <Skeleton height="1rem" width="92%" />
+        <Skeleton height="1rem" width="88%" />
+        <Skeleton height="1rem" width="60%" />
+      </div>
+      <div class="block lists">
+        {#each [1, 2, 3] as row (row)}<Skeleton height="3.3rem" />{/each}
+      </div>
+    </div>
+    <aside class="rail"><Skeleton height="6.6rem" /></aside>
+  </div>
+{/snippet}
+
+<article class="sheet" aria-busy={pending || detailsPending}>
   <header class="hero">
     <TextLink class="back" href={`/assistants/${activeTeam ? `?team=${encodeURIComponent(activeTeam.id)}` : ''}`}>
       <span aria-hidden="true">‹</span> {pageCopy.back}
     </TextLink>
+    {#if pending}
+      <div class="hero-row" aria-hidden="true">
+        <Skeleton class="icon-skeleton" width="6rem" height="6rem" />
+        <div class="identity">
+          <Skeleton height="2.4rem" width="min(18rem, 100%)" />
+          <Skeleton class="tags-skeleton" height="0.8rem" width="min(12rem, 70%)" />
+        </div>
+        <Skeleton class="cta-skeleton" width="12rem" height="3.4rem" />
+      </div>
+    {:else}
     <div class="hero-row">
       <span class="icon-frame" class:is-installed={target.mode === 'installed'}>
         <AssistantIcon assistant={shownName} size={64} src={iconSrc || undefined} status={iconFailed ? 'failed' : 'loading'} loading="eager" />
       </span>
       <div class="identity">
+        {#if detailsPending}
+          <Skeleton height="2.4rem" width="min(18rem, 100%)" />
+          <Skeleton class="tags-skeleton" height="0.8rem" width="min(12rem, 70%)" />
+        {:else}
         <h1>{shownName}</h1>
         <p class="tags">
           {#if isLocal}<span class="local">{storeCopy.localBadge}</span>{/if}
@@ -475,6 +513,7 @@
           {#if shownVersion}<span dir="ltr">v{shownVersion}</span>{/if}
           {#if target.mode === 'installed'}<span class="on"><i aria-hidden="true"></i>{pageCopy.installedHere}</span>{/if}
         </p>
+        {/if}
       </div>
       {#if activeTeam && !loading && ['installed', 'local', 'public'].includes(target.mode)}
         <div class="cta">
@@ -497,6 +536,7 @@
         </div>
       {/if}
     </div>
+    {/if}
   </header>
 
   {#if requestedTeamUnavailable}
@@ -505,8 +545,8 @@
     <Notice variant="info">{storeCopy.localNoTeam}</Notice>
   {/if}
 
-  {#if loading}
-    <Skeleton class="assistant-page-loading" height="14rem" />
+  {#if pending}
+    {@render bodySkeleton()}
   {:else if !validAssistant || target.mode === 'missing'}
     <p class="missing">{pageCopy.notFound}</p>
   {:else if target.mode === 'unverified'}
@@ -519,8 +559,8 @@
       <Notice variant="error">{pageCopy.detailsUnavailable}</Notice>
       <div><Button variant="secondary" onclick={retryDetails}>{pageCopy.retry}</Button></div>
     {/if}
-    {#if detailsPhase === 'loading'}
-      <Skeleton class="assistant-page-loading" height="14rem" />
+    {#if detailsPending}
+      {@render bodySkeleton()}
     {:else if pageCopyReady}
       <div class="layout">
         <div class="main">
@@ -665,6 +705,9 @@
   }
 
   .cta { display: grid; justify-items: end; gap: var(--gap-item); }
+  .hero-row :global(.icon-skeleton) { clip-path: var(--shimpz-control-shape); }
+  .identity :global(.tags-skeleton) { margin-block-start: var(--gap-item); }
+  .hero-row :global(.cta-skeleton) { clip-path: var(--shimpz-control-shape); }
   .cta-icon { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: square; }
   .target { display: grid; justify-items: end; gap: var(--gap-inside); }
   .team-label { color: var(--shimpz-color-text-dim); font: 600 0.6rem/1 var(--shimpz-font-mono); letter-spacing: 0.14em; text-transform: uppercase; }

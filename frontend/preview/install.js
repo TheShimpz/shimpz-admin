@@ -52,10 +52,12 @@ const DATA_STARTED = Date.now();
 // loading indicator shows whenever a Team's conversation is not known yet; one the session kept opens at once.
 const LOADING_SLOW = new URL(location.href).searchParams.get('loading') === 'slow';
 const SLOW_HISTORY_MS = 3_000;
+// An Assistant page's details are just as slow, so its skeleton shows.
+const SLOW_DETAILS = new Set(['assistants.details', 'snapshots.details']);
 
 function previewCall(method, params) {
   if (DATA_UNAVAILABLE && Date.now() - DATA_STARTED < 15_000) return { status: 503, json: { detail: 'unavailable' } };
-  if (LOADING_SLOW && method === 'history.page' && !params.routine) {
+  if (LOADING_SLOW && ((method === 'history.page' && !params.routine) || SLOW_DETAILS.has(method))) {
     return new Promise((resolve) => setTimeout(() => resolve(scenario.call(method, params)), SLOW_HISTORY_MS));
   }
   const answer = scenario.call(method, params);
