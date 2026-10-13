@@ -184,7 +184,7 @@ test('a conversation that outgrew what a session keeps while shown is not kept: 
     return held.then(() => undefined);
   };
   await returnToChat(page);
-  await expect(page.getByRole('status').filter({ hasText: new RegExp(`^${chatPage.loading}$`) })).toBeVisible();
+  await expect(page.getByRole('status').filter({ hasText: new RegExp(`^\\s*${chatPage.loading}\\s*$`) })).toBeVisible();
   await expect.poll(() => returnReads).toEqual([null]);
   await expect(page.getByText('Answer 2', { exact: true })).toHaveCount(0);
   expect(await attaches(page)).toBe(attached);
@@ -248,7 +248,7 @@ test("a Team's conversation not known yet shows the page's loading status until 
     answer: () => held.then(() => undefined),
   });
   await page.goto('/chat/?team=marketing');
-  const loading = page.getByRole('status').filter({ hasText: new RegExp(`^${chatPage.loading}$`) });
+  const loading = page.getByRole('status').filter({ hasText: new RegExp(`^\\s*${chatPage.loading}\\s*$`) });
   await expect(loading).toBeVisible();
   await expect(page.locator('.conversation')).toHaveAttribute('inert', '');
   release();
