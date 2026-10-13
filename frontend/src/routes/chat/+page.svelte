@@ -4,13 +4,8 @@
   import { AssistantIcon, Button, ChatTask, EmptyState, FileInput, Message, Notice, ScrollArea, TextAreaField, TextField, Toolbar } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '#lib/AssistantHumanRequestDialog.svelte';
   import AttachmentChip from '#lib/AttachmentChip.svelte';
-  import {
-    AttachmentUploadError,
-    attachmentReadability,
-    attachmentRefusal,
-    MAX_ATTACHMENTS,
-    uploadTeamFile,
-  } from '#lib/attachments.js';
+  import { MAX_ATTACHMENTS } from '#lib/attachments.js';
+  import { MessageFiles } from '#lib/chat/attachments/upload.svelte.js';
   import ComposerAttachments from '#lib/ComposerAttachments.svelte';
   import RestrictedActionsNote from '#lib/RestrictedActionsNote.svelte';
   import DialogAction from '#lib/DialogAction.svelte';
@@ -89,20 +84,9 @@
   let socketTeamId = $state('');
   let draft = $state('');
   let draftTeamId = '';
-  // The next message's files (ADR-0093), uploaded one at a time to the Team they were selected for. A Team change
-  // discards them, and an upload that answers for an earlier Team is ignored.
-  let attachments = $state([]);
-  let attachmentTeamId = '';
-  let attachmentError = $state('');
+  // The next message's files (ADR-0093), uploaded one at a time to the Team they were selected for.
+  const messageFiles = new MessageFiles(attachmentRefusalText);
   let attachmentInput = $state();
-  let attachmentDragging = $state(false);
-  let attachmentFinished = $state(0);
-  let attachmentUpload = null;
-  let attachmentPumping = false;
-  let nextAttachmentKey = 0;
-  // Selections whose files are still being read; each blocks sending until its files join the message or are refused.
-  let attachmentInspections = $state([]);
-  let nextAttachmentInspection = 0;
   // Every change replaces the list or the turn it changes, never a field in place, so no turn needs a deep proxy.
   let turns = $state.raw([]);
   let nextRenderKey = 0;
@@ -245,13 +229,6 @@
   // first sync instead of accepting text for a moment and dropping what is typed when the sync starts.
   let socketOpening = $derived(Boolean(socket) && !socketReady);
   let attachCopy = $derived($t('attachments'));
-  let attachmentsPending = $derived(
-    attachmentInspections.length > 0 || attachments.some((item) => item.state !== 'ready'),
-  );
-  let attachmentProgress = $derived.by(() => {
-    const pending = attachments.filter((item) => item.state !== 'ready').length;
-    return pending ? { current: attachmentFinished + 1, total: attachmentFinished + pending } : null;
-  });
   let composerBusy = $derived(
     busy || syncing || socketOpening || lifecycleOutcomePending !== null || historyHydrating,
   );
@@ -1185,7 +1162,7 @@
   function activateTeam(nextTeamId) {
     chatOwnsFocus = true;
     forgetSegments();
-    if (attachmentTeamId !== nextTeamId) clearAttachments();
+    if (messageFiles.teamId !== nextTeamId) messageFiles.clear();
     closeSocket();
     clearTurnInstalled();
     clearLifecycleIconCaptures();
@@ -1433,116 +1410,20 @@
     return $t(`attachments.errors.${reason}`, { name });
   }
 
-  function clearAttachments() {
-    attachmentUpload?.controller.abort();
-    attachmentUpload = null;
-    attachments = [];
-    attachmentInspections = [];
-    attachmentTeamId = '';
-    attachmentError = '';
-    attachmentDragging = false;
-  }
-
   function removeAttachment(key) {
-    if (attachmentUpload?.key === key) attachmentUpload.controller.abort();
-    attachments = attachments.filter((item) => item.key !== key);
-    attachmentError = '';
+    messageFiles.remove(key);
     composerInput?.focus();
   }
 
   function cancelAttachmentUploads() {
-    attachmentUpload?.controller.abort();
-    attachments = attachments.filter((item) => item.state === 'ready');
-    attachmentInspections = [];
+    messageFiles.cancelUploads();
     composerInput?.focus();
   }
 
-  async function addAttachments(files) {
+  function addAttachments(files) {
     const teamId = chatTeamId;
     if (!teamId || attachmentsUnavailable) return;
-    if (attachmentTeamId !== teamId) clearAttachments();
-    attachmentTeamId = teamId;
-    attachmentError = '';
-    // The selection blocks sending before its first read, so a message never leaves without a file still being read.
-    const inspection = nextAttachmentInspection++;
-    attachmentInspections = [...attachmentInspections, inspection];
-    const current = () => attachmentTeamId === teamId && attachmentInspections.includes(inspection);
-    try {
-      for (const file of files) {
-        // A Team change or a cancel ends the selection: no further file of it is read, even after a failed read.
-        if (!current()) return;
-        let readability = { kind: 'file', note: 'unreadable' };
-        if (file.size > 0) {
-          try {
-            readability = await attachmentReadability(file);
-          } catch {
-            if (current()) attachmentError = attachmentRefusalText('unavailable', file.name);
-            continue;
-          }
-        }
-        // A selection that finishes reading after a Team change or a cancel belongs to no message.
-        if (!current()) return;
-        const refusal = attachmentRefusal(attachments, { size: file.size, ...readability });
-        if (refusal) {
-          attachmentError = attachmentRefusalText(refusal, file.name);
-          if (refusal === 'too-many') break;
-          continue;
-        }
-        attachments = [...attachments, {
-          key: nextAttachmentKey++,
-          file,
-          name: file.name,
-          size: file.size,
-          ...readability,
-          state: 'queued',
-        }];
-      }
-    } finally {
-      attachmentInspections = attachmentInspections.filter((entry) => entry !== inspection);
-    }
-    void uploadAttachments();
-  }
-
-  function updateAttachment(key, patch) {
-    attachments = attachments.map((item) => (item.key === key ? { ...item, ...patch } : item));
-  }
-
-  async function uploadAttachments() {
-    if (attachmentPumping) return;
-    attachmentPumping = true;
-    try {
-      for (let item = attachments.find((entry) => entry.state === 'queued'); item;
-        item = attachments.find((entry) => entry.state === 'queued')) {
-        const teamId = attachmentTeamId;
-        const controller = new AbortController();
-        attachmentUpload = { key: item.key, controller };
-        updateAttachment(item.key, { state: 'uploading' });
-        try {
-          const stored = await uploadTeamFile(fetch, teamId, item.file, controller.signal);
-          if (controller.signal.aborted || attachmentTeamId !== teamId) continue;
-          // Team keeps one copy of an identical file: one already in this message is not attached twice.
-          if (attachments.some((entry) => entry.key !== item.key && entry.id === stored.id)) {
-            attachments = attachments.filter((entry) => entry.key !== item.key);
-          } else {
-            updateAttachment(item.key, { state: 'ready', id: stored.id, name: stored.name, size: stored.size });
-          }
-          attachmentFinished += 1;
-        } catch (reason) {
-          if (controller.signal.aborted || attachmentTeamId !== teamId) continue;
-          attachments = attachments.filter((entry) => entry.key !== item.key);
-          attachmentFinished += 1;
-          attachmentError = attachmentRefusalText(
-            reason instanceof AttachmentUploadError ? reason.reason : 'failed',
-            item.name,
-          );
-        } finally {
-          if (attachmentUpload?.controller === controller) attachmentUpload = null;
-        }
-      }
-    } finally {
-      attachmentPumping = false;
-      attachmentFinished = 0;
-    }
+    void messageFiles.add(files, teamId);
   }
 
   function chooseAttachments() {
@@ -1552,7 +1433,7 @@
   function attachmentsChosen(event) {
     const files = [...(event.currentTarget.files ?? [])];
     event.currentTarget.value = '';
-    if (files.length) void addAttachments(files);
+    if (files.length) addAttachments(files);
   }
 
   // Pasted files join the message; pasted text still lands in the draft as usual.
@@ -1560,7 +1441,7 @@
     const files = [...(event.clipboardData?.files ?? [])];
     if (!files.length) return;
     if (!event.clipboardData.getData('text/plain')) event.preventDefault();
-    void addAttachments(files);
+    addAttachments(files);
   }
 
   function carriesFiles(event) {
@@ -1571,11 +1452,11 @@
     if (!carriesFiles(event) || attachmentsUnavailable) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = 'copy';
-    attachmentDragging = true;
+    messageFiles.dragging = true;
   }
 
   function leaveAttachments(event) {
-    if (!event.currentTarget.contains(event.relatedTarget)) attachmentDragging = false;
+    if (!event.currentTarget.contains(event.relatedTarget)) messageFiles.dragging = false;
   }
 
   // A file drag the composer did not take (dropped elsewhere, or while files cannot join a message) is refused here;
@@ -1589,10 +1470,10 @@
   function dropAttachments(event) {
     if (!carriesFiles(event)) return;
     event.preventDefault();
-    attachmentDragging = false;
+    messageFiles.dragging = false;
     if (attachmentsUnavailable) return;
     const files = [...(event.dataTransfer.files ?? [])];
-    if (files.length) void addAttachments(files);
+    if (files.length) addAttachments(files);
   }
 
   function submitMessage(message, {
@@ -1723,14 +1604,12 @@
 
   function send(event) {
     event.preventDefault();
-    if (attachmentsPending) return;
-    const attached = attachmentTeamId === chatTeamId ? attachments : [];
+    if (messageFiles.pending) return;
+    const attached = messageFiles.attached(chatTeamId);
     if (!questionOpen && submitMessage(draft, { attached })) {
       draft = '';
       promptHistoryIndex = -1;
-      attachments = [];
-      attachmentTeamId = '';
-      attachmentError = '';
+      messageFiles.sent();
     }
   }
 
@@ -1916,7 +1795,7 @@
       closeSocket();
       clearLifecycleIconCaptures();
       // Files belong to the message being written here; leaving the chat stops their uploads.
-      clearAttachments();
+      messageFiles.clear();
     };
   });
 </script>
@@ -2248,7 +2127,7 @@
 
           <form
             class="composer"
-            class:composer-dropping={attachmentDragging}
+            class:composer-dropping={messageFiles.dragging}
             onsubmit={keyRequired ? saveProviderKey : send}
             ondragenter={dragAttachments}
             ondragover={dragAttachments}
@@ -2293,14 +2172,14 @@
                 <p id="chat-provider-key-note" class="sr-only">{keyCopy.keyNote}</p>
               {:else}
                 <ComposerAttachments
-                  items={attachments}
-                  progress={attachmentProgress}
-                  reading={attachmentInspections.length > 0}
-                  error={attachmentError}
+                  items={messageFiles.items}
+                  progress={messageFiles.progress}
+                  reading={messageFiles.reading}
+                  error={messageFiles.error}
                   oncancel={cancelAttachmentUploads}
                   onremove={removeAttachment}
                 />
-                {#if attachmentDragging}
+                {#if messageFiles.dragging}
                   <p class="composer-drop" aria-hidden="true">{attachCopy.drop}</p>
                 {/if}
                 <TextAreaField
@@ -2326,7 +2205,7 @@
                   size="icon"
                   type="button"
                   onclick={chooseAttachments}
-                  disabled={attachmentsUnavailable || attachments.length >= MAX_ATTACHMENTS}
+                  disabled={attachmentsUnavailable || messageFiles.items.length >= MAX_ATTACHMENTS}
                   aria-label={attachCopy.attach}
                   title={attachCopy.attach}
                 >
@@ -2384,7 +2263,7 @@
                   class="composer-send"
                   type="submit"
                   variant="ghost"
-                  disabled={sendUnavailable || questionOpen || !draft.trim() || attachmentsPending}
+                  disabled={sendUnavailable || questionOpen || !draft.trim() || messageFiles.pending}
                   title={socketReady ? copy.send : copy.connecting}
                 >
                   <span class="sr-only">{socketReady ? copy.send : copy.connecting}</span>
