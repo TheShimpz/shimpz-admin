@@ -56,14 +56,19 @@
     background: color-mix(in srgb, var(--shimpz-color-text) 7%, var(--shimpz-color-bg));
   }
 
+  /* As a sent message shows them: image thumbnails as fixed squares, then compact cards for other files. */
   .attachment-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(4rem, 5rem));
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
     gap: var(--gap-item);
     margin: 0;
     padding: 0;
     list-style: none;
   }
+
+  .attachment-list > :global(.attachment-tile) { flex: 0 0 5rem; }
+  .attachment-list > :global(.attachment-card) { flex: 1 1 13rem; max-width: 18rem; }
 
   .attachment-progress {
     display: flex;

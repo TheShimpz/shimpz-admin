@@ -62,6 +62,15 @@
           <span>{userTurn.resumedObjective}</span>
         </div>
       {/if}
+      {#if userTurn.files}
+        <!-- A message's files come first, as consolidated chats show them: its images, then its other files. -->
+        {@const images = userTurn.files.filter((file) => previewable(teamId, file))}
+        <ul class="message-attachments" aria-label={$t('attachments').list}>
+          {#each [...userTurn.files].sort((a, b) => (a.kind === 'image' ? 0 : 1) - (b.kind === 'image' ? 0 : 1)) as file (file.key)}
+            <AttachmentTile {teamId} {file} {images} />
+          {/each}
+        </ul>
+      {/if}
       {#if sentAnswer !== null}
         <!-- The question stays above its answer, so the person always sees what they replied to. -->
         <div class="clarification-reply">
@@ -72,14 +81,6 @@
         </div>
       {:else}
         <p>{userTurn.text}</p>
-      {/if}
-      {#if userTurn.files}
-        {@const images = userTurn.files.filter((file) => previewable(teamId, file))}
-        <ul class="message-attachments" aria-label={$t('attachments').list}>
-          {#each userTurn.files as file (file.key)}
-            <AttachmentTile {teamId} {file} {images} />
-          {/each}
-        </ul>
       {/if}
     </Message>
   {/if}
@@ -243,15 +244,19 @@
     text-transform: uppercase;
   }
 
-  /* Every attachment of a sent message is the same square tile in one grid whose filled columns stretch to the card's
-     edge, a tile never wider than 8rem. */
+  /* A sent message's files above its text: image thumbnails as fixed squares, then compact cards for other files, all
+     wrapping in one row. */
   .message-attachments {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(4rem, 1fr));
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
     gap: var(--gap-item);
-    margin: var(--gap-item) 0 0;
+    margin: 0 0 var(--gap-item);
     padding: 0;
     list-style: none;
   }
+
+  .message-attachments > :global(.attachment-tile) { flex: 0 0 6rem; }
+  .message-attachments > :global(.attachment-card) { flex: 1 1 13rem; max-width: 18rem; }
 
 </style>

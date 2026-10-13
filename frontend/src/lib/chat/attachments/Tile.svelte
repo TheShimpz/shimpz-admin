@@ -5,11 +5,11 @@
   import { acquirePreview, previewable } from '#lib/chat/attachments/previews.js';
   import { locale, t } from '#lib/i18n/index.js';
 
-  // One file of a message as a square tile (ADR-0093), alike in the composer and in a sent message: an image Team has
-  // stored shows its thumbnail and opens over the chat; any other file, or an image not stored yet or not readable,
-  // shows its type mark and type. Its name stays at the tile's foot, cut in the middle so its start and its extension
-  // both show. The thumbnail is asked for only once the tile comes within NEAR_PX of its scrolling region. In the
-  // composer the tile can be removed from the message.
+  // One file of a message (ADR-0093), alike in the composer and in a sent message. An image is a thumbnail square that
+  // opens over the chat once Team has stored it, its type mark until then or when Team cannot read it; its name is the
+  // thumbnail's tooltip and accessible name. Any other file is a compact card: a badge with its extension, its name cut
+  // in the middle so its start and its extension both show, and its type and size. The thumbnail is asked for only once
+  // the tile comes within NEAR_PX of its scrolling region. In the composer either can be removed from the message.
   // `images` are the message's images the viewer can move through, this one among them.
   let { teamId, file, images = [file], status = 'ready', onremove = null } = $props();
 
@@ -33,6 +33,14 @@
       : [file.name, ''],
   );
   let canPreview = $derived(status === 'ready' && previewable(teamId, file));
+  // An image is a thumbnail square; any other file a compact card naming it, as consolidated chats show files.
+  let card = $derived(file.kind !== 'image');
+  // The card's badge: the file's extension, at most four characters, or its type when it has none.
+  let badge = $derived.by(() => {
+    const dot = file.name.lastIndexOf('.');
+    const extension = dot > 0 ? file.name.slice(dot + 1) : '';
+    return /^[\p{L}\p{N}]{1,4}$/u.test(extension) ? extension.toUpperCase() : kindText;
+  });
 
   // The chat scrolls inside its own region, not the window: nearness is measured against it.
   function scrollRoot(node) {
@@ -69,36 +77,39 @@
   }
 </script>
 
-<li bind:this={element} class="attachment-tile" data-kind={file.kind} aria-busy={status === 'ready' ? undefined : 'true'}>
-  {#if shown}
+<li
+  bind:this={element}
+  class={card ? 'attachment-card' : 'attachment-tile'}
+  data-kind={file.kind}
+  aria-busy={status === 'ready' ? undefined : 'true'}
+>
+  {#if card}
+    <span class="card-badge" aria-hidden="true">{badge}</span>
+    <span class="card-text">
+      <span class="card-name" title={file.name}><span class="head">{nameParts[0]}</span><span class="tail">{nameParts[1]}</span></span>
+      <span class="card-details">{details}</span>
+    </span>
+  {:else if shown}
     <Button
       bind:element={opener}
       class="tile-open"
       variant="ghost"
       type="button"
+      title={file.name}
       aria-label={$t('attachments.openImage', { name: file.name })}
       onclick={() => (viewing = true)}
     >
       <img src={shown.url} alt={file.name} />
     </Button>
   {:else}
-    <span class="tile-face" aria-hidden="true">
-      <svg class="tile-mark" viewBox="0 0 24 24">
-        {#if file.kind === 'image'}
-          <path d="M4.5 5.5h15v13h-15zM4.5 15.5l4.5-4.5 4 4 2.5-2.5 4 4"></path><circle cx="15.5" cy="9.5" r="1.4"></circle>
-        {:else if file.kind === 'pdf'}
-          <path d="M7 3.5h7l4 4v13H7zM14 3.5v4h4M9.5 13h6M9.5 16.5h4"></path>
-        {:else if file.kind === 'text'}
-          <path d="M7 3.5h7l4 4v13H7zM14 3.5v4h4M9.5 11.5h6M9.5 14.5h6M9.5 17.5h3.5"></path>
-        {:else}
-          <path d="M7 3.5h7l4 4v13H7zM14 3.5v4h4"></path>
-        {/if}
+    <span class="tile-face" title={file.name}>
+      <svg class="tile-mark" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M4.5 5.5h15v13h-15zM4.5 15.5l4.5-4.5 4 4 2.5-2.5 4 4"></path><circle cx="15.5" cy="9.5" r="1.4"></circle>
       </svg>
-      <span class="tile-kind">{kindText}</span>
+      <span class="sr-only">{file.name}</span>
     </span>
   {/if}
-  <span class="tile-name" title={file.name}><span class="head">{nameParts[0]}</span><span class="tail">{nameParts[1]}</span></span>
-  <span class="sr-only">{details}</span>
+  {#if !card}<span class="sr-only">{details}</span>{/if}
   {#if onremove}
     <Button
       class="tile-remove"
@@ -170,18 +181,15 @@
     object-fit: cover;
   }
 
-  /* A file without a thumbnail shows its type mark and type above the name. */
+  /* An image not yet stored, or one Team cannot read, shows only its type mark. */
   .tile-face {
     display: grid;
-    align-content: center;
-    justify-items: center;
-    gap: var(--gap-inside);
-    padding-block-end: 1.1rem;
+    place-items: center;
   }
 
   .tile-mark {
-    width: 1.25rem;
-    height: 1.25rem;
+    width: 1.5rem;
+    height: 1.5rem;
     fill: none;
     stroke: var(--shimpz-color-text-muted);
     stroke-linecap: round;
@@ -189,25 +197,48 @@
     stroke-width: 1.4;
   }
 
-  .tile-kind {
-    color: var(--shimpz-color-text-dim);
-    font: 600 0.56rem/1 var(--shimpz-font-mono);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
+  /* Any other file is a compact card: its extension's badge, then its name over its type and size. */
+  .attachment-card {
+    position: relative;
+    display: grid;
+    min-width: 0;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--gap-item);
+    padding: var(--gap-inside);
+    clip-path: var(--shimpz-control-shape);
+    background: color-mix(in srgb, var(--shimpz-color-text) 5%, var(--shimpz-color-bg));
   }
 
-  /* The name always shows at the tile's foot; a long one is cut in the middle, its start and its end kept. */
-  .tile-name {
-    position: absolute;
-    inset: auto 0 0;
+  .attachment-card[aria-busy="true"] { opacity: 0.6; }
+
+  .card-badge {
+    --tone: var(--shimpz-color-text-muted);
+    display: grid;
+    width: 2.5rem;
+    height: 2.5rem;
+    place-items: center;
+    color: var(--tone);
+    background: color-mix(in srgb, var(--tone) 14%, transparent);
+    clip-path: var(--shimpz-control-shape);
+    font: 700 0.58rem/1 var(--shimpz-font-mono);
+    letter-spacing: 0.04em;
+  }
+
+  .attachment-card[data-kind="pdf"] .card-badge { --tone: var(--shimpz-color-magenta); }
+  .attachment-card[data-kind="text"] .card-badge { --tone: var(--shimpz-color-cyan); }
+
+  .card-text {
+    display: grid;
+    min-width: 0;
+    gap: 0.15rem;
+  }
+
+  .card-name {
     display: flex;
     min-width: 0;
-    padding: var(--gap-inside) var(--gap-item);
-    color: #fff;
-    font: 600 0.62rem/1.3 var(--shimpz-font-sans);
-    /* A dark outline keeps the name legible over any image, with no ground of its own. */
-    text-shadow: 0 0 2px #000, 0 0 3px #000, 0 1px 2px #000;
-    pointer-events: none;
+    color: var(--shimpz-color-text);
+    font: 500 0.78rem/1.3 var(--shimpz-font-sans);
     white-space: nowrap;
     unicode-bidi: plaintext;
   }
@@ -219,6 +250,22 @@
   }
 
   .tail { flex: none; }
+
+  .card-details {
+    overflow: hidden;
+    color: var(--shimpz-color-text-dim);
+    font: 400 0.64rem/1.3 var(--shimpz-font-mono);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .attachment-card :global(.shimpz-button.tile-remove) {
+    width: 1.75rem;
+    height: 1.75rem;
+    min-height: 0;
+    padding: 0;
+    color: var(--shimpz-color-text-dim);
+  }
 
   .attachment-tile :global(.shimpz-button.tile-remove) {
     position: absolute;
@@ -232,7 +279,7 @@
     background: color-mix(in srgb, var(--shimpz-color-bg) 78%, transparent);
   }
 
-  .attachment-tile :global(.tile-remove svg) {
+  :is(.attachment-tile, .attachment-card) :global(.tile-remove svg) {
     width: 0.8rem;
     height: 0.8rem;
     fill: none;
