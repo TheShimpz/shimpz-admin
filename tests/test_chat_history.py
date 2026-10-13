@@ -76,7 +76,7 @@ class ChatHistoryTests(ChatHistoryCase):
             ],
         )
         with contextlib.closing(sqlite3.connect(self.path)) as database:
-            self.assertEqual(database.execute("PRAGMA user_version").fetchone()[0], 10)
+            self.assertEqual(database.execute("PRAGMA user_version").fetchone()[0], 11)
         self.assertEqual(history.SCHEMA_VERSION, 11)
 
     def test_a_malformed_row_time_fails_closed(self) -> None:
