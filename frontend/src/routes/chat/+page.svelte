@@ -1,5 +1,6 @@
 <script>
   import { flushSync, getContext, onMount, tick } from 'svelte';
+  import { afterNavigate } from '$app/navigation';
   import { readable } from 'svelte/store';
   import { Button, EmptyState, Notice, ScrollArea } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '#lib/assistants/HumanRequestDialog.svelte';
@@ -814,6 +815,13 @@
     if (event.target === document.body) return;
     chatOwnsFocus = Boolean(chatRoute?.contains(event.target));
   }
+
+  // Every navigation that lands on this chat, its own Team's link clicked again included, leaves the focus on the body
+  // once it completes: the composer takes it as soon as it is usable.
+  afterNavigate(() => {
+    chatOwnsFocus = true;
+    void focusComposer();
+  });
 
   async function saveProviderKey(event) {
     event.preventDefault();

@@ -271,4 +271,9 @@ test('opening a Team from the Team list lands in its message field, from the Sto
   await expect(page).toHaveURL(/team=trinity/);
   await expect(composer(page)).toBeEnabled();
   await expect(composer(page)).toBeFocused();
+
+  // The open Team's own link, clicked again, lands in its message field too.
+  await page.getByRole('button', { name: 'Language: English' }).focus();
+  await returnToChat(page, 'Trinity');
+  await expect(composer(page)).toBeFocused();
 });
