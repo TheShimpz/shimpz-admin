@@ -91,12 +91,12 @@
   li {
     --tree: 2.4em;
     --trunk: 1.2em;
-    --elbow: 1.05em;
+    --elbow: 0.8em;
     position: relative;
     display: grid;
     grid-template-columns: var(--tree) minmax(0, 1fr);
     align-items: start;
-    padding-block-end: var(--gap-inside);
+    padding-block-end: 0.15em;
   }
 
   li:last-child { padding-block-end: 0; }
@@ -123,7 +123,7 @@
     justify-self: start;
     gap: var(--gap-item);
     max-width: 100%;
-    padding: var(--gap-inside) var(--gap-item);
+    padding: 0.2em var(--gap-item);
     background:
       repeating-linear-gradient(0deg, color-mix(in oklab, var(--shimpz-color-text) 4%, transparent) 0 1px, transparent 1px 3px),
       color-mix(in oklab, var(--shimpz-color-bg) 95%, var(--shimpz-color-text));

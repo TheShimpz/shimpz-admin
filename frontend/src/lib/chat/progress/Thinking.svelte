@@ -16,7 +16,7 @@
   let elapsed = $state(0);
 
   let current = $derived(currentIndex >= 0 ? steps[currentIndex] : null);
-  // The seconds since the turn started, counting, beside the current step; the time's name is only its hover title.
+  // The seconds since the turn started, counting, right after the signal bars; the time's name is only its hover title.
   let formattedElapsed = $derived(`${elapsed} s`);
 
   onMount(() => {
@@ -30,8 +30,8 @@
 <div class="thinking" role="group" aria-label={label}>
   <div class="summary">
     <span class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+    <span class="elapsed" title={elapsedText} aria-hidden="true">{formattedElapsed} ·</span>
     <span class="step-copy">{current ? localizedStepLabel(current, progressLabels, { teamName, assistantNames }) : (progressLabels.awaiting ?? label)}</span>
-    <span class="elapsed" title={elapsedText} aria-hidden="true">· {formattedElapsed}</span>
   </div>
 </div>
 
@@ -51,7 +51,7 @@
     display: grid;
     min-width: 0;
     align-items: center;
-    grid-template-columns: auto minmax(0, auto) auto;
+    grid-template-columns: auto auto minmax(0, auto);
     justify-content: start;
     gap: var(--gap-item);
   }
