@@ -5,7 +5,7 @@
   import DialogAction from '#lib/DialogAction.svelte';
   import { locale } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
-  import RoutineRunSteps from '#lib/RoutineRunSteps.svelte';
+  import RoutineRunSteps from '#lib/routines/run/Steps.svelte';
   import { readRunDiagnostics, runBinding } from '#lib/routines/protocol.js';
   import { attemptWords, conditionWords, instantWords, routineErrorMessage } from '#lib/routines/words.js';
 

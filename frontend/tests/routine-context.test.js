@@ -10,7 +10,7 @@ import {
   retainTeamRoutines,
   routineContext,
   showTeamRoutines,
-} from '../src/lib/routineContext.js';
+} from '../src/lib/routines/context.js';
 import { RETRY_FIRST_MS } from '../src/lib/session/synced.js';
 
 const ROUTINE = {

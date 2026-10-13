@@ -27,7 +27,7 @@
   import { calendarDay, exchangeDays, turnInstants, untilNextDay } from '#lib/chat/days.js';
   import { newerRoutineEntries } from '#lib/routines/protocol.js';
   import { questionWords } from '#lib/routines/words.js';
-  import { showTeamRoutines } from '#lib/routineContext.js';
+  import { showTeamRoutines } from '#lib/routines/context.js';
   import { adminSocket, call, commandsReady, openChatChannel, outcomeUnknown } from '#lib/session/socket.js';
   import {
     createExecutionProjection,
@@ -38,7 +38,7 @@
   import { locale, t } from '#lib/i18n/index.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { CLARIFICATION_LABELS } from '#lib/chat/clarificationLabels.js';
-  import { routineQuestionMessages } from '#lib/routineQuestionMessages.js';
+  import { routineQuestionMessages } from '#lib/routines/questionMessages.js';
   import { configureModelContext, loadModelContext, modelContext } from '#lib/brain/context.js';
   import { sessionContext } from '#lib/session/context.js';
   import ShimpzThinking from '#lib/chat/progress/Thinking.svelte';

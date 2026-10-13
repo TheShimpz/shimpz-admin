@@ -3,12 +3,12 @@
   import { tick, untrack } from 'svelte';
 
   import { call } from '#lib/session/socket.js';
-  import RoutineIcon from '#lib/RoutineIcon.svelte';
+  import RoutineIcon from '#lib/routines/Icon.svelte';
   import { fill } from '#lib/i18n/fill.js';
   import { humanizeId } from '#lib/ids.js';
   import { needsPage, readPlanSteps } from '#lib/routines/protocol.js';
   import { countWords, dispositionWords, inputWords, summaryChain } from '#lib/routines/words.js';
-  import { visibleSteps } from '#lib/routineResult.js';
+  import { visibleSteps } from '#lib/routines/reading.js';
 
   // A Routine plan's safe projection (ADR-0092) in words. Its revision's summary shows at once: how many steps, their
   // Actions in order, and what each run does with its result. The steps themselves are read page by page for exactly

@@ -2,8 +2,8 @@
 // run recorded it, the failed attempts Team recorded, and the result Team projected, organized for reading. Pure data
 // shaping only: every value stays Team's node, rendered later as escaped text.
 
-import { humanizeId } from './ids.js';
-import { outputLabels } from './routines/words.js';
+import { humanizeId } from '../ids.js';
+import { outputLabels } from './words.js';
 
 const SCALAR_KINDS = new Set(['null', 'redacted', 'elided', 'bool', 'number', 'text']);
 // Values that say nothing about a column's kind: an absent, hidden, or cut-away value.

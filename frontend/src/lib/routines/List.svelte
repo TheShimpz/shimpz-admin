@@ -6,9 +6,9 @@
   import { locale, t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
   import { routineStatus, scheduleWords, STATUS_TAGS, STATUS_WORDS } from '#lib/routines/words.js';
-  import RoutineDetailsDialog from '#lib/RoutineDetailsDialog.svelte';
-  import RoutineModal from '#lib/RoutineModal.svelte';
-  import { refreshTeamRoutines } from '#lib/routineContext.js';
+  import RoutineDetailsDialog from '#lib/routines/Details.svelte';
+  import RoutineModal from '#lib/routines/Modal.svelte';
+  import { refreshTeamRoutines } from '#lib/routines/context.js';
 
   // One Team's Routines as a choice modal (ADR-0086): each its clock tinted by its status, its name, and when it runs;
   // the status is said in words only to assistive technology. Choosing one turns the modal into that Routine's panel,

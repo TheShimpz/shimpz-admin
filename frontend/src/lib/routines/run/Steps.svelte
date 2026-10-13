@@ -3,12 +3,12 @@
   import { tick, untrack } from 'svelte';
 
   import { call } from '#lib/session/socket.js';
-  import RoutineIcon from '#lib/RoutineIcon.svelte';
+  import RoutineIcon from '#lib/routines/Icon.svelte';
   import { fill } from '#lib/i18n/fill.js';
   import { humanizeId } from '#lib/ids.js';
   import { needsPage, pageBinding, readRunSteps } from '#lib/routines/protocol.js';
   import { attemptWords, conditionWords, countWords, literalWords } from '#lib/routines/words.js';
-  import { durationWords, visibleSteps } from '#lib/routineResult.js';
+  import { durationWords, visibleSteps } from '#lib/routines/reading.js';
 
   // The steps of one Routine run as the run recorded them (ADR-0092 amendment, 2026-10-05, scale), numbered in order:
   // each step's Action and Assistant, what happened to it, how long its attempt took, the inputs that attempt was

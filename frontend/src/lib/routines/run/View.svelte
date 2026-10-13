@@ -2,13 +2,13 @@
   import { call } from '#lib/session/socket.js';
   import { assistantNames } from '#lib/assistants/names.js';
   import { locale } from '#lib/i18n/index.js';
-  import RoutineModal from '#lib/RoutineModal.svelte';
-  import RoutineResult from '#lib/RoutineResult.svelte';
-  import RoutineRunSteps from '#lib/RoutineRunSteps.svelte';
-  import RoutineTag from '#lib/RoutineTag.svelte';
+  import RoutineModal from '#lib/routines/Modal.svelte';
+  import RoutineResult from '#lib/routines/result/View.svelte';
+  import RoutineRunSteps from '#lib/routines/run/Steps.svelte';
+  import RoutineTag from '#lib/routines/Tag.svelte';
   import { MAX_ROUTINE_STEPS, readRunDiagnostics, runBinding } from '#lib/routines/protocol.js';
   import { countWords, displayZone, instantWords } from '#lib/routines/words.js';
-  import { attemptsByStep, resultView } from '#lib/routineResult.js';
+  import { attemptsByStep, resultView } from '#lib/routines/reading.js';
 
   // One Routine run in full, over the whole screen (ADR-0092 amendment, 2026-10-05, output and scale): how it stands
   // and when its notice said so, the result it shows organized for reading when it shows one, and its own step records:

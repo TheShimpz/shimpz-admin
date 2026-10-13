@@ -27,16 +27,16 @@
     STATUS_WORDS,
     untilWords,
   } from '#lib/routines/words.js';
-  import { refreshTeamRoutines } from '#lib/routineContext.js';
+  import { refreshTeamRoutines } from '#lib/routines/context.js';
   import { call, commandsReady, outcomeUnknown } from '#lib/session/socket.js';
-  import RoutineDecision from '#lib/RoutineDecision.svelte';
-  import RoutineDeletion from '#lib/RoutineDeletion.svelte';
-  import RoutinePlan from '#lib/RoutinePlan.svelte';
-  import RoutineRunDetails from '#lib/RoutineRunDetails.svelte';
-  import RoutineRunView from '#lib/RoutineRunView.svelte';
-  import RoutineIcon from '#lib/RoutineIcon.svelte';
-  import RoutineModal from '#lib/RoutineModal.svelte';
-  import RoutineTag from '#lib/RoutineTag.svelte';
+  import RoutineDecision from '#lib/routines/Decision.svelte';
+  import RoutineDeletion from '#lib/routines/Deletion.svelte';
+  import RoutinePlan from '#lib/routines/Plan.svelte';
+  import RoutineRunDetails from '#lib/routines/run/Details.svelte';
+  import RoutineRunView from '#lib/routines/run/View.svelte';
+  import RoutineIcon from '#lib/routines/Icon.svelte';
+  import RoutineModal from '#lib/routines/Modal.svelte';
+  import RoutineTag from '#lib/routines/Tag.svelte';
   import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '#lib/chat/usage.js';
 
   // One Routine in full (ADR-0086, ADR-0092). While a run waits for the person, the whole panel is that decision and

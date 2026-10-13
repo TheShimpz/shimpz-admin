@@ -5,7 +5,7 @@
   import { assistantNames } from '#lib/assistants/names.js';
   import { t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
-  import { refreshTeamRoutines } from '#lib/routineContext.js';
+  import { refreshTeamRoutines } from '#lib/routines/context.js';
   import { humanizeId } from '#lib/ids.js';
   import { confirmRoutineProposal, revokeRoutineProposal } from '#lib/routines/protocol.js';
   import {

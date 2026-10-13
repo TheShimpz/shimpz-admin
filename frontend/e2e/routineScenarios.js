@@ -1,4 +1,4 @@
-import { routineQuestionMessages } from '../src/lib/routineQuestionMessages.js';
+import { routineQuestionMessages } from '../src/lib/routines/questionMessages.js';
 
 // Routine scenarios for the owner's preview and the browser tests (ADR-0087, ADR-0092, ADR-0101): every Routine notice
 // titled by the name Team froze into it, a deleted Routine's last notice, runs' usage with and without a model, a held

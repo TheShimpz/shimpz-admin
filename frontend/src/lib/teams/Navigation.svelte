@@ -7,11 +7,11 @@
 
   import { t } from '#lib/i18n/index.js';
   import { CIRCLES, PATHS } from '#lib/icons.js';
-  import { retainTeamRoutines, routineContext } from '#lib/routineContext.js';
+  import { retainTeamRoutines, routineContext } from '#lib/routines/context.js';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import TeamActionsMenu from '#lib/teams/ActionsMenu.svelte';
   import { renameTeam, reorderTeams, teamContext } from '#lib/teams/context.js';
-  import TeamRoutinesDialog from '#lib/TeamRoutinesDialog.svelte';
+  import TeamRoutinesDialog from '#lib/routines/List.svelte';
   import { canonicalTeamName } from '#lib/teams/context.js';
 
   let {

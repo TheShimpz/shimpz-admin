@@ -8,7 +8,7 @@
   import { locale, t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
   import { createHumanResponseFrame, parseChatEvent } from '#lib/chat/protocol.js';
-  import RoutineIcon from '#lib/RoutineIcon.svelte';
+  import RoutineIcon from '#lib/routines/Icon.svelte';
   import { humanizeId } from '#lib/ids.js';
   import {
     answerRoutineCard,

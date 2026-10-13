@@ -12,9 +12,9 @@
   import Markdown from '#lib/chat/Markdown.svelte';
   import RestrictedActionsNote from '#lib/chat/attachments/RestrictedNote.svelte';
   import { refusalWords } from '#lib/routines/words.js';
-  import RoutineProposal from '#lib/RoutineProposal.svelte';
-  import RoutineQuestion from '#lib/RoutineQuestion.svelte';
-  import RoutineRunEntry from '#lib/RoutineRunEntry.svelte';
+  import RoutineProposal from '#lib/routines/Proposal.svelte';
+  import RoutineQuestion from '#lib/routines/Question.svelte';
+  import RoutineRunEntry from '#lib/routines/run/Entry.svelte';
   import { formatTaskUsage, formatTaskUsageDetail } from '#lib/chat/usage.js';
 
   // One exchange of a Team's transcript: a person's message and the reply that answered it, either of them alone. The

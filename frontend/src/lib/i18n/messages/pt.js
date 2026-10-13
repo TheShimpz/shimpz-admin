@@ -3,7 +3,7 @@
 //
 // AI-authored — accurate, but worth a native pass before the public launch.
 import { CLARIFICATION_LABELS } from '../../chat/clarificationLabels.js';
-import { routineQuestionMessages } from '../../routineQuestionMessages.js';
+import { routineQuestionMessages } from '../../routines/questionMessages.js';
 
 export default {
   auth: {

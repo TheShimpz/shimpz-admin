@@ -1,8 +1,8 @@
 <script>
-  import RoutineOutput from '#lib/RoutineOutput.svelte';
-  import RoutineResult from '#lib/RoutineResult.svelte';
-  import RoutineResultTable from '#lib/RoutineResultTable.svelte';
-  import RoutineResultValue from '#lib/RoutineResultValue.svelte';
+  import RoutineOutput from '#lib/routines/result/Output.svelte';
+  import RoutineResult from '#lib/routines/result/View.svelte';
+  import RoutineResultTable from '#lib/routines/result/Table.svelte';
+  import RoutineResultValue from '#lib/routines/result/Value.svelte';
   import { countWords, omittedWords } from '#lib/routines/words.js';
 
   // A run's shown result organized for reading (ADR-0092 amendment, 2026-10-05, output): its single values as one

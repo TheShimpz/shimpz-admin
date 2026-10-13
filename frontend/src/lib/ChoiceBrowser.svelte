@@ -2,7 +2,7 @@
   import { Button, TextField } from '@shimpz/frontend';
 
   import ChoiceList from '#lib/ChoiceList.svelte';
-  import RoutineIcon from '#lib/RoutineIcon.svelte';
+  import RoutineIcon from '#lib/routines/Icon.svelte';
   import { fill } from '#lib/i18n/fill.js';
   import { rankBySimilarity } from '#lib/textSimilarity.js';
 

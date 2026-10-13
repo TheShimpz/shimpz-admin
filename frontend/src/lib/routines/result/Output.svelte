@@ -1,5 +1,5 @@
 <script>
-  import RoutineOutput from '#lib/RoutineOutput.svelte';
+  import RoutineOutput from '#lib/routines/result/Output.svelte';
   import { omittedWords, outputLabels, outputScalarWords, outputTable } from '#lib/routines/words.js';
 
   // One node of a Routine run's shown result (ADR-0092 amendment, 2026-10-05, output): Team's bounded, redacted

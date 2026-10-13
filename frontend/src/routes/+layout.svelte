@@ -17,7 +17,7 @@
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { clearModelContext, modelContext } from '#lib/brain/context.js';
   import { authenticateWithPasskey, passkeyFailure, registerPasskey } from '#lib/auth/passkey.js';
-  import { clearTeamRoutines } from '#lib/routineContext.js';
+  import { clearTeamRoutines } from '#lib/routines/context.js';
   import { clearSecuritySummary, recoveryCodes as validRecoveryCodes } from '#lib/auth/security.js';
   import { clearSessionContext, readSession, SESSION_ENDED, setSessionContext } from '#lib/session/context.js';
   import { clearTeamContext, teamContext } from '#lib/teams/context.js';

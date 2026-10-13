@@ -12,7 +12,7 @@ import {
   resultView,
   valueKind,
   visibleSteps,
-} from '../src/lib/routineResult.js';
+} from '../src/lib/routines/reading.js';
 
 // Each interface language's own catalog of this copy.
 const routineMessages = Object.fromEntries(Object.entries(messages).map(([code, catalog]) => [code, catalog.routine]));
