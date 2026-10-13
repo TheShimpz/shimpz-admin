@@ -256,3 +256,19 @@ test("a Team's conversation not known yet shows the page's loading status until 
   await expect(loading).toHaveCount(0);
   await expect(composer(page)).toBeEnabled();
 });
+
+test('opening a Team from the Team list lands in its message field, from the Store and from another chat', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  await routeHistory(page, { pages: { null: { entries: exchanges(1, 2), before: null } } });
+  await routeSync(page);
+  await openChat(page);
+  await leaveForStore(page);
+  await returnToChat(page);
+  await expect(composer(page)).toBeEnabled();
+  await expect(composer(page)).toBeFocused();
+
+  await returnToChat(page, 'Trinity');
+  await expect(page).toHaveURL(/team=trinity/);
+  await expect(composer(page)).toBeEnabled();
+  await expect(composer(page)).toBeFocused();
+});

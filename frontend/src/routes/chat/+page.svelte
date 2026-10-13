@@ -808,7 +808,10 @@
     composerInput?.focus({ preventScroll: true });
   }
 
+  // A navigation (opening a Team from the Team list, or coming back from the Store) puts the focus on the body; that is
+  // nobody taking it, so the composer still takes it once usable.
   function trackFocus(event) {
+    if (event.target === document.body) return;
     chatOwnsFocus = Boolean(chatRoute?.contains(event.target));
   }
 
