@@ -128,7 +128,7 @@
   <div
     bind:this={panel}
     id={panelId}
-    class="panel"
+    class="panel admin-overlay"
     role="dialog"
     aria-labelledby={`${panelId}-title`}
     aria-busy={fast.phase === 'loading' || saving}

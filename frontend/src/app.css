@@ -217,8 +217,11 @@ textarea:focus-visible {
   }
 }
 
-/* A light rounding of the straight corners (owner 2026-10-11); chamfers stay as they are. */
-*, *::before, *::after { border-radius: 5px; }
+/* A light rounding of the straight corners (owner 2026-10-11); chamfers stay as they are. It applies only inside
+   Admin's own root, at no added specificity, and the chamfered cuts below only to Admin's own overlays: what a browser
+   extension, such as a password manager, adds to the page (its autofill list or passkey prompt, even moved into an
+   open Admin dialog) is never clipped. */
+:where(.admin-root) *, :where(.admin-root) *::before, :where(.admin-root) *::after { border-radius: 5px; }
 /* The transparent layout wrappers that clip the page take none: on them a rounding shows nothing, but it nests rounded
    clips around every scrolling region inside, which each scrolled or typed frame of the chat transcript redraws. */
 body, [data-slot="workspace-stage"], [data-slot="workspace-main"], .authenticated-content, .authenticated-page,
@@ -230,7 +233,7 @@ input, textarea, select { border-radius: 5px !important; }
 .monogram { clip-path: var(--shimpz-control-shape) !important; }
 /* Larger boxes cut deeper than their rounding, so the chamfer stays visible. A dialog's frame is cut, never the dialog
    itself, so the focus ring a dialog draws around itself is never clipped. */
-[role="menu"], [popover], .shimpz-dialog-frame {
+:where(.admin-root) :is(.admin-overlay, .shimpz-dropdown > .content[popover], .shimpz-dialog-frame) {
   clip-path: polygon(0 0, calc(100% - var(--shimpz-cut-lg)) 0, 100% var(--shimpz-cut-lg), 100% 100%, var(--shimpz-cut-lg) 100%, 0 calc(100% - var(--shimpz-cut-lg))) !important;
 }
 

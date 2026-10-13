@@ -119,7 +119,7 @@
       <path d="M12 5.2v14.1M8.6 9.2a2.2 2.2 0 0 1 3.4.4M15.4 9.2a2.2 2.2 0 0 0-3.4.4M8.4 14a2.4 2.4 0 0 0 3.6.3M15.6 14a2.4 2.4 0 0 1-3.6.3"></path>
     </svg>
   </Button>
-  <div bind:this={panel} id={panelId} class="panel" role="dialog" aria-label={copy.settings} popover="manual">
+  <div bind:this={panel} id={panelId} class="panel admin-overlay" role="dialog" aria-label={copy.settings} popover="manual">
     <div class="models" role="group" aria-label={copy.model}>
       {#each options as option, index (option.value)}
         {#if index === 0 || options[index - 1].provider !== option.provider}
