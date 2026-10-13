@@ -3,7 +3,7 @@
   import RoutineResult from '#lib/RoutineResult.svelte';
   import RoutineResultTable from '#lib/RoutineResultTable.svelte';
   import RoutineResultValue from '#lib/RoutineResultValue.svelte';
-  import { countWords, omittedWords } from '#lib/routine.js';
+  import { countWords, omittedWords } from '#lib/routines/words.js';
 
   // A run's shown result organized for reading (ADR-0092 amendment, 2026-10-05, output): its single values as one
   // compact summary strip, each small group of them under its own label, then each list as a table and each deeper

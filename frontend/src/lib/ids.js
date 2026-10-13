@@ -34,3 +34,18 @@ export function isIdentifier(value) {
 export function isActionId(value) {
   return typeof value === 'string' && value.length <= MAX_ACTION_ID_CHARS && ACTION_ID_RE.test(value);
 }
+
+const ACRONYMS = new Set(['api', 'dns', 'http', 'id', 'ip', 'ssl', 'tls', 'url']);
+
+/**
+ * A machine identifier as words, the one rule every Admin screen uses: "list-dns-records" reads "List DNS records",
+ * "zone_id" reads "Zone ID". Anything but a string reads as nothing.
+ */
+export function humanizeId(value) {
+  if (typeof value !== 'string') return '';
+  const words = value.split(/[-_.]+/u).filter(Boolean)
+    .map((word) => (ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : word.toLowerCase()));
+  if (words.length === 0) return value;
+  const [first, ...rest] = words;
+  return [first === first.toUpperCase() ? first : first[0].toUpperCase() + first.slice(1), ...rest].join(' ');
+}

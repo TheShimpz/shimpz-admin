@@ -1,6 +1,6 @@
 <script>
   import { locale } from '#lib/i18n.js';
-  import { routineNotice } from '#lib/routine.js';
+  import { routineNotice } from '#lib/routines/words.js';
 
   // A Routine's creation in a Team's transcript (ADR-0086), the one Routine notice the chat shows: its runs and later
   // outcomes are its own history, which only its panel shows. One line of an activity timeline: the notice's time on

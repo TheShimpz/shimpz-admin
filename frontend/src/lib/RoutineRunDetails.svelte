@@ -6,14 +6,8 @@
   import { locale } from '#lib/i18n.js';
   import { fill } from '#lib/i18n/fill.js';
   import RoutineRunSteps from '#lib/RoutineRunSteps.svelte';
-  import {
-    attemptWords,
-    conditionWords,
-    instantWords,
-    readRunDiagnostics,
-    routineErrorMessage,
-    runBinding,
-  } from '#lib/routine.js';
+  import { readRunDiagnostics, runBinding } from '#lib/routines/protocol.js';
+  import { attemptWords, conditionWords, instantWords, routineErrorMessage } from '#lib/routines/words.js';
 
   // One Routine run's execution details (ADR-0092 section 8): its own step records, read page by page for its
   // historical revision (ADR-0092 amendment, 2026-10-05, scale), then Team's sanitized record of each failed attempt.

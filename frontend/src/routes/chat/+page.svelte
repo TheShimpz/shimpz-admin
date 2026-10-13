@@ -25,7 +25,8 @@
   import { promptHistoryStep } from '#lib/promptHistory.js';
   import ChatDay from '#lib/ChatDay.svelte';
   import { calendarDay, exchangeDays, turnInstants, untilNextDay } from '#lib/chatDays.js';
-  import { newerRoutineEntries, questionWords } from '#lib/routine.js';
+  import { newerRoutineEntries } from '#lib/routines/protocol.js';
+  import { questionWords } from '#lib/routines/words.js';
   import { showTeamRoutines } from '#lib/routineContext.js';
   import { adminSocket, call, commandsReady, openChatChannel, outcomeUnknown } from '#lib/adminSocket.js';
   import {

@@ -6,17 +6,16 @@
   import { t } from '#lib/i18n.js';
   import { fill } from '#lib/i18n/fill.js';
   import { refreshTeamRoutines } from '#lib/routineContext.js';
+  import { humanizeId } from '#lib/ids.js';
+  import { confirmRoutineProposal, revokeRoutineProposal } from '#lib/routines/protocol.js';
   import {
-    confirmRoutineProposal,
     displayZone,
     dispositionWords,
-    humanizeId,
     instantWords,
     proposalInputWords,
-    revokeRoutineProposal,
     routineErrorMessage,
     scheduleWords,
-  } from '#lib/routine.js';
+  } from '#lib/routines/words.js';
 
   // The card of a Routine a recording turn recorded (ADR-0101 section 5.2), under its reply: everything the person
   // confirms, in full and as escaped text — its name, schedule, timezone, next runs, daily cap, what each run does

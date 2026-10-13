@@ -7,7 +7,7 @@ import {
   MAX_REPLY_CHARS,
   parseRoutineReply,
 } from './chat/protocol.js';
-import { parseRoutineRunEntry } from './routine.js';
+import { parseRoutineRunEntry } from './routines/protocol.js';
 import { parseTaskUsage } from './taskUsage.js';
 import { synced } from './synced.js';
 import { ASSISTANT_LIMIT_REACHED, exactKeys, jsonObject, LocalApiError, safeApiError } from './api.js';

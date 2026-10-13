@@ -2,7 +2,7 @@
   import { Button } from '@shimpz/frontend';
 
   import { fill } from '#lib/i18n/fill.js';
-  import { outputScalarWords } from '#lib/routine.js';
+  import { outputScalarWords } from '#lib/routines/words.js';
 
   // One value of a Routine run's shown result as escaped text, read by its column's kind: an identifier in mono that
   // stays on one line and copies exactly the value Team projected, a number in tabular figures, a yes or no, a short

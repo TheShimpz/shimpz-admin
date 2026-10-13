@@ -1,10 +1,16 @@
 // The chat channel's protocol as the browser admits it (shimpz.chat.v7, ADR-0114): the frames a message, a resumed task, a
 // Stop, a sync, and a human response send, and every frame Team answers parsed into its closed form, with the
 // human-request challenge Routines reuse for frozen runs. Any other shape throws.
+
 import { parseFileDisclosure, parseRestrictedActions } from '../attachments.js';
 import { parseClarification, renderClarification } from '../clarification.js';
 import { parseTaskUsage } from '../taskUsage.js';
-import { browserTimezone, parseRoutineProposal, parseRoutineQuestion, parseRoutineRefusal } from '../routine.js';
+import {
+  browserTimezone,
+  parseRoutineProposal,
+  parseRoutineQuestion,
+  parseRoutineRefusal,
+} from '../routines/protocol.js';
 import { isLocale } from '../locales.js';
 import { ASSISTANT_LIMIT_REACHED, exactKeys, LocalApiError } from '../api.js';
 import { codePointLength, CONTROL_RE } from '../grammar.js';

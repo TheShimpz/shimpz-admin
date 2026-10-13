@@ -9,16 +9,15 @@
   import { fill } from '#lib/i18n/fill.js';
   import { createHumanResponseFrame, parseChatEvent } from '#lib/chat/protocol.js';
   import RoutineIcon from '#lib/RoutineIcon.svelte';
+  import { humanizeId } from '#lib/ids.js';
   import {
     answerRoutineCard,
     answerRoutineChallenge,
-    failureCause,
-    humanizeId,
     openRoutineCard,
     openRoutineChallenge,
     resumeRoutineIntegrations,
-    routineErrorMessage,
-  } from '#lib/routine.js';
+  } from '#lib/routines/protocol.js';
+  import { failureCause, routineErrorMessage } from '#lib/routines/words.js';
 
   // The decision one Routine run waits for (ADR-0092), the same wherever it is shown: a held or paused run's
   // recovery card, or a frozen run's approval through chat's own dialog. Nothing runs until the Supervisor answers.

@@ -4,7 +4,7 @@
 // transient failure. A change made to a Routine never writes the list: the read after Admin announces it does.
 import { writable } from 'svelte/store';
 
-import { listRoutines, RoutineError } from './routine.js';
+import { listRoutines, RoutineError } from './routines/protocol.js';
 import { synced } from './synced.js';
 import { LocalApiError } from './api.js';
 

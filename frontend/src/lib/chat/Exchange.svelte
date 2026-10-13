@@ -11,7 +11,7 @@
   import { locale, t } from '#lib/i18n.js';
   import Markdown from '#lib/Markdown.svelte';
   import RestrictedActionsNote from '#lib/RestrictedActionsNote.svelte';
-  import { refusalWords } from '#lib/routine.js';
+  import { refusalWords } from '#lib/routines/words.js';
   import RoutineProposal from '#lib/RoutineProposal.svelte';
   import RoutineQuestion from '#lib/RoutineQuestion.svelte';
   import RoutineRunEntry from '#lib/RoutineRunEntry.svelte';

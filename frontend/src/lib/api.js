@@ -1,5 +1,6 @@
 // How Admin's answers are admitted: the one error a refused or invalid answer becomes, the JSON body, exact key sets with
 // Team's optional trace id, and the safe public message an answer may carry.
+
 import { TRACE_ID_RE } from './ids.js';
 
 // Team's closed refusal of a fresh install beyond the Team's MAX_TEAM_ASSISTANTS (HTTP 409); Admin localizes it.

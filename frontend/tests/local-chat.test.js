@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { localizedChallenge } from '../e2e/localizedRequest.js';
-import { browserTimezone } from '../src/lib/routine.js';
+import { browserTimezone } from '../src/lib/routines/protocol.js';
 
 import * as integrations from '../src/lib/assistants/integrations.js';
 import { oauthReturnFailure } from '../src/lib/assistants/integrations.js';

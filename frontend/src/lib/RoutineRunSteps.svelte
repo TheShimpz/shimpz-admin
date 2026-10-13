@@ -5,16 +5,9 @@
   import { call } from '#lib/adminSocket.js';
   import RoutineIcon from '#lib/RoutineIcon.svelte';
   import { fill } from '#lib/i18n/fill.js';
-  import {
-    attemptWords,
-    conditionWords,
-    countWords,
-    humanizeId,
-    literalWords,
-    needsPage,
-    pageBinding,
-    readRunSteps,
-  } from '#lib/routine.js';
+  import { humanizeId } from '#lib/ids.js';
+  import { needsPage, pageBinding, readRunSteps } from '#lib/routines/protocol.js';
+  import { attemptWords, conditionWords, countWords, literalWords } from '#lib/routines/words.js';
   import { durationWords, visibleSteps } from '#lib/routineResult.js';
 
   // The steps of one Routine run as the run recorded them (ADR-0092 amendment, 2026-10-05, scale), numbered in order:

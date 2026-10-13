@@ -5,15 +5,9 @@
   import { call } from '#lib/adminSocket.js';
   import RoutineIcon from '#lib/RoutineIcon.svelte';
   import { fill } from '#lib/i18n/fill.js';
-  import {
-    countWords,
-    dispositionWords,
-    humanizeId,
-    inputWords,
-    needsPage,
-    readPlanSteps,
-    summaryChain,
-  } from '#lib/routine.js';
+  import { humanizeId } from '#lib/ids.js';
+  import { needsPage, readPlanSteps } from '#lib/routines/protocol.js';
+  import { countWords, dispositionWords, inputWords, summaryChain } from '#lib/routines/words.js';
   import { visibleSteps } from '#lib/routineResult.js';
 
   // A Routine plan's safe projection (ADR-0092) in words. Its revision's summary shows at once: how many steps, their

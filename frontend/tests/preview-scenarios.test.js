@@ -9,17 +9,15 @@ import {
   confirmRoutineProposal,
   listRoutines,
   openRoutineCard,
+  pageBinding,
   parseRoutineRunEntry,
-  failureCause,
   readPlanSteps,
   readRunDiagnostics,
   readRunSteps,
-  pageBinding,
-  questionWords,
-  refusalWords,
   revokeRoutineProposal,
   runBinding,
-} from '../src/lib/routine.js';
+} from '../src/lib/routines/protocol.js';
+import { failureCause, questionWords, refusalWords } from '../src/lib/routines/words.js';
 import { messages } from '../src/lib/messages.js';
 import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from '../src/lib/localApi.js';
 import { loadAssistantDetails, loadLocalAssistantDetails, loadLocalAssistantSummary } from '../src/lib/localAssistantIcons.js';

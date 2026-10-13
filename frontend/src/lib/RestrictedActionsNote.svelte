@@ -1,6 +1,6 @@
 <script>
   import { t } from '#lib/i18n.js';
-  import { humanizeId } from '#lib/routine.js';
+  import { humanizeId } from '#lib/ids.js';
 
   // A neutral note under a reply whose message carried readable attachments: which Actions Team withheld, by their
   // Assistant and Action names, and the attachment-free way to use them. It offers nothing to run (ADR-0093).

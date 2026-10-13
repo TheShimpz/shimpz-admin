@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { attemptWords, conditionWords, inputWords } from '../src/lib/routine.js';
+import { attemptWords, conditionWords, inputWords } from '../src/lib/routines/words.js';
 import { messages } from '../src/lib/messages.js';
 import {
   attemptsByStep,

@@ -11,23 +11,22 @@
   import { locale, t } from '#lib/i18n.js';
   import { fill } from '#lib/i18n/fill.js';
   import { assistantNames } from '#lib/assistantNames.js';
+  import { pauseRoutine, resumeRoutine } from '#lib/routines/protocol.js';
   import {
     ATTENTION_STATUSES,
     clockWords,
     displayZone,
     fillParts,
-    runCountWords,
     instantWords,
-    pauseRoutine,
-    resumeRoutine,
     routineErrorMessage,
     routineNotice,
     routineStatus,
+    runCountWords,
     scheduleWords,
     STATUS_TAGS,
     STATUS_WORDS,
     untilWords,
-  } from '#lib/routine.js';
+  } from '#lib/routines/words.js';
   import { refreshTeamRoutines } from '#lib/routineContext.js';
   import { call, commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import RoutineDecision from '#lib/RoutineDecision.svelte';

@@ -6,9 +6,8 @@
   import RoutineResult from '#lib/RoutineResult.svelte';
   import RoutineRunSteps from '#lib/RoutineRunSteps.svelte';
   import RoutineTag from '#lib/RoutineTag.svelte';
-  import {
-    countWords, displayZone, instantWords, MAX_ROUTINE_STEPS, readRunDiagnostics, runBinding,
-  } from '#lib/routine.js';
+  import { MAX_ROUTINE_STEPS, readRunDiagnostics, runBinding } from '#lib/routines/protocol.js';
+  import { countWords, displayZone, instantWords } from '#lib/routines/words.js';
   import { attemptsByStep, resultView } from '#lib/routineResult.js';
 
   // One Routine run in full, over the whole screen (ADR-0092 amendment, 2026-10-05, output and scale): how it stands

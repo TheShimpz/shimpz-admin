@@ -1,6 +1,7 @@
 // The Integrations and Stored Inputs an Assistant declares, as a Team's chat shows and manages them (ADR-0090, ADR-0114):
 // their inventory, clearing a Stored Input, and the OAuth authorization that connects an Integration, whose start
 // address must be one Admin or shimpz.com trusts for exactly the reviewed Cloudflare scopes.
+
 import { socketReads } from '../adminSocket.js';
 import { exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
 import { canonicalId, canonicalIntegrationScopes, canonicalPublicText, requireTeam } from '../chat/protocol.js';
