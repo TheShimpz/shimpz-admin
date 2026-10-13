@@ -57,7 +57,7 @@ export default {
     languageCurrent: 'Language: {name}',
     languageMenu: 'Language',
     platformRollback: 'Update rolled back',
-    versionStale: 'A new app version ({version}) is available, please update',
+    versionStale: 'App version {version} is available',
     versionReload: 'Update',
     reconnecting: 'Reconnecting to Admin… What you see may be out of date, and actions wait until the connection is back.',
     reconnectFailed: "Admin can't be reached. Shimpz keeps trying to reconnect.",

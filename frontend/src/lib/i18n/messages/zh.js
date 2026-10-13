@@ -59,7 +59,7 @@ export default {
     languageCurrent: '语言：{name}',
     languageMenu: '语言',
     platformRollback: '更新已回滚',
-    versionStale: '有新的应用版本（{version}）可用，请更新',
+    versionStale: '应用版本 {version} 已可用',
     versionReload: '更新',
     reconnecting: '正在重新连接 Admin… 您看到的内容可能已过时，操作将等待连接恢复。',
     reconnectFailed: "无法连接 Admin。Shimpz 会继续尝试重新连接。",

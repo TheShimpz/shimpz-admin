@@ -59,7 +59,7 @@ export default {
     languageCurrent: 'اللغة: {name}',
     languageMenu: 'اللغة',
     platformRollback: 'تم التراجع عن التحديث',
-    versionStale: 'يتوفر إصدار جديد من التطبيق ({version})، يُرجى التحديث',
+    versionStale: 'الإصدار {version} من التطبيق متاح',
     versionReload: 'تحديث',
     reconnecting: 'جارٍ إعادة الاتصال بـ Admin… قد يكون ما تراه قديمًا، وتنتظر الإجراءات حتى يعود الاتصال.',
     reconnectFailed: "تعذّر الوصول إلى Admin. يواصل Shimpz محاولة إعادة الاتصال.",
