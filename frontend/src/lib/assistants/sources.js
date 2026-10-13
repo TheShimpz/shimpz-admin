@@ -19,6 +19,7 @@ import {
   loadLocalAssistantSummary,
 } from './preview.js';
 import { groupLocalAssistantSnapshots, projectPublishedAssistants } from './snapshots.js';
+import { sessionFamily } from '../session/family.js';
 import { synced } from '../session/synced.js';
 
 const SNAPSHOTS = 'local-assistants';
@@ -33,75 +34,6 @@ const MAX_SUMMARIES = 64;
 // The UTF-8 size of the answers the catalogs and summaries no screen shows may hold.
 const MAX_RETAINED_BYTES = 16 * 1024 * 1024;
 
-/**
- * Session values by key: a key asked for again shares its value, and the values no screen shows are evicted, least
- * recently shown first, beyond `maxEntries` or the retained-bytes bound. `make(key)` creates the value of a new key.
- */
-function sessionFamily(make, maxEntries) {
-  const entries = new Map();
-  const strays = new Set();
-  let evicting = false;
-  // A screen that changes what it shows lets go of its old values before it takes the new ones, so eviction waits
-  // until that handoff is over: a value about to be shown is never taken for one no screen shows.
-  function evictSoon() {
-    if (evicting) return;
-    evicting = true;
-    queueMicrotask(() => {
-      evicting = false;
-      evict();
-    });
-  }
-  function evict() {
-    const idle = [...entries].filter(([, entry]) => entry.users === 0).sort(([, a], [, b]) => a.used - b.used);
-    let bytes = idle.reduce((total, [, entry]) => total + entry.value.size(), 0);
-    for (const [key, entry] of idle) {
-      if (entries.size <= maxEntries && bytes <= MAX_RETAINED_BYTES) break;
-      bytes -= entry.value.size();
-      entries.delete(key);
-      entry.value.reset();
-    }
-  }
-  return {
-    get(key) {
-      let entry = entries.get(key);
-      if (!entry) {
-        const value = make(key);
-        entry = { value, users: 0, used: performance.now(), shared: null };
-        const current = entry;
-        current.shared = {
-          ...value,
-          subscribe(run, invalidate) {
-            // A value evicted while a screen still held it is the session's again once shown, so clearing reaches it.
-            if (entries.get(key) !== current) {
-              if (entries.has(key)) strays.add(current);
-              else entries.set(key, current);
-            }
-            current.users += 1;
-            current.used = performance.now();
-            const stop = value.subscribe(run, invalidate);
-            return () => {
-              stop();
-              current.users -= 1;
-              current.used = performance.now();
-              // A stray value no screen shows any more is forgotten at once: it is outside the family's bounds.
-              if (current.users === 0 && strays.delete(current)) current.value.reset();
-              evictSoon();
-            };
-          },
-        };
-        entries.set(key, entry);
-        evictSoon();
-      }
-      return entry.shared;
-    },
-    clear() {
-      for (const entry of [...entries.values(), ...strays]) entry.value.reset();
-      entries.clear();
-      strays.clear();
-    },
-  };
-}
-
 const snapshots = synced(SNAPSHOTS, (call) => listLocalAssistantSnapshots(call), {
   retain: { maxAgeMs: SNAPSHOTS_MAX_AGE_MS },
 });
@@ -109,7 +41,7 @@ const catalogs = sessionFamily(
   (locale) => synced(null, (call) => listPublicAssistantCatalog(locale, call), {
     retain: { maxAgeMs: CATALOG_MAX_AGE_MS },
   }),
-  MAX_CATALOGS,
+  { maxEntries: MAX_CATALOGS, maxBytes: MAX_RETAINED_BYTES },
 );
 // A summary of one exact image in one language changes only with that image, which a new revision of the snapshots says.
 const summaries = sessionFamily((key) => {
@@ -117,7 +49,7 @@ const summaries = sessionFamily((key) => {
   return synced(SNAPSHOTS, (call) => loadLocalAssistantSummary(imageId, locale, { call }), {
     retain: { maxAgeMs: Infinity },
   });
-}, MAX_SUMMARIES);
+}, { maxEntries: MAX_SUMMARIES, maxBytes: MAX_RETAINED_BYTES });
 
 /** This machine's staged snapshots, read again whenever one is staged or removed (the CLI). */
 export function stagedSnapshots() {
