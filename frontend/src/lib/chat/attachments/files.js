@@ -1,8 +1,9 @@
 // Chat attachments (ADR-0093): the composer's per-message admission, the browser's mirror of Team's readability rules,
-// the bounded upload through Admin, and the closed shapes Team discloses about files and withheld Actions.
-import { exactKeys, jsonObject, LocalApiError } from './api.js';
-import { codePointLength, CONTROL_RE } from './grammar.js';
-import { isActionId, isAssistantId, OPAQUE_ID_RE, TEAM_ID_RE } from './ids.js';
+// the bounded upload through Admin, and the closed shapes Team discloses about files.
+
+import { exactKeys, jsonObject, LocalApiError } from '../../api.js';
+import { codePointLength, CONTROL_RE } from '../../grammar.js';
+import { OPAQUE_ID_RE, TEAM_ID_RE } from '../../ids.js';
 
 const KIB = 1024;
 const MIB = 1024 * KIB;
@@ -24,9 +25,6 @@ const MAX_TEXT_BYTES = 128 * KIB;
 const MAX_ACTION_FILE_BYTES = 8 * MIB;
 const MAX_FILENAME_BYTES = 255;
 const MAX_MEDIA_TYPE_CHARS = 127;
-const MAX_RESTRICTED_ACTIONS = 16;
-const MAX_RESTRICTED_ACTION_TOTAL = 2048;
-const MAX_RESTRICTED_ACTIONS_BYTES = 2048;
 
 const MEDIA_TYPE_RE = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/;
 const SHA256_RE = /^[0-9a-f]{64}$/;
@@ -180,41 +178,6 @@ export function parseFileReferences(value) {
     throw new LocalApiError('The Team chat history is invalid.');
   }
   return references;
-}
-
-/**
- * The Actions a completed turn withheld because readable attachment content was in it (Team
- * payload.canonical_restricted_actions): 1 to 16 distinct identities in identity order and the turn's total. It names
- * capabilities only and grants nothing.
- */
-export function parseRestrictedActions(value) {
-  if (
-    !exactKeys(value, ['actions', 'total']) ||
-    !Array.isArray(value.actions) ||
-    value.actions.length < 1 ||
-    value.actions.length > MAX_RESTRICTED_ACTIONS ||
-    !Number.isSafeInteger(value.total) ||
-    value.total < value.actions.length ||
-    value.total > MAX_RESTRICTED_ACTION_TOTAL
-  ) throw new LocalApiError('The local chat response is invalid.');
-  const actions = value.actions.map((item) => {
-    if (
-      !exactKeys(item, ['assistant', 'action']) ||
-      !isAssistantId(item.assistant) ||
-      !isActionId(item.action)
-    ) throw new LocalApiError('The local chat response is invalid.');
-    return { assistant: item.assistant, action: item.action };
-  });
-  const ordered = actions.every((item, index) => {
-    if (index === 0) return true;
-    const previous = actions[index - 1];
-    return previous.assistant < item.assistant || (previous.assistant === item.assistant && previous.action < item.action);
-  });
-  const projected = { actions, total: value.total };
-  if (!ordered || encoder.encode(JSON.stringify(projected)).length > MAX_RESTRICTED_ACTIONS_BYTES) {
-    throw new LocalApiError('The local chat response is invalid.');
-  }
-  return projected;
 }
 
 /** Why an upload failed, in the closed words the composer explains: quota, size, type, or anything else. */

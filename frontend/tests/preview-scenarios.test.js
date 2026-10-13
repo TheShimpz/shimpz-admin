@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { uploadTeamFile } from '../src/lib/attachments.js';
+import { uploadTeamFile } from '../src/lib/chat/attachments/files.js';
 import { renderClarification } from '../src/lib/clarification.js';
 import { displayedHumanRequest, parseChatEvent } from '../src/lib/chat/protocol.js';
 import {

@@ -3,16 +3,16 @@ import test from 'node:test';
 
 import { localizedChallenge } from '../e2e/localizedRequest.js';
 import {
-  AttachmentUploadError,
   attachmentKind,
   attachmentReadability,
   attachmentRefusal,
+  AttachmentUploadError,
   formatFileSize,
   MAX_ATTACHMENTS,
   parseFileDisclosure,
-  parseRestrictedActions,
   uploadTeamFile,
-} from '../src/lib/attachments.js';
+} from '../src/lib/chat/attachments/files.js';
+import { parseRestrictedActions } from '../src/lib/chat/attachments/restricted.js';
 import { listChatHistory } from '../src/lib/chatHistory.js';
 import { parseChatEvent } from '../src/lib/chat/protocol.js';
 

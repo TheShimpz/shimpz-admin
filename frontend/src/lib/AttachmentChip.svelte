@@ -1,6 +1,6 @@
 <script>
   import { Button } from '@shimpz/frontend';
-  import { formatFileSize } from '#lib/attachments.js';
+  import { formatFileSize } from '#lib/chat/attachments/files.js';
   import { locale, t } from '#lib/i18n.js';
 
   // One file as a quiet chip: a type mark, its literal name, then its type, size, and what Team reads of it. In the

@@ -2,7 +2,8 @@
 // Stop, a sync, and a human response send, and every frame Team answers parsed into its closed form, with the
 // human-request challenge Routines reuse for frozen runs. Any other shape throws.
 
-import { parseFileDisclosure, parseRestrictedActions } from '../attachments.js';
+import { parseFileDisclosure } from './attachments/files.js';
+import { parseRestrictedActions } from './attachments/restricted.js';
 import { parseClarification, renderClarification } from '../clarification.js';
 import { parseTaskUsage } from '../taskUsage.js';
 import {

@@ -1,4 +1,5 @@
-import { parseFileReferences, parseRestrictedActions } from './attachments.js';
+import { parseFileReferences } from './chat/attachments/files.js';
+import { parseRestrictedActions } from './chat/attachments/restricted.js';
 import { parseClarification, renderClarification } from './clarification.js';
 import {
   CHAT_TEXT_CONTROL_RE,

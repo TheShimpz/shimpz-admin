@@ -2,7 +2,7 @@
 // and then uploaded, one at a time, to the Team it was selected for. A Team change discards them, an upload that
 // answers for an earlier Team is ignored, and a selection still being read blocks sending until its files join the
 // message or are refused. The chat page owns one, says when files may join, and moves the focus.
-import { AttachmentUploadError, attachmentReadability, attachmentRefusal, uploadTeamFile } from '../../attachments.js';
+import { attachmentReadability, attachmentRefusal, AttachmentUploadError, uploadTeamFile } from './files.js';
 
 export class MessageFiles {
   /** The selected files, each `queued`, `uploading`, or `ready` (with Team's id). */

@@ -6,7 +6,7 @@
 import { receiptSteps } from '../executionProgress.js';
 import { fill } from '../i18n/fill.js';
 import { escapeMarkdownText } from '../markdown.js';
-import { attachmentKind } from '../attachments.js';
+import { attachmentKind } from './attachments/files.js';
 import { taskUsageSummary } from '../taskUsage.js';
 import { ASSISTANT_LIMIT_REACHED } from '../api.js';
 

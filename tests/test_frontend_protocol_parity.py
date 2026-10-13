@@ -33,7 +33,7 @@ TURN_BOUNDS = {
     "teamContext.js": {
         "MAX_TEAM_ASSISTANTS": team_contract.MAX_TEAM_ASSISTANTS,
     },
-    "attachments.js": {
+    "chat/attachments/files.js": {
         "MAX_ATTACHMENTS": team_contract.MAX_CHAT_FILES,
         "MAX_UPLOAD_BYTES": team_contract.MAX_FILE_UPLOAD_BYTES,
         "MAX_FILENAME_BYTES": team_contract.MAX_FILENAME_BYTES,
