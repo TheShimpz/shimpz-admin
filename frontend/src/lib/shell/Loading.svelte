@@ -44,14 +44,15 @@
 
   .loader {
     --size: 3.5rem;
-    --cut: var(--shimpz-cut-lg);
+    --cut: var(--shimpz-control-cut);
+    /* The controls' chamfer (--shimpz-control-shape): top-right and bottom-left corners cut. */
     --shape: polygon(
-      var(--cut) 0,
-      100% 0,
-      100% calc(100% - var(--cut)),
-      calc(100% - var(--cut)) 100%,
-      0 100%,
-      0 var(--cut)
+      0 0,
+      calc(100% - var(--cut)) 0,
+      100% var(--cut),
+      100% 100%,
+      var(--cut) 100%,
+      0 calc(100% - var(--cut))
     );
     position: relative;
     display: grid;
@@ -78,9 +79,11 @@
     animation: loader-trace 1.4s linear infinite;
   }
 
+  /* The plate's rounding follows the frame's, inset by the trace width, so the trace keeps one width at every corner. */
   .trace::after {
     position: absolute;
     inset: 1.5px;
+    border-radius: 3.5px;
     clip-path: var(--shape);
     background:
       repeating-linear-gradient(
@@ -103,7 +106,8 @@
   .bar {
     width: 4px;
     height: 100%;
-    clip-path: polygon(0 2px, 2px 0, 100% 0, 100% 100%, 0 100%);
+    border-radius: 0;
+    clip-path: polygon(0 0, calc(100% - 2px) 0, 100% 2px, 100% 100%, 0 100%);
     background: var(--shimpz-color-cyan);
     box-shadow: 0 0 6px color-mix(in srgb, var(--shimpz-color-cyan) 60%, transparent);
     transform-origin: bottom;
