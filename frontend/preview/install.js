@@ -247,7 +247,9 @@ class SessionSocket extends EventTarget {
   }
 
   #deadline(idleSeconds) {
-    const data = JSON.stringify({ type: 'session', idle_seconds: idleSeconds, absolute_seconds: 80000 });
+    const data = JSON.stringify({
+      type: 'session', idle_seconds: idleSeconds, absolute_seconds: 80000, source_revision: null,
+    });
     setTimeout(() => this.#emit('message', new MessageEvent('message', { data })), 0);
   }
 

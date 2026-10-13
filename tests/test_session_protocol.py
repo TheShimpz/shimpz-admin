@@ -61,7 +61,11 @@ class SessionProtocolVectorTests(unittest.TestCase):
         changed = server["changed"]
         self.assertEqual(frames.changed(changed["topic"], changed["epoch"], changed["revision"]), changed)
         session = server["session"]
-        self.assertEqual(frames.session(3480.9, 82800.2), session)
+        self.assertEqual(frames.session(3480.9, 82800.2, session["source_revision"]), session)
+        self.assertEqual(frames.session(3480.9, 82800.2, None), server["session_unnamed"])
+        for revision in ("A" * 40, "a" * 39, "a" * 40 + "\n", "g" * 40, 1):
+            with self.subTest(revision=revision), self.assertRaises(ValueError):
+                frames.session(1, 2, revision)
         self.assertEqual(frames.progress(server["progress"]["id"]), server["progress"])
         self.assertRegex(changed["epoch"], frames.EPOCH_RE)
 

@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import sys
+import tempfile
 import types
 import unittest
 from pathlib import Path
@@ -286,6 +287,20 @@ class SessionSocketServeTests(unittest.TestCase):
             self.assertEqual(registry.REGISTRY.handles(), ())
 
         asyncio.run(scenario())
+
+
+class SourceRevisionTests(unittest.TestCase):
+    def test_the_build_commit_is_read_exactly_or_refused(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "revision"
+            self.assertIsNone(socket.source_revision(path))
+            path.write_bytes(b"a" * 40 + b"\n")
+            self.assertEqual(socket.source_revision(path), "a" * 40)
+            for content in (b"a" * 40, b"A" * 40 + b"\n", b"a" * 39 + b"\n", b"a" * 40 + b"\n\n", b""):
+                with self.subTest(content=content):
+                    path.write_bytes(content)
+                    with self.assertRaises(RuntimeError):
+                        socket.source_revision(path)
 
 
 class WatcherReadTests(unittest.TestCase):

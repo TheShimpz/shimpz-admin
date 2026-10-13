@@ -5,16 +5,18 @@ itself opened it, the exact subprotocol, and a current Supervisor session. It st
 Before every frame it acts on, and again when a waiting chat frame's or call's turn to run comes, Admin checks that the
 Origin is still admitted and the session still current, and closes the socket when either is not (4403, 4401). None of
 that renews the session: only the page's activity frame, sent on the person's own input, restarts its idle time, and
-the socket tells the page its deadlines when it opens and whenever that happens. The receive loop never waits for a
-call or a write.
+the socket tells the page its deadlines, with the commit this Admin was built from, when it opens and whenever that
+happens. The receive loop never waits for a call or a write.
 """
 
 import asyncio
 import contextlib
 import logging
+import re
 import secrets
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
+from pathlib import Path
 
 import browser
 from fastapi import WebSocket, WebSocketDisconnect
@@ -41,6 +43,22 @@ EXPIRY_MARGIN_SECONDS = 0.05
 SESSION_CHECK_SECONDS = 60
 
 SessionCheck = Callable[[Mapping[str, str]], Awaitable[bool]]
+# The commit the Admin image was built from, which its build writes beside the UI it built from the same commit.
+REVISION_FILE = Path(__file__).resolve().parents[1] / "revision"
+
+
+def source_revision(path: Path = REVISION_FILE) -> str | None:
+    """This Admin's build commit, or None without a build (a working tree or a test); a malformed one fails."""
+    try:
+        content = path.read_bytes()
+    except FileNotFoundError:
+        return None
+    if re.fullmatch(rb"[0-9a-f]{40}\n", content) is None:
+        raise RuntimeError("the Admin source revision file is malformed")
+    return content[:40].decode("ascii")
+
+
+SOURCE_REVISION = source_revision()
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,7 +178,7 @@ class SessionSocket:
             deadlines = None
         if deadlines is not None:
             with contextlib.suppress(OutboundOverflowError):
-                self.send(frames.session(*deadlines))
+                self.send(frames.session(*deadlines, SOURCE_REVISION))
 
     def progress(self, call_id: str) -> None:
         """A long call started running (on the socket's loop): its result follows when it ends."""

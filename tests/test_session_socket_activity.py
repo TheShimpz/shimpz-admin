@@ -35,9 +35,22 @@ class SessionSocketActivityTests(SessionSocketCase):
         async def scenario() -> None:
             websocket = await self._connect()
             deadlines = await websocket.next_session()
-            self.assertEqual(set(deadlines), {"type", "idle_seconds", "absolute_seconds"})
+            self.assertEqual(set(deadlines), {"type", "idle_seconds", "absolute_seconds", "source_revision"})
+            # A test runs no image build, so this Admin names no commit.
+            self.assertIsNone(deadlines["source_revision"])
             self.assertEqual(deadlines["idle_seconds"], self.auth.IDLE_SECONDS)
             self.assertLessEqual(deadlines["absolute_seconds"], self.auth.TTL)
+            await websocket.disconnect()
+
+        asyncio.run(scenario())
+
+    def test_a_socket_names_the_commit_its_admin_was_built_from_as_it_opens(self) -> None:
+        session_socket = __import__("session.socket", fromlist=["socket"])
+
+        async def scenario() -> None:
+            with mock.patch.object(session_socket, "SOURCE_REVISION", "a" * 40):
+                websocket = await self._connect()
+                self.assertEqual((await websocket.next_session())["source_revision"], "a" * 40)
             await websocket.disconnect()
 
         asyncio.run(scenario())

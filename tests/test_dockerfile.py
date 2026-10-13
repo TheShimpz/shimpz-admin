@@ -85,6 +85,21 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
         self.assertLess(stages["ui"].index("ARG SOURCE_DATE_EPOCH=0"), build)
         self.assertLess(stages["ui"].index("ARG SOURCE_REVISION"), build)
 
+    def test_the_backend_names_the_commit_its_ui_was_built_from(self) -> None:
+        dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+        stages = dict(re.findall(r"(?ms)^FROM (?:--platform=\S+ )?\S+ AS (\w+)\n(.*?)(?=^FROM |\Z)", dockerfile))
+        # The validated build writes the same commit outside the served tree, with the tree's normalized time.
+        self.assertIn(
+            'RUN test -n "$SOURCE_REVISION" && \\\n    pnpm build && \\\n'
+            "    printf '%s\\n' \"$SOURCE_REVISION\" > /w/revision && \\\n"
+            '    find /w/build /w/revision -depth -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +\n',
+            stages["ui"],
+        )
+        # The runtime copies that file beside the backend that reads it, and takes no commit argument of its own, so no
+        # runtime instruction depends on the commit.
+        self.assertIn("COPY --link --from=ui /w/revision /app/backend/revision\n", stages["runtime"])
+        self.assertNotRegex(stages["runtime"], r"(?m)^ARG SOURCE_REVISION\b")
+
     def test_runtime_image_packages_the_password_blocklist(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
 

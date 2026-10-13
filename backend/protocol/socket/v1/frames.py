@@ -26,6 +26,8 @@ MAX_REVISION = 2**53 - 1
 
 CALL_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 EPOCH_RE = re.compile(r"[0-9a-f]{32}\Z")
+# The full commit id an Admin build names.
+SOURCE_REVISION_RE = re.compile(r"[0-9a-f]{40}\Z")
 TOPIC_RE = re.compile(
     r"(?:teams|space/(?:models|decision)|platform/release|security/summary|session|assistants/registry"
     r"|local-assistants"
@@ -264,9 +266,22 @@ def progress(call_id: str) -> dict[str, object]:
     return {"type": "progress", "id": call_id, "state": "running"}
 
 
-def session(idle_seconds: float, absolute_seconds: float) -> dict[str, object]:
-    """The session's two deadlines, in whole seconds from now on Admin's clock: idle and absolute expiry."""
-    return {"type": "session", "idle_seconds": int(idle_seconds), "absolute_seconds": int(absolute_seconds)}
+def session(idle_seconds: float, absolute_seconds: float, source_revision: str | None) -> dict[str, object]:
+    """The session's two deadlines, in whole seconds from now on Admin's clock: idle and absolute expiry.
+
+    It also names the commit this Admin was built from, or null for a run that names none, so a page built from another
+    commit knows it is stale; every socket hears it when it opens, so a reconnect that reaches a new Admin hears it too.
+    """
+    if source_revision is not None and (
+        not isinstance(source_revision, str) or SOURCE_REVISION_RE.fullmatch(source_revision) is None
+    ):
+        raise ValueError("invalid Admin source revision")
+    return {
+        "type": "session",
+        "idle_seconds": int(idle_seconds),
+        "absolute_seconds": int(absolute_seconds),
+        "source_revision": source_revision,
+    }
 
 
 def changed(topic: str, epoch: str, revision: int) -> dict[str, object]:

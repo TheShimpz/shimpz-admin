@@ -63,7 +63,10 @@ const sessionMocks = new WeakMap();
 async function sessionMock(page) {
   let mock = sessionMocks.get(page);
   if (mock) return mock;
-  mock = { reads: new Map(), chats: new Map(), connect: null, fallback: null, sessions: [], calls: [], revisions: new Map() };
+  mock = {
+    reads: new Map(), chats: new Map(), connect: null, fallback: null, sessions: [], calls: [], revisions: new Map(),
+    sourceRevision: undefined,
+  };
   sessionMocks.set(page, mock);
   await page.routeWebSocket(/\/api(?:\/|$)/, (socket) => socket.close({ code: 1008, reason: 'Not in this scenario.' }));
   await page.routeWebSocket(`**${SESSION_SOCKET_PATH}`, (socket) => {
@@ -81,11 +84,14 @@ async function sessionMock(page) {
           return mock.fallback?.call(method, params) ?? null;
         },
         chat: (teamId) => mock.chats.get(teamId) ?? mock.fallback?.chat(teamId),
+        sourceRevision: () => mock.sourceRevision ?? null,
       },
       mock.revisions,
     );
     mock.sessions.push(session);
     socket.onMessage((message) => void session.receive(message));
+    // Admin tells each socket its deadlines and its commit as it opens; a page that names a commit hears it.
+    if (mock.sourceRevision !== undefined) session.deadlines(3600, 80_000);
   });
   return mock;
 }
@@ -112,6 +118,14 @@ export async function routeChat(page, teamId, handler) {
 /** Decide each session socket as it opens: return false after `socket.connectToServer()` to refuse it. */
 export async function routeConnect(page, connect) {
   (await sessionMock(page)).connect = connect;
+}
+
+/**
+ * Name `revision` (a full commit, or null for none) as the commit Admin was built from: every session socket the page
+ * opens from now on hears it as it opens, as it hears Admin's deadlines.
+ */
+export async function routeSourceRevision(page, revision) {
+  (await sessionMock(page)).sourceRevision = revision;
 }
 
 /** Close every open session socket of the page with `code`, as a dropped connection does; the page reconnects. */

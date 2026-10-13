@@ -72,6 +72,7 @@ const {
   connectAdminSocket,
   disconnectAdminSocket,
   openChatChannel,
+  servedRevision,
   sessionDeadlines,
   trackActivity,
   watchTopic,
@@ -557,8 +558,8 @@ test('the person\'s trusted input is reported at most once a minute, and only wh
     assert.equal(socket.sent.filter((frame) => frame.type === 'activity').length, 3);
     // A report Admin acknowledged with the renewed deadline, after the one the socket opened with, keeps the tab's
     // minute across a reconnect.
-    socket.frame({ type: 'session', idle_seconds: 3000, absolute_seconds: 80_000 });
-    socket.frame({ type: 'session', idle_seconds: 3600, absolute_seconds: 80_000 });
+    socket.frame({ type: 'session', idle_seconds: 3000, absolute_seconds: 80_000, source_revision: null });
+    socket.frame({ type: 'session', idle_seconds: 3600, absolute_seconds: 80_000, source_revision: null });
     socket.drop(1006);
     await flush();
     await new Promise((resolve) => setTimeout(resolve, 450));
@@ -580,7 +581,7 @@ test('the person\'s trusted input is reported at most once a minute, and only wh
     input('keydown');
     assert.deepEqual(reopened.sent.filter((frame) => frame.type === 'activity'), [{ type: 'activity' }]);
     // The deadline a socket opens with answers no report: one sent before it arrives still counts as unanswered.
-    reopened.frame({ type: 'session', idle_seconds: 3600, absolute_seconds: 80_000 });
+    reopened.frame({ type: 'session', idle_seconds: 3600, absolute_seconds: 80_000, source_revision: null });
     reopened.drop(1006);
     await flush();
     await new Promise((resolve) => setTimeout(resolve, 1_650));
@@ -602,12 +603,13 @@ test('the session\'s deadlines are read from Admin\'s clock, and a malformed one
   const socket = connected();
   const clock = mock.method(performance, 'now', () => 5_000);
   try {
-    socket.frame({ type: 'session', idle_seconds: 3480, absolute_seconds: 82800 });
+    socket.frame({ type: 'session', idle_seconds: 3480, absolute_seconds: 82800, source_revision: null });
     assert.deepEqual(get(sessionDeadlines), { idleAt: 5_000 + 3_480_000, absoluteAt: 5_000 + 82_800_000 });
     for (const frame of [
-      { type: 'session', idle_seconds: -1, absolute_seconds: 1 },
-      { type: 'session', idle_seconds: 1.5, absolute_seconds: 1 },
-      { type: 'session', idle_seconds: 1, absolute_seconds: 1, extra: true },
+      { type: 'session', idle_seconds: -1, absolute_seconds: 1, source_revision: null },
+      { type: 'session', idle_seconds: 1.5, absolute_seconds: 1, source_revision: null },
+      { type: 'session', idle_seconds: 1, absolute_seconds: 1, source_revision: null, extra: true },
+      { type: 'session', idle_seconds: 1, absolute_seconds: 1 },
     ]) {
       const next = connected();
       next.frame(frame);
@@ -618,6 +620,35 @@ test('the session\'s deadlines are read from Admin\'s clock, and a malformed one
   } finally {
     clock.mock.restore();
   }
+});
+
+test('the commit Admin names is kept until a reopened socket names its own, and a malformed one closes', async () => {
+  const revision = 'a'.repeat(40);
+  const deadlines = { type: 'session', idle_seconds: 3600, absolute_seconds: 80_000 };
+  const socket = connected();
+  assert.equal(get(servedRevision), null);
+  socket.frame({ ...deadlines, source_revision: revision });
+  assert.equal(get(servedRevision), revision);
+  // A reconnect keeps what the last Admin named until the reopened socket names the one it reached.
+  socket.drop(1006);
+  await flush();
+  await new Promise((resolve) => setTimeout(resolve, 450));
+  const reopened = FakeSocket.opened.at(-1);
+  reopened.open();
+  assert.equal(get(servedRevision), revision);
+  reopened.frame({ ...deadlines, source_revision: 'b'.repeat(40) });
+  assert.equal(get(servedRevision), 'b'.repeat(40));
+  reopened.frame({ ...deadlines, source_revision: null });
+  assert.equal(get(servedRevision), null);
+  for (const value of ['A'.repeat(40), 'a'.repeat(39), `${revision}\n`, [revision], 1, undefined]) {
+    const next = connected();
+    next.frame({ ...deadlines, source_revision: value });
+    assert.equal(next.closedWith, 1002, String(value));
+  }
+  const signedIn = connected();
+  signedIn.frame({ ...deadlines, source_revision: revision });
+  disconnectAdminSocket();
+  assert.equal(get(servedRevision), null);
 });
 
 test('coming online retries a dropped socket at once instead of waiting out its backoff', async () => {

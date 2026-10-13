@@ -17,6 +17,7 @@ const MAX_IN_FLIGHT = 16;
 const MAX_SUBSCRIPTIONS = 64;
 const MAX_ATTACHED_TEAMS = 4;
 const EPOCH_RE = /^[0-9a-f]{32}$/;
+const SOURCE_REVISION_RE = /^[0-9a-f]{40}$/;
 const CALL_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const TOPIC_RE = /^(?:teams|space\/(?:models|decision)|platform\/release|security\/summary|session|assistants\/registry|local-assistants|team\/[a-z0-9_]{1,40}\/(?:routines|history|inventory|inference|integrations))$/;
 // The chat-channel frames a client sends; every one carries its Team's `team_id`.
@@ -260,6 +261,12 @@ export function trackActivity(target = document) {
  */
 export const sessionDeadlines = writable(null);
 
+/**
+ * The commit the Admin this tab last reached was built from, as its session frame names it, or null while no Admin has
+ * named one. It stays across a reconnect until the reopened socket names its own, and a signed-out tab forgets it.
+ */
+export const servedRevision = writable(null);
+
 // Why a listener hears of its topic: `changed` (Admin raised it), `open` (the tab's first open, when every screen reads
 // what it shows), or `reopen` (anything may have changed while the socket was closed).
 function notify(topic, cause = 'changed') {
@@ -467,12 +474,15 @@ function receive(text) {
   }
   if (frame.type === 'session') {
     if (
-      !exact(frame, ['type', 'idle_seconds', 'absolute_seconds']) ||
+      !exact(frame, ['type', 'idle_seconds', 'absolute_seconds', 'source_revision']) ||
       !Number.isSafeInteger(frame.idle_seconds) ||
       !Number.isSafeInteger(frame.absolute_seconds) ||
       frame.idle_seconds < 0 ||
-      frame.absolute_seconds < 0
+      frame.absolute_seconds < 0 ||
+      !(frame.source_revision === null ||
+        (typeof frame.source_revision === 'string' && SOURCE_REVISION_RE.test(frame.source_revision)))
     ) throw new Error('invalid session deadlines');
+    servedRevision.set(frame.source_revision);
     const now = performance.now();
     if (openingDeadline) openingDeadline = false;
     else reportUnacknowledged = false;
@@ -692,6 +702,7 @@ export function disconnectAdminSocket() {
   activityReported = -Infinity;
   reportUnacknowledged = false;
   sessionDeadlines.set(null);
+  servedRevision.set(null);
   setPhase('idle');
   socket?.close(1000, 'Signed out');
 }

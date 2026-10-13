@@ -198,8 +198,13 @@ class FrontendSessionSocketParityTests(unittest.TestCase):
         source = (LIB / "session" / "socket.js").read_text(encoding="utf-8")
         self.assertEqual(socket_frames.ACTIVITY, {"type": "activity"})
         self.assertIn("connection.send(JSON.stringify({ type: 'activity' }));", source)
-        self.assertEqual(set(socket_frames.session(1, 2)), {"type", "idle_seconds", "absolute_seconds"})
-        self.assertIn("exact(frame, ['type', 'idle_seconds', 'absolute_seconds'])", source)
+        self.assertEqual(
+            set(socket_frames.session(1, 2, None)), {"type", "idle_seconds", "absolute_seconds", "source_revision"}
+        )
+        self.assertIn("exact(frame, ['type', 'idle_seconds', 'absolute_seconds', 'source_revision'])", source)
+        match = re.search(r"^const SOURCE_REVISION_RE = (.+);$", source, re.MULTILINE)
+        self.assertIsNotNone(match)
+        self.assertEqual(match[1], "/^" + socket_frames.SOURCE_REVISION_RE.pattern.removesuffix(r"\Z") + "$/")
 
 
 if __name__ == "__main__":

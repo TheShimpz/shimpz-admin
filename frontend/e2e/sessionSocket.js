@@ -21,6 +21,7 @@ function channelFrame(teamId, event) {
  * - `call(method, params)`: `{ status, json }`, a promise of one, or null (refused as unavailable);
  * - `chat(teamId)`: whether the Team's channel attaches, and the channel handler `(channel) => void` it then runs, which
  *   reads `channel.onMessage((text) => ...)` and answers with `channel.send(textOrFrame)` as a v7 socket handler did.
+ * - `sourceRevision()`: the commit this Admin names in each `session` frame, or null (the default) for none.
  * The returned session's `onActivity()` hears each report of the person's input and may answer it with the session's
  * renewed deadlines, `{ idle_seconds, absolute_seconds }`.
  * `frames` records every client frame in order.
@@ -32,6 +33,7 @@ export function serveSession(transport, handlers, revisions = new Map()) {
   const channels = new Map();
   const frames = [];
   let closed = false;
+  const sourceRevision = () => handlers.sourceRevision?.() ?? null;
 
   function send(frame) {
     if (!closed) transport.send(JSON.stringify(frame));
@@ -108,7 +110,7 @@ export function serveSession(transport, handlers, revisions = new Map()) {
     }
     if (frame.type === 'activity') {
       const renewed = session.onActivity?.();
-      if (renewed) send({ type: 'session', ...renewed });
+      if (renewed) send({ type: 'session', ...renewed, source_revision: sourceRevision() });
       return;
     }
     const channel = channels.get(frame.team_id);
@@ -129,9 +131,14 @@ export function serveSession(transport, handlers, revisions = new Map()) {
     changed(topic) {
       if (topics.has(topic)) send({ type: 'changed', topic, epoch: EPOCH, revision: revisions.get(topic) ?? 0 });
     },
-    // Admin told the page the session's deadlines, in whole seconds from now.
+    // Admin told the page the session's deadlines, in whole seconds from now, and the commit it was built from.
     deadlines(idleSeconds, absoluteSeconds) {
-      send({ type: 'session', idle_seconds: idleSeconds, absolute_seconds: absoluteSeconds });
+      send({
+        type: 'session',
+        idle_seconds: idleSeconds,
+        absolute_seconds: absoluteSeconds,
+        source_revision: sourceRevision(),
+      });
     },
     subscribed: (topic) => topics.has(topic),
     channel: (teamId) => channels.get(teamId),

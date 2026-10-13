@@ -25,13 +25,16 @@ WORKDIR /w
 COPY frontend/ ./
 # The frontend tests run in the deploy's test entry point, not here. adapter-static writes the SPA to /w/build.
 # Normalize the copied artifact tree explicitly: the release builder supplies the Git-derived epoch and the final
-# Python stage consumes only this tree.
+# Python stage consumes only this tree and the revision file beside it.
 ARG SOURCE_DATE_EPOCH=0
-# The commit the sidebar's Admin version names (frontend/src/lib/space/version.js); an image always names one.
+# The commit the sidebar's Admin version names (frontend/src/lib/space/version.js); an image always names one. The
+# build validates it, and the backend gets the same commit from /w/revision, outside the served tree, so its session
+# socket can tell a page built from another commit that it is stale.
 ARG SOURCE_REVISION
 RUN test -n "$SOURCE_REVISION" && \
     pnpm build && \
-    find /w/build -depth -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
+    printf '%s\n' "$SOURCE_REVISION" > /w/revision && \
+    find /w/build /w/revision -depth -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
 
 # ── stage 3: resolve target-platform Python dependencies ───────────────────────────────────────
 # This stage deliberately follows TARGETPLATFORM so native wheels match the final image. Its layer is the runtime's
@@ -115,8 +118,9 @@ COPY --link backend/protocol/http/v1/challenge.py backend/protocol/http/v1/ident
     backend/protocol/http/v1/routine_run.py backend/protocol/http/v1/strict_json.py \
     backend/protocol/http/v1/supervisor.py backend/protocol/http/v1/turn.py backend/protocol/http/v1/websocket.py ./protocol/http/v1/
 COPY --link backend/protocol/socket/v1/frames.py ./protocol/socket/v1/
-# UI_DIR in app.py resolves to backend/../frontend/build
+# UI_DIR in app.py resolves to backend/../frontend/build; session/socket.py reads the commit both were built from.
 COPY --link --from=ui /w/build /app/frontend/build
+COPY --link --from=ui /w/revision /app/backend/revision
 
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
