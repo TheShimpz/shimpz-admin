@@ -1363,3 +1363,39 @@ test('a staged Assistant built again shows its new icon in place, without scroll
   await expect(row.locator('img')).toHaveAttribute('src', /^blob:/);
   await expect(row.locator('img')).not.toHaveAttribute('src', before);
 });
+
+test('a Store row just below the fold of its scrolling region shows its icon before it is scrolled to', async ({ page }) => {
+  await routeScenario(page, 'catalog');
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  );
+  const digest = `sha256:${createHash('sha256').update(png).digest('hex')}`;
+  await routeRead(page, 'store.catalog', ({ locale }) => ({ status: 200, json: {
+    version: 1, locale, next: null,
+    assistants: Array.from({ length: 24 }, (_, index) => publicAssistant({
+      assistant_id: `bulk-${String(index).padStart(3, '0')}`,
+      name: `Bulk ${String(index).padStart(3, '0')}`,
+      icon_digest: digest,
+    })),
+  } }));
+  await page.route('**/api/{assistants/*/catalog-icon,local-assistants/*/icon}', (route) => (
+    route.fulfill({ contentType: 'image/png', body: png })
+  ));
+  await page.goto('/assistants/?team=marketing');
+  const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
+  await expect(catalog.getByRole('link', { name: /^Bulk 000/ }).locator('img')).toHaveAttribute('src', /^blob:/);
+  // The first row below the fold of the region the catalog scrolls in, within the near-screen margin.
+  const below = await catalog.locator('a.assistant-row').evaluateAll((rows) => {
+    let region = rows[0]?.parentElement;
+    while (region && !['auto', 'scroll'].includes(getComputedStyle(region).overflowY)) region = region.parentElement;
+    const fold = (region ?? document.documentElement).getBoundingClientRect().bottom;
+    const row = rows.find((candidate) => {
+      const { top } = candidate.getBoundingClientRect();
+      return top > fold && top < fold + 300;
+    });
+    return row?.textContent.match(/Bulk \d{3}/)?.[0] ?? null;
+  });
+  expect(below).not.toBeNull();
+  await expect(catalog.getByRole('link', { name: new RegExp(`^${below}`) }).locator('img')).toHaveAttribute('src', /^blob:/);
+});

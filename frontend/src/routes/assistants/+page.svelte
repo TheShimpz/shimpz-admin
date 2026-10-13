@@ -89,8 +89,17 @@
   let nearRows = $state(new Set());
   let iconEntries = $derived(rowIcons.filter((icon) => nearRows.has(icon.key)).slice(0, MAX_CACHED_ICONS));
   let grid = $state();
+  // The catalog scrolls inside the shell's own scrolling region, not the window: nearness is measured against it, since
+  // an observer rooted at the viewport clips each row at that region's edge whatever its margin.
+  function scrollRoot(element) {
+    for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) {
+      if (['auto', 'scroll'].includes(getComputedStyle(node).overflowY)) return node;
+    }
+    return null;
+  }
   $effect(() => {
     if (!grid) return undefined;
+    const root = scrollRoot(grid);
     const near = new Set();
     const publish = () => {
       nearRows = new Set(near);
@@ -101,17 +110,19 @@
         else near.delete(record.target.dataset.iconKey);
       }
       publish();
-    }, { rootMargin: `${NEAR_SCREEN_PX}px 0px` });
+    }, { root, rootMargin: `${NEAR_SCREEN_PX}px 0px` });
     // Each row is observed as it renders or changes its icon; the rows already on screen are known at once, so their
     // icons show in the first frame rather than after the observer's first report.
     const observe = () => {
       intersections.disconnect();
       near.clear();
-      const bottom = window.innerHeight + NEAR_SCREEN_PX;
+      const frame = root?.getBoundingClientRect() ?? { top: 0, bottom: window.innerHeight };
       for (const row of grid.querySelectorAll('a.assistant-row')) {
         intersections.observe(row);
         const box = row.getBoundingClientRect();
-        if (box.bottom >= -NEAR_SCREEN_PX && box.top <= bottom) near.add(row.dataset.iconKey);
+        if (box.bottom >= frame.top - NEAR_SCREEN_PX && box.top <= frame.bottom + NEAR_SCREEN_PX) {
+          near.add(row.dataset.iconKey);
+        }
       }
       publish();
     };
