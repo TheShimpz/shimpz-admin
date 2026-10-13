@@ -68,7 +68,7 @@
     width: 100%;
     min-width: 0;
     box-sizing: border-box;
-    gap: var(--gap-group);
+    gap: var(--gap-inside);
     margin-inline: auto;
     padding: var(--gap-group) 0;
     color: var(--text-dim);
@@ -122,7 +122,7 @@
   :global(.ledger-details.shimpz-disclosure) {
     min-width: 0;
     border-block-start: 0;
-    padding-block-start: var(--gap-item);
+    padding-block-start: 0;
   }
 
   :global(.ledger-details [data-slot="disclosure-trigger"]) {
