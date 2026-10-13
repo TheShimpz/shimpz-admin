@@ -37,7 +37,7 @@ envelope included, at most 1 MiB.
   `team_id`, after `chat.attach {team_id, locale}`.
 
 Topics in this version: `teams`, `team/{id}/history`, `team/{id}/routines`, `team/{id}/inventory`,
-`team/{id}/inference`, `team/{id}/integrations` (Integrations and Stored Inputs), `assistants/registry`, `local-assistants`, `space/resources`, `space/models` (model provider
+`team/{id}/inference`, `team/{id}/integrations` (Integrations and Stored Inputs), `assistants/registry`, `local-assistants`, `space/models` (model provider
 keys), `space/decision` (the decision provider key), `platform/release`,
 `security/summary`, and `session`.
 

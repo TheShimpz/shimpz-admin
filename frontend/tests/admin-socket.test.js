@@ -403,18 +403,18 @@ test('a subscription refused after a reopen is asked for again, and its readers 
 test('a listener hears the newest revision Admin announced with each cause, and a second reader at once', async () => {
   const socket = connected();
   const heard = [];
-  const stop = watchTopic('space/resources', (_topic, cause, known) => heard.push([cause, known]));
+  const stop = watchTopic('platform/release', (_topic, cause, known) => heard.push([cause, known]));
   await flush();
-  socket.answer('subscribe', { epoch: EPOCH, topics: { 'space/resources': 4 } });
+  socket.answer('subscribe', { epoch: EPOCH, topics: { 'platform/release': 4 } });
   await flush();
-  socket.frame({ type: 'changed', topic: 'space/resources', epoch: EPOCH, revision: 5 });
+  socket.frame({ type: 'changed', topic: 'platform/release', epoch: EPOCH, revision: 5 });
   assert.deepEqual(heard.splice(0), [
     ['subscribed', { epoch: EPOCH, revision: 4 }],
     ['changed', { epoch: EPOCH, revision: 5 }],
   ]);
   // A second reader of a subscribed topic hears it at once, after what is already on its way.
   const second = [];
-  const stopSecond = watchTopic('space/resources', (_topic, cause, known) => second.push([cause, known]));
+  const stopSecond = watchTopic('platform/release', (_topic, cause, known) => second.push([cause, known]));
   await flush();
   assert.deepEqual(second, [['subscribed', { epoch: EPOCH, revision: 5 }]]);
   stopSecond();

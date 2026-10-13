@@ -488,7 +488,7 @@ class SessionSocketTopicTests(SessionSocketCase):
     def test_a_change_reaches_only_sockets_subscribed_to_its_topic(self) -> None:
         async def scenario() -> None:
             subscribed = await self._subscribed("teams")
-            other = await self._subscribed("space/resources")
+            other = await self._subscribed("assistants/registry")
             self.topics.changed("teams")
             await self._changed(subscribed, "teams")
             with self.assertRaises(TimeoutError):
@@ -568,7 +568,7 @@ class SessionSocketWatcherTests(SessionSocketCase):
     def setUp(self) -> None:
         super().setUp()
         watcher_module = __import__("session.watcher", fromlist=["watcher"])
-        self.values = {"space/resources": [1, 1, 2]}
+        self.values = {"local-assistants": [1, 1, 2]}
         self.reads = []
 
         def read(topic):
@@ -579,7 +579,7 @@ class SessionSocketWatcherTests(SessionSocketCase):
 
             return value
 
-        watched = {"space/resources": watcher_module.Watched(0.05, read("space/resources"))}
+        watched = {"local-assistants": watcher_module.Watched(0.05, read("local-assistants"))}
         self.watcher = watcher_module.Watcher(watched, tick=0.01)
         patch = mock.patch.object(watcher_module, "WATCHER", self.watcher)
         patch.start()
@@ -593,19 +593,19 @@ class SessionSocketWatcherTests(SessionSocketCase):
             await asyncio.sleep(0.1)
             self.assertEqual(self.reads, [])
             with mock.patch.object(auth.SESSIONS, "current", wraps=auth.SESSIONS.current) as current:
-                await websocket.result("subscribe", {"topics": ["space/resources"]})
+                await websocket.result("subscribe", {"topics": ["local-assistants"]})
                 # The first sample is no silent baseline: a change made before it, after the page's own read, is
                 # announced, so the page reads the value the watcher compares against.
                 first = await websocket.next_frame()
-                self.assertEqual((first["type"], first["topic"]), ("changed", "space/resources"))
+                self.assertEqual((first["type"], first["topic"]), ("changed", "local-assistants"))
                 frame = await websocket.next_frame()
-                self.assertEqual((frame["type"], frame["topic"]), ("changed", "space/resources"))
+                self.assertEqual((frame["type"], frame["topic"]), ("changed", "local-assistants"))
                 self.assertEqual(frame["revision"], first["revision"] + 1)
                 # The value changed once (1 -> 2); later identical reads raise nothing.
                 with self.assertRaises(TimeoutError):
                     await websocket.next_frame(0.3)
                 self.assertEqual({call.kwargs["activity"] for call in current.call_args_list}, {False})
-            await websocket.result("unsubscribe", {"topics": ["space/resources"]})
+            await websocket.result("unsubscribe", {"topics": ["local-assistants"]})
             reads = len(self.reads)
             await asyncio.sleep(0.2)
             self.assertEqual(len(self.reads), reads)
@@ -616,7 +616,7 @@ class SessionSocketWatcherTests(SessionSocketCase):
     def test_the_watcher_reads_nothing_without_a_current_subscriber(self) -> None:
         current = mock.AsyncMock(return_value=False)
         handle = self.registry.Handle(
-            "s" * 64, "a" * 32, {}, lambda _code: None, {"space/resources"}.__contains__, current, None, lambda: None
+            "s" * 64, "a" * 32, {}, lambda _code: None, {"local-assistants"}.__contains__, current, None, lambda: None
         )
 
         async def scenario() -> None:
@@ -642,7 +642,6 @@ class SessionSocketWatchedValueTests(SessionSocketCase):
         for topic, patched, status, body in (
             ("teams", "list_teams", 200, {"teams": listed}),
             ("teams", "list_teams", 503, failed),
-            ("space/resources", "_call", 503, failed),
             ("local-assistants", "_call", 200, {"assistants": []}),
             ("local-assistants", "_call", 503, failed),
         ):
@@ -704,13 +703,6 @@ class SessionSocketReadParityTests(SessionSocketCase):
                 result = await websocket.result("routines.list", {"team_id": "team_1"})
             self.assertEqual((result["status"], result["body"]), (503, {"detail": "Team is unavailable"}))
             self.assertEqual((await websocket.result("routines.list", {"team_id": "Team 1"}))["status"], 400)
-            with mock.patch.object(
-                self.methods.team,
-                "space_resources",
-                return_value=team_response(502, {"detail": "Team Space resources response is invalid."}),
-            ):
-                result = await websocket.result("space.resources", {})
-            self.assertEqual(result["status"], 502)
             with mock.patch.object(
                 self.methods.platform_release,
                 "read_status",

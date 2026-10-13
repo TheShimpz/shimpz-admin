@@ -1,6 +1,6 @@
 """The one process-wide watcher of state Admin cannot observe itself (ADR-0114 decision 4).
 
-Teams made by the CLI, Assistant snapshots the CLI stages, the Space's resources, and the platform release file change
+Teams made by the CLI, Assistant snapshots the CLI stages, and the platform release file change
 without passing through Admin. While
 at least one open socket subscribes to such a topic, and only then, the watcher reads it no more often than the page
 used to poll it, under the current Supervisor authority of a socket whose session is still current (never renewing
@@ -28,11 +28,6 @@ log = logging.getLogger("shimpz-admin")
 def _seen(status: int, body: dict[str, object]) -> object:
     """A watched answer as the page sees it: Team's per-request trace identifier is never part of a change."""
     return status, {field: value for field, value in body.items() if field != "trace_id"}
-
-
-def _resources() -> object:
-    response = team.space_resources()
-    return _seen(response.status, response.body)
 
 
 def _teams() -> object:
@@ -63,7 +58,6 @@ class Watched:
 # Each watched topic and how often it was polled before the socket; the Team list and the staged snapshots, which no
 # page polled, at the slowest of those intervals.
 WATCHED = {
-    "space/resources": Watched(30.0, _resources),
     "platform/release": Watched(60.0, _release, authority=False),
     "teams": Watched(60.0, _teams),
     "local-assistants": Watched(60.0, _snapshots),

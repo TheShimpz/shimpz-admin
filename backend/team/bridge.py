@@ -17,7 +17,6 @@ from team import transport
 
 from chat import payloads
 from protocol.http.v1 import payload as team_contract
-from protocol.http.v1 import resources as team_resources
 
 log = logging.getLogger("shimpz-admin")
 
@@ -469,27 +468,6 @@ def resume_chat_human(
 def list_assistants() -> TeamResponse:
     """Return the team's trusted, admission-controlled catalog."""
     return _call("GET", "/v1/assistants")
-
-
-def space_resources() -> TeamResponse:
-    """Project the Space's resource signal Team measured onto exactly its closed fields, without Team's trace."""
-    response = _call("GET", "/v1/space/resources")
-    if not 200 <= response.status < 300:
-        return response
-    body = response.body
-    try:
-        fields = trace_envelope(body, set(team_resources.FIELDS))
-    except ValueError:
-        fields = None
-    canonical = (
-        team_resources.canonical_space_resources({field: body[field] for field in team_resources.FIELDS})
-        if set(body) == fields
-        else None
-    )
-    if canonical is None:
-        log.warning("team returned an invalid Space resources response")
-        return TeamResponse(502, {"detail": "Team Space resources response is invalid."})
-    return TeamResponse(response.status, canonical)
 
 
 def list_local_assistants() -> TeamResponse:

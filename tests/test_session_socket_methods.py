@@ -50,7 +50,6 @@ SAMPLES = {
     "teams.delete": {"team_id": "team_1", "body": {"team_name": "Marketing", "password": PASSWORD}},
     "history.page": {"team_id": "team_1"},
     "routines.list": {"team_id": "team_1"},
-    "space.resources": {},
     "platform.release": {},
     "security.summary": {},
     "inference.read": {"team_id": "team_1"},

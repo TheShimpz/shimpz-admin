@@ -9,10 +9,9 @@
       {"type": "call", "id": "c3", "method": "history.page", "params": {"team_id": "marketing"}},
       {"type": "call", "id": "c4", "method": "history.page", "params": {"team_id": "marketing", "before": "AAAAAAAAAMg", "routine": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
       {"type": "call", "id": "c5", "method": "routines.list", "params": {"team_id": "marketing"}},
-      {"type": "call", "id": "c6", "method": "space.resources", "params": {}},
       {"type": "call", "id": "c7", "method": "platform.release", "params": {}},
       {"type": "call", "id": "c8", "method": "security.summary", "params": {}},
-      {"type": "call", "id": "c9", "method": "subscribe", "params": {"topics": ["teams", "team/marketing/history", "team/marketing/routines", "space/resources", "platform/release", "security/summary", "session"]}},
+      {"type": "call", "id": "c9", "method": "subscribe", "params": {"topics": ["teams", "team/marketing/history", "team/marketing/routines", "platform/release", "security/summary", "session"]}},
       {"type": "call", "id": "c10", "method": "unsubscribe", "params": {"topics": ["team/marketing/history"]}},
       {"type": "call", "id": "c11", "method": "chat.attach", "params": {"team_id": "marketing", "locale": "en"}},
       {"type": "call", "id": "c12", "method": "chat.detach", "params": {"team_id": "marketing"}},
@@ -81,7 +80,7 @@
     ]
   },
   "topics": {
-    "valid": ["teams", "space/resources", "space/models", "space/decision", "platform/release", "security/summary", "session", "assistants/registry", "local-assistants", "team/marketing/history", "team/team_1/routines", "team/marketing/inventory", "team/marketing/inference", "team/marketing/integrations"],
+    "valid": ["teams", "space/models", "space/decision", "platform/release", "security/summary", "session", "assistants/registry", "local-assistants", "team/marketing/history", "team/team_1/routines", "team/marketing/inventory", "team/marketing/inference", "team/marketing/integrations"],
     "invalid": ["", "team", "team/marketing", "team/Marketing/history", "team/marketing/files", "teams/", "Teams", "assistants", "local-assistants/x", "space/keys", "space"]
   }
 }

@@ -91,10 +91,6 @@ def _session(socket: SessionSocket) -> str:
     return socket.cookies.get(socket.gate.cookie, "")
 
 
-async def _resources(socket: SessionSocket, _params: dict[str, object]) -> Answer:
-    return await lane.run(socket, team_http.response, team.space_resources)
-
-
 def security_summary(session: str) -> dict[str, object]:
     """The session's sign-in security summary; a session that ended meanwhile is signed out."""
     try:
@@ -229,7 +225,6 @@ METHODS: dict[str, Method] = {
     "teams.reorder": _on_lane(team_order, "save", "body"),
     "teams.delete": _team_delete,
     "history.page": _on_lane(history_http, "page", "team_id", "before", "routine"),
-    "space.resources": _resources,
     "platform.release": _on_lane(platform_release, "status_response"),
     "security.summary": _security,
     "security.acknowledge": _acknowledge,

@@ -27,7 +27,7 @@ MAX_REVISION = 2**53 - 1
 CALL_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 EPOCH_RE = re.compile(r"[0-9a-f]{32}\Z")
 TOPIC_RE = re.compile(
-    r"(?:teams|space/(?:resources|models|decision)|platform/release|security/summary|session|assistants/registry"
+    r"(?:teams|space/(?:models|decision)|platform/release|security/summary|session|assistants/registry"
     r"|local-assistants"
     r"|team/[a-z0-9_]{1,40}/(?:routines|history|inventory|inference|integrations))\Z"
 )
@@ -48,7 +48,6 @@ METHODS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "teams.delete": (frozenset({"team_id", "body"}), _NONE),
     "history.page": (_TEAM, frozenset({"before", "routine"})),
     "routines.list": (_TEAM, _NONE),
-    "space.resources": (_NONE, _NONE),
     "platform.release": (_NONE, _NONE),
     "security.summary": (_NONE, _NONE),
     "inference.read": (_TEAM, _NONE),
@@ -143,7 +142,6 @@ READ_TOPICS = {
     "teams.list": lambda _params: "teams",
     "history.page": _team_topic("history"),
     "routines.list": _team_topic("routines"),
-    "space.resources": lambda _params: "space/resources",
     "platform.release": lambda _params: "platform/release",
     "security.summary": lambda _params: "security/summary",
     "inference.read": _team_topic("inference"),

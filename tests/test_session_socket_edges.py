@@ -290,9 +290,6 @@ class SessionSocketServeTests(unittest.TestCase):
 
 class WatcherReadTests(unittest.TestCase):
     def test_each_watched_read_projects_its_value(self) -> None:
-        team = types.SimpleNamespace(status=200, body={"services_total": 1})
-        with mock.patch.object(watcher.team, "space_resources", return_value=team):
-            self.assertEqual(watcher._resources(), (200, {"services_total": 1}))
         listing = types.SimpleNamespace(status_code=200, body=b'{"teams":[]}')
         with mock.patch.object(watcher.team_order, "listing", return_value=listing):
             self.assertEqual(watcher._teams(), (200, {"teams": []}))
