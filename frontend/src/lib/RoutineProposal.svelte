@@ -4,12 +4,12 @@
   import { call, commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import { assistantNames } from '#lib/assistantNames.js';
   import { t } from '#lib/i18n.js';
+  import { fill } from '#lib/i18n/fill.js';
   import { refreshTeamRoutines } from '#lib/routineContext.js';
   import {
     confirmRoutineProposal,
     displayZone,
     dispositionWords,
-    fillRoutineCopy,
     humanizeId,
     instantWords,
     proposalInputWords,
@@ -69,7 +69,7 @@
   <header>
     <p class="kicker">{card.title}</p>
     <h3 class="name">{proposal.name}</h3>
-    {#if proposal.replaces}<p class="dim">{fillRoutineCopy(card.replaces, { name: proposal.name })}</p>{/if}
+    {#if proposal.replaces}<p class="dim">{fill(card.replaces, { name: proposal.name })}</p>{/if}
   </header>
 
   <dl class="facts">
@@ -77,7 +77,7 @@
     <div>
       <dt>{card.timezone}</dt>
       <dd>{proposal.timezone_source === 'none'
-        ? fillRoutineCopy(card.timezoneFallback, { timezone: proposal.timezone })
+        ? fill(card.timezoneFallback, { timezone: proposal.timezone })
         : proposal.timezone}</dd>
     </div>
     <div>
@@ -91,7 +91,7 @@
       </dd>
     </div>
     <div>
-      <dt>{fillRoutineCopy(card.dailyCap, { cap: new Intl.NumberFormat(locale).format(proposal.daily_cap) })}</dt>
+      <dt>{fill(card.dailyCap, { cap: new Intl.NumberFormat(locale).format(proposal.daily_cap) })}</dt>
     </div>
     <div>
       <dt>{card.output}</dt>
@@ -104,7 +104,7 @@
     {#each proposal.steps as step (step.position)}
       <li>
         <p class="step">
-          {fillRoutineCopy(card.stepLine, {
+          {fill(card.stepLine, {
             n: step.position, assistant: assistantName(step.assistant), action: humanizeId(step.action),
           })}
           <span class={['effect', !step.read_only && 'effect--changes']}>{changeWords(step.read_only)}</span>

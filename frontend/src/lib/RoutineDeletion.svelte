@@ -5,8 +5,9 @@
   import { call, commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n.js';
+  import { fill } from '#lib/i18n/fill.js';
   import { authenticateWithPasskey, passkeyFailure } from '#lib/passkey.js';
-  import { beginRoutineDeletion, deleteRoutine, fillRoutineCopy, routineErrorMessage, RoutineError } from '#lib/routine.js';
+  import { beginRoutineDeletion, deleteRoutine, routineErrorMessage, RoutineError } from '#lib/routine.js';
   import { sessionContext } from '#lib/sessionContext.js';
   import { LocalApiError } from '#lib/validate.js';
 
@@ -52,7 +53,7 @@
       codeError = copy.codeIncorrect;
       focus('code');
     } else if (reason === 'authentication-locked') {
-      error = fillRoutineCopy(copy.locked, { seconds: failure.retryAfter || 60 });
+      error = fill(copy.locked, { seconds: failure.retryAfter || 60 });
     } else if (reason === 'code-locked') {
       code = '';
       error = copy.codeLocked;

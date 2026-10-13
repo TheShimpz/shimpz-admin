@@ -4,10 +4,10 @@
 
   import { call } from '#lib/adminSocket.js';
   import RoutineIcon from '#lib/RoutineIcon.svelte';
+  import { fill } from '#lib/i18n/fill.js';
   import {
     countWords,
     dispositionWords,
-    fillRoutineCopy,
     humanizeId,
     inputWords,
     needsPage,
@@ -114,8 +114,8 @@
               </dl>
             {/if}
             {#each step.stored_inputs as name (name)}
-              <p class="stored" title={fillRoutineCopy(copy.plan.storedInput, { name })}>
-                <RoutineIcon name="lock" /><span class="sr-only">{fillRoutineCopy(copy.plan.storedInput, { name })}</span><span aria-hidden="true">{name}</span>
+              <p class="stored" title={fill(copy.plan.storedInput, { name })}>
+                <RoutineIcon name="lock" /><span class="sr-only">{fill(copy.plan.storedInput, { name })}</span><span aria-hidden="true">{name}</span>
               </p>
             {/each}
           </div>

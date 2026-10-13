@@ -4,11 +4,11 @@
   import { call } from '#lib/adminSocket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { locale } from '#lib/i18n.js';
+  import { fill } from '#lib/i18n/fill.js';
   import RoutineRunSteps from '#lib/RoutineRunSteps.svelte';
   import {
     attemptWords,
     conditionWords,
-    fillRoutineCopy,
     instantWords,
     readRunDiagnostics,
     routineErrorMessage,
@@ -71,7 +71,7 @@
             <p class="heading">
               {attemptWords(item, copy.attempt)}
             </p>
-            <p class="muted">{fillRoutineCopy(copy.recorded, { at: instantWords(item.recorded_at, $locale) })}</p>
+            <p class="muted">{fill(copy.recorded, { at: instantWords(item.recorded_at, $locale) })}</p>
             {#if item.failure}
               <dl>
                 <dt>{copy.type}</dt><dd><code>{item.failure.error_type}</code></dd>

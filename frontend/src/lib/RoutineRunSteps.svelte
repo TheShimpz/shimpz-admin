@@ -4,11 +4,11 @@
 
   import { call } from '#lib/adminSocket.js';
   import RoutineIcon from '#lib/RoutineIcon.svelte';
+  import { fill } from '#lib/i18n/fill.js';
   import {
     attemptWords,
     conditionWords,
     countWords,
-    fillRoutineCopy,
     humanizeId,
     literalWords,
     needsPage,
@@ -117,7 +117,7 @@
     <div class="attempt-head">
       <span class="mono">{named
         ? attemptWords(item, copy.details.attempt, { assistant: assistantName, action: humanizeId })
-        : fillRoutineCopy(copy.result.attempt, { attempt: item.attempt })}</span>
+        : fill(copy.result.attempt, { attempt: item.attempt })}</span>
       {#if item.failure?.http_status}<span class="mono">HTTP {item.failure.http_status}</span>{/if}
       {#if item.failure}<code>{item.failure.error_type}</code>{/if}
     </div>
@@ -145,7 +145,7 @@
         <div class="status">
           <RoutineIcon name={ICONS[step.status]} /><span class="word">{copy.result.status[step.status]}</span>
           {#if step.duration_ms !== null}<span class="when">{durationWords(step.duration_ms, locale)}</span>{/if}
-          {#if step.attempt > 1}<span class="when">{fillRoutineCopy(copy.result.attempt, { attempt: step.attempt })}</span>{/if}
+          {#if step.attempt > 1}<span class="when">{fill(copy.result.attempt, { attempt: step.attempt })}</span>{/if}
         </div>
         {#if step.action}
           {#if step.inputs === null}

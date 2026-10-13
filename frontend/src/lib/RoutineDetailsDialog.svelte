@@ -9,13 +9,13 @@
     routineRuns,
   } from '#lib/chatHistory.js';
   import { locale, t } from '#lib/i18n.js';
+  import { fill } from '#lib/i18n/fill.js';
   import { assistantNames } from '#lib/assistantNames.js';
   import {
     ATTENTION_STATUSES,
     clockWords,
     displayZone,
     fillParts,
-    fillRoutineCopy,
     runCountWords,
     instantWords,
     pauseRoutine,
@@ -214,7 +214,7 @@
     return {
       done: run.done,
       recovered: run.recovered,
-      failed: fillRoutineCopy(run.failed, { code: entry.detail.code ?? '' }),
+      failed: fill(run.failed, { code: entry.detail.code ?? '' }),
       denied: run.denied,
       stopped: run.stopped,
       'user-skipped': copy.panel.skipped,
@@ -298,7 +298,7 @@
 </script>
 
 <RoutineModal bind:dialog class="routine-panel"
-  title={confirming ? fillRoutineCopy(copy.deletion.title, { name: routine.name }) : routine.name}
+  title={confirming ? fill(copy.deletion.title, { name: routine.name }) : routine.name}
   frameClass={[confirming && 'frame--deletion', Boolean(pending) && !confirming && 'frame--deciding']}
   open={Boolean(pending) && !confirming}
   closable={!confirming} onback={onback && !confirming ? back : null} oncancel={cancel} onclose={close}>

@@ -3,6 +3,7 @@
 // partial translation never shows a blank; it shows English. Only English ships with the app; each other language is
 // its own chunk, fetched when it becomes the interface language, and the locale changes only once it has arrived.
 import { writable, derived } from 'svelte/store';
+import { fill } from './i18n/fill.js';
 import en from './messages/en.js';
 import { LOCALES } from './locales.js';
 
@@ -83,11 +84,8 @@ function resolve(code, key) {
   return en !== undefined ? en : key;
 }
 
-// One pass over the template: a value is inserted as written, never read for placeholders or replacement patterns.
 export const t = derived(locale, ($locale) => (key, params) => {
   const s = resolve($locale, key);
   if (typeof s !== 'string' || !params) return s;
-  return s.replace(/\{([a-zA-Z]+)\}/g, (placeholder, name) => (
-    Object.hasOwn(params, name) ? String(params[name]) : placeholder
-  ));
+  return fill(s, params);
 });

@@ -3,6 +3,7 @@
 // confirms the card Team recorded from a chat turn.
 
 import { clockTime } from './chatDays.js';
+import { fill } from './i18n/fill.js';
 import { isLocale } from './locales.js';
 import { parseRunUsage } from './taskUsage.js';
 import {
@@ -915,10 +916,6 @@ export function failureCause(diagnostic) {
   return status !== null && status >= 500 ? 'provider' : 'unknown';
 }
 
-function fill(template, values) {
-  return template.replace(/\{(\w+)\}/g, (match, key) => (key in values ? String(values[key]) : match));
-}
-
 // Weekday 0 is Monday in the Routine grammar.
 const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
@@ -1006,8 +1003,6 @@ export function routineErrorMessage(error, copy) {
   };
   return byCode[code] ?? copy.generic;
 }
-
-export { fill as fillRoutineCopy };
 
 const MAX_NAME_CHARS = 80;
 const PAUSE_REASONS = ['decided', 'unavailable', 'exhausted', 'policy', 'evidence'];

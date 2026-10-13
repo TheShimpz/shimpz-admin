@@ -1,7 +1,8 @@
 <script>
   import { Button } from '@shimpz/frontend';
 
-  import { fillRoutineCopy, outputScalarWords } from '#lib/routine.js';
+  import { fill } from '#lib/i18n/fill.js';
+  import { outputScalarWords } from '#lib/routine.js';
 
   // One value of a Routine run's shown result as escaped text, read by its column's kind: an identifier in mono that
   // stays on one line and copies exactly the value Team projected, a number in tabular figures, a yes or no, a short
@@ -31,7 +32,7 @@
   <span class="blank">{words}</span>
 {:else if copyable}
   <Button class="result-id" variant="ghost" size="xs" type="button" title={node.value}
-    aria-label={fillRoutineCopy(resultCopy.copy, { value: node.value })} onclick={copyValue}>{node.value}</Button>
+    aria-label={fill(resultCopy.copy, { value: node.value })} onclick={copyValue}>{node.value}</Button>
 {:else if node.kind === 'bool'}
   <span class={['badge', node.value && 'badge--on']}>{words}</span>
 {:else if kind === 'status' && node.kind === 'text'}

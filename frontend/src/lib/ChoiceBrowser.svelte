@@ -3,7 +3,7 @@
 
   import ChoiceList from '#lib/ChoiceList.svelte';
   import RoutineIcon from '#lib/RoutineIcon.svelte';
-  import { fillRoutineCopy } from '#lib/routine.js';
+  import { fill } from '#lib/i18n/fill.js';
   import { rankBySimilarity } from '#lib/textSimilarity.js';
 
   // A ChoiceList a person can search and page through: a search field on top finds items by text similarity (typos,
@@ -62,7 +62,7 @@
   {#if shown.length > 0}
     <ChoiceList {label} items={shown} {variant} {disabled} {onchoose} />
   {:else}
-    <p class="empty" role="status">{fillRoutineCopy(copy.noMatch, { query })}</p>
+    <p class="empty" role="status">{fill(copy.noMatch, { query })}</p>
   {/if}
 
   {#if pages > 1}
@@ -70,7 +70,7 @@
       <Button variant="ghost" size="sm" type="button" disabled={page === 0} onclick={() => (page -= 1)}>
         {#snippet icon()}<span class="flip"><RoutineIcon name="chevron" /></span>{/snippet}{copy.previous}
       </Button>
-      <p class="where" aria-live="polite">{fillRoutineCopy(copy.page, { n: page + 1, total: pages })}</p>
+      <p class="where" aria-live="polite">{fill(copy.page, { n: page + 1, total: pages })}</p>
       <Button variant="ghost" size="sm" type="button" disabled={page === pages - 1} onclick={() => (page += 1)}>
         {copy.next}<RoutineIcon name="chevron" />
       </Button>

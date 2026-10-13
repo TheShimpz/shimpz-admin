@@ -4,7 +4,8 @@
 
   import ChoiceBrowser from '#lib/ChoiceBrowser.svelte';
   import { locale, t } from '#lib/i18n.js';
-  import { fillRoutineCopy, routineStatus, scheduleWords, STATUS_TAGS, STATUS_WORDS } from '#lib/routine.js';
+  import { fill } from '#lib/i18n/fill.js';
+  import { routineStatus, scheduleWords, STATUS_TAGS, STATUS_WORDS } from '#lib/routine.js';
   import RoutineDetailsDialog from '#lib/RoutineDetailsDialog.svelte';
   import RoutineModal from '#lib/RoutineModal.svelte';
   import { refreshTeamRoutines } from '#lib/routineContext.js';
@@ -83,7 +84,7 @@
     ondeleted={() => (routines.length === 0 ? onclose() : (open = ''))}
   />
 {:else}
-  <RoutineModal bind:dialog class="routine-list" size="md" open title={fillRoutineCopy(copy.list.title, { team: teamName })}
+  <RoutineModal bind:dialog class="routine-list" size="md" open title={fill(copy.list.title, { team: teamName })}
     oncancel={close} onclose={close} onopen={focusList}>
     <div class="body">
       {#if failed}

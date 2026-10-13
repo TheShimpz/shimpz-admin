@@ -6,13 +6,13 @@
   import ChoiceList from '#lib/ChoiceList.svelte';
   import { call, commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import { locale, t } from '#lib/i18n.js';
+  import { fill } from '#lib/i18n/fill.js';
   import { createHumanResponseFrame, parseChatEvent } from '#lib/localChat.js';
   import RoutineIcon from '#lib/RoutineIcon.svelte';
   import {
     answerRoutineCard,
     answerRoutineChallenge,
     failureCause,
-    fillRoutineCopy,
     humanizeId,
     openRoutineCard,
     openRoutineChallenge,
@@ -66,19 +66,19 @@
     if (!recovery) return '';
     const step = card ?? detail;
     if (step.assistant_id === null) return copy.run.stoppedUnknown;
-    const words = fillRoutineCopy(copy.plan.step, {
+    const words = fill(copy.plan.step, {
       assistant: $assistantNames[step.assistant_id] ?? humanizeId(step.assistant_id),
       action: humanizeId(step.action),
     }).replace(' · ', ' › ');
-    return fillRoutineCopy(copy.card.stoppedAt, { n: step.position.step, total: step.steps, step: words });
+    return fill(copy.card.stoppedAt, { n: step.position.step, total: step.steps, step: words });
   });
   // What the person is asked to decide: a held run waits for them, a paused one says why it paused, and a frozen one
   // names the approval it waits for.
   let reason = $derived.by(() => {
     if (outcome === 'held') return copy.card.heldLead;
-    if (outcome === 'paused') return fillRoutineCopy(copy.run.paused, { reason: copy.run.pauseReasons[detail.reason] ?? '' });
+    if (outcome === 'paused') return fill(copy.run.paused, { reason: copy.run.pauseReasons[detail.reason] ?? '' });
     const frozen = { human: copy.run.frozenHuman, integrations: copy.run.frozenIntegrations };
-    return fillRoutineCopy(frozen[detail.request_kind], {
+    return fill(frozen[detail.request_kind], {
       assistant: $assistantNames[detail.assistant_id] ?? humanizeId(detail.assistant_id),
       action: humanizeId(detail.action),
     });
@@ -162,7 +162,7 @@
     const text = item.failure
       ? item.failure.message || item.failure.error_type
       : exit
-        ? fillRoutineCopy(conditions.exit, { code: exit[1] })
+        ? fill(conditions.exit, { code: exit[1] })
         : {
           'stderr-output': conditions.stderr,
           timeout: conditions.timeout,
@@ -212,7 +212,7 @@
     working = true;
     try {
       const status = await action();
-      result = fillRoutineCopy(copy.run.continued, { outcome: outcomeWords(status) });
+      result = fill(copy.run.continued, { outcome: outcomeWords(status) });
       if (status !== 'frozen') finish(result, status === 'held');
       waitingIntegration = false;
     } catch (error) {
@@ -271,7 +271,7 @@
       rejection = answered.rejection;
       return;
     }
-    result = fillRoutineCopy(copy.run.continued, { outcome: outcomeWords(answered.status) });
+    result = fill(copy.run.continued, { outcome: outcomeWords(answered.status) });
     if (answered.status !== 'frozen') finish(result, answered.status === 'held');
     challenge = null;
   }
@@ -345,7 +345,7 @@
   {:else if recovery || ended}
     <!-- The run is no longer waiting here; its next outcome replaces this decision when it is delivered. -->
   {:else if waitingIntegration}
-    <p class="line muted">{fillRoutineCopy(copy.run.connect, { assistant: $assistantNames[detail.assistant_id] ?? humanizeId(detail.assistant_id) })}</p>
+    <p class="line muted">{fill(copy.run.connect, { assistant: $assistantNames[detail.assistant_id] ?? humanizeId(detail.assistant_id) })}</p>
     <div class="actions">
       <Button
         size="sm"
