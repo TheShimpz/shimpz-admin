@@ -22,13 +22,8 @@
 
   let visibleSteps = $derived(steps.slice(-32));
   let current = $derived(currentIndex >= 0 ? steps[currentIndex] : null);
-  let formattedElapsed = $derived(elapsedLabel(elapsed));
-
-  function elapsedLabel(value) {
-    const minutes = Math.floor(value / 60);
-    const seconds = String(value % 60).padStart(2, '0');
-    return `${String(minutes).padStart(2, '0')}:${seconds}`;
-  }
+  // The seconds since the turn started, counting, beside the stage count; the time's name is only its hover title.
+  let formattedElapsed = $derived(`${elapsed} s`);
 
   onMount(() => {
     const update = () => { elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000)); };
@@ -41,17 +36,15 @@
 <div class="thinking" role="group" aria-label={label}>
   <div class="summary">
     <span class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-    <span class="copy">
-      <strong>{label}</strong>
-      <span class="step-copy">{current ? localizedStepLabel(current, progressLabels, { teamName, assistantNames }) : (progressLabels.awaiting ?? label)}</span>
-    </span>
-    <span class="elapsed" aria-hidden="true">{elapsedText} · {formattedElapsed}</span>
+    <span class="step-copy">{current ? localizedStepLabel(current, progressLabels, { teamName, assistantNames }) : (progressLabels.awaiting ?? label)}</span>
   </div>
 
-  {#if visibleSteps.length > 0}
+  {#if visibleSteps.length === 0}
+    <span class="elapsed" title={elapsedText} aria-hidden="true">{formattedElapsed}</span>
+  {:else}
     <Disclosure class="ledger-details">
-      <!-- The triangle and the count are enough to see; the stages' name is announced, not shown. -->
-      {#snippet summary()}<span class="sr-only">{stagesText} </span><span class="count">{visibleSteps.length}</span>{/snippet}
+      <!-- The triangle, the count, and the counting seconds are enough to see; the stages' name is announced, not shown. -->
+      {#snippet summary()}<span class="sr-only">{stagesText} </span><span class="count">{visibleSteps.length}</span><span class="elapsed beside" title={elapsedText} aria-hidden="true">· {formattedElapsed}</span>{/snippet}
       <ol class="ledger" aria-label={stagesText}>
         {#each visibleSteps as step (step.key)}
           <li class:active={step.elapsed_ms === null} class:complete={step.elapsed_ms !== null}>
@@ -86,24 +79,22 @@
     display: grid;
     min-width: 0;
     align-items: center;
-    grid-template-columns: 2.7rem minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr);
     gap: var(--gap-item);
   }
 
+  /* Only the bars, the height of the line they lead. */
   .signal {
     display: flex;
-    height: 2rem;
+    height: 1em;
     align-items: center;
-    justify-content: center;
-    gap: 0.16rem; /* the signal bars' own geometry, not rhythm */
-    border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
-    background: color-mix(in srgb, var(--accent) 5%, transparent);
-    clip-path: polygon(0.4rem 0, 100% 0, 100% calc(100% - 0.4rem), calc(100% - 0.4rem) 100%, 0 100%, 0 0.4rem);
+    gap: 0.12rem; /* the signal bars' own geometry, not rhythm */
+    font-size: 0.62rem;
   }
 
   .signal i {
-    width: 0.14rem;
-    height: 0.3rem;
+    width: 0.12rem;
+    height: 0.3em;
     background: var(--accent);
     box-shadow: 0 0 0.4rem color-mix(in srgb, var(--accent) 72%, transparent);
     animation: signal 1.1s ease-in-out infinite;
@@ -113,38 +104,7 @@
   .signal i:nth-child(3) { animation-delay: 0.24s; }
   .signal i:nth-child(4) { animation-delay: 0.36s; }
 
-  .copy {
-    display: grid;
-    min-width: 0;
-    gap: var(--gap-inside);
-  }
-
-  .copy strong {
-    color: var(--text);
-    font-size: 0.76rem;
-    font-weight: 600;
-    letter-spacing: 0.045em;
-  }
-
-  @supports ((background-clip: text) or (-webkit-background-clip: text)) {
-    .copy strong {
-      background: linear-gradient(
-        90deg,
-        var(--text) 0%,
-        var(--text) 35%,
-        var(--accent) 50%,
-        var(--text) 65%,
-        var(--text) 100%
-      );
-      background-size: 250% 100%;
-      background-clip: text;
-      color: transparent;
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-    }
-  }
-
-  .copy .step-copy,
+  .summary .step-copy,
   .elapsed {
     color: var(--text-dim);
     font-size: 0.62rem;
@@ -154,7 +114,10 @@
   .elapsed {
     color: var(--accent);
     font-variant-numeric: tabular-nums;
+    text-transform: none;
   }
+
+  .elapsed.beside { margin-inline-start: 0.5em; }
 
   :global(.ledger-details.shimpz-disclosure) {
     min-width: 0;
@@ -250,8 +213,6 @@
   }
 
   @media (max-width: 520px) {
-    .summary { grid-template-columns: 2.5rem minmax(0, 1fr); }
-    .elapsed { grid-column: 2; }
     .ledger li { grid-template-columns: 0.55rem minmax(0, 1fr) 3.5rem; }
   }
 
@@ -262,19 +223,5 @@
     }
 
     .activity::after { width: 100%; opacity: 0.7; }
-
-    .copy strong {
-      background: none;
-      color: var(--text);
-      -webkit-text-fill-color: currentColor;
-    }
-  }
-
-  @media (forced-colors: active) {
-    .copy strong {
-      background: none;
-      color: CanvasText;
-      -webkit-text-fill-color: currentColor;
-    }
   }
 </style>
