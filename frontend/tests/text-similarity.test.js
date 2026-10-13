@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { foldText, rankBySimilarity, similarity } from '../src/lib/textSimilarity.js';
+import { foldText, rankBySimilarity, similarity } from '../src/lib/choice/similarity.js';
 
 test('text is compared without case, accents, or extra spaces', () => {
   assert.equal(foldText('  Atualização   SEMANAL '), 'atualizacao semanal');

@@ -3,7 +3,7 @@
 
   import AssistantHumanRequestDialog from '#lib/assistants/HumanRequestDialog.svelte';
   import { assistantNames } from '#lib/assistants/names.js';
-  import ChoiceList from '#lib/ChoiceList.svelte';
+  import ChoiceList from '#lib/choice/List.svelte';
   import { call, commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import { locale, t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';

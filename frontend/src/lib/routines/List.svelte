@@ -2,7 +2,7 @@
   import { Button, Notice } from '@shimpz/frontend';
   import { tick } from 'svelte';
 
-  import ChoiceBrowser from '#lib/ChoiceBrowser.svelte';
+  import ChoiceBrowser from '#lib/choice/Browser.svelte';
   import { locale, t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
   import { routineStatus, scheduleWords, STATUS_TAGS, STATUS_WORDS } from '#lib/routines/words.js';
