@@ -50,13 +50,13 @@ export function transientFailure(error) {
  * it reads again only when it may be older than Admin's: its topic's revision moved since its read (Admin's revision is
  * in the subscription's acknowledgment), or it is older than `maxAgeMs`. `keeps(value)`, when given, says whether a
  * value is worth keeping; one that is not is forgotten as an unkept value is. `reset()` forgets it, as a session that
- * ended must; `size()` is the UTF-8 size of the answers its value was read from. `current()` says when a shown value
- * is known to be current: `'current'` once the subscription is in place and the value reflects what Admin acknowledged
- * (at once when no read is needed; through transient failures it waits for the read that succeeds), `'refused'` when a
- * read is refused, or `'gone'` when its reads end with the last screen leaving or a reset. It never asks for a read
- * itself.
+ * ended must; `size()` is the UTF-8 size of the answers its value was read from, or what `measure(value)` says it
+ * holds. `current()` says when a shown value is known to be current: `'current'` once the subscription is in place and
+ * the value reflects what Admin acknowledged (at once when no read is needed; through transient failures it waits for
+ * the read that succeeds), `'refused'` when a read is refused, or `'gone'` when its reads end with the last screen
+ * leaving or a reset. It never asks for a read itself.
  */
-export function synced(topic, read, { initial = null, retain = null } = {}) {
+export function synced(topic, read, { initial = null, retain = null, measure = null } = {}) {
   let value = initial;
   let has = false;
   // When the value was read (the page's clock) and the size of the answers it was read from.
@@ -149,7 +149,7 @@ export function synced(topic, read, { initial = null, retain = null } = {}) {
       value = next;
       has = true;
       readAt = performance.now();
-      size = bytes;
+      size = measure ? measure(next) : bytes;
       // The oldest revision any of its results reflects; a read whose results carry none reflects what was known as
       // it started, since Admin announces every later change.
       reflects = seen.length
@@ -310,6 +310,5 @@ export function synced(topic, read, { initial = null, retain = null } = {}) {
     return known;
   }
 
-  // `holds()` says whether it holds a value now, shown or kept.
-  return { subscribe: store.subscribe, refresh, reset, current, size: () => size, holds: () => has };
+  return { subscribe: store.subscribe, refresh, reset, current, size: () => size };
 }

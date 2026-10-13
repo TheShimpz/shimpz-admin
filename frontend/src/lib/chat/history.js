@@ -500,28 +500,19 @@ export function historyHead(teamId, { routine = null, retain = null } = {}) {
       view: chat ? grownView(last.view, since.entries) : null,
     };
   };
-  const head = synced(`team/${teamId}/history`, read, { retain });
-  // The value last shown, which is the one a session keeps: its view, or the rows it holds without one.
-  let shown = null;
+  // It measures what its value holds: its view, or the rows it holds without one.
+  const measure = (value) => value.view?.bytes ?? rowBytes(value.entries);
+  const head = synced(`team/${teamId}/history`, read, { retain, measure });
   return {
-    subscribe(run, invalidate) {
-      return head.subscribe((state) => {
-        shown = state.value;
-        run(state);
-      }, invalidate);
-    },
+    subscribe: head.subscribe,
     refresh: head.refresh,
     current: head.current,
     restart() {
       restartsAsked += 1;
       return head.refresh();
     },
-    reset() {
-      shown = null;
-      head.reset();
-    },
-    // What it holds: nothing once forgotten (a reset, or a value not worth keeping left by its last screen).
-    size: () => (head.holds() && shown ? shown.view?.bytes ?? rowBytes(shown.entries) : 0),
+    reset: head.reset,
+    size: head.size,
   };
 }
 

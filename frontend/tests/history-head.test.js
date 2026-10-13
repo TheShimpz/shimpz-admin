@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import test, { mock } from 'node:test';
 
+import { setFlagsFromString } from 'node:v8';
+import { runInNewContext } from 'node:vm';
+
 import { get } from 'svelte/store';
 
 import { socketReads } from '../src/lib/session/socket.js';
@@ -85,6 +88,14 @@ function follow(head) {
 }
 
 const ids = (value) => value.entries.map((entry) => entry.id);
+
+// The last value shown, which has no view, held only weakly from here on: the caller's own frame keeps no reference.
+function viewless(values) {
+  const value = values.pop();
+  assert.equal(value.view, null);
+  values.length = 0;
+  return new WeakRef(value);
+}
 
 test('the head reads the newest page once subscribed, then only the rows written since, in order', async () => {
   const api = socket();
@@ -344,10 +355,19 @@ test("a kept chat whose view outgrew its bounds is not kept once it is left, so 
     api.reads[1 + index].answer(page, { before: index < 7 ? `AAAAAAAA0${index + 1}A` : null, revision: 2 });
     await flush();
   }
-  assert.equal(shown.values.at(-1).view, null);
+  const oversized = viewless(shown.values);
   shown.stop();
   await flush();
-  // Left, it keeps nothing: shown again, nothing shows before the newest page is read again.
+  // Left, it keeps nothing: nothing holds its rows any more, and shown again, nothing shows before the newest page is
+  // read again.
+  setFlagsFromString('--expose-gc');
+  const collect = runInNewContext('gc');
+  // A WeakRef dereferenced keeps its target until the job ends, so it is read only once collection is done.
+  for (let round = 0; round < 3; round += 1) {
+    collect();
+    await flush();
+  }
+  assert.equal(oversized.deref(), undefined);
   assert.equal(head.size(), 0);
   shown = follow(head);
   assert.equal(shown.values.length, 0);
