@@ -454,17 +454,20 @@ function grownView(view, arrived) {
  * `{ restart: false, entries }` with the rows written since, oldest first. Each value is read after the one before
  * it, so a screen applies them in order. In the chat's view each value also carries `view`: the whole conversation as
  * a reload would open it (see `chatView`), or null once it outgrew its bounds. Every value carries `marks`, where the
- * next read reads back to; a value is built only from the one before it, so a read whose era ended changes nothing.
+ * next read reads back to, and `restarted`, how many restarts it answers; a value is built only from the one before
+ * it, so a read whose era ended changes nothing.
  * `restart()` reads the newest page again, and `retain` keeps the value for the session (`synced.js`), with `size()`
  * the bytes it holds.
  */
 export function historyHead(teamId, { routine = null, retain = null } = {}) {
-  let restarting = false;
+  // Restarts asked for so far; a value carries how many of them it answers, so only a value shown answers one.
+  let restartsAsked = 0;
   const chat = routine === null;
   const newest = async (call) => {
+    const asked = restartsAsked;
     const page = await listChatHistory(call, teamId, null, { routine });
-    restarting = false;
     return {
+      restarted: asked,
       restart: true,
       entries: page.entries,
       before: page.before,
@@ -473,7 +476,7 @@ export function historyHead(teamId, { routine = null, retain = null } = {}) {
     };
   };
   const read = async (call, last) => {
-    if (!last || restarting) return newest(call);
+    if (!last || last.restarted < restartsAsked) return newest(call);
     const since = await historySince(call, teamId, last.marks, { routine });
     // More was written than one refresh reads, or none of the rows read before is there any more (the history was
     // cleared): what the refresh read replaces what is shown.
@@ -481,6 +484,7 @@ export function historyHead(teamId, { routine = null, retain = null } = {}) {
     if (replaced) {
       if (!chat) return newest(call);
       return {
+        restarted: last.restarted,
         restart: true,
         entries: since.entries,
         before: since.before,
@@ -489,6 +493,7 @@ export function historyHead(teamId, { routine = null, retain = null } = {}) {
       };
     }
     return {
+      restarted: last.restarted,
       restart: false,
       entries: since.entries,
       marks: historyBoundary(last.marks, since.entries),
@@ -508,7 +513,7 @@ export function historyHead(teamId, { routine = null, retain = null } = {}) {
     refresh: head.refresh,
     current: head.current,
     restart() {
-      restarting = true;
+      restartsAsked += 1;
       return head.refresh();
     },
     reset() {

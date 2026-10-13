@@ -48,6 +48,7 @@ function run(index, routine = 'c'.repeat(32)) {
 function socket() {
   const listeners = new Set();
   const reads = [];
+  socketReads.subscribed = () => true;
   socketReads.watch = (_topic, listener) => {
     listeners.add(listener);
     return () => listeners.delete(listener);
@@ -293,4 +294,35 @@ test("the session keeps each Team's chat, forgets a Team no longer listed, and f
   shown = follow(head);
   assert.equal(shown.values.length, 0);
   shown.stop();
+});
+
+test('a restart asked for after a screen left is answered by the newest page, never by a read of the earlier visit', async () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const api = socket();
+    const head = historyHead('marketing', { retain: { maxAgeMs: Infinity } });
+    let shown = follow(head);
+    api.announce('open', 1);
+    api.reads[0].answer([message(1)]);
+    await flush();
+    // A restart is under way when the screen leaves; the next screen asks for one again.
+    void head.restart();
+    shown.stop();
+    shown = follow(head);
+    api.announce('subscribed', 1);
+    void head.restart();
+    // The earlier visit's newest page arrives late, and the restart's own read fails for a moment.
+    api.reads[1].answer([message(1), message(2)]);
+    await flush();
+    api.reads[2].answer([], { status: 503 });
+    await flush();
+    mock.timers.tick(RETRY_FIRST_MS);
+    api.reads[3].answer([message(1), message(5)]);
+    await flush();
+    assert.equal(shown.values.at(-1).restart, true);
+    assert.deepEqual(ids(shown.values.at(-1)), [message(1).id, message(5).id]);
+    shown.stop();
+  } finally {
+    mock.timers.reset();
+  }
 });
