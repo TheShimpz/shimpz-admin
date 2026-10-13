@@ -74,9 +74,12 @@
 {/if}
 
 <style>
+  /* The thumbnail is as tall as its own image, never stretched to a taller neighbour's row. */
   .attachment-thumbnail {
     display: flex;
     min-width: 0;
+    align-items: flex-start;
+    align-self: start;
   }
 
   .attachment-thumbnail :global(.shimpz-button.attachment-open) {
