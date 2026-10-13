@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { fetchPlatformRelease, isDeveloperRelease } from '../src/lib/platformRelease.js';
+import { fetchPlatformRelease, isDeveloperRelease } from '../src/lib/space/release.js';
 
 const release = `ghcr.io/theshimpz/shimpz-local-release@sha256:${'a'.repeat(64)}`;
 

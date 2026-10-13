@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { fetchSpaceResources, resourceSegments, resourceStatus } from '../src/lib/spaceResources.js';
+import { fetchSpaceResources, resourceSegments, resourceStatus } from '../src/lib/space/resources.js';
 
 const GIB = 2 ** 30;
 const signal = {

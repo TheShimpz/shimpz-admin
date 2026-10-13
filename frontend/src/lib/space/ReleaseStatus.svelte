@@ -1,8 +1,8 @@
 <script>
-  import packageMetadata from '../../package.json';
+  import packageMetadata from '../../../package.json';
   import { t } from '#lib/i18n.js';
   import { synced } from '#lib/session/synced.js';
-  import { fetchPlatformRelease, isDeveloperRelease } from '#lib/platformRelease.js';
+  import { fetchPlatformRelease, isDeveloperRelease } from '#lib/space/release.js';
 
   // Admin's watcher reads the release file while this status is shown and says when it changed (ADR-0114).
   const release = synced('platform/release', fetchPlatformRelease);

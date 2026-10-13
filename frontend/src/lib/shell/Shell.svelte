@@ -10,10 +10,10 @@
   import { dataUnavailable } from '#lib/session/synced.js';
   import { locale, t } from '#lib/i18n.js';
   import LocaleMenu from '#lib/LocaleMenu.svelte';
-  import PlatformReleaseStatus from '#lib/PlatformReleaseStatus.svelte';
+  import PlatformReleaseStatus from '#lib/space/ReleaseStatus.svelte';
   import SecurityAlert from '#lib/auth/SecurityAlert.svelte';
   import SecurityDialog from '#lib/auth/SecurityDialog.svelte';
-  import SpaceResources from '#lib/SpaceResources.svelte';
+  import SpaceResources from '#lib/space/Resources.svelte';
   import SessionExpiryWarning from '#lib/session/ExpiryWarning.svelte';
   import { readSession, SESSION_ENDED, setSessionContext } from '#lib/session/context.js';
   import SupervisorMenu from '#lib/shell/SupervisorMenu.svelte';
