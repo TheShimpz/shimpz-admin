@@ -745,11 +745,15 @@ export const ATTENTION_STATUSES = Object.freeze(['deleting', 'recovery', 'reconf
 
 const ACRONYMS = new Set(['api', 'dns', 'http', 'id', 'ip', 'ssl', 'tls', 'url']);
 
-/** A machine identifier as words: "list-dns-records" reads "List DNS records", "zone_id" reads "Zone ID". */
+/**
+ * A machine identifier as words, the one rule every Admin screen uses: "list-dns-records" reads "List DNS records",
+ * "zone_id" reads "Zone ID". Anything but a string reads as nothing.
+ */
 export function humanizeId(value) {
-  const words = String(value).split(/[-_.]+/u).filter(Boolean)
+  if (typeof value !== 'string') return '';
+  const words = value.split(/[-_.]+/u).filter(Boolean)
     .map((word) => (ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : word.toLowerCase()));
-  if (words.length === 0) return String(value);
+  if (words.length === 0) return value;
   const [first, ...rest] = words;
   return [first === first.toUpperCase() ? first : first[0].toUpperCase() + first.slice(1), ...rest].join(' ');
 }

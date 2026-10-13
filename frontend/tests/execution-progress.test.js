@@ -194,11 +194,11 @@ test('turns repeated Action calls into one truthful contextual narrative', () =>
     'context-initial',
     'model-initial',
     'action-preparation',
-    'action \u2068Shimpz Cloudflare\u2069/\u2068List Zones\u2069',
+    'action \u2068Shimpz Cloudflare\u2069/\u2068List zones\u2069',
     'model-after-action',
     'action-delivery',
     'action-preparation-again',
-    'action-again \u2068Shimpz Cloudflare\u2069/\u2068List Zones\u2069',
+    'action-again \u2068Shimpz Cloudflare\u2069/\u2068List zones\u2069',
   ]);
 });
 

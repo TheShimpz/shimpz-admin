@@ -1527,6 +1527,8 @@ test('a plan reads in words: ids, result paths, and literal previews', () => {
   assert.equal(humanizeId('zone_id'), 'Zone ID');
   assert.equal(humanizeId('dns'), 'DNS');
   assert.equal(humanizeId('---'), '---');
+  assert.equal(humanizeId('list-dns_zones.v2'), 'List DNS zones v2');
+  for (const value of [undefined, null, 7, {}]) assert.equal(humanizeId(value), '');
   const plan = routineMessages.pt.plan;
   assert.equal(pointerWords('/zones/0/id', plan), 'zones › primeiro › id');
   assert.equal(pointerWords('/items/2/a~1b~0c', plan), 'items › item 3 › a/b~c');

@@ -1,6 +1,6 @@
 <script>
-  import { identifierName } from '#lib/attachments.js';
   import { t } from '#lib/i18n.js';
+  import { humanizeId } from '#lib/routine.js';
 
   // A neutral note under a reply whose message carried readable attachments: which Actions Team withheld, by their
   // Assistant and Action names, and the attachment-free way to use them. It offers nothing to run (ADR-0093).
@@ -16,8 +16,8 @@
     {#each restricted.actions as item (`${item.assistant}\u0000${item.action}`)}
       <li>
         {$t('attachments.restricted.item', {
-          assistant: assistantNames.get(item.assistant) ?? identifierName(item.assistant),
-          action: identifierName(item.action),
+          assistant: assistantNames.get(item.assistant) ?? humanizeId(item.assistant),
+          action: humanizeId(item.action),
         })}
       </li>
     {/each}

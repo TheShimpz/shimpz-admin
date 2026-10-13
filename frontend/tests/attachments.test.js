@@ -8,7 +8,6 @@ import {
   attachmentReadability,
   attachmentRefusal,
   formatFileSize,
-  identifierName,
   MAX_ATTACHMENTS,
   parseFileDisclosure,
   parseRestrictedActions,
@@ -81,7 +80,7 @@ test('admits a file to the message only within every per-file and per-message bo
   assert.equal(attachmentRefusal([{ size: 1, kind: 'text', note: '' }], { size: 1, kind: 'text', note: '' }), '');
 });
 
-test('names sizes, kinds, and identifiers for people', () => {
+test('names sizes and kinds for people', () => {
   assert.equal(formatFileSize(512, 'en'), '512B');
   assert.equal(formatFileSize(1536, 'en'), '1.5 kB');
   assert.equal(formatFileSize(3 * MIB, 'en'), '3 MB');
@@ -91,8 +90,6 @@ test('names sizes, kinds, and identifiers for people', () => {
       .map(attachmentKind),
     ['image', 'file', 'pdf', 'text', 'text', 'file', 'file'],
   );
-  assert.equal(identifierName('list-dns_zones.v2'), 'List Dns Zones V2');
-  assert.equal(identifierName(undefined), '');
 });
 
 test('admits only the exact file an authorization request discloses', () => {

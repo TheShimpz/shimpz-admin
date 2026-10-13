@@ -1,3 +1,5 @@
+import { humanizeId } from './routine.js';
+
 const MAX_DISPLAY_DURATION_MS = 24 * 60 * 60 * 1000;
 
 function identity(event) {
@@ -90,11 +92,6 @@ export function technicalStepLabel(step) {
   return `${step.origin} · ${step.phase}${position}`;
 }
 
-function humanizeIdentifier(value) {
-  if (typeof value !== 'string') return '';
-  return value.split('-').map((part) => part[0]?.toUpperCase() + part.slice(1)).join(' ');
-}
-
 function isolate(value) {
   return `\u2068${value}\u2069`;
 }
@@ -109,7 +106,7 @@ function fillNarrative(template, values) {
 function displayAssistant(step, context) {
   const names = context.assistantNames;
   const reviewed = names instanceof Map ? names.get(step.assistant_id) : undefined;
-  return reviewed ?? humanizeIdentifier(step.assistant_id);
+  return reviewed ?? humanizeId(step.assistant_id);
 }
 
 function narrativeKey(step) {
@@ -139,7 +136,7 @@ function narrativeLabel(step, labels, context) {
   let label = fillNarrative(template, {
     team: context.teamName ?? labels.origins?.team ?? 'Team',
     assistant: displayAssistant(step, context),
-    action: humanizeIdentifier(step.action),
+    action: humanizeId(step.action),
   });
   if (step.phase === 'action' && step.total > 1 && typeof labels.narrative.actionPosition === 'string') {
     label += ` ${fillNarrative(labels.narrative.actionPosition, {

@@ -281,9 +281,3 @@ export async function uploadTeamFile(fetcher, teamId, file, signal) {
   ) throw new AttachmentUploadError('failed');
   return { id: stored.id, name: stored.name, media_type: stored.media_type, size: stored.size };
 }
-
-/** A readable name for an Action or Assistant identifier that has no reviewed display name here. */
-export function identifierName(value) {
-  if (typeof value !== 'string') return '';
-  return value.split(/[-._]/).filter(Boolean).map((part) => part[0].toUpperCase() + part.slice(1)).join(' ');
-}

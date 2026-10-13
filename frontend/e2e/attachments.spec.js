@@ -65,8 +65,8 @@ test('files chosen from the button upload to the Team and reach it only as the m
   // The reply names, by Assistant and Action, what the files withheld and how to use it without them.
   const note = page.getByRole('note', { name: EN.restricted.title });
   await expect(note.getByRole('listitem')).toHaveText([
-    'Shimpz Cloudflare · Create Dns Record',
-    'Shimpz Cloudflare · Purge Cache',
+    'Shimpz Cloudflare · Create DNS record',
+    'Shimpz Cloudflare · Purge cache',
     '+1 more',
   ]);
   await expect(note).toContainText(EN.restricted.next);
@@ -427,7 +427,7 @@ test('an approval that delivers a file names it and what it carries before anyth
   const file = dialog.getByRole('list', { name: EN.consent.file });
   await expect(file.getByRole('listitem')).toContainText('Contract.pdf');
   await expect(dialog).toContainText(
-    EN.consent.disclosure.replace('{action}', 'Upload Object').replace('{assistant}', 'Shimpz Cloudflare'),
+    EN.consent.disclosure.replace('{action}', 'Upload object').replace('{assistant}', 'Shimpz Cloudflare'),
   );
   expect(await accessibilityViolations(page)).toEqual([]);
   await dialog.getByRole('button', { name: messages.en.humanRequest.approve }).click();

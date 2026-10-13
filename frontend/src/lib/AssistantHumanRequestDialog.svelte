@@ -7,10 +7,11 @@
     TextLink,
   } from '@shimpz/frontend';
   import AttachmentChip from '#lib/AttachmentChip.svelte';
-  import { attachmentKind, identifierName } from '#lib/attachments.js';
+  import { attachmentKind } from '#lib/attachments.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n.js';
   import { displayedHumanRequest } from '#lib/localChat.js';
+  import { humanizeId } from '#lib/routine.js';
 
   let {
     open = $bindable(false),
@@ -66,7 +67,7 @@
   let fileDisclosure = $derived(
     disclosedFile
       ? $t('attachments.consent.disclosure', {
-          action: identifierName(challenge?.action?.id),
+          action: humanizeId(challenge?.action?.id),
           assistant: challenge?.assistant?.name ?? '',
         })
       : '',
