@@ -6,7 +6,6 @@
   import AttachmentChip from '#lib/AttachmentChip.svelte';
   import {
     AttachmentUploadError,
-    attachmentKind,
     attachmentReadability,
     attachmentRefusal,
     MAX_ATTACHMENTS,
@@ -19,12 +18,29 @@
   import AssistantIntegrationsDrawer from '#lib/AssistantIntegrationsDrawer.svelte';
   import { catalogIconUrl, installedIconUrl } from '#lib/assistants/icons.js';
   import { historyHead, listChatHistory } from '#lib/chatHistory.js';
+  import {
+    expiredTurns,
+    friendlyChatError,
+    groupExchanges,
+    historyTurn,
+    installPlanIconStatus,
+    installPlanStatus,
+    installPlanTurns,
+    installPlanVisualState,
+    lifecycleStatus,
+    lifecycleTurnIndex,
+    lifecycleTurns,
+    lifecycleVisualState,
+    projectedChatError,
+    replyFields,
+    shownUsage,
+  } from '#lib/chat/turns.js';
   import BrainMenu from '#lib/BrainMenu.svelte';
   import FastRoutingMenu from '#lib/FastRoutingMenu.svelte';
   import ClarificationCard from '#lib/ClarificationCard.svelte';
   import { clarifiedRequest, matchClarificationAnswers } from '#lib/clarification.js';
   import { promptHistoryStep } from '#lib/promptHistory.js';
-  import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '#lib/taskUsage.js';
+  import { formatTaskUsage, formatTaskUsageDetail } from '#lib/taskUsage.js';
   import RoutineProposal from '#lib/RoutineProposal.svelte';
   import RoutineQuestion from '#lib/RoutineQuestion.svelte';
   import RoutineRunEntry from '#lib/RoutineRunEntry.svelte';
@@ -38,7 +54,6 @@
     createExecutionProjection,
     extendExecutionProjection,
     localizedEventLabel,
-    receiptSteps,
   } from '#lib/executionProgress.js';
   import Markdown from '#lib/Markdown.svelte';
   import { escapeMarkdownText } from '#lib/markdown.js';
@@ -189,6 +204,8 @@
   let historyGeneration = 0;
 
   let copy = $derived($t('chatPage'));
+  // The chat's words for its transcript (chat/turns.js): its copy and the localized Assistant-limit refusal.
+  let words = $derived({ ...copy, limit: $t('store.assistantLimitReached', { maximum: String(MAX_TEAM_ASSISTANTS) }) });
   let storeCopy = $derived($t('store'));
   let integrationsCopy = $derived($t('assistantIntegrations'));
   let humanRequestCopy = $derived($t('humanRequest'));
@@ -338,20 +355,6 @@
     composerBusy || questionOpen || brainSaving || keyRequired || !chatTeamId,
   );
 
-  function groupExchanges(values) {
-    const grouped = [];
-    for (const turn of values) {
-      if (turn.role === 'user') {
-        grouped.push({ key: turn.renderKey, user: turn, assistant: null });
-      } else if (grouped.length > 0 && grouped.at(-1).assistant === null) {
-        grouped.at(-1).assistant = turn;
-      } else {
-        grouped.push({ key: turn.renderKey, user: null, assistant: turn });
-      }
-    }
-    return grouped;
-  }
-
   // Team's progress of the earlier segments of the turn in flight, kept across each human or Integration pause so the
   // turn's receipt lists every step it observed; each event carries its segment, as every segment restarts its seq.
   let earlierSegments = [];
@@ -362,15 +365,6 @@
       if (event.origin === 'team') earlierSegments.push({ ...event, segment: segmentNumber });
     }
     segmentNumber += 1;
-  }
-
-  // A reply's usage as its receipt shows it (ADR-0082): with a receipt, the duration shown is what its rows add up to,
-  // which is Team's duration unless steps measured on another clock overrun it.
-  function shownUsage(turn) {
-    const steps = receiptSteps(turn.receipt ?? [], turn.usage?.durationMs);
-    if (!turn.usage || steps.length === 0) return { usage: turn.usage, receipt: false };
-    const total = steps.reduce((sum, step) => sum + (Number.isSafeInteger(step.elapsed_ms) ? step.elapsed_ms : 0), 0);
-    return { usage: { ...turn.usage, seconds: Math.max(total, turn.usage.durationMs) / 1000 }, receipt: true };
   }
 
   function forgetSegments() {
@@ -390,33 +384,6 @@
     progressSequence = 0;
   }
 
-  function lifecycleProposalReply(assistant) {
-    return $t('chatPage.uninstall.proposalReply', {
-      assistant: escapeMarkdownText(assistant.name),
-    });
-  }
-
-  function lifecycleVisualState(state) {
-    if (state === 'proposed') return 'pending';
-    if (state === 'working') return 'working';
-    if (state === 'uninstalled') return 'complete';
-    if (state === 'cancelled' || state === 'expired') return 'cancelled';
-    return 'failed';
-  }
-
-  function lifecycleStatus(lifecycle) {
-    const lifecycleMessages = copy.uninstall;
-    if (lifecycle.state === 'proposed') return lifecycleMessages.pending;
-    if (lifecycle.state === 'working') return lifecycleMessages.working;
-    if (lifecycle.state === 'uninstalled') {
-      return lifecycle.uninstalled ? lifecycleMessages.complete : lifecycleMessages.absent;
-    }
-    if (lifecycle.state === 'cancelled') return lifecycleMessages.cancelled;
-    if (lifecycle.state === 'expired') return lifecycleMessages.expired;
-    if (lifecycle.state === 'unknown') return lifecycleMessages.unknown;
-    return lifecycleMessages.failed;
-  }
-
   function lifecycleOutcome(lifecycle, team) {
     if (lifecycle.state !== 'uninstalled') return '';
     const outcomeKey = lifecycle.uninstalled ? 'uninstalledReply' : 'absentReply';
@@ -434,112 +401,10 @@
     return installedIconUrl(chatTeamId, lifecycle.assistant.id);
   }
 
-  function installPlanVisualState(status) {
-    if (status === 'pending') return 'pending';
-    if (status === 'installing') return 'working';
-    if (status === 'installed') return 'complete';
-    return 'failed';
-  }
-
-  function installPlanStatus(status, outcome) {
-    if (status === 'pending') return copy.install.pending;
-    if (status === 'installing') return copy.install.working;
-    if (status === 'installed') {
-      return outcome === 'already-installed' ? copy.install.already : copy.install.complete;
-    }
-    if (status === 'unknown') return copy.disconnected;
-    return copy.install.failed;
-  }
-
   function installPlanIconSource(assistant) {
     if (assistant.status === 'installed' && chatTeamId) return installedIconUrl(chatTeamId, assistant.id);
     if (assistant.provenance === 'local') return undefined;
     return catalogIconUrl(assistant.id);
-  }
-
-  // A Local snapshot has no catalog icon; its icon appears only once installed, so a settled plan without one failed.
-  function installPlanIconStatus(assistant) {
-    return assistant.status === 'pending' || assistant.status === 'installing' ? 'loading' : 'failed';
-  }
-
-  function installPlanTurnIndex(planId) {
-    return turns.findLastIndex((turn) => turn.installPlan?.plan_id === planId);
-  }
-
-  function historyTurn(entry, author) {
-    // Every stored row keeps the time Admin wrote it, which dates its day in the transcript.
-    const stored = { renderKey: nextRenderKey++, historyId: entry.id, createdAt: entry.createdAt };
-    if (entry.kind === 'message') {
-      return {
-        ...stored,
-        role: entry.role,
-        text: entry.text,
-        ...(entry.role === 'assistant' ? { author: entry.author } : {}),
-        ...(entry.clarification ? { clarification: entry.clarification } : {}),
-        ...(entry.usage ? { usage: taskUsageSummary(entry.usage) } : {}),
-        ...(entry.restricted_actions ? { restricted: entry.restricted_actions } : {}),
-        ...(entry.routine_proposal ? { routineProposal: entry.routine_proposal } : {}),
-        ...(entry.routine_refusal ? { routineRefusal: entry.routine_refusal } : {}),
-        ...(entry.routine_question ? { routineQuestion: entry.routine_question } : {}),
-        // A reloaded message shows the files it carried as it did when sent, from their saved references.
-        ...(entry.files
-          ? {
-            files: entry.files.map((file) => ({
-              key: file.id,
-              name: file.name,
-              size: file.size,
-              kind: attachmentKind(file.media_type),
-              note: '',
-            })),
-          }
-          : {}),
-      };
-    }
-    if (entry.kind === 'guidance') {
-      return {
-        ...stored,
-        role: 'assistant',
-        text: escapeMarkdownText(entry.reply),
-        author,
-      };
-    }
-    if (entry.kind === 'assistant-install') {
-      return {
-        ...stored,
-        role: 'assistant',
-        text: entry.state === 'installed'
-          ? (entry.outcome === 'already-installed' ? copy.install.already : copy.install.complete)
-          : entry.state === 'failed'
-            ? installFailureText(entry.code)
-            : copy.disconnected,
-        author,
-        installPlan: {
-          plan_id: `history-${entry.id}`,
-          state: entry.state,
-          assistants: entry.assistants,
-          ...(entry.outcome ? { outcome: entry.outcome } : {}),
-          ...(entry.status ? { status: entry.status } : {}),
-          ...(entry.code ? { code: entry.code } : {}),
-        },
-      };
-    }
-    if (entry.kind === 'routine-run') {
-      return { ...stored, role: 'assistant', text: '', author, routineRun: entry };
-    }
-    return {
-      ...stored,
-      role: 'assistant',
-      text: '',
-      author,
-      lifecycle: {
-        proposal_id: `history-${entry.id}`,
-        assistant: entry.assistant,
-        state: entry.state,
-        completionAnnounced: true,
-        ...(entry.state === 'uninstalled' ? { uninstalled: entry.uninstalled } : {}),
-        ...(entry.status ? { status: entry.status } : {}),
-      },
-    };
   }
 
   // The Team's newest history, as its head first reads it, opens the conversation. A history that could not be read says
@@ -548,7 +413,7 @@
     try {
       const team = $teamContext.teams.find((entry) => entry.id === teamId);
       if (!team) throw new Error(copy.loadFailed);
-      turns = value.entries.map((entry) => historyTurn(entry, team.name));
+      turns = value.entries.map((entry) => historyTurn(entry, team.name, nextRenderKey++, words));
       historyBefore = value.before;
       historyLoading = false;
       if (error === copy.loadFailed) clearError();
@@ -592,7 +457,7 @@
       const previousHeight = viewport?.scrollHeight ?? 0;
       const previousTop = viewport?.scrollTop ?? 0;
       turns = [
-        ...page.entries.map((entry) => historyTurn(entry, team.name)),
+        ...page.entries.map((entry) => historyTurn(entry, team.name, nextRenderKey++, words)),
         ...turns,
       ];
       historyBefore = page.before;
@@ -645,7 +510,7 @@
     const team = $teamContext.teams.find((entry) => entry.id === teamId);
     if (!team) return;
     if (value.restart) {
-      turns = value.entries.map((entry) => historyTurn(entry, team.name));
+      turns = value.entries.map((entry) => historyTurn(entry, team.name, nextRenderKey++, words));
       historyBefore = value.before;
       await revealLatestExchange({ instant: true });
       return;
@@ -661,7 +526,7 @@
     const moved = new Set(arrived.map((entry) => entry.id));
     turns = [
       ...turns.filter((turn) => !moved.has(turn.historyId)),
-      ...arrived.map((entry) => historyTurn(entry, team.name)),
+      ...arrived.map((entry) => historyTurn(entry, team.name, nextRenderKey++, words)),
     ];
     if (following) await revealLatestExchange();
   }
@@ -737,88 +602,11 @@
     return () => clearTimeout(timer);
   });
 
+  // A plan's frame adds or updates its turn; a new turn takes the next render identity.
   function applyInstallPlanEvent(incoming, receipt) {
-    if (incoming.outcome === 'already-installed') {
-      if (installPlanTurnIndex(incoming.plan_id) !== -1) throw new Error('duplicate install result');
-      turns = [...turns, {
-        renderKey: nextRenderKey++,
-        role: 'assistant',
-        text: copy.install.already,
-        author: incoming.team_name,
-        receipt,
-        installPlan: {
-          plan_id: incoming.plan_id,
-          state: incoming.state,
-          outcome: incoming.outcome,
-          assistants: incoming.assistants,
-        },
-      }];
-      return;
-    }
-    if (incoming.state === 'planned') {
-      if (installPlanTurnIndex(incoming.plan_id) !== -1) throw new Error('duplicate install plan');
-      turns = [...turns, {
-        renderKey: nextRenderKey++,
-        role: 'assistant',
-        text: copy.install.working,
-        author: incoming.team_name,
-        receipt,
-        installPlan: {
-          plan_id: incoming.plan_id,
-          state: incoming.state,
-          assistants: incoming.assistants,
-        },
-      }];
-      return;
-    }
-    const index = installPlanTurnIndex(incoming.plan_id);
-    if (index < 0) throw new Error('unknown install plan');
-    const current = turns[index].installPlan;
-    if (
-      current.assistants.length !== incoming.assistants.length ||
-      current.assistants.some((assistant, position) => {
-        const next = incoming.assistants[position];
-        return assistant.id !== next.id ||
-          assistant.name !== next.name ||
-          assistant.summary !== next.summary ||
-          assistant.provenance !== next.provenance ||
-          assistant.providers.join('\0') !== next.providers.join('\0');
-      })
-    ) throw new Error('mismatched install plan');
-    const itemTransitions = {
-      pending: ['pending', 'installing', 'failed'],
-      installing: ['installing', 'installed', 'failed'],
-      installed: ['installed'],
-    };
-    if (current.assistants.some((assistant, position) => (
-      !itemTransitions[assistant.status]?.includes(incoming.assistants[position].status)
-    ))) throw new Error('invalid install plan item transition');
-    const transitions = {
-      planned: ['installing', 'failed', 'stopped'],
-      installing: ['installing', 'installed', 'failed', 'stopped'],
-    };
-    if (!transitions[current.state]?.includes(incoming.state)) {
-      throw new Error('invalid install plan transition');
-    }
-    turns = turns.map((turn, position) => position === index
-      ? {
-          ...turn,
-          text: incoming.state === 'installed'
-            ? copy.install.complete
-            : incoming.state === 'failed'
-              ? installFailureText(incoming.code)
-              : incoming.state === 'stopped'
-                ? copy.disconnected
-                : turn.text,
-          installPlan: {
-            ...current,
-            state: incoming.state,
-            assistants: incoming.assistants,
-            ...(incoming.status ? { status: incoming.status } : {}),
-            ...(incoming.code ? { code: incoming.code } : {}),
-          },
-        }
-      : turn);
+    const next = installPlanTurns(turns, incoming, receipt, nextRenderKey, words);
+    if (next.length > turns.length) nextRenderKey += 1;
+    turns = next;
   }
 
   function imageDataUrl(blob) {
@@ -890,85 +678,25 @@
   function expireSocketLifecycles() {
     for (const timer of lifecycleExpiryTimers.values()) clearTimeout(timer);
     lifecycleExpiryTimers.clear();
-    turns = turns.map((turn) => {
-      if (turn.lifecycle?.state === 'proposed') {
-        return { ...turn, lifecycle: { ...turn.lifecycle, state: 'expired' } };
-      }
-      if (turn.lifecycle?.state === 'working') {
-        return { ...turn, lifecycle: { ...turn.lifecycle, state: 'unknown' } };
-      }
-      if (['planned', 'installing'].includes(turn.installPlan?.state)) {
-        return {
-          ...turn,
-          installPlan: {
-            ...turn.installPlan,
-            state: 'stopped',
-            assistants: turn.installPlan.assistants.map((assistant) => (
-              assistant.status === 'installing' ? { ...assistant, status: 'unknown' } : assistant
-            )),
-          },
-        };
-      }
-      return turn;
-    });
+    turns = expiredTurns(turns);
   }
 
-  function lifecycleTurnIndex(proposalId) {
-    return turns.findLastIndex((turn) => turn.lifecycle?.proposal_id === proposalId);
-  }
-
+  // A proposal adds its card, with its expiry and icon snapshot; a later frame moves it on. True when the uninstall ended.
   function applyLifecycleEvent(incoming, receipt) {
-    if (incoming.state === 'proposed') {
-      if (lifecycleTurnIndex(incoming.proposal_id) !== -1) throw new Error('duplicate lifecycle proposal');
-      turns = [...turns, {
-        renderKey: nextRenderKey++,
-        role: 'assistant',
-        text: lifecycleProposalReply(incoming.assistant),
-        author: incoming.team_name,
-        receipt,
-        lifecycle: {
-          proposal_id: incoming.proposal_id,
-          assistant: incoming.assistant,
-          state: 'proposed',
-        },
-      }];
-      scheduleLifecycleExpiry(incoming.proposal_id, incoming.expires_in);
-      void captureUninstallIcon(
-        incoming.proposal_id,
-        incoming.assistant.id,
-        incoming.team_id,
-      );
-      return true;
+    const next = lifecycleTurns(turns, incoming, receipt, nextRenderKey, words);
+    if (next.turns.length > turns.length) nextRenderKey += 1;
+    turns = next.turns;
+    if (incoming.state !== 'proposed') {
+      clearLifecycleExpiry(incoming.proposal_id);
+      return next.terminal;
     }
-    const index = lifecycleTurnIndex(incoming.proposal_id);
-    if (index < 0) throw new Error('unknown lifecycle proposal');
-    const current = turns[index].lifecycle;
-    if (current.assistant.id !== incoming.assistant_id) {
-      throw new Error('mismatched lifecycle proposal');
-    }
-    clearLifecycleExpiry(incoming.proposal_id);
-    const workingState = 'uninstalling';
-    const completeState = 'uninstalled';
-    const allowed = current.state === 'proposed'
-      ? [workingState, 'cancelled', 'expired']
-      : current.state === 'working' ? [completeState, 'failed']
-        : current.state === 'expired' ? ['expired'] : [];
-    if (!allowed.includes(incoming.state)) throw new Error('invalid lifecycle transition');
-    const state = incoming.state === workingState ? 'working' : incoming.state;
-    const updated = {
-      ...current,
-      state,
-      ...(incoming.state === 'uninstalled'
-        ? {
-            uninstalled: incoming.uninstalled,
-          }
-        : {}),
-      ...(incoming.state === 'failed' ? { status: incoming.status } : {}),
-    };
-    turns = turns.map((turn, turnIndex) => (
-      turnIndex === index ? { ...turn, lifecycle: updated } : turn
-    ));
-    return incoming.state !== workingState;
+    scheduleLifecycleExpiry(incoming.proposal_id, incoming.expires_in);
+    void captureUninstallIcon(
+      incoming.proposal_id,
+      incoming.assistant.id,
+      incoming.team_id,
+    );
+    return next.terminal;
   }
 
   async function appendUninstallOutcome(incoming) {
@@ -979,7 +707,7 @@
       lifecycleOutcomePending?.assistantId !== incoming.assistant_id ||
       chatTeamId !== incoming.team_id
     ) return;
-    const index = lifecycleTurnIndex(incoming.proposal_id);
+    const index = lifecycleTurnIndex(turns, incoming.proposal_id);
     if (index < 0) return;
     const uninstall = turns[index].lifecycle;
     if (
@@ -1150,36 +878,6 @@
       block: 'start',
       behavior: instant || reducedMotion ? 'auto' : 'smooth',
     });
-  }
-
-  function friendlyChatError(status) {
-    if (status === 409) return copy.turnFailed;
-    if (status === 429) return copy.capacityFailed;
-    if (status === 503) return copy.runtimeFailed;
-    return copy.requestFailed;
-  }
-
-  function assistantLimitText() {
-    return $t('store.assistantLimitReached', { maximum: String(MAX_TEAM_ASSISTANTS) });
-  }
-
-  function installFailureText(code) {
-    return code === ASSISTANT_LIMIT_REACHED ? assistantLimitText() : copy.install.failed;
-  }
-
-  function projectedChatError(status, detail) {
-    if (status === 409 && detail === ASSISTANT_LIMIT_REACHED) return { message: assistantLimitText(), detail: '' };
-    if (status === 403 && detail === 'authentication was not confirmed') {
-      return { message: copy.authenticationDenied, detail: '' };
-    }
-    if (status === 503 && detail === 'authentication is unavailable') {
-      return { message: copy.authenticationUnavailable, detail: '' };
-    }
-    const resetting = status === 409 && typeof detail === 'string' && detail.startsWith('space-resetting:');
-    return {
-      message: resetting ? copy.spaceResetting : friendlyChatError(status),
-      detail: `HTTP ${status} · ${detail}`,
-    };
   }
 
   function resetChallengeState() {
@@ -1417,7 +1115,7 @@
           busy = false;
           if (incoming.state === 'failed') {
             setError(
-              incoming.code === ASSISTANT_LIMIT_REACHED ? assistantLimitText() : friendlyChatError(incoming.status),
+              incoming.code === ASSISTANT_LIMIT_REACHED ? words.limit : friendlyChatError(incoming.status, words),
               `HTTP ${incoming.status}`,
             );
           } else {
@@ -1480,18 +1178,13 @@
           text: incoming.reply,
           author: incoming.team_name,
           receipt,
-          ...(incoming.clarification ? { clarification: incoming.clarification } : {}),
-          ...(incoming.usage ? { usage: taskUsageSummary(incoming.usage) } : {}),
-          ...(incoming.restricted_actions ? { restricted: incoming.restricted_actions } : {}),
-          ...(incoming.routine_proposal ? { routineProposal: incoming.routine_proposal } : {}),
-          ...(incoming.routine_refusal ? { routineRefusal: incoming.routine_refusal } : {}),
-          ...(incoming.routine_question ? { routineQuestion: incoming.routine_question } : {}),
+          ...replyFields(incoming),
         }];
         clearError();
       } else if (incoming.type === 'stopped') {
         clearError();
       } else {
-        const projectedError = projectedChatError(incoming.status, incoming.detail);
+        const projectedError = projectedChatError(incoming.status, incoming.detail, words);
         setError(projectedError.message, projectedError.detail);
       }
       resetProgress();
@@ -2399,6 +2092,7 @@
                           status={installPlanStatus(
                             assistant.status,
                             assistantTurn.installPlan.outcome,
+                            words,
                           )}
                           media={planMedia}
                           details={assistant.status === 'failed' ? planDetails : undefined}
@@ -2461,7 +2155,7 @@
                       meta={lifecycleMeta}
                       description={lifecycleMessages.consequences}
                       state={lifecycleVisualState(lifecycle.state)}
-                      status={lifecycleStatus(lifecycle)}
+                      status={lifecycleStatus(lifecycle, words)}
                       media={lifecycleMedia}
                       details={lifecycle.state === 'proposed' || lifecycle.status
                         ? lifecycleDetails
