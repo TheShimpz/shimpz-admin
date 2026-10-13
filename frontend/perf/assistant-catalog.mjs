@@ -4,7 +4,9 @@
 // SHIMPZ_PERF_SCENARIO=navigation measures instead a same-tab visit from the chat: the chat loads, the page is left
 // alone until it sends nothing for a second (so anything it prepares at idle is done), and a click on the sidebar's
 // Store link is timed until every row's icon is decoded in the frame before its paint; then the Chat link and the Store
-// link again time the repeat visit. SHIMPZ_PERF_ICON_PX sets the icons' size (1 by default, 1024 as published).
+// link again time the repeat visit, and each return to the chat is timed too, until the conversation shows its history
+// and then until its composer takes text. SHIMPZ_PERF_ICON_PX sets the icons' size (1 by default, 1024 as published).
+// SHIMPZ_PERF_CONTROL_DELAY_MS delays the socket's own subscriptions and chat attach (0 by default).
 // For a real Supervisor session, run in a Playwright container sharing the network
 // namespace of a disposable Admin image with --network none, a fresh /data volume,
 // and uvicorn bound to port 7777 inside that namespace. No host port is published.
@@ -23,6 +25,7 @@ const samples = positiveInteger(process.env.SHIMPZ_PERF_SAMPLES, 20);
 const apiDelayMs = nonnegativeInteger(process.env.SHIMPZ_PERF_API_DELAY_MS, 40);
 const snapshotDelayMs = nonnegativeInteger(process.env.SHIMPZ_PERF_SNAPSHOT_DELAY_MS, apiDelayMs);
 const iconDelayMs = nonnegativeInteger(process.env.SHIMPZ_PERF_ICON_DELAY_MS, 80);
+const controlDelayMs = nonnegativeInteger(process.env.SHIMPZ_PERF_CONTROL_DELAY_MS, 0);
 const composition = process.env.SHIMPZ_PERF_COMPOSITION ?? 'balanced';
 if (!['balanced', 'published'].includes(composition)) throw new Error('Invalid Assistant composition.');
 const scenario = process.env.SHIMPZ_PERF_SCENARIO ?? 'load';
@@ -181,14 +184,26 @@ function callBody(method, params, data) {
     'store.catalog': () => ({ version: 1, locale: 'en', assistants: data.published, next: null }),
     'snapshots.list': () => ({ assistants: data.local, trace_id: 'c'.repeat(32) }),
     'snapshots.summary': () => ({ locale: 'en', summary: 'A measured local snapshot.' }),
-    // What the chat a navigation starts from reads: an empty transcript and no decision provider.
-    'history.page': () => ({ entries: [], before: null }),
+    // What the chat a navigation starts from reads: a transcript of HISTORY_EXCHANGES exchanges and no decision provider.
+    'history.page': () => ({ entries: HISTORY_ENTRIES, before: null }),
     'decision.read': () => ({ provider: 'typesafe', configured: false, masked: null }),
   };
   if (['inference.read', 'assistants.list', 'integrations.list', 'routines.list', 'history.page'].includes(method)
       && params.team_id !== teamId) return null;
   return answers[method]?.() ?? null;
 }
+
+// The chat's history: each exchange a question and a short Markdown reply.
+const HISTORY_EXCHANGES = 12;
+const HISTORY_ENTRIES = Array.from({ length: HISTORY_EXCHANGES }, (_, index) => {
+  const id = (index + 1).toString(16).padStart(32, '0');
+  const at = new Date(Date.UTC(2026, 8, 23) + index * 600_000).toISOString().replace('.000Z', 'Z');
+  return [
+    { id: `${id}:user`, created_at: at, kind: 'message', role: 'user', text: `Question ${index + 1}: what changed?` },
+    { id: `${id}:reply`, created_at: at, kind: 'message', role: 'assistant', author: 'Performance Team',
+      text: `### Answer ${index + 1}\n\n- **Status:** ready.\n- **Next:** review the two changed records.` },
+  ];
+}).flat();
 
 // Requests the closed fixture does not answer; any of them fails the run instead of skewing a sample.
 const unexpectedRequests = new Set();
@@ -209,6 +224,7 @@ function observeCalls() {
 
 // `data` is read through `current.data`, so one page serves the fixture of the sample it runs.
 async function mockApi(page, current) {
+  await page.addInitScript((delay) => { window.benchControlDelayMs = delay; }, controlDelayMs);
   await page.addInitScript(observeCalls);
   await page.addInitScript(installSessionSocket);
   await page.exposeFunction('benchCall', async (method, params) => {
@@ -424,10 +440,35 @@ async function timedStoreVisit(page, expected) {
   return Math.round(await page.evaluate(() => window.__visit.shown) * 10) / 10;
 }
 
-async function backToChat(page) {
-  await page.locator('a[href^="/chat/?team="]').first().click();
-  await page.locator('textarea').first().waitFor();
+// Click the sidebar's Chat link and time, on the page's clock, the first frame in which the conversation shows every
+// exchange of its history and the composer, outside any loading state (`shown`), and the first in which the composer
+// also takes text (`ready`). Frame callbacks precede paint, so both are lower bounds on the visible times.
+async function timedChatVisit(page) {
+  await page.evaluate((count) => {
+    const link = document.querySelector('a[href^="/chat/?team="]');
+    if (!link) throw new Error('The Chat link is missing.');
+    const visit = { start: performance.now(), shown: null, ready: null };
+    window.__chatVisit = visit;
+    const check = () => {
+      const conversation = document.querySelector('section.conversation');
+      const composer = conversation?.querySelector('textarea');
+      const shown = Boolean(composer) && !conversation.closest('[inert]') &&
+        conversation.querySelectorAll('.exchange').length === count;
+      const elapsed = performance.now() - visit.start;
+      if (shown && visit.shown === null) visit.shown = elapsed;
+      if (shown && !composer.disabled) {
+        visit.ready = elapsed;
+        return;
+      }
+      requestAnimationFrame(check);
+    };
+    requestAnimationFrame(check);
+    link.click();
+  }, HISTORY_EXCHANGES);
+  await page.waitForFunction(() => window.__chatVisit.ready !== null, null, { timeout: 15000 });
+  const { shown, ready } = await page.evaluate(() => window.__chatVisit);
   await settled(page, 300);
+  return { shown: Math.round(shown * 10) / 10, ready: Math.round(ready * 10) / 10 };
 }
 
 async function navigationSample(page, count, index) {
@@ -443,10 +484,15 @@ async function navigationSample(page, count, index) {
     const iconsBefore = await page.evaluate(() => performance.getEntriesByType('resource')
       .filter((entry) => /\/(?:catalog-)?icon$/.test(new URL(entry.name).pathname)).length);
     const first = await timedStoreVisit(page, count);
-    await backToChat(page);
+    const chat = await timedChatVisit(page);
     const repeat = await timedStoreVisit(page, count);
+    const chatAgain = await timedChatVisit(page);
     requireAnsweredRequests();
-    return { scenario, count, composition, iconPx, sample: index, errors, iconsBeforeVisit: iconsBefore, firstMs: first, repeatMs: repeat };
+    return {
+      scenario, count, composition, iconPx, sample: index, errors, iconsBeforeVisit: iconsBefore,
+      firstMs: first, repeatMs: repeat, chatShownMs: chat.shown, chatReadyMs: chat.ready,
+      chatRepeatShownMs: chatAgain.shown, chatRepeatReadyMs: chatAgain.ready,
+    };
   } finally {
     page.off('response', onResponse);
   }
@@ -460,9 +506,11 @@ function summarizeNavigation(results, count) {
   });
   return {
     scenario, count, composition, iconPx, samples: selected.length,
-    delaysMs: { api: apiDelayMs, snapshots: snapshotDelayMs, icon: iconDelayMs },
+    delaysMs: { api: apiDelayMs, snapshots: snapshotDelayMs, icon: iconDelayMs, control: controlDelayMs },
     errors: selected.reduce((total, result) => total + result.errors, 0),
     firstVisit: metric('firstMs'), repeatVisit: metric('repeatMs'),
+    chatReturn: { shown: metric('chatShownMs'), ready: metric('chatReadyMs') },
+    chatRepeatReturn: { shown: metric('chatRepeatShownMs'), ready: metric('chatRepeatReadyMs') },
   };
 }
 

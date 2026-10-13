@@ -42,19 +42,21 @@ export function installSessionSocket() {
       const frame = JSON.parse(payload);
       if (frame.type !== 'call') return;
       const { id, method, params } = frame;
+      // `benchControlDelayMs`, when the page sets it, delays the socket's own operations as Admin's answers would be.
+      const control = window.benchControlDelayMs ?? 0;
       if (method === 'subscribe' || method === 'unsubscribe') {
         const topics = method === 'subscribe' ? Object.fromEntries(params.topics.map((topic) => [topic, 0])) : {};
-        setTimeout(() => this.result(id, 200, { epoch: EPOCH, topics }), 0);
+        setTimeout(() => this.result(id, 200, { epoch: EPOCH, topics }), control);
       } else if (method === 'chat.attach') {
         attached = params.team_id;
         setTimeout(() => {
           this.result(id, 200, { team_id: attached });
           this.deliver({ type: 'sync-empty', team_id: attached });
           window.benchReady = true;
-        }, 0);
+        }, control);
       } else if (method === 'chat.detach') {
         attached = null;
-        setTimeout(() => this.result(id, 200, { team_id: params.team_id }), 0);
+        setTimeout(() => this.result(id, 200, { team_id: params.team_id }), control);
       } else {
         window.benchCallSent?.(method, params);
         window.benchCall(method, params).then(({ status, body }) => {
