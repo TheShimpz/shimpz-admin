@@ -636,6 +636,8 @@ export default {
     removeNamed: 'Remover {name} da mensagem',
     openImage: 'Abrir {name}',
     closeImage: 'Fechar',
+    previousImage: 'Imagem anterior',
+    nextImage: 'Próxima imagem',
     drop: 'Solte os arquivos para anexar',
     reading: 'Lendo arquivos…',
     uploading: 'Enviando {current} de {total}…',

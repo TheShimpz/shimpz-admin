@@ -10,7 +10,8 @@
   // shows its type mark and type. Its name stays at the tile's foot, cut in the middle so its start and its extension
   // both show. The thumbnail is asked for only once the tile comes within NEAR_PX of its scrolling region. In the
   // composer the tile can be removed from the message.
-  let { teamId, file, status = 'ready', onremove = null } = $props();
+  // `images` are the message's images the viewer can move through, this one among them.
+  let { teamId, file, images = [file], status = 'ready', onremove = null } = $props();
 
   const NEAR_PX = 400;
   // The name's end, always kept whole: its extension and a few characters before it; only the start before it is cut.
@@ -112,7 +113,13 @@
     </Button>
   {/if}
   {#if viewing && shown}
-    <ImageViewer {teamId} fileId={file.id} name={file.name} thumbnail={shown} onclose={closeViewer} />
+    <ImageViewer
+      {teamId}
+      images={images.some((image) => image.id === file.id) ? images : [file]}
+      start={Math.max(0, images.findIndex((image) => image.id === file.id))}
+      thumbnail={shown}
+      onclose={closeViewer}
+    />
   {/if}
 </li>
 

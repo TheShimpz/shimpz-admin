@@ -1,6 +1,7 @@
 <script>
   import { Message } from '@shimpz/frontend';
   import AttachmentTile from '#lib/chat/attachments/Tile.svelte';
+  import { previewable } from '#lib/chat/attachments/previews.js';
   import { clockTime, instantValue } from '#lib/chat/days.js';
   import InstallPlan from '#lib/chat/lifecycle/InstallPlan.svelte';
   import Uninstall from '#lib/chat/lifecycle/Uninstall.svelte';
@@ -73,9 +74,10 @@
         <p>{userTurn.text}</p>
       {/if}
       {#if userTurn.files}
+        {@const images = userTurn.files.filter((file) => previewable(teamId, file))}
         <ul class="message-attachments" aria-label={$t('attachments').list}>
           {#each userTurn.files as file (file.key)}
-            <AttachmentTile {teamId} {file} />
+            <AttachmentTile {teamId} {file} {images} />
           {/each}
         </ul>
       {/if}

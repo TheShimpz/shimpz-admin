@@ -636,6 +636,8 @@ export default {
     removeNamed: '从消息中移除 {name}',
     openImage: '打开 {name}',
     closeImage: '关闭',
+    previousImage: '上一张图片',
+    nextImage: '下一张图片',
     drop: '拖放文件以添加附件',
     reading: '正在读取文件…',
     uploading: '正在上传第 {current} 个，共 {total} 个…',

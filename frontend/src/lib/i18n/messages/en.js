@@ -649,6 +649,8 @@ export default {
     removeNamed: 'Remove {name} from message',
     openImage: 'Open {name}',
     closeImage: 'Close',
+    previousImage: 'Previous image',
+    nextImage: 'Next image',
     drop: 'Drop files to attach',
     reading: 'Reading files…',
     uploading: 'Uploading {current} of {total}…',

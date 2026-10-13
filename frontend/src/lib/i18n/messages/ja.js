@@ -636,6 +636,8 @@ export default {
     removeNamed: '{name} をメッセージから削除',
     openImage: '{name} を開く',
     closeImage: '閉じる',
+    previousImage: '前の画像',
+    nextImage: '次の画像',
     drop: 'ドロップして添付',
     reading: 'ファイルを読み込み中…',
     uploading: '{total} 件中 {current} 件目をアップロード中…',

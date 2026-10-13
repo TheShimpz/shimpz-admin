@@ -111,3 +111,27 @@ test('an image just sent shows its thumbnail, and so does its message after a re
   await reloaded.getByRole('button', { name: open('photo.png'), exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'photo.png' })).toBeVisible();
 });
+
+test('the viewer moves through the message\'s images by its arrows and the arrow keys', async ({ page }) => {
+  await openChat(page, 'attachment-images');
+  const message = page.getByRole('article', { name: EN.chatPage.you });
+  await message.getByRole('button', { name: open('Harbour at dusk.jpg'), exact: true }).click();
+  const viewer = page.locator('dialog.image-viewer');
+  const previous = viewer.getByRole('button', { name: EN.attachments.previousImage, exact: true });
+  const next = viewer.getByRole('button', { name: EN.attachments.nextImage, exact: true });
+  await expect(viewer.getByRole('heading', { name: 'Harbour at dusk.jpg' })).toBeVisible();
+  // The first image has nowhere to go back to: its arrow stays, disabled.
+  await expect(previous).toBeDisabled();
+  await page.keyboard.press('ArrowRight');
+  await expect(viewer.getByRole('heading', { name: 'Team portrait.png' })).toBeVisible();
+  await expect(previous).toBeEnabled();
+  await next.click();
+  // An image Team no longer holds says so, and is the last one.
+  await expect(viewer.getByRole('heading', { name: 'Old draft.png' })).toBeVisible();
+  await expect(viewer.getByText(EN.attachments.notRead)).toBeVisible();
+  await expect(next).toBeDisabled();
+  await page.keyboard.press('ArrowLeft');
+  await expect(viewer.getByRole('heading', { name: 'Team portrait.png' })).toBeVisible();
+  await previous.click();
+  await expect(viewer.getByRole('heading', { name: 'Harbour at dusk.jpg' })).toBeVisible();
+});

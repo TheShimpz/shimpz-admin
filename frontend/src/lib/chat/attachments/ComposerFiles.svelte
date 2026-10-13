@@ -1,6 +1,7 @@
 <script>
   import { Button } from '@shimpz/frontend';
   import AttachmentTile from '#lib/chat/attachments/Tile.svelte';
+  import { previewable } from '#lib/chat/attachments/previews.js';
   import { t } from '#lib/i18n/index.js';
 
   // The message's files above its text, on their own ground: each a square tile as a sent message shows it, the files
@@ -16,6 +17,8 @@
   } = $props();
 
   let copy = $derived($t('attachments'));
+  // The stored images the viewer can move through.
+  let images = $derived(items.filter((item) => item.state === 'ready' && previewable(teamId, item)));
 </script>
 
 {#if items.length || error || progress || reading}
@@ -23,7 +26,7 @@
     {#if items.length}
       <ul class="attachment-list" aria-label={copy.list}>
         {#each items as item (item.key)}
-          <AttachmentTile {teamId} file={item} status={item.state} onremove={() => onremove(item.key)} />
+          <AttachmentTile {teamId} file={item} {images} status={item.state} onremove={() => onremove(item.key)} />
         {/each}
       </ul>
     {/if}

@@ -636,6 +636,8 @@ export default {
     removeNamed: 'إزالة {name} من الرسالة',
     openImage: 'فتح {name}',
     closeImage: 'إغلاق',
+    previousImage: 'الصورة السابقة',
+    nextImage: 'الصورة التالية',
     drop: 'أفلت الملفات لإرفاقها',
     reading: 'جارٍ قراءة الملفات…',
     uploading: 'جارٍ رفع {current} من {total}…',
