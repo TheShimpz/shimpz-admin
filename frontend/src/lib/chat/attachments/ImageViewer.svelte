@@ -39,20 +39,29 @@
   }}
   onclick={closeOnBackdrop}
 >
-  <DialogFrame class="viewer" kicker={$t('attachments.kinds.image')} title={name} titleId={`${id}-title`}>
-    <figure class="stage">
-      <img
-        src={failed ? thumbnail.url : previewUrl(teamId, fileId)}
-        width={thumbnail.width}
-        height={thumbnail.height}
-        alt={name}
-        onerror={() => (failed = true)}
-      />
-    </figure>
-    {#snippet footer()}
-      <Button variant="secondary" type="button" onclick={close}>{$t('attachments.closeImage')}</Button>
-    {/snippet}
-  </DialogFrame>
+  <div class="viewer-shell">
+    <DialogFrame class="viewer" kicker={$t('attachments.kinds.image')} title={name} titleId={`${id}-title`}>
+      <figure class="stage">
+        <img
+          src={failed ? thumbnail.url : previewUrl(teamId, fileId)}
+          width={thumbnail.width}
+          height={thumbnail.height}
+          alt={name}
+          onerror={() => (failed = true)}
+        />
+      </figure>
+    </DialogFrame>
+    <Button
+      class="viewer-close"
+      variant="ghost"
+      size="sm"
+      type="button"
+      onclick={close}
+    >
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"></path></svg>
+      {$t('attachments.closeImage')}
+    </Button>
+  </div>
 </Modal>
 
 <style>
@@ -64,9 +73,37 @@
     max-height: none;
   }
 
+  /* The close button sits over the frame's top end corner. */
+  .viewer-shell {
+    position: relative;
+    height: 100%;
+  }
+
+  .viewer-shell :global(.viewer-close) {
+    position: absolute;
+    inset-block-start: var(--shimpz-space-4);
+    inset-inline-end: var(--shimpz-space-4);
+  }
+
+  .viewer-shell :global(.viewer-close svg) {
+    width: 1rem;
+    height: 1rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-width: 1.5;
+  }
+
+  :global(dialog.image-viewer .viewer h2) {
+    padding-inline-end: 7rem;
+  }
+
+  /* The frame's border is the close button's own soft line at half its strength. */
   :global(dialog.image-viewer .shimpz-dialog-frame.viewer) {
     height: 100%;
     max-height: none;
+    border-color: color-mix(in srgb, var(--shimpz-color-border) 50%, transparent) !important;
+    box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 68%);
   }
 
   :global(dialog.image-viewer .viewer h2) {
