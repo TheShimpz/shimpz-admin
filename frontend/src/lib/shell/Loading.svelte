@@ -40,7 +40,7 @@
 
   /* The label glitches in quick cyan and magenta bursts. */
   .label {
-    animation: loader-glitch 1.43s steps(1, end) infinite;
+    animation: loader-glitch 1.86s steps(1, end) infinite;
     color: var(--shimpz-color-text-muted);
     font: 700 0.72rem/1.2 var(--shimpz-font-mono);
     letter-spacing: 0.12em;
