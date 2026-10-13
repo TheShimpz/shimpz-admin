@@ -156,6 +156,47 @@ test('a kept conversation that grows past what a session keeps opens from the ne
   await expect(page.getByText('Answer 1', { exact: true })).toHaveCount(0);
 });
 
+test('a conversation that outgrew what a session keeps while shown opens from its newest page on return, before the channel attaches', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  const history = { pages: { null: { entries: exchanges(1, 2), before: null } } };
+  await routeHistory(page, history);
+  await openChat(page);
+  // 316 rows are written while the conversation is shown: five pages back to the rows this tab read.
+  const cursor = (index) => `AAAAAAAA0${index}A`;
+  const written = exchanges(3, 160);
+  history.pages = {
+    null: { entries: written.slice(-64), before: cursor(1) },
+    [cursor(1)]: { entries: written.slice(-128, -64), before: cursor(2) },
+    [cursor(2)]: { entries: written.slice(-192, -128), before: cursor(3) },
+    [cursor(3)]: { entries: written.slice(-256, -192), before: cursor(4) },
+    [cursor(4)]: { entries: [...exchanges(1, 2), ...written.slice(0, 60)], before: null },
+  };
+  await raiseTopic(page, 'team/marketing/history');
+  await expect.poll(async () => (await readsOf(page, 'history.page')).some((read) => read.before === cursor(4))).toBe(true);
+  await leaveForStore(page);
+  const attached = await attaches(page);
+  // On return the newest page is read again: its first read fails for a moment, and the next is held.
+  const newestReads = [];
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  history.answer = (params) => {
+    if (params.before) return undefined;
+    newestReads.push(params);
+    if (newestReads.length === 1) return { status: 503, json: { detail: 'Synthetic history outage.' } };
+    return held.then(() => undefined);
+  };
+  await returnToChat(page);
+  await expect(page.getByRole('status').filter({ hasText: chatPage.loading })).toBeVisible();
+  await expect.poll(() => newestReads.length).toBe(2);
+  expect(await attaches(page)).toBe(attached);
+  await expect(composer(page)).toBeDisabled();
+  release();
+  await expect(page.getByText('Answer 160', { exact: true })).toBeVisible();
+  await expect(composer(page)).toBeEnabled();
+  expect(await attaches(page)).toBe(attached + 1);
+  await expect(page.getByText('Answer 1', { exact: true })).toHaveCount(0);
+});
+
 test("each Team's kept conversation is its own, and switching back to one sends once its inventory is read", async ({ page }) => {
   await routeScenario(page, 'ready');
   let inventory = null;

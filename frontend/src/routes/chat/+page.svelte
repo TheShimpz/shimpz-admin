@@ -561,8 +561,11 @@
       if (state.status === 'error') refusal = state.error;
       if (state.status !== 'ready' || state.value === applied) {
         if (state.status === 'error' || state.failing) {
-          if (!hydrated && !failed) {
+          // A history never read says why and the chat connects without it; a kept one being read again waits for the
+          // read, unless Admin refuses it.
+          if (!hydrated && !failed && (!historyChecking || state.status === 'error')) {
             failed = true;
+            historyChecking = false;
             failHydration(teamId, generation, state.error ?? state.failing, connect);
           } else if (historyChecking) {
             // The kept conversation stays readable while it is read again; the chat waits for the read.
@@ -574,7 +577,11 @@
       applied = state.value;
       latest = state.value;
       if (!hydrated) {
-        if (!opens(state.value)) return;
+        if (!opens(state.value)) {
+          // A kept conversation that outgrew what a session keeps: the chat waits for its newest page.
+          if (!connected) historyChecking = true;
+          return;
+        }
         hydrated = true;
         const opened = hydrateHistory(teamId, generation, state.value.view, connect);
         // A conversation opened after the chat already connected without it (its history failed at first) is shown as
