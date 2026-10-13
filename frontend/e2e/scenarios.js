@@ -2,7 +2,13 @@
 // returns fresh state, answers only the requests it declares, and returns null for anything else so the caller fails
 // closed. Nothing here reaches a real Admin, Team, Brain, or provider.
 import modelCatalog from '../src/lib/brain/catalog.json' with { type: 'json' };
-import { attachmentReply, fileApprovalChallenge, recordAttachedTurn, uploadFile } from './attachmentScenarios.js';
+import {
+  attachmentReply,
+  fileApprovalChallenge,
+  recordAttachedTurn,
+  sentImagesHistory,
+  uploadFile,
+} from './attachmentScenarios.js';
 import { catalogBindingAnswer, catalogImageAnswer, catalogInventory, catalogSnapshots } from './catalogScenario.js';
 import { localizedChallenge } from './localizedRequest.js';
 import {
@@ -231,6 +237,15 @@ const STARTS = {
   // Chat attachments (ADR-0093): files upload to the Team, and a reply to a message with files names the Actions
   // Team withheld for them; an install request with files gets the attachment-free guidance.
   attachments: () => ({ session: authenticatedLocalSession(), teams: [TEAM], routines: [], runs: [] }),
+  // A sent message that carried images shows their thumbnails, each opening its image over the chat; a PDF and an image
+  // Team no longer holds keep their cards (ADR-0093).
+  'attachment-images': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    history: sentImagesHistory(),
+  }),
   // Every upload finds the Team's storage full.
   'attachments-full': () => ({
     session: authenticatedLocalSession(),

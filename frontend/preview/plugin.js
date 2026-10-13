@@ -1,13 +1,33 @@
 // `vite dev --mode scenarios` only (ADR-0087): the owner's presentation preview. The browser answers the Admin API
-// from a scenario (install.js); this server refuses every other `/api` request and socket, so an image, navigation,
-// or frame never reaches a backend. Nothing here is part of `vite build`.
+// from a scenario (install.js); this server answers only the images a page loads (icons and sent images' renditions,
+// from fixtures) and refuses every other `/api` request and socket, so an image, navigation, or frame never reaches a
+// backend. Nothing here is part of `vite build`.
 import { fileURLToPath } from 'node:url';
+
+import { PREVIEW_IMAGES } from '../e2e/attachmentScenarios.js';
+import { png } from '../e2e/png.js';
 
 export const PREVIEW_MODE = 'scenarios';
 
 const INSTALL = fileURLToPath(new URL('./install.js', import.meta.url));
 // Assistant icons load as images, which the browser-side scenario cannot answer; serve one neutral mark instead.
 const ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" fill="#1c3b3f"/></svg>';
+
+// A sent image's rendition loads as an image too: each preview file shows its own proportions, any other image file a
+// landscape one, and the image Team already collected answers 404, so its message keeps the card.
+const PREVIEW_RE = /^\/api\/teams\/[a-z0-9_]{1,40}\/files\/([0-9a-f]{32})\/preview$/u;
+const RENDITIONS = new Map();
+
+function rendition(fileId) {
+  if (fileId === PREVIEW_IMAGES.collected) return null;
+  if (!RENDITIONS.has(fileId)) {
+    RENDITIONS.set(fileId, {
+      [PREVIEW_IMAGES.landscape]: () => png(1568, 765, [24, 54, 88], [232, 140, 72]),
+      [PREVIEW_IMAGES.portrait]: () => png(765, 1568, [40, 92, 70], [210, 214, 160]),
+    }[fileId]?.() ?? png(1200, 900, [60, 60, 96], [180, 200, 220]));
+  }
+  return RENDITIONS.get(fileId);
+}
 
 function apiPath(url) {
   const path = new URL(url ?? '/', 'http://preview.invalid').pathname;
@@ -22,6 +42,14 @@ export function adminPreview() {
       server.middlewares.use((request, response, next) => {
         const path = apiPath(request.url);
         if (!path) return next();
+        const preview = request.method === 'GET' ? PREVIEW_RE.exec(path) : null;
+        const image = preview ? rendition(preview[1]) : null;
+        if (image) {
+          response.setHeader('content-type', 'image/png');
+          response.setHeader('cache-control', 'no-store');
+          response.end(image);
+          return;
+        }
         if (request.method === 'GET' && /\/(?:catalog-)?icon$/u.test(path)) {
           response.setHeader('content-type', 'image/svg+xml');
           response.end(ICON);

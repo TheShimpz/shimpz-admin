@@ -83,6 +83,42 @@ export function recordAttachedTurn(state, frame, reply) {
   ];
 }
 
+// The images the preview's sent message carried (ADR-0093), by file id: the preview server answers each one's rendition
+// (preview/plugin.js), except the one Team already collected, which keeps its card like the PDF.
+export const PREVIEW_IMAGES = Object.freeze({
+  landscape: 'a'.repeat(32),
+  portrait: 'b'.repeat(32),
+  collected: 'd'.repeat(32),
+});
+
+/** A conversation whose sent message carried two images, a PDF, and an image Team no longer holds, and its reply. */
+export function sentImagesHistory() {
+  const at = '2026-10-13T09:30:00Z';
+  return [
+    {
+      id: `${'f'.repeat(32)}:user`,
+      created_at: at,
+      kind: 'message',
+      role: 'user',
+      text: 'Which of these photos works best for the launch post?',
+      files: [
+        { id: PREVIEW_IMAGES.landscape, name: 'Harbour at dusk.jpg', media_type: 'image/jpeg', size: 2_481_337 },
+        { id: PREVIEW_IMAGES.portrait, name: 'Team portrait.png', media_type: 'image/png', size: 1_903_442 },
+        { id: 'c'.repeat(32), name: 'Launch brief.pdf', media_type: 'application/pdf', size: 482_133 },
+        { id: PREVIEW_IMAGES.collected, name: 'Old draft.png', media_type: 'image/png', size: 811_020 },
+      ],
+    },
+    {
+      id: `${'f'.repeat(32)}:reply`,
+      created_at: at,
+      kind: 'message',
+      role: 'assistant',
+      text: 'The harbour photo works best: its wide frame fits the post, and the brief asks for an outdoor scene.',
+      author: 'Marketing',
+    },
+  ];
+}
+
 // Team's attachment guidance in the interface language the message was written in (Admin assistant_route.py).
 const LIFECYCLE_GUIDANCE = Object.freeze({
   en: "Attachments can't be used to install or remove Assistants. Send that request again without attachments.",
