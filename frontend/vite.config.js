@@ -3,8 +3,11 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
 import { adminPreview, PREVIEW_MODE } from './preview/plugin.js';
+import { buildVersion } from './src/lib/space/version.js';
 
 export default defineConfig(({ mode }) => ({
+  // The version the sidebar shows, from the commit the image build names.
+  define: { __ADMIN_VERSION__: JSON.stringify(buildVersion(process.env.SOURCE_DATE_EPOCH, process.env.SOURCE_REVISION)) },
   plugins: [
     adminPreview(),
     sveltekit({

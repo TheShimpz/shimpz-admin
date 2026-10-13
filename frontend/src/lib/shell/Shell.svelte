@@ -13,7 +13,6 @@
   import PlatformReleaseStatus from '#lib/space/ReleaseStatus.svelte';
   import SecurityAlert from '#lib/auth/SecurityAlert.svelte';
   import SecurityDialog from '#lib/auth/SecurityDialog.svelte';
-  import SpaceResources from '#lib/space/Resources.svelte';
   import SessionExpiryWarning from '#lib/session/ExpiryWarning.svelte';
   import { readSession, SESSION_ENDED, setSessionContext } from '#lib/session/context.js';
   import SupervisorMenu from '#lib/shell/SupervisorMenu.svelte';
@@ -151,9 +150,7 @@
       </div>
       <div class="sidebar-footer">
         <LocaleMenu wide />
-        <SpaceResources>
-          {#snippet lead()}<PlatformReleaseStatus />{/snippet}
-        </SpaceResources>
+        <PlatformReleaseStatus />
       </div>
     </div>
   {/if}
@@ -259,7 +256,9 @@
   .sidebar-footer { display: grid; min-width: 0; gap: var(--gap-item); padding-block-start: var(--gap-group); }
   .sidebar-footer > :global(.shimpz-dropdown) { width: auto; margin-inline: var(--gap-group); }
   .sidebar-footer > :global(.security-open) { justify-self: stretch; margin-inline: var(--gap-group); }
-  .sidebar-footer > :global(.platform-release) { justify-content: center; border-block-start: 0; }
+  /* The sidebar ends with the Admin version alone. */
+  .sidebar-footer > :global(.platform-release) { justify-content: center; min-height: 0; padding: 0.25rem var(--gap-group) 1.25rem; border-block-start: 0; font-size: 0.64rem; letter-spacing: 0.02em; }
+  .sidebar-footer > :global(.platform-release .indicator) { display: none; }
 
   .menu-icon { width: 1.25rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
   :global(dialog.shimpz-modal.team-drawer) { margin: 0; width: min(20rem, calc(100dvw - 3rem)); max-height: 100dvh; height: 100dvh; background: var(--shimpz-color-surface); border-inline-end: 1px solid var(--shimpz-color-border); }

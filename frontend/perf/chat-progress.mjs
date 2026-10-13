@@ -53,10 +53,6 @@ const reads = {
     failed_second_factor_attempts: 0, recovery_codes_remaining: 10,
     sign_in_history: { previous: { at: '2026-09-23T00:00:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 0 },
   }),
-  'space.resources': () => ({
-    services_running: 7, services_total: 7, memory_used_bytes: 429_496_730, memory_total_bytes: 4 * 2 ** 30,
-    storage_used_bytes: 1_395_864_371, storage_total_bytes: 64 * 2 ** 30,
-  }),
   'platform.release': () => ({
     release: 'ghcr.io/theshimpz/shimpz-local-release@sha256:' + 'd'.repeat(64),
     ordinal: 1, checked_at: '2026-09-23T00:00:00Z', outcome: 'current',

@@ -27,7 +27,10 @@ COPY frontend/ ./
 # Normalize the copied artifact tree explicitly: the release builder supplies the Git-derived epoch and the final
 # Python stage consumes only this tree.
 ARG SOURCE_DATE_EPOCH=0
-RUN pnpm build && \
+# The commit the sidebar's Admin version names (frontend/src/lib/space/version.js); an image always names one.
+ARG SOURCE_REVISION
+RUN test -n "$SOURCE_REVISION" && \
+    pnpm build && \
     find /w/build -depth -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +
 
 # ── stage 3: resolve target-platform Python dependencies ───────────────────────────────────────

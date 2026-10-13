@@ -76,10 +76,14 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
         # The UI build keeps the commit-bound epoch that names its SvelteKit version, declared only after the package
         # install, so an unchanged lock reuses the installed packages at every commit.
         self.assertRegex(stages["ui"], r"(?m)^ARG SOURCE_DATE_EPOCH=0$")
+        # The build refuses to run without the commit revision its Admin version names.
+        self.assertRegex(stages["ui"], r"(?m)^ARG SOURCE_REVISION$")
+        build = stages["ui"].index('RUN test -n "$SOURCE_REVISION" && \\\n    pnpm build && ')
         # BuildKit stamps a WORKDIR with the epoch, so neither precedes the install.
         install = stages["ui"].index("RUN cd /w && sh bootstrap-pnpm.sh /tmp/pnpm-cache /opt/pnpm ")
-        self.assertNotRegex(stages["ui"][:install], r"(?m)^(ARG SOURCE_DATE_EPOCH|WORKDIR)\b")
-        self.assertLess(stages["ui"].index("ARG SOURCE_DATE_EPOCH=0"), stages["ui"].index("RUN pnpm build"))
+        self.assertNotRegex(stages["ui"][:install], r"(?m)^(ARG SOURCE_DATE_EPOCH|ARG SOURCE_REVISION|WORKDIR)\b")
+        self.assertLess(stages["ui"].index("ARG SOURCE_DATE_EPOCH=0"), build)
+        self.assertLess(stages["ui"].index("ARG SOURCE_REVISION"), build)
 
     def test_runtime_image_packages_the_password_blocklist(self) -> None:
         dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")

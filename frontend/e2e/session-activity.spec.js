@@ -21,7 +21,6 @@ test('nothing the page reads or receives on its own reports the person\'s activi
     'teams',
     'team/marketing/history',
     'team/marketing/routines',
-    'space/resources',
     'platform/release',
     'security/summary',
     'session',

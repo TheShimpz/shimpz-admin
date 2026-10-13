@@ -1,5 +1,4 @@
 <script>
-  import packageMetadata from '../../../package.json';
   import { t } from '#lib/i18n/index.js';
   import { synced } from '#lib/session/synced.js';
   import { fetchPlatformRelease, isDeveloperRelease } from '#lib/space/release.js';
@@ -7,7 +6,8 @@
   // Admin's watcher reads the release file while this status is shown and says when it changed (ADR-0114).
   const release = synced('platform/release', fetchPlatformRelease);
   let status = $derived($release.value);
-  const adminVersion = packageMetadata.version;
+  // The commit this Admin was built from (vite.config.js).
+  const adminVersion = __ADMIN_VERSION__;
 </script>
 
 <div
@@ -20,7 +20,7 @@
     : undefined}
 >
   <span class="indicator" aria-hidden="true"></span>
-  <span><span class="sr-only">{'Admin '}</span>v{adminVersion}</span>
+  <span><span class="sr-only">{'Admin '}</span>{adminVersion}</span>
   {#if status?.outcome === 'rollback-needed'}
     <span aria-hidden="true">·</span>
     <span>{$t('shell.platformRollback')}</span>

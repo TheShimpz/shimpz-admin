@@ -16,6 +16,8 @@ import {
 import { recoveryCodeSet } from './securityScenarios.js';
 
 const ok = (json, status = 200) => ({ status, json });
+// The Admin version the sidebar names: its commit date and short revision, or dev for a build that names no revision.
+const ADMIN_VERSION = /^Admin (?:dev|v\d{4}\.\d{2}\.\d{2}-[0-9a-f]{7})$/;
 
 function localSession(overrides = {}) {
   return {
@@ -320,7 +322,7 @@ test('shows the installed Admin version with the read-only Local release status'
 
   await page.goto('/assistants/');
 
-  const status = page.getByText('Admin v0.1.0', { exact: true });
+  const status = page.getByText(ADMIN_VERSION);
   await expect(status).toBeVisible();
   await expect(status.locator('..')).toHaveAttribute('title', 'Local platform release 42');
   await page.getByRole('button', { name: 'Language: English' }).click();
@@ -367,11 +369,11 @@ test('names a developer release built on this host in the Local release status',
 
   await page.goto('/assistants/');
 
-  const status = page.getByText('Admin v0.1.0', { exact: true });
+  const status = page.getByText(ADMIN_VERSION);
   await expect(status.locator('..')).toHaveAttribute('title', 'Developer build on Local platform release 42');
 });
 
-test('still shows the installed Admin version when Local release status is unavailable', async ({ page }) => {
+test('still shows the installed Admin version when Local release status is unavailable', { tag: '@mobile' }, async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
@@ -381,7 +383,7 @@ test('still shows the installed Admin version when Local release status is unava
 
   await page.goto('/assistants/');
 
-  await expect(page.getByText('Admin v0.1.0', { exact: true })).toBeVisible();
+  await expect(page.getByText(ADMIN_VERSION)).toBeVisible();
 });
 
 test('reports a Local rollback as a localized warning', async ({ page }) => {
@@ -400,57 +402,11 @@ test('reports a Local rollback as a localized warning', async ({ page }) => {
 
   await page.goto('/assistants/');
 
-  const release = page.getByText('Admin v0.1.0', { exact: true }).locator('..');
+  const release = page.getByText(ADMIN_VERSION).locator('..');
   await expect(release.getByText('Update rolled back', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Language: English' }).click();
   await page.getByRole('menuitemradio', { name: /Português/ }).click();
   await expect(release.getByText('Atualização revertida', { exact: true })).toBeVisible();
-});
-
-test('reads the Space resources when Admin says they changed, one read at a time, and clears them after a failed read', async ({ page }) => {
-  await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
-  await page.route('**/api/session', (route) => route.fulfill({
-    contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
-  }));
-  await answerQuietSpace(page);
-  // Each read waits until the test answers it.
-  const reads = [];
-  await routeRead(page, 'space.resources', () => new Promise((resolve) => reads.push(resolve)));
-  const answer = (status) => reads.at(-1)({
-    status,
-    json: status === 200
-      ? {
-        services_running: 6,
-        services_total: 7,
-        memory_used_bytes: 429_496_730,
-        memory_total_bytes: 4 * 2 ** 30,
-        storage_used_bytes: null,
-        storage_total_bytes: null,
-      }
-      : { detail: 'Docker is unavailable' },
-  });
-  const services = page.getByText('A service is stopped', { exact: true });
-
-  await page.goto('/assistants/');
-  await expect.poll(() => reads.length).toBe(1);
-  await answer(200);
-  await expect(services).toBeVisible();
-  // The numbers behind the status are its hover details.
-  await expect(page.getByTitle(/Memory 0\.4\/4 GiB/)).toBeVisible();
-
-  // A change reads again; changes while that read is pending start no other read, only one more once it ends.
-  await raiseTopic(page, 'space/resources');
-  await expect.poll(() => reads.length).toBe(2);
-  await raiseTopic(page, 'space/resources');
-  await raiseTopic(page, 'space/resources');
-  // A failed read clears the signal, and the one held change reads again.
-  await answer(503);
-  await expect(services).toBeHidden();
-  await expect.poll(() => reads.length).toBe(3);
-  await answer(200);
-  await expect(services).toBeVisible();
-  expect(reads).toHaveLength(3);
 });
 
 test('reads a Team list change heard while the shell loads, and nothing it reads on its own reports activity', async ({ page }) => {
@@ -567,7 +523,7 @@ test('reads the Local release status at open and when Admin says it changed, nev
   });
 
   await page.goto('/assistants/');
-  const release = page.getByText('Admin v0.1.0', { exact: true }).locator('..');
+  const release = page.getByText(ADMIN_VERSION).locator('..');
   await expect(release).toHaveAttribute('title', 'Local platform release 42');
   await expect.poll(() => reads).toBe(1);
   // An idle page sends nothing however long it stays open.
@@ -606,18 +562,6 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
     } } : undefined));
   await routeRead(page, 'snapshots.list', () => ({ status: 200, json: { assistants: [], trace_id: 'c'.repeat(32) } }));
   await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
-  // The sidebar's status, with memory nearly full, is part of the scanned screen.
-  await routeRead(page, 'space.resources', () => ({
-    status: 200,
-    json: {
-      services_running: 7,
-      services_total: 7,
-      memory_used_bytes: 3.5 * 2 ** 30,
-      memory_total_bytes: 4 * 2 ** 30,
-      storage_used_bytes: 2 ** 30,
-      storage_total_bytes: 64 * 2 ** 30,
-    },
-  }));
 
   await page.goto('/assistants/?team=marketing');
   const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
@@ -625,10 +569,6 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
   // Each row opens its Assistant's page for the Team this catalog acts for.
   await expect(catalog.getByRole('link', { name: /^Shimpz Cloudflare/ }))
     .toHaveAttribute('href', '/assistants/shimpz-cloudflare?team=marketing');
-  // The sidebar's status is a desktop element; the mobile footer does not show it.
-  if (page.viewportSize().width > 820) {
-    await expect(page.getByText('Memory nearly full', { exact: true })).toBeVisible();
-  }
   // The Assistants screen's one accessibility scan.
   expect(await accessibilityViolations(page)).toEqual([]);
   if (page.viewportSize().width <= 820) await page.getByRole('button', { name: 'Open the Team list' }).click();
