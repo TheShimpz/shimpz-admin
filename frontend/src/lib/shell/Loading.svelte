@@ -40,7 +40,7 @@
 
   /* The label glitches in quick cyan and magenta bursts. */
   .label {
-    animation: loader-glitch 1.86s steps(1, end) infinite;
+    animation: loader-glitch 3.2s steps(1, end) infinite;
     color: var(--shimpz-color-text-muted);
     font: 700 0.72rem/1.2 var(--shimpz-font-mono);
     letter-spacing: 0.12em;
@@ -84,43 +84,42 @@
     }
   }
 
+  /* Two short bursts, each about 0.15 s, with long steady pauses between them. */
   @keyframes loader-glitch {
     0%,
-    18%,
-    25%,
-    58%,
-    66%,
+    13.6%,
+    59.6%,
     100% {
       transform: translate(0);
       clip-path: inset(0);
       filter: none;
     }
-    19% {
+    10% {
       transform: translate(-3px, 1px);
       clip-path: inset(8% 0 55%);
       filter: drop-shadow(2px 0 var(--shimpz-color-cyan));
     }
-    21% {
+    11.2% {
       transform: translate(3px, -1px);
       clip-path: inset(52% 0 12%);
       filter: drop-shadow(-2px 0 var(--shimpz-color-magenta));
     }
-    23% {
+    12.4% {
       transform: translate(-1px, 0);
       clip-path: inset(28% 0 34%);
       filter: drop-shadow(1px 0 var(--shimpz-color-cyan));
     }
-    59% {
+    55% {
       transform: translate(2px, 0);
       clip-path: inset(0 0 58%);
       filter: drop-shadow(-2px 0 var(--shimpz-color-magenta));
     }
-    61% {
+    56.2% {
       transform: translate(-2px, 1px);
       clip-path: inset(46% 0 0);
       filter: drop-shadow(2px 0 var(--shimpz-color-cyan));
     }
-    63% {
+    57.4% {
       transform: translate(1px, 0);
       clip-path: inset(0);
       filter: drop-shadow(-1px 0 var(--shimpz-color-magenta));
