@@ -1,32 +1,27 @@
 <script>
   import { flushSync, getContext, onMount, tick } from 'svelte';
   import { readable } from 'svelte/store';
-  import { AssistantIcon, Button, ChatTask, EmptyState, FileInput, Message, Notice, ScrollArea, TextAreaField, TextField, Toolbar } from '@shimpz/frontend';
+  import { Button, EmptyState, FileInput, Message, Notice, ScrollArea, TextAreaField, TextField, Toolbar } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '#lib/AssistantHumanRequestDialog.svelte';
   import AttachmentChip from '#lib/AttachmentChip.svelte';
   import { MAX_ATTACHMENTS } from '#lib/attachments.js';
   import { MessageFiles } from '#lib/chat/attachments/upload.svelte.js';
   import ComposerAttachments from '#lib/ComposerAttachments.svelte';
   import RestrictedActionsNote from '#lib/RestrictedActionsNote.svelte';
-  import DialogAction from '#lib/DialogAction.svelte';
   import AssistantIntegrationsDialog from '#lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '#lib/AssistantIntegrationsDrawer.svelte';
-  import { catalogIconUrl, installedIconUrl } from '#lib/assistants/icons.js';
+  import InstallPlan from '#lib/chat/lifecycle/InstallPlan.svelte';
   import { snapshotIcon } from '#lib/chat/lifecycle/snapshot.js';
+  import Uninstall from '#lib/chat/lifecycle/Uninstall.svelte';
   import { historyHead, listChatHistory } from '#lib/chatHistory.js';
   import {
     expiredTurns,
     friendlyChatError,
     groupExchanges,
     historyTurn,
-    installPlanIconStatus,
-    installPlanStatus,
     installPlanTurns,
-    installPlanVisualState,
-    lifecycleStatus,
     lifecycleTurnIndex,
     lifecycleTurns,
-    lifecycleVisualState,
     projectedChatError,
     replyFields,
     shownUsage,
@@ -191,7 +186,6 @@
   let copy = $derived($t('chatPage'));
   // The chat's words for its transcript (chat/turns.js): its copy and the localized Assistant-limit refusal.
   let words = $derived({ ...copy, limit: $t('store.assistantLimitReached', { maximum: String(MAX_TEAM_ASSISTANTS) }) });
-  let storeCopy = $derived($t('store'));
   let integrationsCopy = $derived($t('assistantIntegrations'));
   let humanRequestCopy = $derived($t('humanRequest'));
   // A request rendered in another language than the one selected now is never answered; a fresh one is requested.
@@ -360,29 +354,6 @@
     progressEvents = [];
     progressProjection = createExecutionProjection();
     progressSequence = 0;
-  }
-
-  function lifecycleOutcome(lifecycle, team) {
-    if (lifecycle.state !== 'uninstalled') return '';
-    const outcomeKey = lifecycle.uninstalled ? 'uninstalledReply' : 'absentReply';
-    const outcome = $t(`chatPage.uninstall.${outcomeKey}`, {
-      assistant: escapeMarkdownText(lifecycle.assistant.name),
-      version: escapeMarkdownText(lifecycle.assistant.version),
-      team: escapeMarkdownText(team),
-    });
-    return `${outcome}\n\n${copy.uninstall.reinstall}`;
-  }
-
-  function lifecycleIconSource(lifecycle) {
-    if (lifecycle.state === 'uninstalled') return lifecycle.iconSnapshot;
-    if (!chatTeamId) return undefined;
-    return installedIconUrl(chatTeamId, lifecycle.assistant.id);
-  }
-
-  function installPlanIconSource(assistant) {
-    if (assistant.status === 'installed' && chatTeamId) return installedIconUrl(chatTeamId, assistant.id);
-    if (assistant.provenance === 'local') return undefined;
-    return catalogIconUrl(assistant.id);
   }
 
   // The Team's newest history, as its head first reads it, opens the conversation. A history that could not be read says
@@ -1847,10 +1818,6 @@
             <span class="turn-at">{copy.timeAt}</span>
             <time class="turn-time" datetime={instantValue(instant)}>{clockTime(instant, $locale)}</time>
           {/snippet}
-          <!-- An Assistant's provenance, Creator and version beside its name: Local in the Store's yellow. -->
-          {#snippet assistantMeta(local, creator, version)}
-            {#if local}<span class="assistant-meta-local">{storeCopy.localBadge}</span><span class="assistant-meta-separator" aria-hidden="true">·</span>{/if}{creator}<span class="assistant-meta-separator" aria-hidden="true">·</span>v{version}
-          {/snippet}
           {#each exchanges as exchange, index (exchange.key)}
             {@const userTurn = exchange.user}
             {@const assistantTurn = exchange.assistant}
@@ -1922,116 +1889,17 @@
                     <Markdown markdown={assistantTurn.text} variant="chat" />
                   {/if}
                   {#if assistantTurn.installPlan}
-                    <div
-                      class="assistant-install-plan"
-                      role="group"
-                      aria-label={copy.install.label}
-                    >
-                      {#each assistantTurn.installPlan.assistants as assistant (assistant.id)}
-                        {#snippet planMedia()}
-                          <AssistantIcon
-                            assistant={assistant.id}
-                            src={installPlanIconSource(assistant)}
-                            status={installPlanIconStatus(assistant)}
-                            size={44}
-                          />
-                        {/snippet}
-                        {#snippet planMeta()}{@render assistantMeta(assistant.provenance === 'local', assistant.creator, assistant.version)}{/snippet}
-                        {#snippet planDetails()}
-                          {#if assistant.status === 'failed' && assistantTurn.installPlan.status}
-                            <span class="assistant-lifecycle-detail-copy">
-                              HTTP {assistantTurn.installPlan.status}
-                            </span>
-                          {/if}
-                        {/snippet}
-                        <ChatTask
-                          class="assistant-lifecycle-task"
-                          label={copy.install.label}
-                          title={assistant.name}
-                          meta={planMeta}
-                          description={assistant.summary}
-                          state={installPlanVisualState(assistant.status)}
-                          status={installPlanStatus(
-                            assistant.status,
-                            assistantTurn.installPlan.outcome,
-                            words,
-                          )}
-                          media={planMedia}
-                          details={assistant.status === 'failed' ? planDetails : undefined}
-                        />
-                      {/each}
-                    </div>
+                    <InstallPlan plan={assistantTurn.installPlan} teamId={chatTeamId} {words} />
                   {/if}
                   {#if assistantTurn.lifecycle}
-                    {@const lifecycle = assistantTurn.lifecycle}
-                    {@const lifecycleMessages = copy.uninstall}
-                    {#snippet lifecycleMedia()}
-                      <AssistantIcon
-                        assistant={lifecycle.assistant.id}
-                        src={lifecycleIconSource(lifecycle)}
-                        status={lifecycle.state === 'uninstalled' ? 'failed' : 'loading'}
-                        size={44}
-                      />
-                    {/snippet}
-                    {#snippet lifecycleMeta()}{@render assistantMeta(lifecycle.assistant.provenance === 'local', lifecycle.assistant.creator, lifecycle.assistant.version)}{/snippet}
-                    {#snippet lifecycleDetails()}
-                      <div class="assistant-lifecycle-details">
-                        {#if lifecycle.state === 'proposed'}
-                          <div class="assistant-lifecycle-actions">
-                            <DialogAction
-                              kind="cancel"
-                              size="compact"
-                              type="button"
-                              onclick={() => submitLifecycleDecision('no')}
-                              disabled={lifecycleDecisionDisabled}
-                              aria-label={$t('chatPage.uninstall.cancelActionLabel', {
-                                assistant: lifecycle.assistant.name,
-                              })}
-                            >
-                              {lifecycleMessages.cancelAction}
-                            </DialogAction>
-                            <DialogAction
-                              kind="danger"
-                              size="compact"
-                              type="button"
-                              onclick={() => submitLifecycleDecision('yes')}
-                              disabled={lifecycleDecisionDisabled}
-                              aria-label={$t('chatPage.uninstall.uninstallActionLabel', {
-                                assistant: lifecycle.assistant.name,
-                              })}
-                            >
-                              {lifecycleMessages.uninstallAction}
-                            </DialogAction>
-                          </div>
-                        {/if}
-                        {#if lifecycle.status}
-                          <span class="assistant-lifecycle-detail-copy">HTTP {lifecycle.status}</span>
-                        {/if}
-                      </div>
-                    {/snippet}
-                    <ChatTask
-                      class={['assistant-lifecycle-task', lifecycle.state === 'proposed' && 'assistant-uninstall-proposed']}
-                      id={`assistant-lifecycle-${lifecycle.proposal_id}`}
-                      label={lifecycleMessages.label}
-                      title={lifecycle.assistant.name}
-                      meta={lifecycleMeta}
-                      description={lifecycleMessages.consequences}
-                      state={lifecycleVisualState(lifecycle.state)}
-                      status={lifecycleStatus(lifecycle, words)}
-                      media={lifecycleMedia}
-                      details={lifecycle.state === 'proposed' || lifecycle.status
-                        ? lifecycleDetails
-                        : undefined}
-                      tabindex={lifecycle.state === 'working' ? -1 : undefined}
+                    <Uninstall
+                      lifecycle={assistantTurn.lifecycle}
+                      author={assistantTurn.author}
+                      teamId={chatTeamId}
+                      {words}
+                      disabled={lifecycleDecisionDisabled}
+                      ondecide={submitLifecycleDecision}
                     />
-                    {#if lifecycle.state === 'uninstalled' && lifecycle.completionAnnounced}
-                      <div class="assistant-lifecycle-outcome">
-                        <Markdown
-                          markdown={lifecycleOutcome(lifecycle, assistantTurn.author)}
-                          variant="chat"
-                        />
-                      </div>
-                    {/if}
                   {/if}
                   <!-- With recorded steps, the usage line itself opens them: one line, its triangle beside it. -->
                   {#snippet usageLine()}
@@ -2509,8 +2377,6 @@
   :global(.assistant-lifecycle-task) {
     margin-block-start: var(--gap-group);
   }
-  .assistant-install-plan { display: grid; gap: var(--gap-item); margin-block-start: var(--gap-group); }
-  .assistant-lifecycle-outcome { padding-block-start: var(--gap-group); }
 
   :global(.assistant-lifecycle-task .assistant-lifecycle-detail-copy) {
     display: block;
@@ -2521,38 +2387,6 @@
     border-top: 0;
     padding-top: 0;
   }
-  :global(.assistant-meta-separator) { margin-inline: 0.45em; }
-  :global(.assistant-meta-local) {
-    color: var(--shimpz-color-yellow);
-    font-weight: 700;
-    font-size: 0.6rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-  }
-  /* An uninstall waiting for the person's decision is framed in the danger colour, like its Uninstall action. */
-  :global(.shimpz-chat-task.assistant-lifecycle-task.assistant-uninstall-proposed) {
-    --task-color: var(--shimpz-color-danger);
-    border-color: color-mix(in srgb, var(--shimpz-color-danger) 30%, transparent);
-  }
-  /* Its Cancel reads neutral white beside the red Uninstall. */
-  :global(.assistant-uninstall-proposed .assistant-lifecycle-actions .shimpz-button.shimpz-button--secondary) {
-    --button-color: var(--shimpz-color-text);
-    --button-border: color-mix(in srgb, var(--shimpz-color-text) 30%, transparent) !important;
-  }
-
-  :global(.assistant-lifecycle-task .assistant-lifecycle-details) {
-    display: grid;
-    gap: var(--gap-item);
-  }
-
-  :global(.assistant-lifecycle-task .assistant-lifecycle-actions) {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-    gap: var(--gap-group);
-    margin-block-start: var(--gap-item);
-  }
-
   /* The chat's own notices only: other components' `.error` text keeps its own layout. */
   .conversation :global(.chat-error),
   .empty-state :global(.chat-empty-error) {
