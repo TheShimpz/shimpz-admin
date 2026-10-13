@@ -188,7 +188,7 @@ export default {
     timeAt: 'um',
     stop: 'Stoppen',
     emptyTeams: 'Erstelle ein Team mit der Schaltfläche +, um zu chatten.',
-    loading: 'Wird geladen…',
+    loading: 'Wird geladen',
     loadFailed: 'Die lokalen Chat-Daten sind nicht verfügbar.',
     olderMessages: 'Ältere Nachrichten laden',
     olderLoading: 'Ältere Nachrichten werden geladen…',

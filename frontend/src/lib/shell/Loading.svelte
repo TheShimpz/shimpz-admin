@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
 
   // A page's own loading indicator, centred in the area it fills: nothing for the first moment, so a load that ends
-  // within it never flashes, then `label` over a chamfered track a cyan scan crosses (still when motion is reduced),
+  // within it never flashes, then `label`, glitching, over a chamfered track a cyan scan crosses (still when motion is reduced),
   // in the status region that was already in place.
   let { label, delay = 150 } = $props();
   let shown = $state(false);
@@ -38,7 +38,9 @@
     animation: loader-in var(--shimpz-duration) var(--shimpz-ease) both;
   }
 
+  /* The label glitches as the controls do (the design system's shimpz-control-glitch-content), twice as often. */
   .label {
+    animation: shimpz-control-glitch-content 2.4s 175ms infinite steps(1, end);
     color: var(--shimpz-color-text-muted);
     font: 700 0.72rem/1.2 var(--shimpz-font-mono);
     letter-spacing: 0.12em;
@@ -90,6 +92,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .loader,
+    .label,
     .scan {
       animation: none;
     }

@@ -188,7 +188,7 @@ export default {
     timeAt: '于',
     stop: '停止',
     emptyTeams: '使用 + 按钮创建团队即可开始对话。',
-    loading: '加载中…',
+    loading: '加载中',
     loadFailed: '本地聊天数据不可用。',
     olderMessages: '加载更早的消息',
     olderLoading: '正在加载更早的消息…',

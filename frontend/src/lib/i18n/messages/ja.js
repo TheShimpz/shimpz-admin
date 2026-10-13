@@ -188,7 +188,7 @@ export default {
     timeAt: '·',
     stop: '停止',
     emptyTeams: '+ ボタンでチームを作成すると会話を始められます。',
-    loading: '読み込み中…',
+    loading: '読み込み中',
     loadFailed: 'ローカルチャットのデータを利用できません。',
     olderMessages: '過去のメッセージを読み込む',
     olderLoading: '過去のメッセージを読み込み中…',

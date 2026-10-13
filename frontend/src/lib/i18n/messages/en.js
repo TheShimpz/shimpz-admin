@@ -186,7 +186,7 @@ export default {
     timeAt: 'at',
     stop: 'Stop',
     emptyTeams: 'Create a Team with the + button to start chatting.',
-    loading: 'Loading…',
+    loading: 'Loading',
     loadFailed: 'Local chat data is unavailable.',
     olderMessages: 'Load older messages',
     olderLoading: 'Loading earlier messages…',
