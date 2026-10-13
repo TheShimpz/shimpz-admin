@@ -21,7 +21,11 @@ function harness() {
     return () => listeners.delete(listener);
   };
   socketReads.call = (method, params) => new Promise((resolve, reject) => calls.push({ method, params, resolve, reject }));
+  // Whether Admin holds the subscription now: a test closes and reopens the socket by setting `open`.
+  const socket = { open: true };
+  socketReads.subscribed = () => socket.open;
   return {
+    socket,
     calls,
     listeners,
     announce(cause, revision, epoch = EPOCH) {
@@ -593,5 +597,23 @@ test('a refused read, a screen leaving, and a reset each settle what waits for a
   value.reset();
   await flush();
   assert.equal(reset.value, 'gone');
+  screen.stop();
+});
+
+test('a value read again while the socket reopened is current only once Admin acknowledges the new subscription', async () => {
+  const socket = harness();
+  const value = synced('local-assistants', snapshots, { retain: { maxAgeMs: Infinity } });
+  const screen = shown(value);
+  socket.announce('subscribed', 1);
+  const known = outcome(value.current());
+  // The socket closes while the read runs; the read is answered on the reopened socket before its subscription is.
+  socket.socket.open = false;
+  socket.answer(0, { assistants: ['one'] }, 1);
+  await flush();
+  assert.equal(known.value, null);
+  socket.socket.open = true;
+  socket.announce('reopen', 1);
+  await flush();
+  assert.equal(known.value, 'current');
   screen.stop();
 });

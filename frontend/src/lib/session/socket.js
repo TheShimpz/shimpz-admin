@@ -218,7 +218,7 @@ function send(method, params, onProgress) {
 }
 
 /** The calls and topic watches screens make through the socket; a unit test may stand in for them. */
-export const socketReads = { call, watch: watchTopic };
+export const socketReads = { call, watch: watchTopic, subscribed: topicSubscribed };
 
 // The person's own input is the only thing that keeps the session alive (ADR-0114): no call, chat frame, or HTTP
 // request does. A content-free `activity` frame reports it, at most once a minute per tab, outside the call queue and
@@ -384,6 +384,11 @@ adminSocket.subscribe((value) => {
 
 function adminSnapshot() {
   return snapshot;
+}
+
+/** Whether Admin holds this socket's subscription to `topic` now: never between a close and the next acknowledgment. */
+function topicSubscribed(topic) {
+  return watched.get(topic)?.active === true && adminSnapshot().phase === 'open';
 }
 
 /**

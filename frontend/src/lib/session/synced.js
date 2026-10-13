@@ -99,7 +99,8 @@ export function synced(topic, read, { initial = null, retain = null } = {}) {
     if (!currentWaiters.length) return;
     const known = outcome ?? (refusal
       ? 'refused'
-      : (topic && !subscribed) || reading || retryTimer !== undefined || again || stale()
+      : (topic && !(subscribed && socketReads.subscribed(topic))) || reading || retryTimer !== undefined || again ||
+        stale()
         ? null
         : 'current');
     if (!known) return;
