@@ -17,6 +17,7 @@
   import AssistantIntegrationsDialog from '#lib/AssistantIntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '#lib/AssistantIntegrationsDrawer.svelte';
   import { catalogIconUrl, installedIconUrl } from '#lib/assistants/icons.js';
+  import { snapshotIcon } from '#lib/chat/lifecycle/snapshot.js';
   import { historyHead, listChatHistory } from '#lib/chatHistory.js';
   import {
     expiredTurns,
@@ -609,32 +610,14 @@
     turns = next;
   }
 
-  function imageDataUrl(blob) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onerror = () => reject(new Error('Assistant icon snapshot failed'));
-      reader.onload = () => resolve(reader.result);
-      reader.readAsDataURL(blob);
-    });
-  }
-
   function captureUninstallIcon(proposalId, assistantId, teamId) {
     const existing = lifecycleIconCaptures.get(proposalId);
     if (existing) return existing.promise;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 2000);
     let captured = false;
-    const source = installedIconUrl(teamId, assistantId);
-    const promise = fetch(source, {
-      cache: 'no-store',
-      credentials: 'same-origin',
-      signal: controller.signal,
-    }).then(async (response) => {
-      if (!response.ok || response.headers.get('content-type')?.split(';', 1)[0] !== 'image/png') return;
-      const blob = await response.blob();
-      if (!blob.size || blob.size > 1024 * 1024 || blob.type !== 'image/png') return;
-      const snapshot = await imageDataUrl(blob);
-      if (typeof snapshot !== 'string' || !snapshot.startsWith('data:image/png;base64,')) return;
+    const promise = snapshotIcon(teamId, assistantId, controller.signal).then((snapshot) => {
+      if (!snapshot) return;
       captured = true;
       turns = turns.map((turn) => (
         turn.lifecycle?.proposal_id === proposalId &&
