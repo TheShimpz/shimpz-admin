@@ -4,7 +4,7 @@
 import { expect, test } from '@playwright/test';
 
 import { publicAssistant } from './assistantPages.js';
-import { messages } from '../src/lib/messages.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
 import { dropSessions, raiseTopic, readsOf, routeConnect, routeRead, routeScenario, waitForRead } from './scenarioRoutes.js';
 
 const shell = messages.en.shell;

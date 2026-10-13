@@ -256,7 +256,7 @@ test('a question asked in several languages is answered by a message composed wi
 
 test("every interface language composes answers with exactly the Team protocol's labels", async () => {
   const { readFileSync } = await import('node:fs');
-  const { messages } = await import('../src/lib/messages.js');
+  const { messages } = await import('../src/lib/i18n/catalogs.js');
   // The protocol mirror is the authority (ADR-0101): Team reads the person's own lines out of a composed answer.
   const source = readFileSync(new URL('../../backend/protocol/http/v1/payload.py', import.meta.url), 'utf8');
   const block = source.match(/CLARIFICATION_LABELS = \{\n([\s\S]*?)\n\}/u)[1];

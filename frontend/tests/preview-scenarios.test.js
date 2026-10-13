@@ -18,7 +18,7 @@ import {
   runBinding,
 } from '../src/lib/routines/protocol.js';
 import { failureCause, questionWords, refusalWords } from '../src/lib/routines/words.js';
-import { messages } from '../src/lib/messages.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
 import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from '../src/lib/localApi.js';
 import { loadAssistantDetails, loadLocalAssistantDetails, loadLocalAssistantSummary } from '../src/lib/localAssistantIcons.js';
 import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';

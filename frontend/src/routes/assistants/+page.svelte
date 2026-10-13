@@ -6,7 +6,7 @@
   import { acquireIcon, localIcon, MAX_CACHED_ICONS, publicIcon } from '#lib/assistantIconCache.js';
   import { publicCatalog, snapshotSummary, stagedSnapshots, syncedFamily } from '#lib/assistantSources.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
-  import { locale, t } from '#lib/i18n.js';
+  import { locale, t } from '#lib/i18n/index.js';
   import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '#lib/localSnapshots.js';
   import { teamContext } from '#lib/teams/context.js';
   import { TEAM_ID_RE } from '#lib/ids.js';

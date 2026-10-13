@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { LOCALES } from '../src/lib/locales.js';
-import { messages } from '../src/lib/messages.js';
+import { LOCALES } from '../src/lib/i18n/locales.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
 import { assistantDetails } from './assistantPages.js';
 import { routeRead } from './scenarioRoutes.js';
 

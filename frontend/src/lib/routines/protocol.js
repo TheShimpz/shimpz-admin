@@ -2,7 +2,7 @@
 // view and throws on any other shape; nothing here schedules or authorizes: a Routine exists only once the person
 // confirms the card Team recorded from a chat turn.
 
-import { isLocale } from '../locales.js';
+import { isLocale } from '../i18n/locales.js';
 import { parseRunUsage } from '../taskUsage.js';
 import { jsonObject } from '../api.js';
 import { codePointLength, isInstant } from '../grammar.js';

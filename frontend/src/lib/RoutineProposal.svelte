@@ -3,7 +3,7 @@
 
   import { call, commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import { assistantNames } from '#lib/assistantNames.js';
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
   import { refreshTeamRoutines } from '#lib/routineContext.js';
   import { humanizeId } from '#lib/ids.js';

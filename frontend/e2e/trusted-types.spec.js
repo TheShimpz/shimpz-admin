@@ -3,7 +3,7 @@
 import { expect, test } from '@playwright/test';
 
 import { routeScenario } from './scenarioRoutes.js';
-import { messages } from '../src/lib/messages.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
 
 async function recordViolations(page) {
   await page.addInitScript(() => {

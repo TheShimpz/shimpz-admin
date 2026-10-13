@@ -8,7 +8,7 @@ import { chromium } from '@playwright/test';
 import { preview } from 'vite';
 import catalog from '../src/lib/brain/catalog.json' with { type: 'json' };
 import { receiptSteps } from '../src/lib/executionProgress.js';
-import { messages } from '../src/lib/messages.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
 import { answerCalls, installSessionSocket } from './sessionSocket.js';
 
 const team = { team_id: 'perf_team', team_name: 'Performance Team', status: 'running' };

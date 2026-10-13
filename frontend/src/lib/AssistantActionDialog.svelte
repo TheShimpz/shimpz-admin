@@ -1,7 +1,7 @@
 <script>
   import { Card, DialogFrame, Modal, Notice } from '@shimpz/frontend';
   import DialogAction from '#lib/DialogAction.svelte';
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
   let {
     open = $bindable(false),
     kicker = '',

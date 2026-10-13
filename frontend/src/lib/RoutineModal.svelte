@@ -1,7 +1,7 @@
 <script>
   import { Button, Modal } from '@shimpz/frontend';
 
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
   import RoutineIcon from '#lib/RoutineIcon.svelte';
 
   // The one shell of every Routine modal (ADR-0086): a chamfered frame under a scanline header with the modal's title.

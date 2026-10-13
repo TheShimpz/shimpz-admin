@@ -14,7 +14,7 @@
   import { actionGroups, continuingText, pageTarget } from '#lib/assistantPage.js';
   import { installedDetails, publicCatalog, snapshotDetails, stagedSnapshots } from '#lib/assistantSources.js';
   import { CREATOR_LINK_ICONS, CREATOR_LINK_NAMES } from '#lib/creatorLinkIcons.js';
-  import { locale, t } from '#lib/i18n.js';
+  import { locale, t } from '#lib/i18n/index.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import LocalAssistantInstallDialog from '#lib/LocalAssistantInstallDialog.svelte';
   import { installAssistant, installLocalAssistant, uninstallAssistant } from '#lib/localApi.js';

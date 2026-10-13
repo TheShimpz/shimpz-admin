@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
-import { LOCALES } from '../src/lib/locales.js';
-import { messages } from '../src/lib/messages.js';
+import { LOCALES } from '../src/lib/i18n/locales.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
 import {
   assistantIntegrationLabels,
   assistantIntegrationMessageParts,

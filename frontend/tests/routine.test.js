@@ -78,7 +78,7 @@ import {
   untilWords,
 } from '../src/lib/routines/words.js';
 import { fill } from '../src/lib/i18n/fill.js';
-import { messages } from '../src/lib/messages.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
 
 // Each interface language's own catalog of this copy.
 const routineMessages = Object.fromEntries(Object.entries(messages).map(([code, catalog]) => [code, catalog.routine]));

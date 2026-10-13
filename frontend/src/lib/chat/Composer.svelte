@@ -5,7 +5,7 @@
   import BrainMenu from '#lib/brain/Menu.svelte';
   import ComposerAttachments from '#lib/ComposerAttachments.svelte';
   import FastRoutingMenu from '#lib/brain/FastRoutingMenu.svelte';
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
   import { modelContext } from '#lib/brain/context.js';
 
   // The chat's composer: the message with its files, or the Brain's key while the selected provider has none, and its

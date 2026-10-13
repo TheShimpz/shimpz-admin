@@ -6,7 +6,7 @@
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { showAdminNotice } from '#lib/shell/notice.js';
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
   import { LocalApiError } from '#lib/api.js';
   import { createTeam, deleteTeam, teamContext } from '#lib/teams/context.js';
 

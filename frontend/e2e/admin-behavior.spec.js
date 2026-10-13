@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import { expect, test } from '@playwright/test';
 import { assistantDetails, PAGE_COPY } from './assistantPages.js';
 
-import { messages } from '../src/lib/messages.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
 import { accessibilityViolations } from './axe.js';
 import { localizedChallenge } from './localizedRequest.js';
 

@@ -8,7 +8,7 @@
   import ClarificationCard from '#lib/ClarificationCard.svelte';
   import { clarifiedRequest } from '#lib/clarification.js';
   import ExecutionReceipt from '#lib/ExecutionReceipt.svelte';
-  import { locale, t } from '#lib/i18n.js';
+  import { locale, t } from '#lib/i18n/index.js';
   import Markdown from '#lib/Markdown.svelte';
   import RestrictedActionsNote from '#lib/RestrictedActionsNote.svelte';
   import { refusalWords } from '#lib/routines/words.js';

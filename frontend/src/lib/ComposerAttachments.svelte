@@ -1,7 +1,7 @@
 <script>
   import { Button } from '@shimpz/frontend';
   import AttachmentChip from '#lib/AttachmentChip.svelte';
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
 
   // The message's files above its text: each chip, the files still being read or uploaded with their one cancel, the
   // last refusal in plain words, and the reminder that files are read only in this message (ADR-0093).

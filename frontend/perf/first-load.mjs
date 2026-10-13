@@ -12,7 +12,7 @@ import { gzipSync } from 'node:zlib';
 import { chromium } from '@playwright/test';
 
 import { routeScenario } from '../e2e/scenarioRoutes.js';
-import { messages } from '../src/lib/messages.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
 
 const samples = Number(process.env.SHIMPZ_PERF_SAMPLES ?? '15');
 const locales = (process.env.SHIMPZ_PERF_LOCALES ?? 'en,pt').split(',');

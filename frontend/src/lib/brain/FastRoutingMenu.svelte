@@ -5,7 +5,7 @@
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/brain/panel.js';
   import { decisionProvider, removeDecisionKey, saveDecisionKey } from '#lib/brain/decision.js';
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
 
   // The optional Jev key (ADR-0077) in its own composer control. Only Local Admin custodies it; the caller renders
   // this control only there. Its state is the one Admin holds, read over the session socket and again whenever Admin

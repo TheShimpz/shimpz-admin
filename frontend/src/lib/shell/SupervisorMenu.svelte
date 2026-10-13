@@ -1,6 +1,6 @@
 <script>
   import { DropdownMenu } from '@shimpz/frontend';
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
 
   // The Supervisor's account menu, the same menu as the language one: an avatar listing the account's actions.
   let { onsecurity } = $props();

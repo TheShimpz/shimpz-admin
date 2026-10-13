@@ -7,7 +7,7 @@
   } from '@shimpz/frontend';
   import { commandsReady } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
-  import { locale, t } from '#lib/i18n.js';
+  import { locale, t } from '#lib/i18n/index.js';
   import {
     assistantIntegrationLabels,
     assistantIntegrationMessageParts,

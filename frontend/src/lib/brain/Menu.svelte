@@ -4,7 +4,7 @@
   import { showAdminNotice } from '#lib/shell/notice.js';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/brain/panel.js';
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
   import { modelContext, selectTeamBrain } from '#lib/brain/context.js';
   import { teamContext } from '#lib/teams/context.js';
 

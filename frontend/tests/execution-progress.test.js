@@ -11,7 +11,7 @@ import {
   technicalStepLabel,
 } from '../src/lib/executionProgress.js';
 import { CHAT_PROGRESS_PHASES } from '../src/lib/chat/protocol.js';
-import { messages } from '../src/lib/messages.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
 
 // The steps one projection makes of a whole event list, extended one event at a time as the chat page does.
 function projected(events) {

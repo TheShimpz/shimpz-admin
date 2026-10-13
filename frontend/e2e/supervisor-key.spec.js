@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { dropSessions, readsOf, routeRead, routeScenario, sessionCalls, waitForRead } from './scenarioRoutes.js';
-import { messages } from '../src/lib/messages.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
 
 // Replacing the Supervisor signing key (ADR-0051) against the built Admin with scenario fixtures (ADR-0087): Security
 // confirms it with the password and a second factor, and says how Team answered.

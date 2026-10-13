@@ -4,7 +4,7 @@ import { get } from 'svelte/store';
 
 import { createScenario, SCENARIOS } from '../e2e/scenarios.js';
 import { serveSession, SESSION_PROTOCOL, SESSION_SOCKET_PATH } from '../e2e/sessionSocket.js';
-import { locale } from '../src/lib/i18n.js';
+import { locale } from '../src/lib/i18n/index.js';
 
 const STORAGE_KEY = 'shimpz-preview-scenario';
 

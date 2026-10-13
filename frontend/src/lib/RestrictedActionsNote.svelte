@@ -1,5 +1,5 @@
 <script>
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
   import { humanizeId } from '#lib/ids.js';
 
   // A neutral note under a reply whose message carried readable attachments: which Actions Team withheld, by their

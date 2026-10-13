@@ -8,8 +8,8 @@
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { teamContext } from '#lib/teams/context.js';
   import { dataUnavailable } from '#lib/session/synced.js';
-  import { locale, t } from '#lib/i18n.js';
-  import LocaleMenu from '#lib/LocaleMenu.svelte';
+  import { locale, t } from '#lib/i18n/index.js';
+  import LocaleMenu from '#lib/i18n/LocaleMenu.svelte';
   import PlatformReleaseStatus from '#lib/space/ReleaseStatus.svelte';
   import SecurityAlert from '#lib/auth/SecurityAlert.svelte';
   import SecurityDialog from '#lib/auth/SecurityDialog.svelte';

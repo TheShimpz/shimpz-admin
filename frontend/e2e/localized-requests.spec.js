@@ -3,8 +3,8 @@
 // selected is never answered: Admin obtains a fresh challenge in the selected language first.
 import { expect, test } from '@playwright/test';
 
-import { LOCALES } from '../src/lib/locales.js';
-import { messages } from '../src/lib/messages.js';
+import { LOCALES } from '../src/lib/i18n/locales.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
 import { localizedChallenge } from './localizedRequest.js';
 import { routeChat, routeScenario } from './scenarioRoutes.js';
 

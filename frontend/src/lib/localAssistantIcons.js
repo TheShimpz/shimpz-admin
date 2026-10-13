@@ -1,7 +1,7 @@
 import { socketReads } from './session/socket.js';
 import { AssistantPageError, canonicalPageCopy, isDisplayText, SUMMARY_CHARS } from './assistantPage.js';
 import { catalogIconUrl } from './assistants/icons.js';
-import { isLocale } from './locales.js';
+import { isLocale } from './i18n/locales.js';
 import { exactKeys, jsonObject, LocalApiError, safeApiError } from './api.js';
 import { codePointLength, CONTROL_RE } from './grammar.js';
 import { ASSISTANT_ID_RE, DIGEST_RE, PUBLIC_CREATOR_RE, SEMANTIC_VERSION_RE, TEAM_ID_RE } from './ids.js';

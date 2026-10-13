@@ -2,7 +2,7 @@
   import { Notice } from '@shimpz/frontend';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
   import { acknowledgeFailedAttempts, securitySummary } from '#lib/auth/security.js';
 
   // The second-factor attempts refused since the previous sign-in (ADR-0051). The report stays on every page until the

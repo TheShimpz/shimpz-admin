@@ -4,7 +4,7 @@
 
   import { call, commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
   import { authenticateWithPasskey, passkeyFailure } from '#lib/auth/passkey.js';
   import { beginRoutineDeletion, deleteRoutine, RoutineError } from '#lib/routines/protocol.js';

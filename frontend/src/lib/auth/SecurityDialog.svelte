@@ -4,7 +4,7 @@
   import DialogAction from '#lib/DialogAction.svelte';
   import { tick } from 'svelte';
 
-  import { locale, t } from '#lib/i18n.js';
+  import { locale, t } from '#lib/i18n/index.js';
   import { PATHS } from '#lib/icons.js';
   import RecoveryCodes from '#lib/auth/RecoveryCodes.svelte';
   import OperationConfirmation from '#lib/auth/OperationConfirmation.svelte';

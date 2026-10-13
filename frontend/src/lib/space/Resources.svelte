@@ -1,5 +1,5 @@
 <script>
-  import { locale, t } from '#lib/i18n.js';
+  import { locale, t } from '#lib/i18n/index.js';
   import { adminSocket } from '#lib/session/socket.js';
   import { dataUnavailable, synced } from '#lib/session/synced.js';
   import { fetchSpaceResources, resourceSegments, resourceStatus } from '#lib/space/resources.js';

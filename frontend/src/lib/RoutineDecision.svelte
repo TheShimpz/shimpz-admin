@@ -5,7 +5,7 @@
   import { assistantNames } from '#lib/assistantNames.js';
   import ChoiceList from '#lib/ChoiceList.svelte';
   import { call, commandsReady, outcomeUnknown } from '#lib/session/socket.js';
-  import { locale, t } from '#lib/i18n.js';
+  import { locale, t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
   import { createHumanResponseFrame, parseChatEvent } from '#lib/chat/protocol.js';
   import RoutineIcon from '#lib/RoutineIcon.svelte';

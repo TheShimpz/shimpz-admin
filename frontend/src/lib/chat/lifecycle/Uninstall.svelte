@@ -6,7 +6,7 @@
   import DialogAction from '#lib/DialogAction.svelte';
   import Markdown from '#lib/Markdown.svelte';
   import { escapeMarkdownText } from '#lib/markdown.js';
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
 
   // One Assistant uninstall a chat turn proposed (ADR-0066): its card with Cancel and Uninstall while it waits for the
   // Supervisor, then how it went, and once Team's inventory confirms it, the outcome in the Team's words. `teamId` is

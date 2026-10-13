@@ -11,7 +11,7 @@ import {
 } from './ids.js';
 import { socketReads } from './session/socket.js';
 import { AssistantPageError, canonicalPageCopy, SUMMARY_CHARS } from './assistantPage.js';
-import { isLocale } from './locales.js';
+import { isLocale } from './i18n/locales.js';
 
 const RUNTIME_STATUS_RE = /^[a-z]{2,24}$/;
 const MAX_INSTALLED_ASSISTANTS = 128;

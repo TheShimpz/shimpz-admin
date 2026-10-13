@@ -1,6 +1,6 @@
 <script>
   import { DropdownMenu } from '@shimpz/frontend';
-  import { locale, setLocale, LOCALES, t } from '#lib/i18n.js';
+  import { locale, setLocale, LOCALES, t } from '#lib/i18n/index.js';
 
   let { compact = false, wide = false } = $props();
   let current = $derived(LOCALES.find((item) => item.code === $locale) ?? LOCALES[0]);

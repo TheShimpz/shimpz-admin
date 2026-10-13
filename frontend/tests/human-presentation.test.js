@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { localizedChallenge, messageReference } from '../e2e/localizedRequest.js';
-import { messages } from '../src/lib/messages.js';
-import { LOCALES } from '../src/lib/locales.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
+import { LOCALES } from '../src/lib/i18n/locales.js';
 import {
   canonicalHelpUrl,
   canonicalPurpose,

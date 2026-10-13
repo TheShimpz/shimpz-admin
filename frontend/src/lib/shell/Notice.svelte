@@ -8,7 +8,7 @@
     dismissAdminNotice,
     validAdminNoticeDuration,
   } from '#lib/shell/notice.js';
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
 
   let { defaultDurationMs = DEFAULT_ADMIN_NOTICE_DURATION_MS } = $props();
   let host = $state();

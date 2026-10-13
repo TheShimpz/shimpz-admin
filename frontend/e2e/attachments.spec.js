@@ -5,7 +5,7 @@ import { expect, test } from '@playwright/test';
 
 import { accessibilityViolations } from './axe.js';
 import { routeScenario } from './scenarioRoutes.js';
-import { messages } from '../src/lib/messages.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
 
 const EN = messages.en.attachments;
 const AR = messages.ar.attachments;

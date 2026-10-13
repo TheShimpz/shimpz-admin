@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import { assistantDetails, publicAssistant, stagedSnapshot } from './assistantPages.js';
 import { accessibilityViolations } from './axe.js';
-import { messages } from '../src/lib/messages.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
 import { dropSessions, nextRead, raiseTopic, readsOf, routeRead, waitForRead } from './scenarioRoutes.js';
 
 // One Assistant's own page (ADR-0087 functional coverage): it reads the exact target for the Team its link names,

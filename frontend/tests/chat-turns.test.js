@@ -19,7 +19,7 @@ import {
   replyFields,
   shownUsage,
 } from '../src/lib/chat/turns.js';
-import { messages } from '../src/lib/messages.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
 
 const WORDS = { ...messages.en.chatPage, limit: 'This Team already has the maximum of 16 Assistants.' };
 const ASSISTANT = {

@@ -9,7 +9,7 @@
   import AttachmentChip from '#lib/AttachmentChip.svelte';
   import { attachmentKind } from '#lib/chat/attachments/files.js';
   import DialogAction from '#lib/DialogAction.svelte';
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
   import { displayedHumanRequest } from '#lib/chat/protocol.js';
   import { humanizeId } from '#lib/ids.js';
 

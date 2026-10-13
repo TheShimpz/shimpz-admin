@@ -4,7 +4,7 @@
   import { page } from '$app/state';
   import { onMount } from 'svelte';
 
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
   import {
     clearModelContext,
     loadModelContext,

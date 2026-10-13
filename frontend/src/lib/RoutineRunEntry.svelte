@@ -1,5 +1,5 @@
 <script>
-  import { locale } from '#lib/i18n.js';
+  import { locale } from '#lib/i18n/index.js';
   import { routineNotice } from '#lib/routines/words.js';
 
   // A Routine's creation in a Team's transcript (ADR-0086), the one Routine notice the chat shows: its runs and later

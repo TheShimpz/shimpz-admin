@@ -12,7 +12,7 @@ import {
   parseRoutineQuestion,
   parseRoutineRefusal,
 } from '../routines/protocol.js';
-import { isLocale } from '../locales.js';
+import { isLocale } from '../i18n/locales.js';
 import { ASSISTANT_LIMIT_REACHED, exactKeys, LocalApiError } from '../api.js';
 import { codePointLength, CONTROL_RE } from '../grammar.js';
 import {

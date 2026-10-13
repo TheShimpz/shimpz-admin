@@ -2,8 +2,8 @@
 // loads it as its own chunk only when it becomes the interface language.
 //
 // AI-authored — accurate, but worth a native pass before the public launch.
-import { CLARIFICATION_LABELS } from '../clarificationLabels.js';
-import { routineQuestionMessages } from '../routineQuestionMessages.js';
+import { CLARIFICATION_LABELS } from '../../clarificationLabels.js';
+import { routineQuestionMessages } from '../../routineQuestionMessages.js';
 
 export default {
   auth: {

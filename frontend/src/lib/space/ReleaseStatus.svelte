@@ -1,6 +1,6 @@
 <script>
   import packageMetadata from '../../../package.json';
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
   import { synced } from '#lib/session/synced.js';
   import { fetchPlatformRelease, isDeveloperRelease } from '#lib/space/release.js';
 

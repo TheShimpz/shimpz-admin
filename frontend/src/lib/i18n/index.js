@@ -3,7 +3,7 @@
 // partial translation never shows a blank; it shows English. Only English ships with the app; each other language is
 // its own chunk, fetched when it becomes the interface language, and the locale changes only once it has arrived.
 import { writable, derived } from 'svelte/store';
-import { fill } from './i18n/fill.js';
+import { fill } from './fill.js';
 import en from './messages/en.js';
 import { LOCALES } from './locales.js';
 

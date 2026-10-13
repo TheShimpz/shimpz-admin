@@ -5,7 +5,7 @@
 
   import { showAdminNotice } from '#lib/shell/notice.js';
 
-  import { t } from '#lib/i18n.js';
+  import { t } from '#lib/i18n/index.js';
   import { CIRCLES, PATHS } from '#lib/icons.js';
   import { retainTeamRoutines, routineContext } from '#lib/routineContext.js';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';

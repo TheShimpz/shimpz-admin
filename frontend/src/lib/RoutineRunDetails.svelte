@@ -3,7 +3,7 @@
 
   import { call } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
-  import { locale } from '#lib/i18n.js';
+  import { locale } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
   import RoutineRunSteps from '#lib/RoutineRunSteps.svelte';
   import { readRunDiagnostics, runBinding } from '#lib/routines/protocol.js';
