@@ -117,8 +117,8 @@
 </li>
 
 <style>
-  /* Every tile is the same square, as wide as its grid column and never wider than 8rem, cut like the controls; its
-     border and its image follow the same cut. */
+  /* Every tile is the same square, as wide as its grid column and never wider than 8rem, cut like the controls, with
+     no border. */
   .attachment-tile {
     position: relative;
     clip-path: var(--shimpz-control-shape);
@@ -128,11 +128,11 @@
     aspect-ratio: 1;
     min-width: 0;
     overflow: hidden;
-    border: 1px solid var(--shimpz-color-border);
     background: color-mix(in srgb, var(--shimpz-color-text) 4%, var(--shimpz-color-bg));
   }
 
-  .attachment-tile[aria-busy="true"] { border-style: dashed; }
+  /* A file still uploading is dimmed until Team has stored it. */
+  .attachment-tile[aria-busy="true"] { opacity: 0.6; }
 
   .attachment-tile :global(.shimpz-button.tile-open) {
     --button-border: transparent;
