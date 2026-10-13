@@ -59,6 +59,7 @@ export default {
     languageCurrent: 'اللغة: {name}',
     languageMenu: 'اللغة',
     platformRollback: 'تم التراجع عن التحديث',
+    versionStale: 'تغيّر إصدار Admin · إعادة التحميل',
     reconnecting: 'جارٍ إعادة الاتصال بـ Admin… قد يكون ما تراه قديمًا، وتنتظر الإجراءات حتى يعود الاتصال.',
     reconnectFailed: "تعذّر الوصول إلى Admin. يواصل Shimpz محاولة إعادة الاتصال.",
     offline: "أنت غير متصل. سيعيد Shimpz الاتصال عند عودة الاتصال.",

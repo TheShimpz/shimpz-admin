@@ -203,11 +203,15 @@ function previewChat(teamId) {
 }
 
 // Preview-only states that a live Admin reaches only with time or a broken connection: `?session=expiring` starts the
-// session 125 s before its idle expiry (the warning shows after about 5 s and Stay signed in renews it), and
-// `?socket=reconnecting` drops the socket after 3 s and refuses to reopen for about 20 s.
+// session 125 s before its idle expiry (the warning shows after about 5 s and Stay signed in renews it),
+// `?socket=reconnecting` drops the socket after 3 s and refuses to reopen for about 20 s, and `?version=stale` has Admin
+// name another commit than the preview's own build (vite.config.js), as after an update the tab outlived, so the
+// sidebar shows the notice that reloads the page.
 const PREVIEW_PARAMS = new URL(location.href).searchParams;
 const SESSION_EXPIRING = PREVIEW_PARAMS.get('session') === 'expiring';
 const SOCKET_RECONNECTING = PREVIEW_PARAMS.get('socket') === 'reconnecting';
+const VERSION_STALE = PREVIEW_PARAMS.get('version') === 'stale';
+const SERVED_REVISION = VERSION_STALE ? 'b'.repeat(40) : __ADMIN_REVISION__;
 const PREVIEW_STARTED = Date.now();
 
 // Admin keeps topic revisions for its whole process: every scripted socket of the page shares them.
@@ -241,14 +245,15 @@ class SessionSocket extends EventTarget {
       }
       this.readyState = SessionSocket.OPEN;
       this.#emit('open', new Event('open'));
-      if (SESSION_EXPIRING) this.#deadline(125);
+      // Admin tells a socket its deadlines and its commit as it opens.
+      if (SESSION_EXPIRING || VERSION_STALE) this.#deadline(SESSION_EXPIRING ? 125 : 3600);
       if (SOCKET_RECONNECTING && Date.now() - PREVIEW_STARTED < 1000) setTimeout(() => this.close(1006), 3000);
     }, 0);
   }
 
   #deadline(idleSeconds) {
     const data = JSON.stringify({
-      type: 'session', idle_seconds: idleSeconds, absolute_seconds: 80000, source_revision: null,
+      type: 'session', idle_seconds: idleSeconds, absolute_seconds: 80000, source_revision: SERVED_REVISION,
     });
     setTimeout(() => this.#emit('message', new MessageEvent('message', { data })), 0);
   }

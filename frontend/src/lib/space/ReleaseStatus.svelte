@@ -1,13 +1,21 @@
 <script>
+  import { Button } from '@shimpz/frontend';
+
   import { t } from '#lib/i18n/index.js';
+  import { servedRevision } from '#lib/session/socket.js';
   import { synced } from '#lib/session/synced.js';
   import { fetchPlatformRelease, isDeveloperRelease } from '#lib/space/release.js';
+  import { versionState } from '#lib/space/version.js';
 
   // Admin's watcher reads the release file while this status is shown and says when it changed (ADR-0114).
   const release = synced('platform/release', fetchPlatformRelease);
   let status = $derived($release.value);
   // The commit this Admin was built from (vite.config.js).
   const adminVersion = __ADMIN_VERSION__;
+  const adminRevision = __ADMIN_REVISION__;
+  // A tab built from another commit than the Admin it reaches is stale. It reloads only when the person asks, since a
+  // reload would lose a draft or a turn under way.
+  let stale = $derived(versionState(adminRevision, $servedRevision) === 'stale');
 </script>
 
 <div
@@ -20,7 +28,13 @@
     : undefined}
 >
   <span class="indicator" aria-hidden="true"></span>
-  <span><span class="sr-only">{'Admin '}</span>{adminVersion}</span>
+  {#if stale}
+    <Button class="stale" variant="ghost" size="sm" type="button" onclick={() => location.reload()}>
+      {$t('shell.versionStale')}
+    </Button>
+  {:else}
+    <span><span class="sr-only">{'Admin '}</span>{adminVersion}</span>
+  {/if}
   {#if status?.outcome === 'rollback-needed'}
     <span aria-hidden="true">·</span>
     <span>{$t('shell.platformRollback')}</span>

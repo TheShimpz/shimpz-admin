@@ -59,6 +59,7 @@ export default {
     languageCurrent: 'Idioma: {name}',
     languageMenu: 'Idioma',
     platformRollback: 'Actualización revertida',
+    versionStale: 'La versión de Admin cambió · Recargar',
     reconnecting: 'Reconectando con Admin… Lo que ves puede estar desactualizado, y las acciones esperan hasta que vuelva la conexión.',
     reconnectFailed: "No se puede acceder a Admin. Shimpz sigue intentando reconectar.",
     offline: "Estás sin conexión. Shimpz se reconecta cuando vuelva la conexión.",

@@ -11,3 +11,18 @@ export function buildVersion(epoch, revision) {
   const date = new Date(Number(epoch) * 1000).toISOString().slice(0, 10).replaceAll('-', '.');
   return `v${date}-${revision.slice(0, 7)}`;
 }
+
+/** The full commit a build names, or null for a build that names none; a malformed one fails as `buildVersion` does. */
+export function buildRevision(epoch, revision) {
+  buildVersion(epoch, revision);
+  return revision || null;
+}
+
+/**
+ * Whether the Admin serving this tab runs the build the tab was loaded from: `current` when both name the same commit,
+ * `stale` when they differ (the tab outlived an update or a rollback), and `unknown` while either names none.
+ */
+export function versionState(own, served) {
+  if (!own || !served) return 'unknown';
+  return own === served ? 'current' : 'stale';
+}

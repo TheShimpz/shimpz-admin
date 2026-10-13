@@ -59,6 +59,7 @@ export default {
     languageCurrent: 'Langue : {name}',
     languageMenu: 'Langue',
     platformRollback: 'Mise à jour annulée',
+    versionStale: 'La version d’Admin a changé · Recharger',
     reconnecting: 'Reconnexion à Admin… Ce que vous voyez peut être obsolète, et les actions attendent le retour de la connexion.',
     reconnectFailed: "Admin est injoignable. Shimpz continue d’essayer de se reconnecter.",
     offline: "Vous êtes hors ligne. Shimpz se reconnecte dès le retour de la connexion.",
