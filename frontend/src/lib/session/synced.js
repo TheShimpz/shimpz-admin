@@ -48,11 +48,13 @@ export function transientFailure(error) {
  * A value read for the session (`retain: { maxAgeMs }`) keeps what it read when the last screen leaves, so the next
  * screen shows it at once: it drops only the reads under way and its retry, and stops watching its topic. Shown again,
  * it reads again only when it may be older than Admin's: its topic's revision moved since its read (Admin's revision is
- * in the subscription's acknowledgment), or it is older than `maxAgeMs`. `reset()` forgets it, as a session that ended
- * must; `size()` is the UTF-8 size of the answers its value was read from. `current()` says when a shown value is known
- * to be current: `'current'` once the subscription is in place and the value reflects what Admin acknowledged (at once
- * when no read is needed; through transient failures it waits for the read that succeeds), `'refused'` when a read is
- * refused, or `'gone'` when its reads end with the last screen leaving or a reset. It never asks for a read itself.
+ * in the subscription's acknowledgment), or it is older than `maxAgeMs`. `keeps(value)`, when given, says whether a
+ * value is worth keeping; one that is not is forgotten as an unkept value is. `reset()` forgets it, as a session that
+ * ended must; `size()` is the UTF-8 size of the answers its value was read from. `current()` says when a shown value
+ * is known to be current: `'current'` once the subscription is in place and the value reflects what Admin acknowledged
+ * (at once when no read is needed; through transient failures it waits for the read that succeeds), `'refused'` when a
+ * read is refused, or `'gone'` when its reads end with the last screen leaving or a reset. It never asks for a read
+ * itself.
  */
 export function synced(topic, read, { initial = null, retain = null } = {}) {
   let value = initial;
@@ -251,7 +253,7 @@ export function synced(topic, read, { initial = null, retain = null } = {}) {
   // unless it is read for the session and was read cleanly, which it then keeps.
   function leave(set) {
     stopped = true;
-    if (retain && has && !refusal) {
+    if (retain && has && !refusal && (retain.keeps?.(value) ?? true)) {
       drop();
       set({ status: 'ready', value, error: null, failing: null });
       return;
@@ -308,5 +310,6 @@ export function synced(topic, read, { initial = null, retain = null } = {}) {
     return known;
   }
 
-  return { subscribe: store.subscribe, refresh, reset, current, size: () => size };
+  // `holds()` says whether it holds a value now, shown or kept.
+  return { subscribe: store.subscribe, refresh, reset, current, size: () => size, holds: () => has };
 }

@@ -156,7 +156,7 @@ test('a kept conversation that grows past what a session keeps opens from the ne
   await expect(page.getByText('Answer 1', { exact: true })).toHaveCount(0);
 });
 
-test('a conversation that outgrew what a session keeps while shown opens from its newest page on return, before the channel attaches', async ({ page }) => {
+test('a conversation that outgrew what a session keeps while shown is not kept: on return it opens from its newest page', async ({ page }) => {
   await routeScenario(page, 'ready');
   const history = { pages: { null: { entries: exchanges(1, 2), before: null } } };
   await routeHistory(page, history);
@@ -175,19 +175,18 @@ test('a conversation that outgrew what a session keeps while shown opens from it
   await expect.poll(async () => (await readsOf(page, 'history.page')).some((read) => read.before === cursor(4))).toBe(true);
   await leaveForStore(page);
   const attached = await attaches(page);
-  // On return the newest page is read again: its first read fails for a moment, and the next is held.
-  const newestReads = [];
+  // On return nothing of it shows: the newest page is read from the start, and that read is held.
+  const returnReads = [];
   let release;
   const held = new Promise((resolve) => { release = resolve; });
   history.answer = (params) => {
-    if (params.before) return undefined;
-    newestReads.push(params);
-    if (newestReads.length === 1) return { status: 503, json: { detail: 'Synthetic history outage.' } };
+    returnReads.push(params.before ?? null);
     return held.then(() => undefined);
   };
   await returnToChat(page);
   await expect(page.getByRole('status').filter({ hasText: chatPage.loading })).toBeVisible();
-  await expect.poll(() => newestReads.length).toBe(2);
+  await expect.poll(() => returnReads).toEqual([null]);
+  await expect(page.getByText('Answer 2', { exact: true })).toHaveCount(0);
   expect(await attaches(page)).toBe(attached);
   await expect(composer(page)).toBeDisabled();
   release();

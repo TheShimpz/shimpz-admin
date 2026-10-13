@@ -326,3 +326,37 @@ test('a restart asked for after a screen left is answered by the newest page, ne
     mock.timers.reset();
   }
 });
+
+test("a kept chat whose view outgrew its bounds is not kept once it is left, so it holds no more than a view's rows", async () => {
+  clearChatHistories();
+  const api = socket();
+  const head = chatHistory('marketing');
+  let shown = follow(head);
+  api.announce('open', 1);
+  api.reads[0].answer([message(0)]);
+  await flush();
+  // Two pages more than a view keeps are written while the chat is shown: the head drops its view.
+  const written = Array.from({ length: 2 * MAX_VIEW_ROWS }, (_, index) => message(index + 1));
+  const pages = Array.from({ length: 8 }, (_, index) => written.slice(written.length - 64 * (index + 1), written.length - 64 * index));
+  pages[7] = [message(0), ...pages[7].slice(1)];
+  api.announce('changed', 2);
+  for (const [index, page] of pages.entries()) {
+    api.reads[1 + index].answer(page, { before: index < 7 ? `AAAAAAAA0${index + 1}A` : null, revision: 2 });
+    await flush();
+  }
+  assert.equal(shown.values.at(-1).view, null);
+  shown.stop();
+  await flush();
+  // Left, it keeps nothing: shown again, nothing shows before the newest page is read again.
+  assert.equal(head.size(), 0);
+  shown = follow(head);
+  assert.equal(shown.values.length, 0);
+  api.announce('subscribed', 2);
+  assert.deepEqual(api.reads.at(-1).params, { team_id: 'marketing' });
+  api.reads.at(-1).answer([message(600)], { revision: 2 });
+  await flush();
+  assert.deepEqual(ids(shown.values.at(-1)), [message(600).id]);
+  assert.ok(shown.values.at(-1).view);
+  shown.stop();
+  clearChatHistories();
+});

@@ -520,7 +520,8 @@ export function historyHead(teamId, { routine = null, retain = null } = {}) {
       shown = null;
       head.reset();
     },
-    size: () => (shown ? shown.view?.bytes ?? rowBytes(shown.entries) : 0),
+    // What it holds: nothing once forgotten (a reset, or a value not worth keeping left by its last screen).
+    size: () => (head.holds() && shown ? shown.view?.bytes ?? rowBytes(shown.entries) : 0),
   };
 }
 
@@ -528,8 +529,10 @@ export function historyHead(teamId, { routine = null, retain = null } = {}) {
 // read again only when Admin says the history changed meanwhile (ADR-0114, values a session keeps).
 const MAX_KEPT_CHATS = 4;
 const MAX_KEPT_CHAT_BYTES = 8 * 1024 * 1024;
+// Only a value that can open the conversation is kept: one whose view outgrew its bounds holds the rows it read, up to
+// MAX_REFRESH_PAGES pages of them, and is forgotten when the chat is left, so the next visit reads the newest page.
 const chats = sessionFamily(
-  (teamId) => historyHead(teamId, { retain: { maxAgeMs: Infinity } }),
+  (teamId) => historyHead(teamId, { retain: { maxAgeMs: Infinity, keeps: (value) => value.view !== null } }),
   { maxEntries: MAX_KEPT_CHATS, maxBytes: MAX_KEPT_CHAT_BYTES },
 );
 
