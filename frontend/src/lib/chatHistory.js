@@ -6,7 +6,7 @@ import {
   MAX_MESSAGE_CHARS,
   MAX_REPLY_CHARS,
   parseRoutineReply,
-} from './localChat.js';
+} from './chat/protocol.js';
 import { parseRoutineRunEntry } from './routine.js';
 import { parseTaskUsage } from './taskUsage.js';
 import { synced } from './synced.js';

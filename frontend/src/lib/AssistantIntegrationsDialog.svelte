@@ -13,7 +13,7 @@
     assistantIntegrationMessageParts,
     localizedIntegrationList,
   } from '#lib/assistantIntegrationMessages.js';
-  import { assistantIntegrationProviderLabel } from '#lib/localChat.js';
+  import { assistantIntegrationProviderLabel } from '#lib/assistants/integrations.js';
 
   let {
     open = false,

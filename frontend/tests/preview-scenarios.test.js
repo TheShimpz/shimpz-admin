@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { uploadTeamFile } from '../src/lib/attachments.js';
 import { renderClarification } from '../src/lib/clarification.js';
-import { displayedHumanRequest, parseChatEvent } from '../src/lib/localChat.js';
+import { displayedHumanRequest, parseChatEvent } from '../src/lib/chat/protocol.js';
 import {
   answerRoutineCard,
   confirmRoutineProposal,

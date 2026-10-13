@@ -14,7 +14,7 @@ import {
   uploadTeamFile,
 } from '../src/lib/attachments.js';
 import { listChatHistory } from '../src/lib/chatHistory.js';
-import { parseChatEvent } from '../src/lib/localChat.js';
+import { parseChatEvent } from '../src/lib/chat/protocol.js';
 
 const MIB = 1024 * 1024;
 const HISTORY_AT = '2026-10-02T21:15:00Z';

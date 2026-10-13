@@ -11,7 +11,7 @@ import {
   parseClarification,
   renderClarification,
 } from '../src/lib/clarification.js';
-import { parseChatEvent } from '../src/lib/localChat.js';
+import { parseChatEvent } from '../src/lib/chat/protocol.js';
 
 const ASKED = {
   question: 'Qual período você quer cobrir?',

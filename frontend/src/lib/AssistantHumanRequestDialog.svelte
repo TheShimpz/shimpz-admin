@@ -10,7 +10,7 @@
   import { attachmentKind } from '#lib/attachments.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n.js';
-  import { displayedHumanRequest } from '#lib/localChat.js';
+  import { displayedHumanRequest } from '#lib/chat/protocol.js';
   import { humanizeId } from '#lib/routine.js';
 
   let {

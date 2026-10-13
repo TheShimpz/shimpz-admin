@@ -15,12 +15,12 @@ from protocol.http.v1 import challenge as team_challenge
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import turn as turn_contract
 
-LOCAL_CHAT = ROOT / "frontend" / "src" / "lib" / "localChat.js"
+CHAT_PROTOCOL = ROOT / "frontend" / "src" / "lib" / "chat" / "protocol.js"
 IDS = ROOT / "frontend" / "src" / "lib" / "ids.js"
 LIB = ROOT / "frontend" / "src" / "lib"
 # The browser's copies of Team chat-turn bounds, which it cannot import, each pinned to its one Team definition.
 TURN_BOUNDS = {
-    "localChat.js": {
+    "chat/protocol.js": {
         "MAX_MESSAGE_CHARS": team_contract.MAX_CHAT_MESSAGE_CHARS,
         "MAX_FILES": team_contract.MAX_CHAT_FILES,
         "MAX_REPLY_CHARS": turn_contract.MAX_REPLY_CHARS,
@@ -56,7 +56,7 @@ def _constant(source: str, name: str) -> str:
 
 class FrontendProtocolParityTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.source = LOCAL_CHAT.read_text(encoding="utf-8")
+        self.source = CHAT_PROTOCOL.read_text(encoding="utf-8")
 
     def test_the_browser_help_url_grammar_is_the_team_pattern_byte_for_byte(self) -> None:
         block = re.search(r"export const HELP_URL_PATTERN = \[\n(.*?)\n\]\.join\(''\);", self.source, re.DOTALL)

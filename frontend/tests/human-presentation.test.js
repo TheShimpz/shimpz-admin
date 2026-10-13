@@ -10,7 +10,7 @@ import {
   displayedHumanRequest,
   HELP_URL_PATTERN,
   parseChatEvent,
-} from '../src/lib/localChat.js';
+} from '../src/lib/chat/protocol.js';
 
 // Each interface language's own catalog of this copy.
 const humanRequestMessages = Object.fromEntries(Object.entries(messages).map(([code, catalog]) => [code, catalog.humanRequest]));

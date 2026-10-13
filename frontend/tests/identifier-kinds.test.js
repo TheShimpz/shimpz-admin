@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { localizedChallenge } from '../e2e/localizedRequest.js';
-import { parseChatEvent } from '../src/lib/localChat.js';
+import { parseChatEvent } from '../src/lib/chat/protocol.js';
 import { isActionId, isAssistantId, isIdentifier } from '../src/lib/ids.js';
 
 const CHALLENGE_ID = 'b'.repeat(32);

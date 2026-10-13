@@ -7,7 +7,7 @@
   import { call, commandsReady, outcomeUnknown } from '#lib/adminSocket.js';
   import { locale, t } from '#lib/i18n.js';
   import { fill } from '#lib/i18n/fill.js';
-  import { createHumanResponseFrame, parseChatEvent } from '#lib/localChat.js';
+  import { createHumanResponseFrame, parseChatEvent } from '#lib/chat/protocol.js';
   import RoutineIcon from '#lib/RoutineIcon.svelte';
   import {
     answerRoutineCard,

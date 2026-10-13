@@ -36,7 +36,6 @@
   import { escapeMarkdownText } from '#lib/markdown.js';
   import { locale, t } from '#lib/i18n.js';
   import { INITIAL_VIEW_READINESS } from '#lib/initialView.js';
-  import { teamIntegrations } from '#lib/teamIntegrations.js';
   import { CLARIFICATION_LABELS } from '#lib/clarificationLabels.js';
   import { routineQuestionMessages } from '#lib/routineQuestionMessages.js';
   import { configureModelContext, loadModelContext, modelContext } from '#lib/modelContext.js';
@@ -46,18 +45,21 @@
   import { ASSISTANT_LIMIT_REACHED } from '#lib/api.js';
   import {
     authorizeAssistantIntegration,
-    capabilityContinuation,
     cancelAssistantIntegrationAuthorization,
     clearAssistantStoredInput,
     completeAssistantIntegration,
+    oauthReturnFailure,
+    teamIntegrations,
+  } from '#lib/assistants/integrations.js';
+  import {
+    capabilityContinuation,
     createChatFrame,
     createHumanResponseFrame,
     createResumeTaskFrame,
     createStopFrame,
     createSyncFrame,
     parseChatEvent,
-    oauthReturnFailure,
-  } from '#lib/localChat.js';
+  } from '#lib/chat/protocol.js';
 
 
   const booting = getContext(INITIAL_VIEW_READINESS)?.booting ?? readable(false);

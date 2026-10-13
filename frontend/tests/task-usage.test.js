@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseChatEvent } from '../src/lib/localChat.js';
+import { parseChatEvent } from '../src/lib/chat/protocol.js';
 import { formatTaskUsage, formatTaskUsageDetail, parseRunUsage, parseTaskUsage, taskUsageSummary } from '../src/lib/taskUsage.js';
 
 const COPY = { tokens: 'tokens', input: 'input', output: 'output' };

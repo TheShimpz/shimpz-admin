@@ -14,7 +14,7 @@
   import { installedIconUrl } from '#lib/assistants/icons.js';
   import { installedSummary } from '#lib/assistantSources.js';
   import { locale, t } from '#lib/i18n.js';
-  import { assistantIntegrationProviderLabel } from '#lib/localChat.js';
+  import { assistantIntegrationProviderLabel } from '#lib/assistants/integrations.js';
 
   let {
     open = false,

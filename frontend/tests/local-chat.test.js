@@ -4,7 +4,8 @@ import test from 'node:test';
 import { localizedChallenge } from '../e2e/localizedRequest.js';
 import { browserTimezone } from '../src/lib/routine.js';
 
-import * as localChat from '../src/lib/localChat.js';
+import * as integrations from '../src/lib/assistants/integrations.js';
+import { oauthReturnFailure } from '../src/lib/assistants/integrations.js';
 import {
   capabilityContinuation,
   createChatFrame,
@@ -12,13 +13,12 @@ import {
   createResumeTaskFrame,
   createStopFrame,
   createSyncFrame,
-  oauthReturnFailure,
   parseChatEvent,
-} from '../src/lib/localChat.js';
+} from '../src/lib/chat/protocol.js';
 import { via } from './socketStub.js';
 
 // The integration operations go over the session socket; each test's stub, passed first, answers them.
-const integrationCall = (name) => (stub, ...args) => via(stub, () => localChat[name](...args));
+const integrationCall = (name) => (stub, ...args) => via(stub, () => integrations[name](...args));
 const authorizeAssistantIntegration = integrationCall('authorizeAssistantIntegration');
 const cancelAssistantIntegrationAuthorization = integrationCall('cancelAssistantIntegrationAuthorization');
 const clearAssistantStoredInput = integrationCall('clearAssistantStoredInput');

@@ -1,7 +1,7 @@
 // The Assistant page's copy and declarations (Assistant Spec v1): its localized description, the Creator's declared
 // links, every Action with its effect and localized description, and the credentials it keeps. One validator admits
 // them from Team's details (a staged snapshot or an installed binding) and from the public catalog entry alike.
-import { HELP_URL_PATTERN } from './localChat.js';
+import { HELP_URL_PATTERN } from './chat/protocol.js';
 import { exactKeys } from './api.js';
 import { codePointLength } from './grammar.js';
 import { isIdentifier } from './ids.js';

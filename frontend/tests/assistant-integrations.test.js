@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { assistantIntegrationProviderLabel } from '../src/lib/localChat.js';
+import { assistantIntegrationProviderLabel } from '../src/lib/assistants/integrations.js';
 
 test('names only an exact Integration provider id', () => {
   assert.equal(assistantIntegrationProviderLabel('x'), 'X');
