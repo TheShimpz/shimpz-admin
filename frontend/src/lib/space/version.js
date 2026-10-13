@@ -26,3 +26,13 @@ export function versionState(own, served) {
   if (!own || !served) return 'unknown';
   return own === served ? 'current' : 'stale';
 }
+
+/** Reloads the page from Admin, never from a cache: the shell is fetched again first, so the reload reaches the new build. */
+export async function reloadFresh() {
+  try {
+    await fetch(location.href, { cache: 'reload', credentials: 'same-origin' });
+  } catch {
+    // The reload itself still asks Admin, which marks the shell to be checked on every load.
+  }
+  location.reload();
+}

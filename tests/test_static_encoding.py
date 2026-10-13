@@ -27,6 +27,8 @@ class StaticEncodingTests(unittest.TestCase):
         (cls.ui_dir / "index.html").write_bytes(SHELL)
         (cls.ui_dir / "index.html.br").write_bytes(b"brotli shell")
         (cls.ui_dir / "_app" / "start.js").write_bytes(SCRIPT)
+        (cls.ui_dir / "_app" / "immutable").mkdir()
+        (cls.ui_dir / "_app" / "immutable" / "entry.abc123.js").write_bytes(SCRIPT)
         (cls.ui_dir / "_app" / "start.js.br").write_bytes(b"brotli script")
         (cls.ui_dir / "_app" / "start.js.gz").write_bytes(b"gzip script")
         # A sibling that would not save a byte is never sent.
@@ -58,6 +60,18 @@ class StaticEncodingTests(unittest.TestCase):
         self.assertEqual(exchange.headers["content-length"], str(len(b"brotli script")))
         self.assertEqual(exchange.headers["vary"], "Accept-Encoding")
         self.assert_hardened(exchange.headers)
+
+    def test_only_a_content_hashed_file_is_cached_and_the_shell_is_checked_on_every_load(self) -> None:
+        for path, policy in (
+            ("/_app/immutable/entry.abc123.js", "public, max-age=31536000, immutable"),
+            ("/_app/start.js", "no-cache"),
+            ("/", "no-cache"),
+            ("/chat/", "no-cache"),
+        ):
+            with self.subTest(path=path):
+                exchange = self._get(path, "br")
+                self.assertEqual(exchange.status, 200)
+                self.assertEqual(exchange.headers["cache-control"], policy)
 
     def test_gzip_answers_when_brotli_is_not_accepted(self) -> None:
         for accept in ("gzip", "br;q=0, GZIP;q=0.5"):

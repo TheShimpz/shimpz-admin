@@ -2,7 +2,7 @@
   import { Button, Modal, ShimpzBrand, WorkspaceShell } from '@shimpz/frontend';
   import { getContext, onDestroy, onMount, untrack } from 'svelte';
   import AdminNotice from '#lib/shell/Notice.svelte';
-  import { adminSocket, connectAdminSocket, trackActivity, watchTopic } from '#lib/session/socket.js';
+  import { adminSocket, connectAdminSocket, servedRevision, trackActivity, watchTopic } from '#lib/session/socket.js';
   import { warmAssistantSources } from '#lib/assistants/sources.js';
   import { PATHS } from '#lib/icons.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
@@ -11,6 +11,7 @@
   import { locale, t } from '#lib/i18n/index.js';
   import LocaleMenu from '#lib/i18n/LocaleMenu.svelte';
   import PlatformReleaseStatus from '#lib/space/ReleaseStatus.svelte';
+  import { reloadFresh, versionState } from '#lib/space/version.js';
   import SecurityAlert from '#lib/auth/SecurityAlert.svelte';
   import SecurityDialog from '#lib/auth/SecurityDialog.svelte';
   import SessionExpiryWarning from '#lib/session/ExpiryWarning.svelte';
@@ -71,6 +72,10 @@
         : $adminSocket.phase === 'failed' ? 'shell.reconnectFailed' : 'shell.reconnecting'
       : $dataUnavailable ? 'shell.dataUnavailable' : '',
   );
+
+  // A tab built from another commit than the Admin it reaches is stale: it says so over every page and reloads only when
+  // the person asks, since a reload would lose a draft or a turn under way.
+  let stale = $derived(versionState(__ADMIN_REVISION__, $servedRevision) === 'stale');
 
   // What the session bootstrap answers changed (an admitted origin, for instance): read it again over HTTP. The sign-in
   // flow read it just before the socket first opened.
@@ -221,6 +226,12 @@
             {$t(availability)}
           </p>
         {/if}
+        {#if stale}
+          <p class="version-status" role="status">
+            <span>{$t('shell.versionStale')}</span>
+            <Button variant="ghost" size="sm" type="button" onclick={reloadFresh}>{$t('shell.versionReload')}</Button>
+          </p>
+        {/if}
         <SecurityAlert /><AdminNotice />
       </div>
       <SessionExpiryWarning />
@@ -240,6 +251,8 @@
   /* Reconnecting reads as a square full-width warning in the design system's yellow; a reconnect that gave up, in its
      danger colour. */
   .socket-status { margin: 0; padding: var(--gap-item) var(--gap-group); color: var(--shimpz-color-yellow); background: color-mix(in srgb, var(--shimpz-color-yellow) 12%, var(--shimpz-color-bg)); font-size: 0.8rem; text-align: center; border-radius: 0; }
+  .version-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: var(--gap-item); margin: 0; padding: var(--gap-inside) var(--gap-group); color: var(--shimpz-color-cyan); background: color-mix(in srgb, var(--shimpz-color-cyan) 10%, var(--shimpz-color-bg)); font-size: 0.8rem; text-align: center; border-radius: 0; }
+  .version-status :global(.shimpz-button) { --button-color: var(--shimpz-color-cyan); --button-border: color-mix(in srgb, var(--shimpz-color-cyan) 40%, transparent) !important; }
   .socket-status.failed { color: var(--shimpz-color-danger); background: color-mix(in srgb, var(--shimpz-color-danger) 14%, var(--shimpz-color-bg)); }
   .admin-notice-region :global(.admin-toast) { margin-block-end: 0; border: 0; }
   .authenticated-page {

@@ -601,6 +601,10 @@ if UI_DIR.is_dir():
         if coding is not None:
             response.headers["Content-Encoding"] = coding
         response.headers.add_vary_header("Accept-Encoding")
+        # A content-hashed build file never changes; everything else, the shell first, is checked on every load, so a
+        # reload after an update always reaches the new build.
+        immutable = asset.is_relative_to(Path(ui_root, "_app", "immutable"))
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable" if immutable else "no-cache"
         return response
 else:
 
