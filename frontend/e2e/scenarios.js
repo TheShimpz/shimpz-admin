@@ -105,7 +105,6 @@ export function authenticatedLocalSession(overrides = {}) {
 
 // Responses are deep copies, so neither a caller nor another scenario can mutate a scenario's state.
 const ok = (json) => ({ status: 200, json: structuredClone(json) });
-// The Space's resource signal Team measures: every service running, 0.4 of 4 GiB of memory, 1.3 of 64 GiB of storage.
 // Each scenario names its starting state; `ready` is the Local chat with its Team list and no Routines.
 const STARTS = {
   ready: () => ({ session: authenticatedLocalSession(), teams: [...TEAMS], routines: [], runs: [] }),
