@@ -147,11 +147,13 @@
     background: transparent;
   }
 
+  /* An image is not a label: the controls' hover glitch, which slices a button's content, never touches it. */
   .attachment-tile :global(.tile-open .button-content) {
     display: block;
     width: 100%;
     height: 100%;
     line-height: 0;
+    animation: none !important;
   }
 
   img {
