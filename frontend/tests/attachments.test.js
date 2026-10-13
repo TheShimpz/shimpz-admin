@@ -108,6 +108,18 @@ test('admits only the exact file an authorization request discloses', () => {
   ]) assert.throws(() => parseFileDisclosure(invalid), /response is invalid/, JSON.stringify(invalid));
 });
 
+function response(status, body) {
+  return { ok: status >= 200 && status < 300, status, async json() { return body; } };
+}
+
+const STORED = {
+  team_id: 'marketing',
+  file: { id: FILE_ID, name: 'notes.md', media_type: 'text/markdown', size: 12, sha256: SHA, created_at: 1_790_000_000 },
+  used_bytes: 12,
+  limit_bytes: 100,
+  remaining_bytes: 88,
+};
+
 test('uploads one file as the single multipart part Admin admits, and keeps only its metadata', async () => {
   const calls = [];
   const signal = new AbortController().signal;
