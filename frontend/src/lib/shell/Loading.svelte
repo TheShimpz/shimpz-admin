@@ -41,13 +41,19 @@
     animation: loader-in var(--shimpz-duration) var(--shimpz-ease) both;
   }
 
+  /* The scan has the track's slant and fades in from its tail to a bright head. */
   .scan {
     position: absolute;
     inset-block: 0;
     width: 35%;
     border-radius: 0;
-    background: var(--shimpz-color-cyan);
-    box-shadow: 0 0 6px var(--shimpz-color-cyan);
+    clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 100%, 8px 100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in srgb, var(--shimpz-color-cyan) 55%, transparent) 60%,
+      var(--shimpz-color-cyan)
+    );
     animation: loader-scan 1.4s ease-in-out infinite;
   }
 
