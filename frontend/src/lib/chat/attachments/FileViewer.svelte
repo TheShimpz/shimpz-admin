@@ -17,12 +17,14 @@
 
   const id = $props.id();
   let dialog = $state();
+  // The files as they were when it opened: a thumbnail failing meanwhile leaves the message's own list, never this one.
+  const opened = untrack(() => [...files]);
   // The viewer opens on `start`, then moves on its own.
   let index = $state(untrack(() => start));
   let failed = $state(false);
-  let current = $derived(files[index]);
+  let current = $derived(opened[index]);
   let hasPrevious = $derived(index > 0);
-  let hasNext = $derived(index < files.length - 1);
+  let hasNext = $derived(index < opened.length - 1);
   let kind = $derived(attachmentKind(current.mediaType));
   let shows = $derived(
     previewable(teamId, current) ? 'image'
@@ -41,7 +43,7 @@
   }
 
   function show(next) {
-    if (next < 0 || next >= files.length || next === index) return;
+    if (next < 0 || next >= opened.length || next === index) return;
     index = next;
     failed = false;
   }
@@ -76,8 +78,8 @@
 >
   <div class="viewer-shell">
     <DialogFrame class="viewer" kicker={$t('attachments').kinds[kind] ?? $t('attachments').kinds.file} title={current.name} titleId={`${id}-title`}>
-      <div class="viewer-body" class:paged={files.length > 1}>
-        {#if files.length > 1}
+      <div class="viewer-body" class:paged={opened.length > 1}>
+        {#if opened.length > 1}
           <Button class="viewer-step" variant="ghost" type="button" disabled={!hasPrevious} aria-label={$t('attachments.previousFile')} title={$t('attachments.previousFile')} onclick={() => show(index - 1)}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
           </Button>
@@ -101,7 +103,7 @@
             {/if}
           {/key}
         </figure>
-        {#if files.length > 1}
+        {#if opened.length > 1}
           <Button class="viewer-step" variant="ghost" type="button" disabled={!hasNext} aria-label={$t('attachments.nextFile')} title={$t('attachments.nextFile')} onclick={() => show(index + 1)}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg>
           </Button>
