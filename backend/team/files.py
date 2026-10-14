@@ -1,4 +1,4 @@
-"""A Team's files: the bounded upload, a file's previews, and its download stay HTTP; their metadata are session calls."""
+"""A Team's files: the upload, a file's previews, and its download stay HTTP; their metadata are session calls."""
 
 import threading
 import weakref
