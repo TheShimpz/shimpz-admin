@@ -5,12 +5,14 @@ from dataclasses import dataclass
 from typing import Literal
 
 from protocol.http.v1 import payload as team_contract
+from protocol.http.v1 import turn as turn_contract
 
 # The conversation window a turn carries is bounded by Team's own protocol.
 MAX_ENTRIES = team_contract.MAX_CONVERSATION_ENTRIES
 MAX_TEXT_CHARS = team_contract.MAX_CONVERSATION_TEXT_CHARS
 MAX_TOTAL_CHARS = team_contract.MAX_CONVERSATION_CHARS
 TRUNCATION_MARKER = "…"
+MAX_OBJECTIVE_CHARS = turn_contract.MAX_OBJECTIVE_CHARS
 _LAYOUT_CONTROLS = frozenset({"\n", "\r", "\t"})
 
 
@@ -30,14 +32,29 @@ def canonical_text(value: object) -> str:
     # The first check skips replacement scans for ordinary printable text.
     if canonical.isprintable() or canonical.replace("\n", "").replace("\r", "").replace("\t", "").isprintable():
         return canonical
-    if any(
-        unicodedata.category(character).startswith("C")
-        and unicodedata.category(character) != "Cf"
-        and character not in _LAYOUT_CONTROLS
-        for character in canonical
-    ):
+    if not all(_admissible(character) for character in canonical):
         raise ValueError("conversation text is invalid")
     return canonical
+
+
+def _admissible(character: str) -> bool:
+    category = unicodedata.category(character)
+    return not category.startswith("C") or category == "Cf" or character in _LAYOUT_CONTROLS
+
+
+def routable_text(value: str) -> str:
+    """A person's message as Team's routes admit it, their meaning kept.
+
+    NFC, and each control, unassigned, private-use, or surrogate character Team refuses is replaced by U+FFFD:
+    pasted terminal output, a decomposed file name, or an emoji newer than this Python's Unicode data would otherwise
+    fail routing and planning for good. Only the routing objective is projected; the chat turn keeps the message as
+    written.
+    """
+    # NFC can lengthen admitted text (a decomposing character becomes two), so the objective keeps Team's own bound.
+    canonical = unicodedata.normalize("NFC", value)[:MAX_OBJECTIVE_CHARS]
+    if canonical.isprintable() or canonical.replace("\n", "").replace("\r", "").replace("\t", "").isprintable():
+        return canonical.strip()
+    return "".join(character if _admissible(character) else "\ufffd" for character in canonical).strip()
 
 
 def bounded(role: object, text: object) -> Entry:

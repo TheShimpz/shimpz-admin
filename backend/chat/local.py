@@ -311,6 +311,11 @@ def model_credential(team_id: str) -> tuple[str, str] | team.TeamResponse:
     return provider, api_key
 
 
+def _routable(objective: object) -> object:
+    """The routing and planning objective Team admits; anything not text is left for Team to refuse."""
+    return conversation_context.routable_text(objective) if isinstance(objective, str) else objective
+
+
 def capability_plan(
     team_id: object,
     objective: object,
@@ -324,7 +329,7 @@ def capability_plan(
     provider, api_key = credential
     response = team.capability_plan(
         canonical_id,
-        {"objective": objective, "candidates": candidates},
+        {"objective": _routable(objective), "candidates": candidates},
         provider=provider,
         api_key=api_key,
     )
@@ -522,7 +527,7 @@ def intent_route(
     response = team.intent_route(
         canonical_id,
         {
-            "objective": objective,
+            "objective": _routable(objective),
             "expected_intent": expected,
             "candidates": directory,
             "lifecycle_reference": projected_reference,

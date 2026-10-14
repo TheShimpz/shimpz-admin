@@ -350,3 +350,21 @@ class ChatHistoryConversationTests(ChatHistoryCase):
         self.assertTrue(history.append_user("marketing", current, "Continue"))
         self.assertEqual(history.conversation("marketing", current)[-1].text, canonical)
         self.assertEqual(history.page("marketing")["entries"][-2]["text"], decomposed)
+
+
+class RoutableTextTests(ChatHistoryCase):
+    def test_a_message_team_would_refuse_is_routed_with_its_meaning_kept(self) -> None:
+        cases = {
+            "e\u0301te\u0301": "\u00e9t\u00e9",
+            "log \x1b[31mERROR\x1b[0m done": "log \ufffd[31mERROR\ufffd[0m done",
+            "Apple \uf8ff ok": "Apple \ufffd ok",
+            "form\x0cfeed": "form\ufffdfeed",
+            "tab\tand\nline": "tab\tand\nline",
+            " plain ": "plain",
+        }
+        # NFC may lengthen admitted text; the routed objective still keeps Team's bound.
+        expanding = "Summarize: " + "\u0344" * 8000
+        self.assertEqual(len(conversation_context.routable_text(expanding)), conversation_context.MAX_OBJECTIVE_CHARS)
+        for message, routed in cases.items():
+            with self.subTest(message=message):
+                self.assertEqual(conversation_context.routable_text(message), routed)

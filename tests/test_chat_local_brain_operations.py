@@ -204,6 +204,22 @@ class LocalBrainOperationTests(unittest.TestCase):
                 )
             self.assertEqual(response.status, 502)
 
+    def test_routing_and_planning_send_the_objective_team_admits(self) -> None:
+        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        pasted = "veja \x1b[31mERRO\x1b[0m"
+        with (
+            mock.patch.object(team, "get_inference", return_value=inference),
+            mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
+            mock.patch.object(local.decision, "resolve", return_value=None),
+            mock.patch.object(team, "intent_route", return_value=team.TeamResponse(503, {})) as route,
+            mock.patch.object(team, "capability_plan", return_value=team.TeamResponse(503, {})) as plan,
+        ):
+            local.intent_route("team_1", pasted, None, [], local.IntentRouteContext(locale="pt"))
+            local.capability_plan("team_1", pasted, [])
+        projected = "veja \ufffd[31mERRO\ufffd[0m"
+        self.assertEqual(route.call_args.args[1]["objective"], projected)
+        self.assertEqual(plan.call_args.args[1]["objective"], projected)
+
     def test_intent_route_task_continuation_is_only_a_targeted_install_classification(self) -> None:
         body = {
             "task_follows": True,
