@@ -17,7 +17,7 @@
     openRoutineChallenge,
     resumeRoutineIntegrations,
   } from '#lib/routines/protocol.js';
-  import { failureCause, routineErrorMessage } from '#lib/routines/words.js';
+  import { conditionWords, failureCause, routineErrorMessage } from '#lib/routines/words.js';
 
   // The decision one Routine run waits for (ADR-0092), the same wherever it is shown: a held or paused run's
   // recovery card, or a frozen run's approval through chat's own dialog. Nothing runs until the Supervisor answers.
@@ -156,19 +156,9 @@
       return { cause: card.evidence === 'unavailable' ? copy.card.detailUnavailable : copy.card.noDetail };
     }
     const item = card.diagnostic;
-    const conditions = copy.details.conditions;
-    const exit = item.condition?.match(/^exit-status:(-?\d+)$/);
     const text = item.failure
       ? item.failure.message || item.failure.error_type
-      : exit
-        ? fill(conditions.exit, { code: exit[1] })
-        : {
-          'stderr-output': conditions.stderr,
-          timeout: conditions.timeout,
-          'frame-invalid': conditions.frame,
-          'exit-unavailable': conditions.exitUnavailable,
-          'transport-failed': conditions.transport,
-        }[item.condition];
+      : conditionWords(item.condition ?? '', copy.details);
     const meta = item.failure
       ? [item.failure.http_status === null ? '' : `HTTP ${item.failure.http_status}`, item.failure.provider ?? '']
         .filter(Boolean).join(' · ')
