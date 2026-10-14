@@ -13,15 +13,42 @@ class UninstallResult:
     uninstalled: bool | None = None
 
 
-def candidates(team_id: str) -> tuple[assistant_proposal.UninstallCandidate, ...]:
-    """Return the exact installed Assistant directory from strict Team-owned state."""
+@dataclass(frozen=True, slots=True)
+class UninstallDirectory:
+    """The installed Assistants a chat request may name, and which of them the current contract refuses."""
+
+    candidates: tuple[assistant_proposal.UninstallCandidate, ...]
+    refused: frozenset[str]
+
+
+def candidates(team_id: str) -> UninstallDirectory:
+    """Return the exact installed Assistant directory from strict Team-owned state.
+
+    A binding the current contract refuses is listed `invalid` with no registry entry. It stays in the directory under
+    its identity, so a request naming it selects it and is answered with guidance instead of a card for another
+    Assistant; it has no card to confirm. Any other installed Assistant missing from the Team's registry means the two
+    disagree, and nothing is offered.
+    """
     installed = assistant_inventory.installed(team.list_installed_assistants(team_id))
     registry = assistant_inventory.registry(team.team_assistant_registry(team_id))
-    if any(assistant_id not in registry for assistant_id in installed):
+    refused = frozenset(
+        assistant_id
+        for assistant_id, item in installed.items()
+        if assistant_id not in registry and item.status == "invalid"
+    )
+    if any(assistant_id not in registry and assistant_id not in refused for assistant_id in installed):
         raise ValueError("installed Assistant scope is not authoritative")
-    return tuple(
-        assistant_proposal.UninstallCandidate(registry[assistant_id], item.version, item.provenance)
-        for assistant_id, item in sorted(installed.items())
+    unnamed = {
+        assistant_id: assistant_proposal.Capability(assistant_id, assistant_id, "", ()) for assistant_id in refused
+    }
+    return UninstallDirectory(
+        tuple(
+            assistant_proposal.UninstallCandidate(
+                registry.get(assistant_id) or unnamed[assistant_id], item.version, item.provenance
+            )
+            for assistant_id, item in sorted(installed.items())
+        ),
+        refused,
     )
 
 

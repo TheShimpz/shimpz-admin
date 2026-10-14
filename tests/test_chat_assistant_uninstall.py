@@ -81,10 +81,11 @@ class AssistantUninstallDirectoryTests(unittest.TestCase):
                 return_value=_registry("shimpz-cloudflare"),
             ),
         ):
-            candidates = assistant_uninstall.candidates("team_1")
+            directory = assistant_uninstall.candidates("team_1")
 
-        self.assertEqual(len(candidates), 1)
-        candidate = candidates[0]
+        self.assertEqual(len(directory.candidates), 1)
+        self.assertEqual(directory.refused, frozenset())
+        candidate = directory.candidates[0]
         self.assertEqual(candidate.assistant.assistant_id, "shimpz-cloudflare")
         self.assertEqual(candidate.version, "0.4.4")
 
@@ -95,6 +96,28 @@ class AssistantUninstallDirectoryTests(unittest.TestCase):
             self.assertRaises(ValueError),
         ):
             assistant_uninstall.candidates("team_1")
+
+    def test_an_assistant_needing_replacement_stays_nameable_but_marked_refused(self) -> None:
+        installed = _installed(("drifted", "2.0.0"), ("shimpz-cloudflare", "0.4.4"), ("stale", "1.0.0"))
+        # A binding admitted with egress drift is invalid too, but it is in the registry and stays uninstallable.
+        installed.body["assistants"][0]["status"] = "invalid"
+        installed.body["assistants"][2]["status"] = "invalid"
+        with (
+            mock.patch.object(assistant_uninstall.team, "list_installed_assistants", return_value=installed),
+            mock.patch.object(
+                assistant_uninstall.team,
+                "team_assistant_registry",
+                return_value=_registry("drifted", "shimpz-cloudflare"),
+            ),
+        ):
+            directory = assistant_uninstall.candidates("team_1")
+
+        self.assertEqual(
+            [candidate.assistant.assistant_id for candidate in directory.candidates],
+            ["drifted", "shimpz-cloudflare", "stale"],
+        )
+        self.assertEqual(directory.refused, frozenset({"stale"}))
+        self.assertEqual(directory.candidates[2].assistant.name, "stale")
 
 
 class AssistantUninstallExecutionTests(unittest.TestCase):

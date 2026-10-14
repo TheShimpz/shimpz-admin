@@ -77,6 +77,10 @@ def cloudflare() -> store_catalog.CatalogAssistant:
     )
 
 
+def _directory(*candidates: assistant_proposal.UninstallCandidate, refused: frozenset[str] = frozenset()):
+    return assistant_route.assistant_uninstall.UninstallDirectory(candidates, refused)
+
+
 class AssistantRouteTests(unittest.TestCase):
     def setUp(self) -> None:
         # The speculative plan never reaches Team unless a test says otherwise: a real one would outlive its test.
@@ -565,7 +569,7 @@ class AssistantRouteTests(unittest.TestCase):
         )
         with (
             _selected_route("assistant-uninstall", candidate.assistant.assistant_id) as route,
-            mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=(candidate,)),
+            mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=_directory(candidate)),
             mock.patch.object(
                 assistant_route.assistant_inventory, "binding_creator", return_value="@shimpz"
             ) as creator,
@@ -595,7 +599,7 @@ class AssistantRouteTests(unittest.TestCase):
         )
         with (
             _selected_route("assistant-uninstall", "shimpz-cloudflare") as route,
-            mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=(candidate,)),
+            mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=_directory(candidate)),
             mock.patch.object(assistant_route.assistant_inventory, "binding_creator", return_value="@shimpz"),
         ):
             result = assistant_route.prepare(
@@ -638,7 +642,9 @@ class AssistantRouteTests(unittest.TestCase):
             with (
                 self.subTest(initial=initial),
                 route,
-                mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=candidates),
+                mock.patch.object(
+                    assistant_route.assistant_uninstall, "candidates", return_value=_directory(*candidates)
+                ),
             ):
                 result = assistant_route.prepare(
                     "team_1",
@@ -655,7 +661,7 @@ class AssistantRouteTests(unittest.TestCase):
         )
         with (
             _selected_route("assistant-uninstall", "different"),
-            mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=(candidate,)),
+            mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=_directory(candidate)),
             self.assertRaises(assistant_route.RouteError),
         ):
             assistant_route.prepare("team_1", payload("desinstale cloudflare"), mock.sentinel.catalog)
@@ -670,12 +676,42 @@ class AssistantRouteTests(unittest.TestCase):
             with (
                 self.subTest(failure=type(failure).__name__),
                 _selected_route("assistant-uninstall", "shimpz-cloudflare"),
-                mock.patch.object(assistant_route.assistant_uninstall, "candidates", return_value=(candidate,)),
+                mock.patch.object(
+                    assistant_route.assistant_uninstall, "candidates", return_value=_directory(candidate)
+                ),
                 mock.patch.object(assistant_route.assistant_inventory, "binding_creator", side_effect=failure),
                 self.assertRaises(assistant_route.RouteError) as raised,
             ):
                 assistant_route.prepare("team_1", payload("desinstale cloudflare"), mock.sentinel.catalog)
             self.assertEqual(raised.exception.status, 502)
+
+    def test_an_uninstall_naming_an_assistant_needing_replacement_gets_guidance_not_another_card(self) -> None:
+        refused = assistant_proposal.UninstallCandidate(
+            assistant_proposal.Capability("dns-audit", "dns-audit", "", ()), "1.0.0", "published"
+        )
+        similar = assistant_proposal.UninstallCandidate(
+            assistant_proposal.Capability("dns-audit-plus", "DNS Audit", "", ()), "2.0.0", "published"
+        )
+        with (
+            _selected_route("assistant-uninstall", "dns-audit"),
+            mock.patch.object(
+                assistant_route.assistant_uninstall,
+                "candidates",
+                return_value=_directory(refused, similar, refused=frozenset({"dns-audit"})),
+            ),
+            mock.patch.object(assistant_route.assistant_inventory, "binding_creator") as creator,
+        ):
+            result = assistant_route.prepare("team_1", {**payload("remova o dns-audit"), "locale": "pt"}, None)
+
+        self.assertIsNone(result.uninstall)
+        self.assertEqual(
+            result.guidance,
+            assistant_route.Guidance(
+                "assistant-uninstall-replacement",
+                assistant_route.PLATFORM_GUIDANCE["assistant-uninstall-replacement"]["pt"],
+            ),
+        )
+        creator.assert_not_called()
 
     def test_lifecycle_request_with_files_gets_localized_guidance_before_directories_open(self) -> None:
         attached = {**payload("instale o cloudflare"), "files": ["a" * 32], "locale": "pt"}
@@ -691,7 +727,7 @@ class AssistantRouteTests(unittest.TestCase):
                 "assistant-install",
                 guidance=assistant_route.Guidance(
                     "assistant-lifecycle-attachments",
-                    assistant_route.ATTACHMENT_GUIDANCE["assistant-lifecycle-attachments"]["pt"],
+                    assistant_route.PLATFORM_GUIDANCE["assistant-lifecycle-attachments"]["pt"],
                 ),
             ),
         )
@@ -715,10 +751,10 @@ class AssistantRouteTests(unittest.TestCase):
             plain = assistant_route.prepare("team_1", payload("publique o relatório"), mock.sentinel.catalog)
         self.assertIs(plain.preparation, plan)
 
-    def test_every_attachment_guidance_is_public_text_in_every_interface_language(self) -> None:
+    def test_every_platform_guidance_is_public_text_in_every_interface_language(self) -> None:
         from protocol.http.v1 import payload as team_contract
 
-        for code, replies in assistant_route.ATTACHMENT_GUIDANCE.items():
+        for code, replies in assistant_route.PLATFORM_GUIDANCE.items():
             self.assertEqual(set(replies), set(team_contract.CHAT_LOCALES), code)
             for locale, reply in replies.items():
                 with self.subTest(code=code, locale=locale):

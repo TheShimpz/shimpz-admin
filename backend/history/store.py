@@ -49,6 +49,7 @@ _GUIDANCE_CODES = frozenset(
         "assistant-lifecycle-ambiguous",
         "assistant-lifecycle-attachments",
         "assistant-capability-attachments",
+        "assistant-uninstall-replacement",
     }
 )
 _LOCK = threading.RLock()

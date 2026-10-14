@@ -40,6 +40,16 @@ const MAX_HUMAN_OPTIONS = 32;
 const MAX_HUMAN_REQUESTS_PER_ACTION = 8;
 const MAX_HUMAN_RESPONSE_CHARS = 16_000;
 export const MAX_REPLY_CHARS = 60_000;
+// What a lifecycle guidance reply may be about, live and in the history: a lifecycle request that names no Assistant or
+// several, one sent with attachments, and an Assistant the chat cannot remove because it needs replacing.
+export const GUIDANCE_CODES = new Set([
+  'assistant-install-target-required',
+  'assistant-uninstall-target-required',
+  'assistant-lifecycle-ambiguous',
+  'assistant-lifecycle-attachments',
+  'assistant-capability-attachments',
+  'assistant-uninstall-replacement',
+]);
 export const MAX_GUIDANCE_REPLY_CHARS = 240;
 const MAX_ERROR_DETAIL_CHARS = 800;
 const MAX_INSTALL_PROVIDERS = 16;
@@ -901,17 +911,10 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     return parseAssistantInstallPlanEvent(value, expectedTeamId, expectedTeamName);
   }
   if (value.type === 'assistant-guidance') {
-    const codes = new Set([
-      'assistant-install-target-required',
-      'assistant-uninstall-target-required',
-      'assistant-lifecycle-ambiguous',
-      'assistant-lifecycle-attachments',
-      'assistant-capability-attachments',
-    ]);
     if (
       !exactKeys(value, ['type', 'team_id', 'code', 'reply']) ||
       value.team_id !== expectedTeamId ||
-      !codes.has(value.code)
+      !GUIDANCE_CODES.has(value.code)
     ) throw new LocalApiError('The local chat response is invalid.');
     return {
       type: 'assistant-guidance',

@@ -2,6 +2,7 @@ import { parseFileReferences } from './attachments/files.js';
 import { parseClarification, renderClarification } from './clarification.js';
 import {
   CHAT_TEXT_CONTROL_RE,
+  GUIDANCE_CODES,
   MAX_GUIDANCE_REPLY_CHARS,
   MAX_MESSAGE_CHARS,
   MAX_REPLY_CHARS,
@@ -223,17 +224,10 @@ function uninstallEntry(value, suffix, status) {
 }
 
 function guidanceEntry(value, suffix, status) {
-  const codes = new Set([
-    'assistant-install-target-required',
-    'assistant-uninstall-target-required',
-    'assistant-lifecycle-ambiguous',
-    'assistant-lifecycle-attachments',
-    'assistant-capability-attachments',
-  ]);
   if (
     suffix !== 'guidance' ||
     !exactKeys(value, ['code', 'id', 'kind', 'reply']) ||
-    !codes.has(value.code)
+    !GUIDANCE_CODES.has(value.code)
   ) throw invalidHistory(status);
   return {
     id: value.id,

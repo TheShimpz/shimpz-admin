@@ -39,10 +39,12 @@ GuidanceCode = Literal[
     "assistant-lifecycle-ambiguous",
     "assistant-lifecycle-attachments",
     "assistant-capability-attachments",
+    "assistant-uninstall-replacement",
 ]
-# Platform guidance for a message that carried attachments, in every interface language (ADR-0093): attachments never
-# install or remove an Assistant, and a missing capability is installed only from an attachment-free request.
-ATTACHMENT_GUIDANCE: dict[str, dict[str, str]] = {
+# Platform guidance in every interface language: attachments never install or remove an Assistant, and a missing
+# capability is installed only from an attachment-free request (ADR-0093); an Assistant whose binding the current
+# contract refuses has no card to confirm, so the chat never removes it and never proposes another in its place.
+PLATFORM_GUIDANCE: dict[str, dict[str, str]] = {
     "assistant-lifecycle-attachments": {
         "ar": "لا يمكن استخدام المرفقات لتثبيت المساعدين أو إزالتهم. أرسل هذا الطلب مرة أخرى بدون مرفقات.",
         "de": (
@@ -94,6 +96,34 @@ ATTACHMENT_GUIDANCE: dict[str, dict[str, str]] = {
             "Para instalá-lo, envie o pedido de novo sem anexos."
         ),
         "zh": "此任务需要一个尚未安装的助手。如需安装，请不带附件重新发送该请求。",
+    },
+    "assistant-uninstall-replacement": {
+        "ar": "يحتاج هذا المساعد إلى الاستبدال، لذا لا يمكن إزالته من المحادثة. ألغِ تثبيته من صفحته في المتجر.",
+        "de": (
+            "Dieser Assistent muss ersetzt werden und kann daher nicht im Chat entfernt werden. "
+            "Deinstalliere ihn auf seiner Seite im Store."
+        ),
+        "en": (
+            "This Assistant needs to be replaced, so it can't be removed from the chat. "
+            "Uninstall it from its Store page."
+        ),
+        "es": (
+            "Este Asistente necesita reemplazarse, así que no puede quitarse desde el chat. "
+            "Desinstálalo desde su página en la Tienda."
+        ),
+        "fr": (
+            "Cet Assistant doit être remplacé, il ne peut donc pas être retiré depuis la conversation. "
+            "Désinstallez-le depuis sa page dans la Boutique."
+        ),
+        "ja": (
+            "このアシスタントは置き換えが必要なため、チャットからは削除できません。"
+            "ストアのページからアンインストールしてください。"
+        ),
+        "pt": (
+            "Este Assistente precisa ser substituído, então não pode ser removido pela conversa. "
+            "Desinstale-o na página dele na Loja."
+        ),
+        "zh": "此助手需要替换，因此无法在对话中移除。请在商店中的助手页面将其卸载。",
     },
 }
 
@@ -271,7 +301,8 @@ def _prepare_uninstall(
     query: str,
     locale: str,
 ) -> Result:
-    shortlist = assistant_proposal.uninstall_shortlist(query, assistant_uninstall.candidates(team_id))
+    directory = assistant_uninstall.candidates(team_id)
+    shortlist = assistant_proposal.uninstall_shortlist(query, directory.candidates)
     selection = _route(
         team_id,
         query,
@@ -285,6 +316,8 @@ def _prepare_uninstall(
     if len(matches) != 1:
         raise RouteError(502)
     match = matches[0]
+    if match.assistant.assistant_id in directory.refused:
+        return Result("assistant-uninstall", guidance=_platform_guidance("assistant-uninstall-replacement", locale))
     try:
         creator = assistant_inventory.binding_creator(team_id, match.assistant.assistant_id, match.version)
     except ValueError, team.TeamRequestError:
@@ -337,8 +370,8 @@ def _classified_uninstall(
     )
 
 
-def _attachment_guidance(code: GuidanceCode, locale: str) -> Guidance:
-    return Guidance(code, ATTACHMENT_GUIDANCE[code][locale])
+def _platform_guidance(code: GuidanceCode, locale: str) -> Guidance:
+    return Guidance(code, PLATFORM_GUIDANCE[code][locale])
 
 
 def _lifecycle_result(
@@ -352,7 +385,7 @@ def _lifecycle_result(
 ) -> Result:
     locale = payload["locale"]
     if payload["files"]:
-        return Result(classification.intent, guidance=_attachment_guidance("assistant-lifecycle-attachments", locale))
+        return Result(classification.intent, guidance=_platform_guidance("assistant-lifecycle-attachments", locale))
     if classification.intent == "unresolved":
         return Result("unresolved", guidance=Guidance("assistant-lifecycle-ambiguous", classification.reply))
     if classification.intent == "assistant-install":
@@ -449,7 +482,7 @@ def _prepare(
         )
         if payload["files"] and preparation.plan is not None:
             # A message with attachments never installs a capability; it is explained instead (ADR-0093).
-            guidance = _attachment_guidance("assistant-capability-attachments", payload["locale"])
+            guidance = _platform_guidance("assistant-capability-attachments", payload["locale"])
             return Result(classification.intent, guidance=guidance)
         return Result(classification.intent, preparation=preparation)
     if capability is not None:
