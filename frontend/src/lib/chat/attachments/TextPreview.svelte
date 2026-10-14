@@ -16,8 +16,9 @@
     const reader = response.body.getReader();
     const parts = [];
     let size = 0;
+    // Reading on past the bound, by at most one chunk, tells a file of exactly the bound from a longer one.
     try {
-      while (size < MAX_TEXT_SOURCE_BYTES) {
+      while (size <= MAX_TEXT_SOURCE_BYTES) {
         const { done, value } = await reader.read();
         if (done) break;
         parts.push(value);

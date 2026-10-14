@@ -246,8 +246,11 @@ export function downloadUrl(teamId, fileId) {
 // A file's bytes Team is too busy to send now are asked for again after the delay it names, at most FILE_RETRIES times.
 const FILE_RETRIES = 3;
 const FILE_RETRY_LIMIT_MS = 2_000;
-// How long a saved file's object URL outlives the save it started, so every browser has read it.
+// How long a saved file's object URL outlives the save it started, so every browser has read it, and how many saved
+// originals the page holds at once: a save beyond them waits until one is let go.
 const SAVED_URL_MS = 60_000;
+const MAX_SAVES = 2;
+let saves = 0;
 
 function delay(ms, signal) {
   return new Promise((resolve, reject) => {
@@ -284,11 +287,22 @@ export async function fetchFileBytes(url, signal) {
  * every browser sends that read alike, then handed to the browser to save.
  */
 export async function saveFile(teamId, file) {
-  const response = await fetchFileBytes(downloadUrl(teamId, file.id));
-  const url = URL.createObjectURL(await response.blob());
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = file.name;
-  link.click();
-  globalThis.setTimeout(() => URL.revokeObjectURL(url), SAVED_URL_MS);
+  if (saves >= MAX_SAVES) throw new Error('Too many files are being saved.');
+  saves += 1;
+  let url = null;
+  try {
+    const response = await fetchFileBytes(downloadUrl(teamId, file.id));
+    url = URL.createObjectURL(await response.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = file.name;
+    link.click();
+  } finally {
+    // The save's slot, and its original, are let go together once the browser had time to read it.
+    const held = url;
+    globalThis.setTimeout(() => {
+      if (held) URL.revokeObjectURL(held);
+      saves -= 1;
+    }, held ? SAVED_URL_MS : 0);
+  }
 }

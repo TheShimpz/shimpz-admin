@@ -17,7 +17,10 @@ const open = (name) => EN.attachments.openFile.replace('{name}', name);
 const PREVIEW_ROUTE = '**/api/teams/marketing/files/*/preview';
 const PAGE_ROUTE = '**/api/teams/marketing/files/*/pages/*/preview';
 const DOWNLOAD_ROUTE = '**/api/teams/marketing/files/*/download';
-const PAGE_COUNT = 2;
+const PAGE_COUNT = 3;
+// The page Team cannot render in the PDF test; the pages after it still load.
+const LOST_PAGE = 2;
+const MIB = 1024 * 1024;
 
 const RENDITION = png(600, 400);
 
@@ -153,7 +156,9 @@ test('a PDF opens on Team\'s renditions of its pages and a text file on its own 
   await page.route(PAGE_ROUTE, (route) => {
     const number = Number(new URL(route.request().url()).pathname.split('/')[7]);
     pages.push(number);
-    if (number > PAGE_COUNT) return route.fulfill({ status: 404, contentType: 'application/json', body: '{"code":"file-not-found"}' });
+    if (number > PAGE_COUNT || number === LOST_PAGE) {
+      return route.fulfill({ status: 422, contentType: 'application/json', body: '{"code":"file-preview-unsupported"}' });
+    }
     return route.fulfill({
       status: 200,
       contentType: 'image/png',
@@ -161,28 +166,43 @@ test('a PDF opens on Team\'s renditions of its pages and a text file on its own 
       body: RENDITION,
     });
   });
+  let notes = '# Notes\n<b>never markup</b>\n';
   await page.route(DOWNLOAD_ROUTE, (route) => route.fulfill({
     status: 200,
     contentType: 'application/octet-stream',
     headers: { 'content-disposition': 'attachment', 'cache-control': 'no-store' },
-    body: '# Notes\n<b>never markup</b>\n',
+    body: notes,
   }));
   const message = page.locator('.conversation').getByRole('list', { name: EN.attachments.list });
   // The whole card opens its file, not only its badge.
   await message.getByRole('listitem').filter({ hasText: 'Launch brief.pdf' }).getByText('PDF ·').click();
   const viewer = page.getByRole('dialog', { name: 'Launch brief.pdf' });
-  for (const number of [1, 2]) {
+  for (const number of [1, 3]) {
     const sheet = viewer.getByRole('img', { name: EN.attachments.pageNumber.replace('{page}', String(number)) });
     await sheet.scrollIntoViewIfNeeded();
     await expect.poll(() => sheet.evaluate((image) => image.complete && image.naturalWidth)).toBe(600);
   }
+  // The page Team could not render says so, and the pages after it loaded.
+  await expect(viewer.getByText(`${EN.attachments.pageNumber.replace('{page}', String(LOST_PAGE))} · ${EN.attachments.notRead}`)).toBeVisible();
   // Only the document's own pages are asked for, each once.
-  expect([...pages].sort()).toEqual([1, 2]);
+  expect([...pages].sort()).toEqual([1, 2, 3]);
 
   await page.keyboard.press('ArrowRight');
-  const notes = page.getByRole('dialog', { name: 'Campaign notes.md' });
-  await expect(notes.getByText('<b>never markup</b>')).toBeVisible();
-  await expect(notes.locator('b')).toHaveCount(0);
+  const shown = page.getByRole('dialog', { name: 'Campaign notes.md' });
+  await expect(shown.getByText('<b>never markup</b>')).toBeVisible();
+  await expect(shown.locator('b')).toHaveCount(0);
+  const cut = EN.attachments.textCut.split('{size}')[0];
+  await expect(shown.getByText(cut)).toHaveCount(0);
+
+  // A text of exactly the bound is whole; one byte more is shown cut, and says so.
+  for (const [size, isCut] of [[MIB, false], [MIB + 1, true]]) {
+    notes = 'a'.repeat(size);
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.getByRole('dialog', { name: 'Launch brief.pdf' })).toBeVisible();
+    await page.keyboard.press('ArrowRight');
+    await expect.poll(() => shown.locator('pre').evaluate((node) => node.textContent.length)).toBe(MIB);
+    await expect(shown.getByText(cut)).toHaveCount(isCut ? 1 : 0);
+  }
 });
 
 test('a stored file\'s card saves its original under its own name, as Admin\'s own download @browser-sensitive', async ({

@@ -15,6 +15,8 @@
   let count = $state(0);
   let failed = $state(false);
   let shown = $state({});
+  // Pages after the first that could not be rendered; the pages after them still load.
+  let lost = $state({});
   let wanted = $state(new Set([1]));
   let pumpNow = () => {};
 
@@ -37,15 +39,23 @@
       running = true;
       try {
         for (;;) {
-          const next = [...wanted].filter((page) => !shown[page]).sort((a, b) => a - b)[0];
-          if (next === undefined) return;
-          const { url, total } = await fetchPage(next, controller.signal);
-          urls.push(url);
-          if (next === 1) count = total;
-          shown = { ...shown, [next]: url };
+          const next = [...wanted].filter((page) => !shown[page] && !lost[page]).sort((a, b) => a - b)[0];
+          if (next === undefined || controller.signal.aborted) return;
+          try {
+            const { url, total } = await fetchPage(next, controller.signal);
+            urls.push(url);
+            if (next === 1) count = total;
+            shown = { ...shown, [next]: url };
+          } catch {
+            if (controller.signal.aborted) return;
+            // Without its first page the document has no page count, so it has no preview at all.
+            if (next === 1) {
+              failed = true;
+              return;
+            }
+            lost = { ...lost, [next]: true };
+          }
         }
-      } catch {
-        if (!controller.signal.aborted && !count) failed = true;
       } finally {
         running = false;
       }
@@ -80,6 +90,8 @@
         <li class="page" use:nearby={page}>
           {#if shown[page]}
             <img src={shown[page]} alt={$t('attachments.pageNumber', { page })} />
+          {:else if lost[page]}
+            <p class="page-lost">{$t('attachments.pageNumber', { page })} · {$t('attachments.notRead')}</p>
           {:else}
             <span class="page-pending" aria-hidden="true"></span>
           {/if}
@@ -117,6 +129,16 @@
     width: 100%;
     height: auto;
     background: #fff;
+  }
+
+  /* A page that could not be rendered says so in its place. */
+  .page-lost {
+    margin: 0;
+    padding: var(--gap-item);
+    color: var(--shimpz-color-text-dim);
+    font: 600 0.72rem/1.4 var(--shimpz-font-mono);
+    text-align: center;
+    background: color-mix(in srgb, var(--shimpz-color-text) 6%, var(--shimpz-color-bg));
   }
 
   /* A page not loaded yet holds a sheet's proportions, so the scroll does not jump when it arrives. */

@@ -136,6 +136,34 @@ test('a saved file is the original read through the download route, under its ow
   assert.deepEqual(revoked, ['blob:saved']);
 });
 
+test('the page holds at most two saved originals at once, and a failed save lets its slot go', async () => {
+  const pending = [];
+  mock.method(globalThis, 'fetch', async () => new Response('bytes'));
+  mock.method(URL, 'createObjectURL', () => 'blob:saved');
+  mock.method(URL, 'revokeObjectURL', () => {});
+  mock.method(globalThis, 'setTimeout', (callback) => {
+    pending.push(callback);
+    return 0;
+  });
+  globalThis.document = { createElement: () => ({ click() {} }) };
+  const file = { id: 'c'.repeat(32), name: 'brief.pdf' };
+  try {
+    await saveFile('marketing', file);
+    await saveFile('marketing', file);
+    await assert.rejects(saveFile('marketing', file), /Too many files/);
+    pending.shift()();
+    await saveFile('marketing', file);
+    while (pending.length) pending.shift()();
+    mock.method(globalThis, 'fetch', async () => new Response('{}', { status: 404 }));
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await assert.rejects(saveFile('marketing', file), /could not be read/);
+      pending.shift()();
+    }
+  } finally {
+    delete globalThis.document;
+  }
+});
+
 test('a thumbnail keeps the rendition\'s proportions within its edge and is never upscaled', () => {
   assert.deepEqual(thumbnailSize(1568, 765), { width: 640, height: 312 });
   assert.deepEqual(thumbnailSize(765, 1568), { width: 312, height: 640 });
