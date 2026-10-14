@@ -21,6 +21,13 @@ function keyFormat(timeZone) {
 /** The calendar day (YYYY-MM-DD) an instant falls on in a timezone (the viewer's when omitted), or null. */
 export function calendarDay(instant, timeZone) {
   if (!Number.isFinite(instant)) return null;
+  // The viewer's own day is read from the date's local fields, the same zone the browser formats in, at a fraction of
+  // what splitting a formatted date costs: the transcript reads one per exchange on each change.
+  if (timeZone === undefined) {
+    const date = new Date(instant);
+    const two = (value) => String(value).padStart(2, '0');
+    return `${String(date.getFullYear()).padStart(4, '0')}-${two(date.getMonth() + 1)}-${two(date.getDate())}`;
+  }
   const parts = Object.fromEntries(keyFormat(timeZone).formatToParts(instant).map((part) => [part.type, part.value]));
   return `${parts.year}-${parts.month}-${parts.day}`;
 }

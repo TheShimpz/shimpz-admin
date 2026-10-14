@@ -117,3 +117,11 @@ test('today changes at the next local midnight', () => {
   assert.equal(untilNextDay(late), 500);
   assert.notEqual(calendarDay(late + untilNextDay(late)), calendarDay(late));
 });
+
+test("the viewer's own day is the day the browser formats an instant in, without a formatter per instant", () => {
+  const formatter = new Intl.DateTimeFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' });
+  for (let instant = Date.UTC(2026, 0, 1); instant < Date.UTC(2027, 0, 1); instant += 3 * 3_600_000 + 17_000) {
+    const parts = Object.fromEntries(formatter.formatToParts(instant).map((part) => [part.type, part.value]));
+    assert.equal(calendarDay(instant), `${parts.year}-${parts.month}-${parts.day}`);
+  }
+});
