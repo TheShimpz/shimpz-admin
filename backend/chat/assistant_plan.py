@@ -262,28 +262,69 @@ def _enabled_candidate(capability: assistant_proposal.Capability) -> dict[str, o
     }
 
 
-def _prepare_gap(
+@dataclass(frozen=True, slots=True)
+class Gap:
+    """The exact current state one message's capability plan reasons over, and the bounded shortlist it offers.
+
+    Classification describes exactly this shortlist to the decision provider, so a plan skipped on its answer never
+    saw an Assistant the question did not (ADR-0077 amendment).
+    """
+
+    installed: dict[str, assistant_inventory.InstalledAssistant]
+    enabled: tuple[assistant_proposal.Capability, ...]
+    kept_enabled: tuple[assistant_proposal.Capability, ...]
+    shortlist: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...]
+
+    def installable(self) -> list[dict[str, str]]:
+        """The shortlist as the decision provider receives it: each Assistant's name and summary, nothing else."""
+        return [{"name": assistant.name, "summary": assistant.summary} for assistant in self.shortlist]
+
+
+def capability_gap(
     team_id: str,
-    message: str,
-    available: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...],
-    installed: dict[str, assistant_inventory.InstalledAssistant],
-    enabled: tuple[assistant_proposal.Capability, ...],
+    payload: dict[str, object],
     catalog: store_catalog.StoreCatalog,
-    locale: str,
-) -> Preparation:
+) -> Gap | None:
+    """Resolve exact current state and the bounded shortlist, or None when nothing may be planned."""
+    enabled_ids = tuple(payload["assistant_ids"])
+    if enabled_ids:
+        installed, registry = team_inventory(team_id)
+        enabled = _enabled_capabilities(enabled_ids, installed, registry)
+    else:
+        installed = installed_inventory(team_id)
+        enabled = ()
+    if enabled is None:
+        return None
+    try:
+        available = planning_catalog(catalog)
+    except OSError, ValueError, team.TeamRequestError:
+        return None
     kept_enabled, shortlist = assistant_proposal.capability_candidates(
-        message,
+        payload["message"],
         available,
         installed_ids=frozenset(installed),
         enabled=_enabled_capabilities_with_providers(enabled, available),
     )
-    if not shortlist:
+    return Gap(installed, enabled, kept_enabled, shortlist)
+
+
+def plan_gap(
+    team_id: str,
+    payload: dict[str, object],
+    gap: Gap | None,
+    catalog: store_catalog.StoreCatalog,
+) -> Preparation:
+    """Apply the deterministic missing-capability gate to one resolved gap."""
+    if gap is None or not gap.shortlist:
         return Preparation()
     candidates = sorted(
-        [*(_enabled_candidate(item) for item in kept_enabled), *(_planner_candidate(item) for item in shortlist)],
+        [
+            *(_enabled_candidate(item) for item in gap.kept_enabled),
+            *(_planner_candidate(item) for item in gap.shortlist),
+        ],
         key=lambda candidate: str(candidate["id"]),
     )
-    response = local.capability_plan(team_id, message, candidates)
+    response = local.capability_plan(team_id, payload["message"], candidates)
     if not isinstance(response, team.TeamResponse) or not 200 <= response.status < 300:
         return Preparation()
     try:
@@ -294,12 +335,12 @@ def _prepare_gap(
         )
     except TypeError, ValueError:
         return Preparation()
-    installable_ids = frozenset(assistant.assistant_id for assistant in shortlist)
+    installable_ids = frozenset(assistant.assistant_id for assistant in gap.shortlist)
     missing = tuple(assistant_id for assistant_id in selected if assistant_id in installable_ids)
-    enabled_ids = tuple(capability.assistant_id for capability in enabled)
-    if _beyond_limit(installed, missing):
+    enabled_ids = tuple(capability.assistant_id for capability in gap.enabled)
+    if _beyond_limit(gap.installed, missing):
         return LIMIT_REACHED
-    return _shown_preparation(_prepared_plan(team_id, enabled_ids, shortlist, missing), catalog, locale)
+    return _shown_preparation(_prepared_plan(team_id, enabled_ids, gap.shortlist, missing), catalog, payload["locale"])
 
 
 def prepare_capability(
@@ -308,20 +349,7 @@ def prepare_capability(
     catalog: store_catalog.StoreCatalog,
 ) -> Preparation:
     """Resolve exact current state, then apply the deterministic missing-capability gate."""
-    enabled_ids = tuple(payload["assistant_ids"])
-    if enabled_ids:
-        installed, registry = team_inventory(team_id)
-        enabled = _enabled_capabilities(enabled_ids, installed, registry)
-    else:
-        installed = installed_inventory(team_id)
-        enabled = ()
-    if enabled is None:
-        return Preparation()
-    try:
-        available = planning_catalog(catalog)
-    except OSError, ValueError, team.TeamRequestError:
-        return Preparation()
-    return _prepare_gap(team_id, payload["message"], available, installed, enabled, catalog, payload["locale"])
+    return plan_gap(team_id, payload, capability_gap(team_id, payload, catalog), catalog)
 
 
 def _already_installed(

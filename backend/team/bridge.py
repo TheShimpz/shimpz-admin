@@ -374,7 +374,8 @@ def intent_route(
 ) -> TeamResponse:
     """Request one stateless route over an optional caller-supplied closed directory."""
     canonical_id = canonical_team_id(team_id)
-    if not isinstance(payload, dict) or set(payload) != {
+    # A keyed classification may also describe installable Assistants (ADR-0077 amendment); Team checks the rest.
+    if not isinstance(payload, dict) or set(payload) - {"installable"} != {
         "objective",
         "expected_intent",
         "candidates",

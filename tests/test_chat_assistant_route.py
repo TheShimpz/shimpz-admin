@@ -200,19 +200,132 @@ class AssistantRouteTests(unittest.TestCase):
         prepared = assistant_plan.Preparation()
         with (
             mock.patch.object(assistant_route.local, "intent_route", return_value=response("ordinary-task")) as route,
-            mock.patch.object(assistant_route.assistant_plan, "prepare_capability", return_value=prepared) as gate,
+            mock.patch.object(assistant_route.assistant_plan, "capability_gap", return_value=None) as gap,
+            mock.patch.object(assistant_route.assistant_plan, "plan_gap", return_value=prepared) as gate,
         ):
             result = assistant_route.prepare("team_1", payload("liste minhas zonas"), mock.sentinel.catalog)
 
         self.assertEqual(result, assistant_route.Result("ordinary-task", preparation=prepared))
+        # Without a decision key nothing is described to classification.
         route.assert_called_once_with(
             "team_1",
             "liste minhas zonas",
             None,
             [],
             local.IntentRouteContext(locale="en"),
+            None,
         )
-        gate.assert_called_once_with("team_1", payload("liste minhas zonas"), mock.sentinel.catalog)
+        gap.assert_called_once_with("team_1", payload("liste minhas zonas"), mock.sentinel.catalog)
+        gate.assert_called_once_with("team_1", payload("liste minhas zonas"), None, mock.sentinel.catalog)
+
+    @staticmethod
+    def _capability(answer: str) -> local.PublicResponse:
+        answered = response("ordinary-task")
+        return local.PublicResponse(answered.status, {**answered.body, "capability": answer})
+
+    @staticmethod
+    def _gap() -> assistant_plan.Gap:
+        shortlist = (
+            mock.Mock(assistant_id="cloudflare", summary="Set up your domains' DNS."),
+            mock.Mock(assistant_id="exa", summary="Up-to-date answers from the web."),
+        )
+        shortlist[0].name, shortlist[1].name = "Cloudflare", "Exa"
+        return assistant_plan.Gap({}, (), (), shortlist)
+
+    def test_a_capability_free_ordinary_task_never_waits_for_its_plan(self) -> None:
+        release = threading.Event()
+        plan_ended = threading.Event()
+
+        def slow_plan(*_args):
+            release.wait(5)
+            plan_ended.set()
+            return assistant_plan.Preparation(plan=mock.sentinel.plan)
+
+        try:
+            with (
+                mock.patch.object(assistant_route.decision, "resolve", return_value="decision-test-key"),
+                mock.patch.object(assistant_route.assistant_plan, "capability_gap", return_value=self._gap()),
+                mock.patch.object(assistant_route.assistant_plan, "plan_gap", side_effect=slow_plan),
+                mock.patch.object(
+                    assistant_route.local, "intent_route", return_value=self._capability("not-needed")
+                ) as route,
+            ):
+                result = assistant_route.prepare("team_1", payload("oi, tudo bem?"), mock.sentinel.catalog)
+                # The turn is decided while its plan still runs: it neither waited for it nor used it.
+                self.assertFalse(plan_ended.is_set())
+        finally:
+            release.set()
+        self.assertEqual(result, assistant_route.Result("ordinary-task", preparation=assistant_plan.Preparation()))
+        self.assertEqual(
+            route.call_args.args[5],
+            [
+                {"name": "Cloudflare", "summary": "Set up your domains' DNS."},
+                {"name": "Exa", "summary": "Up-to-date answers from the web."},
+            ],
+        )
+
+    def test_a_possible_capability_waits_for_and_keeps_its_plan(self) -> None:
+        prepared = assistant_plan.Preparation(plan=mock.sentinel.plan)
+        with (
+            mock.patch.object(assistant_route.decision, "resolve", return_value="decision-test-key"),
+            mock.patch.object(assistant_route.assistant_plan, "capability_gap", return_value=self._gap()),
+            mock.patch.object(assistant_route.assistant_plan, "plan_gap", return_value=prepared),
+            mock.patch.object(assistant_route.local, "intent_route", return_value=self._capability("possible")),
+        ):
+            result = assistant_route.prepare("team_1", payload("configure meu DNS"), mock.sentinel.catalog)
+        self.assertEqual(result, assistant_route.Result("ordinary-task", preparation=prepared))
+
+    def test_classification_describes_nothing_without_a_key_a_shortlist_or_a_timely_gap(self) -> None:
+        empty = assistant_plan.Gap({}, (), (), ())
+        late = threading.Event()
+
+        def slow_gap(*_args):
+            late.wait(5)
+            return self._gap()
+
+        cases = (
+            ({"return_value": self._gap()}, None),
+            ({"return_value": empty}, "decision-test-key"),
+            ({"return_value": None}, "decision-test-key"),
+            ({"side_effect": OSError("Team unavailable")}, "decision-test-key"),
+            ({"side_effect": slow_gap}, "decision-test-key"),
+        )
+        try:
+            for gap, key in cases:
+                with (
+                    self.subTest(gap=gap, key=key),
+                    mock.patch.object(assistant_route, "GAP_WAIT_SECONDS", 0.05),
+                    mock.patch.object(assistant_route.decision, "resolve", return_value=key),
+                    mock.patch.object(assistant_route.assistant_plan, "capability_gap", **gap),
+                    mock.patch.object(
+                        assistant_route.assistant_plan, "plan_gap", return_value=assistant_plan.Preparation()
+                    ),
+                    mock.patch.object(
+                        assistant_route.local, "intent_route", return_value=response("unresolved")
+                    ) as route,
+                ):
+                    assistant_route.prepare("team_1", payload("faça isso"), mock.sentinel.catalog)
+                    self.assertIsNone(route.call_args.args[5])
+        finally:
+            late.set()
+
+    def test_a_capability_answer_outside_its_contract_is_refused(self) -> None:
+        unresolved = response("unresolved")
+        for body in (
+            {**unresolved.body, "capability": "not-needed"},
+            {**response("ordinary-task").body, "capability": "maybe"},
+        ):
+            with (
+                self.subTest(body=body),
+                mock.patch.object(assistant_route.local, "intent_route", return_value=local.PublicResponse(200, body)),
+                self.assertRaises(assistant_route.RouteError),
+            ):
+                assistant_route._route("team_1", "oi", None, [])
+        with (
+            mock.patch.object(assistant_route.local, "intent_route", return_value=local.PublicResponse(200, [])),
+            self.assertRaises(assistant_route.RouteError),
+        ):
+            assistant_route._route("team_1", "oi", None, [])
 
     def test_capability_planning_overlaps_classification(self) -> None:
         planning_started = threading.Event()
@@ -228,7 +341,8 @@ class AssistantRouteTests(unittest.TestCase):
 
         with (
             mock.patch.object(assistant_route.local, "intent_route", side_effect=classify),
-            mock.patch.object(assistant_route.assistant_plan, "prepare_capability", side_effect=plan),
+            mock.patch.object(assistant_route.assistant_plan, "capability_gap", return_value=None),
+            mock.patch.object(assistant_route.assistant_plan, "plan_gap", side_effect=plan),
         ):
             result = assistant_route.prepare("team_1", payload("pesquise na web"), mock.sentinel.catalog)
 
@@ -238,7 +352,8 @@ class AssistantRouteTests(unittest.TestCase):
         speculative = assistant_plan.Preparation(error_status=409)
         with (
             mock.patch.object(assistant_route.local, "intent_route", return_value=response("unresolved")),
-            mock.patch.object(assistant_route.assistant_plan, "prepare_capability", return_value=speculative),
+            mock.patch.object(assistant_route.assistant_plan, "capability_gap", return_value=None),
+            mock.patch.object(assistant_route.assistant_plan, "plan_gap", return_value=speculative),
         ):
             result = assistant_route.prepare("team_1", payload("faça isso"), mock.sentinel.catalog)
 
@@ -569,14 +684,16 @@ class AssistantRouteTests(unittest.TestCase):
         plan = assistant_route.assistant_plan.Preparation(plan=mock.sentinel.plan)
         with (
             mock.patch.object(assistant_route.local, "intent_route", return_value=response("ordinary-task")),
-            mock.patch.object(assistant_route.assistant_plan, "prepare_capability", return_value=plan),
+            mock.patch.object(assistant_route.assistant_plan, "capability_gap", return_value=None),
+            mock.patch.object(assistant_route.assistant_plan, "plan_gap", return_value=plan),
         ):
             result = assistant_route.prepare("team_1", attached, mock.sentinel.catalog)
         self.assertEqual(result.guidance.code, "assistant-capability-attachments")
         self.assertIsNone(result.preparation)
         with (
             mock.patch.object(assistant_route.local, "intent_route", return_value=response("ordinary-task")),
-            mock.patch.object(assistant_route.assistant_plan, "prepare_capability", return_value=plan),
+            mock.patch.object(assistant_route.assistant_plan, "capability_gap", return_value=None),
+            mock.patch.object(assistant_route.assistant_plan, "plan_gap", return_value=plan),
         ):
             plain = assistant_route.prepare("team_1", payload("publique o relatório"), mock.sentinel.catalog)
         self.assertIs(plain.preparation, plan)

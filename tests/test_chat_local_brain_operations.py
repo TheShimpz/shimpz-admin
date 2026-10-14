@@ -156,6 +156,54 @@ class LocalBrainOperationTests(unittest.TestCase):
         self.assertNotIn(api_key, repr(response))
         self.assertNotIn("trace_id", response.body)
 
+    def test_a_keyed_classification_describes_installable_assistants_and_returns_the_answer(self) -> None:
+        installable = [{"name": "Cloudflare", "summary": "Set up your domains' DNS."}]
+        answered = {
+            "task_follows": False,
+            "team_id": "team_1",
+            "intent": "ordinary-task",
+            "query": "",
+            "assistant_ids": [],
+            "reply": "",
+            "trace_id": TRACE_ID,
+        }
+        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        for key, upstream, expected in (
+            ("decision-test-key", {**answered, "capability": "not-needed"}, "not-needed"),
+            ("decision-test-key", {**answered, "capability": "possible"}, "possible"),
+            (None, answered, None),
+        ):
+            with (
+                self.subTest(key=key),
+                mock.patch.object(team, "get_inference", return_value=inference),
+                mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
+                mock.patch.object(local.decision, "resolve", return_value=key),
+                mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, upstream)) as route,
+            ):
+                response = local.intent_route(
+                    "team_1", "oi", None, [], local.IntentRouteContext(locale="pt"), installable
+                )
+            sent = route.call_args.args[1]
+            # The key decides whether anything is described; without it nothing is sent and no answer is read.
+            self.assertEqual(sent.get("installable"), installable if key else None)
+            self.assertEqual(response.body.get("capability"), expected)
+        for upstream in (
+            answered,
+            {**answered, "capability": "maybe"},
+            {**answered, "intent": "unresolved", "reply": "Qual?", "capability": "not-needed"},
+        ):
+            with (
+                self.subTest(upstream=upstream),
+                mock.patch.object(team, "get_inference", return_value=inference),
+                mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
+                mock.patch.object(local.decision, "resolve", return_value="decision-test-key"),
+                mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, upstream)),
+            ):
+                response = local.intent_route(
+                    "team_1", "oi", None, [], local.IntentRouteContext(locale="pt"), installable
+                )
+            self.assertEqual(response.status, 502)
+
     def test_intent_route_task_continuation_is_only_a_targeted_install_classification(self) -> None:
         body = {
             "task_follows": True,

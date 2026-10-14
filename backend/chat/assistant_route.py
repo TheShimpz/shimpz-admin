@@ -1,9 +1,11 @@
 """One structured preparation path for every fresh Local chat objective."""
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from typing import Literal
 
+import decision
 from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context
 from history import context as conversation_context
 from team import bridge as team
@@ -28,6 +30,9 @@ _CAPABILITY_PLANNING = BoundedThreadPoolExecutor(
     max_outstanding=8,
     thread_name_prefix="assistant-capability-plan",
 )
+# How long classification waits for the plan's shortlist so it can describe it to the decision provider; a slower
+# shortlist only means this turn classifies without it and waits for its plan as before (ADR-0077 amendment).
+GAP_WAIT_SECONDS = 0.4
 GuidanceCode = Literal[
     "assistant-install-target-required",
     "assistant-uninstall-target-required",
@@ -106,6 +111,8 @@ class Route:
     assistant_ids: tuple[str, ...] = ()
     reply: str = ""
     task_follows: bool = False
+    # The decision provider called this ordinary task capability-free: no Assistant it could install would serve it.
+    capability_free: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,12 +153,17 @@ def _route(
     expected_intent: str | None,
     candidates: list[dict[str, object]],
     context: local.IntentRouteContext | None = None,
+    installable: list[dict[str, str]] | None = None,
 ) -> Route:
-    response = local.intent_route(team_id, objective, expected_intent, candidates, context)
+    response = local.intent_route(team_id, objective, expected_intent, candidates, context, installable)
     if not isinstance(response, team.TeamResponse) or not 200 <= response.status < 300:
         raise RouteError(_safe_status(response))
     body = response.body
-    if not isinstance(body, dict) or set(body) != {
+    if not isinstance(body, dict):
+        raise RouteError(502)
+    body = dict(body)
+    capability = body.pop("capability", None)
+    if set(body) != {
         "team_id",
         "intent",
         "query",
@@ -187,7 +199,9 @@ def _route(
             raise RouteError(502)
     elif (intent == "unresolved") != bool(reply):
         raise RouteError(502)
-    return Route(intent, query, tuple(assistant_ids), reply, task_follows)
+    if capability not in {None, "not-needed", "possible"} or (capability == "not-needed" and intent != "ordinary-task"):
+        raise RouteError(502)
+    return Route(intent, query, tuple(assistant_ids), reply, task_follows, capability == "not-needed")
 
 
 def _guidance(intent: LifecycleIntent, reply: str) -> Guidance:
@@ -358,6 +372,35 @@ def _lifecycle_result(
     )
 
 
+def _speculate(
+    team_id: str,
+    payload: dict[str, object],
+    catalog: store_catalog.StoreCatalog,
+    gap_ready: Future,
+) -> assistant_plan.Preparation:
+    """Resolve the plan's gap, hand it to classification as soon as it exists, then plan over it."""
+    try:
+        gap = assistant_plan.capability_gap(team_id, payload, catalog)
+    except BaseException as exc:
+        gap_ready.set_exception(exc)
+        raise
+    gap_ready.set_result(gap)
+    return assistant_plan.plan_gap(team_id, payload, gap, catalog)
+
+
+def _installable(gap_ready: Future) -> list[dict[str, str]] | None:
+    """The plan's shortlist for classification, when a decision key may receive it and it exists within the bound."""
+    if decision.resolve() is None:
+        return None
+    try:
+        if gap_ready.exception(timeout=GAP_WAIT_SECONDS) is not None:
+            return None
+    except FutureTimeoutError:
+        return None
+    gap = gap_ready.result()
+    return gap.installable() if gap is not None and gap.shortlist else None
+
+
 def _prepare(
     team_id: str,
     payload: dict[str, object],
@@ -366,16 +409,15 @@ def _prepare(
     *,
     allow_uninstall: bool,
 ) -> Result:
-    """Classify once while speculatively planning capabilities, then keep only the result the route needs."""
+    """Classify once while speculatively planning capabilities, then keep only the result the route needs.
+
+    Classification describes the plan's own shortlist to the decision provider when it can; a confident
+    capability-free answer for an ordinary task dispatches it without waiting for that plan (ADR-0077 amendment).
+    """
     route_context = context or Context()
+    gap_ready: Future = Future()
     try:
-        capability = submit_in_context(
-            _CAPABILITY_PLANNING,
-            assistant_plan.prepare_capability,
-            team_id,
-            payload,
-            catalog,
-        )
+        capability = submit_in_context(_CAPABILITY_PLANNING, _speculate, team_id, payload, catalog, gap_ready)
     except ExecutorSaturatedError:
         capability = None
     try:
@@ -389,12 +431,17 @@ def _prepare(
                 conversation=route_context.conversation,
                 locale=payload["locale"],
             ),
+            _installable(gap_ready) if capability is not None else None,
         )
     except BaseException:
         if capability is not None:
             capability.cancel()
         raise
     if classification.intent == "ordinary-task":
+        if classification.capability_free and capability is not None:
+            # The plan may already be running; it ends on its own and its answer is discarded.
+            capability.cancel()
+            return Result(classification.intent, preparation=assistant_plan.Preparation())
         preparation = (
             capability.result()
             if capability is not None

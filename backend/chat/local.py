@@ -427,10 +427,18 @@ def _project_intent_route(
     canonical_id: str,
     expected_intent: str | None,
     expected_ids: list[str],
+    *,
+    capability_asked: bool = False,
 ) -> team.TeamResponse:
-    body = response.body
+    body = dict(response.body)
+    capability = body.pop("capability", None) if capability_asked else None
     if set(body) != {"team_id", "intent", "query", "assistant_ids", "reply", "task_follows", "trace_id"}:
         raise ValueError("invalid intent route fields")
+    if capability_asked and (
+        capability not in {"not-needed", "possible"}
+        or (capability == "not-needed" and body["intent"] != "ordinary-task")
+    ):
+        raise ValueError("invalid intent route capability answer")
     task_follows = body["task_follows"]
     continues_install = expected_intent is None and body["intent"] == "assistant-install" and bool(body["query"])
     if type(task_follows) is not bool or (task_follows and not continues_install):
@@ -483,6 +491,7 @@ def _project_intent_route(
             "assistant_ids": assistant_ids,
             "reply": reply,
             "task_follows": task_follows,
+            **({"capability": capability} if capability_asked else {}),
         },
     )
 
@@ -493,8 +502,13 @@ def intent_route(
     expected_intent: object,
     candidates: list[dict[str, object]],
     context: IntentRouteContext | None = None,
+    installable: list[dict[str, str]] | None = None,
 ) -> team.TeamResponse:
-    """Project one credential-bound structured route without lifecycle authority."""
+    """Project one credential-bound structured route without lifecycle authority.
+
+    A classification sent with the decision key may describe the installable Assistants, and its answer then says
+    whether the task needs a capability (ADR-0077 amendment); without the key nothing is described.
+    """
     canonical_id = team.canonical_team_id(team_id)
     expected, directory, expected_ids = _intent_route_directory(expected_intent, candidates)
     projected_reference, conversation, locale = _intent_route_context(expected, context)
@@ -502,6 +516,9 @@ def intent_route(
     if isinstance(credential, team.TeamResponse):
         return credential
     provider, api_key = credential
+    # Only classification may try the Jev fast path; selection always runs the LLM route (ADR-0077).
+    decision_key = decision.resolve() if expected is None else None
+    described = list(installable or ()) if decision_key is not None else []
     response = team.intent_route(
         canonical_id,
         {
@@ -511,16 +528,16 @@ def intent_route(
             "lifecycle_reference": projected_reference,
             "conversation": conversation,
             "locale": locale,
+            **({"installable": described} if described else {}),
         },
         provider=provider,
         api_key=api_key,
-        # Only classification may try the Jev fast path; selection always runs the LLM route (ADR-0077).
-        decision_key=decision.resolve() if expected is None else None,
+        decision_key=decision_key,
     )
     if not 200 <= response.status < 300:
         return _safe_error(response)
     try:
-        return _project_intent_route(response, canonical_id, expected, expected_ids)
+        return _project_intent_route(response, canonical_id, expected, expected_ids, capability_asked=bool(described))
     except KeyError, TypeError, ValueError, team.TeamRequestError:
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
 
