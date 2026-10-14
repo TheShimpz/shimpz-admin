@@ -207,7 +207,6 @@ class AssistantInventoryEdges(unittest.TestCase):
         with self.assertRaises(ValueError):
             store_catalog.catalog_text(" invalid ", 80)
 
-
     def test_a_teams_registry_holds_at_most_its_assistants(self) -> None:
         entry = {"title": "Title", "summary": "Summary", "actions": ["act"]}
         entries = [{"id": f"assistant-{index:02d}", **entry} for index in range(17)]
