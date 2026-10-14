@@ -4889,16 +4889,21 @@ test.describe('Team Routines', () => {
     expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toEqual([]);
   });
 
-  // The card's revocation waits until the test lets it answer.
+  // The card's revocation waits until the test lets it answer; `answered()` says its answer went to the page.
   async function holdRevocation(page) {
     let release;
+    let answered = false;
     const held = new Promise((resolve) => {
       release = resolve;
     });
     await routeRead(page, 'routines.proposal_revoke', async () => {
       await held;
+      queueMicrotask(() => {
+        answered = true;
+      });
       return undefined;
     });
+    release.answered = () => answered;
     return release;
   }
 
@@ -4922,8 +4927,10 @@ test.describe('Team Routines', () => {
     await expect.poll(() => neoFrames.length).toBeGreaterThan(0);
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     release();
-    await expect.poll(() => proposalCalls(page)).toEqual(['revoke']);
+    await expect.poll(() => release.answered()).toBe(true);
+    // The page's own completion runs in the same turn as the answer it reads; a margin covers the frame's delivery.
     await page.waitForTimeout(500);
+    expect(await proposalCalls(page)).toEqual(['revoke']);
     const sent = (frames) => frames.filter((frame) => frame.type === 'chat').map((frame) => frame.message);
     expect(sent(neoFrames)).toEqual([]);
     expect(sent(scenario.chatFrames())).toEqual([ROUTINE_TEXT.en.request]);
