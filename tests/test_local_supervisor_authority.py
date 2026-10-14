@@ -85,6 +85,42 @@ class LocalSupervisorAuthorityTests(unittest.TestCase):
         claims = contract.canonical_claims(json.loads(_decode(encoded.split(".")[1])))
         self.assertEqual(claims["decision"], decision)
 
+    def test_an_assertion_binds_the_largest_capability_plan_team_admits(self) -> None:
+        # A capability plan at Team's JSON worst case, as the bridge sends it within the protocol's body bound.
+        wide = "\U0001f600"
+        plan = {
+            "objective": wide * 16_000,
+            "candidates": [
+                {
+                    "id": chr(ord("a") + index) * 40,
+                    "name": wide * 80,
+                    "summary": wide * 80,
+                    "actions": [f"{action:03d}".rjust(128, "a") for action in range(64)],
+                    "integrations": [
+                        {"id": f"{item:02d}".rjust(64, "i"), "provider": f"{item:02d}".rjust(64, "p")}
+                        for item in range(16)
+                    ],
+                }
+                for index in range(8)
+            ],
+        }
+        raw = json.dumps(plan, ensure_ascii=False, separators=(",", ":")).encode()
+        self.assertGreater(len(raw), 128 * 1024)
+        self.assertLessEqual(len(raw), contract.MAX_JSON_BODY_BYTES)
+        encoded = supervisor.sign_request(
+            supervisor.new_identity(),
+            "v1:9999999999:0123456789abcdef:" + "a" * 64,
+            request=supervisor.RequestBinding(
+                method="POST",
+                path="/v1/teams/marketing/chat/capability-plan",
+                body=supervisor.json_body(raw),
+                model=supervisor.model_binding(("openai", "sk-test-0123456789")),
+            ),
+            now=2_200_000_000,
+        )
+        claims = contract.canonical_claims(json.loads(_decode(encoded.split(".")[1])))
+        self.assertEqual(claims["body"]["length"], len(raw))
+
     def test_request_assertion_is_canonical_short_lived_and_exactly_bound(self) -> None:
         identity = supervisor.new_identity()
         session = "v1:9999999999:0123456789abcdef:" + "a" * 64

@@ -167,9 +167,9 @@ class TeamTransportEdgeTests(unittest.TestCase):
         for declared in (True, False):
             with self.subTest(declared=declared):
                 self.assertEqual(call(above, declared), 502)
-                self.assertEqual(call(above, declared, max_response_bytes=allowance), 200)
-                self.assertEqual(call(at, declared, max_response_bytes=allowance), 200)
-                self.assertEqual(call(over, declared, max_response_bytes=allowance), 502)
+                self.assertEqual(call(above, declared, bounds=transport.ByteBounds(response=allowance)), 200)
+                self.assertEqual(call(at, declared, bounds=transport.ByteBounds(response=allowance)), 200)
+                self.assertEqual(call(over, declared, bounds=transport.ByteBounds(response=allowance)), 502)
 
     def test_request_status_close_and_private_credential_fail_closed(self) -> None:
         with (

@@ -72,7 +72,9 @@ def list_routines(team_id: object) -> team.TeamResponse:
     canonical = team.canonical_team_id(team_id)
     # The whole list is read within its own protocol bound, the one Team answer above the Local API's 128 KiB cap.
     response = transport._call(
-        "GET", f"/v1/teams/{canonical}/routines", max_response_bytes=routine_notice_contract.MAX_ROUTINE_LIST_BYTES
+        "GET",
+        f"/v1/teams/{canonical}/routines",
+        bounds=transport.ByteBounds(response=routine_notice_contract.MAX_ROUTINE_LIST_BYTES),
     )
 
     def items(admit: Callable[[object], object], bound: int) -> Callable[[object], bool]:

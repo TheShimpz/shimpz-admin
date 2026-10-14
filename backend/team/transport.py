@@ -47,6 +47,17 @@ class _SupervisorSession:
     authority_kind: str
 
 
+@dataclass(frozen=True, slots=True)
+class ByteBounds:
+    """The largest request body Admin sends, and the largest answer it reads, on one Team call."""
+
+    body: int = MAX_JSON_BODY_BYTES
+    response: int = MAX_JSON_RESPONSE_BYTES
+
+
+DEFAULT_BOUNDS = ByteBounds()
+
+
 @dataclass(frozen=True, slots=True, repr=False)
 class _RequestBindings:
     model_credential: tuple[str, str] | None = None
@@ -646,16 +657,16 @@ def _call(
     timeout: int = CONTROL_TIMEOUT_SECONDS,
     model_credential: tuple[str, str] | None = None,
     decision_key: str | None = None,
-    max_response_bytes: int = MAX_JSON_RESPONSE_BYTES,
+    bounds: ByteBounds = DEFAULT_BOUNDS,
 ) -> TeamResponse:
-    body = _encode_payload(payload)
+    body = _encode_payload(payload, max_bytes=bounds.body)
     return _request(
         method,
         path,
         _Entity(body, "application/json" if body is not None else None),
         timeout=timeout,
         bindings=_RequestBindings(model_credential, decision_key=decision_key),
-        max_response_bytes=max_response_bytes,
+        max_response_bytes=bounds.response,
     )
 
 

@@ -18,6 +18,7 @@ from team import transport
 from chat import payloads
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import preview as preview_contract
+from protocol.http.v1 import turn as team_turn
 
 log = logging.getLogger("shimpz-admin")
 
@@ -358,6 +359,8 @@ def capability_plan(
         payload,
         model_credential=(provider, api_key),
         timeout=CAPABILITY_PLAN_TIMEOUT_SECONDS,
+        # Any admissible message is planned: the body bound covers its longest encoding (Team protocol turn.py).
+        bounds=transport.ByteBounds(body=team_turn.MAX_CAPABILITY_PLAN_BODY_BYTES),
     )
 
 
@@ -387,6 +390,7 @@ def intent_route(
         model_credential=(provider, api_key),
         decision_key=decision_key,
         timeout=INTENT_ROUTE_TIMEOUT_SECONDS,
+        bounds=transport.ByteBounds(body=team_turn.MAX_INTENT_ROUTE_BODY_BYTES),
     )
 
 

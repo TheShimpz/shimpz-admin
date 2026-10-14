@@ -45,7 +45,9 @@ class RoutineManageTests(unittest.TestCase):
             self.assertEqual(manage.list_routines("team_1").body, listed)
         # The whole list is read within its own protocol allowance, never another answer's cap.
         call.assert_called_once_with(
-            "GET", "/v1/teams/team_1/routines", max_response_bytes=routine_notice_contract.MAX_ROUTINE_LIST_BYTES
+            "GET",
+            "/v1/teams/team_1/routines",
+            bounds=transport.ByteBounds(response=routine_notice_contract.MAX_ROUTINE_LIST_BYTES),
         )
         for untraced in (team.TeamResponse(200, dict(listed)), team.TeamResponse(200, {**listed, "trace_id": "x"})):
             with self.subTest(untraced=untraced), self.call(untraced):
