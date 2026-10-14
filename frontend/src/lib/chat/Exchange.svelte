@@ -71,14 +71,6 @@
           <span>{userTurn.resumedObjective}</span>
         </div>
       {/if}
-      {#if shownFiles.length}
-        <!-- A message's files come first in it, one compact card each. -->
-        <ul class="sent-attachments" aria-label={$t('attachments').list}>
-          {#each shownFiles as file (file.key)}
-            <AttachmentTile {teamId} {file} images={viewerImages} onunavailable={markUnreadable} />
-          {/each}
-        </ul>
-      {/if}
       {#if sentAnswer !== null}
         <!-- The question stays above its answer, so the person always sees what they replied to. -->
         <div class="clarification-reply">
@@ -89,6 +81,14 @@
         </div>
       {:else}
         <p>{userTurn.text}</p>
+      {/if}
+      {#if shownFiles.length}
+        <!-- A message's files follow its text, one compact card each. -->
+        <ul class="sent-attachments" aria-label={$t('attachments').list}>
+          {#each shownFiles as file (file.key)}
+            <AttachmentTile {teamId} {file} images={viewerImages} onunavailable={markUnreadable} />
+          {/each}
+        </ul>
       {/if}
     </Message>
   {/if}
@@ -252,12 +252,12 @@
     text-transform: uppercase;
   }
 
-  /* A sent message's files, at the top of it, one card under another. */
+  /* A sent message's files, under its text, one card under another. */
   .sent-attachments {
     display: grid;
     width: 100%;
     gap: var(--gap-inside);
-    margin: 0 0 var(--gap-item);
+    margin: var(--gap-item) 0 0;
     padding: 0;
     list-style: none;
   }
