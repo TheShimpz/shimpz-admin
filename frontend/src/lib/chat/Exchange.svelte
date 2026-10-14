@@ -62,14 +62,6 @@
 <!-- A Routine notice keeps its time on its own rail; every other reply shows when it was completed. -->
 {#snippet replyTime()}{@render turnTime(assistantTurn)}{/snippet}
 <section class="exchange">
-  {#if shownFiles.length}
-    <!-- A message's files sit above its text, outside it, as modern chats show them: one compact card each. -->
-    <ul class="sent-attachments" aria-label={$t('attachments').list}>
-      {#each shownFiles as file (file.key)}
-        <AttachmentTile {teamId} {file} images={viewerImages} onunavailable={markUnreadable} />
-      {/each}
-    </ul>
-  {/if}
   {#if userTurn}
     <Message variant="user" author={words.you}>
       {#snippet meta()}{@render turnTime(userTurn)}{/snippet}
@@ -78,6 +70,14 @@
           <strong>{words.install.resuming}</strong>
           <span>{userTurn.resumedObjective}</span>
         </div>
+      {/if}
+      {#if shownFiles.length}
+        <!-- A message's files come first in it, one compact card each. -->
+        <ul class="sent-attachments" aria-label={$t('attachments').list}>
+          {#each shownFiles as file (file.key)}
+            <AttachmentTile {teamId} {file} images={viewerImages} onunavailable={markUnreadable} />
+          {/each}
+        </ul>
       {/if}
       {#if sentAnswer !== null}
         <!-- The question stays above its answer, so the person always sees what they replied to. -->
@@ -252,13 +252,12 @@
     text-transform: uppercase;
   }
 
-  /* A sent message's files, above its text and aligned with it, one card under another. */
+  /* A sent message's files, at the top of it, one card under another. */
   .sent-attachments {
     display: grid;
-    justify-self: end;
-    width: min(100%, 20rem);
+    width: 100%;
     gap: var(--gap-inside);
-    margin: 0;
+    margin: 0 0 var(--gap-item);
     padding: 0;
     list-style: none;
   }
