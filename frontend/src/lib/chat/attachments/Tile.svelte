@@ -80,10 +80,14 @@
   });
 
   // The link names the file's download route; a click saves it through the session's own read, as every browser sends
-  // that alike. A save that fails leaves nothing behind.
+  // that alike, and the link stays busy until the save was handed to the browser. A save that fails leaves nothing.
+  let saving = $state(false);
+
   function save(event) {
     event.preventDefault();
-    saveFile(teamId, file).catch(() => {});
+    if (saving) return;
+    saving = true;
+    saveFile(teamId, file).catch(() => {}).finally(() => (saving = false));
   }
 
   function closeViewer() {
@@ -133,6 +137,7 @@
           href={downloadUrl(teamId, file.id)}
           download={file.name}
           onclick={save}
+          aria-busy={saving ? 'true' : undefined}
           title={$t('attachments.downloadNamed', { name: file.name })}
           aria-label={$t('attachments.downloadNamed', { name: file.name })}
         >
@@ -237,6 +242,9 @@
   }
 
   .attachment-card :global(.shimpz-action-link.card-download:hover) { border-color: transparent; }
+
+  /* A save under way dims its link until the browser has the file. */
+  .attachment-card :global(.card-download[aria-busy='true']) { opacity: 0.45; }
 
   .attachment-card :global(.card-download svg) {
     width: 1rem;

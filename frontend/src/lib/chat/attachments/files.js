@@ -246,11 +246,33 @@ export function downloadUrl(teamId, fileId) {
 // A file's bytes Team is too busy to send now are asked for again after the delay it names, at most FILE_RETRIES times.
 const FILE_RETRIES = 3;
 const FILE_RETRY_LIMIT_MS = 2_000;
-// How long a saved file's object URL outlives the save it started, so every browser has read it, and how many saved
-// originals the page holds at once: a save beyond them waits until one is let go.
-const SAVED_URL_MS = 60_000;
-const MAX_SAVES = 2;
-let saves = 0;
+// How long a saved file's object URL outlives the save it started, so every browser has read it, and how many bytes of
+// saved originals the page holds at once: a save that would go beyond them waits, in order, until earlier ones are let
+// go. Every original fits the bound on its own.
+const SAVED_URL_MS = 20_000;
+export const MAX_SAVED_BYTES = 64 * MIB;
+let savedBytes = 0;
+const waitingSaves = [];
+
+function admitSave(size) {
+  return new Promise((resolve) => {
+    waitingSaves.push({ size, resolve });
+    admitWaitingSaves();
+  });
+}
+
+function admitWaitingSaves() {
+  while (waitingSaves.length && savedBytes + waitingSaves[0].size <= MAX_SAVED_BYTES) {
+    const next = waitingSaves.shift();
+    savedBytes += next.size;
+    next.resolve();
+  }
+}
+
+function releaseSave(size) {
+  savedBytes -= size;
+  admitWaitingSaves();
+}
 
 function delay(ms, signal) {
   return new Promise((resolve, reject) => {
@@ -287,8 +309,8 @@ export async function fetchFileBytes(url, signal) {
  * every browser sends that read alike, then handed to the browser to save.
  */
 export async function saveFile(teamId, file) {
-  if (saves >= MAX_SAVES) throw new Error('Too many files are being saved.');
-  saves += 1;
+  const size = Math.min(Math.max(Number.isSafeInteger(file.size) ? file.size : MAX_UPLOAD_BYTES, 0), MAX_UPLOAD_BYTES);
+  await admitSave(size);
   let url = null;
   try {
     const response = await fetchFileBytes(downloadUrl(teamId, file.id));
@@ -302,7 +324,7 @@ export async function saveFile(teamId, file) {
     const held = url;
     globalThis.setTimeout(() => {
       if (held) URL.revokeObjectURL(held);
-      saves -= 1;
+      releaseSave(size);
     }, held ? SAVED_URL_MS : 0);
   }
 }

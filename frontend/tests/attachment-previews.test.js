@@ -136,8 +136,9 @@ test('a saved file is the original read through the download route, under its ow
   assert.deepEqual(revoked, ['blob:saved']);
 });
 
-test('the page holds at most two saved originals at once, and a failed save lets its slot go', async () => {
+test('saved originals wait, in order, while the page already holds 64 MiB of them, and a failed save lets go', async () => {
   const pending = [];
+  const clicks = [];
   mock.method(globalThis, 'fetch', async () => new Response('bytes'));
   mock.method(URL, 'createObjectURL', () => 'blob:saved');
   mock.method(URL, 'revokeObjectURL', () => {});
@@ -145,18 +146,24 @@ test('the page holds at most two saved originals at once, and a failed save lets
     pending.push(callback);
     return 0;
   });
-  globalThis.document = { createElement: () => ({ click() {} }) };
-  const file = { id: 'c'.repeat(32), name: 'brief.pdf' };
+  globalThis.document = { createElement: () => ({ click() { clicks.push(this.download); } }) };
+  const large = (name) => ({ id: 'c'.repeat(32), name, size: 25 * 1024 * 1024 });
   try {
-    await saveFile('marketing', file);
-    await saveFile('marketing', file);
-    await assert.rejects(saveFile('marketing', file), /Too many files/);
+    await saveFile('marketing', large('one.pdf'));
+    await saveFile('marketing', large('two.pdf'));
+    // A third large original would go beyond the bound: it waits until the first is let go.
+    const third = saveFile('marketing', large('three.pdf'));
+    await flush();
+    assert.deepEqual(clicks, ['one.pdf', 'two.pdf']);
     pending.shift()();
-    await saveFile('marketing', file);
+    await third;
+    assert.deepEqual(clicks, ['one.pdf', 'two.pdf', 'three.pdf']);
+    // A small original still fits beside them.
+    await saveFile('marketing', { id: 'c'.repeat(32), name: 'notes.md', size: 2_000 });
     while (pending.length) pending.shift()();
     mock.method(globalThis, 'fetch', async () => new Response('{}', { status: 404 }));
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      await assert.rejects(saveFile('marketing', file), /could not be read/);
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await assert.rejects(saveFile('marketing', large('missing.pdf')), /could not be read/);
       pending.shift()();
     }
   } finally {
