@@ -4,7 +4,7 @@
 // its long edge and never larger than the rendition, as an object URL, with the rendition's own size for the viewer. At most MAX_LOADING renditions load at once and at most MAX_PREVIEWS
 // thumbnails are kept: one no message shows is evicted least recently used first, and beyond the bound a message keeps
 // its card. Every session check clears them, and a load that settles after one is discarded.
-import { attachmentKind, MAX_IMAGE_BYTES } from './files.js';
+import { attachmentKind, MAX_IMAGE_BYTES, MAX_PDF_BYTES } from './files.js';
 import { OPAQUE_ID_RE, TEAM_ID_RE } from '../../ids.js';
 
 export const MAX_PREVIEWS = 48;
@@ -26,16 +26,36 @@ export function previewUrl(teamId, fileId) {
   return `/api/teams/${teamId}/files/${fileId}/preview`;
 }
 
+// A PDF's page renditions: Team renders at most this many pages, and the first page's answer names the page count.
+export const MAX_PDF_PAGES = 50;
+export const PAGE_COUNT_HEADER = 'x-page-count';
+
+/** The Admin route of one page's rendition of a stored PDF, pages counted from 1. */
+export function pageUrl(teamId, fileId, page) {
+  return `/api/teams/${teamId}/files/${fileId}/pages/${page}/preview`;
+}
+
+/** Whether a file reference names a file Team stored for a valid Team, which Admin can serve. */
+export function stored(teamId, file) {
+  return typeof teamId === 'string' && TEAM_ID_RE.test(teamId) && typeof file?.id === 'string' && OPAQUE_ID_RE.test(file.id);
+}
+
+/** Whether a stored file is a PDF within Team's PDF ceiling, whose pages Team can render. */
+export function paged(teamId, file) {
+  return stored(teamId, file) &&
+    attachmentKind(file.mediaType) === 'pdf' &&
+    Number.isSafeInteger(file.size) &&
+    file.size > 0 &&
+    file.size <= MAX_PDF_BYTES;
+}
+
 /**
  * Whether a sent file reference may ask for a thumbnail: a stored file of a valid Team whose stored media type names a
  * JPEG, PNG, or WebP within Team's image ceiling. The live message and its reload carry the same stored media type, so
  * both decide alike; Team still decides from the bytes, and a file it cannot read keeps its card.
  */
 export function previewable(teamId, file) {
-  return typeof teamId === 'string' &&
-    TEAM_ID_RE.test(teamId) &&
-    typeof file?.id === 'string' &&
-    OPAQUE_ID_RE.test(file.id) &&
+  return stored(teamId, file) &&
     attachmentKind(file.mediaType) === 'image' &&
     Number.isSafeInteger(file.size) &&
     file.size > 0 &&

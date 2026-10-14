@@ -29,9 +29,29 @@ function rendition(fileId) {
   return RENDITIONS.get(fileId);
 }
 
+// A PDF's page renditions: three pages, each a sheet in its own shade, the page count on every answer.
+const PAGE_RE = /^\/api\/teams\/[a-z0-9_]{1,40}\/files\/[0-9a-f]{32}\/pages\/([1-9][0-9]?)\/preview$/u;
+const PAGE_COUNT = 3;
+const PAGES = new Map();
+
+function pageRendition(page) {
+  if (page > PAGE_COUNT) return null;
+  if (!PAGES.has(page)) PAGES.set(page, png(1100, 1556, [248, 248, 244], [200 - page * 30, 210, 230]));
+  return PAGES.get(page);
+}
+
 // A download answers a stand-in file the browser saves under the card's own name.
 const DOWNLOAD_RE = /^\/api\/teams\/[a-z0-9_]{1,40}\/files\/[0-9a-f]{32}\/download$/u;
-const DOWNLOAD = 'Preview download: the Admin serves the stored file here.\n';
+const DOWNLOAD = [
+  '# Campaign notes',
+  '',
+  'Launch post: the harbour photo, wide frame.',
+  'Caption: "Out on the water at dusk."',
+  '',
+  '- Post on Tuesday, 9:00',
+  '- Tag the photography team',
+  '',
+].join('\n');
 
 function apiPath(url) {
   const path = new URL(url ?? '/', 'http://preview.invalid').pathname;
@@ -52,6 +72,15 @@ export function adminPreview() {
           response.setHeader('content-type', 'image/png');
           response.setHeader('cache-control', 'no-store');
           response.end(image);
+          return;
+        }
+        const pageMatch = request.method === 'GET' ? PAGE_RE.exec(path) : null;
+        const sheet = pageMatch ? pageRendition(Number(pageMatch[1])) : null;
+        if (sheet) {
+          response.setHeader('content-type', 'image/png');
+          response.setHeader('cache-control', 'no-store');
+          response.setHeader('x-page-count', String(PAGE_COUNT));
+          response.end(sheet);
           return;
         }
         if (request.method === 'GET' && DOWNLOAD_RE.test(path)) {

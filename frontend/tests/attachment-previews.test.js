@@ -7,10 +7,14 @@ import {
   drawThumbnail,
   MAX_LOADING,
   MAX_PREVIEWS,
+  pageUrl,
+  paged,
   previewable,
   previewUrl,
+  stored,
   thumbnailSize,
 } from '../src/lib/chat/attachments/previews.js';
+import { downloadUrl } from '../src/lib/chat/attachments/files.js';
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const fileId = (index) => index.toString(16).padStart(32, '0');
@@ -49,6 +53,21 @@ test('a stored image of a valid Team is previewable by its stored media type, li
   assert.equal(previewable('marketing', { ...image, size: 8 * 1024 * 1024 + 1 }), false);
   assert.equal(previewable('marketing', { ...image, size: 0 }), false);
   assert.equal(previewUrl('marketing', image.id), `/api/teams/marketing/files/${image.id}/preview`);
+});
+
+test('only a stored file of a valid Team is served, and only a PDF within Team\'s PDF ceiling has pages', () => {
+  const pdf = { id: 'c'.repeat(32), mediaType: 'application/pdf', size: 1024 };
+  assert.equal(stored('marketing', pdf), true);
+  assert.equal(stored('Marketing', pdf), false);
+  assert.equal(stored('marketing', { ...pdf, id: undefined }), false);
+  assert.equal(stored('marketing', null), false);
+  assert.equal(paged('marketing', pdf), true);
+  assert.equal(paged('marketing', { ...pdf, size: 8 * 1024 * 1024 + 1 }), false);
+  assert.equal(paged('marketing', { ...pdf, size: 0 }), false);
+  assert.equal(paged('marketing', { ...pdf, mediaType: 'image/png' }), false);
+  assert.equal(paged('Marketing', pdf), false);
+  assert.equal(pageUrl('marketing', pdf.id, 2), `/api/teams/marketing/files/${pdf.id}/pages/2/preview`);
+  assert.equal(downloadUrl('marketing', pdf.id), `/api/teams/marketing/files/${pdf.id}/download`);
 });
 
 test('a thumbnail keeps the rendition\'s proportions within its edge and is never upscaled', () => {

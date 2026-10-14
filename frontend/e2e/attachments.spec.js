@@ -151,8 +151,11 @@ test('a reloaded chat still shows which files each message carried', async ({ pa
   await expect(page.getByText('I read the 2 files you attached.', { exact: false })).toBeVisible({ timeout: 20_000 });
   const sent = page.locator('.conversation .exchange').filter({ hasText: 'When does the contract renew?' });
   await expect(sent.getByRole('list', { name: EN.list }).getByRole('listitem')).toHaveText([/notes\.md/, /brief\.md/]);
-  // A saved record offers nothing to do with its files.
-  await expect(sent.getByRole('list', { name: EN.list }).getByRole('button')).toHaveCount(0);
+  // A saved record's files open in the viewer and can be downloaded, but never be removed from it.
+  const files = sent.getByRole('list', { name: EN.list });
+  await expect(files.getByRole('button', { name: EN.openFile.replace('{name}', 'notes.md'), exact: true })).toBeVisible();
+  await expect(files.getByRole('link', { name: EN.downloadNamed.replace('{name}', 'brief.md'), exact: true })).toBeVisible();
+  await expect(files.getByRole('button', { name: /remove/i })).toHaveCount(0);
 });
 
 test('removing a file never deletes it, and attaching the same file again reuses the stored copy', async ({ page }) => {

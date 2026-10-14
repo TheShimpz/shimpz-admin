@@ -1,22 +1,21 @@
 <script>
   import { ActionLink, Button } from '@shimpz/frontend';
   import { downloadUrl, formatFileSize } from '#lib/chat/attachments/files.js';
-  import { OPAQUE_ID_RE, TEAM_ID_RE } from '#lib/ids.js';
-  import ImageViewer from '#lib/chat/attachments/ImageViewer.svelte';
-  import { acquirePreview, previewable } from '#lib/chat/attachments/previews.js';
+  import FileViewer from '#lib/chat/attachments/FileViewer.svelte';
+  import { acquirePreview, previewable, stored } from '#lib/chat/attachments/previews.js';
   import { locale, t } from '#lib/i18n/index.js';
 
   // One file of a message as a compact card (ADR-0093), alike in the composer and in a sent message: a badge, its name
   // cut in the middle so its start and its extension both show, and its type and size. An image Team has stored shows
-  // its thumbnail in the badge's place, and the thumbnail opens it over the chat; until then the badge names its
-  // extension. The thumbnail is asked for only once the card comes within NEAR_PX of its scrolling region, and an image
-  // Team cannot read is reported through `onunavailable`, so its message can leave it out. `images` are the message's
-  // images the viewer can move through, this one among them. A stored file can be downloaded from its card's end; in the
-  // composer the card can also be removed from the message.
+  // its thumbnail in the badge's place; until then the badge names its extension. The thumbnail is asked for only once
+  // the card comes within NEAR_PX of its scrolling region, and an image Team cannot read is reported through
+  // `onunavailable`, so its message can leave it out. Once Team stored the file, the whole card but its actions opens it
+  // in the viewer, which moves through `files`, the message's files, this one among them. A stored file can be
+  // downloaded from its card's end; in the composer the card can also be removed from the message.
   let {
     teamId,
     file,
-    images = [file],
+    files = [file],
     status = 'ready',
     onremove = null,
     onunavailable = () => {},
@@ -42,11 +41,8 @@
       : [file.name, ''],
   );
   let canPreview = $derived(status === 'ready' && previewable(teamId, file));
-  // Only a file Team stored, of a valid Team, can be downloaded.
-  let downloadable = $derived(
-    status === 'ready' && typeof teamId === 'string' && TEAM_ID_RE.test(teamId) &&
-      typeof file.id === 'string' && OPAQUE_ID_RE.test(file.id),
-  );
+  // Only a file Team stored, of a valid Team, can be opened or downloaded.
+  let openable = $derived(status === 'ready' && stored(teamId, file));
   // The badge: the file's extension, at most four characters, or its type when it has none.
   let badge = $derived.by(() => {
     const dot = file.name.lastIndexOf('.');
@@ -95,27 +91,34 @@
   data-kind={file.kind}
   aria-busy={status === 'ready' ? undefined : 'true'}
 >
-  {#if shown}
+  {#snippet face()}
+    {#if shown}
+      <img class="card-thumbnail" src={shown.url} alt="" />
+    {:else}
+      <span class="card-badge" aria-hidden="true">{badge}</span>
+    {/if}
+    <span class="card-text">
+      <span class="card-name" title={file.name}><span class="head">{nameParts[0]}</span><span class="tail">{nameParts[1]}</span></span>
+      <span class="card-details">{details}</span>
+    </span>
+  {/snippet}
+  {#if openable}
     <Button
       bind:element={opener}
-      class="card-thumbnail"
+      class="card-open"
       variant="ghost"
       type="button"
-      aria-label={$t('attachments.openImage', { name: file.name })}
+      aria-label={$t('attachments.openFile', { name: file.name })}
       onclick={() => (viewing = true)}
     >
-      <img src={shown.url} alt={file.name} />
+      {@render face()}
     </Button>
   {:else}
-    <span class="card-badge" aria-hidden="true">{badge}</span>
+    <span class="card-face">{@render face()}</span>
   {/if}
-  <span class="card-text">
-    <span class="card-name" title={file.name}><span class="head">{nameParts[0]}</span><span class="tail">{nameParts[1]}</span></span>
-    <span class="card-details">{details}</span>
-  </span>
-  {#if downloadable || onremove}
+  {#if openable || onremove}
     <span class="card-actions">
-      {#if downloadable}
+      {#if openable}
         <ActionLink
           class="card-download glitch-host"
           variant="ghost"
@@ -143,11 +146,11 @@
       {/if}
     </span>
   {/if}
-  {#if viewing && shown}
-    <ImageViewer
+  {#if viewing}
+    <FileViewer
       {teamId}
-      images={images.some((image) => image.id === file.id) ? images : [file]}
-      start={Math.max(0, images.findIndex((image) => image.id === file.id))}
+      files={files.some((item) => item.id === file.id) ? files : [file]}
+      start={Math.max(0, files.findIndex((item) => item.id === file.id))}
       thumbnail={shown}
       onclose={closeViewer}
     />
@@ -155,17 +158,56 @@
 </li>
 
 <style>
-  /* A compact card: its badge or thumbnail, then its name over its type and size. */
+  /* A compact card: its face (badge or thumbnail, then its name over its type and size), then its actions. */
   .attachment-card {
     display: grid;
     min-width: 0;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    gap: var(--gap-item);
-    padding: var(--gap-inside);
+    gap: var(--gap-inside);
+    padding-inline-end: var(--gap-inside);
     border: 1px solid color-mix(in srgb, var(--shimpz-color-border) 70%, transparent);
     clip-path: var(--shimpz-control-shape);
     background: color-mix(in srgb, var(--shimpz-color-text) 5%, var(--shimpz-color-bg));
+  }
+
+  /* The face fills the card up to its actions; once the file is stored, all of it opens the viewer. */
+  .card-face,
+  .attachment-card :global(.card-open .button-content) {
+    display: grid;
+    min-width: 0;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: var(--gap-item);
+    text-align: start;
+  }
+
+  .card-face { padding: var(--gap-inside); }
+
+  .attachment-card :global(.shimpz-button.card-open) {
+    --button-border: transparent;
+    --button-hover-bg: color-mix(in srgb, var(--shimpz-color-text) 6%, transparent);
+    display: grid;
+    min-width: 0;
+    height: auto;
+    min-height: 0;
+    justify-content: stretch;
+    padding: var(--gap-inside);
+    border: 0;
+    clip-path: none;
+    letter-spacing: normal;
+    text-transform: none;
+  }
+
+  /* Only the name glitches: the global glitch would slice the thumbnail too. */
+  .attachment-card :global(.card-open .button-content) {
+    text-shadow: none;
+    animation: none !important;
+  }
+
+  .attachment-card :global(.card-open:is(:hover, :focus-visible) .card-name) {
+    text-shadow: var(--glitch-split-text);
+    animation: admin-glitch-text 280ms steps(1, end);
   }
 
   /* The card's actions at its end: download, then remove in the composer. */
@@ -217,31 +259,13 @@
   .attachment-card[data-kind="pdf"] .card-badge { --tone: var(--shimpz-color-magenta); }
   .attachment-card[data-kind="text"] .card-badge { --tone: var(--shimpz-color-cyan); }
 
-  /* An image's thumbnail takes the badge's place, filling it edge to edge; the controls' glitch never slices it. */
-  .attachment-card :global(.shimpz-button.card-thumbnail) {
-    --button-border: transparent;
+  /* An image's thumbnail takes the badge's place, filling it edge to edge. */
+  .card-thumbnail {
+    display: block;
     width: 2.6rem;
     height: 2.6rem;
-    min-height: 0;
-    padding: 0;
-    overflow: hidden;
-    border: 0;
-    background: transparent;
-  }
-
-  .attachment-card :global(.card-thumbnail .button-content) {
-    display: block;
-    width: 100%;
-    height: 100%;
-    line-height: 0;
-    animation: none !important;
-  }
-
-  img {
-    display: block;
-    width: 100%;
-    height: 100%;
     object-fit: cover;
+    clip-path: var(--shimpz-control-shape);
   }
 
   .card-text {

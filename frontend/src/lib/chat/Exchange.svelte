@@ -1,7 +1,6 @@
 <script>
   import { Message } from '@shimpz/frontend';
   import AttachmentTile from '#lib/chat/attachments/Tile.svelte';
-  import { previewable } from '#lib/chat/attachments/previews.js';
   import { clockTime, instantValue } from '#lib/chat/days.js';
   import InstallPlan from '#lib/chat/lifecycle/InstallPlan.svelte';
   import Uninstall from '#lib/chat/lifecycle/Uninstall.svelte';
@@ -44,8 +43,6 @@
   // The images Team can no longer read are left out of the message.
   let unreadable = $state(new Set());
   let shownFiles = $derived((userTurn?.files ?? []).filter((file) => !unreadable.has(file.id)));
-  // The images the viewer moves through.
-  let viewerImages = $derived(shownFiles.filter((file) => previewable(teamId, file)));
 
   function markUnreadable(fileId) {
     if (!unreadable.has(fileId)) unreadable = new Set([...unreadable, fileId]);
@@ -86,7 +83,7 @@
         <!-- A message's files follow its text, one compact card each. -->
         <ul class="sent-attachments" aria-label={$t('attachments').list}>
           {#each shownFiles as file (file.key)}
-            <AttachmentTile {teamId} {file} images={viewerImages} onunavailable={markUnreadable} />
+            <AttachmentTile {teamId} {file} files={shownFiles} onunavailable={markUnreadable} />
           {/each}
         </ul>
       {/if}

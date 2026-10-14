@@ -91,7 +91,7 @@ export const PREVIEW_IMAGES = Object.freeze({
   collected: 'd'.repeat(32),
 });
 
-/** A conversation whose sent message carried two images, a PDF, and an image Team no longer holds, and its reply. */
+/** A conversation whose sent message carried two images, a PDF, a text file, and an image Team no longer holds. */
 export function sentImagesHistory() {
   const at = '2026-10-13T09:30:00Z';
   return [
@@ -105,6 +105,7 @@ export function sentImagesHistory() {
         { id: PREVIEW_IMAGES.landscape, name: 'Harbour at dusk.jpg', media_type: 'image/jpeg', size: 2_481_337 },
         { id: PREVIEW_IMAGES.portrait, name: 'Team portrait.png', media_type: 'image/png', size: 1_903_442 },
         { id: 'c'.repeat(32), name: 'Launch brief.pdf', media_type: 'application/pdf', size: 482_133 },
+        { id: 'e'.repeat(32), name: 'Campaign notes.md', media_type: 'text/markdown', size: 2_140 },
         { id: PREVIEW_IMAGES.collected, name: 'Old draft.png', media_type: 'image/png', size: 811_020 },
       ],
     },

@@ -1,24 +1,35 @@
 <script>
   import { Button, DialogFrame, Modal } from '@shimpz/frontend';
   import { untrack } from 'svelte';
-  import { previewUrl } from '#lib/chat/attachments/previews.js';
+  import PdfPages from '#lib/chat/attachments/PdfPages.svelte';
+  import { attachmentKind } from '#lib/chat/attachments/files.js';
+  import { paged, previewable, previewUrl, stored } from '#lib/chat/attachments/previews.js';
+  import TextPreview from '#lib/chat/attachments/TextPreview.svelte';
   import { t } from '#lib/i18n/index.js';
 
-  // The images of one message opened over the chat (ADR-0093) in the design system's dialog frame, filling the viewport
-  // within its margin: each is Team's sanitized rendition loaded at its own size, never its thumbnail, fitted below the
-  // file's literal name. The arrow keys and the arrows along the frame's sides move to the previous or the next image;
-  // the thumbnail the viewer opened from stands in only when its rendition cannot load, and any other image that cannot
-  // load says so. Esc, a click on the backdrop, and Close each close it; whoever opened it gets focus back in `onclose`.
-  let { teamId, images, start = 0, thumbnail = null, onclose } = $props();
+  // The files of one message opened over the chat (ADR-0093) in the design system's dialog frame, filling the viewport
+  // within its margin, each below its literal name. An image is Team's sanitized rendition loaded at its own size, never
+  // its thumbnail; a PDF is Team's rendition of each of its pages; a text file is its own text; any other file says it
+  // has no preview. The arrow keys and the arrows along the frame's sides move to the previous or the next file; the
+  // thumbnail the viewer opened from stands in only when its rendition cannot load, and any other image that cannot load
+  // says so. Esc, a click on the backdrop, and Close each close it; whoever opened it gets focus back in `onclose`.
+  let { teamId, files, start = 0, thumbnail = null, onclose } = $props();
 
   const id = $props.id();
   let dialog = $state();
   // The viewer opens on `start`, then moves on its own.
   let index = $state(untrack(() => start));
   let failed = $state(false);
-  let current = $derived(images[index]);
+  let current = $derived(files[index]);
   let hasPrevious = $derived(index > 0);
-  let hasNext = $derived(index < images.length - 1);
+  let hasNext = $derived(index < files.length - 1);
+  let kind = $derived(attachmentKind(current.mediaType));
+  let shows = $derived(
+    previewable(teamId, current) ? 'image'
+      : paged(teamId, current) ? 'pdf'
+      : kind === 'text' && stored(teamId, current) ? 'text'
+      : 'none',
+  );
 
   $effect(() => {
     if (dialog && !dialog.open) dialog.showModal();
@@ -30,7 +41,7 @@
   }
 
   function show(next) {
-    if (next < 0 || next >= images.length || next === index) return;
+    if (next < 0 || next >= files.length || next === index) return;
     index = next;
     failed = false;
   }
@@ -54,7 +65,7 @@
 
 <Modal
   bind:element={dialog}
-  class="image-viewer"
+  class="file-viewer"
   size="xl"
   labelledBy={`${id}-title`}
   oncancel={(event) => {
@@ -64,16 +75,22 @@
   onclick={closeOnBackdrop}
 >
   <div class="viewer-shell">
-    <DialogFrame class="viewer" kicker={$t('attachments.kinds.image')} title={current.name} titleId={`${id}-title`}>
-      <div class="viewer-body" class:paged={images.length > 1}>
-        {#if images.length > 1}
-          <Button class="viewer-step" variant="ghost" type="button" disabled={!hasPrevious} aria-label={$t('attachments.previousImage')} title={$t('attachments.previousImage')} onclick={() => show(index - 1)}>
+    <DialogFrame class="viewer" kicker={$t('attachments').kinds[kind] ?? $t('attachments').kinds.file} title={current.name} titleId={`${id}-title`}>
+      <div class="viewer-body" class:paged={files.length > 1}>
+        {#if files.length > 1}
+          <Button class="viewer-step" variant="ghost" type="button" disabled={!hasPrevious} aria-label={$t('attachments.previousFile')} title={$t('attachments.previousFile')} onclick={() => show(index - 1)}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"></path></svg>
           </Button>
         {/if}
-        <figure class="stage">
-          {#key current.id}
-            {#if failed && !(index === start && thumbnail)}
+        <figure class="stage" class:scanned={shows === 'image' || shows === 'none'}>
+          {#key current.key ?? current.id}
+            {#if shows === 'pdf'}
+              <PdfPages {teamId} file={current} />
+            {:else if shows === 'text'}
+              <TextPreview {teamId} file={current} />
+            {:else if shows === 'none'}
+              <p class="unavailable">{$t('attachments.noPreview')}</p>
+            {:else if failed && !(index === start && thumbnail)}
               <p class="unavailable">{$t('attachments.notRead')}</p>
             {:else}
               <img
@@ -84,8 +101,8 @@
             {/if}
           {/key}
         </figure>
-        {#if images.length > 1}
-          <Button class="viewer-step" variant="ghost" type="button" disabled={!hasNext} aria-label={$t('attachments.nextImage')} title={$t('attachments.nextImage')} onclick={() => show(index + 1)}>
+        {#if files.length > 1}
+          <Button class="viewer-step" variant="ghost" type="button" disabled={!hasNext} aria-label={$t('attachments.nextFile')} title={$t('attachments.nextFile')} onclick={() => show(index + 1)}>
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7"></path></svg>
           </Button>
         {/if}
@@ -99,14 +116,14 @@
       onclick={close}
     >
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"></path></svg>
-      {$t('attachments.closeImage')}
+      {$t('attachments.closeViewer')}
     </Button>
   </div>
 </Modal>
 
 <style>
   /* The viewer fills the viewport, keeping the page's region margin on every side. */
-  :global(dialog.shimpz-modal.image-viewer) {
+  :global(dialog.shimpz-modal.file-viewer) {
     width: calc(100dvw - 2 * var(--gap-region));
     max-width: none;
     height: calc(100dvh - 2 * var(--gap-region));
@@ -177,7 +194,7 @@
     stroke-width: 1.5;
   }
 
-  /* The image keeps its own proportions and fits the stage, never larger than it is. */
+  /* An image keeps its own proportions and fits the stage, never larger than it is; pages and text fill it and scroll. */
   .stage {
     display: flex;
     min-width: 0;
@@ -185,6 +202,10 @@
     margin: 0;
     align-items: center;
     justify-content: center;
+    background: var(--shimpz-color-bg);
+  }
+
+  .stage.scanned {
     background:
       repeating-linear-gradient(to bottom, color-mix(in srgb, var(--shimpz-color-cyan) 4%, transparent) 0 1px, transparent 1px 3px),
       var(--shimpz-color-bg);
@@ -199,7 +220,7 @@
     object-fit: contain;
   }
 
-  /* An image Team can no longer read says so in its place. */
+  /* An image Team can no longer read, or a file with no preview, says so in its place. */
   .unavailable {
     margin: 0;
     color: var(--shimpz-color-text-dim);
