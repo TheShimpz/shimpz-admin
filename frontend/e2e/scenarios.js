@@ -6,6 +6,7 @@ import {
   attachmentReply,
   fileApprovalChallenge,
   recordAttachedTurn,
+  manyImagesHistory,
   sentImagesHistory,
   uploadFile,
 } from './attachmentScenarios.js';
@@ -245,6 +246,14 @@ const STARTS = {
     routines: [],
     runs: [],
     history: sentImagesHistory(),
+  }),
+  // More sent images than the session keeps thumbnails of, one per message down a long chat.
+  'attachment-many-images': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    history: manyImagesHistory(),
   }),
   // Every upload finds the Team's storage full.
   'attachments-full': () => ({

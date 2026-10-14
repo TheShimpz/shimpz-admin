@@ -123,6 +123,34 @@ export function sentImagesHistory() {
   ];
 }
 
+/**
+ * A long conversation whose every message carried two images: more images than the session keeps thumbnails of, in
+ * one history page (64 entries at most).
+ */
+export function manyImagesHistory(messages = 30) {
+  const at = '2026-10-13T09:30:00Z';
+  return Array.from({ length: messages }, (_, index) => {
+    const turn = (index + 1).toString(16).padStart(32, '0');
+    const file = (image) => ({
+      id: (2 * index + image + 1).toString(16).padStart(32, '0').replace(/^0/u, 'f'),
+      name: `photo-${2 * index + image + 1}.png`,
+      media_type: 'image/png',
+      size: 4_096,
+    });
+    return [
+      {
+        id: `${turn}:user`,
+        created_at: at,
+        kind: 'message',
+        role: 'user',
+        text: `Photos ${index + 1}`,
+        files: [file(0), file(1)],
+      },
+      { id: `${turn}:reply`, created_at: at, kind: 'message', role: 'assistant', text: `Noted ${index + 1}.`, author: 'Marketing' },
+    ];
+  }).flat();
+}
+
 // Team's attachment guidance in the interface language the message was written in (Admin assistant_route.py).
 const LIFECYCLE_GUIDANCE = Object.freeze({
   en: "Attachments can't be used to install or remove Assistants. Send that request again without attachments.",

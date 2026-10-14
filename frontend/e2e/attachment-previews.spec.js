@@ -205,6 +205,24 @@ test('a PDF opens on Team\'s renditions of its pages and a text file on its own 
   }
 });
 
+test('a long chat keeps every sent image while it scrolls past more thumbnails than the session holds', async ({ page }) => {
+  await openChat(page, 'attachment-many-images');
+  const conversation = page.locator('.conversation');
+  const cards = conversation.locator('.attachment-card');
+  const turns = conversation.locator('.turns');
+  await expect(cards).toHaveCount(60);
+  // Scroll through the whole chat both ways: every card near the view draws its thumbnail and lets go of it once far.
+  for (const to of ['top', 'bottom', 'top']) {
+    for (let step = 0; step < 30; step += 1) {
+      await turns.evaluate((node, edge) => node.scrollBy(0, edge === 'top' ? -600 : 600), to);
+      await page.waitForTimeout(20);
+    }
+  }
+  // No image was taken for one Team cannot read: all 60 cards remain, and the ones in view show their thumbnail.
+  await expect(cards).toHaveCount(60);
+  await expect(cards.first().locator('img')).toBeVisible();
+});
+
 test('a stored file\'s card saves its original under its own name, as Admin\'s own download @browser-sensitive', async ({
   page,
 }) => {

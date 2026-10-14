@@ -187,6 +187,9 @@ function load(key, url, draw) {
   return entry;
 }
 
+/** The session already shows MAX_PREVIEWS thumbnails: this one waits for one of them to leave, its image is fine. */
+export class PreviewCapacityError extends Error {}
+
 /**
  * Pin one sent image's thumbnail for a message that shows it: `cached` is the thumbnail at once when the session holds
  * it, and `ready` settles with `{ url, width, height }`, loading it first when it does not, or rejects, and the message
@@ -198,7 +201,7 @@ export function acquirePreview(teamId, fileId, draw = drawThumbnail) {
   let entry = entries.get(key);
   if (!entry) {
     if (!makeRoom()) {
-      return { cached: null, ready: Promise.reject(new Error('Too many image previews are shown.')), release() {} };
+      return { cached: null, ready: Promise.reject(new PreviewCapacityError('Too many image previews are shown.')), release() {} };
     }
     entry = load(key, previewUrl(teamId, fileId), draw);
   }

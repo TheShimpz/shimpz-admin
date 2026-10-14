@@ -8,6 +8,7 @@ import {
   MAX_LOADING,
   MAX_PREVIEWS,
   pageUrl,
+  PreviewCapacityError,
   paged,
   previewable,
   previewUrl,
@@ -247,7 +248,8 @@ test('beyond 48 thumbnails that messages still show, a further message keeps its
     await pin.ready;
   }
   const refused = acquirePreview('marketing', fileId(MAX_PREVIEWS), draw);
-  await assert.rejects(refused.ready, /Too many/);
+  // A full session defers the thumbnail with its own error, never one that says the image cannot be read.
+  await assert.rejects(refused.ready, PreviewCapacityError);
   refused.release();
   assert.equal(draws.length, MAX_PREVIEWS);
 });

@@ -2,7 +2,7 @@
   import { ActionLink, Button } from '@shimpz/frontend';
   import { downloadUrl, formatFileSize, saveFile } from '#lib/chat/attachments/files.js';
   import FileViewer from '#lib/chat/attachments/FileViewer.svelte';
-  import { acquirePreview, previewable, stored } from '#lib/chat/attachments/previews.js';
+  import { acquirePreview, PreviewCapacityError, previewable, stored } from '#lib/chat/attachments/previews.js';
   import { locale, t } from '#lib/i18n/index.js';
 
   // One file of a message as a compact card (ADR-0093), alike in the composer and in a sent message: a badge, its name
@@ -58,10 +58,12 @@
     return null;
   }
 
+  // The card is near while it is within NEAR_PX of its scrolling region, and only then holds its thumbnail, so a long
+  // chat holds only the thumbnails around what the person sees, never one per image it ever showed.
   $effect(() => {
-    if (!canPreview || near || !element) return undefined;
+    if (!canPreview || !element) return undefined;
     const observer = new IntersectionObserver((records) => {
-      if (records.some((record) => record.isIntersecting)) near = true;
+      near = records[records.length - 1].isIntersecting;
     }, { root: scrollRoot(element), rootMargin: `${NEAR_PX}px 0px` });
     observer.observe(element);
     return () => observer.disconnect();
@@ -72,9 +74,17 @@
     const pin = acquirePreview(teamId, file.id);
     let current = true;
     if (pin.cached) shown = pin.cached;
-    else pin.ready.then((thumbnail) => { if (current) shown = thumbnail; }, () => { if (current) onunavailable(file.id); });
+    else {
+      pin.ready.then(
+        (thumbnail) => { if (current) shown = thumbnail; },
+        // A full session only defers this thumbnail; only an image Team cannot read leaves its message.
+        (error) => { if (current && !(error instanceof PreviewCapacityError)) onunavailable(file.id); },
+      );
+    }
     return () => {
       current = false;
+      // Unpinned, the thumbnail may be evicted and its URL revoked: the far card shows its badge until it nears again.
+      shown = null;
       pin.release();
     };
   });
