@@ -232,13 +232,13 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             self.assertIs(self.admin_app._space_reset_with_history(lambda: deleted), deleted)
         cleared.assert_called_once_with()
 
-    def test_the_interface_registry_carries_names_but_never_the_canonical_english_summary(self) -> None:
+    def test_the_interface_registry_carries_each_assistants_name(self) -> None:
         registry = self.admin_app.team.TeamResponse(
             200,
             {
                 "assistants": [
-                    {"id": "hello-pulse", "title": "Hello Pulse", "summary": "Says hello.", "actions": ["hello"]},
-                    {"id": "salesnator", "title": "Salesnator", "summary": "Runs sales work.", "actions": ["sell"]},
+                    {"id": "hello-pulse", "title": "Hello Pulse"},
+                    {"id": "salesnator", "title": "Salesnator"},
                 ],
                 "trace_id": "a" * 32,
             },

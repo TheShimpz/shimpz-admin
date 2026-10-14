@@ -479,8 +479,18 @@ def resume_chat_human(
 
 
 def list_assistants() -> TeamResponse:
-    """Return the team's trusted, admission-controlled catalog."""
+    """Return every admissible Assistant of the Space by identity and name."""
     return _call("GET", "/v1/assistants")
+
+
+def team_assistant_registry(team_id: object) -> TeamResponse:
+    """Return one Team's admitted Assistants with the names, summaries, and Actions its own bindings declare."""
+    canonical_id = canonical_team_id(team_id)
+    return _call(
+        "GET",
+        f"/v1/teams/{canonical_id}/assistant-registry",
+        bounds=transport.ByteBounds(response=team_contract.MAX_TEAM_REGISTRY_BYTES),
+    )
 
 
 def list_local_assistants() -> TeamResponse:

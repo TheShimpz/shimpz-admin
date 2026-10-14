@@ -84,9 +84,26 @@ def binding_creator(team_id: str, assistant_id: str, version: str) -> str:
     return details["creators"][0]
 
 
-def registry(response: object) -> dict[str, assistant_proposal.Capability]:
+def names(response: object) -> dict[str, str]:
+    """The Space's admissible Assistants by name: each identity once, with its catalog name."""
     raw = _payload(response, "assistants")
     if not isinstance(raw, list) or len(raw) > MAX_ASSISTANTS:
+        raise ValueError("Assistant names are invalid")
+    named: dict[str, str] = {}
+    for item in raw:
+        if not isinstance(item, dict) or set(item) != {"id", "title"}:
+            raise ValueError("Assistant name fields are invalid")
+        assistant_id = team.canonical_assistant_id(item["id"])
+        if assistant_id != item["id"] or assistant_id in named:
+            raise ValueError("Assistant name identity is invalid")
+        named[assistant_id] = store_catalog.catalog_text(item["title"], 80)
+    return named
+
+
+def registry(response: object) -> dict[str, assistant_proposal.Capability]:
+    """One Team's admitted Assistants with the capabilities its own bindings declare."""
+    raw = _payload(response, "assistants")
+    if not isinstance(raw, list) or len(raw) > team_contract.MAX_TEAM_ASSISTANTS:
         raise ValueError("Assistant catalog is invalid")
     capabilities: dict[str, assistant_proposal.Capability] = {}
     for item in raw:

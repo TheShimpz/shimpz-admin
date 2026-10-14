@@ -161,7 +161,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
             ),
             mock.patch.object(
                 assistant_plan.team,
-                "list_assistants",
+                "team_assistant_registry",
                 return_value=registry if registry is not None else _registry(),
             ),
             mock.patch.object(
@@ -286,7 +286,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         store.get.return_value = (CLOUDFLARE,)
         with (
             mock.patch.object(assistant_plan.team, "list_installed_assistants", return_value=_installed()) as installed,
-            mock.patch.object(assistant_plan.team, "list_assistants", return_value=_registry()) as registry,
+            mock.patch.object(assistant_plan.team, "team_assistant_registry", return_value=_registry()) as registry,
             mock.patch.object(
                 assistant_plan.team,
                 "list_local_assistants",
@@ -316,7 +316,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 "list_installed_assistants",
                 return_value=assistant_plan.team.TeamResponse(503, {}),
             ) as installed,
-            mock.patch.object(assistant_plan.team, "list_assistants", return_value=_registry()) as registry,
+            mock.patch.object(assistant_plan.team, "team_assistant_registry", return_value=_registry()) as registry,
             mock.patch.object(assistant_plan.team, "list_local_assistants"),
             self.assertRaises(ValueError),
         ):
@@ -391,7 +391,9 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 assistant_plan.team, "list_installed_assistants", return_value=_installed(("enabled", "running"))
             ),
             mock.patch.object(
-                assistant_plan.team, "list_assistants", return_value=_registry(("enabled", ("inspect-resource",)))
+                assistant_plan.team,
+                "team_assistant_registry",
+                return_value=_registry(("enabled", ("inspect-resource",))),
             ),
             mock.patch.object(
                 assistant_plan.team, "list_local_assistants", return_value=_local_inventory()
@@ -449,7 +451,9 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                     mock.patch.object(
                         assistant_plan.team, "list_installed_assistants", return_value=installed
                     ) as installed_call,
-                    mock.patch.object(assistant_plan.team, "list_assistants", return_value=registry) as registry_call,
+                    mock.patch.object(
+                        assistant_plan.team, "team_assistant_registry", return_value=registry
+                    ) as registry_call,
                     mock.patch.object(assistant_plan.team, "list_local_assistants", return_value=_local_inventory()),
                     mock.patch.object(assistant_plan.local, "capability_plan") as planner,
                 ):
@@ -460,7 +464,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                     )
                 self.assertEqual(result, assistant_plan.Preparation())
                 installed_call.assert_called_once_with("team_1")
-                registry_call.assert_called_once_with()
+                registry_call.assert_called_once_with("team_1")
                 planner.assert_not_called()
 
     def test_valid_enabled_scope_keeps_catalog_and_dispatch_union(self) -> None:
@@ -472,7 +476,9 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 assistant_plan.team, "list_installed_assistants", return_value=_installed(("enabled", "running"))
             ),
             mock.patch.object(
-                assistant_plan.team, "list_assistants", return_value=_registry(("enabled", ("inspect-resource",)))
+                assistant_plan.team,
+                "team_assistant_registry",
+                return_value=_registry(("enabled", ("inspect-resource",))),
             ),
             mock.patch.object(
                 assistant_plan.team,
@@ -637,8 +643,8 @@ class AssistantPlanPreparationTests(unittest.TestCase):
             ),
             mock.patch.object(
                 assistant_plan.team,
-                "list_assistants",
-                side_effect=lambda: response("/v1/assistants", _registry()),
+                "team_assistant_registry",
+                side_effect=lambda _team_id: response("/v1/teams/team_1/assistant-registry", _registry()),
             ),
         ):
             result = assistant_plan.team_inventory("team_1")

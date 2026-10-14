@@ -208,6 +208,31 @@ class AssistantInventoryEdges(unittest.TestCase):
             store_catalog.catalog_text(" invalid ", 80)
 
 
+    def test_a_teams_registry_holds_at_most_its_assistants(self) -> None:
+        entry = {"title": "Title", "summary": "Summary", "actions": ["act"]}
+        entries = [{"id": f"assistant-{index:02d}", **entry} for index in range(17)]
+        self.assertEqual(len(assistant_inventory.registry(team.TeamResponse(200, {"assistants": entries[:16]}))), 16)
+        with self.assertRaisesRegex(ValueError, "Assistant catalog is invalid"):
+            assistant_inventory.registry(team.TeamResponse(200, {"assistants": entries}))
+
+    def test_names_admit_each_identity_once_with_its_name_only(self) -> None:
+        named = assistant_inventory.names(
+            team.TeamResponse(200, {"assistants": [{"id": "hello-pulse", "title": "Hello Pulse"}]})
+        )
+        self.assertEqual(named, {"hello-pulse": "Hello Pulse"})
+        refused = (
+            ({"assistants": None}, "Assistant names are invalid"),
+            ({"assistants": [{"id": "x"}] * 129}, "Assistant names are invalid"),
+            ({"assistants": [{"id": "hello-pulse", "title": "Hello", "unexpected": "S"}]}, "name fields are invalid"),
+            ({"assistants": [None]}, "name fields are invalid"),
+            ({"assistants": [{"id": "Hello", "title": "Hello"}]}, "canonical"),
+            ({"assistants": [{"id": "hello-pulse", "title": "A"}, {"id": "hello-pulse", "title": "B"}]}, "identity"),
+        )
+        for body, message in refused:
+            with self.subTest(body=str(body)[:60]), self.assertRaisesRegex(ValueError, message):
+                assistant_inventory.names(team.TeamResponse(200, body))
+
+
 class AssistantPlanEdges(unittest.TestCase):
     def test_selection_and_empty_plan_fail_closed(self) -> None:
         with self.assertRaises(ValueError):

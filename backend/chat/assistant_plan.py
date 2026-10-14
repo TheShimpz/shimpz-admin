@@ -86,7 +86,7 @@ def team_inventory(
 ]:
     with ThreadPoolExecutor(max_workers=2, thread_name_prefix="assistant-inventory") as executor:
         installed_future = submit_in_context(executor, team.list_installed_assistants, team_id)
-        registry_future = submit_in_context(executor, team.list_assistants)
+        registry_future = submit_in_context(executor, team.team_assistant_registry, team_id)
         installed_response = installed_future.result()
         registry_response = registry_future.result()
     installed = assistant_inventory.installed(installed_response)

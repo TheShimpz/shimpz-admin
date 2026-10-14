@@ -13,11 +13,7 @@ from protocol.http.v1 import payload as team_contract
 
 
 def assistants_list() -> JSONResponse:
-    """The registry names the interface shows, without Team's canonical English summaries (ADR-0091).
-
-    Team's registry summary is the English catalog text it plans with; the interface never shows it, so only each
-    identity and name reach the browser.
-    """
+    """The Space's Assistant names the interface shows, each identity with its catalog name (ADR-0091)."""
     return team_http.response(_interface_registry)
 
 
@@ -26,11 +22,11 @@ def _interface_registry() -> team.TeamResponse:
     if not 200 <= response.status < 300:
         return response
     try:
-        registry = assistant_inventory.registry(response)
+        named = assistant_inventory.names(response)
     except ValueError:
         raise HTTPException(status_code=502, detail="Team Assistant registry is invalid") from None
     return team.TeamResponse(
-        200, {"assistants": [{"id": item.assistant_id, "title": item.name} for item in registry.values()]}
+        200, {"assistants": [{"id": assistant_id, "title": name} for assistant_id, name in named.items()]}
     )
 
 

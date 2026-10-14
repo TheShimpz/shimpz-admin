@@ -77,7 +77,7 @@ class AssistantUninstallDirectoryTests(unittest.TestCase):
             _inventory(("shimpz-cloudflare", "0.4.4")),
             mock.patch.object(
                 assistant_uninstall.team,
-                "list_assistants",
+                "team_assistant_registry",
                 return_value=_registry("shimpz-cloudflare"),
             ),
         ):
@@ -91,7 +91,7 @@ class AssistantUninstallDirectoryTests(unittest.TestCase):
     def test_registry_drift_fails_closed(self) -> None:
         with (
             _inventory(("shimpz-cloudflare", "0.4.4")),
-            mock.patch.object(assistant_uninstall.team, "list_assistants", return_value=_registry()),
+            mock.patch.object(assistant_uninstall.team, "team_assistant_registry", return_value=_registry()),
             self.assertRaises(ValueError),
         ):
             assistant_uninstall.candidates("team_1")

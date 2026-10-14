@@ -16,7 +16,7 @@ class UninstallResult:
 def candidates(team_id: str) -> tuple[assistant_proposal.UninstallCandidate, ...]:
     """Return the exact installed Assistant directory from strict Team-owned state."""
     installed = assistant_inventory.installed(team.list_installed_assistants(team_id))
-    registry = assistant_inventory.registry(team.list_assistants())
+    registry = assistant_inventory.registry(team.team_assistant_registry(team_id))
     if any(assistant_id not in registry for assistant_id in installed):
         raise ValueError("installed Assistant scope is not authoritative")
     return tuple(

@@ -175,6 +175,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         team.list_assistants()
         team.list_local_assistants()
         team.list_installed_assistants("team_1")
+        team.team_assistant_registry("team_1")
         team.install_assistant(
             "team_1",
             {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
@@ -189,6 +190,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 ("GET", "/v1/assistants"),
                 ("GET", "/v1/local-assistants"),
                 ("GET", "/v1/teams/team_1/assistants"),
+                ("GET", "/v1/teams/team_1/assistant-registry"),
                 ("POST", "/v1/teams/team_1/assistants"),
                 ("DELETE", "/v1/teams/team_1/assistants/hello-pulse"),
                 ("POST", "/v1/teams/team_1/assistants/local"),
@@ -196,15 +198,15 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             ],
         )
         self.assertEqual(
-            json.loads(_TeamHandler.requests[3]["body"]),
+            json.loads(_TeamHandler.requests[4]["body"]),
             {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
         )
         self.assertEqual(
-            json.loads(_TeamHandler.requests[5]["body"]),
+            json.loads(_TeamHandler.requests[6]["body"]),
             {"image_id": "sha256:" + ("b" * 64)},
         )
         self.assertEqual(
-            json.loads(_TeamHandler.requests[6]["body"]),
+            json.loads(_TeamHandler.requests[7]["body"]),
             {"image_id": "sha256:" + ("c" * 64)},
         )
         for request in _TeamHandler.requests:
