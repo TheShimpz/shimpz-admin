@@ -4904,12 +4904,16 @@ test.describe('Team Routines', () => {
 
   test('an edited prompt never reaches another Team the page moved to while its card was being revoked', async ({ page }) => {
     const release = await holdRevocation(page);
-    // Neo's chat attaches and takes messages, so only the card's own Team binding can keep the text out of it.
+    const scenario = await recordRoutine(page, 'routine-card-teams');
+    // Neo's chat attaches and answers like any Team's, so only the card's own Team binding keeps the text out of it.
     const neoFrames = [];
     await routeChat(page, 'neo', (channel) => {
-      channel.onMessage((message) => neoFrames.push(JSON.parse(message)));
+      channel.onMessage((message) => {
+        const frame = JSON.parse(message);
+        neoFrames.push(frame);
+        for (const reply of scenario.chat.message(frame, 'neo')) channel.send(reply);
+      });
     });
-    const scenario = await recordRoutine(page, 'routine-card-teams');
     const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
     await card.getByRole('button', { name: 'Edit', exact: true }).click();
     await card.getByRole('button', { name: 'Send', exact: true }).click();
