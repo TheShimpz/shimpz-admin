@@ -203,7 +203,7 @@ class FrontendSessionSocketParityTests(unittest.TestCase):
             {"type", "idle_seconds", "absolute_seconds", "source_revision", "source_time"},
         )
         self.assertIn(
-            "exact(frame, ['type', 'idle_seconds', 'absolute_seconds', 'source_revision', 'source_time'])", source
+            "exactKeys(frame, ['type', 'idle_seconds', 'absolute_seconds', 'source_revision', 'source_time'])", source
         )
         self.assertIn(f"const MAX_SOURCE_TIME = {socket_frames.MAX_SOURCE_TIME:_};", source)
         match = re.search(r"^const SOURCE_REVISION_RE = (.+);$", source, re.MULTILINE)
