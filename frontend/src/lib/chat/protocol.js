@@ -15,7 +15,6 @@ import { isLocale } from '../i18n/locales.js';
 import { ASSISTANT_LIMIT_REACHED, exactKeys, LocalApiError } from '../api.js';
 import { codePointLength, isShownText } from '../grammar.js';
 import {
-  ASSISTANT_ID_RE,
   DIGEST_RE,
   isActionId,
   isAssistantId,
@@ -527,11 +526,7 @@ function canonicalChatTurn(turn) {
     new Set(turn.files).size !== turn.files.length ||
     !Array.isArray(turn.assistant_ids) ||
     turn.assistant_ids.length > MAX_ASSISTANTS ||
-    turn.assistant_ids.some((assistantId) => (
-      typeof assistantId !== 'string' ||
-      assistantId.length > 80 ||
-      !ASSISTANT_ID_RE.test(assistantId)
-    )) ||
+    turn.assistant_ids.some((assistantId) => !isAssistantId(assistantId)) ||
     new Set(turn.assistant_ids).size !== turn.assistant_ids.length
   ) {
     throw new LocalApiError('Invalid local chat request.');

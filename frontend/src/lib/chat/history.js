@@ -15,7 +15,8 @@ import { synced } from '../session/synced.js';
 import { ASSISTANT_LIMIT_REACHED, exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
 import { isInstant, isShownText } from '../grammar.js';
 import {
-  ASSISTANT_ID_RE,
+  isAssistantId,
+  isIdentifier,
   MAX_TEAM_NAME_CHARS,
   OPAQUE_ID_RE,
   PUBLIC_CREATOR_RE,
@@ -44,9 +45,12 @@ function publicText(value, maximum, status) {
 }
 
 function assistantId(value, status) {
-  if (typeof value !== 'string' || value.length > 80 || !ASSISTANT_ID_RE.test(value)) {
-    throw invalidHistory(status);
-  }
+  if (!isAssistantId(value)) throw invalidHistory(status);
+  return value;
+}
+
+function providerId(value, status) {
+  if (!isIdentifier(value)) throw invalidHistory(status);
   return value;
 }
 
@@ -84,7 +88,7 @@ function installAssistant(value, status) {
     !['local', 'published'].includes(value.provenance) ||
     !['pending', 'installed', 'failed'].includes(value.status)
   ) throw invalidHistory(status);
-  const providers = value.providers.map((provider) => assistantId(provider, status));
+  const providers = value.providers.map((provider) => providerId(provider, status));
   if (providers.some((provider, index) => index > 0 && providers[index - 1] >= provider)) {
     throw invalidHistory(status);
   }

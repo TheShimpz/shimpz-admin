@@ -4,7 +4,7 @@ import { catalogIconUrl } from './icons.js';
 import { isLocale } from '../i18n/locales.js';
 import { exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
 import { isShownText } from '../grammar.js';
-import { ASSISTANT_ID_RE, DIGEST_RE, PUBLIC_CREATOR_RE, SEMANTIC_VERSION_RE, TEAM_ID_RE } from '../ids.js';
+import { DIGEST_RE, isAssistantId, PUBLIC_CREATOR_RE, SEMANTIC_VERSION_RE, TEAM_ID_RE } from '../ids.js';
 
 const MAX_CONCURRENT_ICONS = 2;
 const MAX_ICON_BYTES = 1024 * 1024;
@@ -295,8 +295,7 @@ export function loadPublicAssistantIcon(fetcher, assistantId, options = {}) {
   const { delay = sleep, signal, iconDigest } = options;
   if (
     typeof fetcher !== 'function' ||
-    typeof assistantId !== 'string' ||
-    !ASSISTANT_ID_RE.test(assistantId) ||
+    !isAssistantId(assistantId) ||
     typeof iconDigest !== 'string' ||
     !DIGEST_RE.test(iconDigest) ||
     typeof delay !== 'function' ||
@@ -335,8 +334,7 @@ function installedRead(teamId, assistantId, locale, options, invalid) {
     typeof call !== 'function' ||
     typeof teamId !== 'string' ||
     !TEAM_ID_RE.test(teamId) ||
-    typeof assistantId !== 'string' ||
-    !ASSISTANT_ID_RE.test(assistantId) ||
+    !isAssistantId(assistantId) ||
     !isLocale(locale) ||
     (signal !== undefined && !(signal instanceof AbortSignal))
   ) {
@@ -367,8 +365,7 @@ export function loadLocalAssistantDetails(imageId, assistantId, locale, options 
   if (
     typeof call !== 'function' ||
     !DIGEST_RE.test(imageId) ||
-    typeof assistantId !== 'string' ||
-    !ASSISTANT_ID_RE.test(assistantId) ||
+    !isAssistantId(assistantId) ||
     !isLocale(locale) ||
     typeof delay !== 'function' ||
     (signal !== undefined && !(signal instanceof AbortSignal))

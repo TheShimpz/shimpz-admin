@@ -1,7 +1,6 @@
 import { ASSISTANT_LIMIT_REACHED, exactEnvelope, exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
 import { isShownText } from '../grammar.js';
 import {
-  ASSISTANT_ID_RE,
   DIGEST_RE,
   isAssistantId,
   isIdentifier,
@@ -51,9 +50,7 @@ export async function listAssistantCatalog(call = socketReads.call) {
       !entry ||
       typeof entry !== 'object' ||
       !exactKeys(entry, ['id', 'title']) ||
-      typeof id !== 'string' ||
-      id.length > 80 ||
-      !ASSISTANT_ID_RE.test(id) ||
+      !isAssistantId(id) ||
       !isShownText(name, 80) ||
       seen.has(id)
     ) {
@@ -136,9 +133,7 @@ export async function listPublicAssistantCatalog(locale, call = socketReads.call
         'stored_inputs',
         'summary',
       ]) ||
-      typeof entry.assistant_id !== 'string' ||
-      entry.assistant_id.length > 80 ||
-      !ASSISTANT_ID_RE.test(entry.assistant_id) ||
+      !isAssistantId(entry.assistant_id) ||
       typeof entry.assistant_version !== 'string' ||
       !SEMANTIC_VERSION_RE.test(entry.assistant_version) ||
       !isShownText(entry.name, 80) ||
@@ -200,9 +195,7 @@ export async function listInstalledAssistants(teamId, call = socketReads.call) {
     const status = entry?.status;
     if (
       !exactKeys(entry, ['assistant', 'assistant_version', 'provenance', 'status']) ||
-      typeof assistant !== 'string' ||
-      assistant.length > 80 ||
-      !ASSISTANT_ID_RE.test(assistant) ||
+      !isAssistantId(assistant) ||
       typeof assistantVersion !== 'string' ||
       !SEMANTIC_VERSION_RE.test(assistantVersion) ||
       !RUNTIME_STATUS_RE.test(status) ||
@@ -230,7 +223,7 @@ export async function installAssistant(teamId, assistantId, sourceDigest, { onPr
   if (typeof teamId !== 'string' || !TEAM_ID_RE.test(teamId)) {
     throw new LocalApiError('Invalid local Assistant request.');
   }
-  if (typeof assistantId !== 'string' || assistantId.length > 80 || !ASSISTANT_ID_RE.test(assistantId)) {
+  if (!isAssistantId(assistantId)) {
     throw new LocalApiError('Invalid local Assistant request.');
   }
   if (typeof sourceDigest !== 'string' || !DIGEST_RE.test(sourceDigest)) {
@@ -399,8 +392,7 @@ export async function installLocalAssistant(teamId, imageId, { onProgress } = {}
   if ('updated' in body) keys.push('updated');
   if (
     !exactEnvelope(body, keys) ||
-    typeof body.assistant !== 'string' ||
-    !ASSISTANT_ID_RE.test(body.assistant) ||
+    !isAssistantId(body.assistant) ||
     body.image_id !== imageId ||
     typeof body.installed !== 'boolean' ||
     ('updated' in body && typeof body.updated !== 'boolean') ||
@@ -422,9 +414,7 @@ export async function uninstallAssistant(teamId, assistantId) {
   if (
     typeof teamId !== 'string' ||
     !TEAM_ID_RE.test(teamId) ||
-    typeof assistantId !== 'string' ||
-    assistantId.length > 80 ||
-    !ASSISTANT_ID_RE.test(assistantId)
+    !isAssistantId(assistantId)
   ) {
     throw new LocalApiError('Invalid local Assistant request.');
   }
