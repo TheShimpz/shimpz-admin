@@ -1,14 +1,26 @@
 const HTTP_URL = /^https?:\/\//i;
 const URL_AUTHORITY = /^https?:\/\/([^/?#]*)/i;
 const VISIBLE_ASCII = /^[\x21-\x7e]+$/;
-const LIST_ITEM = /^ {0,3}([-+*]|\d+[.)])\s+(.+)$/;
-const HEADING = /^(#{1,3})\s+(.+?)\s*$/;
+// A list item and a heading start their text at its first non-space character, so the space before it is matched once:
+// `\s+(.+)$` let a long run of spaces be tried from every split, seconds on one reply line.
+const LIST_ITEM = /^ {0,3}([-+*]|\d+[.)])\s+(\S.*)$/;
+const HEADING = /^(#{1,3})\s+(\S.*)$/;
 const TABLE_DIVIDER = /^:?-{3,}:?$/;
 const CHAT_NOTICE = /^:(success|warning|error)\[([^\[\]\r\n]+)\]$/;
 const MAX_TABLE_COLUMNS = 32;
 const MAX_TABLE_ROWS = 256;
 // The longest link destination shown as a link.
 const MAX_LINK_CHARS = 2048;
+
+// A heading's text without its trailing space or closing `#` run, read from the end once: an anchored `\s+#+\s*$` was
+// tried from every space of a long run.
+function headingText(text) {
+  const trimmed = text.trimEnd();
+  let end = trimmed.length;
+  while (end > 0 && trimmed[end - 1] === '#') end -= 1;
+  if (end === trimmed.length || end === 0 || !/\s/u.test(trimmed[end - 1])) return trimmed;
+  return trimmed.slice(0, end).trimEnd();
+}
 
 function textToken(text) {
   return { type: 'text', text };
@@ -291,7 +303,7 @@ export function parseMarkdown(markdown, { chatNotices = false } = {}) {
       blocks.push({
         type: 'heading',
         level: heading[1].length,
-        inlines: parseInline(heading[2].replace(/\s+#+\s*$/, '')),
+        inlines: parseInline(headingText(heading[2])),
       });
       index += 1;
       continue;

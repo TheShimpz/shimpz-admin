@@ -232,3 +232,13 @@ test('a destination longer than any link stays text, and a reply of unclosed lin
     assert.ok(performance.now() - started < 1500, text.slice(0, 8));
   }
 });
+
+test('a heading or list line with a long run of spaces is read in linear time, and closing hashes are dropped', () => {
+  assert.deepEqual(parseMarkdown('## Title ##  '), [{ type: 'heading', level: 2, inlines: [{ type: 'text', text: 'Title' }] }]);
+  assert.deepEqual(parseMarkdown('# C#'), [{ type: 'heading', level: 1, inlines: [{ type: 'text', text: 'C#' }] }]);
+  for (const line of [`# a${' '.repeat(60_000)}b`, `- ${' '.repeat(60_000)} `, `1. a${' '.repeat(60_000)}`]) {
+    const started = performance.now();
+    parseMarkdown(line);
+    assert.ok(performance.now() - started < 1500, line.slice(0, 4));
+  }
+});
