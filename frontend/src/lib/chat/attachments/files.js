@@ -281,11 +281,16 @@ function delay(ms, signal) {
       reject(signal.reason);
       return;
     }
-    const timer = globalThis.setTimeout(resolve, ms);
-    signal?.addEventListener('abort', () => {
+    // The abort listener leaves with the timer, so a signal that outlives many retries holds none of them.
+    const abort = () => {
       globalThis.clearTimeout(timer);
       reject(signal.reason);
-    }, { once: true });
+    };
+    const timer = globalThis.setTimeout(() => {
+      signal?.removeEventListener('abort', abort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', abort, { once: true });
   });
 }
 
