@@ -13,7 +13,7 @@ import {
 } from '../routines/protocol.js';
 import { isLocale } from '../i18n/locales.js';
 import { ASSISTANT_LIMIT_REACHED, exactKeys, LocalApiError } from '../api.js';
-import { codePointLength, CONTROL_RE } from '../grammar.js';
+import { codePointLength, isShownText } from '../grammar.js';
 import {
   ASSISTANT_ID_RE,
   DIGEST_RE,
@@ -113,16 +113,7 @@ export function requireTeam(teamId) {
 }
 
 function canonicalTeam(value) {
-  if (
-    typeof value !== 'string' ||
-    !value ||
-    value !== value.trim() ||
-    codePointLength(value) > MAX_TEAM_NAME_CHARS ||
-    SECRET_CONTROL_RE.test(value)
-  ) {
-    throw new LocalApiError('The local chat response is invalid.');
-  }
-  return value;
+  return canonicalPublicText(value, MAX_TEAM_NAME_CHARS);
 }
 
 export function canonicalId(value, message = 'The local chat response is invalid.', valid = isAssistantId) {
@@ -131,13 +122,7 @@ export function canonicalId(value, message = 'The local chat response is invalid
 }
 
 export function canonicalPublicText(value, maximum) {
-  if (
-    typeof value !== 'string' ||
-    !value ||
-    value !== value.trim() ||
-    codePointLength(value) > maximum ||
-    SECRET_CONTROL_RE.test(value)
-  ) {
+  if (!isShownText(value, maximum, SECRET_CONTROL_RE)) {
     throw new LocalApiError('The local chat response is invalid.');
   }
   return value;
@@ -945,11 +930,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       !Number.isInteger(value.status) ||
       value.status < 400 ||
       value.status > 599 ||
-      typeof value.detail !== 'string' ||
-      !value.detail ||
-      value.detail !== value.detail.trim() ||
-      codePointLength(value.detail) > MAX_ERROR_DETAIL_CHARS ||
-      CONTROL_RE.test(value.detail)
+      !isShownText(value.detail, MAX_ERROR_DETAIL_CHARS)
     ) {
       throw new LocalApiError('The local chat response is invalid.');
     }

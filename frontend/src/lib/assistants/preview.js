@@ -3,7 +3,7 @@ import { AssistantPageError, canonicalPageCopy, isDisplayText, SUMMARY_CHARS } f
 import { catalogIconUrl } from './icons.js';
 import { isLocale } from '../i18n/locales.js';
 import { exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
-import { codePointLength, CONTROL_RE } from '../grammar.js';
+import { isShownText } from '../grammar.js';
 import { ASSISTANT_ID_RE, DIGEST_RE, PUBLIC_CREATOR_RE, SEMANTIC_VERSION_RE, TEAM_ID_RE } from '../ids.js';
 
 const MAX_CONCURRENT_ICONS = 2;
@@ -176,12 +176,8 @@ function acceptedSummary(body, locale, status, invalid = 'The Local Assistant su
   if (
     !exactKeys(body, ['locale', 'summary']) ||
     body.locale !== locale ||
-    typeof summary !== 'string' ||
-    !summary ||
-    summary !== summary.trim() ||
-    summary !== summary.normalize('NFC') ||
-    codePointLength(summary) > SUMMARY_CHARS ||
-    CONTROL_RE.test(summary)
+    !isShownText(summary, SUMMARY_CHARS) ||
+    summary !== summary.normalize('NFC')
   ) {
     throw new LocalApiError(invalid, status);
   }

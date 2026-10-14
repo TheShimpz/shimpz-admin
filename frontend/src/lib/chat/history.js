@@ -12,7 +12,7 @@ import { parseTaskUsage } from './usage.js';
 import { sessionFamily } from '../session/family.js';
 import { synced } from '../session/synced.js';
 import { ASSISTANT_LIMIT_REACHED, exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
-import { codePointLength, isInstant } from '../grammar.js';
+import { isInstant, isShownText } from '../grammar.js';
 import {
   ASSISTANT_ID_RE,
   MAX_TEAM_NAME_CHARS,
@@ -34,13 +34,7 @@ function invalidHistory(status = 0) {
 }
 
 function boundedText(value, maximum, controls, status) {
-  if (
-    typeof value !== 'string' ||
-    !value ||
-    value !== value.trim() ||
-    codePointLength(value) > maximum ||
-    controls.test(value)
-  ) throw invalidHistory(status);
+  if (!isShownText(value, maximum, controls)) throw invalidHistory(status);
   return value;
 }
 

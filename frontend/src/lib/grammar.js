@@ -15,6 +15,20 @@ export function codePointLength(value) {
   return [...value].length;
 }
 
+/**
+ * Text shown as it was written: a non-empty string with no surrounding space and none of `controls`, at most `maximum`
+ * code points long.
+ */
+export function isShownText(value, maximum, controls = CONTROL_RE) {
+  return (
+    typeof value === 'string' &&
+    value !== '' &&
+    value === value.trim() &&
+    codePointLength(value) <= maximum &&
+    !controls.test(value)
+  );
+}
+
 /** A real UTC instant in whole seconds, written YYYY-MM-DDTHH:MM:SSZ. */
 export function isInstant(value) {
   // Date.parse rolls impossible dates such as February 30 forward, so the instant must round-trip exactly.

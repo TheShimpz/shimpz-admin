@@ -1,5 +1,5 @@
 import { ASSISTANT_LIMIT_REACHED, exactEnvelope, exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
-import { codePointLength, CONTROL_RE } from '../grammar.js';
+import { isShownText } from '../grammar.js';
 import {
   ASSISTANT_ID_RE,
   DIGEST_RE,
@@ -54,11 +54,7 @@ export async function listAssistantCatalog(call = socketReads.call) {
       typeof id !== 'string' ||
       id.length > 80 ||
       !ASSISTANT_ID_RE.test(id) ||
-      typeof name !== 'string' ||
-      name !== name.trim() ||
-      !name ||
-      codePointLength(name) > 80 ||
-      CONTROL_RE.test(name) ||
+      !isShownText(name, 80) ||
       seen.has(id)
     ) {
       throw new LocalApiError('The local Assistant catalog is invalid.', response.status);
@@ -145,16 +141,8 @@ export async function listPublicAssistantCatalog(locale, call = socketReads.call
       !ASSISTANT_ID_RE.test(entry.assistant_id) ||
       typeof entry.assistant_version !== 'string' ||
       !SEMANTIC_VERSION_RE.test(entry.assistant_version) ||
-      typeof entry.name !== 'string' ||
-      entry.name !== entry.name.trim() ||
-      !entry.name ||
-      codePointLength(entry.name) > 80 ||
-      CONTROL_RE.test(entry.name) ||
-      typeof entry.summary !== 'string' ||
-      entry.summary !== entry.summary.trim() ||
-      !entry.summary ||
-      codePointLength(entry.summary) > SUMMARY_CHARS ||
-      CONTROL_RE.test(entry.summary) ||
+      !isShownText(entry.name, 80) ||
+      !isShownText(entry.summary, SUMMARY_CHARS) ||
       !Array.isArray(entry.creators) ||
       entry.creators.length < 1 ||
       entry.creators.length > 16 ||
@@ -355,16 +343,8 @@ export async function listLocalAssistantSnapshots(call = socketReads.call) {
       !isAssistantId(entry.assistant_id) ||
       typeof entry.assistant_version !== 'string' ||
       !SEMANTIC_VERSION_RE.test(entry.assistant_version) ||
-      typeof entry.name !== 'string' ||
-      entry.name !== entry.name.trim() ||
-      !entry.name ||
-      codePointLength(entry.name) > 80 ||
-      CONTROL_RE.test(entry.name) ||
-      typeof entry.summary !== 'string' ||
-      entry.summary !== entry.summary.trim() ||
-      !entry.summary ||
-      codePointLength(entry.summary) > SUMMARY_CHARS ||
-      CONTROL_RE.test(entry.summary) ||
+      !isShownText(entry.name, 80) ||
+      !isShownText(entry.summary, SUMMARY_CHARS) ||
       !Array.isArray(entry.actions) ||
       entry.actions.length < 1 ||
       entry.actions.length > 128 ||

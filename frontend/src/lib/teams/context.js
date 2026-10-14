@@ -4,7 +4,7 @@ import { socketReads } from '../session/socket.js';
 import { listAssistantCatalog, listInstalledAssistants } from '../assistants/api.js';
 import { synced } from '../session/synced.js';
 import { exactKeys, jsonObject, LocalApiError, publicError, safeApiError } from '../api.js';
-import { codePointLength, CONTROL_RE } from '../grammar.js';
+import { codePointLength, isShownText } from '../grammar.js';
 import { ASSISTANT_ID_RE, MAX_TEAM_NAME_CHARS, TEAM_ID_RE, TRACE_ID_RE } from '../ids.js';
 
 const MAX_TEAMS = 128;
@@ -68,13 +68,7 @@ function preferredTeamId(value) {
 
 /** A Team's display name exactly as Team admits it, or a thrown LocalApiError carrying `message`. */
 export function canonicalTeamName(value, message = 'The local Team inventory is invalid.') {
-  if (
-    typeof value !== 'string' ||
-    !value ||
-    value !== value.trim() ||
-    codePointLength(value) > MAX_TEAM_NAME_CHARS ||
-    CONTROL_RE.test(value)
-  ) {
+  if (!isShownText(value, MAX_TEAM_NAME_CHARS)) {
     throw new LocalApiError(message);
   }
   return value;
