@@ -326,10 +326,10 @@ export function loadLocalAssistantSummary(imageId, locale, options = {}) {
 }
 
 /**
- * Fetch one installed Assistant's summary in one interface language, read by Team from the binding's own language
- * pack (ADR-0091). The answer must be exactly that language; there is no English fallback.
+ * One installed Assistant's read in one interface language: its socket call, abort signal, and exact parameters, or a
+ * thrown LocalApiError saying `invalid` for anything else.
  */
-export async function loadAssistantSummary(teamId, assistantId, locale, options = {}) {
+function installedRead(teamId, assistantId, locale, options, invalid) {
   const { signal, call = socketReads.call } = options;
   if (
     typeof call !== 'function' ||
@@ -340,9 +340,19 @@ export async function loadAssistantSummary(teamId, assistantId, locale, options 
     !isLocale(locale) ||
     (signal !== undefined && !(signal instanceof AbortSignal))
   ) {
-    throw new LocalApiError('Invalid Assistant summary request.');
+    throw new LocalApiError(invalid);
   }
-  const params = { team_id: teamId, assistant_id: assistantId, locale };
+  return { call, signal, params: { team_id: teamId, assistant_id: assistantId, locale } };
+}
+
+/**
+ * Fetch one installed Assistant's summary in one interface language, read by Team from the binding's own language
+ * pack (ADR-0091). The answer must be exactly that language; there is no English fallback.
+ */
+export async function loadAssistantSummary(teamId, assistantId, locale, options = {}) {
+  const { call, signal, params } = installedRead(
+    teamId, assistantId, locale, options, 'Invalid Assistant summary request.',
+  );
   const response = await read(call, 'assistants.summary', params, signal);
   if (!response.ok) throw await responseError(response, 'The Assistant summary is unavailable.');
   return acceptedSummary(await jsonObject(response), locale, response.status, 'The Assistant summary is invalid.');
@@ -374,19 +384,9 @@ export function loadLocalAssistantDetails(imageId, assistantId, locale, options 
  * binding's own language pack (ADR-0091). There is no English fallback and no substitute from discovery.
  */
 export async function loadAssistantDetails(teamId, assistantId, locale, options = {}) {
-  const { signal, call = socketReads.call } = options;
-  if (
-    typeof call !== 'function' ||
-    typeof teamId !== 'string' ||
-    !TEAM_ID_RE.test(teamId) ||
-    typeof assistantId !== 'string' ||
-    !ASSISTANT_ID_RE.test(assistantId) ||
-    !isLocale(locale) ||
-    (signal !== undefined && !(signal instanceof AbortSignal))
-  ) {
-    throw new LocalApiError('Invalid Assistant details request.');
-  }
-  const params = { team_id: teamId, assistant_id: assistantId, locale };
+  const { call, signal, params } = installedRead(
+    teamId, assistantId, locale, options, 'Invalid Assistant details request.',
+  );
   const response = await read(call, 'assistants.details', params, signal);
   if (!response.ok) throw await responseError(response, 'The Assistant details are unavailable.');
   return acceptedDetails(await jsonObject(response), { assistantId, locale, maxCreators: 16 }, response.status);
