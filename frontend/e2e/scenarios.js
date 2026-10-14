@@ -156,6 +156,15 @@ const STARTS = {
     recording: 'card',
     catalog: true,
   }),
+  // The same card in a Space of several Teams, so a page can move to another Team while the card is answered.
+  'routine-card-teams': () => ({
+    session: authenticatedLocalSession(),
+    teams: [...TEAMS],
+    routines: [],
+    runs: [],
+    recording: 'card',
+    catalog: true,
+  }),
   // Any message is a recording turn whose request would hold a password, so its reply says no Routine was created.
   'routine-refusal': () => ({
     session: authenticatedLocalSession(),
