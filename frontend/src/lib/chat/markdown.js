@@ -7,6 +7,8 @@ const TABLE_DIVIDER = /^:?-{3,}:?$/;
 const CHAT_NOTICE = /^:(success|warning|error)\[([^\[\]\r\n]+)\]$/;
 const MAX_TABLE_COLUMNS = 32;
 const MAX_TABLE_ROWS = 256;
+// The longest link destination shown as a link.
+const MAX_LINK_CHARS = 2048;
 
 function textToken(text) {
   return { type: 'text', text };
@@ -39,7 +41,7 @@ function appendText(tokens, text) {
 }
 
 function safeLink(raw) {
-  if (typeof raw !== 'string' || raw.length > 2048 || !HTTP_URL.test(raw)) return null;
+  if (typeof raw !== 'string' || raw.length > MAX_LINK_CHARS || !HTTP_URL.test(raw)) return null;
   try {
     const url = new URL(raw);
     if (!['http:', 'https:'].includes(url.protocol) || !url.hostname || url.username || url.password) return null;
@@ -66,10 +68,12 @@ function spellsAddress(plain, url) {
 
 /** Parse a deliberately small inline Markdown subset into text-only display tokens. */
 // Where a link destination ends: its first `)` outside balanced parentheses (a URL such as
-// https://en.wikipedia.org/wiki/Foo_(bar) keeps its own), or -1 when it never closes.
+// https://en.wikipedia.org/wiki/Foo_(bar) keeps its own), or -1 when it does not close within the longest destination
+// a link may have, so a line of unclosed destinations is read once, not once per opening.
 function destinationEnd(input, start) {
   let depth = 0;
-  for (let index = start; index < input.length; index += 1) {
+  const last = Math.min(input.length, start + MAX_LINK_CHARS + 1);
+  for (let index = start; index < last; index += 1) {
     if (input[index] === '(') depth += 1;
     else if (input[index] === ')') {
       if (depth === 0) return index;
@@ -83,6 +87,19 @@ export function parseInline(source) {
   const input = String(source ?? '');
   const tokens = [];
   let cursor = 0;
+  // The last search for a label's `](` and for a destination's end: a search from a later position up to the `](` found
+  // finds the same one, none follows a position after which none was found, and openings that share a label end share
+  // its destination, so a line of unclosed links is read once, not once per opening.
+  let label = { from: Infinity, at: -1 };
+  let destination = { start: -1, end: -1 };
+  const labelEnd = (from) => {
+    if (from < label.from || (label.at !== -1 && from > label.at)) label = { from, at: input.indexOf('](', from) };
+    return label.at;
+  };
+  const hrefEnd = (start) => {
+    if (start !== destination.start) destination = { start, end: destinationEnd(input, start) };
+    return destination.end;
+  };
 
   while (cursor < input.length) {
     if (input[cursor] === '\\' && cursor + 1 < input.length) {
@@ -123,14 +140,14 @@ export function parseInline(source) {
     }
 
     if (input[cursor] === '[') {
-      const labelEnd = input.indexOf('](', cursor + 1);
-      const hrefEnd = labelEnd === -1 ? -1 : destinationEnd(input, labelEnd + 2);
-      if (labelEnd > cursor + 1 && hrefEnd > labelEnd + 2) {
-        const label = unescapeInline(input.slice(cursor + 1, labelEnd));
-        const url = safeLink(input.slice(labelEnd + 2, hrefEnd).trim());
-        if (url) tokens.push(linkToken(label, url));
-        else appendText(tokens, label);
-        cursor = hrefEnd + 1;
+      const closes = labelEnd(cursor + 1);
+      const ends = closes === -1 ? -1 : hrefEnd(closes + 2);
+      if (closes > cursor + 1 && ends > closes + 2) {
+        const text = unescapeInline(input.slice(cursor + 1, closes));
+        const url = safeLink(input.slice(closes + 2, ends).trim());
+        if (url) tokens.push(linkToken(text, url));
+        else appendText(tokens, text);
+        cursor = ends + 1;
         continue;
       }
     }

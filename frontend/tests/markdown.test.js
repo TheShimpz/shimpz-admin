@@ -220,3 +220,15 @@ test('keeps malformed and oversized table candidates as ordinary text', () => {
   const oversized = parseMarkdown(`${header}\n${divider}`);
   assert.deepEqual(oversized.map((block) => block.type), ['paragraph']);
 });
+
+test('a destination longer than any link stays text, and a reply of unclosed links is read in linear time', () => {
+  const long = `https://example.com/${'a'.repeat(2048)}`;
+  assert.deepEqual(parseInline(`[label](${long})`), [{ type: 'text', text: `[label](${long})` }]);
+  // A reply's worth of openings that never close: each was once read to the end of the line.
+  const sharedEnd = `${'['.repeat(57_949)}](${'a'.repeat(2049)}`;
+  for (const text of [...['[', '[x](', '[x]((('].map((opening) => opening.repeat(Math.floor(60_000 / opening.length))), sharedEnd]) {
+    const started = performance.now();
+    assert.equal(parseInline(text).map((token) => token.text).join(''), text);
+    assert.ok(performance.now() - started < 1500, text.slice(0, 8));
+  }
+});
