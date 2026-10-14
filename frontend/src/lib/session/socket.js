@@ -6,7 +6,7 @@
 import { derived, writable } from 'svelte/store';
 
 import { readSession } from './context.js';
-import { LocalApiError } from '../api.js';
+import { exactKeys, LocalApiError } from '../api.js';
 import { TEAM_ID_RE } from '../ids.js';
 
 // The protocol's own bounds (backend/protocol/socket/v1/frames.py), pinned by the Admin parity test.
@@ -461,11 +461,6 @@ function chatEvent(frame) {
   return event;
 }
 
-function exact(value, keys) {
-  const present = Object.keys(value).sort();
-  return present.length === keys.length && [...keys].sort().every((key, index) => key === present[index]);
-}
-
 function receive(text) {
   if (typeof text !== 'string' || text.length > MAX_INBOUND_BYTES) throw new Error('invalid frame');
   const frame = JSON.parse(text);
@@ -473,7 +468,7 @@ function receive(text) {
   if (frame.type === 'result') {
     const revised = 'revision' in frame;
     if (
-      !exact(frame, revised ? ['type', 'id', 'status', 'body', 'topic', 'epoch', 'revision'] : ['type', 'id', 'status', 'body']) ||
+      !exactKeys(frame, revised ? ['type', 'id', 'status', 'body', 'topic', 'epoch', 'revision'] : ['type', 'id', 'status', 'body']) ||
       !CALL_ID_RE.test(frame.id) ||
       !Number.isSafeInteger(frame.status) ||
       frame.status < 100 ||
@@ -489,7 +484,7 @@ function receive(text) {
   }
   // A long call's own progress names its call; a chat channel's progress frame names its Team instead.
   if (frame.type === 'progress' && !('team_id' in frame)) {
-    if (!exact(frame, ['type', 'id', 'state']) || !CALL_ID_RE.test(frame.id) || frame.state !== 'running') {
+    if (!exactKeys(frame, ['type', 'id', 'state']) || !CALL_ID_RE.test(frame.id) || frame.state !== 'running') {
       throw new Error('invalid progress');
     }
     const waiting = pending.get(frame.id);
@@ -499,7 +494,7 @@ function receive(text) {
   }
   if (frame.type === 'session') {
     if (
-      !exact(frame, ['type', 'idle_seconds', 'absolute_seconds', 'source_revision', 'source_time']) ||
+      !exactKeys(frame, ['type', 'idle_seconds', 'absolute_seconds', 'source_revision', 'source_time']) ||
       !Number.isSafeInteger(frame.idle_seconds) ||
       !Number.isSafeInteger(frame.absolute_seconds) ||
       frame.idle_seconds < 0 ||
@@ -520,7 +515,7 @@ function receive(text) {
   }
   if (frame.type === 'changed') {
     if (
-      !exact(frame, ['type', 'topic', 'epoch', 'revision']) ||
+      !exactKeys(frame, ['type', 'topic', 'epoch', 'revision']) ||
       !TOPIC_RE.test(frame.topic) ||
       !EPOCH_RE.test(frame.epoch) ||
       !Number.isSafeInteger(frame.revision)

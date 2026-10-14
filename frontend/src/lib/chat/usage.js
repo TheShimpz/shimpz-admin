@@ -1,6 +1,7 @@
 // What one chat task cost: the model tokens every Brain call of the turn used and how long the turn took. Cost is an
 // estimate from the reviewed catalog prices; a model the catalog does not price contributes tokens but no cost.
 import MODEL_CATALOG from '../brain/catalog.json' with { type: 'json' };
+import { exactKeys } from '../api.js';
 import { isCount } from '../grammar.js';
 import { numberFormat } from '../i18n/formats.js';
 
@@ -17,16 +18,6 @@ const PRICES = new Map(
     { title: model.title, input: model.input_usd_per_million_cents, output: model.output_usd_per_million_cents },
   ])),
 );
-
-function exactRecord(value, keys) {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    Object.getPrototypeOf(value) === Object.prototype &&
-    Object.keys(value).sort().join() === keys.join()
-  );
-}
 
 function identifier(value) {
   return typeof value === 'string' && ID_RE.test(value);
@@ -55,7 +46,7 @@ export function parseRunUsage(value) {
 
 function parseUsage(value, minimum) {
   if (
-    !exactRecord(value, USAGE_KEYS) ||
+    !exactKeys(value, USAGE_KEYS) ||
     !isCount(value.duration_ms, MAX_DURATION_MS) ||
     !Array.isArray(value.models) ||
     value.models.length < minimum ||
@@ -64,7 +55,7 @@ function parseUsage(value, minimum) {
   let previous = null;
   const models = value.models.map((entry) => {
     if (
-      !exactRecord(entry, MODEL_KEYS) ||
+      !exactKeys(entry, MODEL_KEYS) ||
       !identifier(entry.provider) ||
       !identifier(entry.model) ||
       !isCount(entry.input_tokens, MAX_TOKENS) ||

@@ -4,7 +4,7 @@
 
 import { isLocale } from '../i18n/locales.js';
 import { parseRunUsage } from '../chat/usage.js';
-import { jsonObject } from '../api.js';
+import { exactKeys, jsonObject } from '../api.js';
 import { codePointLength, isInstant } from '../grammar.js';
 import { DIGEST_RE, isActionId, isAssistantId, isIdentifier, OPAQUE_ID_RE, TEAM_ID_RE } from '../ids.js';
 
@@ -22,16 +22,6 @@ const SCHEDULE_FIELDS = {
   continuous: ['kind', 'gap', 'cap'],
 };
 
-function exact(value, keys) {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    Object.keys(value).length === keys.length &&
-    keys.every((key) => Object.hasOwn(value, key))
-  );
-}
-
 function whole(value, low, high) {
   return Number.isInteger(value) && value >= low && value <= high;
 }
@@ -39,7 +29,7 @@ function whole(value, low, high) {
 /** The exact closed schedule, or false. */
 export function isSchedule(value) {
   const fields = value && typeof value === 'object' ? SCHEDULE_FIELDS[value.kind] : undefined;
-  if (!fields || !exact(value, fields)) return false;
+  if (!fields || !exactKeys(value, fields)) return false;
   if (value.kind === 'hourly') return whole(value.every, 1, 24);
   if (value.kind === 'continuous') {
     return whole(value.gap, MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS) && value.cap === continuousCap(value.gap);
@@ -113,7 +103,7 @@ export class RoutineError extends Error {
 }
 
 function view(value, keys, valid) {
-  if (!exact(value, keys) || !valid(value)) throw new RoutineError('routine-response-invalid');
+  if (!exactKeys(value, keys) || !valid(value)) throw new RoutineError('routine-response-invalid');
   return structuredClone(value);
 }
 
@@ -123,7 +113,7 @@ const ROUTINE_STATES = ['active', 'paused'];
 const MAX_PERMITTED = 256;
 
 function isPermittedSummary(value) {
-  return exact(value, ['total', 'changes']) && whole(value.total, 1, MAX_PERMITTED) &&
+  return exactKeys(value, ['total', 'changes']) && whole(value.total, 1, MAX_PERMITTED) &&
     whole(value.changes, 0, value.total);
 }
 
@@ -208,7 +198,7 @@ function whereText(constant) {
 
 // A selector as shown: its member and its constant's escaped JSON text, a string or an integer.
 function isWhere(value) {
-  if (!exact(value, ['member', 'value_json']) || !plain(value.member, 128) || !plain(value.value_json, MAX_WHERE_CHARS)) {
+  if (!exactKeys(value, ['member', 'value_json']) || !plain(value.member, 128) || !plain(value.value_json, MAX_WHERE_CHARS)) {
     return false;
   }
   let constant;
@@ -228,7 +218,7 @@ function isReference(value, position) {
 
 function isInput(value, position) {
   const keys = value && typeof value === 'object' && !Array.isArray(value) ? INPUT_KEYS[value.source] : undefined;
-  if (!keys || !exact(value, keys) || !plain(value.member, 128)) return false;
+  if (!keys || !exactKeys(value, keys) || !plain(value.member, 128)) return false;
   if (value.source === 'literal') return plain(value.value, MAX_PREVIEW_CHARS);
   if (value.source === 'run_clock') return CLOCK_FORMATS.includes(value.value);
   return isReference(value, position);
@@ -236,7 +226,7 @@ function isInput(value, position) {
 
 /** Whether a value is one projected step at exactly `position`, referring only to earlier positions. */
 export function isPlanStep(value, position) {
-  if (!exact(value, ['position', 'assistant', 'action', 'read_only', 'inputs', 'stored_inputs'])) return false;
+  if (!exactKeys(value, ['position', 'assistant', 'action', 'read_only', 'inputs', 'stored_inputs'])) return false;
   const { inputs, stored_inputs: stored } = value;
   return (
     isPosition(position) &&
@@ -259,7 +249,7 @@ export function isPlanStep(value, position) {
  * in order; `more` counts the steps after the sixteenth run. A plan always has at least one step.
  */
 export function isSummary(value) {
-  if (!exact(value, ['revision', 'plan_digest', 'steps', 'actions', 'more'])) return false;
+  if (!exactKeys(value, ['revision', 'plan_digest', 'steps', 'actions', 'more'])) return false;
   const { actions: runs, more, steps: total } = value;
   return (
     whole(value.revision, 1, 2 ** 31 - 1) &&
@@ -329,14 +319,14 @@ const RUN_INPUT_SOURCES = ['literal', 'run_clock', 'step_output'];
 const RUN_STEP_KEYS = ['position', 'status', 'assistant_id', 'action', 'attempt', 'duration_ms', 'recorded_at', 'inputs'];
 
 function isRunInput(value) {
-  return exact(value, ['member', 'source', 'value']) && plain(value.member, 128) &&
+  return exactKeys(value, ['member', 'source', 'value']) && plain(value.member, 128) &&
     RUN_INPUT_SOURCES.includes(value.source) && (value.value === null || plain(value.value, MAX_PREVIEW_CHARS));
 }
 
 /** Whether a value is a call's position: a replay step among `steps`, `{phase: "replay", step}`. */
 function isCallPosition(value, steps) {
   if (!whole(steps, 0, MAX_ROUTINE_STEPS)) return false;
-  return exact(value, ['phase', 'step']) && value.phase === 'replay' && isPosition(value.step, steps);
+  return exactKeys(value, ['phase', 'step']) && value.phase === 'replay' && isPosition(value.step, steps);
 }
 
 /** The position of a run page's `index`-th entry (1-based): its replay step. */
@@ -350,7 +340,7 @@ function samePosition(left, right) {
 
 /** Whether a value is one run entry at exactly `position`: what its attempt did, or only that it never ran or is gone. */
 export function isRunStep(value, position, steps) {
-  if (!exact(value, RUN_STEP_KEYS) || !isCallPosition(value.position, steps) || !samePosition(value.position, position)) {
+  if (!exactKeys(value, RUN_STEP_KEYS) || !isCallPosition(value.position, steps) || !samePosition(value.position, position)) {
     return false;
   }
   if (RUN_STEP_GAPS.includes(value.status)) {
@@ -393,7 +383,7 @@ export function pageBinding(page) {
 
 // A binding is its Routine with its revision, digest, and step count all known or all still unknown.
 function isBinding(value) {
-  if (!exact(value, ['routine_id', 'revision', 'plan_digest', 'total'])) return false;
+  if (!exactKeys(value, ['routine_id', 'revision', 'plan_digest', 'total'])) return false;
   const { routine_id: routineId, revision, plan_digest: digest, total } = value;
   const known = whole(revision, 1, 2 ** 31 - 1) && typeof digest === 'string' && DIGEST_RE.test(digest) &&
     whole(total, 1, MAX_ROUTINE_STEPS);
@@ -459,17 +449,17 @@ const MAX_OUTPUT_BYTES = 16 * 1024;
 const MAX_OUTPUT_NUMBER_CHARS = 64;
 const OUTPUT_NUMBER_RE = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/;
 const SCALAR_NODES = {
-  null: (node) => exact(node, ['kind']),
-  redacted: (node) => exact(node, ['kind']),
-  elided: (node) => exact(node, ['kind']),
-  bool: (node) => exact(node, ['kind', 'value']) && typeof node.value === 'boolean',
+  null: (node) => exactKeys(node, ['kind']),
+  redacted: (node) => exactKeys(node, ['kind']),
+  elided: (node) => exactKeys(node, ['kind']),
+  bool: (node) => exactKeys(node, ['kind', 'value']) && typeof node.value === 'boolean',
   number: (node) =>
-    exact(node, ['kind', 'value']) &&
+    exactKeys(node, ['kind', 'value']) &&
     typeof node.value === 'string' &&
     node.value.length <= MAX_OUTPUT_NUMBER_CHARS &&
     OUTPUT_NUMBER_RE.test(node.value),
   text: (node) =>
-    exact(node, ['kind', 'value', 'cut']) &&
+    exactKeys(node, ['kind', 'value', 'cut']) &&
     typeof node.cut === 'boolean' &&
     typeof node.value === 'string' &&
     codePointLength(node.value) <= MAX_OUTPUT_TEXT_CHARS &&
@@ -480,7 +470,7 @@ const SCALAR_NODES = {
  * Whether a plan's output disposition is closed: it names one of its `total` steps' positions when it shows one.
  */
 export function isDisposition(value, total) {
-  if (!exact(value, ['mode', 'step']) || !OUTPUT_MODES.includes(value.mode)) return false;
+  if (!exactKeys(value, ['mode', 'step']) || !OUTPUT_MODES.includes(value.mode)) return false;
   if (!whole(total, 1, MAX_ROUTINE_STEPS)) return false;
   return SHOWN_MODES.includes(value.mode) ? isPosition(value.step, total) : value.step === null;
 }
@@ -492,10 +482,10 @@ function isOutputNode(node, depth) {
   }
   if (depth >= MAX_OUTPUT_DEPTH || !Number.isInteger(node.omitted) || node.omitted < 0) return false;
   if (node.kind === 'list') {
-    return exact(node, ['kind', 'items', 'omitted']) && Array.isArray(node.items) &&
+    return exactKeys(node, ['kind', 'items', 'omitted']) && Array.isArray(node.items) &&
       node.items.length <= MAX_OUTPUT_ITEMS && node.items.every((item) => isOutputNode(item, depth + 1));
   }
-  return exact(node, ['kind', 'fields', 'omitted']) && Array.isArray(node.fields) &&
+  return exactKeys(node, ['kind', 'fields', 'omitted']) && Array.isArray(node.fields) &&
     node.fields.length <= MAX_OUTPUT_FIELDS &&
     node.fields.every((field) => Array.isArray(field) && field.length === 2 && plain(field[0], MAX_OUTPUT_KEY_CHARS) &&
       isOutputNode(field[1], depth + 1)) &&
@@ -504,7 +494,7 @@ function isOutputNode(node, depth) {
 
 /** Whether a completed run's output is Team's closed form: a shown projection, or unchanged or unavailable alone. */
 export function isOutput(value) {
-  if (!exact(value, ['step', 'state', 'value', 'truncated'])) return false;
+  if (!exactKeys(value, ['step', 'state', 'value', 'truncated'])) return false;
   const valid =
     isPosition(value.step) &&
     OUTPUT_STATES.includes(value.state) &&
@@ -605,7 +595,7 @@ export function browserTimezone() {
 
 function deleted(body, teamId, routineId = null) {
   if (
-    !exact(body, ['team_id', 'routine_id', 'deleted']) ||
+    !exactKeys(body, ['team_id', 'routine_id', 'deleted']) ||
     body.team_id !== teamId ||
     typeof body.deleted !== 'boolean' ||
     typeof body.routine_id !== 'string' ||
@@ -620,7 +610,7 @@ function deleted(body, teamId, routineId = null) {
 export async function listRoutines(read, teamId) {
   const body = await request(read, 'routines.list', { team_id: team(teamId) });
   if (
-    !exact(body, ['team_id', 'routines', 'runs', 'incidents']) ||
+    !exactKeys(body, ['team_id', 'routines', 'runs', 'incidents']) ||
     body.team_id !== teamId ||
     !Array.isArray(body.routines) ||
     !Array.isArray(body.runs) ||
@@ -650,8 +640,8 @@ export async function beginRoutineDeletion(call, teamId, routineId, password) {
   const methods = body.methods;
   const passkey = Array.isArray(methods) && methods.length === 2 && methods[0] === 'totp' && methods[1] === 'passkey';
   const totpOnly = Array.isArray(methods) && methods.length === 1 && methods[0] === 'totp';
-  if (totpOnly && exact(body, ['methods'])) return { passkey: null };
-  if (passkey && exact(body, ['methods', 'passkey_options']) && body.passkey_options && typeof body.passkey_options === 'object') {
+  if (totpOnly && exactKeys(body, ['methods'])) return { passkey: null };
+  if (passkey && exactKeys(body, ['methods', 'passkey_options']) && body.passkey_options && typeof body.passkey_options === 'object') {
     return { passkey: body.passkey_options };
   }
   throw new RoutineError('routine-response-invalid');
@@ -659,8 +649,8 @@ export async function beginRoutineDeletion(call, teamId, routineId, password) {
 
 /** Spend the started deletion on exactly one second factor, `{ code }` or `{ credential }`; Admin then asks Team. */
 export async function deleteRoutine(call, teamId, routineId, proof) {
-  const byCode = exact(proof, ['code']) && /^[0-9]{6}$/.test(proof.code);
-  const byPasskey = exact(proof, ['credential']) && proof.credential && typeof proof.credential === 'object';
+  const byCode = exactKeys(proof, ['code']) && /^[0-9]{6}$/.test(proof.code);
+  const byPasskey = exactKeys(proof, ['credential']) && proof.credential && typeof proof.credential === 'object';
   if (!byCode && !byPasskey) throw new RoutineError('routine-request-invalid');
   const params = { team_id: team(teamId), routine_id: opaque(routineId), body: proof };
   return deleted(await request(call, 'routines.delete', params), teamId, routineId);
@@ -669,7 +659,7 @@ export async function deleteRoutine(call, teamId, routineId, proof) {
 async function setPaused(call, teamId, routineId, paused) {
   const params = { team_id: team(teamId), routine_id: opaque(routineId) };
   const body = await request(call, paused ? 'routines.pause' : 'routines.resume', params);
-  if (!exact(body, ['team_id', 'routine_id', 'paused']) || body.team_id !== teamId || body.routine_id !== routineId
+  if (!exactKeys(body, ['team_id', 'routine_id', 'paused']) || body.team_id !== teamId || body.routine_id !== routineId
     || body.paused !== paused) {
     throw new RoutineError('routine-response-invalid');
   }
@@ -860,7 +850,7 @@ export function parseRoutineRunEntry(value) {
   ];
   const rule = value && typeof value === 'object' ? NOTICE_DETAILS[value.outcome] : undefined;
   if (
-    !exact(value, keys) ||
+    !exactKeys(value, keys) ||
     value.kind !== 'routine-run' ||
     !rule ||
     typeof value.notice_id !== 'string' ||
@@ -874,7 +864,7 @@ export function parseRoutineRunEntry(value) {
     !isInstant(value.created_at) ||
     !Number.isInteger(value.version) ||
     value.version < 1 ||
-    !exact(value.detail, rule[0]) ||
+    !exactKeys(value.detail, rule[0]) ||
     !rule[1](value.detail) ||
     typeof value.protection_lost !== 'boolean' ||
     (value.protection_lost && ROUTINE_OUTCOMES.includes(value.outcome))
@@ -911,11 +901,11 @@ export function newerRoutineEntries(shown, entries) {
 export async function openRoutineChallenge(call, teamId, runId, locale, parseChallenge) {
   if (!isLocale(locale)) throw new RoutineError('routine-request-invalid');
   const body = await request(call, 'routines.challenge', { team_id: team(teamId), run_id: opaque(runId), body: { locale } });
-  if (exact(body, ['team_id', 'run_id', 'status']) && body.status === 'integrations-required'
+  if (exactKeys(body, ['team_id', 'run_id', 'status']) && body.status === 'integrations-required'
     && body.team_id === teamId && body.run_id === runId) {
     return { status: 'integrations-required' };
   }
-  if (!exact(body, ['team_id', 'run_id', 'status', 'challenge']) || body.status !== 'human-required'
+  if (!exactKeys(body, ['team_id', 'run_id', 'status', 'challenge']) || body.status !== 'human-required'
     || body.team_id !== teamId || body.run_id !== runId) {
     throw new RoutineError('routine-response-invalid');
   }
@@ -935,7 +925,7 @@ export async function openRoutineChallenge(call, teamId, runId, locale, parseCha
 
 function resumed(body, teamId, runId) {
   if (
-    !exact(body, ['team_id', 'run_id', 'status']) ||
+    !exactKeys(body, ['team_id', 'run_id', 'status']) ||
     body.team_id !== teamId ||
     body.run_id !== runId ||
     !['done', 'recovered', 'failed', 'denied', 'stopped', 'frozen', 'held'].includes(body.status)
@@ -992,7 +982,7 @@ function diagnosticText(value) {
 
 function isFailure(value) {
   return (
-    exact(value, ['error_type', 'message', 'provider', 'http_status', 'response_excerpt', 'redacted', 'truncated']) &&
+    exactKeys(value, ['error_type', 'message', 'provider', 'http_status', 'response_excerpt', 'redacted', 'truncated']) &&
     typeof value.error_type === 'string' &&
     ERROR_TYPE_RE.test(value.error_type) &&
     diagnosticText(value.message) &&
@@ -1007,7 +997,7 @@ function isFailure(value) {
 
 function isDiagnostic(value) {
   return (
-    exact(value, ['operation_id', 'attempt', 'assistant_id', 'action', 'position', 'recorded_at', 'failure', 'condition']) &&
+    exactKeys(value, ['operation_id', 'attempt', 'assistant_id', 'action', 'position', 'recorded_at', 'failure', 'condition']) &&
     typeof value.operation_id === 'string' &&
     OPERATION_ID_RE.test(value.operation_id) &&
     whole(value.attempt, 1, MAX_DIAGNOSTIC_ATTEMPTS) &&
@@ -1050,7 +1040,7 @@ const MAX_NEXT_RUNS = 3;
 const CARD_INPUT_KEYS = ['member', 'origin', 'value', 'step', 'pointer', 'where', 'item'];
 
 function isCardInput(value, position) {
-  if (!exact(value, CARD_INPUT_KEYS) || !INPUT_ORIGINS.includes(value.origin) || !plain(value.member, 128)) return false;
+  if (!exactKeys(value, CARD_INPUT_KEYS) || !INPUT_ORIGINS.includes(value.origin) || !plain(value.member, 128)) return false;
   const others = (keys) => keys.every((key) => value[key] === null);
   if (value.origin === 'request' || value.origin === 'assistant') {
     return typeof value.value === 'string' && !PLAN_UNSAFE_RE.test(value.value) &&
@@ -1061,7 +1051,7 @@ function isCardInput(value, position) {
 }
 
 function isCardStep(value, position) {
-  return exact(value, ['position', 'assistant', 'action', 'read_only', 'inputs']) &&
+  return exactKeys(value, ['position', 'assistant', 'action', 'read_only', 'inputs']) &&
     value.position === position &&
     isAssistantId(value.assistant) &&
     isActionId(value.action) &&
@@ -1072,7 +1062,7 @@ function isCardStep(value, position) {
 
 function isCardPermitted(value) {
   if (!Array.isArray(value) || value.length > MAX_PERMITTED) return false;
-  const valid = value.every((item) => exact(item, ['assistant', 'action', 'read_only']) &&
+  const valid = value.every((item) => exactKeys(item, ['assistant', 'action', 'read_only']) &&
     isAssistantId(item.assistant) && isActionId(item.action) && typeof item.read_only === 'boolean');
   const identities = value.map((item) => `${item.assistant}\u0000${item.action}`);
   return valid && identities.every((item, index) => index === 0 || identities[index - 1] < item);
@@ -1097,7 +1087,7 @@ export function parseRoutineProposal(value) {
   ];
   return view(value, keys, (item) => {
     const { steps, output, next_runs: runs } = item;
-    if (!Array.isArray(steps) || steps.length > MAX_ROUTINE_STEPS || !exact(output, ['mode'])) return false;
+    if (!Array.isArray(steps) || steps.length > MAX_ROUTINE_STEPS || !exactKeys(output, ['mode'])) return false;
     const shown = SHOWN_MODES.includes(output.mode) ? steps.length : null;
     return (
       typeof item.proposal_id === 'string' && OPAQUE_ID_RE.test(item.proposal_id) &&
@@ -1162,7 +1152,7 @@ export function questionTarget(text) {
 }
 
 function isQuestionOption(value) {
-  return exact(value, ['value', 'label']) && questionTarget(value.value) !== null &&
+  return exactKeys(value, ['value', 'label']) && questionTarget(value.value) !== null &&
     (value.label === null || plain(value.label, MAX_QUESTION_OPTION_CHARS));
 }
 
@@ -1186,7 +1176,7 @@ export function parseRoutineQuestion(value) {
 
 function answered(body, teamId, proposalId, statuses) {
   if (
-    !exact(body, ['team_id', 'proposal_id', 'routine_id', 'status']) ||
+    !exactKeys(body, ['team_id', 'proposal_id', 'routine_id', 'status']) ||
     body.team_id !== teamId ||
     body.proposal_id !== proposalId ||
     !statuses.includes(body.status) ||

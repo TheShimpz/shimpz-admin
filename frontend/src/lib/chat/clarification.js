@@ -1,6 +1,7 @@
 // One Brain multiple-choice clarification (ADR-0081). Answering sends one new user message that combines the
 // original request, the question, and the chosen answer; that message remains the only Action authority.
 
+import { exactKeys } from '../api.js';
 import { codePointLength } from '../grammar.js';
 
 const MAX_QUESTION_CHARS = 240;
@@ -20,23 +21,13 @@ function closedText(value, maximum, empty = false) {
   );
 }
 
-function exact(value, keys) {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    !Array.isArray(value) &&
-    Object.keys(value).length === keys.length &&
-    keys.every((key) => Object.hasOwn(value, key))
-  );
-}
-
 /**
  * Return the exact clarification, or null when the value is null. Any other shape throws. `default_index` names the
  * recommended option, or is null when the question recommends none, as a Routine question never steers a choice.
  */
 export function parseClarification(value) {
   if (value === null) return null;
-  if (!exact(value, ['question', 'options', 'default_index']) || !closedText(value.question, MAX_QUESTION_CHARS)) {
+  if (!exactKeys(value, ['question', 'options', 'default_index']) || !closedText(value.question, MAX_QUESTION_CHARS)) {
     throw new TypeError('invalid clarification');
   }
   const { options, default_index: defaultIndex } = value;
@@ -45,7 +36,7 @@ export function parseClarification(value) {
   }
   const parsed = options.map((option) => {
     if (
-      !exact(option, ['label', 'description']) ||
+      !exactKeys(option, ['label', 'description']) ||
       !closedText(option.label, MAX_LABEL_CHARS) ||
       !closedText(option.description, MAX_DESCRIPTION_CHARS, true)
     ) throw new TypeError('invalid clarification');
