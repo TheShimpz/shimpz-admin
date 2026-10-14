@@ -1025,16 +1025,11 @@
       resetProgress();
       if (error === copy.disconnected || error === copy.connectionFailed) clearError();
     };
-    active.onmessage = (event) => {
+    active.onframe = (frame) => {
       if (socket !== active || chatTeamId !== expectedTeamId) return;
       let incoming;
       try {
-        if (typeof event.data !== 'string') throw new Error('unexpected frame');
-        incoming = parseChatEvent(
-          JSON.parse(event.data),
-          expectedTeam.id,
-          expectedTeam.name,
-        );
+        incoming = parseChatEvent(frame, expectedTeam.id, expectedTeam.name);
         if (incoming.type === 'integrations-required') {
           const challenge = incoming;
           if (knownIntegrationAssistants(challenge)) acceptIntegrationChallenge(challenge);
@@ -1619,7 +1614,7 @@
       void revealLatestExchange();
     }
     try {
-      socket.send(JSON.stringify(frame));
+      socket.send(frame);
       if (files.length) {
         capabilityObjective = null;
       } else if (useCapabilityObjective && !continuation) {
@@ -1722,7 +1717,7 @@
     stopping = true;
     clearError();
     try {
-      socket.send(JSON.stringify(createStopFrame(teamId)));
+      socket.send(createStopFrame(teamId));
     } catch (reason) {
       stopping = false;
       setError(reason instanceof Error ? reason.message : copy.loadFailed);
@@ -1742,7 +1737,7 @@
         response.decision,
         response.value,
       );
-      socket.send(JSON.stringify(frame));
+      socket.send(frame);
       const waitForAuthentication = response.decision === 'submit' && challenge.request.kind === 'auth:password';
       if (waitForAuthentication) {
         humanWorking = true;
@@ -1776,7 +1771,7 @@
     syncing = true;
     resetProgress();
     try {
-      socket.send(JSON.stringify(createSyncFrame(chatTeamId, $locale)));
+      socket.send(createSyncFrame(chatTeamId, $locale));
     } catch {
       syncing = false;
       socket.close();
@@ -1789,7 +1784,7 @@
     humanRelocalizing = selected;
     syncing = true;
     try {
-      socket.send(JSON.stringify(createSyncFrame(chatTeamId, selected)));
+      socket.send(createSyncFrame(chatTeamId, selected));
     } catch {
       humanRelocalizing = '';
       syncing = false;

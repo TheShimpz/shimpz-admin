@@ -715,10 +715,10 @@ export function disconnectAdminSocket() {
 }
 
 /**
- * One Team's chat channel with the surface of the WebSocket the chat page used: `onopen` after each attach (Admin then
- * synchronizes the Team), `onmessage` with each `shimpz.chat.v7` frame, `onclose` when the socket drops, and `send` and
- * `close`. The channel attaches again on its own whenever the socket reopens; closing it detaches the Team. It is a
- * class, as a WebSocket is, so a page can keep it in its own state and still compare it by identity.
+ * One Team's chat channel: `onopen` after each attach (Admin then synchronizes the Team), `onframe` with each
+ * `shimpz.chat.v7` frame as the socket already parsed it, `onclose` when the socket drops, `send` with a frame object,
+ * and `close`. The channel attaches again on its own whenever the socket reopens; closing it detaches the Team. It is a
+ * class so a page can keep it in its own state and still compare it by identity.
  */
 class ChatChannel {
   readyState = WebSocket.CONNECTING;
@@ -727,7 +727,7 @@ class ChatChannel {
   waiting = [];
   closedByPage = false;
   onopen = null;
-  onmessage = null;
+  onframe = null;
   onclose = null;
 
   constructor(teamId, locale) {
@@ -766,7 +766,7 @@ class ChatChannel {
       if (this.attaching) this.waiting.push(event);
       return;
     }
-    this.onmessage?.({ data: JSON.stringify(event) });
+    this.onframe?.(event);
   }
 
   dropped(code) {
@@ -778,9 +778,8 @@ class ChatChannel {
     if (wasAttached || code !== 1000) this.onclose?.({ code });
   }
 
-  send(text) {
+  send(frame) {
     if (!this.attached || !connection) throw new LocalApiError('Admin is reconnecting.');
-    const frame = JSON.parse(text);
     if (!CHAT_CLIENT_TYPES.has(frame?.type)) throw new LocalApiError('Invalid local chat request.');
     connection.send(JSON.stringify({ ...frame, team_id: this.teamId }));
   }

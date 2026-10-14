@@ -473,7 +473,7 @@ test('a chat channel attaches, carries its Team on every frame, reattaches after
   const received = [];
   const closed = mock.fn();
   channel.onopen = opened;
-  channel.onmessage = (event) => received.push(JSON.parse(event.data));
+  channel.onframe = (frame) => received.push(frame);
   channel.onclose = closed;
   assert.deepEqual(socket.answer('chat.attach', { team_id: 'marketing' }).params, { team_id: 'marketing', locale: 'en' });
   await flush();
@@ -486,16 +486,16 @@ test('a chat channel attaches, carries its Team on every frame, reattaches after
     { type: 'sync-empty' },
     { type: 'done', team_id: 'marketing', team_name: 'Marketing', reply: 'Hi', clarification: null },
   ]);
-  channel.send(JSON.stringify({ type: 'stop' }));
+  channel.send({ type: 'stop' });
   assert.deepEqual(socket.sent.at(-1), { type: 'stop', team_id: 'marketing' });
-  assert.throws(() => channel.send(JSON.stringify({ type: 'call' })), /Invalid local chat request/);
+  assert.throws(() => channel.send({ type: 'call' }), /Invalid local chat request/);
   assert.throws(() => openChatChannel('marketing', 'en'), /Invalid local chat request/);
   assert.throws(() => openChatChannel('Bad Team', 'en'), /Invalid local chat request/);
 
   socket.drop(1006);
   await flush();
   assert.equal(closed.mock.callCount(), 1);
-  assert.throws(() => channel.send(JSON.stringify({ type: 'stop' })), /reconnecting/);
+  assert.throws(() => channel.send({ type: 'stop' }), /reconnecting/);
   await new Promise((resolve) => setTimeout(resolve, 450));
   const reopened = FakeSocket.opened.at(-1);
   reopened.open();
