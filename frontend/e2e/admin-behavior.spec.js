@@ -1666,6 +1666,12 @@ test('rejects an out-of-order first chat progress frame', async ({ page }) => {
   await expect(page.getByRole('group', { name: 'I’m processing…' })).toHaveCount(0);
   await expect(page.getByText('Rendered answer', { exact: true })).toHaveCount(0);
   await expect.poll(() => chat.chatFrames()).toHaveLength(1);
+  // The channel attaches again on its own, so the person can send without reloading.
+  const synced = chat.syncFrames();
+  await expect.poll(() => chat.syncFrames()).toBeGreaterThan(synced);
+  await expect(composer).toBeEnabled();
+  await composer.fill('Check progress again');
+  await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
 });
 
 // Every transition of the recall is proved in tests/prompt-history.test.js; each engine proves the composer applies a

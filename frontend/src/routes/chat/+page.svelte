@@ -112,11 +112,31 @@
     resetChallengeState();
   }
 
+  // A channel closed for a protocol violation attaches again, up to PROTOCOL_REATTACHES times for one Team and longer
+  // apart each time, so one invalid frame never leaves the chat unable to send until a reload; past that the error
+  // stays. Attaching synchronizes the Team again.
+  const PROTOCOL_REATTACHES = 3;
+  let protocolFailures = 0;
+  let reattachTimer = 0;
+
   function failProtocol(active) {
     resetConnection();
     clearTurnInstalled();
     setError(copy.protocolError);
     active.close(1002, 'Invalid chat event');
+    if (protocolFailures >= PROTOCOL_REATTACHES) return;
+    const teamId = chatTeamId;
+    const wait = 1000 * 2 ** protocolFailures;
+    protocolFailures += 1;
+    globalThis.clearTimeout(reattachTimer);
+    reattachTimer = globalThis.setTimeout(() => {
+      if (mounted && chatTeamId === teamId && socket === null) connectSocket(teamId);
+    }, wait);
+  }
+
+  function forgetProtocolFailures() {
+    globalThis.clearTimeout(reattachTimer);
+    protocolFailures = 0;
   }
 
   function installedThisTurn(assistantId) {
@@ -1227,6 +1247,7 @@
   }
 
   function activateTeam(nextTeamId) {
+    forgetProtocolFailures();
     chatOwnsFocus = true;
     forgetSegments();
     if (messageFiles.teamId !== nextTeamId) messageFiles.clear();
@@ -1860,6 +1881,7 @@
     }
     return () => {
       document.removeEventListener('focusin', trackFocus);
+      forgetProtocolFailures();
       mounted = false;
       historyGeneration += 1;
       stopTeamTopics();
