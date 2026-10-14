@@ -7,6 +7,7 @@
   import { Button, DialogFrame, Modal } from '@shimpz/frontend';
 
   import { sessionDeadlines } from '#lib/session/socket.js';
+  import { numberFormat } from '#lib/i18n/formats.js';
   import { locale, t } from '#lib/i18n/index.js';
 
   // Only the person's own input keeps the session alive (ADR-0114): a turn under way or a request waiting for them does
@@ -24,7 +25,7 @@
     $sessionDeadlines ? Math.max(0, Math.ceil(($sessionDeadlines.idleAt - now) / 1000)) : 0,
   );
   let countdown = $derived(
-    new Intl.NumberFormat($locale, { style: 'unit', unit: 'second', unitDisplay: 'narrow' }).format(remaining),
+    numberFormat($locale, { style: 'unit', unit: 'second', unitDisplay: 'narrow' }).format(remaining),
   );
 
   $effect(() => {

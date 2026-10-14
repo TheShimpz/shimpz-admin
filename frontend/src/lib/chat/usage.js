@@ -2,6 +2,7 @@
 // estimate from the reviewed catalog prices; a model the catalog does not price contributes tokens but no cost.
 import MODEL_CATALOG from '../brain/catalog.json' with { type: 'json' };
 import { isCount } from '../grammar.js';
+import { numberFormat } from '../i18n/formats.js';
 
 const MAX_DURATION_MS = 24 * 60 * 60 * 1000;
 const MAX_TOKENS = 1_000_000_000;
@@ -102,12 +103,12 @@ export function taskUsageSummary(usage) {
  * reads only its duration: "10.5 s".
  */
 export function formatTaskUsage(summary, locale, copy) {
-  const number = new Intl.NumberFormat(locale);
-  const seconds = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 });
+  const number = numberFormat(locale);
+  const seconds = numberFormat(locale, { maximumFractionDigits: 1 });
   if (summary.detail.length === 0) return `${seconds.format(summary.seconds)} s`;
   const parts = [];
   if (summary.usd !== null) {
-    const money = new Intl.NumberFormat(locale, {
+    const money = numberFormat(locale, {
       style: 'currency',
       currency: 'USD',
       minimumFractionDigits: summary.usd < 0.01 ? 4 : 2,
@@ -122,7 +123,7 @@ export function formatTaskUsage(summary, locale, copy) {
 
 /** The hover detail: each model's input and output tokens. */
 export function formatTaskUsageDetail(summary, locale, copy) {
-  const number = new Intl.NumberFormat(locale);
+  const number = numberFormat(locale);
   return summary.detail
     .map((entry) => `${entry.title}: ${number.format(entry.input)} ${copy.input} · ${number.format(entry.output)} ${copy.output}`)
     .join('\n');

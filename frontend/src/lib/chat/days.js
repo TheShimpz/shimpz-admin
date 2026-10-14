@@ -8,24 +8,14 @@
 //   yet a history row here, so its time is when the page first showed it.
 // An exchange (a message and the reply under it) stays whole under the day of its first item.
 
+import { dateFormat, relativeFormat } from '../i18n/formats.js';
+
 const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DAY_MS = 86_400_000;
-const formats = new Map();
-
-// One formatter per use, locale, and timezone: a transcript formats every item's day and time on each render.
-function cachedFormat(use, locale, timeZone, options) {
-  const key = `${use} ${locale} ${timeZone ?? ''}`;
-  let format = formats.get(key);
-  if (!format) {
-    format = new Intl.DateTimeFormat(locale, { ...options, timeZone });
-    formats.set(key, format);
-  }
-  return format;
-}
 
 function keyFormat(timeZone) {
   // en-CA writes a calendar date as YYYY-MM-DD, the same order the key keeps.
-  return cachedFormat('day', 'en-CA', timeZone, { year: 'numeric', month: '2-digit', day: '2-digit' });
+  return dateFormat('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone });
 }
 
 /** The calendar day (YYYY-MM-DD) an instant falls on in a timezone (the viewer's when omitted), or null. */
@@ -65,7 +55,7 @@ export function turnInstants(now = () => Date.now()) {
 
 /** An instant's time of day to the second on a 24-hour clock ("14:03:07"), in the Admin locale's digits. */
 export function clockTime(instant, locale, timeZone) {
-  return cachedFormat('clock', locale, timeZone, { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+  return dateFormat(locale, { hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZone })
     .format(instant);
 }
 
@@ -82,12 +72,12 @@ function capitalized(text, locale) {
 export function dayLabel(day, today, locale) {
   const distance = dayNumber(day) - dayNumber(today);
   if (distance === 0 || distance === -1) {
-    const relative = new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }).format(distance, 'day');
+    const relative = relativeFormat(locale, { numeric: 'auto' }).format(distance, 'day');
     return capitalized(relative, locale);
   }
   const [, year, month, date] = DAY_RE.exec(day);
   // The date is a calendar day, not an instant: it is written in UTC so no timezone can move it.
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'long', timeZone: 'UTC' })
+  return dateFormat(locale, { dateStyle: 'long', timeZone: 'UTC' })
     .format(Date.UTC(Number(year), Number(month) - 1, Number(date)));
 }
 

@@ -4,6 +4,7 @@
   import DialogAction from '#lib/DialogAction.svelte';
   import { tick } from 'svelte';
 
+  import { dateFormat } from '#lib/i18n/formats.js';
   import { locale, t } from '#lib/i18n/index.js';
   import { PATHS } from '#lib/icons.js';
   import RecoveryCodes from '#lib/auth/RecoveryCodes.svelte';
@@ -34,7 +35,7 @@
   let signIns = $derived($securitySummary?.signIns);
 
   function signedInAt(at) {
-    return new Intl.DateTimeFormat($locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(at));
+    return dateFormat($locale, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(at));
   }
 
   export function open() {

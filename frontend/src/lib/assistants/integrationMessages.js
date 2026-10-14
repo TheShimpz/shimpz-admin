@@ -1,3 +1,5 @@
+import { listFormat } from '#lib/i18n/formats.js';
+
 const TOKEN_PATTERN = /(\{actions\}|\{assistants\}|\{provider\}|\{providers\})/u;
 
 export function assistantIntegrationMessageParts(template, values) {
@@ -19,7 +21,7 @@ export function assistantIntegrationMessageParts(template, values) {
 export function localizedIntegrationList(values, locale) {
   const unique = [...new Set(values)];
   if (unique.length < 2) return unique[0] ?? '';
-  return new Intl.ListFormat(locale, { style: 'long', type: 'conjunction' }).format(unique);
+  return listFormat(locale, { style: 'long', type: 'conjunction' }).format(unique);
 }
 
 export function assistantIntegrationLabels(requirements, installedAssistants) {

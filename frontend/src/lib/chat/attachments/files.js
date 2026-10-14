@@ -4,6 +4,7 @@
 import { exactKeys, jsonObject, LocalApiError } from '../../api.js';
 import { codePointLength, CONTROL_RE } from '../../grammar.js';
 import { OPAQUE_ID_RE, TEAM_ID_RE } from '../../ids.js';
+import { numberFormat } from '../../i18n/formats.js';
 
 const KIB = 1024;
 const MIB = 1024 * KIB;
@@ -100,7 +101,7 @@ export function attachmentRefusal(selected, candidate) {
 export function formatFileSize(bytes, locale) {
   const units = [['byte', 1], ['kilobyte', KIB], ['megabyte', MIB]];
   const [unit, scale] = units.findLast(([, size]) => bytes >= size) ?? units[0];
-  return new Intl.NumberFormat(locale, {
+  return numberFormat(locale, {
     style: 'unit',
     unit,
     // A byte count reads compactly (5 B); larger units keep their short names (1.5 kB, 3 MB).

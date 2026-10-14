@@ -4,6 +4,7 @@
 
 import { clockTime } from '../chat/days.js';
 import { fill } from '../i18n/fill.js';
+import { dateFormat, numberFormat, pluralRules, relativeFormat } from '../i18n/formats.js';
 import { humanizeId } from '../ids.js';
 import { escapedText, questionTarget, RoutineError } from './protocol.js';
 
@@ -146,8 +147,8 @@ export function scheduleWords(schedule, copy, locale) {
   }
   if (schedule.kind === 'continuous') {
     return fill(copy.continuous, {
-      gap: new Intl.NumberFormat(locale).format(schedule.gap),
-      cap: new Intl.NumberFormat(locale).format(schedule.cap),
+      gap: numberFormat(locale).format(schedule.gap),
+      cap: numberFormat(locale).format(schedule.cap),
     });
   }
   if (schedule.kind === 'daily') return fill(copy.daily, { time: schedule.time });
@@ -160,12 +161,12 @@ export function scheduleWords(schedule, copy, locale) {
 
 /** A UTC instant shown in a Routine's timezone for the viewer's locale. */
 export function instantWords(value, locale, timeZone) {
-  return new Intl.DateTimeFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(new Date(value));
+  return dateFormat(locale, { dateStyle: 'medium', timeStyle: 'short', timeZone }).format(new Date(value));
 }
 
 /** An instant as day/Month/year and a 24-hour clock to the second ("02/Outubro/2026 22:29:00") in a timezone. */
 export function clockWords(value, locale, timeZone) {
-  const parts = Object.fromEntries(new Intl.DateTimeFormat(locale, {
+  const parts = Object.fromEntries(dateFormat(locale, {
     day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZone,
   }).formatToParts(new Date(value)).map((part) => [part.type, part.value]));
   const month = parts.month.charAt(0).toLocaleUpperCase(locale) + parts.month.slice(1);
@@ -177,7 +178,7 @@ export function untilWords(value, now, locale) {
   const seconds = Math.round((new Date(value).getTime() - now) / 1000);
   if (!(seconds > 0)) return '';
   const [unit, size] = [['day', 86_400], ['hour', 3_600], ['minute', 60], ['second', 1]].find(([, step]) => seconds >= step);
-  return new Intl.RelativeTimeFormat(locale, { numeric: 'auto' }).format(Math.round(seconds / size), unit);
+  return relativeFormat(locale, { numeric: 'auto' }).format(Math.round(seconds / size), unit);
 }
 
 /** A copy template as ordered parts, each value part keyed by its placeholder so it can be styled on its own. */
@@ -226,12 +227,12 @@ export function routineErrorMessage(error, copy) {
 
 // The words of a count: one form for exactly one, the other for any other number.
 function plural(forms, count, locale) {
-  return new Intl.PluralRules(locale).select(count) === 'one' ? forms.one : forms.other;
+  return pluralRules(locale).select(count) === 'one' ? forms.one : forms.other;
 }
 
 /** A count in words: its form for the count in the viewer's locale, the count written in that locale's digits. */
 export function countWords(forms, count, locale) {
-  return fill(plural(forms, count, locale), { count: new Intl.NumberFormat(locale).format(count) });
+  return fill(plural(forms, count, locale), { count: numberFormat(locale).format(count) });
 }
 
 /** How many runs one rollup counts, in words: the healthy runs of a continuous Routine, or the runs one missed. */
@@ -334,7 +335,7 @@ function numberWords(text, locale) {
   const magnitude = Math.abs(value);
   const localizable = digits.length <= 15 && Number.isFinite(value) &&
     (value === 0 || (magnitude >= 1e-6 && magnitude < 1e15));
-  return localizable ? new Intl.NumberFormat(locale, { maximumFractionDigits: 21 }).format(value) : text;
+  return localizable ? numberFormat(locale, { maximumFractionDigits: 21 }).format(value) : text;
 }
 
 /** One scalar node of a shown result as plain words in the viewer's language. */

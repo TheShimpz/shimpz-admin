@@ -4,6 +4,7 @@
 
 import { humanizeId } from '../ids.js';
 import { outputLabels } from './words.js';
+import { numberFormat } from '../i18n/formats.js';
 
 const SCALAR_KINDS = new Set(['null', 'redacted', 'elided', 'bool', 'number', 'text']);
 // Values that say nothing about a column's kind: an absent, hidden, or cut-away value.
@@ -169,7 +170,7 @@ export function attemptsByStep(diagnostics, steps) {
 
 /** How long a step's attempt took, in the viewer's locale: milliseconds under a second, else seconds or minutes. */
 export function durationWords(ms, locale) {
-  const unit = (value, name, digits = 0) => new Intl.NumberFormat(locale, {
+  const unit = (value, name, digits = 0) => numberFormat(locale, {
     style: 'unit', unit: name, unitDisplay: 'short', maximumFractionDigits: digits,
   }).format(value);
   if (ms < 1_000) return unit(ms, 'millisecond');
