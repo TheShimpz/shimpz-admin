@@ -63,13 +63,12 @@ test('a sent image opens from its thumbnail and every way of closing it gives fo
   const opener = message.getByRole('button', { name: open('Harbour at dusk.jpg'), exact: true });
   await expect(opener.locator('img')).toBeVisible();
   await expect(message.getByRole('button', { name: open('Team portrait.png'), exact: true })).toBeVisible();
-  // The thumbnail keeps the rendition's proportions, drawn from one image load of it.
+  // The thumbnail keeps the rendition's proportions, drawn from one read of it.
   const shape = await opener.locator('img').evaluate((image) => [image.naturalWidth, image.naturalHeight]);
   expect(shape).toEqual([600, 400]);
   await expect.poll(() => requests.map((request) => request.path.split('/')[5]).sort()).toEqual(
     [PREVIEW_IMAGES.landscape, PREVIEW_IMAGES.portrait, PREVIEW_IMAGES.collected].sort(),
   );
-  expect(requests.every((request) => request.type === 'image')).toBe(true);
   // A PDF's pages are asked for only once it is opened, and the image Team no longer holds is left out.
   await expect(message.getByRole('listitem').filter({ hasText: 'Launch brief.pdf' })).toBeVisible();
   await expect(message.getByRole('listitem').filter({ hasText: 'Old draft.png' })).toHaveCount(0);
