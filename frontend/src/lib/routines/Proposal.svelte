@@ -79,10 +79,17 @@
 
   // The card is revoked once; the edited text is then sent as the next message of this card's own Team. A send the
   // page cannot take now keeps the text in its field to send again, never revoking twice.
-  let revoked = false;
+  let revoked = $state(false);
+  // The card answers only while it is shown: a revocation that ends after it left sends nothing.
+  let shown = true;
+  $effect(() => () => {
+    shown = false;
+  });
 
   async function rewrite() {
     const text = draft.trim();
+    // The Team is the card's own as the person sent it; a later selection of another Team never receives it.
+    const origin = teamId;
     if (!text || working) return;
     if (!revoked) {
       working = true;
@@ -97,7 +104,8 @@
         working = false;
       }
     }
-    if (onrewrite(text, teamId)) answer = 'revoked';
+    if (!shown) return;
+    if (onrewrite(text, origin)) answer = 'revoked';
     else error = card.rewriteUnsent;
   }
 
@@ -108,9 +116,10 @@
   }
 </script>
 
+<!-- A revoked card whose edited text has not gone out yet stays open to send it, past its lifetime too. -->
 {#if answer}
   <p class="routine-result" role="status">{card[answer]}</p>
-{:else if !expired}
+{:else if !expired || revoked}
 <section class="routine-proposal" aria-label={card.title}>
   <div class="sheet admin-frame">
     <header>

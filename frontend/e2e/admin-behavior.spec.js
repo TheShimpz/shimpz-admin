@@ -4905,29 +4905,45 @@ test.describe('Team Routines', () => {
   test('an edited prompt never reaches another Team the page moved to while its card was being revoked', async ({ page }) => {
     const release = await holdRevocation(page);
     await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: TEAMS } }));
+    // Neo's chat attaches and takes messages, so only the card's own Team binding can keep the text out of it.
+    const neoFrames = [];
+    await routeChat(page, 'neo', (channel) => {
+      channel.onMessage((message) => neoFrames.push(JSON.parse(message)));
+    });
     const scenario = await recordRoutine(page);
     const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
     await card.getByRole('button', { name: 'Edit', exact: true }).click();
     await card.getByRole('button', { name: 'Send', exact: true }).click();
     await page.locator('.shell-sidebar').getByRole('link', { name: 'Neo', exact: true }).click();
     await expect(page).toHaveURL(/team=neo/u);
+    await expect.poll(() => neoFrames.length).toBeGreaterThan(0);
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     release();
     await expect.poll(() => proposalCalls(page)).toEqual(['revoke']);
     await page.waitForTimeout(500);
-    expect(scenario.chatFrames().filter((frame) => frame.type === 'chat').map((frame) => frame.message)).toEqual([
-      ROUTINE_TEXT.en.request,
-    ]);
+    const sent = (frames) => frames.filter((frame) => frame.type === 'chat').map((frame) => frame.message);
+    expect(sent(neoFrames)).toEqual([]);
+    expect(sent(scenario.chatFrames())).toEqual([ROUTINE_TEXT.en.request]);
   });
 
-  test('an edited prompt the chat cannot take yet stays in its field to send again', async ({ page }) => {
+  test('an edited prompt the chat cannot take yet stays in its field, past the card’s lifetime, to send again', async ({ page }) => {
+    await page.clock.install();
     const release = await holdRevocation(page);
     const scenario = await routeScenario(page, 'routine-card');
-    // The person's own next message stays unanswered, so the chat is still busy when the card's text would go out.
+    // The person's own next message is answered only when the test says, so the chat is busy when the text would go.
     let turns = 0;
+    let held = null;
+    const frames = [];
     await routeChat(page, 'marketing', (channel) => {
       channel.onMessage((message) => {
         const frame = JSON.parse(message);
-        if (frame.type === 'chat' && turns++ > 0) return;
+        frames.push(frame);
+        if (frame.type === 'chat' && turns++ === 1) {
+          held = () => {
+            for (const reply of scenario.chat.message(frame, 'marketing')) channel.send(reply);
+          };
+          return;
+        }
         for (const reply of scenario.chat.message(frame, 'marketing')) channel.send(reply);
       });
     });
@@ -4935,17 +4951,26 @@ test.describe('Team Routines', () => {
     const composer = page.getByRole('textbox', { name: 'Send', exact: true });
     await fillWhenReady(page, composer, ROUTINE_TEXT.en.request);
     await page.getByRole('button', { name: 'Send' }).click();
-    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title }).first();
     await card.getByRole('button', { name: 'Edit', exact: true }).click();
     await card.getByRole('button', { name: 'Send', exact: true }).click();
     await composer.fill('Something else first');
     await composer.press('Enter');
+    await expect.poll(() => held !== null).toBe(true);
     release();
     await expect(card.getByRole('alert')).toHaveText(messages.en.routine.proposal.rewriteUnsent);
-    await expect(card.getByRole('textbox', { name: messages.en.routine.proposal.prompt })).toHaveValue(
-      ROUTINE_TEXT.en.cardDescription,
-    );
-    await expect.poll(() => proposalCalls(page)).toEqual(['revoke']);
+    const prompt = card.getByRole('textbox', { name: messages.en.routine.proposal.prompt });
+    await expect(prompt).toHaveValue(ROUTINE_TEXT.en.cardDescription);
+    // The card's lifetime ends, and the text is still there to send.
+    await page.clock.runFor(16 * 60 * 1000);
+    await expect(prompt).toHaveValue(ROUTINE_TEXT.en.cardDescription);
+    held();
+    await expect(composer).toBeEnabled();
+    await card.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect.poll(() => frames.filter((frame) => frame.type === 'chat').map((frame) => frame.message))
+      .toContain(ROUTINE_TEXT.en.cardDescription);
+    // The card was revoked once; sending again sent only the text.
+    expect(await proposalCalls(page)).toEqual(['revoke']);
   });
 
   test('each step of a Routine card names its Assistant with a link to that Assistant’s page', async ({ page }) => {
