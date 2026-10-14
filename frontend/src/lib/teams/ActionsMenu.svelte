@@ -85,7 +85,8 @@
   }
 </script>
 
-<svelte:window onkeydown={keydown} onresize={() => { if (open) place(); }} />
+<!-- The menu is fixed to the viewport, so it follows its row whenever anything under it scrolls or the window resizes. -->
+<svelte:window onkeydown={keydown} onresize={() => { if (open) place(); }} onscrollcapture={() => { if (open) place(); }} />
 <svelte:document onpointerdown={outsidePointerdown} />
 
 <div bind:this={root} class="team-actions">
