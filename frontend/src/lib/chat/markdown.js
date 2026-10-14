@@ -67,38 +67,41 @@ function spellsAddress(plain, url) {
 }
 
 /** Parse a deliberately small inline Markdown subset into text-only display tokens. */
-// Where a link destination ends: its first `)` outside balanced parentheses (a URL such as
-// https://en.wikipedia.org/wiki/Foo_(bar) keeps its own), or -1 when it does not close within the longest destination
-// a link may have, so a line of unclosed destinations is read once, not once per opening.
-function destinationEnd(input, start) {
-  let depth = 0;
-  const last = Math.min(input.length, start + MAX_LINK_CHARS + 1);
-  for (let index = start; index < last; index += 1) {
-    if (input[index] === '(') depth += 1;
-    else if (input[index] === ')') {
-      if (depth === 0) return index;
-      depth -= 1;
-    }
+// Where a link destination starting at each position ends: its first `)` outside balanced parentheses (a URL such as
+// https://en.wikipedia.org/wiki/Foo_(bar) keeps its own), or -1 when it never closes or closes past the longest
+// destination a link may have. That `)` is where the parenthesis depth first drops below the depth at the start, so
+// one pass over the line answers every start at once.
+function destinationEnds(input) {
+  const depth = new Int32Array(input.length + 1);
+  for (let index = 0; index < input.length; index += 1) {
+    depth[index + 1] = depth[index] + (input[index] === '(' ? 1 : input[index] === ')' ? -1 : 0);
   }
-  return -1;
+  const ends = new Int32Array(input.length).fill(-1);
+  const lower = [];
+  for (let index = input.length; index >= 0; index -= 1) {
+    while (lower.length && depth[lower.at(-1)] >= depth[index]) lower.pop();
+    if (index < input.length && lower.length && lower.at(-1) - 1 - index <= MAX_LINK_CHARS) ends[index] = lower.at(-1) - 1;
+    lower.push(index);
+  }
+  return ends;
 }
 
 export function parseInline(source) {
   const input = String(source ?? '');
   const tokens = [];
   let cursor = 0;
-  // The last search for a label's `](` and for a destination's end: a search from a later position up to the `](` found
-  // finds the same one, none follows a position after which none was found, and openings that share a label end share
-  // its destination, so a line of unclosed links is read once, not once per opening.
+  // The last search for a label's `](`: a search from a later position up to the `](` found finds the same one, and
+  // none follows a position after which none was found. Destinations are all resolved in one pass when the first is
+  // needed. A line of unclosed links is so read once, not once per opening.
   let label = { from: Infinity, at: -1 };
-  let destination = { start: -1, end: -1 };
+  let ends = null;
   const labelEnd = (from) => {
     if (from < label.from || (label.at !== -1 && from > label.at)) label = { from, at: input.indexOf('](', from) };
     return label.at;
   };
   const hrefEnd = (start) => {
-    if (start !== destination.start) destination = { start, end: destinationEnd(input, start) };
-    return destination.end;
+    ends ??= destinationEnds(input);
+    return start < ends.length ? ends[start] : -1;
   };
 
   while (cursor < input.length) {
