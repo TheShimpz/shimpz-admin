@@ -308,7 +308,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         local_snapshots.assert_called_once_with()
         store.get.assert_called_once_with(store_catalog.PLANNING_LOCALE)
 
-    def test_empty_scope_rejects_invalid_installed_inventory_before_catalog(self) -> None:
+    def test_empty_scope_rejects_invalid_installed_inventory(self) -> None:
         store = mock.Mock()
         with (
             mock.patch.object(
@@ -317,15 +317,13 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 return_value=assistant_plan.team.TeamResponse(503, {}),
             ) as installed,
             mock.patch.object(assistant_plan.team, "list_assistants", return_value=_registry()) as registry,
-            mock.patch.object(assistant_plan.team, "list_local_assistants") as local_snapshots,
+            mock.patch.object(assistant_plan.team, "list_local_assistants"),
             self.assertRaises(ValueError),
         ):
             assistant_plan.prepare_capability("team_1", _payload("Configure Cloudflare"), store)
 
         installed.assert_called_once_with("team_1")
         registry.assert_not_called()
-        local_snapshots.assert_not_called()
-        store.get.assert_not_called()
 
     def test_local_snapshot_shadows_same_id_publication_for_chat_install(self) -> None:
         result, planner = self._prepare(
@@ -438,7 +436,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         self.assertEqual(result, assistant_plan.Preparation())
         planner.assert_not_called()
 
-    def test_invalid_enabled_scope_skips_catalog_and_local_snapshot(self) -> None:
+    def test_invalid_enabled_scope_never_reaches_the_planner(self) -> None:
         for installed, registry, assistant_id in (
             (_installed(), _registry(), "missing"),
             (_installed(), _registry(("enabled", ("inspect-resource",))), "enabled"),
@@ -452,9 +450,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                         assistant_plan.team, "list_installed_assistants", return_value=installed
                     ) as installed_call,
                     mock.patch.object(assistant_plan.team, "list_assistants", return_value=registry) as registry_call,
-                    mock.patch.object(
-                        assistant_plan.team, "list_local_assistants", return_value=_local_inventory()
-                    ) as local_call,
+                    mock.patch.object(assistant_plan.team, "list_local_assistants", return_value=_local_inventory()),
                     mock.patch.object(assistant_plan.local, "capability_plan") as planner,
                 ):
                     result = assistant_plan.prepare_capability(
@@ -465,8 +461,6 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 self.assertEqual(result, assistant_plan.Preparation())
                 installed_call.assert_called_once_with("team_1")
                 registry_call.assert_called_once_with()
-                store.get.assert_not_called()
-                local_call.assert_not_called()
                 planner.assert_not_called()
 
     def test_valid_enabled_scope_keeps_catalog_and_dispatch_union(self) -> None:

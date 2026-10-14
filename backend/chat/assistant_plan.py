@@ -285,20 +285,28 @@ def capability_gap(
     payload: dict[str, object],
     catalog: store_catalog.StoreCatalog,
 ) -> Gap | None:
-    """Resolve exact current state and the bounded shortlist, or None when nothing may be planned."""
+    """Resolve exact current state and the bounded shortlist, or None when nothing may be planned.
+
+    The catalog is read beside the inventory: neither depends on the other, and the gap bounds how long
+    classification waits for its shortlist.
+    """
     enabled_ids = tuple(payload["assistant_ids"])
-    if enabled_ids:
-        installed, registry = team_inventory(team_id)
-        enabled = _enabled_capabilities(enabled_ids, installed, registry)
-    else:
-        installed = installed_inventory(team_id)
-        enabled = ()
-    if enabled is None:
-        return None
-    try:
-        available = planning_catalog(catalog)
-    except OSError, ValueError, team.TeamRequestError:
-        return None
+    # The executor joins the catalog read even after a refused inventory, so the read stays inside the turn's bounded
+    # admission; a refusal then takes as long as a successful gap already does.
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="assistant-gap") as executor:
+        available_future = submit_in_context(executor, planning_catalog, catalog)
+        if enabled_ids:
+            installed, registry = team_inventory(team_id)
+            enabled = _enabled_capabilities(enabled_ids, installed, registry)
+        else:
+            installed = installed_inventory(team_id)
+            enabled = ()
+        if enabled is None:
+            return None
+        try:
+            available = available_future.result()
+        except OSError, ValueError, team.TeamRequestError:
+            return None
     kept_enabled, shortlist = assistant_proposal.capability_candidates(
         payload["message"],
         available,
