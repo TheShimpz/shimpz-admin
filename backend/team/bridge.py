@@ -17,6 +17,7 @@ from team import transport
 
 from chat import payloads
 from protocol.http.v1 import payload as team_contract
+from protocol.http.v1 import preview as preview_contract
 
 log = logging.getLogger("shimpz-admin")
 
@@ -34,6 +35,8 @@ _call_raw = transport._call_raw
 _call_stream = transport._call_stream
 _call_asset = transport._call_asset
 _call_preview = transport._call_preview
+_call_page_preview = transport._call_page_preview
+_call_content = transport._call_content
 supervisor_session = transport.supervisor_session
 
 MAX_CHAT_JSON_BODY_BYTES = 128 * 1024
@@ -650,21 +653,51 @@ _PREVIEW_REFUSALS = {
     422: frozenset({"file-preview-unsupported"}),
     503: frozenset({"file-preview-busy", "file-preview-unavailable"}),
 }
+# The closed refusals of a file download: the file is absent or collected, or Team's downloads are all under way.
+_CONTENT_REFUSALS = {
+    404: frozenset({"file-not-found", "team-not-found"}),
+    503: frozenset({"file-download-busy"}),
+}
+_BUSY_CODES = frozenset({"file-preview-busy", "file-download-busy"})
 MAX_PREVIEW_RETRY_MS = 2000
+
+
+def _file_bytes(response: TeamAssetResponse, refusals: dict[int, frozenset[str]], detail: str) -> TeamAssetResponse:
+    """Team's file bytes as they came, or its closed refusal with a busy answer's bounded retry delay."""
+    if response.contents is not None:
+        return response
+    code = response.error.get("code")
+    if response.status not in refusals or code not in refusals[response.status]:
+        return TeamAssetResponse(502, None, {"detail": "team unavailable"})
+    error: dict[str, object] = {"detail": detail, "code": code}
+    retry = response.error.get("retry_after_ms")
+    if code in _BUSY_CODES and type(retry) is int and 1 <= retry <= MAX_PREVIEW_RETRY_MS:
+        error["retry_after_ms"] = retry
+    return TeamAssetResponse(response.status, None, error)
+
+
+def _canonical_file(team_id: object, file_id: object) -> str:
+    canonical_id = canonical_team_id(team_id)
+    canonical_file_id = payloads._canonical_id(file_id, field="file id", pattern=_FILE_ID_RE, maximum=32)
+    return _files_path(canonical_id, canonical_file_id)
 
 
 def file_preview(team_id: object, file_id: object) -> TeamAssetResponse:
     """One Team file's sanitized image rendition, or its closed refusal (ADR-0093)."""
-    canonical_id = canonical_team_id(team_id)
-    canonical_file_id = payloads._canonical_id(file_id, field="file id", pattern=_FILE_ID_RE, maximum=32)
-    response = _call_preview(f"{_files_path(canonical_id, canonical_file_id)}/preview")
-    if response.contents is not None:
-        return response
-    code = response.error.get("code")
-    if response.status not in _PREVIEW_REFUSALS or code not in _PREVIEW_REFUSALS[response.status]:
-        return TeamAssetResponse(502, None, {"detail": "team unavailable"})
-    error: dict[str, object] = {"detail": "file preview unavailable", "code": code}
-    retry = response.error.get("retry_after_ms")
-    if code == "file-preview-busy" and type(retry) is int and 1 <= retry <= MAX_PREVIEW_RETRY_MS:
-        error["retry_after_ms"] = retry
-    return TeamAssetResponse(response.status, None, error)
+    response = _call_preview(f"{_canonical_file(team_id, file_id)}/preview")
+    return _file_bytes(response, _PREVIEW_REFUSALS, "file preview unavailable")
+
+
+def file_page_preview(team_id: object, file_id: object, page: object) -> TeamAssetResponse:
+    """One page of a Team PDF as a sanitized rendition with the page count, or its closed refusal (ADR-0093)."""
+    canonical_page = preview_contract.canonical_page(page)
+    if canonical_page is None:
+        raise TeamRequestError("page must be a number from 1 to 50")
+    response = _call_page_preview(f"{_canonical_file(team_id, file_id)}/pages/{canonical_page}/preview")
+    return _file_bytes(response, _PREVIEW_REFUSALS, "file preview unavailable")
+
+
+def file_content(team_id: object, file_id: object) -> TeamAssetResponse:
+    """One Team file's original, verified against its digest, or its closed refusal (ADR-0093)."""
+    response = _call_content(f"{_canonical_file(team_id, file_id)}/content")
+    return _file_bytes(response, _CONTENT_REFUSALS, "file download unavailable")

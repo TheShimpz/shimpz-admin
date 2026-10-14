@@ -277,6 +277,9 @@ def _secured_send(send: Send, headers: dict[str, str]) -> Send:
         if message["type"] == "http.response.start":
             response_headers = MutableHeaders(scope=message)
             for name, value in (headers | browser.security_headers(SPA_SCRIPT_SOURCES, _socket_origins())).items():
+                # A route's own policy stands: only a response that is never a page sets one, stricter than the page's.
+                if name == "Content-Security-Policy" and name in response_headers:
+                    continue
                 response_headers[name] = value
         await send(message)
 

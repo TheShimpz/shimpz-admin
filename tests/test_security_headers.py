@@ -71,6 +71,21 @@ class SecurityHeaderTests(unittest.TestCase):
         self.assertEqual(status, 503)
         self.assert_security_headers(headers)
 
+    def test_a_route_that_sets_its_own_policy_keeps_it_and_every_other_header(self) -> None:
+        messages: list[dict[str, object]] = []
+
+        async def send(message: dict[str, object]) -> None:
+            messages.append(message)
+
+        own = [(b"content-security-policy", b"sandbox; default-src 'none'")]
+        secured = self.admin_app._secured_send(send, {"Cache-Control": "no-store"})
+        asyncio.run(secured({"type": "http.response.start", "status": 200, "headers": own}))
+        headers = {name.decode(): value.decode() for name, value in messages[0]["headers"]}
+        self.assertEqual(headers["content-security-policy"], "sandbox; default-src 'none'")
+        self.assertEqual(headers["cache-control"], "no-store")
+        self.assertEqual(headers["x-content-type-options"], "nosniff")
+        self.assertEqual(headers["referrer-policy"], "no-referrer")
+
 
 if __name__ == "__main__":
     unittest.main()

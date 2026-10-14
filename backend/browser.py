@@ -184,6 +184,18 @@ def same_origin_image(request: Request) -> bool:
     return sites == ["same-origin"] and len(destinations) == 1 and destinations[0] in {"image", "empty"}
 
 
+def same_origin_download(request: Request) -> bool:
+    """Whether Admin's own page downloads this, or reads it from a script (Fetch Metadata).
+
+    Exactly one `Sec-Fetch-Site: same-origin` and one `Sec-Fetch-Dest` of `empty` (a download, by the HTML standard, or
+    a script's read) or `document` (a download some browsers send as a navigation) admit it; a frame, an image, another
+    site's page, and a client that sends neither header do not.
+    """
+    sites = request.headers.getlist("sec-fetch-site")
+    destinations = request.headers.getlist("sec-fetch-dest")
+    return sites == ["same-origin"] and len(destinations) == 1 and destinations[0] in {"empty", "document"}
+
+
 def oauth_completion_mode(select_mode: Callable[[], str]) -> str | None:
     """Project Admin's page-origin decision before the browser needs popup activation."""
     try:

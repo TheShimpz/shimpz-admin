@@ -1,10 +1,13 @@
 """Bounded authenticated HTTP transport from Admin to team."""
 
+import base64
 import contextlib
+import hashlib
 import http.client
 import json
 import logging
 import os
+import re
 import threading
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -17,6 +20,7 @@ from urllib.parse import quote, urlparse
 import models
 import supervisor as local_supervisor
 
+from protocol.http.v1 import content as content_contract
 from protocol.http.v1 import preview as preview_contract
 from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import supervisor as supervisor_contract
@@ -32,6 +36,8 @@ MAX_JSON_RESPONSE_BYTES = 256 * 1024
 MAX_ASSISTANT_ICON_BYTES = 1024 * 1024
 CONTROL_TIMEOUT_SECONDS = 180
 FILE_NAME_HEADER = "X-Shimpz-Filename"
+# A file original's SHA-256 as Team sends it (RFC 9530): exactly one standard base64 digest.
+_REPR_DIGEST = re.compile(r"sha-256=:([A-Za-z0-9+/]{43}=):")
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +109,8 @@ class TeamAssetResponse:
     contents: bytes | None
     error: dict[str, object]
     media_type: str = "image/png"
+    # A PDF page's rendition also names its document's page count.
+    page_count: int | None = None
 
 
 ProgressSink = Callable[[dict[str, object]], None]
@@ -511,12 +519,51 @@ def _decode_preview(response: http.client.HTTPResponse) -> TeamAssetResponse:
     return result
 
 
+def _decode_page_preview(response: http.client.HTTPResponse) -> TeamAssetResponse:
+    """A PDF page's preview: a file preview whose page count header names 1 to the page ceiling."""
+    result = _decode_preview(response)
+    if result.contents is None:
+        return result
+    page_count = preview_contract.canonical_page(response.getheader(preview_contract.PAGE_COUNT_HEADER))
+    if page_count is None:
+        raise OSError("invalid Team asset response")
+    return TeamAssetResponse(result.status, result.contents, {}, result.media_type, page_count)
+
+
+def _decode_content(response: http.client.HTTPResponse) -> TeamAssetResponse:
+    """A file's original: exactly an octet stream of its declared length whose SHA-256 is its declared digest.
+
+    It is read whole, within the upload bound, and verified before Admin sends any of it on.
+    """
+    if response.status != HTTPStatus.OK:
+        return TeamAssetResponse(response.status, None, _decode_response(response))
+    content_type = (response.getheader("Content-Type") or "").partition(";")[0].strip().lower()
+    raw_length = response.getheader("Content-Length") or ""
+    digest = _REPR_DIGEST.fullmatch(response.getheader("Repr-Digest") or "")
+    if content_type != "application/octet-stream" or not raw_length.isascii() or not raw_length.isdigit() or not digest:
+        raise OSError("invalid Team file content response")
+    sha256 = base64.b64decode(digest[1], validate=True).hex()
+    framing = content_contract.canonical_framing({"length": int(raw_length), "sha256": sha256})
+    if framing is None:
+        raise OSError("invalid Team file content response")
+    contents = response.read(content_contract.MAX_CONTENT_BYTES + 1)
+    if len(contents) != framing["length"] or hashlib.sha256(contents).hexdigest() != sha256:
+        raise OSError("invalid Team file content response")
+    return TeamAssetResponse(HTTPStatus.OK, contents, {}, "application/octet-stream")
+
+
 def _asset_unavailable() -> TeamAssetResponse:
     return TeamAssetResponse(HTTPStatus.BAD_GATEWAY, None, {"detail": "team unavailable"})
 
 
 _ASSET_READING = _Reading("image/png", _decode_asset, _asset_unavailable, "Team asset request")
 _PREVIEW_READING = _Reading("image/jpeg, image/png", _decode_preview, _asset_unavailable, "Team file preview request")
+_PAGE_PREVIEW_READING = _Reading(
+    "image/jpeg, image/png", _decode_page_preview, _asset_unavailable, "Team file page preview request"
+)
+_CONTENT_READING = _Reading(
+    "application/octet-stream", _decode_content, _asset_unavailable, "Team file content request"
+)
 
 
 def _request_asset(method: str, path: str, reading: _Reading[TeamAssetResponse] = _ASSET_READING) -> TeamAssetResponse:
@@ -618,6 +665,14 @@ def _call_asset(path: str) -> TeamAssetResponse:
 
 def _call_preview(path: str) -> TeamAssetResponse:
     return _request_asset("GET", path, _PREVIEW_READING)
+
+
+def _call_page_preview(path: str) -> TeamAssetResponse:
+    return _request_asset("GET", path, _PAGE_PREVIEW_READING)
+
+
+def _call_content(path: str) -> TeamAssetResponse:
+    return _request_asset("GET", path, _CONTENT_READING)
 
 
 def _call_stream(
