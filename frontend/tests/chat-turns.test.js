@@ -245,3 +245,8 @@ test('a chat error reads as its words, with the technical detail unless the word
     { message: WORDS.spaceResetting, detail: 'HTTP 409 · space-resetting: reset' });
   assert.deepEqual(projectedChatError(502, 'bad gateway', WORDS), { message: WORDS.requestFailed, detail: 'HTTP 502 · bad gateway' });
 });
+
+test('turns with nothing to expire stay the same array, so nothing derived from them is computed again', () => {
+  const turns = [{ role: 'user', text: 'Oi' }, { role: 'assistant', text: 'Olá' }];
+  assert.equal(expiredTurns(turns), turns);
+});

@@ -260,27 +260,36 @@ export function lifecycleTurns(turns, incoming, receipt, renderKey, words) {
  * and an Assistant still installing have an unknown outcome, and an install plan under way stopped.
  */
 export function expiredTurns(turns) {
-  return turns.map((turn) => {
-    if (turn.lifecycle?.state === 'proposed') {
-      return { ...turn, lifecycle: { ...turn.lifecycle, state: 'expired' } };
-    }
-    if (turn.lifecycle?.state === 'working') {
-      return { ...turn, lifecycle: { ...turn.lifecycle, state: 'unknown' } };
-    }
-    if (['planned', 'installing'].includes(turn.installPlan?.state)) {
-      return {
-        ...turn,
-        installPlan: {
-          ...turn.installPlan,
-          state: 'stopped',
-          assistants: turn.installPlan.assistants.map((assistant) => (
-            assistant.status === 'installing' ? { ...assistant, status: 'unknown' } : assistant
-          )),
-        },
-      };
-    }
-    return turn;
+  // The same array when nothing expired, so the transcript derived from it is not computed again for nothing.
+  let changed = false;
+  const expired = turns.map((turn) => {
+    const next = expiredTurn(turn);
+    changed ||= next !== turn;
+    return next;
   });
+  return changed ? expired : turns;
+}
+
+function expiredTurn(turn) {
+  if (turn.lifecycle?.state === 'proposed') {
+    return { ...turn, lifecycle: { ...turn.lifecycle, state: 'expired' } };
+  }
+  if (turn.lifecycle?.state === 'working') {
+    return { ...turn, lifecycle: { ...turn.lifecycle, state: 'unknown' } };
+  }
+  if (['planned', 'installing'].includes(turn.installPlan?.state)) {
+    return {
+      ...turn,
+      installPlan: {
+        ...turn.installPlan,
+        state: 'stopped',
+        assistants: turn.installPlan.assistants.map((assistant) => (
+          assistant.status === 'installing' ? { ...assistant, status: 'unknown' } : assistant
+        )),
+      },
+    };
+  }
+  return turn;
 }
 
 /** An uninstall card's task state. */
