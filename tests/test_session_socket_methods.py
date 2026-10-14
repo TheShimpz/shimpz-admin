@@ -261,7 +261,7 @@ class SessionMethodAuthorityTests(SessionMethodCase):
         self.assertEqual(self.calls.frames.BODY_BYTES["teams.reorder"], 8 * 1024)
         self.assertEqual(self.calls.frames.BODY_BYTES["models.save"], self.team.MAX_JSON_BODY_BYTES)
         # A confirmation's password and the recovery codes' or signing key's second factor kept the ceremony's 8 KiB, a
-        # Routine deletion's second factor and a held run's answer J16, and an acknowledgment 1 KiB.
+        # Routine deletion's second factor J16, and an acknowledgment 1 KiB.
         bounds = self.calls.frames.BODY_BYTES
         for method in (
             "routines.deletion",
@@ -270,8 +270,10 @@ class SessionMethodAuthorityTests(SessionMethodCase):
             "supervisor_key.rotate",
         ):
             self.assertEqual(bounds[method], self.admin_app.local_auth.MAX_BODY_BYTES)
-        for method in ("routines.delete", "routines.human", "routines.challenge", "routines.card_answer"):
+        for method in ("routines.delete", "routines.challenge", "routines.card_answer"):
             self.assertEqual(bounds[method], self.team.MAX_JSON_BODY_BYTES)
+        # A held run's text answer is as long as a chat answer may be.
+        self.assertEqual(bounds["routines.human"], 96 * 1024)
         self.assertEqual(bounds["security.acknowledge"], 1024)
 
     def test_every_team_method_refuses_an_invalid_team_id_before_team(self) -> None:

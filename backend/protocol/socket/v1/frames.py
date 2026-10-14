@@ -107,7 +107,8 @@ METHODS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
 }
 # The most bytes each method's request body takes as compact UTF-8 JSON: the bound its operation always had (a Team
 # name or an acknowledgment 1 KiB; a Team order or deletion, a confirmation's password, and the recovery codes' or
-# signing key's second factor 8 KiB; every other body 16 KiB). A larger body is answered 413.
+# signing key's second factor 8 KiB; a Routine run's human answer 96 KiB, the 16,000 code points a text answer admits at
+# 4 bytes each with its fields, inside the inbound frame; every other body 16 KiB). A larger body is answered 413.
 BODY_BYTES = {
     "teams.create": 1 * KIB,
     "teams.rename": 1 * KIB,
@@ -124,7 +125,7 @@ BODY_BYTES = {
     "routines.delete": 16 * KIB,
     "routines.card_answer": 16 * KIB,
     "routines.challenge": 16 * KIB,
-    "routines.human": 16 * KIB,
+    "routines.human": 96 * KIB,
     "security.acknowledge": 1 * KIB,
     "recovery_codes.confirmation": 8 * KIB,
     "recovery_codes.replace": 8 * KIB,

@@ -206,6 +206,8 @@ def _resume(canonical: str, run: str, action: str, payload: dict[str, object], a
         timeout=routine_team.RESUME_TIMEOUT_SECONDS,
         bindings=transport._RequestBindings(model_credential=credential, human_assurance=assurance),
         progress=lambda _event: None,
+        # A human answer is as long as a chat one may be (Team admits the same 128 KiB for both).
+        max_body_bytes=team.MAX_CHAT_JSON_BODY_BYTES,
     )
     return _resumed(response, canonical, run)
 

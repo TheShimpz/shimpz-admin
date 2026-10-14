@@ -150,6 +150,8 @@ class RoutineAnswerTests(unittest.TestCase):
         deny = {"type": "human-response", "challenge_id": CHALLENGE, "decision": "deny"}
         result, stream = self.respond(deny, resume=resumed("denied"))
         self.assertEqual((result.body["status"], stream.call_args.args[2]["decision"]), ("denied", "deny"))
+        # A resume carries an answer as long as a chat one: Admin sends it within chat's own body bound.
+        self.assertEqual(stream.call_args.kwargs["max_body_bytes"], team.MAX_CHAT_JSON_BODY_BYTES)
 
         self.open("auth:password")
         password = {"type": "human-response", "challenge_id": CHALLENGE, "decision": "submit", "value": "hunter2"}

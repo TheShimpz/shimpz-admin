@@ -7,7 +7,9 @@ chat's own Action-password authority, and never resumes once its socket closed.
 """
 
 import asyncio
+import json
 import threading
+import unittest
 from unittest import mock
 
 from tests.session_socket_case import SessionSocketCase
@@ -325,3 +327,19 @@ class RoutineResumeTests(RoutineMethodCase):
                 ("routines.human", {"team_id": "team_1", "run_id": RUN, "body": DENY}),
             )
         self.assertEqual([result["status"] for result in results], [429, 429])
+
+
+class RoutineAnswerBoundTests(unittest.TestCase):
+    def test_the_longest_text_answer_fits_its_body_bound(self) -> None:
+        from protocol.socket.v1 import frames
+
+        # A text answer of the 16,000 code points a request admits, each a 4-byte character, with its fields.
+        body = {
+            "type": "human-response",
+            "challenge_id": "a" * 32,
+            "decision": "submit",
+            "value": "\U0001f600" * 16_000,
+        }
+        size = len(json.dumps(body, ensure_ascii=False, separators=(",", ":")).encode())
+        self.assertLessEqual(size, frames.BODY_BYTES["routines.human"])
+        self.assertLess(frames.BODY_BYTES["routines.human"], frames.MAX_INBOUND_BYTES)
