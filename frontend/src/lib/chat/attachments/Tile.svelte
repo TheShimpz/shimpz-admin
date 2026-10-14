@@ -1,6 +1,7 @@
 <script>
-  import { Button } from '@shimpz/frontend';
-  import { formatFileSize } from '#lib/chat/attachments/files.js';
+  import { ActionLink, Button } from '@shimpz/frontend';
+  import { downloadUrl, formatFileSize } from '#lib/chat/attachments/files.js';
+  import { OPAQUE_ID_RE, TEAM_ID_RE } from '#lib/ids.js';
   import ImageViewer from '#lib/chat/attachments/ImageViewer.svelte';
   import { acquirePreview, previewable } from '#lib/chat/attachments/previews.js';
   import { locale, t } from '#lib/i18n/index.js';
@@ -10,7 +11,8 @@
   // its thumbnail in the badge's place, and the thumbnail opens it over the chat; until then the badge names its
   // extension. The thumbnail is asked for only once the card comes within NEAR_PX of its scrolling region, and an image
   // Team cannot read is reported through `onunavailable`, so its message can leave it out. `images` are the message's
-  // images the viewer can move through, this one among them. In the composer the card can be removed from the message.
+  // images the viewer can move through, this one among them. A stored file can be downloaded from its card's end; in the
+  // composer the card can also be removed from the message.
   let {
     teamId,
     file,
@@ -40,6 +42,11 @@
       : [file.name, ''],
   );
   let canPreview = $derived(status === 'ready' && previewable(teamId, file));
+  // Only a file Team stored, of a valid Team, can be downloaded.
+  let downloadable = $derived(
+    status === 'ready' && typeof teamId === 'string' && TEAM_ID_RE.test(teamId) &&
+      typeof file.id === 'string' && OPAQUE_ID_RE.test(file.id),
+  );
   // The badge: the file's extension, at most four characters, or its type when it has none.
   let badge = $derived.by(() => {
     const dot = file.name.lastIndexOf('.');
@@ -106,18 +113,35 @@
     <span class="card-name" title={file.name}><span class="head">{nameParts[0]}</span><span class="tail">{nameParts[1]}</span></span>
     <span class="card-details">{details}</span>
   </span>
-  {#if onremove}
-    <Button
-      class="card-remove"
-      variant="ghost"
-      size="icon"
-      type="button"
-      onclick={onremove}
-      title={copy.remove}
-      aria-label={$t('attachments.removeNamed', { name: file.name })}
-    >
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"></path></svg>
-    </Button>
+  {#if downloadable || onremove}
+    <span class="card-actions">
+      {#if downloadable}
+        <ActionLink
+          class="card-download glitch-host"
+          variant="ghost"
+          size="sm"
+          href={downloadUrl(teamId, file.id)}
+          download={file.name}
+          title={$t('attachments.downloadNamed', { name: file.name })}
+          aria-label={$t('attachments.downloadNamed', { name: file.name })}
+        >
+          {#snippet icon()}<svg class="glitch-icon" viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19h14"></path></svg>{/snippet}
+        </ActionLink>
+      {/if}
+      {#if onremove}
+        <Button
+          class="card-remove"
+          variant="ghost"
+          size="icon"
+          type="button"
+          onclick={onremove}
+          title={copy.remove}
+          aria-label={$t('attachments.removeNamed', { name: file.name })}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"></path></svg>
+        </Button>
+      {/if}
+    </span>
   {/if}
   {#if viewing && shown}
     <ImageViewer
@@ -139,8 +163,39 @@
     align-items: center;
     gap: var(--gap-item);
     padding: var(--gap-inside);
+    border: 1px solid color-mix(in srgb, var(--shimpz-color-border) 70%, transparent);
     clip-path: var(--shimpz-control-shape);
     background: color-mix(in srgb, var(--shimpz-color-text) 5%, var(--shimpz-color-bg));
+  }
+
+  /* The card's actions at its end: download, then remove in the composer. */
+  .card-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-inside);
+  }
+
+  /* The download link shows only its icon: no border, at rest or under the pointer. */
+  .attachment-card :global(.shimpz-action-link.card-download) {
+    --link-border: transparent;
+    width: 1.75rem;
+    height: 1.75rem;
+    min-height: 0;
+    padding: 0;
+    color: var(--shimpz-color-text-dim);
+    border-color: transparent;
+  }
+
+  .attachment-card :global(.shimpz-action-link.card-download:hover) { border-color: transparent; }
+
+  .attachment-card :global(.card-download svg) {
+    width: 1rem;
+    height: 1rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 1.5;
   }
 
   /* A file still uploading is dimmed until Team has stored it. */

@@ -634,6 +634,7 @@ export default {
     list: 'Pièces jointes',
     remove: 'Retirer du message',
     removeNamed: 'Retirer {name} du message',
+    downloadNamed: 'Télécharger {name}',
     openImage: 'Ouvrir {name}',
     closeImage: 'Fermer',
     previousImage: 'Image précédente',

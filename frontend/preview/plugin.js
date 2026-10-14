@@ -1,6 +1,6 @@
 // `vite dev --mode scenarios` only (ADR-0087): the owner's presentation preview. The browser answers the Admin API
 // from a scenario (install.js); this server answers only the images a page loads (icons and sent images' renditions,
-// from fixtures) and refuses every other `/api` request and socket, so an image, navigation, or frame never reaches a
+// from fixtures, and a stand-in for a downloaded file) and refuses every other `/api` request and socket, so an image, navigation, or frame never reaches a
 // backend. Nothing here is part of `vite build`.
 import { fileURLToPath } from 'node:url';
 
@@ -29,6 +29,10 @@ function rendition(fileId) {
   return RENDITIONS.get(fileId);
 }
 
+// A download answers a stand-in file the browser saves under the card's own name.
+const DOWNLOAD_RE = /^\/api\/teams\/[a-z0-9_]{1,40}\/files\/[0-9a-f]{32}\/download$/u;
+const DOWNLOAD = 'Preview download: the Admin serves the stored file here.\n';
+
 function apiPath(url) {
   const path = new URL(url ?? '/', 'http://preview.invalid').pathname;
   return path === '/api' || path.startsWith('/api/') ? path : null;
@@ -48,6 +52,13 @@ export function adminPreview() {
           response.setHeader('content-type', 'image/png');
           response.setHeader('cache-control', 'no-store');
           response.end(image);
+          return;
+        }
+        if (request.method === 'GET' && DOWNLOAD_RE.test(path)) {
+          response.setHeader('content-type', 'application/octet-stream');
+          response.setHeader('content-disposition', 'attachment');
+          response.setHeader('cache-control', 'no-store');
+          response.end(DOWNLOAD);
           return;
         }
         if (request.method === 'GET' && /\/(?:catalog-)?icon$/u.test(path)) {

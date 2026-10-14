@@ -634,6 +634,7 @@ export default {
     list: '添付ファイル',
     remove: 'メッセージから削除',
     removeNamed: '{name} をメッセージから削除',
+    downloadNamed: '{name} をダウンロード',
     openImage: '{name} を開く',
     closeImage: '閉じる',
     previousImage: '前の画像',

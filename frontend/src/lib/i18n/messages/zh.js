@@ -634,6 +634,7 @@ export default {
     list: '附件',
     remove: '从消息中移除',
     removeNamed: '从消息中移除 {name}',
+    downloadNamed: '下载 {name}',
     openImage: '打开 {name}',
     closeImage: '关闭',
     previousImage: '上一张图片',

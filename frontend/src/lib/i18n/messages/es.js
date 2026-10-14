@@ -634,6 +634,7 @@ export default {
     list: 'Adjuntos',
     remove: 'Quitar del mensaje',
     removeNamed: 'Quitar {name} del mensaje',
+    downloadNamed: 'Descargar {name}',
     openImage: 'Abrir {name}',
     closeImage: 'Cerrar',
     previousImage: 'Imagen anterior',

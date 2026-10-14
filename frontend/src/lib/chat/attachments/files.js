@@ -237,3 +237,8 @@ export async function uploadTeamFile(fetcher, teamId, file, signal) {
   ) throw new AttachmentUploadError('failed');
   return { id: stored.id, name: stored.name, media_type: stored.media_type, size: stored.size };
 }
+
+/** The Admin route that downloads one stored file of a Team, always as an attachment. */
+export function downloadUrl(teamId, fileId) {
+  return `/api/teams/${teamId}/files/${fileId}/download`;
+}

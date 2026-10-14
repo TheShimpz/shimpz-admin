@@ -647,6 +647,7 @@ export default {
     list: 'Attachments',
     remove: 'Remove from message',
     removeNamed: 'Remove {name} from message',
+    downloadNamed: 'Download {name}',
     openImage: 'Open {name}',
     closeImage: 'Close',
     previousImage: 'Previous image',

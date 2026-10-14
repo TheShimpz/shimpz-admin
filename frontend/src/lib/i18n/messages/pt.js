@@ -634,6 +634,7 @@ export default {
     list: 'Anexos',
     remove: 'Remover da mensagem',
     removeNamed: 'Remover {name} da mensagem',
+    downloadNamed: 'Baixar {name}',
     openImage: 'Abrir {name}',
     closeImage: 'Fechar',
     previousImage: 'Imagem anterior',

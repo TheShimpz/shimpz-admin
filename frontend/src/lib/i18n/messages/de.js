@@ -634,6 +634,7 @@ export default {
     list: 'Anhänge',
     remove: 'Aus der Nachricht entfernen',
     removeNamed: '{name} aus der Nachricht entfernen',
+    downloadNamed: '{name} herunterladen',
     openImage: '{name} öffnen',
     closeImage: 'Schließen',
     previousImage: 'Vorheriges Bild',

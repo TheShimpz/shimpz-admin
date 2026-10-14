@@ -634,6 +634,7 @@ export default {
     list: 'المرفقات',
     remove: 'إزالة من الرسالة',
     removeNamed: 'إزالة {name} من الرسالة',
+    downloadNamed: 'تنزيل {name}',
     openImage: 'فتح {name}',
     closeImage: 'إغلاق',
     previousImage: 'الصورة السابقة',
