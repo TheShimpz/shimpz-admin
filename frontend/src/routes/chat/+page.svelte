@@ -1564,6 +1564,13 @@
     if (files.length) addAttachments(files);
   }
 
+  // A Routine card's edited prompt, sent only into the conversation of the card's own Team: a page that moved to another
+  // Team meanwhile sends nothing, and the card keeps the text.
+  function rewriteRoutine(message, teamId) {
+    if (teamId !== $teamContext.selectedTeamId || chatTeamId !== teamId) return false;
+    return submitMessage(message);
+  }
+
   function submitMessage(message, {
     focusActiveTurn = true,
     projectUserTurn = true,
@@ -1968,7 +1975,7 @@
                 Boolean(exchanges[index + 1]?.assistant?.routineRun)}
               lifecycleDisabled={lifecycleDecisionDisabled}
               onanswer={(answer) => answerClarification(exchange, answer)}
-              onrewrite={submitMessage}
+              onrewrite={rewriteRoutine}
               ondecide={submitLifecycleDecision}
               thinking={index === exchanges.length - 1 && busy && !integrationChallenge && !humanChallenge &&
                 (exchange.assistant ? exchange.assistant.installPlan?.state === 'installed' : !lifecycleWorking)

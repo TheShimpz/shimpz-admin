@@ -560,6 +560,7 @@ export default {
       editTitle: 'Prompt zur Erstellung der Routine ändern',
       send: 'Senden',
       prompt: 'Routinetext',
+      rewriteUnsent: 'Der Text konnte noch nicht gesendet werden. Sende ihn erneut.',
       working: 'Wird gespeichert…',
       created: 'Routine erstellt.',
       changed: 'Routine geändert.',

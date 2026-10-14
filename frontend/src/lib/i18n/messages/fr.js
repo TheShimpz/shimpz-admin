@@ -560,6 +560,7 @@ export default {
       editTitle: 'Modifier le prompt de création de la routine',
       send: 'Envoyer',
       prompt: 'Texte de la routine',
+      rewriteUnsent: 'Le texte n’a pas encore pu être envoyé. Renvoyez-le.',
       working: 'Enregistrement…',
       created: 'Routine créée.',
       changed: 'Routine modifiée.',

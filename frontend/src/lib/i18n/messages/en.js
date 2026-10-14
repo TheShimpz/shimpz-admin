@@ -567,6 +567,7 @@ export default {
       editTitle: 'Change the routine creation prompt',
       send: 'Send',
       prompt: 'Routine text',
+      rewriteUnsent: 'The text could not be sent yet. Send it again.',
       working: 'Saving…',
       created: 'Routine created.',
       changed: 'Routine changed.',

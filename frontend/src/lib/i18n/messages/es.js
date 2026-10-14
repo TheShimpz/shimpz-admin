@@ -560,6 +560,7 @@ export default {
       editTitle: 'Cambiar el prompt de creación de la rutina',
       send: 'Enviar',
       prompt: 'Texto de la rutina',
+      rewriteUnsent: 'Todavía no se pudo enviar el texto. Envíalo de nuevo.',
       working: 'Guardando…',
       created: 'Rutina creada.',
       changed: 'Rutina cambiada.',

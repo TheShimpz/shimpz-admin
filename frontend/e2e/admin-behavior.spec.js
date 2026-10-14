@@ -4889,6 +4889,65 @@ test.describe('Team Routines', () => {
     expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toEqual([]);
   });
 
+  // The card's revocation waits until the test lets it answer.
+  async function holdRevocation(page) {
+    let release;
+    const held = new Promise((resolve) => {
+      release = resolve;
+    });
+    await routeRead(page, 'routines.proposal_revoke', async () => {
+      await held;
+      return undefined;
+    });
+    return release;
+  }
+
+  test('an edited prompt never reaches another Team the page moved to while its card was being revoked', async ({ page }) => {
+    const release = await holdRevocation(page);
+    await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: TEAMS } }));
+    const scenario = await recordRoutine(page);
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    await card.getByRole('button', { name: 'Edit', exact: true }).click();
+    await card.getByRole('button', { name: 'Send', exact: true }).click();
+    await page.locator('.shell-sidebar').getByRole('link', { name: 'Neo', exact: true }).click();
+    await expect(page).toHaveURL(/team=neo/u);
+    release();
+    await expect.poll(() => proposalCalls(page)).toEqual(['revoke']);
+    await page.waitForTimeout(500);
+    expect(scenario.chatFrames().filter((frame) => frame.type === 'chat').map((frame) => frame.message)).toEqual([
+      ROUTINE_TEXT.en.request,
+    ]);
+  });
+
+  test('an edited prompt the chat cannot take yet stays in its field to send again', async ({ page }) => {
+    const release = await holdRevocation(page);
+    const scenario = await routeScenario(page, 'routine-card');
+    // The person's own next message stays unanswered, so the chat is still busy when the card's text would go out.
+    let turns = 0;
+    await routeChat(page, 'marketing', (channel) => {
+      channel.onMessage((message) => {
+        const frame = JSON.parse(message);
+        if (frame.type === 'chat' && turns++ > 0) return;
+        for (const reply of scenario.chat.message(frame, 'marketing')) channel.send(reply);
+      });
+    });
+    await page.goto('/chat/?team=marketing');
+    const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+    await fillWhenReady(page, composer, ROUTINE_TEXT.en.request);
+    await page.getByRole('button', { name: 'Send' }).click();
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    await card.getByRole('button', { name: 'Edit', exact: true }).click();
+    await card.getByRole('button', { name: 'Send', exact: true }).click();
+    await composer.fill('Something else first');
+    await composer.press('Enter');
+    release();
+    await expect(card.getByRole('alert')).toHaveText(messages.en.routine.proposal.rewriteUnsent);
+    await expect(card.getByRole('textbox', { name: messages.en.routine.proposal.prompt })).toHaveValue(
+      ROUTINE_TEXT.en.cardDescription,
+    );
+    await expect.poll(() => proposalCalls(page)).toEqual(['revoke']);
+  });
+
   test('each step of a Routine card names its Assistant with a link to that Assistant’s page', async ({ page }) => {
     await recordRoutine(page);
     const card = page.getByRole('region', { name: messages.en.routine.proposal.title });

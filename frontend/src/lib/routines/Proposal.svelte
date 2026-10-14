@@ -77,11 +77,34 @@
     prompt?.setSelectionRange(draft.length, draft.length);
   }
 
+  // The card is revoked once; the edited text is then sent as the next message of this card's own Team. A send the
+  // page cannot take now keeps the text in its field to send again, never revoking twice.
+  let revoked = false;
+
   async function rewrite() {
     const text = draft.trim();
-    if (!text) return;
-    await settle(revokeRoutineProposal);
-    if (answer === 'revoked') onrewrite(text);
+    if (!text || working) return;
+    if (!revoked) {
+      working = true;
+      error = '';
+      try {
+        await revokeRoutineProposal(call, teamId, proposal.proposal_id);
+        revoked = true;
+      } catch (failure) {
+        error = outcomeUnknown(failure) ? $t('shell.outcomeUnknown') : routineErrorMessage(failure, copy.errors);
+        return;
+      } finally {
+        working = false;
+      }
+    }
+    if (onrewrite(text, teamId)) answer = 'revoked';
+    else error = card.rewriteUnsent;
+  }
+
+  // Leaving the editor shows the card again, unless it was already revoked for a send that did not go out.
+  function stopEditing() {
+    editing = false;
+    if (revoked) answer = 'revoked';
   }
 </script>
 
@@ -142,7 +165,7 @@
 
   <div class="actions">
     {#if editing}
-      <DialogAction kind="cancel" class="tone-cancel" size="sm" type="button" disabled={working} onclick={() => (editing = false)}>
+      <DialogAction kind="cancel" class="tone-cancel" size="sm" type="button" disabled={working} onclick={stopEditing}>
         {card.cancel}</DialogAction>
       <DialogAction kind="confirm" size="sm" type="button" disabled={working || disabled || !$commandsReady || !draft.trim()}
         onclick={rewrite}>{card.send}</DialogAction>

@@ -560,6 +560,7 @@ export default {
       editTitle: '修改例行任务的创建提示',
       send: '发送',
       prompt: '例行任务文本',
+      rewriteUnsent: '文本暂时无法发送。请再次发送。',
       working: '正在保存…',
       created: '例行任务已创建。',
       changed: '例行任务已更改。',

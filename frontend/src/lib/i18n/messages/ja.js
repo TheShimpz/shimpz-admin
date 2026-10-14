@@ -560,6 +560,7 @@ export default {
       editTitle: 'ルーティン作成プロンプトを変更',
       send: '送信',
       prompt: 'ルーティンのテキスト',
+      rewriteUnsent: 'テキストをまだ送信できませんでした。もう一度送信してください。',
       working: '保存中…',
       created: 'ルーティンを作成しました。',
       changed: 'ルーティンを変更しました。',

@@ -560,6 +560,7 @@ export default {
       editTitle: 'تغيير موجّه إنشاء الروتين',
       send: 'إرسال',
       prompt: 'نص الروتين',
+      rewriteUnsent: 'تعذّر إرسال النص بعد. أرسله مرة أخرى.',
       working: 'جارٍ الحفظ…',
       created: 'أُنشئ الروتين.',
       changed: 'غُيِّر الروتين.',
