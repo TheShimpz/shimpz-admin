@@ -116,6 +116,7 @@ function answer(frame, text) {
 function rejectPending(reason) {
   for (const { reject } of pending.values()) reject(reason);
   pending.clear();
+  for (const { reject } of waitingReads.splice(0)) reject(unavailable());
 }
 
 function unavailable() {
@@ -195,7 +196,7 @@ async function read(method, params) {
     // An open socket sends the read at once, in the caller's own turn.
     if (!socketIsOpen()) await socketOpen();
     try {
-      return await send(method, params);
+      return await send(method, params, undefined, { wait: true });
     } catch (error) {
       if (!(error instanceof LocalApiError) || ![OUTCOME_UNKNOWN, 'socket-unavailable'].includes(error.code)) throw error;
       if (!options) throw unavailable();
@@ -203,9 +204,29 @@ async function read(method, params) {
   }
 }
 
-function send(method, params, onProgress) {
+// Reads past Admin's in-flight bound wait their turn here, oldest first, instead of failing: a screen that opens with
+// many reads (one per Team, per staged snapshot) gets every answer. A change is never queued; past the bound it fails.
+// A socket that closes rejects every waiting read as unsent.
+const MAX_WAITING_READS = 256;
+const waitingReads = [];
+
+function send(method, params, onProgress, { wait = false } = {}) {
   if (!connection || connection.readyState !== WebSocket.OPEN || !opened) return Promise.reject(unavailable());
-  if (pending.size >= MAX_IN_FLIGHT) return Promise.reject(new LocalApiError('Too many Admin requests.', 429));
+  if (pending.size < MAX_IN_FLIGHT) return dispatch(method, params, onProgress);
+  if (!wait || waitingReads.length >= MAX_WAITING_READS) {
+    return Promise.reject(new LocalApiError('Too many Admin requests.', 429));
+  }
+  return new Promise((resolve, reject) => waitingReads.push({ method, params, resolve, reject }));
+}
+
+function dispatchWaiting() {
+  while (waitingReads.length && pending.size < MAX_IN_FLIGHT) {
+    const { method, params, resolve, reject } = waitingReads.shift();
+    dispatch(method, params).then(resolve, reject);
+  }
+}
+
+function dispatch(method, params, onProgress) {
   nextCall += 1;
   const id = `c${nextCall}`;
   const frame = { type: 'call', id, method, params };
@@ -463,6 +484,7 @@ function receive(text) {
     if (!waiting) throw new Error('unexpected result');
     pending.delete(frame.id);
     waiting.resolve(answer(frame, text));
+    dispatchWaiting();
     return;
   }
   // A long call's own progress names its call; a chat channel's progress frame names its Team instead.
@@ -758,6 +780,9 @@ class ChatChannel {
       for (const event of this.waiting.splice(0)) this.deliver(event);
     }).catch(() => {
       this.attaching = false;
+      // An attach that failed on a socket still open would leave the page waiting for a channel that never opens: it
+      // fails like a refused attach. On a socket that closed, the reopen attaches the channel again.
+      if (!this.closedByPage && channels.get(this.teamId) === this && socketIsOpen()) this.dropped(1011);
     });
   }
 

@@ -152,13 +152,22 @@ test('a call made while the first open is under way waits for it, and fails if i
   await assert.rejects(abandoned, (error) => error.code === 'socket-unavailable');
 });
 
-test('at most sixteen calls wait, and a close fails every pending change with an unknown outcome', async () => {
+test('at most sixteen calls are in flight: a change past them fails, a read waits its turn, and a close fails both', async () => {
   const socket = connected();
   const calls = Array.from({ length: 16 }, () => call('teams.rename', { team_id: 'marketing', body: {} }));
   await flush();
-  await assert.rejects(call('teams.list'), (error) => error.status === 429);
+  await assert.rejects(call('teams.delete', { team_id: 'marketing' }), (error) => error.status === 429);
+  // A read past the bound is sent once an answer frees a slot, and gets its own answer.
+  const waiting = call('teams.list');
+  await flush();
+  assert.equal(socket.sent.filter((frame) => frame.method === 'teams.list').length, 0);
+  socket.answer('teams.rename', { team_id: 'marketing', team_name: 'Marketing' });
+  await flush();
+  assert.equal(socket.sent.filter((frame) => frame.method === 'teams.list').length, 1);
+  socket.answer('teams.list', { teams: [] });
+  assert.deepEqual(await (await waiting).json(), { teams: [] });
   socket.drop(1006);
-  for (const pending of calls) await assert.rejects(pending, (error) => error.code === 'outcome-unknown');
+  for (const pending of calls.slice(0, -1)) await assert.rejects(pending, (error) => error.code === 'outcome-unknown');
 });
 
 test('a read waits while the socket reconnects and is asked again when its answer was lost; a change never waits', async () => {
