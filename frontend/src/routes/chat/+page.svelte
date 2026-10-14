@@ -1968,6 +1968,7 @@
                 Boolean(exchanges[index + 1]?.assistant?.routineRun)}
               lifecycleDisabled={lifecycleDecisionDisabled}
               onanswer={(answer) => answerClarification(exchange, answer)}
+              onrewrite={submitMessage}
               ondecide={submitLifecycleDecision}
               thinking={index === exchanges.length - 1 && busy && !integrationChallenge && !humanChallenge &&
                 (exchange.assistant ? exchange.assistant.installPlan?.state === 'installed' : !lifecycleWorking)

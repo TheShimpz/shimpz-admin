@@ -69,6 +69,7 @@ export const ROUTINE_TEXT = Object.freeze({
   en: {
     names: ["DNS watch", "Weekly www update", "Certificate check", "Monthly DNS cleanup", "Old DNS report"],
     card: "shimpz.com DNS",
+    cardDescription: "Every 30 seconds, this checks the zones in your Cloudflare account and reads the DNS records of shimpz.com. It only reads; nothing is changed.",
     request: "Every 30 seconds, list the DNS records of my zone shimpz.com, up to 1,000 times a day",
     cardReply: "I listed your zones and the DNS records of shimpz.com. The Routine below repeats exactly that.",
     refusalRequest: "Every day, log in with my password hunter2 and export the DNS records",
@@ -78,6 +79,7 @@ export const ROUTINE_TEXT = Object.freeze({
   pt: {
     names: ["Vigia de DNS", "Atualização semanal do www", "Verificação de certificados", "Limpeza mensal de DNS", "Relatório antigo de DNS"],
     card: "DNS de shimpz.com",
+    cardDescription: "A cada 30 segundos, confere as zonas da sua conta Cloudflare e lê os registros DNS de shimpz.com. Só lê; nada é alterado.",
     request: "A cada 30 segundos, liste os registros DNS da minha zona shimpz.com, até 1.000 vezes por dia",
     cardReply: "Listei suas zonas e os registros DNS de shimpz.com. A rotina abaixo repete exatamente isso.",
     refusalRequest: "Todo dia, entre com a minha senha hunter2 e exporte os registros DNS",
@@ -87,6 +89,7 @@ export const ROUTINE_TEXT = Object.freeze({
   es: {
     names: ["Vigilancia de DNS", "Actualización semanal de www", "Revisión de certificados", "Limpieza mensual de DNS", "Informe antiguo de DNS"],
     card: "DNS de shimpz.com",
+    cardDescription: "Cada 30 segundos, revisa las zonas de tu cuenta de Cloudflare y lee los registros DNS de shimpz.com. Solo lee; no cambia nada.",
     request: "Cada 30 segundos, lista los registros DNS de mi zona shimpz.com, hasta 1.000 veces al día",
     cardReply: "Listé tus zonas y los registros DNS de shimpz.com. La rutina de abajo repite exactamente eso.",
     refusalRequest: "Todos los días, entra con mi contraseña hunter2 y exporta los registros DNS",
@@ -96,6 +99,7 @@ export const ROUTINE_TEXT = Object.freeze({
   zh: {
     names: ["DNS 监控", "每周更新 www", "证书检查", "每月 DNS 清理", "旧 DNS 报告"],
     card: "shimpz.com 的 DNS",
+    cardDescription: "每 30 秒检查一次你 Cloudflare 账户中的区域，并读取 shimpz.com 的 DNS 记录。只读取，不做任何更改。",
     request: "每 30 秒列出我的区域 shimpz.com 的 DNS 记录，每天最多 1,000 次",
     cardReply: "我列出了你的区域和 shimpz.com 的 DNS 记录。下面的例行任务会完全重复这些操作。",
     refusalRequest: "每天用我的密码 hunter2 登录并导出 DNS 记录",
@@ -105,6 +109,7 @@ export const ROUTINE_TEXT = Object.freeze({
   fr: {
     names: ["Veille DNS", "Mise à jour hebdomadaire de www", "Vérification des certificats", "Nettoyage DNS mensuel", "Ancien rapport DNS"],
     card: "DNS de shimpz.com",
+    cardDescription: "Toutes les 30 secondes, vérifie les zones de votre compte Cloudflare et lit les enregistrements DNS de shimpz.com. Lecture seule ; rien n’est modifié.",
     request: "Toutes les 30 secondes, liste les enregistrements DNS de ma zone shimpz.com, jusqu’à 1 000 fois par jour",
     cardReply: "J’ai listé vos zones et les enregistrements DNS de shimpz.com. La routine ci-dessous refait exactement cela.",
     refusalRequest: "Chaque jour, connecte-toi avec mon mot de passe hunter2 et exporte les enregistrements DNS",
@@ -114,6 +119,7 @@ export const ROUTINE_TEXT = Object.freeze({
   de: {
     names: ["DNS-Wache", "Wöchentliches www-Update", "Zertifikatsprüfung", "Monatliche DNS-Bereinigung", "Alter DNS-Bericht"],
     card: "DNS von shimpz.com",
+    cardDescription: "Alle 30 Sekunden prüft dies die Zonen deines Cloudflare-Kontos und liest die DNS-Einträge von shimpz.com. Nur lesen; nichts wird geändert.",
     request: "Liste alle 30 Sekunden die DNS-Einträge meiner Zone shimpz.com auf, bis zu 1.000-mal am Tag",
     cardReply: "Ich habe deine Zonen und die DNS-Einträge von shimpz.com aufgelistet. Die Routine unten wiederholt genau das.",
     refusalRequest: "Melde dich jeden Tag mit meinem Passwort hunter2 an und exportiere die DNS-Einträge",
@@ -123,6 +129,7 @@ export const ROUTINE_TEXT = Object.freeze({
   ja: {
     names: ["DNS 監視", "www の週次更新", "証明書チェック", "毎月の DNS 整理", "旧 DNS レポート"],
     card: "shimpz.com の DNS",
+    cardDescription: "30 秒ごとに Cloudflare アカウントのゾーンを確認し、shimpz.com の DNS レコードを読み取ります。読み取りのみで、何も変更しません。",
     request: "30 秒ごとに、私のゾーン shimpz.com の DNS レコードを一覧にして。1 日最大 1,000 回まで",
     cardReply: "ゾーンと shimpz.com の DNS レコードを一覧にしました。下のルーティンはそれをそのまま繰り返します。",
     refusalRequest: "毎日、私のパスワード hunter2 でログインして DNS レコードをエクスポートして",
@@ -132,6 +139,7 @@ export const ROUTINE_TEXT = Object.freeze({
   ar: {
     names: ["مراقبة DNS", "تحديث www الأسبوعي", "فحص الشهادات", "تنظيف DNS الشهري", "تقرير DNS القديم"],
     card: "DNS لـ shimpz.com",
+    cardDescription: "كل 30 ثانية، يتحقق من مناطق حسابك في Cloudflare ويقرأ سجلات DNS لـ shimpz.com. للقراءة فقط؛ لا يتغير شيء.",
     request: "كل 30 ثانية، اعرض سجلات DNS لمنطقتي shimpz.com، حتى 1000 مرة يوميًا",
     cardReply: "عرضتُ مناطقك وسجلات DNS لـ shimpz.com. الروتين أدناه يكرر ذلك تمامًا.",
     refusalRequest: "كل يوم، سجّل الدخول بكلمة مروري hunter2 وصدّر سجلات DNS",
@@ -574,6 +582,7 @@ export function cloudflareCard(proposalId, locale = 'en', now = Date.now(), mode
     expires_at: instant(now + CARD_LIFETIME_MS),
     replaces: null,
     name: textFor(locale).card,
+    description: textFor(locale).cardDescription,
     schedule: { kind: 'continuous', gap: 30, cap: 2880 },
     timezone: 'America/Sao_Paulo',
     timezone_source: 'browser',

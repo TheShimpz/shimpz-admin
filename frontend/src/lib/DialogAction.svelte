@@ -8,6 +8,7 @@
   // only for an alternative action that is not the dialog's primary one.
   const KINDS = {
     cancel: { variant: 'secondary', icon: PATHS.close.join('') },
+    edit: { variant: 'ghost', icon: 'M4 20h4L19 9l-4-4L4 16v4M13.5 6.5l4 4' },
     confirm: { variant: 'primary', icon: 'M5 12h14M13 6l6 6-6 6' },
     danger: { variant: 'danger', icon: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v5M14 11v5' },
     retry: { variant: 'primary', icon: 'M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5' },

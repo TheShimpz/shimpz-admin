@@ -439,17 +439,15 @@ export function refusalWords(refusal, copy) {
 }
 
 /**
- * One card input's value and origin in words: named in the request, chosen by the assistant, or from an earlier step;
- * `planCopy` words a path into that step's result.
+ * One card input's value in words: a literal as itself, the date of each run, or where in an earlier step's result it
+ * is read; `planCopy` words a path into that result.
  */
-export function proposalInputWords(input, copy, planCopy) {
-  if (input.origin === 'request' || input.origin === 'assistant') {
-    return { value: literalWords(input.value), origin: copy.origins[input.origin] };
-  }
-  if (input.origin === 'clock') return { value: '', origin: copy.origins.clock };
+export function proposalInputValue(input, copy, planCopy) {
+  if (input.origin === 'request' || input.origin === 'assistant') return literalWords(input.value);
+  if (input.origin === 'clock') return copy.origins.clock;
   const path = [input.pointer, input.item ?? ''].filter(Boolean).map((pointer) => pointerWords(pointer, planCopy));
   const origin = input.origin === 'selector'
     ? fill(copy.origins.selector, { n: input.step, member: humanizeId(input.where.member), value: whereWords(input.where) })
     : fill(copy.origins.step, { n: input.step });
-  return { value: path.join(' › '), origin };
+  return path.length ? `${origin}: ${path.join(' › ')}` : origin;
 }

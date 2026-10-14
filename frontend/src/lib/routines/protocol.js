@@ -753,6 +753,8 @@ export async function answerRoutineCard(call, teamId, incidentId, card, choice) 
 }
 
 const MAX_NAME_CHARS = 80;
+// The recording agent's plain-language description on a card (Team's MAX_ROUTINE_DESCRIPTION_CHARS).
+const MAX_DESCRIPTION_CHARS = 600;
 const PAUSE_REASONS = ['decided', 'unavailable', 'exhausted', 'policy', 'evidence'];
 
 function closedText(value, maximum) {
@@ -805,8 +807,8 @@ const NOTICE_DETAILS = {
 // closes a Routine's timeline (ADR-0101).
 const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed', 'healthy', 'deleted'];
 
-function isName(value) {
-  return closedText(value, MAX_NAME_CHARS) && !FORBIDDEN_RE.test(value) && value.normalize('NFC') === value;
+function isName(value, maximum = MAX_NAME_CHARS) {
+  return closedText(value, maximum) && !FORBIDDEN_RE.test(value) && value.normalize('NFC') === value;
 }
 
 function isDefinition(detail) {
@@ -1082,8 +1084,8 @@ function permitsExactly(permitted, steps) {
  */
 export function parseRoutineProposal(value) {
   const keys = [
-    'proposal_id', 'expires_at', 'replaces', 'name', 'schedule', 'timezone', 'timezone_source', 'next_runs',
-    'daily_cap', 'output', 'steps', 'permitted',
+    'proposal_id', 'expires_at', 'replaces', 'name', 'description', 'schedule', 'timezone', 'timezone_source',
+    'next_runs', 'daily_cap', 'output', 'steps', 'permitted',
   ];
   return view(value, keys, (item) => {
     const { steps, output, next_runs: runs } = item;
@@ -1094,6 +1096,7 @@ export function parseRoutineProposal(value) {
       isInstant(item.expires_at) &&
       (item.replaces === null || (typeof item.replaces === 'string' && OPAQUE_ID_RE.test(item.replaces))) &&
       isName(item.name) &&
+      isName(item.description, MAX_DESCRIPTION_CHARS) &&
       isSchedule(item.schedule) &&
       isZoned(item.timezone, item.timezone_source) &&
       Array.isArray(runs) && runs.length >= 1 && runs.length <= MAX_NEXT_RUNS && runs.every(isInstant) &&

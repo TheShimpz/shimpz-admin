@@ -64,7 +64,7 @@ import {
   outputScalarWords,
   outputTable,
   pointerWords,
-  proposalInputWords,
+  proposalInputValue,
   questionWords,
   refusalWords,
   routineErrorMessage,
@@ -132,6 +132,7 @@ const PROPOSAL = Object.freeze({
   expires_at: '2026-10-05T12:16:07Z',
   replaces: null,
   name: 'DNS de shimpz.com',
+  description: 'A cada 30 segundos, lista as zonas da sua conta Cloudflare e lê os registros DNS de shimpz.com.',
   schedule: { kind: 'continuous', gap: 30, cap: 2880 },
   timezone: 'America/Sao_Paulo',
   timezone_source: 'browser',
@@ -370,16 +371,13 @@ test('a Routine card is admitted only whole, and its inputs say where each value
   }
   const copy = routineMessages.pt;
   const input = (changes) => ({ member: 'x', value: null, step: null, pointer: null, where: null, item: null, ...changes });
-  const selector = proposalInputWords(PROPOSAL.steps[1].inputs[0], copy.proposal, copy.plan);
-  assert.equal(selector.value, 'result › id');
-  assert.match(selector.origin, /shimpz\.com/u);
-  assert.deepEqual(
-    proposalInputWords(input({ origin: 'request', value: '"50"' }), copy.proposal, copy.plan),
-    { value: '50', origin: copy.proposal.origins.request },
-  );
-  assert.equal(proposalInputWords(input({ origin: 'clock' }), copy.proposal, copy.plan).origin, copy.proposal.origins.clock);
-  const fromStep = proposalInputWords(input({ origin: 'step', step: 1, pointer: '/result/0/id' }), copy.proposal, copy.plan);
-  assert.equal(fromStep.value, 'result › primeiro › id');
+  const selector = proposalInputValue(PROPOSAL.steps[1].inputs[0], copy.proposal, copy.plan);
+  assert.match(selector, /shimpz\.com.*: result › id$/u);
+  assert.equal(proposalInputValue(input({ origin: 'request', value: '"50"' }), copy.proposal, copy.plan), '50');
+  assert.equal(proposalInputValue(input({ origin: 'assistant', value: 'true' }), copy.proposal, copy.plan), 'true');
+  assert.equal(proposalInputValue(input({ origin: 'clock' }), copy.proposal, copy.plan), copy.proposal.origins.clock);
+  const fromStep = proposalInputValue(input({ origin: 'step', step: 1, pointer: '/result/0/id' }), copy.proposal, copy.plan);
+  assert.equal(fromStep, `${fill(copy.proposal.origins.step, { n: 1 })}: result › primeiro › id`);
   // Every documented refusal has its own sentence; a plan code reads as the plan's, any other code as the generic one.
   assert.equal(refusalWords(parseRoutineRefusal({ code: 'routine-secret-literal' }), copy.proposal), copy.proposal.refusals.secret);
   assert.equal(refusalWords({ code: 'plan-input-type' }, copy.proposal), copy.proposal.refusals.plan);

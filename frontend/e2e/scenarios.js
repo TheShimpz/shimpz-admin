@@ -40,7 +40,7 @@ const MAX_TEAMS = 128;
 const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
 
 export const ASSISTANTS = [
-  { id: 'shimpz-cloudflare', title: 'Shimpz Cloudflare' },
+  { id: 'shimpz-cloudflare', title: 'Cloudflare' },
   { id: 'whatsapp', title: 'WhatsApp' },
 ];
 
@@ -147,12 +147,14 @@ const STARTS = {
   'routine-lifecycle': (locale) => ({ session: authenticatedLocalSession(), teams: [TEAM], ...routineLifecycleStart(locale) }),
   // Any message is a recording turn whose reply carries the owner's Cloudflare watch card: Criar rotina creates it,
   // Cancelar revokes it (ADR-0101).
+  // The card's Assistants open their own pages, so the installed catalog answers them.
   'routine-card': () => ({
     session: authenticatedLocalSession(),
     teams: [TEAM],
     routines: [],
     runs: [],
     recording: 'card',
+    catalog: true,
   }),
   // Any message is a recording turn whose request would hold a password, so its reply says no Routine was created.
   'routine-refusal': () => ({

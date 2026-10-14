@@ -237,6 +237,16 @@ input, textarea, select { border-radius: 5px !important; }
   clip-path: polygon(0 0, calc(100% - var(--shimpz-cut-lg)) 0, 100% var(--shimpz-cut-lg), 100% 100%, var(--shimpz-cut-lg) 100%, 0 calc(100% - var(--shimpz-cut-lg))) !important;
 }
 
+/* One framed box inside a screen, such as a card under a chat reply: the composer's resting border on the surface and
+   the controls' own chamfer over the shared rounding, so its cut corners curve as a button's do. Its bands clip to the
+   rounding. */
+.admin-frame {
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--shimpz-color-text) 10%, transparent);
+  background: var(--shimpz-color-surface);
+  clip-path: var(--shimpz-control-shape);
+}
+
 :root { --shimpz-radius: 5px; }
 /* One sober accent line for outline buttons, dialog cards, and focused fields. */
 :root { --shimpz-color-cyan-line: color-mix(in srgb, var(--shimpz-color-cyan) 42%, var(--shimpz-color-border)); }

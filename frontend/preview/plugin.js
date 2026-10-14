@@ -2,6 +2,7 @@
 // from a scenario (install.js); this server answers only the images a page loads (icons and sent images' renditions,
 // from fixtures, and a stand-in for a downloaded file) and refuses every other `/api` request and socket, so an image, navigation, or frame never reaches a
 // backend. Nothing here is part of `vite build`.
+import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { PREVIEW_IMAGES } from '../e2e/attachmentScenarios.js';
@@ -12,6 +13,8 @@ export const PREVIEW_MODE = 'scenarios';
 const INSTALL = fileURLToPath(new URL('./install.js', import.meta.url));
 // Assistant icons load as images, which the browser-side scenario cannot answer; serve one neutral mark instead.
 const ICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect width="24" height="24" fill="#1c3b3f"/></svg>';
+// The Cloudflare Assistant shows its own mark, so a scenario shows a step exactly as a real Team draws it.
+const CLOUDFLARE_ICON = readFileSync(new URL('./cloudflare-icon.png', import.meta.url));
 
 // A sent image's rendition loads as an image too: each preview file shows its own proportions, any other image file a
 // landscape one, and the image Team already collected answers 404, so its message keeps the card.
@@ -88,6 +91,11 @@ export function adminPreview() {
           response.setHeader('content-disposition', 'attachment');
           response.setHeader('cache-control', 'no-store');
           response.end(DOWNLOAD);
+          return;
+        }
+        if (request.method === 'GET' && /\/shimpz-cloudflare\/(?:catalog-)?icon$/u.test(path)) {
+          response.setHeader('content-type', 'image/png');
+          response.end(CLOUDFLARE_ICON);
           return;
         }
         if (request.method === 'GET' && /\/(?:catalog-)?icon$/u.test(path)) {

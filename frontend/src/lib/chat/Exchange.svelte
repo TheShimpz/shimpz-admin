@@ -35,6 +35,7 @@
     joinBelow,
     lifecycleDisabled,
     onanswer,
+    onrewrite = () => false,
     ondecide,
     thinking,
   } = $props();
@@ -165,7 +166,7 @@
         />
       {:else if assistantTurn.routineProposal}
         <RoutineProposal teamId={selectedTeamId} proposal={assistantTurn.routineProposal}
-          copy={$t('routine')} locale={$locale} />
+          copy={$t('routine')} locale={$locale} disabled={answerDisabled} {onrewrite} />
       {:else if assistantTurn.routineRefusal}
         <p class="routine-refusal" role="note">{refusalWords(assistantTurn.routineRefusal, $t('routine').proposal)}</p>
       {/if}
