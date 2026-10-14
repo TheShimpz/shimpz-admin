@@ -542,14 +542,10 @@ export default {
     proposal: {
       title: 'Attend votre décision',
       replaces: 'Modifie la routine « {name} »',
-      schedule: 'Quand',
-      output: 'Après chaque exécution',
-      timezoneFallback: '{timezone} (aucun fuseau horaire n’a été indiqué)',
       steps: 'Ce que fera cette routine',
       stepLine: '{assistant} · {action}',
       reads: 'lit',
       changes: 'modifie quelque chose à chaque exécution',
-      permitted: 'Actions qu’elle peut appeler',
       origins: {
         clock: 'la date de chaque exécution',
         step: 'de l’étape {n}',

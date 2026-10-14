@@ -691,7 +691,7 @@ function revokeProposal(state, { proposal_id: proposalId }) {
   return { status: 200, json: { team_id: 'marketing', proposal_id: proposalId, routine_id: null, status: 'revoked' } };
 }
 
-// Criar rotina: confirming a pending card creates its Routine with its created notice. A used, revoked, or expired
+// Criar: confirming a pending card creates its Routine with its created notice. A used, revoked, or expired
 // card is refused.
 function confirmProposal(state, { proposal_id: proposalId }) {
   const proposal = state.proposals?.[proposalId];
@@ -714,7 +714,7 @@ function confirmProposal(state, { proposal_id: proposalId }) {
   return { status: 200, json: { team_id: 'marketing', proposal_id: proposalId, routine_id: routine.routine_id, status: 'created' } };
 }
 
-/** Criar rotina and Cancelar for a card (ADR-0101), as the session socket's proposal operations. */
+/** Criar and Cancelar for a card (ADR-0101), as the session socket's proposal operations. */
 export const ROUTINE_PROPOSAL_METHODS = Object.freeze({
   'routines.proposal_confirm': confirmProposal,
   'routines.proposal_revoke': revokeProposal,

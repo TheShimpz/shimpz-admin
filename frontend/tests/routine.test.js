@@ -391,11 +391,11 @@ test('a Routine card is admitted only whole, and its inputs say where each value
     for (const words of Object.values(catalog.proposal.refusals)) assert.ok(words.length > 0, locale);
     assert.ok(catalog.proposal.confirm && catalog.proposal.cancel && catalog.proposal.confirm !== catalog.proposal.cancel, locale);
   }
-  assert.equal(routineMessages.pt.proposal.confirm, 'Criar rotina');
+  assert.equal(routineMessages.pt.proposal.confirm, 'Criar');
   assert.equal(routineMessages.pt.proposal.cancel, 'Cancelar');
 });
 
-test('Criar rotina confirms and Cancelar revokes exactly one card', async () => {
+test('Criar confirms and Cancelar revokes exactly one card', async () => {
   const proposalId = PROPOSAL.proposal_id;
   const routineId = 'a'.repeat(32);
   let api = fetcher([[200, { team_id: 'team_1', proposal_id: proposalId, routine_id: routineId, status: 'created' }]]);

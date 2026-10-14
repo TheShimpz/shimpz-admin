@@ -1,5 +1,5 @@
 <script>
-  import { AssistantIcon, Disclosure, TextAreaField } from '@shimpz/frontend';
+  import { AssistantIcon, Disclosure, TextAreaField, TextLink } from '@shimpz/frontend';
   import { tick } from 'svelte';
 
   import DialogAction from '#lib/DialogAction.svelte';
@@ -14,21 +14,16 @@
   import { refreshTeamRoutines } from '#lib/routines/context.js';
   import { humanizeId } from '#lib/ids.js';
   import { confirmRoutineProposal, revokeRoutineProposal } from '#lib/routines/protocol.js';
-  import {
-    dispositionWords,
-    fillParts,
-    proposalInputValue,
-    routineErrorMessage,
-    scheduleWords,
-  } from '#lib/routines/words.js';
+  import { fillParts, proposalInputValue, routineErrorMessage } from '#lib/routines/words.js';
 
   // The card of a Routine a recording turn recorded (ADR-0101 section 5.2), under its reply, kept short for a person
-  // who is not technical: its name, when it runs and in which timezone, each step's Action with whether it changes
-  // something and every input's complete value, what each run does with its result, any permitted Action no step
-  // names, and that the work ran once now and approvals ask on every run. The steps start collapsed. All of it is
-  // escaped text. Exactly two buttons under the card, as every Admin prompt's actions: Create confirms it, Cancel
-  // revokes it, and neither is preselected. A card past its lifetime offers neither and says so.
-  let { teamId, proposal, copy, locale, disabled = false, onrewrite = () => false } = $props();
+  // who is not technical: the recording agent's plain description of the work, a warning when a step changes
+  // something, and a footnote that the work ran once now and approvals ask on every run. A collapsed footer lists
+  // each step's Assistant, linked to its page, its Action, whether it changes something, and every input's complete
+  // value. All of it is escaped text. Three buttons under the card, none preselected: Cancel revokes it, Edit turns
+  // its description into the prompt that records it again, and Create confirms it. A card past its lifetime is no
+  // longer shown.
+  let { teamId, proposal, copy, disabled = false, onrewrite = () => false } = $props();
 
   // Edit turns the description into the prompt that records the Routine again: sending it revokes this card and
   // sends the edited text as the person's next message, so the Routine's ordinary flow asks for anything it lacks.
@@ -123,9 +118,9 @@
                   {#each fillParts(card.stepLine, {
                     assistant: assistantName(step.assistant), action: humanizeId(step.action),
                   }) as part, index (index)}
-                    {#if part.key === 'assistant'}<a class="assistant glitch-host" href={assistantHref(step.assistant)}><AssistantIcon
+                    {#if part.key === 'assistant'}<TextLink class="assistant glitch-host" href={assistantHref(step.assistant)}><AssistantIcon
                         class="glitch-icon" assistant={step.assistant} src={installedIconUrl(teamId, step.assistant)} size={18}
-                      /><span class="glitch-text">{part.text}</span></a>
+                      /><span class="glitch-text">{part.text}</span></TextLink>
                     {:else}<span class={part.key || 'joint'}>{part.text}</span>{/if}
                   {/each}
                 </span>
@@ -221,7 +216,7 @@
   .index { color: var(--shimpz-color-cyan); font: 600 0.7rem/1 var(--shimpz-font-mono); }
   .what { min-width: 0; overflow-wrap: anywhere; }
   /* Each step's Assistant, its icon before its name, links to its page in the line's muted tone. */
-  .what .assistant {
+  .what :global(.assistant) {
     display: inline-flex;
     align-items: center;
     gap: var(--shimpz-space-2);
@@ -230,8 +225,8 @@
     text-decoration: none;
   }
   /* On hover it brightens and takes Admin's shared glitch (app.css), never an underline. */
-  .what .assistant:hover { color: var(--shimpz-color-text); }
-  .what .assistant :global(.shimpz-assistant-icon) { flex: none; }
+  .what :global(.assistant:hover) { color: var(--shimpz-color-text); }
+  .what :global(.assistant .shimpz-assistant-icon) { flex: none; }
   .what .joint { color: var(--shimpz-color-text-dim); }
   .what .action { color: var(--shimpz-color-text); font-weight: 600; }
   .inputs {

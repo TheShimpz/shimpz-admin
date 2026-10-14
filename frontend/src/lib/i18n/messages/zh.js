@@ -542,14 +542,10 @@ export default {
     proposal: {
       title: '需要你的决定',
       replaces: '更改例行任务“{name}”',
-      schedule: '时间',
-      output: '每次运行之后',
-      timezoneFallback: '{timezone}（未提供时区）',
       steps: '此例行任务将执行的操作',
       stepLine: '{assistant} · {action}',
       reads: '读取',
       changes: '每次运行都会更改内容',
-      permitted: '它可以调用的操作',
       origins: {
         clock: '每次运行的日期',
         step: '来自步骤 {n}',

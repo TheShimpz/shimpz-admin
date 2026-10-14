@@ -542,14 +542,10 @@ export default {
     proposal: {
       title: 'あなたの判断が必要です',
       replaces: 'ルーティン「{name}」を変更します',
-      schedule: 'タイミング',
-      output: '各実行の後',
-      timezoneFallback: '{timezone}（タイムゾーンの指定なし）',
       steps: 'このルーティンが行うこと',
       stepLine: '{assistant} · {action}',
       reads: '読み取り',
       changes: '実行のたびに何かを変更します',
-      permitted: '呼び出せるアクション',
       origins: {
         clock: '各実行の日付',
         step: 'ステップ {n} から',

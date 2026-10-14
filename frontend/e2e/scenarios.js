@@ -145,7 +145,7 @@ const STARTS = {
   // usage with and without a model, a held run's recovery card, a paused Routine, a minute rollup, and a run's
   // execution details (ADR-0092, ADR-0101).
   'routine-lifecycle': (locale) => ({ session: authenticatedLocalSession(), teams: [TEAM], ...routineLifecycleStart(locale) }),
-  // Any message is a recording turn whose reply carries the owner's Cloudflare watch card: Criar rotina creates it,
+  // Any message is a recording turn whose reply carries the owner's Cloudflare watch card: Criar creates it,
   // Cancelar revokes it (ADR-0101).
   // The card's Assistants open their own pages, so the installed catalog answers them.
   'routine-card': () => ({

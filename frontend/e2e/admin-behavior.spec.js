@@ -4840,19 +4840,20 @@ test.describe('Team Routines', () => {
 
   test('a Routine card is confirmed with its Create button, which creates the Routine its notice then names', async ({ page }) => {
     const scenario = await recordRoutine(page);
-    const card = page.getByRole('region', { name: 'Routine to create' });
-    await expect(card).toContainText(ROUTINE_TEXT.en.card);
-    await expect(card).toContainText('shimpz.com');
-    await expect(card.getByRole('button')).toHaveCount(2);
-    await expect(card.getByRole('button', { name: 'Create Routine', exact: true })).toBeEnabled();
-    await expect(card.getByRole('button', { name: 'Cancel', exact: true })).toBeEnabled();
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    await expect(card.getByRole('heading', { name: messages.en.routine.proposal.newRoutine })).toBeVisible();
+    await expect(card).toContainText(ROUTINE_TEXT.en.cardDescription);
+    await expect(card.getByRole('button')).toHaveCount(3);
+    for (const name of ['Cancel', 'Edit', 'Create']) {
+      await expect(card.getByRole('button', { name, exact: true })).toBeEnabled();
+    }
     expect(await accessibilityViolations(page)).toEqual([]);
     expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toEqual([]);
 
-    await card.getByRole('button', { name: 'Create Routine', exact: true }).click();
+    await card.getByRole('button', { name: 'Create', exact: true }).click();
     // Once created, the card is gone and nothing is left to answer.
     await expect(card).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Create Routine', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Create', exact: true })).toHaveCount(0);
     await expect.poll(() => proposalCalls(page)).toEqual(['confirm']);
     const [routine] = scenario.call('routines.list', { team_id: 'marketing' }).json.routines;
     expect(routine.name).toBe(ROUTINE_TEXT.en.card);
@@ -4862,21 +4863,49 @@ test.describe('Team Routines', () => {
     const created = page.locator('.routine-run').filter({ hasText: ROUTINE_TEXT.en.card });
     await expect(created).toHaveAccessibleName(ROUTINE_TEXT.en.card);
     await expect(created.getByRole('button')).toHaveCount(0);
-    await expect(page.getByRole('region', { name: 'Routine to create' })).toHaveCount(1);
+    const reloaded = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    await expect(reloaded).toHaveCount(1);
     // A card already used is refused, and says so.
-    const reloaded = page.getByRole('region', { name: 'Routine to create' });
-    await reloaded.getByRole('button', { name: 'Create Routine', exact: true }).click();
+    await reloaded.getByRole('button', { name: 'Create', exact: true }).click();
     await expect(reloaded.getByRole('alert')).toHaveText(messages.en.routine.errors.proposalExpired);
     expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toHaveLength(1);
   });
 
+  test('a Routine card edited with its Edit button revokes it and sends the edited prompt as the next message', async ({ page }) => {
+    const scenario = await recordRoutine(page);
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    await card.getByRole('button', { name: 'Edit', exact: true }).click();
+    const prompt = card.getByRole('textbox', { name: messages.en.routine.proposal.prompt });
+    // The prompt takes the keyboard at once, holding the description to change.
+    await expect(prompt).toBeFocused();
+    await expect(prompt).toHaveValue(ROUTINE_TEXT.en.cardDescription);
+    await expect(card.getByRole('button')).toHaveCount(2);
+    await page.keyboard.type(' Tell me only when something changed.');
+    await card.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect.poll(() => proposalCalls(page)).toEqual(['revoke']);
+    await expect(page.locator('.conversation')).toContainText(
+      `${ROUTINE_TEXT.en.cardDescription} Tell me only when something changed.`,
+    );
+    expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toEqual([]);
+  });
+
+  test('each step of a Routine card names its Assistant with a link to that Assistant’s page', async ({ page }) => {
+    await recordRoutine(page);
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    await card.getByText(messages.en.routine.proposal.steps).click();
+    const links = card.getByRole('link', { name: 'Cloudflare', exact: true });
+    await expect(links).toHaveCount(2);
+    await links.first().click();
+    await expect(page).toHaveURL(/\/assistants\/shimpz-cloudflare\?team=marketing$/u);
+  });
+
   test('a Routine card canceled with its Cancel button revokes it and creates nothing', async ({ page }) => {
     const scenario = await recordRoutine(page);
-    const card = page.getByRole('region', { name: 'Routine to create' });
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
     await card.getByRole('button', { name: 'Cancel', exact: true }).click();
     // Once canceled, the card is gone and nothing is left to answer.
     await expect(card).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Create Routine', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Create', exact: true })).toHaveCount(0);
     await expect.poll(() => proposalCalls(page)).toEqual(['revoke']);
     expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toEqual([]);
     await expect(page.locator('.routine-run')).toHaveCount(0);
@@ -4886,7 +4915,7 @@ test.describe('Team Routines', () => {
     await recordRoutine(page, 'routine-refusal');
     const note = page.getByRole('note').filter({ hasText: 'No Routine was created' });
     await expect(note).toHaveText(messages.en.routine.proposal.refusals.secret);
-    await expect(page.getByRole('region', { name: 'Routine to create' })).toHaveCount(0);
+    await expect(page.getByRole('region', { name: messages.en.routine.proposal.title })).toHaveCount(0);
   });
 
   // What Team asks before a card is answered in the chat (ADR-0101): no answer is preselected, the answer is the next
@@ -4908,7 +4937,7 @@ test.describe('Team Routines', () => {
     expect(await accessibilityViolations(page)).toEqual([]);
     await question.getByRole('radio', { name: 'Every hour' }).check();
     await answer.click();
-    await expect(page.getByRole('region', { name: 'Routine to create' })).toBeVisible();
+    await expect(page.getByRole('region', { name: messages.en.routine.proposal.title })).toBeVisible();
     await expect(question).toHaveCount(0);
     // Once answered, the question is gone from the reply that asked it; only the person's message keeps it.
     await expect(page.getByRole('article', { name: 'Marketing' }).filter({ hasText: words.question })).toHaveCount(0);
@@ -4917,7 +4946,7 @@ test.describe('Team Routines', () => {
     // A reload keeps the question answered and the card under its answer's reply.
     await page.reload();
     await expect(page.getByRole('radiogroup', { name: words.question })).toHaveCount(0);
-    await expect(page.getByRole('region', { name: 'Routine to create' })).toHaveCount(1);
+    await expect(page.getByRole('region', { name: messages.en.routine.proposal.title })).toHaveCount(1);
   });
 
   test("what to do with each run's result is answered with one of Team's choices, which the card then carries", async ({ page }) => {
@@ -4928,8 +4957,8 @@ test.describe('Team Routines', () => {
     for (const label of words.answers) await expect(question.getByRole('radio', { name: label, exact: true })).not.toBeChecked();
     await question.getByRole('radio', { name: 'Show only when it changes', exact: true }).check();
     await page.getByRole('button', { name: 'Answer', exact: true }).click();
-    const card = page.getByRole('region', { name: 'Routine to create' });
-    await expect(card).toContainText('Shows the result of step 2 only when it changes');
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    await expect(card).toBeVisible();
     expect(sentMessages(scenario).at(-1).split('\n').at(-1)).toBe('Answer: Show only when it changes');
   });
 
@@ -4943,7 +4972,7 @@ test.describe('Team Routines', () => {
       await expect(question.getByRole('radio', { name: digits, exact: true })).toHaveCount(2);
       await question.getByRole('radio', { name: digits, exact: true }).nth(index).check();
       await page.getByRole('button', { name: 'Answer', exact: true }).click();
-      await expect(page.getByRole('region', { name: 'Routine to create' })).toBeVisible();
+      await expect(page.getByRole('region', { name: messages.en.routine.proposal.title })).toBeVisible();
       // Every digit of the integer survives, and the string keeps its quotes, so Team tells them apart.
       expect(sentMessages(scenario).at(-1).split('\n').at(-1)).toBe(`Answer: ${sent}`);
     }

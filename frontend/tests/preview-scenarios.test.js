@@ -61,7 +61,7 @@ test('scenarios never share state, and a caller cannot mutate one through a resp
   assert.equal(first.call('routines.list', { team_id: 'marketing' }).json.routines.length, 1);
 });
 
-test('a recording turn carries the Cloudflare card; Criar rotina creates its Routine and Cancelar creates nothing', async () => {
+test('a recording turn carries the Cloudflare card; Criar creates its Routine and Cancelar creates nothing', async () => {
   const scenario = createScenario('routine-card', 'pt');
   const frame = (message) => ({ type: 'chat', message, files: [], assistant_ids: [], timezone: 'America/Sao_Paulo' });
   const [first] = scenario.chat.message(frame(ROUTINE_TEXT.pt.request));

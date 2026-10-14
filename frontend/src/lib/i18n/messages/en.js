@@ -549,14 +549,10 @@ export default {
     proposal: {
       title: 'Needs your decision',
       replaces: 'Changes the Routine “{name}”',
-      schedule: 'When',
-      output: 'After each run',
-      timezoneFallback: '{timezone} (no timezone was given)',
       steps: 'What this routine will do',
       stepLine: '{assistant} · {action}',
       reads: 'reads',
       changes: 'changes something on every run',
-      permitted: 'Actions it may call',
       origins: {
         clock: 'the date of each run',
         step: 'from step {n}',

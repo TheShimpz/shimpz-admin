@@ -1190,7 +1190,7 @@ function answered(body, teamId, proposalId, statuses) {
   return { status: body.status, routineId: body.routine_id };
 }
 
-/** Criar rotina: the person's one confirmation that creates or changes the Routine a card shows. */
+/** Criar: the person's one confirmation that creates or changes the Routine a card shows. */
 export async function confirmRoutineProposal(call, teamId, proposalId) {
   const body = await request(call, 'routines.proposal_confirm', { team_id: team(teamId), proposal_id: opaque(proposalId) });
   return answered(body, teamId, proposalId, ['created', 'changed']);

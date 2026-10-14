@@ -542,14 +542,10 @@ export default {
     proposal: {
       title: 'Braucht deine Entscheidung',
       replaces: 'Ändert die Routine „{name}“',
-      schedule: 'Wann',
-      output: 'Nach jeder Ausführung',
-      timezoneFallback: '{timezone} (keine Zeitzone angegeben)',
       steps: 'Was diese Routine tun wird',
       stepLine: '{assistant} · {action}',
       reads: 'liest',
       changes: 'ändert bei jeder Ausführung etwas',
-      permitted: 'Aktionen, die sie aufrufen darf',
       origins: {
         clock: 'das Datum jeder Ausführung',
         step: 'aus Schritt {n}',

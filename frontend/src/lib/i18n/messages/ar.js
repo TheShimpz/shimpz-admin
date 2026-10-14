@@ -542,14 +542,10 @@ export default {
     proposal: {
       title: 'يحتاج إلى قرارك',
       replaces: 'يغيّر الروتين «{name}»',
-      schedule: 'متى',
-      output: 'بعد كل تشغيل',
-      timezoneFallback: '{timezone} (لم تُحدَّد منطقة زمنية)',
       steps: 'ما سيفعله هذا الروتين',
       stepLine: '{assistant} · {action}',
       reads: 'يقرأ',
       changes: 'يغيّر شيئًا في كل تشغيل',
-      permitted: 'الإجراءات التي يمكنه استدعاؤها',
       origins: {
         clock: 'تاريخ كل تشغيل',
         step: 'من الخطوة {n}',
