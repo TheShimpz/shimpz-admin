@@ -184,12 +184,11 @@ test('the warm-up reads what the Store shows, then lets go of it, and the sessio
   socket.answer('snapshots.list', { assistants: [SNAPSHOT], trace_id: 'c'.repeat(32) }, 'local-assistants', 1);
   socket.answer('store.catalog', CATALOG_PAGE('pt'));
   await flush();
-  // The summary the Store shows in Portuguese is read too, once its subscription is in place, before the warm-up lets go.
-  socket.announce('local-assistants', 'subscribed', 1);
-  await flush();
+  // The summary the Store shows in Portuguese is read too, before the warm-up lets go; no topic announces it, since an
+  // image's summary never changes.
   assert.deepEqual(socket.calls.at(-1).params, { image_id: IMAGE_ID, locale: 'pt' });
-  assert.equal(socket.listeners.get('local-assistants').size, 2);
-  socket.answer('snapshots.summary', { locale: 'pt', summary: 'Diz olá.' }, 'local-assistants', 1);
+  assert.equal(socket.listeners.get('local-assistants').size, 1);
+  socket.answer('snapshots.summary', { locale: 'pt', summary: 'Diz olá.' }, null, 0);
   await flush();
   await flush();
   assert.equal(socket.listeners.get('local-assistants').size, 0);
@@ -227,14 +226,16 @@ test('a screen that swaps every summary it shows keeps each new one shared, and 
   assert.notEqual(snapshotSummary(images[0], 'pt'), evicted);
   for (const stop of spanish.stops) stop();
   const shownAgain = show(evicted);
-  socket.announce('local-assistants', 'subscribed', 1);
-  await flush();
-  const read = socket.calls.findIndex((item) => item.params?.image_id === images[0] && item.params?.locale === 'pt');
-  socket.calls[read].answered = true;
-  const answered = response(200, { locale: 'pt', summary: 'Diz olá.' });
-  answered.revision = { topic: 'local-assistants', epoch: EPOCH, revision: 1 };
-  socket.calls[read].resolve(answered);
-  await flush();
+  // Summaries share Team's two-slot preview queue: the reads ahead of it are answered until its own goes out.
+  for (let round = 0; round < 400 && get(evicted).value !== 'Diz olá.'; round += 1) {
+    for (const call of socket.calls.filter((item) => !item.answered)) {
+      call.answered = true;
+      const answered = response(200, { locale: call.params.locale, summary: 'Diz olá.' });
+      answered.revision = null;
+      call.resolve(answered);
+    }
+    await flush();
+  }
   assert.equal(get(evicted).value, 'Diz olá.');
   clearAssistantSources();
   assert.equal(get(evicted).status, 'loading');

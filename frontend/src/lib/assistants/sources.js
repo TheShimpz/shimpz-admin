@@ -43,10 +43,11 @@ const catalogs = sessionFamily(
   }),
   { maxEntries: MAX_CATALOGS, maxBytes: MAX_RETAINED_BYTES },
 );
-// A summary of one exact image in one language changes only with that image, which a new revision of the snapshots says.
+// A summary of one exact image in one language never changes, since the image id is its content's digest: staging or
+// removing another snapshot reads no summary again, and a removed one leaves with its key.
 const summaries = sessionFamily((key) => {
   const [locale, imageId] = key.split('|');
-  return synced(SNAPSHOTS, (call) => loadLocalAssistantSummary(imageId, locale, { call }), {
+  return synced(null, (call) => loadLocalAssistantSummary(imageId, locale, { call }), {
     retain: { maxAgeMs: Infinity },
   });
 }, { maxEntries: MAX_SUMMARIES, maxBytes: MAX_RETAINED_BYTES });
