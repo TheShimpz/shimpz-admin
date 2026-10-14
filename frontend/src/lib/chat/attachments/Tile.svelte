@@ -1,6 +1,6 @@
 <script>
   import { ActionLink, Button } from '@shimpz/frontend';
-  import { downloadUrl, formatFileSize } from '#lib/chat/attachments/files.js';
+  import { downloadUrl, formatFileSize, saveFile } from '#lib/chat/attachments/files.js';
   import FileViewer from '#lib/chat/attachments/FileViewer.svelte';
   import { acquirePreview, previewable, stored } from '#lib/chat/attachments/previews.js';
   import { locale, t } from '#lib/i18n/index.js';
@@ -79,6 +79,13 @@
     };
   });
 
+  // The link names the file's download route; a click saves it through the session's own read, as every browser sends
+  // that alike. A save that fails leaves nothing behind.
+  function save(event) {
+    event.preventDefault();
+    saveFile(teamId, file).catch(() => {});
+  }
+
   function closeViewer() {
     viewing = false;
     opener?.focus();
@@ -125,6 +132,7 @@
           size="sm"
           href={downloadUrl(teamId, file.id)}
           download={file.name}
+          onclick={save}
           title={$t('attachments.downloadNamed', { name: file.name })}
           aria-label={$t('attachments.downloadNamed', { name: file.name })}
         >

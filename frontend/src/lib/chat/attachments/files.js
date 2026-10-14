@@ -242,3 +242,53 @@ export async function uploadTeamFile(fetcher, teamId, file, signal) {
 export function downloadUrl(teamId, fileId) {
   return `/api/teams/${teamId}/files/${fileId}/download`;
 }
+
+// A file's bytes Team is too busy to send now are asked for again after the delay it names, at most FILE_RETRIES times.
+const FILE_RETRIES = 3;
+const FILE_RETRY_LIMIT_MS = 2_000;
+// How long a saved file's object URL outlives the save it started, so every browser has read it.
+const SAVED_URL_MS = 60_000;
+
+function delay(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason);
+      return;
+    }
+    const timer = globalThis.setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      globalThis.clearTimeout(timer);
+      reject(signal.reason);
+    }, { once: true });
+  });
+}
+
+/**
+ * One of a stored file's byte routes, read with the session from Admin's own page: the successful response, after
+ * waiting out a busy Team's named delay at most FILE_RETRIES times, or an error.
+ */
+export async function fetchFileBytes(url, signal) {
+  for (let attempt = 0; ; attempt += 1) {
+    const response = await fetch(url, { signal, cache: 'no-store', credentials: 'same-origin' });
+    if (response.ok) return response;
+    const retry = response.status === 503 ? (await response.json().catch(() => null))?.retry_after_ms : null;
+    if (attempt >= FILE_RETRIES || !Number.isSafeInteger(retry) || retry < 1 || retry > FILE_RETRY_LIMIT_MS) {
+      throw new Error('The file could not be read.');
+    }
+    await delay(retry, signal);
+  }
+}
+
+/**
+ * Save one stored file under its own name: its original is read through Admin's download route with the session, as
+ * every browser sends that read alike, then handed to the browser to save.
+ */
+export async function saveFile(teamId, file) {
+  const response = await fetchFileBytes(downloadUrl(teamId, file.id));
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = file.name;
+  link.click();
+  globalThis.setTimeout(() => URL.revokeObjectURL(url), SAVED_URL_MS);
+}

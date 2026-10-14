@@ -3,10 +3,12 @@
 // of its pages, a text file shows its own text as text, a file without a preview keeps its badge, an image Team cannot
 // read is left out, and a message just sent and then reloaded shows the thumbnail both times. An image's rendition
 // reaches the page only as an image load.
+import { readFileSync } from 'node:fs';
+
 import { expect, test } from '@playwright/test';
 
 import { png } from './png.js';
-import { PREVIEW_IMAGES } from './attachmentScenarios.js';
+import { DOWNLOAD_FIXTURE, PREVIEW_IMAGES } from './attachmentScenarios.js';
 import { routeScenario } from './scenarioRoutes.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 
@@ -183,19 +185,21 @@ test('a PDF opens on Team\'s renditions of its pages and a text file on its own 
   await expect(notes.locator('b')).toHaveCount(0);
 });
 
-test('a stored file\'s card offers its download under its own name', async ({ page }) => {
+test('a stored file\'s card saves its original under its own name, as Admin\'s own download @browser-sensitive', async ({
+  page,
+}) => {
   await openChat(page, 'attachment-images');
-  await page.route(DOWNLOAD_ROUTE, (route) => route.fulfill({
-    status: 200,
-    contentType: 'application/octet-stream',
-    headers: { 'content-disposition': 'attachment', 'cache-control': 'no-store' },
-    body: 'brief',
-  }));
+  // The download reaches the test server for real (e2e/serveBuild.mjs), which answers it only for the Fetch Metadata
+  // Admin admits: a browser saves only a real response, and not every engine lets a test see a download's request.
+  await page.route(DOWNLOAD_ROUTE, (route) => route.continue());
   const message = page.locator('.conversation').getByRole('list', { name: EN.attachments.list });
   const link = message.getByRole('link', { name: EN.attachments.downloadNamed.replace('{name}', 'Launch brief.pdf') });
   const saved = page.waitForEvent('download');
   await link.click();
-  expect((await saved).suggestedFilename()).toBe('Launch brief.pdf');
+  const download = await saved;
+  expect(download.suggestedFilename()).toBe('Launch brief.pdf');
+  // The saved file is exactly the original, which the server sent only to Admin's own same-origin download.
+  expect(readFileSync(await download.path(), 'utf8')).toBe(DOWNLOAD_FIXTURE);
   // Downloading never opens the viewer.
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });

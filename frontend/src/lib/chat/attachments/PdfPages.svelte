@@ -1,17 +1,16 @@
 <script>
   import { untrack } from 'svelte';
+  import { fetchFileBytes } from '#lib/chat/attachments/files.js';
   import { MAX_PDF_PAGES, PAGE_COUNT_HEADER, pageUrl } from '#lib/chat/attachments/previews.js';
   import { t } from '#lib/i18n/index.js';
 
   // A PDF's pages in the viewer (ADR-0093), one under another: each is Team's sanitized rendition of that page, never
   // the PDF itself. The first page's answer names the page count; every later page is asked for only once it comes
   // within NEAR_PX of the stage, one at a time, and a page Team is too busy to render now is asked for again after the
-  // delay Team names, at most RETRIES times. Closing the viewer, or moving to another file, drops every page.
+  // delay Team names (fetchFileBytes). Closing the viewer, or moving to another file, drops every page.
   let { teamId, file } = $props();
 
   const NEAR_PX = 600;
-  const RETRIES = 3;
-  const RETRY_LIMIT_MS = 2_000;
   let stage = $state();
   let count = $state(0);
   let failed = $state(false);
@@ -19,32 +18,12 @@
   let wanted = $state(new Set([1]));
   let pumpNow = () => {};
 
-  function delay(ms, signal) {
-    return new Promise((resolve, reject) => {
-      const timer = globalThis.setTimeout(resolve, ms);
-      signal.addEventListener('abort', () => {
-        globalThis.clearTimeout(timer);
-        reject(signal.reason);
-      }, { once: true });
-    });
-  }
-
   // One page's rendition, as an object URL, and for the first page the document's page count.
   async function fetchPage(page, signal) {
-    for (let attempt = 0; ; attempt += 1) {
-      const response = await fetch(pageUrl(teamId, file.id, page), { signal, cache: 'no-store', credentials: 'same-origin' });
-      if (response.ok) {
-        const total = Number(response.headers.get(PAGE_COUNT_HEADER));
-        if (!Number.isSafeInteger(total) || total < 1 || total > MAX_PDF_PAGES) throw new Error('Invalid page count.');
-        return { url: URL.createObjectURL(await response.blob()), total };
-      }
-      const body = response.status === 503 ? await response.json().catch(() => null) : null;
-      const retry = body?.retry_after_ms;
-      if (attempt >= RETRIES || !Number.isSafeInteger(retry) || retry < 1 || retry > RETRY_LIMIT_MS) {
-        throw new Error('The page has no preview.');
-      }
-      await delay(retry, signal);
-    }
+    const response = await fetchFileBytes(pageUrl(teamId, file.id, page), signal);
+    const total = Number(response.headers.get(PAGE_COUNT_HEADER));
+    if (!Number.isSafeInteger(total) || total < 1 || total > MAX_PDF_PAGES) throw new Error('Invalid page count.');
+    return { url: URL.createObjectURL(await response.blob()), total };
   }
 
   // Pages load in order, one at a time, while any page near the stage is still missing. The loader runs once per file:

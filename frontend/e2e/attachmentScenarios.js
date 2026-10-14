@@ -83,6 +83,9 @@ export function recordAttachedTurn(state, frame, reply) {
   ];
 }
 
+// What the browser tests' server answers for any file's download (e2e/serveBuild.mjs).
+export const DOWNLOAD_FIXTURE = '%PDF-1.7 the brief';
+
 // The images the preview's sent message carried (ADR-0093), by file id: the preview server answers each one's rendition
 // (preview/plugin.js), except the one Team already collected, which keeps its card like the PDF.
 export const PREVIEW_IMAGES = Object.freeze({

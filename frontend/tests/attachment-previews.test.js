@@ -14,7 +14,7 @@ import {
   stored,
   thumbnailSize,
 } from '../src/lib/chat/attachments/previews.js';
-import { downloadUrl } from '../src/lib/chat/attachments/files.js';
+import { downloadUrl, fetchFileBytes, saveFile } from '../src/lib/chat/attachments/files.js';
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 const fileId = (index) => index.toString(16).padStart(32, '0');
@@ -68,6 +68,72 @@ test('only a stored file of a valid Team is served, and only a PDF within Team\'
   assert.equal(paged('Marketing', pdf), false);
   assert.equal(pageUrl('marketing', pdf.id, 2), `/api/teams/marketing/files/${pdf.id}/pages/2/preview`);
   assert.equal(downloadUrl('marketing', pdf.id), `/api/teams/marketing/files/${pdf.id}/download`);
+});
+
+test('a file\'s bytes are read with the session, waiting out a busy Team a bounded number of times', async () => {
+  const answers = [];
+  const calls = [];
+  mock.method(globalThis, 'fetch', async (url, init) => {
+    calls.push({ url, init });
+    return answers.shift();
+  });
+  mock.method(globalThis, 'setTimeout', (resolve) => {
+    resolve();
+    return 0;
+  });
+  const busy = () => new Response(JSON.stringify({ code: 'file-download-busy', retry_after_ms: 250 }), { status: 503 });
+  answers.push(busy(), new Response('bytes'));
+  assert.equal(await (await fetchFileBytes('/api/x')).text(), 'bytes');
+  assert.deepEqual(calls[0].init, { signal: undefined, cache: 'no-store', credentials: 'same-origin' });
+  assert.equal(calls.length, 2);
+  // Beyond the retries, a refusal, or a busy answer without a bounded delay, the read fails.
+  answers.push(busy(), busy(), busy(), busy());
+  await assert.rejects(fetchFileBytes('/api/x'), /could not be read/);
+  answers.push(new Response('{}', { status: 404 }));
+  await assert.rejects(fetchFileBytes('/api/x'), /could not be read/);
+  answers.push(new Response(JSON.stringify({ retry_after_ms: 60_000 }), { status: 503 }));
+  await assert.rejects(fetchFileBytes('/api/x'), /could not be read/);
+  answers.push(new Response('not json', { status: 503 }));
+  await assert.rejects(fetchFileBytes('/api/x'), /could not be read/);
+});
+
+test('a wait for a busy Team ends with its read\'s abort', async () => {
+  const controller = new AbortController();
+  mock.method(globalThis, 'fetch', async () => {
+    controller.abort(new Error('closed'));
+    return new Response(JSON.stringify({ retry_after_ms: 250 }), { status: 503 });
+  });
+  await assert.rejects(fetchFileBytes('/api/x', controller.signal), /closed/);
+});
+
+test('a saved file is the original read through the download route, under its own name', async () => {
+  const clicked = [];
+  const revoked = [];
+  const pending = [];
+  mock.method(globalThis, 'fetch', async (url) => new Response(`bytes of ${url}`));
+  mock.method(URL, 'createObjectURL', () => 'blob:saved');
+  mock.method(URL, 'revokeObjectURL', (url) => revoked.push(url));
+  mock.method(globalThis, 'setTimeout', (callback, ms) => {
+    pending.push({ callback, ms });
+    return 0;
+  });
+  globalThis.document = {
+    createElement: () => ({
+      click() {
+        clicked.push({ href: this.href, download: this.download });
+      },
+    }),
+  };
+  try {
+    await saveFile('marketing', { id: 'c'.repeat(32), name: 'Launch brief.pdf' });
+  } finally {
+    delete globalThis.document;
+  }
+  assert.deepEqual(clicked, [{ href: 'blob:saved', download: 'Launch brief.pdf' }]);
+  // The object URL outlives the save, then is revoked.
+  assert.deepEqual(revoked, []);
+  pending[0].callback();
+  assert.deepEqual(revoked, ['blob:saved']);
 });
 
 test('a thumbnail keeps the rendition\'s proportions within its edge and is never upscaled', () => {

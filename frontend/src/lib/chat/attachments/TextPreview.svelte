@@ -1,5 +1,5 @@
 <script>
-  import { downloadUrl, formatFileSize, MAX_TEXT_SOURCE_BYTES } from '#lib/chat/attachments/files.js';
+  import { downloadUrl, fetchFileBytes, formatFileSize, MAX_TEXT_SOURCE_BYTES } from '#lib/chat/attachments/files.js';
   import { locale, t } from '#lib/i18n/index.js';
 
   // A text file's own text in the viewer (ADR-0093): at most MAX_TEXT_SOURCE_BYTES of the stored file, read through
@@ -11,8 +11,8 @@
   let failed = $state(false);
 
   async function readText(signal) {
-    const response = await fetch(downloadUrl(teamId, file.id), { signal, cache: 'no-store', credentials: 'same-origin' });
-    if (!response.ok || !response.body) throw new Error('The file could not be read.');
+    const response = await fetchFileBytes(downloadUrl(teamId, file.id), signal);
+    if (!response.body) throw new Error('The file could not be read.');
     const reader = response.body.getReader();
     const parts = [];
     let size = 0;

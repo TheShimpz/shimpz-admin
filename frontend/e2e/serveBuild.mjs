@@ -1,6 +1,9 @@
 // Serve the built Admin UI for the browser tests the way Admin's backend does: a real asset when the path maps to
-// one, otherwise the SPA's index.html; `/api` is never served here (the tests answer it). In CI, `build/` is the UI
-// copied out of the Admin image, so the suite exercises the shipping artifact.
+// one, otherwise the SPA's index.html; `/api` is never served here (the tests answer it), except a file's download,
+// which a browser saves only from a real response, never from one a test fulfilled: admitted by the Fetch Metadata Admin
+// admits (backend/browser.py same_origin_download), it answers DOWNLOAD_FIXTURE with the headers Admin's download sends,
+// and refuses any other request as Admin does. In CI, `build/` is the UI copied out of the Admin image, so the suite exercises
+// the shipping artifact.
 // Every response carries the Content-Security-Policy backend/browser.py builds for this origin, its inline bootstrap
 // hashed the same way, so the whole suite runs under the enforced script and Trusted Types policy.
 import { createHash } from 'node:crypto';
@@ -8,6 +11,8 @@ import { createReadStream, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { extname, join, normalize, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { DOWNLOAD_FIXTURE } from './attachmentScenarios.js';
 
 const ROOT = fileURLToPath(new URL('../build/', import.meta.url));
 const TYPES = {
@@ -42,6 +47,8 @@ const POLICY = [
   'trusted-types svelte-trusted-html',
 ].join('; ');
 
+const DOWNLOAD_RE = /^\/api\/teams\/[a-z0-9_]{1,40}\/files\/[0-9a-f]{32}\/download$/;
+
 function asset(pathname) {
   const target = normalize(join(ROOT, decodeURIComponent(pathname)));
   if (!target.startsWith(ROOT) && `${target}${sep}` !== ROOT) return null;
@@ -54,6 +61,23 @@ function asset(pathname) {
 
 createServer((request, response) => {
   const { pathname } = new URL(request.url ?? '/', 'http://127.0.0.1');
+  if (request.method === 'GET' && DOWNLOAD_RE.test(pathname)) {
+    const admitted = request.headers['sec-fetch-site'] === 'same-origin' &&
+      ['empty', 'document'].includes(request.headers['sec-fetch-dest']);
+    if (!admitted) {
+      response.writeHead(403).end();
+      return;
+    }
+    response.writeHead(200, {
+      'cache-control': 'no-store',
+      'content-disposition': 'attachment',
+      'content-security-policy': "sandbox; default-src 'none'",
+      'content-type': 'application/octet-stream',
+      'cross-origin-resource-policy': 'same-origin',
+      'x-content-type-options': 'nosniff',
+    }).end(DOWNLOAD_FIXTURE);
+    return;
+  }
   if (pathname === '/api' || pathname.startsWith('/api/')) {
     response.writeHead(404).end();
     return;
