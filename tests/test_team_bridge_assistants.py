@@ -241,6 +241,22 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         )
         self.assertGreater(team.ASSISTANT_INSTALL_TIMEOUT_SECONDS, team.CONTROL_TIMEOUT_SECONDS)
 
+    def test_a_chat_stream_outlasts_teams_wait_on_one_brain_request(self):
+        # Team waits up to 300 s for one Brain request and sends nothing meanwhile (teams/inference/client.py).
+        self.assertGreater(team.CHAT_STREAM_TIMEOUT_SECONDS, 300)
+        with (
+            mock.patch.object(team, "canonical_team_chat_body", return_value={"message": "oi"}),
+            mock.patch.object(team, "_call_stream", return_value=team.TeamResponse(200, {})) as stream,
+        ):
+            team.chat("team_1", {}, provider="openai", api_key="test-key", progress=print)
+        self.assertEqual(stream.call_args.kwargs["timeout"], team.CHAT_STREAM_TIMEOUT_SECONDS)
+        with (
+            mock.patch.object(team, "canonical_integration_resume", return_value={"challenge_id": "a" * 32}),
+            mock.patch.object(team, "_call_stream", return_value=team.TeamResponse(200, {})) as stream,
+        ):
+            team.resume_chat_integrations("team_1", {}, provider="openai", api_key="test-key", progress=print)
+        self.assertEqual(stream.call_args.kwargs["timeout"], team.CHAT_STREAM_TIMEOUT_SECONDS)
+
     def test_fetches_an_installed_assistant_icon_as_bounded_png(self):
         icon = b"\x89PNG\r\n\x1a\ncanonical"
         _TeamHandler.response_headers = {"Content-Type": "image/png"}

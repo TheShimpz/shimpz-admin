@@ -41,6 +41,10 @@ _call_content = transport._call_content
 supervisor_session = transport.supervisor_session
 
 MAX_CHAT_JSON_BODY_BYTES = 128 * 1024
+# A chat turn's stream is silent while Team waits on one Brain request, which Team allows 300 s
+# (teams/inference/client.py RESPONSE_TIMEOUT_SECONDS): Admin waits that long for its next record, and a little more,
+# before it calls the turn lost.
+CHAT_STREAM_TIMEOUT_SECONDS = 330
 MAX_FILE_UPLOAD_BYTES = team_contract.MAX_FILE_UPLOAD_BYTES
 CAPABILITY_PLAN_TIMEOUT_SECONDS = 65
 INTENT_ROUTE_TIMEOUT_SECONDS = 25
@@ -335,7 +339,7 @@ def chat(
         "POST",
         f"/v1/teams/{canonical_id}/chat",
         body,
-        timeout=CONTROL_TIMEOUT_SECONDS,
+        timeout=CHAT_STREAM_TIMEOUT_SECONDS,
         max_body_bytes=MAX_CHAT_JSON_BODY_BYTES,
         bindings=transport._RequestBindings((provider, api_key)),
         progress=progress,
@@ -427,7 +431,7 @@ def resume_chat_integrations(
         "POST",
         f"/v1/teams/{canonical_id}/chat/integrations",
         body,
-        timeout=CONTROL_TIMEOUT_SECONDS,
+        timeout=CHAT_STREAM_TIMEOUT_SECONDS,
         bindings=transport._RequestBindings((provider, api_key)),
         progress=progress,
     )
@@ -458,7 +462,7 @@ def resume_chat_human(
         "POST",
         f"/v1/teams/{canonical_id}/chat/human",
         body,
-        timeout=CONTROL_TIMEOUT_SECONDS,
+        timeout=CHAT_STREAM_TIMEOUT_SECONDS,
         max_body_bytes=MAX_CHAT_JSON_BODY_BYTES,
         bindings=transport._RequestBindings(
             (provider, api_key),
