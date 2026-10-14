@@ -290,32 +290,22 @@ test('a session check revokes every thumbnail and drops a load that settles afte
   assert.equal(draws.length, 5);
 });
 
-// The browser's image, bitmap, and canvas as drawThumbnail uses them: an image loads at the size the test sets, or fails.
-function browser({ width = 1341, height = 894, fails = false, empty = false } = {}) {
-  const made = { images: [], bitmaps: [], canvases: [] };
-  globalThis.Image = class {
-    constructor() {
-      made.images.push(this);
-    }
-
-    set src(value) {
-      this.source = value;
-      if (!value) return;
-      queueMicrotask(() => {
-        this.naturalWidth = width;
-        this.naturalHeight = height;
-        if (fails) this.onerror?.();
-        else this.onload?.();
-      });
-    }
-
-    get src() {
-      return this.source;
-    }
+// The file route, bitmaps, and canvas as drawThumbnail uses them: the rendition decodes at the size the test sets, or
+// fails; `answers` are the route's statuses before it serves the rendition.
+function browser({ width = 1341, height = 894, fails = false, empty = false, answers = [] } = {}) {
+  const made = { reads: [], bitmaps: [], canvases: [] };
+  const pending = [...answers];
+  globalThis.fetch = async (url, options) => {
+    if (options.signal.aborted) throw new DOMException('aborted', 'AbortError');
+    made.reads.push(url);
+    const status = pending.shift() ?? 200;
+    if (status === 503) return new Response(JSON.stringify({ retry_after_ms: 1 }), { status });
+    return new Response(status === 200 ? 'rendition' : 'refused', { status });
   };
-  globalThis.createImageBitmap = async (image, ...args) => {
+  globalThis.createImageBitmap = async (source, ...args) => {
+    if (source instanceof Blob && fails) throw new Error('undecodable');
     const options = args.at(-1);
-    const bitmap = { image, crop: args.slice(0, 4), options, closed: false, close() { this.closed = true; } };
+    const bitmap = { source, options, width, height, closed: false, close() { this.closed = true; } };
     made.bitmaps.push(bitmap);
     return bitmap;
   };
@@ -339,24 +329,31 @@ test('a thumbnail is the rendition decoded once at its reduced size, and nothing
   // The rendition's own size stays for the viewer; the thumbnail keeps its proportions.
   assert.deepEqual([drawn.width, drawn.height], [1341, 894]);
   assert.equal(drawn.blob.type, 'image/webp');
-  const [bitmap] = made.bitmaps;
+  const [rendition, bitmap] = made.bitmaps;
   assert.deepEqual(bitmap.options, { resizeWidth: 640, resizeHeight: 427, resizeQuality: 'high' });
-  assert.equal(bitmap.closed, true);
+  assert.equal(bitmap.source, rendition);
   assert.deepEqual([made.canvases[0].width, made.canvases[0].height], [640, 427]);
   // The full rendition is let go once its thumbnail is drawn.
-  assert.equal(made.images[0].src, '');
+  assert.deepEqual([rendition.closed, bitmap.closed], [true, true]);
+});
+
+test('a Team busy with its preview slot is waited out, never taken for an image that cannot load', async () => {
+  const made = browser({ answers: [503] });
+  const drawn = await drawThumbnail('/preview', new AbortController().signal);
+  assert.deepEqual([made.reads.length, drawn.width], [2, 1341]);
+  browser({ answers: [404] });
+  await assert.rejects(drawThumbnail('/preview', new AbortController().signal), /unavailable/);
 });
 
 test('a rendition that fails, is larger than Team sends, or is aborted draws no thumbnail', async () => {
   const signal = () => new AbortController().signal;
   browser({ fails: true });
   await assert.rejects(drawThumbnail('/preview', signal()), /unavailable/);
-  browser({ width: 1569, height: 10 });
-  await assert.rejects(drawThumbnail('/preview', signal()), /invalid/);
-  browser({ width: 1200, height: 1200 });
-  await assert.rejects(drawThumbnail('/preview', signal()), /invalid/);
-  browser({ width: 0, height: 10 });
-  await assert.rejects(drawThumbnail('/preview', signal()), /invalid/);
+  for (const [width, height] of [[1569, 10], [1200, 1200], [0, 10]]) {
+    const made = browser({ width, height });
+    await assert.rejects(drawThumbnail('/preview', signal()), /invalid/);
+    assert.equal(made.bitmaps[0].closed, true);
+  }
   const before = new AbortController();
   before.abort();
   await assert.rejects(drawThumbnail('/preview', before.signal), { name: 'AbortError' });
@@ -369,12 +366,12 @@ test('a rendition that fails, is larger than Team sends, or is aborted draws no 
   const late = browser();
   const after = new AbortController();
   const original = globalThis.createImageBitmap;
-  globalThis.createImageBitmap = async (...args) => {
-    after.abort();
-    return original(...args);
+  globalThis.createImageBitmap = async (source, ...args) => {
+    if (!(source instanceof Blob)) after.abort();
+    return original(source, ...args);
   };
   await assert.rejects(drawThumbnail('/preview', after.signal), { name: 'AbortError' });
-  assert.equal(late.bitmaps[0].closed, true);
+  assert.deepEqual(late.bitmaps.map((bitmap) => bitmap.closed), [true, true]);
   browser({ empty: true });
   await assert.rejects(drawThumbnail('/preview', signal()), /encoded/);
 });

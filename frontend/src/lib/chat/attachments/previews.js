@@ -4,7 +4,7 @@
 // its long edge and never larger than the rendition, as an object URL, with the rendition's own size for the viewer. At most MAX_LOADING renditions load at once and at most MAX_PREVIEWS
 // thumbnails are kept: one no message shows is evicted least recently used first, and beyond the bound a message keeps
 // its card. Every session check clears them, and a load that settles after one is discarded.
-import { attachmentKind, MAX_IMAGE_BYTES, MAX_PDF_BYTES } from './files.js';
+import { attachmentKind, fetchFileBytes, MAX_IMAGE_BYTES, MAX_PDF_BYTES } from './files.js';
 import { OPAQUE_ID_RE, TEAM_ID_RE } from '../../ids.js';
 
 export const MAX_PREVIEWS = 48;
@@ -73,45 +73,40 @@ function abortError() {
   return new DOMException('The image preview was aborted.', 'AbortError');
 }
 
-function loaded(image, signal) {
-  return new Promise((resolve, reject) => {
-    const settle = (result) => {
-      image.onload = null;
-      image.onerror = null;
-      signal.removeEventListener('abort', abort);
-      result();
-    };
-    const abort = () => settle(() => reject(abortError()));
-    image.onload = () => settle(resolve);
-    image.onerror = () => settle(() => reject(new Error('The image preview is unavailable.')));
-    signal.addEventListener('abort', abort, { once: true });
-  });
-}
-
 function encoded(canvas) {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error('The thumbnail could not be encoded.'))), 'image/webp', 0.86);
   });
 }
 
+function unavailable() {
+  return new Error('The image preview is unavailable.');
+}
+
 /**
- * Load one rendition as an image and draw its thumbnail: the browser decodes it once, resized to the thumbnail's own
- * size, and only the re-encoded thumbnail stays. A rendition larger than Team ever sends is refused before it is drawn.
+ * Read one rendition and draw its thumbnail: it is read as every other preview is, waiting out a Team busy with its
+ * single preview slot, decoded once, and only the re-encoded thumbnail stays. A rendition larger than Team ever sends
+ * is refused before it is drawn.
  */
 export async function drawThumbnail(url, signal) {
   if (signal.aborted) throw abortError();
-  const image = new Image();
-  image.decoding = 'async';
-  const ready = loaded(image, signal);
-  image.src = url;
+  let blob;
   try {
-    await ready;
-    const { naturalWidth: width, naturalHeight: height } = image;
+    blob = await (await fetchFileBytes(url, signal)).blob();
+  } catch {
+    throw signal.aborted ? abortError() : unavailable();
+  }
+  if (signal.aborted) throw abortError();
+  const rendition = await createImageBitmap(blob).catch(() => {
+    throw unavailable();
+  });
+  try {
+    const { width, height } = rendition;
     if (width < 1 || height < 1 || Math.max(width, height) > RENDITION_EDGE || width * height > RENDITION_PIXELS) {
       throw new Error('The image preview is invalid.');
     }
     const size = thumbnailSize(width, height);
-    const bitmap = await createImageBitmap(image, {
+    const bitmap = await createImageBitmap(rendition, {
       resizeWidth: size.width,
       resizeHeight: size.height,
       resizeQuality: 'high',
@@ -127,7 +122,7 @@ export async function drawThumbnail(url, signal) {
       bitmap.close();
     }
   } finally {
-    image.src = '';
+    rendition.close();
   }
 }
 
