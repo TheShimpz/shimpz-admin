@@ -451,9 +451,10 @@
   let headWaiting = $state(0);
   let headApplying = false;
 
-  // A row is never added under a message still waiting for its reply, or while history or a turn is in motion.
+  // A row is never added while history or a turn is in motion, so never under a message still waiting for its reply:
+  // a turn is busy from its send on. A message whose turn ended without a reply (stopped or failed) waits for nothing.
   function routineMergeIdle() {
-    return !composerBusy && !historyWorking && turns.at(-1)?.role !== 'user';
+    return !composerBusy && !historyWorking;
   }
 
   async function applyHead(teamId, value) {
