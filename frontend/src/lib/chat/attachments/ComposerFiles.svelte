@@ -56,19 +56,15 @@
     background: color-mix(in srgb, var(--shimpz-color-text) 7%, var(--shimpz-color-bg));
   }
 
-  /* As a sent message shows them: image thumbnails as fixed squares, then compact cards for other files. */
+  /* As a sent message shows them: one compact card each, side by side as space allows. */
   .attachment-list {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
     gap: var(--gap-item);
     margin: 0;
     padding: 0;
     list-style: none;
   }
-
-  .attachment-list > :global(.attachment-tile) { flex: 0 0 5rem; }
-  .attachment-list > :global(.attachment-card) { flex: 1 1 13rem; max-width: 18rem; }
 
   .attachment-progress {
     display: flex;

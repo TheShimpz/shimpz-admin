@@ -1,7 +1,7 @@
-// A sent image in the built Admin (ADR-0093): its message shows a thumbnail drawn from Team's sanitized rendition, the
-// thumbnail opens the image over the chat and gives focus back when it closes, a file without a preview keeps its card,
-// and a message just sent and then reloaded shows the thumbnail both times. The rendition reaches the page only as an
-// image load.
+// A sent image in the built Admin (ADR-0093): its message's card shows a thumbnail drawn from Team's sanitized
+// rendition, the thumbnail opens the image over the chat and gives focus back when it closes, a file without a preview
+// keeps its badge, an image Team cannot read is left out, and a message just sent and then reloaded shows the thumbnail
+// both times. The rendition reaches the page only as an image load.
 import { expect, test } from '@playwright/test';
 
 import { png } from './png.js';
@@ -49,21 +49,21 @@ test('a sent image opens from its thumbnail and every way of closing it gives fo
   page,
 }) => {
   const { requests } = await openChat(page, 'attachment-images');
-  const message = page.getByRole('article', { name: EN.chatPage.you });
+  // A message's files sit above its text, outside it.
+  const message = page.locator('.conversation').getByRole('list', { name: EN.attachments.list });
   const opener = message.getByRole('button', { name: open('Harbour at dusk.jpg'), exact: true });
   await expect(opener.getByRole('img', { name: 'Harbour at dusk.jpg' })).toBeVisible();
   await expect(message.getByRole('button', { name: open('Team portrait.png'), exact: true })).toBeVisible();
-  // The thumbnail is the rendition's centred square at 320 device pixels, drawn from one image load of it.
+  // The thumbnail keeps the rendition's proportions, drawn from one image load of it.
   const shape = await opener.getByRole('img').evaluate((image) => [image.naturalWidth, image.naturalHeight]);
-  expect(shape).toEqual([320, 320]);
+  expect(shape).toEqual([600, 400]);
   await expect.poll(() => requests.map((request) => request.path.split('/')[5]).sort()).toEqual(
     [PREVIEW_IMAGES.landscape, PREVIEW_IMAGES.portrait, PREVIEW_IMAGES.collected].sort(),
   );
   expect(requests.every((request) => request.type === 'image')).toBe(true);
-  // A PDF is never asked for, and the image Team no longer holds keeps its card.
+  // A PDF is never asked for, and the image Team no longer holds is left out.
   await expect(message.getByRole('listitem').filter({ hasText: 'Launch brief.pdf' })).toBeVisible();
-  await expect(message.getByRole('listitem').filter({ hasText: 'Old draft.png' })).toBeVisible();
-  await expect(message.getByRole('button', { name: open('Old draft.png'), exact: true })).toHaveCount(0);
+  await expect(message.getByRole('listitem').filter({ hasText: 'Old draft.png' })).toHaveCount(0);
 
   const dialog = page.getByRole('dialog', { name: 'Harbour at dusk.jpg' });
   await opener.click();
@@ -95,26 +95,28 @@ test('an image just sent shows its thumbnail, and so does its message after a re
   await (await chooser).setFiles([{ name: 'photo.png', mimeType: 'image/png', buffer: RENDITION }]);
   const pending = page.locator('form').getByRole('list', { name: EN.attachments.list });
   await expect(pending.getByRole('listitem').filter({ hasText: 'photo.png' })).not.toHaveAttribute('aria-busy');
-  // The composer shows the file's card, never a thumbnail of the unsent file.
-  await expect(pending.getByRole('img')).toHaveCount(0);
+  // Once Team stored it, the composer shows its thumbnail as the sent message will, never one of the local file.
+  await expect(pending.getByRole('button', { name: open('photo.png'), exact: true })).toBeVisible();
   await composer.fill('What is in this photo?');
   await page.getByRole('button', { name: EN.chatPage.send, exact: true }).click();
   await expect(page.getByText('I read the file you attached.', { exact: false })).toBeVisible();
-  const sent = page.getByRole('article', { name: EN.chatPage.you });
+  const sent = page.locator('.conversation').getByRole('list', { name: EN.attachments.list });
   await expect(sent.getByRole('button', { name: open('photo.png'), exact: true })).toBeVisible();
-  // The thumbnail asked for the stored file the message carried.
+  // Both thumbnails come from one request for the stored file the message carried.
   expect(requests).toHaveLength(1);
   expect(requests[0].path).toMatch(/^\/api\/teams\/marketing\/files\/[0-9a-f]{32}\/preview$/);
 
   await page.reload();
-  const reloaded = page.getByRole('article', { name: EN.chatPage.you });
+  const reloaded = page.locator('.conversation').getByRole('list', { name: EN.attachments.list });
   await reloaded.getByRole('button', { name: open('photo.png'), exact: true }).click();
   await expect(page.getByRole('dialog', { name: 'photo.png' })).toBeVisible();
 });
 
 test('the viewer moves through the message\'s images by its arrows and the arrow keys', async ({ page }) => {
   await openChat(page, 'attachment-images');
-  const message = page.getByRole('article', { name: EN.chatPage.you });
+  const message = page.locator('.conversation').getByRole('list', { name: EN.attachments.list });
+  // The image Team no longer holds is left out once its thumbnail fails, so the viewer holds the two others.
+  await expect(message.getByRole('listitem').filter({ hasText: 'Old draft.png' })).toHaveCount(0);
   await message.getByRole('button', { name: open('Harbour at dusk.jpg'), exact: true }).click();
   const viewer = page.locator('dialog.image-viewer');
   const previous = viewer.getByRole('button', { name: EN.attachments.previousImage, exact: true });
@@ -125,12 +127,11 @@ test('the viewer moves through the message\'s images by its arrows and the arrow
   await page.keyboard.press('ArrowRight');
   await expect(viewer.getByRole('heading', { name: 'Team portrait.png' })).toBeVisible();
   await expect(previous).toBeEnabled();
-  await next.click();
-  // An image Team no longer holds says so, and is the last one.
-  await expect(viewer.getByRole('heading', { name: 'Old draft.png' })).toBeVisible();
-  await expect(viewer.getByText(EN.attachments.notRead)).toBeVisible();
+  // The last image has nowhere to go on to.
   await expect(next).toBeDisabled();
   await page.keyboard.press('ArrowLeft');
+  await expect(viewer.getByRole('heading', { name: 'Harbour at dusk.jpg' })).toBeVisible();
+  await next.click();
   await expect(viewer.getByRole('heading', { name: 'Team portrait.png' })).toBeVisible();
   await previous.click();
   await expect(viewer.getByRole('heading', { name: 'Harbour at dusk.jpg' })).toBeVisible();

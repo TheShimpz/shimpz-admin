@@ -41,6 +41,15 @@
   } = $props();
 
   let userTurn = $derived(exchange.user);
+  // The images Team can no longer read are left out of the message.
+  let unreadable = $state(new Set());
+  let shownFiles = $derived((userTurn?.files ?? []).filter((file) => !unreadable.has(file.id)));
+  // The images the viewer moves through.
+  let viewerImages = $derived(shownFiles.filter((file) => previewable(teamId, file)));
+
+  function markUnreadable(fileId) {
+    if (!unreadable.has(fileId)) unreadable = new Set([...unreadable, fileId]);
+  }
   let assistantTurn = $derived(exchange.assistant);
 </script>
 
@@ -53,6 +62,14 @@
 <!-- A Routine notice keeps its time on its own rail; every other reply shows when it was completed. -->
 {#snippet replyTime()}{@render turnTime(assistantTurn)}{/snippet}
 <section class="exchange">
+  {#if shownFiles.length}
+    <!-- A message's files sit above its text, outside it, as modern chats show them: one compact card each. -->
+    <ul class="sent-attachments" aria-label={$t('attachments').list}>
+      {#each shownFiles as file (file.key)}
+        <AttachmentTile {teamId} {file} images={viewerImages} onunavailable={markUnreadable} />
+      {/each}
+    </ul>
+  {/if}
   {#if userTurn}
     <Message variant="user" author={words.you}>
       {#snippet meta()}{@render turnTime(userTurn)}{/snippet}
@@ -61,15 +78,6 @@
           <strong>{words.install.resuming}</strong>
           <span>{userTurn.resumedObjective}</span>
         </div>
-      {/if}
-      {#if userTurn.files}
-        <!-- A message's files come first, as consolidated chats show them: its images, then its other files. -->
-        {@const images = userTurn.files.filter((file) => previewable(teamId, file))}
-        <ul class="message-attachments" aria-label={$t('attachments').list}>
-          {#each [...userTurn.files].sort((a, b) => (a.kind === 'image' ? 0 : 1) - (b.kind === 'image' ? 0 : 1)) as file (file.key)}
-            <AttachmentTile {teamId} {file} {images} />
-          {/each}
-        </ul>
       {/if}
       {#if sentAnswer !== null}
         <!-- The question stays above its answer, so the person always sees what they replied to. -->
@@ -244,19 +252,16 @@
     text-transform: uppercase;
   }
 
-  /* A sent message's files above its text: image thumbnails as fixed squares, then compact cards for other files, all
-     wrapping in one row. */
-  .message-attachments {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: flex-end;
-    gap: var(--gap-item);
-    margin: 0 0 var(--gap-item);
+  /* A sent message's files, above its text and aligned with it, one card under another. */
+  .sent-attachments {
+    display: grid;
+    justify-self: end;
+    width: min(100%, 20rem);
+    gap: var(--gap-inside);
+    margin: 0;
     padding: 0;
     list-style: none;
   }
 
-  .message-attachments > :global(.attachment-tile) { flex: 0 0 6rem; }
-  .message-attachments > :global(.attachment-card) { flex: 1 1 13rem; max-width: 18rem; }
 
 </style>

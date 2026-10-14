@@ -9,7 +9,7 @@ import {
   MAX_PREVIEWS,
   previewable,
   previewUrl,
-  squareCrop,
+  thumbnailSize,
 } from '../src/lib/chat/attachments/previews.js';
 
 const flush = () => new Promise((resolve) => setImmediate(resolve));
@@ -51,11 +51,11 @@ test('a stored image of a valid Team is previewable by its stored media type, li
   assert.equal(previewUrl('marketing', image.id), `/api/teams/marketing/files/${image.id}/preview`);
 });
 
-test('a thumbnail is the rendition\'s centred square, within its edge and never upscaled', () => {
-  assert.deepEqual(squareCrop(1568, 765), { x: 401, y: 0, side: 765, size: 320 });
-  assert.deepEqual(squareCrop(765, 1568), { x: 0, y: 401, side: 765, size: 320 });
-  assert.deepEqual(squareCrop(64, 48), { x: 8, y: 0, side: 48, size: 48 });
-  assert.deepEqual(squareCrop(1568, 1), { x: 783, y: 0, side: 1, size: 1 });
+test('a thumbnail keeps the rendition\'s proportions within its edge and is never upscaled', () => {
+  assert.deepEqual(thumbnailSize(1568, 765), { width: 640, height: 312 });
+  assert.deepEqual(thumbnailSize(765, 1568), { width: 312, height: 640 });
+  assert.deepEqual(thumbnailSize(64, 48), { width: 64, height: 48 });
+  assert.deepEqual(thumbnailSize(1568, 1), { width: 640, height: 1 });
 });
 
 test('a thumbnail is drawn once from its Team rendition and shown at once to every later message', async () => {
@@ -211,17 +211,16 @@ function browser({ width = 1341, height = 894, fails = false, empty = false } = 
   return made;
 }
 
-test('a thumbnail is the rendition\'s centred square decoded once at its own size, and nothing else is kept', async () => {
+test('a thumbnail is the rendition decoded once at its reduced size, and nothing else is kept', async () => {
   const made = browser();
   const drawn = await drawThumbnail('/api/teams/marketing/files/a/preview', new AbortController().signal);
-  // The rendition's own size stays for the viewer; the thumbnail is its centred square.
+  // The rendition's own size stays for the viewer; the thumbnail keeps its proportions.
   assert.deepEqual([drawn.width, drawn.height], [1341, 894]);
   assert.equal(drawn.blob.type, 'image/webp');
   const [bitmap] = made.bitmaps;
-  assert.deepEqual(bitmap.crop, [223, 0, 894, 894]);
-  assert.deepEqual(bitmap.options, { resizeWidth: 320, resizeHeight: 320, resizeQuality: 'high' });
+  assert.deepEqual(bitmap.options, { resizeWidth: 640, resizeHeight: 427, resizeQuality: 'high' });
   assert.equal(bitmap.closed, true);
-  assert.deepEqual([made.canvases[0].width, made.canvases[0].height], [320, 320]);
+  assert.deepEqual([made.canvases[0].width, made.canvases[0].height], [640, 427]);
   // The full rendition is let go once its thumbnail is drawn.
   assert.equal(made.images[0].src, '');
 });

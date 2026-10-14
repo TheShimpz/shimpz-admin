@@ -5,13 +5,20 @@
   import { acquirePreview, previewable } from '#lib/chat/attachments/previews.js';
   import { locale, t } from '#lib/i18n/index.js';
 
-  // One file of a message (ADR-0093), alike in the composer and in a sent message. An image is a thumbnail square that
-  // opens over the chat once Team has stored it, its type mark until then or when Team cannot read it; its name is the
-  // thumbnail's tooltip and accessible name. Any other file is a compact card: a badge with its extension, its name cut
-  // in the middle so its start and its extension both show, and its type and size. The thumbnail is asked for only once
-  // the tile comes within NEAR_PX of its scrolling region. In the composer either can be removed from the message.
-  // `images` are the message's images the viewer can move through, this one among them.
-  let { teamId, file, images = [file], status = 'ready', onremove = null } = $props();
+  // One file of a message as a compact card (ADR-0093), alike in the composer and in a sent message: a badge, its name
+  // cut in the middle so its start and its extension both show, and its type and size. An image Team has stored shows
+  // its thumbnail in the badge's place, and the thumbnail opens it over the chat; until then the badge names its
+  // extension. The thumbnail is asked for only once the card comes within NEAR_PX of its scrolling region, and an image
+  // Team cannot read is reported through `onunavailable`, so its message can leave it out. `images` are the message's
+  // images the viewer can move through, this one among them. In the composer the card can be removed from the message.
+  let {
+    teamId,
+    file,
+    images = [file],
+    status = 'ready',
+    onremove = null,
+    onunavailable = () => {},
+  } = $props();
 
   const NEAR_PX = 400;
   // The name's end, always kept whole: its extension and a few characters before it; only the start before it is cut.
@@ -33,9 +40,7 @@
       : [file.name, ''],
   );
   let canPreview = $derived(status === 'ready' && previewable(teamId, file));
-  // An image is a thumbnail square; any other file a compact card naming it, as consolidated chats show files.
-  let card = $derived(file.kind !== 'image');
-  // The card's badge: the file's extension, at most four characters, or its type when it has none.
+  // The badge: the file's extension, at most four characters, or its type when it has none.
   let badge = $derived.by(() => {
     const dot = file.name.lastIndexOf('.');
     const extension = dot > 0 ? file.name.slice(dot + 1) : '';
@@ -64,7 +69,7 @@
     const pin = acquirePreview(teamId, file.id);
     let current = true;
     if (pin.cached) shown = pin.cached;
-    else pin.ready.then((thumbnail) => { if (current) shown = thumbnail; }, () => {});
+    else pin.ready.then((thumbnail) => { if (current) shown = thumbnail; }, () => { if (current) onunavailable(file.id); });
     return () => {
       current = false;
       pin.release();
@@ -79,40 +84,31 @@
 
 <li
   bind:this={element}
-  class={card ? 'attachment-card' : 'attachment-tile'}
+  class="attachment-card"
   data-kind={file.kind}
   aria-busy={status === 'ready' ? undefined : 'true'}
 >
-  {#if card}
-    <span class="card-badge" aria-hidden="true">{badge}</span>
-    <span class="card-text">
-      <span class="card-name" title={file.name}><span class="head">{nameParts[0]}</span><span class="tail">{nameParts[1]}</span></span>
-      <span class="card-details">{details}</span>
-    </span>
-  {:else if shown}
+  {#if shown}
     <Button
       bind:element={opener}
-      class="tile-open"
+      class="card-thumbnail"
       variant="ghost"
       type="button"
-      title={file.name}
       aria-label={$t('attachments.openImage', { name: file.name })}
       onclick={() => (viewing = true)}
     >
       <img src={shown.url} alt={file.name} />
     </Button>
   {:else}
-    <span class="tile-face" title={file.name}>
-      <svg class="tile-mark" viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4.5 5.5h15v13h-15zM4.5 15.5l4.5-4.5 4 4 2.5-2.5 4 4"></path><circle cx="15.5" cy="9.5" r="1.4"></circle>
-      </svg>
-      <span class="sr-only">{file.name}</span>
-    </span>
+    <span class="card-badge" aria-hidden="true">{badge}</span>
   {/if}
-  {#if !card}<span class="sr-only">{details}</span>{/if}
+  <span class="card-text">
+    <span class="card-name" title={file.name}><span class="head">{nameParts[0]}</span><span class="tail">{nameParts[1]}</span></span>
+    <span class="card-details">{details}</span>
+  </span>
   {#if onremove}
     <Button
-      class="tile-remove"
+      class="card-remove"
       variant="ghost"
       size="icon"
       type="button"
@@ -135,38 +131,50 @@
 </li>
 
 <style>
-  /* Every tile is the same square, as wide as its grid column and never wider than 8rem, cut like the controls, with
-     no border. */
-  .attachment-tile {
-    position: relative;
-    clip-path: var(--shimpz-control-shape);
+  /* A compact card: its badge or thumbnail, then its name over its type and size. */
+  .attachment-card {
     display: grid;
-    width: 100%;
-    max-width: 8rem;
-    aspect-ratio: 1;
     min-width: 0;
-    overflow: hidden;
-    background: color-mix(in srgb, var(--shimpz-color-text) 4%, var(--shimpz-color-bg));
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--gap-item);
+    padding: var(--gap-inside);
+    clip-path: var(--shimpz-control-shape);
+    background: color-mix(in srgb, var(--shimpz-color-text) 5%, var(--shimpz-color-bg));
   }
 
   /* A file still uploading is dimmed until Team has stored it. */
-  .attachment-tile[aria-busy="true"] { opacity: 0.6; }
+  .attachment-card[aria-busy="true"] { opacity: 0.6; }
 
-  .attachment-tile :global(.shimpz-button.tile-open) {
+  .card-badge {
+    --tone: var(--shimpz-color-text-muted);
+    display: grid;
+    width: 2.6rem;
+    height: 2.6rem;
+    place-items: center;
+    color: var(--tone);
+    background: color-mix(in srgb, var(--tone) 14%, transparent);
+    clip-path: var(--shimpz-control-shape);
+    font: 700 0.58rem/1 var(--shimpz-font-mono);
+    letter-spacing: 0.04em;
+  }
+
+  .attachment-card[data-kind="pdf"] .card-badge { --tone: var(--shimpz-color-magenta); }
+  .attachment-card[data-kind="text"] .card-badge { --tone: var(--shimpz-color-cyan); }
+
+  /* An image's thumbnail takes the badge's place, filling it edge to edge; the controls' glitch never slices it. */
+  .attachment-card :global(.shimpz-button.card-thumbnail) {
     --button-border: transparent;
-    border: 0;
-    border-radius: 0 !important;
-    clip-path: none;
-    width: 100%;
-    height: 100%;
+    width: 2.6rem;
+    height: 2.6rem;
     min-height: 0;
     padding: 0;
     overflow: hidden;
+    border: 0;
     background: transparent;
   }
 
-  /* An image is not a label: the controls' hover glitch, which slices a button's content, never touches it. */
-  .attachment-tile :global(.tile-open .button-content) {
+  .attachment-card :global(.card-thumbnail .button-content) {
     display: block;
     width: 100%;
     height: 100%;
@@ -180,53 +188,6 @@
     height: 100%;
     object-fit: cover;
   }
-
-  /* An image not yet stored, or one Team cannot read, shows only its type mark. */
-  .tile-face {
-    display: grid;
-    place-items: center;
-  }
-
-  .tile-mark {
-    width: 1.5rem;
-    height: 1.5rem;
-    fill: none;
-    stroke: var(--shimpz-color-text-muted);
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 1.4;
-  }
-
-  /* Any other file is a compact card: its extension's badge, then its name over its type and size. */
-  .attachment-card {
-    position: relative;
-    display: grid;
-    min-width: 0;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    align-items: center;
-    gap: var(--gap-item);
-    padding: var(--gap-inside);
-    clip-path: var(--shimpz-control-shape);
-    background: color-mix(in srgb, var(--shimpz-color-text) 5%, var(--shimpz-color-bg));
-  }
-
-  .attachment-card[aria-busy="true"] { opacity: 0.6; }
-
-  .card-badge {
-    --tone: var(--shimpz-color-text-muted);
-    display: grid;
-    width: 2.5rem;
-    height: 2.5rem;
-    place-items: center;
-    color: var(--tone);
-    background: color-mix(in srgb, var(--tone) 14%, transparent);
-    clip-path: var(--shimpz-control-shape);
-    font: 700 0.58rem/1 var(--shimpz-font-mono);
-    letter-spacing: 0.04em;
-  }
-
-  .attachment-card[data-kind="pdf"] .card-badge { --tone: var(--shimpz-color-magenta); }
-  .attachment-card[data-kind="text"] .card-badge { --tone: var(--shimpz-color-cyan); }
 
   .card-text {
     display: grid;
@@ -243,13 +204,15 @@
     unicode-bidi: plaintext;
   }
 
+  /* The name is split where its end begins; both parts keep their spaces at that split. */
   .head {
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: pre;
   }
 
-  .tail { flex: none; }
+  .tail { flex: none; white-space: pre; }
 
   .card-details {
     overflow: hidden;
@@ -259,7 +222,7 @@
     white-space: nowrap;
   }
 
-  .attachment-card :global(.shimpz-button.tile-remove) {
+  .attachment-card :global(.shimpz-button.card-remove) {
     width: 1.75rem;
     height: 1.75rem;
     min-height: 0;
@@ -267,21 +230,9 @@
     color: var(--shimpz-color-text-dim);
   }
 
-  .attachment-tile :global(.shimpz-button.tile-remove) {
-    position: absolute;
-    inset-block-start: var(--gap-inside);
-    inset-inline-end: var(--gap-inside);
-    width: 1.5rem;
-    height: 1.5rem;
-    min-height: 0;
-    padding: 0;
-    color: var(--shimpz-color-text);
-    background: color-mix(in srgb, var(--shimpz-color-bg) 78%, transparent);
-  }
-
-  :is(.attachment-tile, .attachment-card) :global(.tile-remove svg) {
-    width: 0.8rem;
-    height: 0.8rem;
+  .attachment-card :global(.card-remove svg) {
+    width: 0.9rem;
+    height: 0.9rem;
     fill: none;
     stroke: currentColor;
     stroke-linecap: round;

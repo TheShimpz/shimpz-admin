@@ -57,8 +57,9 @@ test('files chosen from the button upload to the Team and reach it only as the m
   expect(frame.files.every((id) => /^[0-9a-f]{32}$/.test(id))).toBe(true);
   expect(new Set(frame.files).size).toBe(2);
   // The composer starts empty again; the sent message keeps a record of its files.
-  await expect(page.getByRole('article', { name: messages.en.chatPage.you })
-    .getByRole('list', { name: EN.list }).getByRole('listitem')).toHaveCount(2);
+  // A message's files sit above its text, outside it.
+  await expect(page.locator('.conversation .exchange').getByRole('list', { name: EN.list }).getByRole('listitem'))
+    .toHaveCount(2);
   await expect(page.locator('#chat-composer')).toHaveValue('');
   await expect(page.locator('form').getByRole('list', { name: EN.list })).toHaveCount(0);
 
@@ -148,8 +149,7 @@ test('a reloaded chat still shows which files each message carried', async ({ pa
 
   await page.reload();
   await expect(page.getByText('I read the 2 files you attached.', { exact: false })).toBeVisible({ timeout: 20_000 });
-  const sent = page.getByRole('article', { name: messages.en.chatPage.you })
-    .filter({ hasText: 'When does the contract renew?' });
+  const sent = page.locator('.conversation .exchange').filter({ hasText: 'When does the contract renew?' });
   await expect(sent.getByRole('list', { name: EN.list }).getByRole('listitem')).toHaveText([/notes\.md/, /brief\.md/]);
   // A saved record offers nothing to do with its files.
   await expect(sent.getByRole('list', { name: EN.list }).getByRole('button')).toHaveCount(0);
