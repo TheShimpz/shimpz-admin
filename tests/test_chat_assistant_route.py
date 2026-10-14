@@ -3,6 +3,7 @@
 import sys
 import threading
 import unittest
+from concurrent.futures import Future, wait
 from pathlib import Path
 from unittest import mock
 
@@ -78,13 +79,29 @@ def cloudflare() -> store_catalog.CatalogAssistant:
 
 class AssistantRouteTests(unittest.TestCase):
     def setUp(self) -> None:
-        speculative = mock.patch.object(
-            assistant_route.assistant_plan,
-            "prepare_capability",
-            return_value=assistant_plan.Preparation(),
-        )
-        speculative.start()
-        self.addCleanup(speculative.stop)
+        # The speculative plan never reaches Team unless a test says otherwise: a real one would outlive its test.
+        for name, value in (("capability_gap", None), ("plan_gap", assistant_plan.Preparation())):
+            speculative = mock.patch.object(assistant_route.assistant_plan, name, return_value=value)
+            speculative.start()
+            self.addCleanup(speculative.stop)
+        # Every speculation a test started ends before its mocks are removed, so none reaches the next test.
+        started: list[Future] = []
+        submit = assistant_route._CAPABILITY_PLANNING.submit
+
+        def tracked(*args: object, **kwargs: object) -> Future:
+            future = submit(*args, **kwargs)
+            started.append(future)
+            return future
+
+        tracking = mock.patch.object(assistant_route._CAPABILITY_PLANNING, "submit", side_effect=tracked)
+        tracking.start()
+        self.addCleanup(tracking.stop)
+
+        def drained() -> None:
+            if wait(started, timeout=10).not_done:
+                raise AssertionError("a speculative plan outlived its test")
+
+        self.addCleanup(drained)
 
     def test_guidance_accepts_unicode_spacing_but_rejects_layout_separators(self) -> None:
         reply = "Quel Assistant voulez-vous désinstaller\u00a0?"
