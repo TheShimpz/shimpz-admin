@@ -9,10 +9,15 @@ from team import bridge as team
 
 from protocol.http.v1.websocket import canonical_origin
 
+# A Space reset body carries one password or one host capability.
+MAX_BODY_BYTES = 8 * 1024
 
-async def authenticated(request: Request, *, read_json, recheck_password, team_response) -> JSONResponse:
+
+async def authenticated(request: Request, *, recheck_password, team_response) -> JSONResponse:
     """Require the current Supervisor password, within the sign-in budget and lockout, before Space reset."""
-    password = request_body.exact_fields(await read_json(request), "password")["password"]
+    password = request_body.exact_fields(await request_body.bounded_json_object(request, MAX_BODY_BYTES), "password")[
+        "password"
+    ]
     if not isinstance(password, str):
         raise HTTPException(status_code=400, detail="request body must contain only password")
     if not 1 <= len(password) <= auth.MAX_PASSWORD_CHARS:

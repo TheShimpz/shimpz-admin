@@ -37,10 +37,6 @@ def _request(payload: dict[str, object]) -> Request:
     )
 
 
-async def _read_json(request: Request) -> dict:
-    return await request.json()
-
-
 def _reset(
     payload: dict[str, object],
     *,
@@ -53,7 +49,6 @@ def _reset(
     return host_reset.reset(
         _request(payload),
         setup_lock=asyncio.Lock() if setup_lock is None else setup_lock,
-        read_json=_read_json,
         verify_password=mock.AsyncMock() if verify_password is None else verify_password,
         bootstrap_reset=mock.Mock() if bootstrap_reset is None else bootstrap_reset,
         established_reset=mock.Mock() if established_reset is None else established_reset,

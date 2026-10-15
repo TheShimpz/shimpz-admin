@@ -11,11 +11,13 @@ from functools import partial
 from pathlib import Path
 
 import private_file
+import request_body
 import state
 import supervisor
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
 from signin import audit, auth
+from space import reset as space_reset
 from starlette.concurrency import run_in_threadpool
 
 CAPABILITY_PATH = Path("/run/shimpz-local-reset/capability.json")
@@ -98,13 +100,12 @@ async def reset(
     request: Request,
     *,
     setup_lock,
-    read_json,
     verify_password,
     bootstrap_reset,
     established_reset,
 ) -> JSONResponse:
     """Consume exact host authority before invoking the matching Team deletion boundary."""
-    payload = await read_json(request)
+    payload = await request_body.bounded_json_object(request, space_reset.MAX_BODY_BYTES)
     capability = payload.get("capability")
     try:
         digest, expires_at = verify_capability(capability)
