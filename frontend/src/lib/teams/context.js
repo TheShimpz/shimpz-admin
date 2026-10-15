@@ -36,13 +36,8 @@ function emptyContext() {
  */
 export const teamContext = writable(emptyContext());
 function hasExactEnvelopeKeys(value, expected) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
-  const keys = Object.keys(value);
-  if ('trace_id' in value && (typeof value.trace_id !== 'string' || !OPAQUE_ID_RE.test(value.trace_id))) {
-    return false;
-  }
-  const payloadKeys = keys.filter((key) => key !== 'trace_id').sort();
-  return payloadKeys.length === expected.length && expected.every((key, index) => key === payloadKeys[index]);
+  if (!exactKeys(value, expected) && !exactKeys(value, [...expected, 'trace_id'])) return false;
+  return !Object.hasOwn(value, 'trace_id') || (typeof value.trace_id === 'string' && OPAQUE_ID_RE.test(value.trace_id));
 }
 
 function validTeamResidueProof(value) {
