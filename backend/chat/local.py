@@ -42,7 +42,7 @@ DONE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification"})
 # A completed turn may also say what it consumed: its elapsed time and model tokens, for presentation only.
 USAGE_FIELD = "usage"
 # A recording turn ends with the card of the Routine it recorded, for the person to confirm, with what Team must ask
-# the person first, or with why it made none (ADR-0101 sections 2 and 5); only one, and never beside a clarification.
+# the person first, or with why it made none (ADR-0101); only one, and never beside a clarification.
 PROPOSAL_FIELD = "routine_proposal"
 REFUSAL_FIELD = "routine_refusal"
 QUESTION_FIELD = "routine_question"

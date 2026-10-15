@@ -157,7 +157,7 @@ def _proposal(team_id: object, proposal_id: object, method: str, statuses: froze
 
 
 def confirm_proposal(team_id: object, proposal_id: object) -> transport.TeamResponse:
-    """Criar rotina: the person's one tap that creates or changes the Routine its card shows (ADR-0101 section 5.3)."""
+    """Criar rotina: the person's one tap that creates or changes the Routine its card shows (ADR-0101)."""
     return _proposal(team_id, proposal_id, "POST", frozenset({"created", "changed"}))
 
 

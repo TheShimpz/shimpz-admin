@@ -899,7 +899,7 @@ export async function readRunDiagnostics(call, teamId, runId) {
     distinct(item.diagnostics.map((entry) => `${entry.operation_id}:${entry.attempt}`))).diagnostics;
 }
 
-// The confirmation card of a recorded Routine (ADR-0101 section 5.2, amended 2026-10-15), mirroring Team's
+// The confirmation card of a recorded Routine (ADR-0101, amended 2026-10-15), mirroring Team's
 // `routine.canonical_proposal`: the recording agent's description, which states the schedule and the output, and every
 // step with its effect, every literal complete and escaped, every source and selector described completely. Nothing in
 // it is paged or cut.

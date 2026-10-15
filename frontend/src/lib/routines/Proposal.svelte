@@ -17,7 +17,7 @@
   import { confirmRoutineProposal, revokeRoutineProposal } from '#lib/routines/protocol.js';
   import { fillParts, proposalInputValue, routineFailureWords } from '#lib/routines/words.js';
 
-  // The card of a Routine a recording turn recorded (ADR-0101 section 5.2), under its reply, kept short for a person
+  // The card of a Routine a recording turn recorded (ADR-0101), under its reply, kept short for a person
   // who is not technical: the recording agent's plain description of the work and a warning when a step changes
   // something. Its footer row holds a closed disclosure that, once the person opens it, lists each step's Assistant,
   // linked to its page, its Action, whether it changes something, and every input's complete value, and at its end

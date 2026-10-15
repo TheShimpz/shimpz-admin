@@ -425,7 +425,7 @@ def append_reply(team_id: object, turn_id: object, event: object, *, receipt: ob
             raise ValueError("chat history reply event is invalid")
         # Stored so a reload shows what the turn consumed under its reply; it never enters the Brain window.
         entry["usage"] = usage
-    # Stored so a reload shows the same Routine card or refusal under the reply (ADR-0101 section 5.2).
+    # Stored so a reload shows the same Routine card or refusal under the reply (ADR-0101).
     entry.update(reply_payload.routine_reply(event, entry.get("clarification")))
     if receipt is not None:
         # Stored so a reload lists the same steps under the reply's usage line; it never enters the Brain window. A
