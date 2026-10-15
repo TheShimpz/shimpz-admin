@@ -121,11 +121,10 @@ async def dispatch(
         operation="assistant-route",
         locale=objective["locale"],
         lifecycle_stop=threading.Event(),
-        history_id=connection.admitted_history_id,
+        history_id=lifecycle.take_history_id(connection),
         conversation=conversation,
         request=identity,
     )
-    connection.admitted_history_id = None
     connection.active = turn
     turn.delivery = asyncio.create_task(
         route_delivery.deliver(

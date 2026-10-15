@@ -610,12 +610,6 @@ async def _commit_user_history(
     return True
 
 
-def _take_history_id(connection: _Connection) -> str | None:
-    history_id = connection.admitted_history_id
-    connection.admitted_history_id = None
-    return history_id
-
-
 async def _dispatch_chat(
     websocket: WebSocket,
     connection: _Connection,
@@ -648,7 +642,7 @@ async def _dispatch_chat(
         operation="assistant-route",
         locale=payload["locale"],
         lifecycle_stop=threading.Event(),
-        history_id=_take_history_id(connection),
+        history_id=lifecycle.take_history_id(connection),
         conversation=conversation,
         request=identity,
     )

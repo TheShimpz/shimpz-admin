@@ -246,7 +246,7 @@ async def resolve(
         connection.lifecycle_proposal = None
         connection.assistant_reference = None
         if decision != "ambiguous":
-            history_id = _take_history_id(connection)
+            history_id = take_history_id(connection)
             event = _event(proposal, "expired")
             if not await _commit_uninstall(proposal, history_id, event):
                 event = _history_error()
@@ -255,12 +255,12 @@ async def resolve(
         return False
     if decision == "confirm":
         connection.lifecycle_proposal = None
-        await _dispatch(websocket, connection, proposal, send_event, _take_history_id(connection))
+        await _dispatch(websocket, connection, proposal, send_event, take_history_id(connection))
         return True
     if decision == "cancel":
         connection.lifecycle_proposal = None
         connection.assistant_reference = None
-        history_id = _take_history_id(connection)
+        history_id = take_history_id(connection)
         event = _event(proposal, "cancelled")
         if not await _commit_uninstall(proposal, history_id, event):
             event = _history_error()
@@ -271,7 +271,8 @@ async def resolve(
     return False
 
 
-def _take_history_id(connection: Connection) -> str | None:
+def take_history_id(connection: Connection) -> str | None:
+    """Hand the user row this connection admitted to the turn that answers it, exactly once."""
     history_id = connection.admitted_history_id
     connection.admitted_history_id = None
     return history_id
