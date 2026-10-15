@@ -43,7 +43,7 @@ function publicText(value, maximum, status) {
   return boundedText(value, maximum, PUBLIC_TEXT_CONTROL_RE, status);
 }
 
-function uninstallAssistant(value, status) {
+function storedUninstallTarget(value, status) {
   try {
     return parseUninstallAssistant(value);
   } catch {
@@ -54,7 +54,7 @@ function uninstallAssistant(value, status) {
 // A stored plan keeps each Assistant's final state, never the transient `installing`.
 const STORED_INSTALL_STATES = ['pending', 'installed', 'failed'];
 
-function installAssistant(value, status) {
+function storedPlanAssistant(value, status) {
   try {
     return parseInstallPlanAssistant(value, { maxProviders: MAX_PROVIDERS, states: STORED_INSTALL_STATES });
   } catch {
@@ -153,7 +153,7 @@ function installEntry(value, suffix, status) {
     (failed && (!Number.isInteger(value.status) || value.status < 400 || value.status > 599)) ||
     (limited && (value.status !== 409 || value.code !== ASSISTANT_LIMIT_REACHED))
   ) throw invalidHistory(status);
-  const assistants = value.assistants.map((assistant) => installAssistant(assistant, status));
+  const assistants = value.assistants.map((assistant) => storedPlanAssistant(assistant, status));
   if (
     !isAscending(assistants, (assistant) => assistant.id) ||
     (value.state === 'installed' && assistants.some((assistant) => assistant.status !== 'installed'))
@@ -186,7 +186,7 @@ function uninstallEntry(value, suffix, status) {
     id: value.id,
     kind: 'assistant-uninstall',
     state: value.state,
-    assistant: uninstallAssistant(value.assistant, status),
+    assistant: storedUninstallTarget(value.assistant, status),
     ...(value.state === 'uninstalled' ? { uninstalled: value.uninstalled } : {}),
     ...(value.state === 'failed' ? { status: value.status } : {}),
   };
