@@ -4304,7 +4304,7 @@ test('holds Send while a Brain change is saving so the turn uses the saved selec
 
 // A Routine notice's usage and protection as Team writes them (ADR-0101): a run's notice carries its active duration;
 // a Routine's notice carries none, except the healthy rollup's summed duration.
-const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed', 'healthy', 'deleted'];
+const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed', 'healthy', 'deleted', 'streak-paused'];
 function noticeExtras(outcome) {
   const used = !ROUTINE_OUTCOMES.includes(outcome) || outcome === 'healthy';
   return { usage: used ? { duration_ms: 4120 } : null, protection_lost: false };
@@ -4314,7 +4314,7 @@ function noticeExtras(outcome) {
 // account out of credits), and exactly Rodar and Excluir.
 const CREDITS_MESSAGE = "Client error '402 Payment Required' for url 'https://api.cloudflare.com/client/v4/zones/[REDACTED]'";
 
-function recoveryCard(incidentId, { nonce = 'f'.repeat(32), action = 'replace-dns-record', failure = {} } = {}) {
+function recoveryCard(incidentId, { tag = 'f'.repeat(64), action = 'replace-dns-record', failure = {} } = {}) {
   return {
     team_id: 'marketing',
     incident_id: incidentId,
@@ -4344,9 +4344,7 @@ function recoveryCard(incidentId, { nonce = 'f'.repeat(32), action = 'replace-dn
       },
       condition: null,
     },
-    nonce,
-    expires_in: 300,
-    choices: ['run', 'delete'],
+    tag,
   };
 }
 
@@ -5491,7 +5489,7 @@ test.describe('Team Routines', () => {
       }];
       return ok({ team_id: 'marketing', run_id: run, status: 'held' });
     });
-    await routeRead(page, 'routines.card', () => ok(recoveryCard(run, { nonce: 'e'.repeat(32) })));
+    await routeRead(page, 'routines.card', () => ok(recoveryCard(run, { tag: 'e'.repeat(64) })));
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
     const navigation = await openTeamNavigation(page);
@@ -5524,7 +5522,7 @@ test.describe('Team Routines', () => {
         incidents = [{ incident_id: run, routine_id: ROUTINE_VIEW.routine_id, name: ROUTINE_VIEW.name, created_at: '2026-10-01T12:01:07Z', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }];
         return ok({ code: 'routine-incident-unavailable' }, 404);
       }
-      return ok(recoveryCard(run, { nonce: 'e'.repeat(32) }));
+      return ok(recoveryCard(run, { tag: 'e'.repeat(64) }));
     });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
@@ -5594,7 +5592,7 @@ test.describe('Team Routines', () => {
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
     await routeRead(page, 'routines.card', (params) => {
       openings.push(params.incident_id);
-      return ok(recoveryCard(run, { nonce: 'e'.repeat(32) }));
+      return ok(recoveryCard(run, { tag: 'e'.repeat(64) }));
     });
     // Rodar starts a fresh run, which freezes for an approval that the Team lists before the answer itself is
     // delivered.
@@ -5693,12 +5691,10 @@ test.describe('Team Routines', () => {
       version: 1,
       ...noticeExtras(outcome),
     });
-    const defined = Object.fromEntries(['name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'state',
-      'permitted'].map((key) => [key, ROUTINE_VIEW[key]]));
     await routeReadyChat(page, {
       history: {
         entries: [
-          entry('a'.repeat(32), 'created', defined, null, '2026-10-01T11:00:00Z'),
+          entry('a'.repeat(32), 'created', {}, null, '2026-10-01T11:00:00Z'),
           entry('f'.repeat(32), 'skipped', { missed: 2 }, null, '2026-10-01T11:30:00Z'),
           entry('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']], position: null, steps: null }),
           entry('d'.repeat(32), 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }),
@@ -6203,14 +6199,10 @@ test.describe('Team Routines', () => {
       version: 1,
       ...noticeExtras(outcome),
     });
-    const { name: _name, ...definition } = Object.fromEntries(
-      ['name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'state', 'permitted']
-        .map((key) => [key, ROUTINE_VIEW[key]]),
-    );
     await routeReadyChat(page, {
       history: {
         entries: [
-          row('b'.repeat(32), 'a'.repeat(32), 'created', { name, ...definition }, null),
+          row('b'.repeat(32), 'a'.repeat(32), 'created', {}, null),
           row('c'.repeat(32), listed.routine_id, 'failed', { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']], position: null, steps: null }),
           row('d'.repeat(32), 'f'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: null }),
         ],
@@ -6264,11 +6256,9 @@ test.describe('Team Routines', () => {
     };
   }
 
-  // A Routine's creation notice, the one Routine row the chat shows, naming what `routine` was created to do.
+  // A Routine's creation notice, the one Routine row the chat shows, naming the Routine `routine` was created as.
   function createdRow(id, routine = ROUTINE_VIEW) {
-    const detail = Object.fromEntries(['name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'state',
-      'permitted'].map((key) => [key, routine[key]]));
-    return { ...routineRow(id, 'created', detail, { routine }), run_id: null };
+    return { ...routineRow(id, 'created', {}, { routine }), run_id: null };
   }
 
   // An unresolved incident that holds a run of `routine` for recovery (ADR-0092); it shares the run's id.
@@ -6305,7 +6295,7 @@ test.describe('Team Routines', () => {
       .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
   }
 
-  test('a held run is settled in its Routine\'s panel, through the card Team opened, with exact fresh nonces', { tag: '@slow' }, async ({ page }, testInfo) => {
+  test('a held run is settled in its Routine\'s panel, through the card Team opened, with exact fresh tags', { tag: '@slow' }, async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const held = 'b'.repeat(32);
     const paused = 'c'.repeat(32);
@@ -6329,7 +6319,7 @@ test.describe('Team Routines', () => {
       opened.push(incidentId);
       // Team's card names its current step, which the transcript row may not show yet.
       const action = incidentId === held ? 'create-dns-record' : 'replace-dns-record';
-      return ok(recoveryCard(incidentId, { nonce: String(opened.length).repeat(32), action }));
+      return ok(recoveryCard(incidentId, { tag: String(opened.length).repeat(64), action }));
     });
     // The paused run's first answer finds its card stale; everything else settles its run and lifts its Routine's pause.
     await routeRead(page, 'routines.card_answer', ({ incident_id: incidentId, body: answer }) => {
@@ -6379,12 +6369,12 @@ test.describe('Team Routines', () => {
     await expect(auditPanel.getByRole('status')).toContainText('Set aside. The Routine runs again now.');
     await expect(auditPanel.getByRole('group', { name: 'Recovery choices' })).toHaveCount(0);
     expect(new Set(opened)).toEqual(new Set([held, paused]));
-    // Every answer carries exactly the nonce of a card the panel had shown, never one opened after the click.
-    const nonces = opened.map((_id, index) => String(index + 1).repeat(32));
+    // Every answer carries exactly the tag of a card the panel had shown, never one opened after the click.
+    const tags = opened.map((_id, index) => String(index + 1).repeat(64));
     expect(answers.map((answer) => answer.choice)).toEqual(['run', 'run', 'run']);
-    for (const answer of answers) expect(nonces).toContain(answer.nonce);
-    const pausedNonces = opened.flatMap((id, index) => (id === paused ? [String(index + 1).repeat(32)] : []));
-    expect(answers.slice(1).map((answer) => answer.nonce)).toEqual(pausedNonces.slice(0, 2));
+    for (const answer of answers) expect(tags).toContain(answer.tag);
+    const pausedTags = opened.flatMap((id, index) => (id === paused ? [String(index + 1).repeat(64)] : []));
+    expect(answers.slice(1).map((answer) => answer.tag)).toEqual(pausedTags.slice(0, 2));
   });
 
   test("a card's error is literal text, and a shortened one says it was shortened", async ({ page }, testInfo) => {
@@ -6833,7 +6823,15 @@ test.describe('Team Routines', () => {
       ...at(routineRow('d'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: shown }), '2026-10-01T12:01:07Z'),
       usage: { duration_ms: 7400 },
     };
-    await routeReadyChat(page, { history: { entries: [missed, lost, done], before: null } });
+    // A run paused for a safety rule, and the pause its Routine's consecutive failed runs caused, which is no run.
+    const paused = at(routineRow('e'.repeat(32), 'paused', {
+      assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3, reason: 'policy',
+    }), '2026-10-01T11:10:00Z');
+    const streak = {
+      ...at(routineRow('f'.repeat(32), 'streak-paused', { failures: 3 }), '2026-10-01T11:20:00Z'),
+      run_id: null,
+    };
+    await routeReadyChat(page, { history: { entries: [missed, paused, streak, lost, done], before: null } });
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     await page.goto('/chat/?team=marketing');
     const navigation = await openTeamNavigation(page);
@@ -6843,17 +6841,22 @@ test.describe('Team Routines', () => {
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('tab', { name: 'Runs' }).click();
     const rows = panel.getByRole('list', { name: 'Runs' }).getByRole('listitem');
-    await expect(rows).toHaveCount(3);
+    await expect(rows).toHaveCount(5);
     // Newest first, each with its own time, also on a phone.
-    for (const [index, row] of [done, lost, missed].entries()) {
+    for (const [index, row] of [done, lost, streak, paused, missed].entries()) {
       await expect(rows.nth(index).locator(`time[datetime="${row.created_at}"]`)).toBeVisible();
     }
     // The completed run: its outcome opens it, with its usage.
     await expect(rows.nth(0)).toContainText('7.4 s');
     // The failed run says its results are hidden to protect secret values; the missed runs say how many and open nothing.
     await expect(rows.nth(1)).toContainText(messages.en.routine.notice.protectionLost);
-    await expect(rows.nth(2)).toContainText('2 runs missed');
+    // The streak's pause says how many failed runs caused it and opens nothing; a paused run says why it paused.
+    await expect(rows.nth(2)).toContainText(messages.en.routine.panel.streakPaused.other.replace('{count}', '3'));
     await expect(rows.nth(2).getByRole('button')).toHaveCount(0);
+    const run = messages.en.routine.run;
+    await expect(rows.nth(3)).toContainText(run.paused.replace('{reason}', run.pauseReasons.policy));
+    await expect(rows.nth(4)).toContainText('2 runs missed');
+    await expect(rows.nth(4).getByRole('button')).toHaveCount(0);
     expect(await accessibilityViolations(page)).toEqual([]);
 
     const outcome = rows.nth(0).getByRole('button', { name: 'Done', exact: true });
@@ -6892,7 +6895,7 @@ test.describe('Team Routines', () => {
       routines = routines.map((routine) => (routine.routine_id === routineId ? { ...routine, state: 'active' } : routine));
       return ok({ team_id: 'marketing', routine_id: routineId, paused: false });
     });
-    await routeRead(page, 'routines.card', () => ok(recoveryCard(held, { nonce: '1'.repeat(32) })));
+    await routeRead(page, 'routines.card', () => ok(recoveryCard(held, { tag: '1'.repeat(64) })));
     await page.goto('/chat/?team=marketing');
     // No run reaches the chat, so nothing there resumes a Routine.
     await expect(page.locator('.routine-run')).toHaveCount(0);
@@ -6970,47 +6973,6 @@ test.describe('Team Routines', () => {
     refusing = false;
     await expect(approve).toBeEnabled({ timeout: 20_000 });
     expect(await readsOf(page, 'routines.human')).toEqual([]);
-  });
-
-  test('an expired recovery card is withdrawn and only a person opens a fresh one', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
-    const held = 'b'.repeat(32);
-    await page.clock.install({ time: new Date('2026-10-01T12:05:00Z') });
-    await routeReadyChat(page, {
-      history: {
-        entries: [routineRow(held, 'held', { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }, { version: 2 })],
-        before: null,
-      },
-    });
-    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [{ ...ROUTINE_VIEW, state: 'paused' }], runs: [], incidents: [heldIncident(held)] }) : undefined));
-    let opened = 0;
-    const answers = [];
-    await routeRead(page, 'routines.card', () => {
-      opened += 1;
-      return ok(recoveryCard(held, { nonce: String(opened).repeat(32) }));
-    });
-    await routeRead(page, 'routines.card_answer', ({ body }) => {
-      answers.push(body);
-      return ok({ team_id: 'marketing', incident_id: held, choice: 'run', status: 'requested' });
-    });
-    await page.goto('/chat/?team=marketing');
-    const panel = await openRoutinePanel(page);
-    const choices = panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
-    await expect.poll(() => choiceNames(panel)).toEqual(['Run', 'Delete']);
-    // Once Team's five minutes pass the card is withdrawn; nothing opens another until the person asks. Jumping the
-    // clock fires the card's deadline and each periodic refresh once, without replaying every tick in between.
-    await page.clock.fastForward(300_000);
-    await expect(choices).toHaveCount(0);
-    await expect(panel.getByRole('status')).toHaveText('This recovery card expired.');
-    await page.clock.fastForward(600_000);
-    await expect(panel.getByRole('button', { name: 'Open the card again' })).toBeVisible();
-    expect(opened).toBe(1);
-    await panel.getByRole('button', { name: 'Open the card again' }).click();
-    await expect.poll(() => choiceNames(panel)).toEqual(['Run', 'Delete']);
-    await expect(panel.getByRole('status')).toHaveCount(0);
-    await panel.getByRole('button', { name: 'Run', exact: true }).click();
-    // The answer carries the fresh card's nonce, never the expired one; the click returns before it reaches the route.
-    await expect.poll(() => answers).toEqual([{ nonce: '2'.repeat(32), choice: 'run' }]);
   });
 
   test("a frozen run lights its Team's Routines button and is approved in its Routine's panel, with the chat approval dialog", { tag: '@mobile' }, async ({ page }) => {

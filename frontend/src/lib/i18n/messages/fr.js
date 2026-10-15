@@ -401,6 +401,10 @@ export default {
         one: '{count} exécution manquée',
         other: '{count} exécutions manquées',
       },
+      streakPaused: {
+        one: 'Mise en pause après {count} exécution échouée d’affilée',
+        other: 'Mise en pause après {count} exécutions échouées d’affilée',
+      },
       pause: 'Mettre en pause',
       summary: 'Résumé',
       steps: 'Étapes',
@@ -445,8 +449,6 @@ export default {
       deleteHint: 'Supprime définitivement la routine. Vous confirmez avec votre mot de passe et un second facteur.',
       requested: 'Mise de côté. La routine s’exécute de nouveau maintenant.',
       choices: 'Choix de récupération',
-      expired: 'Cette carte de récupération a expiré.',
-      reopen: 'Rouvrir la carte',
     },
     details: {
       open: 'Détails de l’exécution',
@@ -582,7 +584,6 @@ export default {
       busy: 'Une autre exécution de cette routine est toujours en cours. Réessayez quand elle sera terminée.',
       stillRunning: 'L’étape qui a échoué est peut-être encore en cours. Patientez un instant et réessayez.',
       contractsChanged: 'Les Assistants de cette routine ont changé depuis sa création. Redemandez-la dans la conversation.',
-      stopped: 'Arrêté. Rien n’a changé.',
     },
   },
   assistantPage: {

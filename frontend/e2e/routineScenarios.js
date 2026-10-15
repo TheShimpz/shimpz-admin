@@ -41,23 +41,15 @@ export function planSummary(steps, revision = 1) {
   };
 }
 
-// The Actions a plan may call, each once, and how many of them change something.
-function permittedOf(steps) {
-  const seen = new Map(steps.map((item) => [`${item.assistant}\u0000${item.action}`, item.read_only]));
-  return { total: seen.size, changes: [...seen.values()].filter((readOnly) => !readOnly).length };
-}
-
 /** A Routine view as Team lists it. */
 export function routineView(fields, steps) {
   return {
     timezone: 'America/Sao_Paulo',
     timezone_source: 'browser',
-    assistant_ids: ['shimpz-cloudflare'],
     next_run_at: '2026-10-02T12:00:00Z',
     needs_reconfirm: false,
     deleting: false,
     state: 'active',
-    permitted: permittedOf(steps),
     ...fields,
     plan: fields.plan ?? planSummary(steps),
   };
@@ -190,6 +182,7 @@ const HELD_RUN = id('5');
 const PAUSED_RUN = id('6');
 const FAILED_RUN = id('7');
 const REMOVED = id('0');
+const STREAK_PAUSE = `${'d'.repeat(31)}0`;
 
 // A held run's incident names the call it was held at by its position among its plan's steps.
 function incident(runId, routine, held) {
@@ -208,7 +201,7 @@ const MODEL_USAGE = Object.freeze({
   models: [{ provider: 'openai', model: 'gpt-6-luna', input_tokens: 6500, output_tokens: 300 }],
 });
 // The outcomes of a Routine rather than of a run; of them only the healthy rollup sums its runs' usage.
-const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed', 'healthy', 'deleted'];
+const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed', 'healthy', 'deleted', 'streak-paused'];
 
 function row(noticeId, routine, outcome, detail, { at = '2026-10-01T12:00:00Z', version = 1, usage, lost = false } = {}) {
   const run = !ROUTINE_OUTCOMES.includes(outcome);
@@ -226,11 +219,6 @@ function row(noticeId, routine, outcome, detail, { at = '2026-10-01T12:00:00Z', 
     usage: usage ?? (run || outcome === 'healthy' ? structuredClone(RUN_USAGE) : null),
     protection_lost: lost,
   };
-}
-
-function defined(routine) {
-  const { name, plan, output, schedule, timezone, timezone_source: source, state, permitted } = routine;
-  return { name, plan, output, schedule, timezone, timezone_source: source, state, permitted };
 }
 
 const text = (value) => ({ kind: 'text', value, cut: false });
@@ -291,8 +279,8 @@ function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now, removedName) {
   const removed = { routine_id: REMOVED, name: removedName };
   const completed = (plan, output) => ({ plan, output });
   return [
-    row(id('a'), CONTINUOUS, 'created', defined(CONTINUOUS), { at: yesterday(-120) }),
-    row(id('b'), HELD, 'changed', defined(HELD), { at: yesterday(-90) }),
+    row(id('a'), CONTINUOUS, 'created', {}, { at: yesterday(-120) }),
+    row(id('b'), HELD, 'changed', {}, { at: yesterday(-90) }),
     row(id('c'), CONTINUOUS, 'done', completed(CONTINUOUS.plan, null), { at: yesterday(-50) }),
     row(id('d'), CONTINUOUS, 'healthy', { runs: 9 }, { at: yesterday(0), version: 9, usage: { duration_ms: 37_080 } }),
     row(id('e'), HELD, 'recovered', completed(HELD.plan, SHOWN_RECORDS), { at: yesterday(20), usage: { duration_ms: 9800 } }),
@@ -302,6 +290,8 @@ function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now, removedName) {
     row(FAILED_RUN, PAUSED, 'failed', { code: 'assistant-rpc-failed', actions: [], position: 1, steps: 2 }, {
       at: at(-150), lost: true,
     }),
+    // Its consecutive failed runs paused the Routine.
+    row(STREAK_PAUSE, PAUSED, 'streak-paused', { failures: 3 }, { at: at(-140) }),
     row(HELD_RUN, HELD, 'held', placed('update-dns-record', 3, 3), { at: at(-120), version: 2 }),
     row(PAUSED_RUN, PAUSED_HELD, 'paused', { ...placed('delete-dns-record', 3, 3), reason: 'exhausted' }, {
       at: at(-90), version: 3,
@@ -347,6 +337,11 @@ export function recordDeletion(state, routine) {
   state.history = [...state.history, row(noticeId, routine, 'deleted', {}, { at: instant(Date.now()) })];
 }
 
+// The entity tag of the held run's card as last opened: an answer naming another one is stale.
+function cardTag(state, incidentId) {
+  return `${incidentId.slice(0, 32)}${(state.cards ?? 0).toString(16).padStart(32, '0')}`;
+}
+
 function card(state, incidentId) {
   const held = state.incidents.find((item) => item.incident_id === incidentId);
   if (!held) return { status: 404, json: { code: 'routine-incident-unavailable' } };
@@ -365,9 +360,7 @@ function card(state, incidentId) {
       steps: held.steps,
       evidence: failed ? 'recorded' : 'absent',
       diagnostic: failed,
-      nonce: state.cards.toString(16).padStart(32, '0'),
-      expires_in: 300,
-      choices: ['run', 'delete'],
+      tag: cardTag(state, incidentId),
     },
   };
 }
@@ -377,6 +370,7 @@ function answer(state, incidentId, body) {
   const held = state.incidents.find((item) => item.incident_id === incidentId);
   if (!held) return { status: 404, json: { code: 'routine-incident-unavailable' } };
   if (body?.choice !== 'run') return { status: 422, json: { code: 'invalid-body' } };
+  if (body.tag !== cardTag(state, incidentId)) return { status: 409, json: { code: 'routine-card-stale' } };
   setAside(state, incidentId, 'run');
   state.routines = state.routines.map((item) => (item.routine_id === held.routine_id ? { ...item, state: 'active' } : item));
   return { status: 200, json: { team_id: 'marketing', incident_id: incidentId, choice: 'run', status: 'requested' } };
@@ -709,7 +703,7 @@ function confirmProposal(state, { proposal_id: proposalId }) {
   state.routines = [...state.routines, routine];
   state.plans = { ...state.plans, [routine.routine_id]: CARD_STEPS };
   const noticeId = `7${proposalId.slice(-8)}`.padStart(32, '0');
-  state.history = [...state.history, row(noticeId, routine, 'created', defined(routine), { at: instant(Date.now()) })];
+  state.history = [...state.history, row(noticeId, routine, 'created', {}, { at: instant(Date.now()) })];
   answered(state, proposalId, 'created');
   return { status: 200, json: { team_id: 'marketing', proposal_id: proposalId, routine_id: routine.routine_id, status: 'created' } };
 }

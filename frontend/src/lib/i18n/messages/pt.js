@@ -401,6 +401,10 @@ export default {
         one: '{count} execução perdida',
         other: '{count} execuções perdidas',
       },
+      streakPaused: {
+        one: 'Pausada após {count} execução com falha seguida',
+        other: 'Pausada após {count} execuções com falha seguidas',
+      },
       pause: 'Pausar',
       summary: 'Resumo',
       steps: 'Etapas',
@@ -445,8 +449,6 @@ export default {
       deleteHint: 'Apaga a rotina de vez. Você confirma com sua senha e um segundo fator.',
       requested: 'Deixada de lado. A rotina roda de novo agora.',
       choices: 'Opções de recuperação',
-      expired: 'Este cartão de recuperação expirou.',
-      reopen: 'Abrir o cartão de novo',
     },
     details: {
       open: 'Detalhes da execução',
@@ -582,7 +584,6 @@ export default {
       busy: 'Outra execução desta rotina ainda está em andamento. Tente de novo quando ela terminar.',
       stillRunning: 'A etapa que falhou pode ainda estar rodando. Aguarde um momento e tente de novo.',
       contractsChanged: 'Os Assistentes desta rotina mudaram desde que ela foi criada. Peça de novo na conversa.',
-      stopped: 'Interrompido. Nada mudou.',
     },
   },
   assistantPage: {

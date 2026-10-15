@@ -401,6 +401,10 @@ export default {
         one: '{count} ejecución perdida',
         other: '{count} ejecuciones perdidas',
       },
+      streakPaused: {
+        one: 'Pausada tras {count} ejecución fallida seguida',
+        other: 'Pausada tras {count} ejecuciones fallidas seguidas',
+      },
       pause: 'Pausar',
       summary: 'Resumen',
       steps: 'Pasos',
@@ -445,8 +449,6 @@ export default {
       deleteHint: 'Elimina la rutina para siempre. Confirmas con tu contraseña y un segundo factor.',
       requested: 'Dejada de lado. La rutina se ejecuta de nuevo ahora.',
       choices: 'Opciones de recuperación',
-      expired: 'Esta tarjeta de recuperación expiró.',
-      reopen: 'Abrir la tarjeta de nuevo',
     },
     details: {
       open: 'Detalles de la ejecución',
@@ -582,7 +584,6 @@ export default {
       busy: 'Otra ejecución de esta rutina sigue en curso. Inténtalo de nuevo cuando termine.',
       stillRunning: 'El paso que falló puede seguir ejecutándose. Espera un momento e inténtalo de nuevo.',
       contractsChanged: 'Los Asistentes de esta rutina cambiaron desde que se creó. Pídela de nuevo en el chat.',
-      stopped: 'Detenido. No cambió nada.',
     },
   },
   assistantPage: {

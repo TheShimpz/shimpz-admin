@@ -402,6 +402,10 @@ export default {
         one: '{count} run missed',
         other: '{count} runs missed',
       },
+      streakPaused: {
+        one: 'Paused after {count} failed run in a row',
+        other: 'Paused after {count} failed runs in a row',
+      },
       pause: 'Pause',
       summary: 'Summary',
       steps: 'Steps',
@@ -446,8 +450,6 @@ export default {
       deleteHint: 'Removes the Routine for good. You confirm with your password and a second factor.',
       requested: 'Set aside. The Routine runs again now.',
       choices: 'Recovery choices',
-      expired: 'This recovery card expired.',
-      reopen: 'Open the card again',
     },
     // A Routine run's execution details (ADR-0092 section 8): Team's sanitized record of each failed attempt, shown as text.
     details: {
@@ -591,7 +593,6 @@ export default {
       busy: 'Another run of this Routine is still going. Try again when it ends.',
       stillRunning: 'The step that failed may still be running. Wait a moment and try again.',
       contractsChanged: 'This Routine\'s Assistants changed since it was made. Ask for it again in the chat.',
-      stopped: 'Stopped. Nothing changed.',
     },
   },
   // The Assistants catalog list and each Assistant's own page. "Assistant" and "Action" stay untranslated product terms;

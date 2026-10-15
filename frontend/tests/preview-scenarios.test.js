@@ -329,17 +329,23 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
   // Runs report their active duration, and one run says it lost its secret-value protection.
   assert.ok(notices.some((notice) => notice.usage?.duration_ms > 0));
   assert.ok(notices.some((notice) => notice.protectionLost));
+  assert.ok(notices.some((notice) => notice.outcome === 'streak-paused'));
   const listed = await listRoutines(reader(scenario), 'marketing');
   assert.ok(listed.routines.some((routine) => routine.schedule.kind === 'continuous'));
   assert.ok(listed.routines.some((routine) => routine.state === 'paused'));
   const [held, paused] = listed.incidents;
   // The weekly Routine's update hit a Cloudflare account out of credits; the card shows it as a likely credits cause.
   const card = await openRoutineCard(reader(scenario), 'marketing', held.incident_id);
-  assert.deepEqual(card.choices, ['run', 'delete']);
   assert.deepEqual([card.evidence, failureCause(card.diagnostic)], ['recorded', 'credits']);
   assert.equal(failureCause((await openRoutineCard(reader(scenario), 'marketing', paused.incident_id)).diagnostic), 'auth');
-  // Rodar sets the weekly one's held run aside.
-  assert.equal((await answerRoutineCard(reader(scenario), 'marketing', held.incident_id, card, 'run')).status, 'requested');
+  // A card read again carries a new tag, so an answer naming the earlier one is stale; Rodar sets the weekly one's held
+  // run aside.
+  const current = await openRoutineCard(reader(scenario), 'marketing', held.incident_id);
+  await assert.rejects(
+    answerRoutineCard(reader(scenario), 'marketing', held.incident_id, card, 'run'),
+    (error) => error.code === 'routine-card-stale',
+  );
+  assert.equal((await answerRoutineCard(reader(scenario), 'marketing', held.incident_id, current, 'run')).status, 'requested');
   assert.equal((await listRoutines(reader(scenario), 'marketing')).incidents.length, 1);
   const rows = scenario.call('history.page', { team_id: 'marketing', routine: held.routine_id }).json.entries;
   const setAside = parseRoutineRunEntry(rows.find((entry) => entry.run_id === held.incident_id));
@@ -384,7 +390,7 @@ test('the Routine lifecycle preview spans the day before it opened and that day,
   assert.deepEqual(instants, [...instants].sort((left, right) => left - right));
   assert.deepEqual(history.map((entry) => entry.created_at.slice(0, 10)), [
     ...Array(6).fill('2026-10-02'),
-    ...Array(5).fill('2026-10-03'),
+    ...Array(6).fill('2026-10-03'),
   ]);
   for (const entry of history) assert.equal(parseRoutineRunEntry(entry).createdAt, entry.created_at);
 });

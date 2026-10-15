@@ -401,6 +401,10 @@ export default {
         one: '{count} 回の実行を逃しました',
         other: '{count} 回の実行を逃しました',
       },
+      streakPaused: {
+        one: '{count} 回連続で実行に失敗したため一時停止しました',
+        other: '{count} 回連続で実行に失敗したため一時停止しました',
+      },
       pause: '一時停止',
       summary: '概要',
       steps: 'ステップ',
@@ -445,8 +449,6 @@ export default {
       deleteHint: 'ルーティンを完全に削除します。パスワードと第二要素で確認します。',
       requested: '保留にしました。ルーティンを今すぐもう一度実行します。',
       choices: '復旧の選択肢',
-      expired: 'この復旧カードは期限切れです。',
-      reopen: 'カードをもう一度開く',
     },
     details: {
       open: '実行の詳細',
@@ -582,7 +584,6 @@ export default {
       busy: 'このルーティンの別の実行がまだ進行中です。終わってからもう一度試してください。',
       stillRunning: '失敗したステップがまだ動いている可能性があります。少し待ってからもう一度試してください。',
       contractsChanged: 'このルーティンのアシスタントは作成後に変更されました。チャットでもう一度依頼してください。',
-      stopped: '停止しました。何も変更されていません。',
     },
   },
   assistantPage: {

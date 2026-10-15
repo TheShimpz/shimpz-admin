@@ -19,7 +19,7 @@
   } from '#lib/routines/protocol.js';
   import { conditionWords, failureCause, routineFailureWords } from '#lib/routines/words.js';
 
-  // The decision one Routine run waits for (ADR-0092), the same wherever it is shown: a held or paused run's
+  // The decision one Routine run waits for (ADR-0092), the same wherever it is shown: a held run's
   // recovery card, or a frozen run's approval through chat's own dialog. Nothing runs until the Supervisor answers.
   // A card says which step stopped, the error it returned, and its likely cause in plain words, then offers exactly
   // Rodar and Excluir; Excluir is the Routine's own confirmed deletion, which `ondelete` opens in the host.
@@ -47,20 +47,22 @@
   let working = $state(false);
   let waitingIntegration = $state(false);
   let result = $state('');
-  // Set once the run has left its decision; until then Review stays available after a dismissal, an error, an
-  // expiry, or a resumed run that froze again for its next approval.
+  // Set once the run has left its decision; until then Review stays available after a dismissal, an error, or a
+  // resumed run that froze again for its next approval.
   let ended = $state(false);
 
-  // The held run's recovery card: Team's own card, opened for this person and shown with its choices in Team's order
-  // before anything is answered. An answer uses exactly that card's nonce, once; a fresh card follows.
+  // The held run's recovery card: Team's own card, opened for this person before anything is answered. An answer names
+  // the card's tag, so Team applies it only to exactly the state the card showed; a fresh card follows.
   let card = $state(null);
 
+  // Rodar and Excluir, in this order, none recommended (ADR-0092 section 7).
+  const CHOICES = ['run', 'delete'];
   const CHOICE_ICONS = { run: 'play', delete: 'trash' };
   const HINTS = { run: 'runHint', delete: 'deleteHint' };
-  let recovery = $derived(outcome === 'held' || outcome === 'paused');
+  let recovery = $derived(outcome === 'held');
 
-  // Where a held or paused run stopped, as one sentence: its position the card, its incident, and its notice name, a
-  // replay step of the plan the run executed.
+  // Where a held run stopped, as one sentence: its position the card, its incident, and its notice name, a replay step
+  // of the plan the run executed.
   let situation = $derived.by(() => {
     if (!recovery) return '';
     const step = card ?? detail;
@@ -71,11 +73,9 @@
     }).replace(' · ', ' › ');
     return fill(copy.card.stoppedAt, { n: step.position, total: step.steps, step: words });
   });
-  // What the person is asked to decide: a held run waits for them, a paused one says why it paused, and a frozen one
-  // names the approval it waits for.
+  // What the person is asked to decide: a held run waits for them, and a frozen one names the approval it waits for.
   let reason = $derived.by(() => {
     if (outcome === 'held') return copy.card.heldLead;
-    if (outcome === 'paused') return fill(copy.run.paused, { reason: copy.run.pauseReasons[detail.reason] ?? '' });
     const frozen = { human: copy.run.frozenHuman, integrations: copy.run.frozenIntegrations };
     return fill(frozen[detail.request_kind], {
       assistant: $assistantName(detail.assistant_id),
@@ -105,30 +105,12 @@
   let wanted = $state(true);
   let recoverable = $derived(recovery && !ended);
 
-  // A card answers only within Team's lifetime for it; once that passes it is withdrawn here, and the person opens
-  // a fresh one on purpose, so an idle page never keeps opening cards.
-  let expired = $state(false);
-  $effect(() => {
-    if (!card) return;
-    const opened = card;
-    const timer = setTimeout(() => {
-      if (card !== opened) return;
-      card = null;
-      expired = true;
-      result = copy.card.expired;
-    }, opened.expires_in * 1000);
-    return () => clearTimeout(timer);
-  });
-
   // A change Admin never answered because the socket dropped may or may not have happened, and says so.
   function failed(error) {
     return routineFailureWords(error, copy.errors, $t('shell.outcomeUnknown'));
   }
 
   async function openCard() {
-    // Reopening after an expiry clears only that notice; a verdict shown after an answer stays.
-    if (expired) result = '';
-    expired = false;
     try {
       card = await openRoutineCard(call, teamId, runId);
     } catch (error) {
@@ -273,8 +255,8 @@
     <!-- The message: a host may bleed it to its own edges and draw its side lines (`--decision-message-*`). -->
     <div class="message">
     <div class="alert">
-      <!-- The badge wears the status's color (failed red, paused yellow) and the shared idle glitch. -->
-      <span class={['badge', outcome === 'paused' ? 'badge--warning' : 'badge--danger']} data-shimpz-glitch="true" aria-hidden="true">
+      <!-- The badge wears the failed status's color and the shared idle glitch. -->
+      <span class="badge" data-shimpz-glitch="true" aria-hidden="true">
         <span><RoutineIcon name="warning" /></span>
       </span>
       <div class="alert-text">
@@ -308,13 +290,13 @@
 
   {#if recoverable}
     {#if card}
-      <!-- One choice list that continues its host's frame to the edges: a row per choice in Team's order, none
-           recommended. Each row is one button (icon, verb, what it does in plain words). -->
+      <!-- One choice list that continues its host's frame to the edges: a row per choice, none recommended. Each row is
+           one button (icon, verb, what it does in plain words). -->
       <div class="spacer"></div>
       <ChoiceList
         label={copy.card.choices}
         title={copy.card.choose}
-        items={card.choices.map((choice) => ({
+        items={CHOICES.map((choice) => ({
           id: choice,
           icon: CHOICE_ICONS[choice],
           label: copy.card[choice],
@@ -326,7 +308,7 @@
     {:else if !working}
       <div class="actions">
         <Button size="sm" variant="secondary" type="button" disabled={!$commandsReady} onclick={() => (wanted = true)}>
-          {expired ? copy.card.reopen : copy.list.retry}
+          {copy.list.retry}
         </Button>
       </div>
     {/if}
@@ -392,7 +374,6 @@
     box-shadow: 0 0 0.9rem color-mix(in srgb, var(--badge-color) 28%, transparent);
     clip-path: polygon(0 0, calc(100% - var(--shimpz-cut-lg)) 0, 100% var(--shimpz-cut-lg), 100% 100%, var(--shimpz-cut-sm) 100%, 0 calc(100% - var(--shimpz-cut-sm)));
   }
-  .badge--warning { --badge-color: var(--shimpz-color-yellow); }
   .badge > span { display: grid; place-items: center; }
   .badge :global(.routine-icon) { width: 1.25rem; height: 1.25rem; filter: drop-shadow(0 0 0.35rem color-mix(in srgb, var(--badge-color) 55%, transparent)); }
   @media (forced-colors: active) { .badge { border-color: CanvasText; box-shadow: none; } }

@@ -84,24 +84,12 @@ function view(value, keys, valid) {
 
 // A Routine's state (ADR-0101): it runs, or a person paused it.
 const ROUTINE_STATES = ['active', 'paused'];
-// The Actions a Routine may call at most in its lifetime: every replayed step's.
-const MAX_PERMITTED = 256;
-
-function isPermittedSummary(value) {
-  return exactKeys(value, ['total', 'changes']) && whole(value.total, 1, MAX_PERMITTED) &&
-    whole(value.changes, 0, MAX_PERMITTED);
-}
-
-// A Routine's standing scope: whether it runs, and its permitted Actions.
-function isScope(item) {
-  return ROUTINE_STATES.includes(item.state) && isPermittedSummary(item.permitted);
-}
 
 /** One confirmed Routine as a Supervisor sees it. */
 export function parseRoutineView(value) {
   const keys = [
-    'routine_id', 'name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'assistant_ids', 'next_run_at',
-    'needs_reconfirm', 'deleting', 'state', 'permitted',
+    'routine_id', 'name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'next_run_at',
+    'needs_reconfirm', 'deleting', 'state',
   ];
   return view(value, keys, (item) =>
     typeof item.routine_id === 'string' &&
@@ -111,11 +99,10 @@ export function parseRoutineView(value) {
     isDisposition(item.output, item.plan.steps) &&
     isSchedule(item.schedule) &&
     isZoned(item.timezone, item.timezone_source) &&
-    isAssistants(item.assistant_ids, 0) &&
     isInstant(item.next_run_at) &&
     typeof item.needs_reconfirm === 'boolean' &&
     typeof item.deleting === 'boolean' &&
-    isScope(item));
+    ROUTINE_STATES.includes(item.state));
 }
 
 // A Routine plan's safe projection, mirroring Team's `routine.canonical_step` (ADR-0092, ADR-0101): each step's Action,
@@ -499,7 +486,7 @@ function isHeldStep(detail) {
   return isAssistantId(detail.assistant_id) && isActionId(detail.action) && isCallPosition(detail.position, detail.steps);
 }
 
-/** One unresolved incident of a held run, which outlives a deleted Routine (ADR-0092). */
+/** One unresolved incident of a held run (ADR-0092): its Routine's name and the call whose effect is unknown. */
 export function parseIncidentView(value) {
   const keys = ['incident_id', 'routine_id', 'name', 'created_at', 'assistant_id', 'action', 'position', 'steps'];
   return view(value, keys, (item) =>
@@ -641,9 +628,11 @@ export function escapedText(text) {
   return text.replace(UNSAFE_TEXT_RE, (character) => `\\u${character.charCodeAt(0).toString(16).padStart(4, '0')}`);
 }
 
-// A held run's recovery card (ADR-0092 section 7, ADR-0101): exactly Rodar and Excluir, in this order, none
-// recommended. Team answers Rodar; Excluir is the Routine's own confirmed deletion.
+// A held run's recovery card (ADR-0092 section 7, ADR-0101): Rodar and Excluir, in this order, none recommended. Team
+// answers Rodar; Excluir is the Routine's own confirmed deletion. The card carries the entity tag of the held run's state,
+// which the answer names so Team applies it only to exactly that state (RFC 9110 If-Match).
 const CARD_CHOICES = ['run', 'delete'];
+const TAG_RE = /^[0-9a-f]{64}$/;
 const CARD_ANSWERS = ['run'];
 const CARD_STATUSES = { run: 'requested' };
 const CARD_EVIDENCE = ['recorded', 'absent', 'unavailable'];
@@ -659,7 +648,7 @@ function isCardEvidence(item) {
 function parseCard(body, teamId, incidentId) {
   const keys = [
     'team_id', 'incident_id', 'routine_id', 'revision', 'assistant_id', 'action', 'position', 'steps', 'evidence',
-    'diagnostic', 'nonce', 'expires_in', 'choices',
+    'diagnostic', 'tag',
   ];
   return view(body, keys, (item) =>
     item.team_id === teamId &&
@@ -672,29 +661,28 @@ function parseCard(body, teamId, incidentId) {
     isActionId(item.action) &&
     isCallPosition(item.position, item.steps) &&
     isCardEvidence(item) &&
-    typeof item.nonce === 'string' &&
-    OPAQUE_ID_RE.test(item.nonce) &&
-    item.expires_in === 300 &&
-    Array.isArray(item.choices) &&
-    item.choices.length === CARD_CHOICES.length &&
-    CARD_CHOICES.every((choice, index) => item.choices[index] === choice));
+    typeof item.tag === 'string' &&
+    TAG_RE.test(item.tag));
 }
 
-/** Open a held run's recovery card for the signed-in person; its nonce answers it once within five minutes. */
+/** Open a held run's recovery card for the signed-in person, with the tag of the state it shows. */
 export async function openRoutineCard(call, teamId, incidentId) {
   const body = await request(call, 'routines.card', { team_id: team(teamId), incident_id: opaque(incidentId) });
   return parseCard(body, teamId, incidentId);
 }
 
-/** Answer an open card with Rodar; returns what Team did. Excluir is the confirmed deletion instead. */
+/**
+ * Answer an open card with Rodar; returns what Team did. Team refuses it as `routine-card-stale` once the held run's
+ * state no longer has the card's tag. Excluir is the confirmed deletion instead.
+ */
 export async function answerRoutineCard(call, teamId, incidentId, card, choice) {
-  if (!CARD_ANSWERS.includes(choice) || typeof card?.nonce !== 'string' || !OPAQUE_ID_RE.test(card.nonce)) {
+  if (!CARD_ANSWERS.includes(choice) || typeof card?.tag !== 'string' || !TAG_RE.test(card.tag)) {
     throw new RoutineError('routine-request-invalid');
   }
   const body = await request(call, 'routines.card_answer', {
     team_id: team(teamId),
     incident_id: opaque(incidentId),
-    body: { nonce: card.nonce, choice },
+    body: { tag: card.tag, choice },
   });
   return view(body, ['team_id', 'incident_id', 'choice', 'status'], (item) =>
     item.team_id === teamId &&
@@ -724,7 +712,8 @@ function isFailedAt(detail) {
 
 const STEP_KEYS = ['assistant_id', 'action', 'position', 'steps'];
 const COMPLETED_KEYS = ['plan', 'output'];
-const DEFINED_KEYS = ['name', 'plan', 'output', 'schedule', 'timezone', 'timezone_source', 'state', 'permitted'];
+// Consecutive failed runs that pause a Routine (ADR-0092 section 6).
+const MAX_FAILURE_STREAK = 3;
 
 const NOTICE_DETAILS = {
   done: [COMPLETED_KEYS, isCompleted],
@@ -747,25 +736,21 @@ const NOTICE_DETAILS = {
   ],
   denied: [['actions'], (detail) => isActions(detail.actions)],
   stopped: [['actions'], (detail) => isActions(detail.actions)],
-  created: [DEFINED_KEYS, isDefinition],
-  changed: [DEFINED_KEYS, isDefinition],
-  // A deleted Routine's last notice names it and says nothing else (ADR-0101).
+  // A Routine's creation, change, and deletion name it and say nothing else (ADR-0101).
+  created: [[], () => true],
+  changed: [[], () => true],
   deleted: [[], () => true],
+  // Its consecutive failed runs paused the Routine, and how many.
+  'streak-paused': [['failures'], (detail) => whole(detail.failures, 1, MAX_FAILURE_STREAK)],
 };
 
 // `healthy` rolls up a continuous Routine's healthy runs that ended in one minute (ADR-0092 section 9); `deleted`
-// closes a Routine's timeline (ADR-0101).
-const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed', 'healthy', 'deleted'];
+// closes a Routine's timeline (ADR-0101); `streak-paused` says a failure streak paused it (ADR-0092 section 6).
+const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed', 'healthy', 'deleted', 'streak-paused'];
 
 /** Whether a value is a Routine name in Team's closed form: one plain NFC line of at most 80 characters. */
 export function isName(value, maximum = MAX_NAME_CHARS) {
   return closedText(value, maximum) && !FORBIDDEN_RE.test(value) && value.normalize('NFC') === value;
-}
-
-function isDefinition(detail) {
-  return isName(detail.name) && isSummary(detail.plan) && isDisposition(detail.output, detail.plan.steps) &&
-    isSchedule(detail.schedule) && isZoned(detail.timezone, detail.timezone_source) &&
-    isScope(detail);
 }
 
 // A row's usage: every run outcome carries its run's, and the healthy rollup its runs' summed; no other Routine
@@ -1011,12 +996,11 @@ export function parseRoutineRefusal(value) {
 
 // What Team asks the person before a recording can become a card (ADR-0101): the span is kept, and the person's answer
 // is an ordinary send. Only an ambiguous binding offers targets; an interval over budget carries the shortest that fits;
-// what to do with each run's result is answered with the Team protocol's own four labels, which Team reads back.
+// what to do with each run's result is answered with the Team protocol's own three labels, which Team reads back.
 export const QUESTION_CODES = [
   'routine-schedule-unstated',
   'routine-interval-over-budget',
   'routine-binding-ambiguous',
-  'routine-binding-unsourced',
   'routine-work-rerun',
   'routine-output-unstated',
 ];

@@ -198,13 +198,11 @@ export function routineErrorMessage(error, copy) {
     'routine-run-changed': copy.stale,
     'routine-run-not-found': copy.ended,
     'routine-incident-unavailable': copy.ended,
-    'routine-card-expired': copy.expired,
     'routine-card-stale': copy.stale,
     'routine-not-found': copy.ended,
     'routine-busy': copy.busy,
     'routine-workload-unquiesced': copy.stillRunning,
     'routine-contracts-changed': copy.contractsChanged,
-    'routine-recovery-stopped': copy.stopped,
     // The card was confirmed, revoked, replaced, or outlived its fifteen minutes; nothing was created.
     'routine-proposal-expired': copy.proposalExpired,
     // The Team cannot hold one more change right now; nothing changed, and it frees up on its own.
@@ -355,7 +353,6 @@ const QUESTION_KEYS = {
   'routine-schedule-unstated': 'schedule',
   'routine-interval-over-budget': 'overBudget',
   'routine-binding-ambiguous': 'ambiguous',
-  'routine-binding-unsourced': 'unsourced',
   'routine-work-rerun': 'rerun',
   'routine-output-unstated': 'output',
 };

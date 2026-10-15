@@ -27,12 +27,10 @@ const ROUTINE = {
   schedule: { kind: 'weekly', weekday: 0, time: '09:00' },
   timezone: 'America/Sao_Paulo',
   timezone_source: 'browser',
-  assistant_ids: ['shimpz-cloudflare'],
   next_run_at: '2026-10-05T12:00:00Z',
   needs_reconfirm: false,
   deleting: false,
   state: 'active',
-  permitted: { total: 1, changes: 0 },
 };
 const OTHER = { ...ROUTINE, routine_id: 'c'.repeat(32), name: 'Weekly certificates' };
 const RUN = {

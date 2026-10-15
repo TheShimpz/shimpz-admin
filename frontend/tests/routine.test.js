@@ -192,13 +192,14 @@ test("every interface language offers exactly the Team protocol's output choices
   const { readFileSync } = await import('node:fs');
   // The protocol mirror is the authority (ADR-0101): Team reads the chosen label back to its choice.
   const source = readFileSync(new URL('../../backend/protocol/http/v1/routine_proposal.py', import.meta.url), 'utf8');
-  const kinds = [...source.match(/OUTPUT_KINDS = \(([^)]*)\)/u)[1].matchAll(/"([a-z]+)"/gu)].map(([, kind]) => kind);
   const block = source.match(/OUTPUT_CHOICES = \{\n([\s\S]*?)\n\}/u)[1];
   const protocol = {};
   for (const [, locale, body] of block.matchAll(/"([a-z]{2})": \{([^}]*)\}/gu)) {
     protocol[locale] = Object.fromEntries([...body.matchAll(/"([a-z]+)": "((?:[^"\\]|\\.)*)"/gu)].map(([, kind, label]) => [kind, label]));
   }
-  assert.deepEqual(kinds, ['show', 'changes', 'none', 'chain']);
+  // Every language labels the same choices, in the order Team offers them.
+  const kinds = Object.keys(protocol.en);
+  assert.deepEqual(kinds, ['show', 'changes', 'none']);
   assert.deepEqual(Object.keys(protocol).sort(), Object.keys(routineMessages).sort());
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     assert.deepEqual(catalog.proposal.questions.output.answers, kinds.map((kind) => protocol[locale][kind]), locale);
@@ -266,11 +267,9 @@ test('a Routine question is admitted only in its closed form and reads as facts 
   assert.deepEqual(questionWords(valid[4], en).answers.map((answer) => answer.text), [quoted(huge), huge]);
   assert.equal(questionTarget(huge).shown, huge);
   assert.equal(questionTarget(quoted(huge)).kind, 'string');
-  // What each run does with its result is answered with exactly the Team protocol's four labels, in its order.
+  // What each run does with its result is answered with exactly the Team protocol's three labels, in its order.
   const output = questionWords({ code: 'routine-output-unstated', options: [], value: null }, en);
-  assert.deepEqual(output.answers.map((answer) => answer.text), [
-    'Show every run', 'Show only when it changes', "Don't show", 'Use it in other Actions',
-  ]);
+  assert.deepEqual(output.answers.map((answer) => answer.text), ['Show every run', 'Show only when it changes', "Don't show"]);
   const budget = questionWords(valid[1], en);
   assert.match(budget.question, /\b9\b/u);
   assert.deepEqual(budget.answers, [{ label: 'Every 9 seconds', text: 'Every 9 seconds' }]);
@@ -390,12 +389,10 @@ const ROUTINE = {
   schedule: WEEKLY,
   timezone: 'America/Sao_Paulo',
   timezone_source: 'browser',
-  assistant_ids: ['shimpz-cloudflare'],
   next_run_at: '2026-10-05T12:00:00Z',
   needs_reconfirm: false,
   deleting: false,
   state: 'active',
-  permitted: { total: 1, changes: 0 },
 };
 const LEASED = {
   run_id: 'b'.repeat(32),
@@ -452,14 +449,11 @@ test('Routines and runs are admitted only in their closed views', () => {
   for (const invalid of [
     { ...ROUTINE, extra: 1 },
     { ...ROUTINE, deleting: 'no' },
-    { ...ROUTINE, assistant_ids: ['Bad'] },
     { ...ROUTINE, state: 'running' },
     stateless,
     { ...ROUTINE, output: { mode: 'show', step: 1, extra: null } },
     { ...ROUTINE, output: { mode: 'other', step: null } },
     { ...ROUTINE, plan: { ...SUMMARY, steps: 0, actions: [] }, output: { mode: 'none', step: null } },
-    { ...ROUTINE, permitted: { total: 0, changes: 0 } },
-    { ...ROUTINE, permitted: { total: 257, changes: 0 } },
     // A Routine view carries its summary, never its steps, and shows a step by its position.
     { ...Object.fromEntries(Object.entries(ROUTINE).filter(([key]) => key !== 'plan')), steps: PLAN },
     { ...ROUTINE, output: { mode: 'show', step: 2 } },
@@ -560,10 +554,10 @@ test('Routine requests go to exact Admin operations and admit only exact answers
     () => beginRoutineDeletion(fetcher([]).fetch, 'team_1', ROUTINE.routine_id, ''),
     () => resumeRoutine(fetcher([]).fetch, 'team_1', 'x'),
     () => openRoutineCard(fetcher([]).fetch, 'team_1', 'x'),
-    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { nonce: 'c'.repeat(32) }, 'approve'),
-    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { nonce: 'x' }, 'run'),
+    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { tag: 'c'.repeat(64) }, 'approve'),
+    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { tag: 'x' }, 'run'),
     // Excluir is the confirmed deletion, never a card answer.
-    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { nonce: 'c'.repeat(32) }, 'delete'),
+    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { tag: 'c'.repeat(64) }, 'delete'),
   ]) {
     await assert.rejects(refused(), (error) => error.code === 'routine-request-invalid');
   }
@@ -611,14 +605,12 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   assert.equal(routineErrorMessage(new RoutineError('team-context-unavailable'), errors), errors.unavailable);
   assert.equal(routineErrorMessage(new RoutineError('human-request-invalid'), errors), errors.changed);
   assert.equal(routineErrorMessage(new RoutineError('assistant-language-drift'), errors), errors.unavailable);
-  assert.equal(routineErrorMessage(new RoutineError('routine-card-expired'), errors), errors.expired);
   assert.equal(routineErrorMessage(new RoutineError('routine-card-stale'), errors), errors.stale);
   assert.equal(routineErrorMessage(new RoutineError('routine-incident-unavailable'), errors), errors.ended);
   for (const [code, key] of [
     ['routine-busy', 'busy'],
     ['routine-workload-unquiesced', 'stillRunning'],
     ['routine-contracts-changed', 'contractsChanged'],
-    ['routine-recovery-stopped', 'stopped'],
     ['routine-proposal-expired', 'proposalExpired'],
     ['notices-full', 'unavailable'],
     // A Team's daily step and definition budgets each say their own fact, never the run ceiling's.
@@ -643,16 +635,6 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   assert.equal(zone === null || isTimezone(zone), true);
 });
 
-const DEFINED = {
-  name: 'DNS semanal',
-  plan: SUMMARY,
-  output: { mode: 'show', step: 1 },
-  schedule: WEEKLY,
-  timezone: 'America/Sao_Paulo',
-  timezone_source: 'browser',
-  state: 'active',
-  permitted: { total: 1, changes: 0 },
-};
 // A run reports its active duration alone: it asks no model.
 const REPLAY_USAGE = Object.freeze({ duration_ms: 4120 });
 const RUN_ENTRY = {
@@ -734,8 +716,10 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'plan-input-type', actions: [], position: 37, steps: 120 } },
     { ...RUN_ENTRY, outcome: 'denied', detail: { actions: [] } },
     { ...RUN_ENTRY, outcome: 'stopped', detail: { actions: [] } },
-    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: DEFINED },
-    { ...RUN_ENTRY, outcome: 'changed', run_id: null, usage: null, detail: DEFINED },
+    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: {} },
+    { ...RUN_ENTRY, outcome: 'changed', run_id: null, usage: null, detail: {} },
+    { ...RUN_ENTRY, outcome: 'streak-paused', run_id: null, usage: null, detail: { failures: 1 } },
+    { ...RUN_ENTRY, outcome: 'streak-paused', run_id: null, usage: null, detail: { failures: 3 } },
   ];
   for (const entry of valid) assert.equal(parseRoutineRunEntry(entry).outcome, entry.outcome);
   for (const invalid of [
@@ -755,9 +739,8 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, detail: { ...RUN_ENTRY.detail, extra: null } },
     { ...RUN_ENTRY, outcome: 'held', detail: { ...STEP, position: '2' } },
     { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'email', ...STEP } },
-    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, extra: null } },
-    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, output: { mode: 'other', step: null } } },
-    { ...RUN_ENTRY, outcome: 'changed', run_id: null, usage: null, detail: { ...DEFINED, output: { mode: 'show', step: 1, extra: null } } },
+    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { name: 'DNS semanal' } },
+    { ...RUN_ENTRY, outcome: 'changed', run_id: null, usage: null, detail: { extra: null } },
     { ...RUN_ENTRY, outcome: 'deleted', run_id: null, usage: null, detail: { name: 'x' } },
     { ...RUN_ENTRY, outcome: 'deleted', run_id: null, usage: REPLAY_USAGE, detail: {} },
     { ...RUN_ENTRY, outcome: 'user-skipped', detail: { ...STEP, choice: 'other' } },
@@ -786,16 +769,13 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'x', actions: [], position: 1, steps: null } },
     { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, usage: null, detail: { assistants: [] } },
     { ...RUN_ENTRY, outcome: 'skipped', run_id: null, usage: null, detail: { missed: 0 } },
-    { ...RUN_ENTRY, outcome: 'created', detail: DEFINED },
-    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, output: { mode: 'show', step: 2 } } },
-    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, plan: undefined, steps: PLAN } },
-    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, state: 'stopped' } },
-    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, actions: [] } },
-    { ...RUN_ENTRY, outcome: 'changed', run_id: null, usage: null, detail: { ...DEFINED, name: ' padded ' } },
-    { ...RUN_ENTRY, outcome: 'changed', run_id: null, usage: null, detail: { ...DEFINED, name: 'x'.repeat(81) } },
-    { ...RUN_ENTRY, outcome: 'changed', run_id: null, usage: null, detail: { ...DEFINED, schedule: { kind: 'daily' } } },
-    { ...RUN_ENTRY, outcome: 'changed', run_id: null, usage: null, detail: { ...DEFINED, timezone: '../etc' } },
-    { ...RUN_ENTRY, outcome: 'changed', run_id: null, usage: null, detail: { ...DEFINED, input: { zone: 'example.com' } } },
+    { ...RUN_ENTRY, outcome: 'created', detail: {} },
+    // A failure streak pauses its Routine after one to three failed runs in a row, and carries no usage.
+    { ...RUN_ENTRY, outcome: 'streak-paused', run_id: null, usage: null, detail: { failures: 0 } },
+    { ...RUN_ENTRY, outcome: 'streak-paused', run_id: null, usage: null, detail: { failures: 4 } },
+    { ...RUN_ENTRY, outcome: 'streak-paused', run_id: null, usage: null, detail: { failures: '2' } },
+    { ...RUN_ENTRY, outcome: 'streak-paused', run_id: null, usage: null, detail: {} },
+    { ...RUN_ENTRY, outcome: 'streak-paused', run_id: null, detail: { failures: 3 } },
   ]) {
     assert.throws(() => parseRoutineRunEntry(invalid), RoutineError);
   }
@@ -809,11 +789,12 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
 
 test("the chat's view admits each card's answer and only a Routine's creation, and a Routine's view only its own history", async () => {
   const page = (entries) => async () => ({ ok: true, status: 200, async json() { return { entries, before: null }; } });
-  const created = { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: DEFINED };
+  const created = { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: {} };
   const keyed = (letter) => ({ id: `${letter.repeat(32)}:routine`, notice_id: letter.repeat(32) });
   const missed = { ...RUN_ENTRY, ...keyed('c'), outcome: 'skipped', run_id: null, usage: null, detail: { missed: 2 } };
   const healthy = { ...RUN_ENTRY, ...keyed('d'), outcome: 'healthy', run_id: null, detail: { runs: 2 } };
   const changed = { ...created, outcome: 'changed' };
+  const streak = { ...RUN_ENTRY, ...keyed('f'), outcome: 'streak-paused', run_id: null, usage: null, detail: { failures: 3 } };
   const answer = { id: `${'e'.repeat(32)}:answer`, kind: 'routine-answer', proposal_id: 'e'.repeat(32), status: 'created',
     name: 'Notícias de futebol', created_at: '2026-10-15T06:54:52Z' };
   assert.deepEqual((await listChatHistory(page([answer]), 'marketing')).entries[0], {
@@ -830,12 +811,12 @@ test("the chat's view admits each card's answer and only a Routine's creation, a
     await assert.rejects(listChatHistory(page([invalid]), 'marketing'), LocalApiError, JSON.stringify(invalid));
   }
   assert.equal((await listChatHistory(page([created]), 'marketing')).entries[0].outcome, 'created');
-  for (const hidden of [RUN_ENTRY, missed, healthy, changed]) {
+  for (const hidden of [RUN_ENTRY, missed, healthy, changed, streak]) {
     await assert.rejects(listChatHistory(page([hidden]), 'marketing'), LocalApiError, hidden.outcome);
   }
   const own = { routine: RUN_ENTRY.routine_id };
-  const runs = await listChatHistory(page([missed, healthy, RUN_ENTRY]), 'marketing', null, own);
-  assert.deepEqual(runs.entries.map((entry) => entry.outcome), ['skipped', 'healthy', 'done']);
+  const runs = await listChatHistory(page([missed, healthy, streak, RUN_ENTRY]), 'marketing', null, own);
+  assert.deepEqual(runs.entries.map((entry) => entry.outcome), ['skipped', 'healthy', 'streak-paused', 'done']);
   for (const foreign of [created, changed, { ...RUN_ENTRY, routine_id: 'c'.repeat(32) }]) {
     await assert.rejects(listChatHistory(page([foreign]), 'marketing', null, own), LocalApiError);
   }
@@ -1288,9 +1269,7 @@ test('a recovery card shows its recorded failure, offers exactly Rodar and Exclu
     steps: 3,
     evidence: 'recorded',
     diagnostic: { ...ATTEMPT_FAILURE, action: 'replace-dns-record', position: 2 },
-    nonce: 'c'.repeat(32),
-    expires_in: 300,
-    choices: ['run', 'delete'],
+    tag: 'c'.repeat(64),
   };
   const answered = { team_id: 'team_1', incident_id: INCIDENT.incident_id, choice: 'run', status: 'requested' };
   let api = fetcher([[200, card], [200, answered]]);
@@ -1301,7 +1280,7 @@ test('a recovery card shows its recorded failure, offers exactly Rodar and Exclu
     { method: 'routines.card', params: { team_id: 'team_1', incident_id: INCIDENT.incident_id } },
     {
       method: 'routines.card_answer',
-      params: { team_id: 'team_1', incident_id: INCIDENT.incident_id, body: { nonce: card.nonce, choice: 'run' } },
+      params: { team_id: 'team_1', incident_id: INCIDENT.incident_id, body: { tag: card.tag, choice: 'run' } },
     },
   ]);
   // A card whose position is no step number is refused.
@@ -1323,14 +1302,12 @@ test('a recovery card shows its recorded failure, offers exactly Rodar and Exclu
     assert.deepEqual(await openRoutineCard(fetcher([[200, plain]]).fetch, 'team_1', INCIDENT.incident_id), plain);
   }
   for (const invalid of [
-    { ...card, choices: ['run', 'other', 'delete'] },
-    { ...card, choices: ['delete', 'run'] },
-    { ...card, choices: ['run'] },
     { ...card, extra: 'run' },
     { ...card, incident_id: 'd'.repeat(32) },
     { ...card, team_id: 'team_2' },
     { ...card, assistant_id: null, action: null },
-    { ...card, expires_in: 600 },
+    { ...card, tag: 'C'.repeat(64) },
+    { ...card, tag: 'c'.repeat(63) },
     { ...card, position: 4 },
     { ...card, position: 0 },
     { ...card, step: 2 },

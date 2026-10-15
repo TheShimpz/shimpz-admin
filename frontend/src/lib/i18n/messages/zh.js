@@ -401,6 +401,10 @@ export default {
         one: '错过了 {count} 次运行',
         other: '错过了 {count} 次运行',
       },
+      streakPaused: {
+        one: '连续 {count} 次运行失败后已暂停',
+        other: '连续 {count} 次运行失败后已暂停',
+      },
       pause: '暂停',
       summary: '概要',
       steps: '步骤',
@@ -445,8 +449,6 @@ export default {
       deleteHint: '永久删除该例行任务。需要用密码和第二因素确认。',
       requested: '已搁置。该例行任务现在重新运行。',
       choices: '恢复选项',
-      expired: '此恢复卡片已过期。',
-      reopen: '重新打开卡片',
     },
     details: {
       open: '执行详情',
@@ -582,7 +584,6 @@ export default {
       busy: '该例行任务的另一次运行仍在进行中。请在其结束后再试。',
       stillRunning: '失败的步骤可能仍在运行。请稍候再试。',
       contractsChanged: '此例行任务创建后，其助手已发生变化。请在对话中重新提出。',
-      stopped: '已停止。没有任何改动。',
     },
   },
   assistantPage: {

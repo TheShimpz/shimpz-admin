@@ -401,6 +401,10 @@ export default {
         one: '{count} Ausführung verpasst',
         other: '{count} Ausführungen verpasst',
       },
+      streakPaused: {
+        one: 'Pausiert nach {count} fehlgeschlagenen Ausführung in Folge',
+        other: 'Pausiert nach {count} fehlgeschlagenen Ausführungen in Folge',
+      },
       pause: 'Pausieren',
       summary: 'Übersicht',
       steps: 'Schritte',
@@ -445,8 +449,6 @@ export default {
       deleteHint: 'Löscht die Routine endgültig. Du bestätigst mit deinem Passwort und einem zweiten Faktor.',
       requested: 'Beiseitegelegt. Die Routine läuft jetzt erneut.',
       choices: 'Wiederherstellungsoptionen',
-      expired: 'Diese Wiederherstellungskarte ist abgelaufen.',
-      reopen: 'Karte erneut öffnen',
     },
     details: {
       open: 'Ausführungsdetails',
@@ -582,7 +584,6 @@ export default {
       busy: 'Eine andere Ausführung dieser Routine läuft noch. Versuche es erneut, wenn sie beendet ist.',
       stillRunning: 'Der fehlgeschlagene Schritt läuft vielleicht noch. Warte einen Moment und versuche es erneut.',
       contractsChanged: 'Die Assistenten dieser Routine haben sich seit ihrer Erstellung geändert. Frag im Chat erneut danach.',
-      stopped: 'Gestoppt. Nichts wurde geändert.',
     },
   },
   assistantPage: {

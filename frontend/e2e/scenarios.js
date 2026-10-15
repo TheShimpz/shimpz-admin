@@ -713,13 +713,14 @@ function receiptTurn(state, frame) {
 
 /**
  * The rows of a Team's history in the view Admin reads: the chat's view holds, of the Routine notices, only each
- * Routine's creation; a Routine's own view (`routine`, its id) holds only its runs, healthy rollups, and missed runs.
+ * Routine's creation; a Routine's own view (`routine`, its id) holds only its runs, healthy rollups, missed runs, and
+ * the pauses its failure streaks caused.
  */
 export function historyView(entries, routine = null) {
   return entries.filter((entry) => (routine === null
     ? entry.kind !== 'routine-run' || entry.outcome === 'created'
     : entry.kind === 'routine-run' && entry.routine_id === routine &&
-      (entry.run_id !== null || entry.outcome === 'healthy' || entry.outcome === 'skipped')));
+      (entry.run_id !== null || ['healthy', 'skipped', 'streak-paused'].includes(entry.outcome))));
 }
 
 // Marketing's installed Assistants as Team lists them: the catalog scenario's bindings, or the chat's Cloudflare and,

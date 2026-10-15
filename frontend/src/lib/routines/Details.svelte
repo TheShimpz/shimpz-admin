@@ -192,7 +192,7 @@
 
   const RUN_ICONS = {
     done: 'check', recovered: 'check', healthy: 'check', failed: 'failed', denied: 'stop', stopped: 'stop', 'user-skipped': 'skip',
-    held: 'warning', paused: 'pause', frozen: 'approval', skipped: 'skip',
+    held: 'warning', paused: 'pause', frozen: 'approval', skipped: 'skip', 'streak-paused': 'pause',
   };
 
   function viewRun(entry, opener) {
@@ -216,10 +216,11 @@
       stopped: run.stopped,
       'user-skipped': copy.panel.skipped,
       held: copy.status.failed,
-      paused: copy.status.paused,
+      paused: fill(run.paused, { reason: run.pauseReasons[entry.detail.reason] }),
       frozen: copy.panel.waitingApproval,
       healthy: countWords(copy.panel.healthyRuns, entry.detail.runs, $locale),
       skipped: countWords(copy.panel.missedRuns, entry.detail.missed, $locale),
+      'streak-paused': countWords(copy.panel.streakPaused, entry.detail.failures, $locale),
     }[entry.outcome];
   }
 

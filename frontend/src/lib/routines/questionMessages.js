@@ -8,7 +8,7 @@ export const routineQuestionMessages = {
     },
     output: {
       question: 'What should this Routine do with each run\'s result?',
-      answers: ['Show every run', 'Show only when it changes', 'Don\'t show', 'Use it in other Actions'],
+      answers: ['Show every run', 'Show only when it changes', 'Don\'t show'],
     },
     overBudget: {
       question: 'This Team\'s daily Action budget fits this Routine at most every {seconds} seconds. How often should it run?',
@@ -18,12 +18,8 @@ export const routineQuestionMessages = {
       question: 'More than one item matches. Which one should this Routine use?',
       option: '{label} ({value})',
     },
-    unsourced: {
-      question: 'The assistant used a value it did not look up in this conversation. Should it look it up again?',
-      answers: ['Look it up again'],
-    },
     rerun: {
-      question: 'The chosen item differs from what the work used. Should the assistant run the work again with it?',
+      question: 'To become a Routine, this work must run again. Should the assistant run it again?',
       answers: ['Run it again'],
     },
   },
@@ -38,7 +34,6 @@ export const routineQuestionMessages = {
         'Mostrar em todas as execuções',
         'Mostrar somente quando mudar',
         'Não mostrar',
-        'Usar em outras ações',
       ],
     },
     overBudget: {
@@ -49,12 +44,8 @@ export const routineQuestionMessages = {
       question: 'Mais de um item corresponde. Qual deles esta rotina deve usar?',
       option: '{label} ({value})',
     },
-    unsourced: {
-      question: 'O assistente usou um valor que não consultou nesta conversa. Ele deve consultá-lo de novo?',
-      answers: ['Consultar de novo'],
-    },
     rerun: {
-      question: 'O item escolhido é diferente do que o trabalho usou. O assistente deve executar o trabalho de novo com ele?',
+      question: 'Para virar uma rotina, este trabalho precisa rodar de novo. O assistente deve executá-lo de novo?',
       answers: ['Executar de novo'],
     },
   },
@@ -65,7 +56,7 @@ export const routineQuestionMessages = {
     },
     output: {
       question: '¿Qué debe hacer esta rutina con el resultado de cada ejecución?',
-      answers: ['Mostrar en cada ejecución', 'Mostrar solo cuando cambie', 'No mostrar', 'Usar en otras acciones'],
+      answers: ['Mostrar en cada ejecución', 'Mostrar solo cuando cambie', 'No mostrar'],
     },
     overBudget: {
       question: 'El presupuesto diario de Actions de este equipo admite esta rutina como máximo cada {seconds} segundos. ¿Con qué frecuencia debe ejecutarse?',
@@ -75,12 +66,8 @@ export const routineQuestionMessages = {
       question: 'Coincide más de un elemento. ¿Cuál debe usar esta rutina?',
       option: '{label} ({value})',
     },
-    unsourced: {
-      question: 'El asistente usó un valor que no consultó en esta conversación. ¿Debe consultarlo de nuevo?',
-      answers: ['Consultar de nuevo'],
-    },
     rerun: {
-      question: 'El elemento elegido es distinto del que usó el trabajo. ¿Debe el asistente ejecutar el trabajo de nuevo con él?',
+      question: 'Para convertirse en una rutina, este trabajo debe ejecutarse de nuevo. ¿Debe el asistente ejecutarlo de nuevo?',
       answers: ['Ejecutar de nuevo'],
     },
   },
@@ -91,7 +78,7 @@ export const routineQuestionMessages = {
     },
     output: {
       question: '这个例行任务每次运行的结果应如何处理？',
-      answers: ['每次运行都显示', '仅在变化时显示', '不显示', '用于其他操作'],
+      answers: ['每次运行都显示', '仅在变化时显示', '不显示'],
     },
     overBudget: {
       question: '该团队每日的 Action 预算最多允许这个例行任务每 {seconds} 秒运行一次。它应多久运行一次？',
@@ -101,12 +88,8 @@ export const routineQuestionMessages = {
       question: '有多个项目匹配。这个例行任务应使用哪一个？',
       option: '{label}（{value}）',
     },
-    unsourced: {
-      question: '助手使用了一个未在本次对话中查询的值。要让它重新查询吗？',
-      answers: ['重新查询'],
-    },
     rerun: {
-      question: '所选项目与工作使用的不同。要让助手用它重新运行这项工作吗？',
+      question: '要成为例行任务，这项工作需要重新运行。要让助手重新运行它吗？',
       answers: ['重新运行'],
     },
   },
@@ -121,7 +104,6 @@ export const routineQuestionMessages = {
         'Afficher à chaque exécution',
         'Afficher seulement en cas de changement',
         'Ne pas afficher',
-        'Utiliser dans d\'autres actions',
       ],
     },
     overBudget: {
@@ -132,12 +114,8 @@ export const routineQuestionMessages = {
       question: 'Plusieurs éléments correspondent. Lequel cette routine doit-elle utiliser ?',
       option: '{label} ({value})',
     },
-    unsourced: {
-      question: 'L’assistant a utilisé une valeur qu’il n’a pas consultée dans cette conversation. Doit-il la consulter de nouveau ?',
-      answers: ['La consulter de nouveau'],
-    },
     rerun: {
-      question: 'L’élément choisi diffère de celui utilisé par le travail. L’assistant doit-il exécuter le travail de nouveau avec lui ?',
+      question: 'Pour devenir une routine, ce travail doit être exécuté de nouveau. L’assistant doit-il l’exécuter de nouveau ?',
       answers: ['Exécuter de nouveau'],
     },
   },
@@ -152,7 +130,6 @@ export const routineQuestionMessages = {
         'Bei jedem Lauf anzeigen',
         'Nur bei Änderung anzeigen',
         'Nicht anzeigen',
-        'In anderen Aktionen verwenden',
       ],
     },
     overBudget: {
@@ -163,12 +140,8 @@ export const routineQuestionMessages = {
       question: 'Mehr als ein Element passt. Welches soll diese Routine verwenden?',
       option: '{label} ({value})',
     },
-    unsourced: {
-      question: 'Der Assistent hat einen Wert verwendet, den er in diesem Gespräch nicht abgefragt hat. Soll er ihn erneut abfragen?',
-      answers: ['Erneut abfragen'],
-    },
     rerun: {
-      question: 'Das gewählte Element unterscheidet sich von dem, das die Arbeit verwendet hat. Soll der Assistent die Arbeit damit erneut ausführen?',
+      question: 'Damit daraus eine Routine wird, muss diese Arbeit erneut laufen. Soll der Assistent sie erneut ausführen?',
       answers: ['Erneut ausführen'],
     },
   },
@@ -179,7 +152,7 @@ export const routineQuestionMessages = {
     },
     output: {
       question: 'このルーチンは各実行の結果をどう扱いますか？',
-      answers: ['毎回表示する', '変更時のみ表示する', '表示しない', '他のアクションで使う'],
+      answers: ['毎回表示する', '変更時のみ表示する', '表示しない'],
     },
     overBudget: {
       question: 'このチームの 1 日の Action 予算では、このルーチンは最短で {seconds} 秒ごとにしか実行できません。どのくらいの頻度で実行しますか？',
@@ -189,12 +162,8 @@ export const routineQuestionMessages = {
       question: '複数の項目が一致します。このルーチンはどれを使いますか？',
       option: '{label}（{value}）',
     },
-    unsourced: {
-      question: 'アシスタントはこの会話で調べていない値を使いました。もう一度調べますか？',
-      answers: ['もう一度調べる'],
-    },
     rerun: {
-      question: '選んだ項目は作業で使われたものと異なります。アシスタントにそれで作業をもう一度実行させますか？',
+      question: 'ルーティンにするには、この作業をもう一度実行する必要があります。アシスタントにもう一度実行させますか？',
       answers: ['もう一度実行する'],
     },
   },
@@ -205,7 +174,7 @@ export const routineQuestionMessages = {
     },
     output: {
       question: 'ماذا يجب أن يفعل هذا الروتين بنتيجة كل تشغيل؟',
-      answers: ['اعرض في كل تشغيل', 'اعرض فقط عند التغيير', 'لا تعرض', 'استخدمه في إجراءات أخرى'],
+      answers: ['اعرض في كل تشغيل', 'اعرض فقط عند التغيير', 'لا تعرض'],
     },
     overBudget: {
       question: 'تسمح ميزانية Actions اليومية لهذا الفريق بتشغيل هذا الروتين مرة كل {seconds} ثانية على الأكثر. كم مرة يجب أن يعمل؟',
@@ -215,12 +184,8 @@ export const routineQuestionMessages = {
       question: 'يطابق أكثر من عنصر. أيها يجب أن يستخدم هذا الروتين؟',
       option: '{label} ({value})',
     },
-    unsourced: {
-      question: 'استخدم المساعد قيمة لم يبحث عنها في هذه المحادثة. هل يبحث عنها مجددًا؟',
-      answers: ['البحث مجددًا'],
-    },
     rerun: {
-      question: 'العنصر المختار يختلف عما استخدمه العمل. هل يشغّل المساعد العمل مجددًا به؟',
+      question: 'ليصبح هذا العمل روتينًا، يجب تشغيله مجددًا. هل يشغّله المساعد مجددًا؟',
       answers: ['التشغيل مجددًا'],
     },
   },

@@ -350,13 +350,17 @@ export function historyBoundary(marks, entries) {
 // runs a Routine missed.
 export const MAX_ARRIVED_RUNS = MAX_PAGE_ENTRIES;
 
+// A Routine's own history beside its runs: rollups of its healthy continuous runs, the runs it missed, and the pause its
+// consecutive failed runs caused.
+const ROUTINE_HISTORY_OUTCOMES = ['healthy', 'skipped', 'streak-paused'];
+
 /**
- * Whether a history entry is one of this Routine's runs, a rollup of its healthy continuous runs, or the runs it
- * missed: the Routine's own history, which only its panel shows (the chat shows only its creation).
+ * Whether a history entry is one of this Routine's runs or one of its other history notices: the Routine's own history,
+ * which only its panel shows (the chat shows only its creation).
  */
 function isRoutineRun(entry, routineId) {
   return entry.kind === 'routine-run' && entry.routineId === routineId &&
-    (entry.runId !== null || entry.outcome === 'healthy' || entry.outcome === 'skipped');
+    (entry.runId !== null || ROUTINE_HISTORY_OUTCOMES.includes(entry.outcome));
 }
 
 /**
