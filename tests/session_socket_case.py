@@ -27,7 +27,7 @@ class SessionSocketCase(ChatWebSocketCase):
         quiet.start()
         self.addCleanup(quiet.stop)
         # Each test starts with fresh session budgets, so one test's opens and calls never spend another's.
-        for name in ("OPENS", "CALL_BUDGET", "CHANGE_BUDGET"):
+        for name in ("OPENS", "CALL_BUDGET", "SOCKET_CHANGE_BUDGET"):
             patch = mock.patch.object(
                 self.budget, name, type(getattr(self.budget, name))(getattr(self.budget, name)._limit)
             )

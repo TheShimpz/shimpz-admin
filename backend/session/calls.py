@@ -30,7 +30,7 @@ def admission(socket: SessionSocket, method: str) -> str | None:
     """Count one call against its session's budgets, or the reason it is refused."""
     if not budget.CALL_BUDGET.admit(socket.session):
         return "session call budget reached"
-    if method in frames.CHANGE_METHODS and not budget.CHANGE_BUDGET.admit(socket.session):
+    if method in frames.SOCKET_STATE_METHODS and not budget.SOCKET_CHANGE_BUDGET.admit(socket.session):
         return "session change budget reached"
     return None
 
@@ -46,7 +46,7 @@ async def _dispatch(socket: SessionSocket, call_id: str, method: str, params: di
     try:
         # Every operation reaches Admin's or Team's state under the current Supervisor authority; changing what the
         # socket itself holds needs none.
-        local = method in frames.CHANGE_METHODS
+        local = method in frames.SOCKET_STATE_METHODS
         with contextlib.nullcontext() if local else socket.gate.request_scope(socket.cookies):
             return await methods.dispatch(socket, call_id, method, params)
     except lane.RefusedError:

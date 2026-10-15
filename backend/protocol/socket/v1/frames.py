@@ -154,8 +154,9 @@ READ_TOPICS = {
     "integrations.list": _team_topic("integrations"),
     "stored_inputs.list": _team_topic("integrations"),
 }
-# Calls that change what the socket holds count against the session's change budget.
-CHANGE_METHODS = frozenset({"subscribe", "unsubscribe", "chat.attach", "chat.detach"})
+# Calls that change only what the socket itself holds (its subscriptions and attached chats) count against the
+# session's socket-change budget; they run without any authority scope.
+SOCKET_STATE_METHODS = frozenset({"subscribe", "unsubscribe", "chat.attach", "chat.detach"})
 
 # The `shimpz.chat.v7` frames a client sends on an attached Team's chat channel, each carrying that Team's `team_id`.
 CHAT_TYPES = frozenset({"chat", "resume-task", "stop", "sync", "human-response"})

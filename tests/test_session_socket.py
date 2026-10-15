@@ -204,7 +204,7 @@ class SessionSocketFrameTests(SessionSocketCase):
     def test_session_budgets_refuse_calls_and_changes_beyond_their_minute(self) -> None:
         async def scenario() -> None:
             websocket = await self._connect()
-            with mock.patch.object(self.budget, "CHANGE_BUDGET", self.budget.SessionBudget(1)):
+            with mock.patch.object(self.budget, "SOCKET_CHANGE_BUDGET", self.budget.SessionBudget(1)):
                 self.assertEqual((await websocket.result("subscribe", {"topics": ["teams"]}))["status"], 200)
                 self.assertEqual((await websocket.result("unsubscribe", {"topics": ["teams"]}))["status"], 429)
             with mock.patch.object(self.budget, "CALL_BUDGET", self.budget.SessionBudget(0)):

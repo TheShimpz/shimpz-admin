@@ -13,7 +13,7 @@ WINDOW_SECONDS = 60.0
 # Per session per minute: socket opens; calls; and subscribe, unsubscribe, attach, and detach changes.
 SOCKET_OPENS = 30
 CALLS = 600
-CHANGES = 120
+SOCKET_CHANGES = 120
 
 
 class SessionBudget:
@@ -66,5 +66,5 @@ RENEWAL_SECONDS = 30.0
 
 OPENS = SessionBudget(SOCKET_OPENS)
 CALL_BUDGET = SessionBudget(CALLS)
-CHANGE_BUDGET = SessionBudget(CHANGES)
+SOCKET_CHANGE_BUDGET = SessionBudget(SOCKET_CHANGES)
 RENEWALS = SessionRenewals(RENEWAL_SECONDS)
