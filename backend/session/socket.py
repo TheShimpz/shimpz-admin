@@ -38,6 +38,7 @@ PROTOCOL_REFUSED = 4406
 UNAVAILABLE = 1013
 # A margin past a session's expiry before its timer checks it, so the check never runs a moment too early.
 EXPIRY_MARGIN_SECONDS = 0.05
+
 # The longest a quiet socket goes without checking its Origin and session again.
 SESSION_CHECK_SECONDS = 60
 
@@ -82,6 +83,11 @@ class Gate:
     cookie: str
 
 
+def _refusal(status: str) -> int:
+    """The close code for a session that is not active: unavailable when its check failed, signed out otherwise."""
+    return UNAVAILABLE if status == "unavailable" else SIGNED_OUT
+
+
 def _admitted_origin(websocket: WebSocket, origins: frozenset[str]) -> str | None:
     """The one exact admitted Origin the page opened the socket from, under the HTTP gate's own page check."""
     sent = websocket.headers.getlist("origin")
@@ -107,7 +113,7 @@ async def _admit(websocket: WebSocket, gate: Gate) -> tuple[str, str] | None:
         return None
     status = await registry.session_status(gate.session_current, websocket.cookies)
     if status != "active":
-        await websocket.close(code=UNAVAILABLE if status == "unavailable" else SIGNED_OUT)
+        await websocket.close(code=_refusal(status))
         return None
     session = auth.session_key(websocket.cookies.get(gate.cookie, ""))
     if not budget.OPENS.admit(session):
@@ -214,7 +220,7 @@ class SessionSocket:
             return False
         status = await registry.session_status(self.gate.session_current, self.cookies)
         if status != "active":
-            self._end(UNAVAILABLE if status == "unavailable" else SIGNED_OUT)
+            self._end(_refusal(status))
             return False
         return True
 
@@ -316,7 +322,7 @@ class SessionSocket:
             return
         status = await registry.session_status(self.gate.renew_session, self.cookies)
         if status != "active":
-            self._end(UNAVAILABLE if status == "unavailable" else SIGNED_OUT)
+            self._end(_refusal(status))
             return
         registry.REGISTRY.renewed(self.session)
 
