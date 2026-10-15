@@ -8,7 +8,7 @@
   import { fill } from '#lib/i18n/fill.js';
   import { assistantName } from '#lib/assistants/names.js';
   import { humanizeId } from '#lib/ids.js';
-  import { PAGE_SIZE, PagedSteps } from '#lib/routines/paging.svelte.js';
+  import { PAGE_SIZE, PagedList } from '#lib/routines/paging.svelte.js';
   import { pageBinding, readRunSteps } from '#lib/routines/protocol.js';
   import { attemptWords, conditionWords, countWords, literalWords } from '#lib/routines/words.js';
   import { durationWords } from '#lib/routines/reading.js';
@@ -34,7 +34,7 @@
   const RESTARTS = 2;
 
   // Only the newest read of this run may apply.
-  const paging = new PagedSteps();
+  const paging = new PagedList();
   let bound = $state(null);
   let snapshot = 'latest';
   let list = $state();
@@ -59,7 +59,8 @@
     async function read(ticket) {
       for (;;) {
         try {
-          return await readRunSteps(call, teamId, runId, bound, snapshot, paging.next);
+          const page = await readRunSteps(call, teamId, runId, bound, snapshot, paging.next);
+          return { ...page, items: page.steps };
         } catch (error) {
           if (error?.code !== 'routine-run-changed' || restarts === RESTARTS) throw error;
           restarts += 1;

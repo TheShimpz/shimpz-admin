@@ -7,7 +7,7 @@
   import { fill } from '#lib/i18n/fill.js';
   import { assistantName } from '#lib/assistants/names.js';
   import { humanizeId } from '#lib/ids.js';
-  import { PAGE_SIZE, PagedSteps } from '#lib/routines/paging.svelte.js';
+  import { PAGE_SIZE, PagedList } from '#lib/routines/paging.svelte.js';
   import { readPlanSteps } from '#lib/routines/protocol.js';
   import { countWords, dispositionWords, inputWords, summaryChain } from '#lib/routines/words.js';
 
@@ -21,7 +21,7 @@
   let { teamId, routine, copy, locale, onchanged = () => {} } = $props();
 
   // Only the newest read of the newest revision may apply.
-  const paging = new PagedSteps();
+  const paging = new PagedList();
   let list = $state();
 
   let plan = $derived(routine.plan);
@@ -30,7 +30,10 @@
 
   // Read pages until `wanted` steps are loaded or the plan has no more.
   function load(wanted) {
-    return paging.load(wanted, () => readPlanSteps(call, teamId, routine.routine_id, plan, paging.next), {
+    return paging.load(wanted, async () => {
+      const page = await readPlanSteps(call, teamId, routine.routine_id, plan, paging.next);
+      return { items: page.steps, next: page.next };
+    }, {
       onError: (error) => {
         if (error?.code === 'routine-revision-changed') onchanged();
         else paging.failed = true;

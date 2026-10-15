@@ -35,7 +35,7 @@
   import RoutineIcon from '#lib/routines/Icon.svelte';
   import RoutineModal from '#lib/routines/Modal.svelte';
   import Paging from '#lib/routines/Paging.svelte';
-  import { PAGE_SIZE, PagedSteps } from '#lib/routines/paging.svelte.js';
+  import { PAGE_SIZE, PagedList } from '#lib/routines/paging.svelte.js';
   import RoutineTag from '#lib/routines/Tag.svelte';
   import { formatRunUsage } from '#lib/chat/usage.js';
 
@@ -60,7 +60,7 @@
   let deleteButton = $state();
   // The Routine's history, revealed PAGE_SIZE entries at a time: its newest page once read, then its older pages from
   // the cursor where it ends (`next`, null once there are none). Only the newest reading's older reads apply.
-  const runPages = new PagedSteps();
+  const runPages = new PagedList();
   let runsRead = $state(false);
   let runList = $state();
   let detailsRun = $state(null);
@@ -146,7 +146,7 @@
   function applyRuns(head, value) {
     if (value.restart) {
       runPages.reset();
-      runPages.steps = [...value.entries].reverse();
+      runPages.items = [...value.entries].reverse();
       runPages.next = value.before;
       runsRead = true;
       arrived = 0;
@@ -154,13 +154,13 @@
       return;
     }
     if (!runsRead) return;
-    const merged = mergedRoutineRuns(runPages.steps, value.entries, routineId);
-    const added = merged.length - runPages.steps.length;
+    const merged = mergedRoutineRuns(runPages.items, value.entries, routineId);
+    const added = merged.length - runPages.items.length;
     if (arrived + added > MAX_ARRIVED_RUNS) {
       void head.restart();
       return;
     }
-    runPages.steps = merged;
+    runPages.items = merged;
     arrived += added;
     if (runPages.failed && !runPages.loading) {
       runPages.failed = false;
@@ -184,7 +184,7 @@
   function loadRuns() {
     return runPages.load((runPages.pages + 1) * PAGE_SIZE, async () => {
       const found = await routineRuns(call, teamId, routineId, { before: runPages.next });
-      return { steps: found.runs, next: found.before };
+      return { items: found.runs, next: found.before };
     }, { onError: () => (runPages.failed = true) });
   }
 
@@ -371,7 +371,7 @@
           {/each}
           {#if !runsRead}
             {#if !runPages.failed}<li class="sub" role="status">{copy.list.loading}</li>{/if}
-          {:else if runPages.steps.length === 0 && live.length === 0 && runPages.next === null}
+          {:else if runPages.items.length === 0 && live.length === 0 && runPages.next === null}
             <li class="sub">{copy.panel.noRuns}</li>
           {:else}
             {#each runPages.shown as entry (entry.id)}
@@ -397,7 +397,7 @@
             {/each}
           {/if}
         </ul>
-        <Paging paging={runPages} remaining={runPages.steps.length - runPages.shown.length}
+        <Paging paging={runPages} remaining={runPages.items.length - runPages.shown.length}
           unavailable={copy.panel.runsUnavailable} loading={copy.list.loading} more={copy.panel.moreRuns} locale={$locale}
           onmore={() => runPages.more(runList, loadRuns)} />
       {/if}

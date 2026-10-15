@@ -4,7 +4,7 @@
   import { PAGE_SIZE } from '#lib/routines/paging.svelte.js';
   import { countWords } from '#lib/routines/words.js';
 
-  // The footer of a Routine list revealed page by page (`PagedSteps`): why its next steps could not be read, that they
+  // The footer of a Routine list revealed page by page (`PagedList`): why its next items could not be read, that they
   // are being read, or a button revealing how many more one press shows.
   let { paging, remaining, unavailable, loading, more, locale, onmore } = $props();
 </script>

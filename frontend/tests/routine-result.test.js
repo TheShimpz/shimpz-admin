@@ -11,7 +11,7 @@ import {
   resultTable,
   resultView,
   valueKind,
-  visibleSteps,
+  visibleItems,
 } from '../src/lib/routines/reading.js';
 
 // Each interface language's own catalog of this copy.
@@ -173,13 +173,13 @@ test("a step's duration reads in the viewer's locale", () => {
   assert.equal(durationWords(4_250, 'pt'), '4,3 s');
 });
 
-test('a long run reveals its steps a page at a time', () => {
-  const steps = Array.from({ length: 23 }, (_, index) => index);
-  assert.equal(visibleSteps(steps, 1).length, 10);
-  assert.equal(visibleSteps(steps, 0).length, 10);
-  assert.equal(visibleSteps(steps, 2).length, 20);
-  assert.equal(visibleSteps(steps, 3).length, 23);
-  assert.equal(visibleSteps(steps, 1, 5).length, 5);
+test('a long list reveals its items a page at a time', () => {
+  const items = Array.from({ length: 23 }, (_, index) => index);
+  assert.equal(visibleItems(items, 1, 10).length, 10);
+  assert.equal(visibleItems(items, 0, 10).length, 10);
+  assert.equal(visibleItems(items, 2, 10).length, 20);
+  assert.equal(visibleItems(items, 3, 10).length, 23);
+  assert.equal(visibleItems(items, 1, 5).length, 5);
 });
 
 test('plan inputs and attempt conditions read in words', () => {

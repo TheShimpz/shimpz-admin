@@ -178,7 +178,7 @@ export function durationWords(ms, locale) {
   return unit(ms / 60_000, 'minute', 1);
 }
 
-/** The steps a list shows when it reveals `page` steps at a time and the person asked for more `pages` times. */
-export function visibleSteps(steps, pages, page = 10) {
-  return steps.slice(0, Math.max(1, pages) * page);
+/** The items a list shows when it reveals `page` items at a time and the person asked for more `pages` times. */
+export function visibleItems(items, pages, page) {
+  return items.slice(0, Math.max(1, pages) * page);
 }
