@@ -1,15 +1,16 @@
 <script>
   import RoutineOutput from '#lib/routines/result/Output.svelte';
-  import { omittedWords, outputLabels, outputScalarWords, outputTable } from '#lib/routines/words.js';
+  import { resultTable } from '#lib/routines/reading.js';
+  import { omittedWords, outputLabels, outputScalarWords } from '#lib/routines/words.js';
 
   // One node of a Routine run's shown result (ADR-0092 amendment, 2026-10-05, output): Team's bounded, redacted
   // projection of an Action's validated result, never a model's summary. Every label and value is plain text, never
   // Markdown or HTML. A list of field sets reads as a table, other field sets as label and value rows, other lists as
-  // a list; what Team left out reads as how many more.
+  // a list; what Team left out reads as how many more. A nested table keeps to eight columns.
   let { node, copy, locale, depth = 0 } = $props();
 
-  let table = $derived(outputTable(node));
-  let headers = $derived(table ? outputLabels(table.columns) : []);
+  let table = $derived(resultTable(node, 8));
+  let headers = $derived(table ? table.columns.map((column) => column.label) : []);
   let labels = $derived(node.kind === 'fields' ? outputLabels(node.fields.map(([label]) => label)) : []);
   let more = $derived(node.omitted ? omittedWords(copy, node.omitted, locale) : '');
 </script>

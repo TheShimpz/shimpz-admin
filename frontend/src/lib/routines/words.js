@@ -296,25 +296,6 @@ export function dispositionWords(output, copy) {
 }
 
 /**
- * A list of field sets as one table, when every item is a field set and together they name at most eight labels: its
- * columns in first-seen order and each row's node per column, or null for a missing one. Anything else is null.
- */
-export function outputTable(node, maximum = 8) {
-  // A field set Team cut short keeps its own list form, so its "N more" is never lost in a table row.
-  if (node.kind !== 'list' || node.items.length === 0 ||
-    !node.items.every((item) => item.kind === 'fields' && item.omitted === 0)) {
-    return null;
-  }
-  const columns = [...new Set(node.items.flatMap((item) => item.fields.map(([label]) => label)))];
-  if (columns.length === 0 || columns.length > maximum) return null;
-  const rows = node.items.map((item) => {
-    const cells = new Map(item.fields);
-    return columns.map((column) => cells.get(column) ?? null);
-  });
-  return { columns, rows };
-}
-
-/**
  * Labels as shown: humanized ("per_page" reads "Per page") only while that keeps every label distinct, otherwise
  * exactly as Team wrote them, so two fields never read alike.
  */

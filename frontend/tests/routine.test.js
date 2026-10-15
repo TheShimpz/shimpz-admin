@@ -59,7 +59,6 @@ import {
   omittedWords,
   outputLabels,
   outputScalarWords,
-  outputTable,
   pointerWords,
   proposalInputValue,
   questionWords,
@@ -74,6 +73,7 @@ import {
   summaryChain,
   untilWords,
 } from '../src/lib/routines/words.js';
+import { resultTable } from '../src/lib/routines/reading.js';
 import { fill } from '../src/lib/i18n/fill.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 
@@ -1631,15 +1631,15 @@ test('a shown result is admitted only in Team\'s closed form and reads as plain 
   }
   const copy = routineMessages.pt;
   assert.equal(dispositionWords({ mode: 'changes', step: 1 }, copy.plan), 'Mostra o resultado da etapa 1 só quando ele muda');
-  // A list of field sets reads as one table, its columns in first-seen order and a missing cell empty.
+  // A list of field sets reads as one table, its name column first and a missing cell empty.
   const zones = SHOWN_OUTPUT.value.fields[0][1];
-  const table = outputTable(zones);
-  assert.deepEqual(table.columns, ['name', 'paused', 'token']);
+  const table = resultTable(zones, 8);
+  assert.deepEqual(table.columns.map((column) => column.label), ['Name', 'Paused', 'Token']);
   assert.deepEqual(table.rows[1], [zones.items[1].fields[0][1], null, { kind: 'redacted' }]);
-  assert.equal(outputTable({ kind: 'list', items: [], omitted: 0 }), null);
-  assert.equal(outputTable({ kind: 'list', items: [text('a')], omitted: 0 }), null);
-  assert.equal(outputTable(zones, 2), null);
-  assert.equal(outputTable(SHOWN_OUTPUT.value), null);
+  assert.equal(resultTable({ kind: 'list', items: [], omitted: 0 }, 8), null);
+  assert.equal(resultTable({ kind: 'list', items: [text('a')], omitted: 0 }, 8), null);
+  assert.equal(resultTable(zones, 2), null);
+  assert.equal(resultTable(SHOWN_OUTPUT.value, 8), null);
   const words = copy.notice.output;
   assert.deepEqual(
     [text('<b>x</b>'), { kind: 'number', value: '1234.5' }, { kind: 'bool', value: true }, { kind: 'bool', value: false },
@@ -1657,8 +1657,8 @@ test('a shown result is admitted only in Team\'s closed form and reads as plain 
   );
   // A field set Team cut short, or one with no fields, never becomes a table row that hides it.
   const cut = { kind: 'fields', fields: [['a', text('x')]], omitted: 2 };
-  assert.equal(outputTable({ kind: 'list', items: [cut], omitted: 0 }), null);
-  assert.equal(outputTable({ kind: 'list', items: [{ kind: 'fields', fields: [], omitted: 0 }], omitted: 0 }), null);
+  assert.equal(resultTable({ kind: 'list', items: [cut], omitted: 0 }, 8), null);
+  assert.equal(resultTable({ kind: 'list', items: [{ kind: 'fields', fields: [], omitted: 0 }], omitted: 0 }, 8), null);
   // Labels read humanized only while that keeps them distinct.
   assert.deepEqual(outputLabels(['per_page', 'name']), ['Per page', 'Name']);
   assert.deepEqual(outputLabels(['a-b', 'a_b']), ['a-b', 'a_b']);
