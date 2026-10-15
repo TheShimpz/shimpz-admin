@@ -193,10 +193,9 @@ class RoutineManageTests(unittest.TestCase):
                 lambda: manage.list_routines("Team 1"),
                 lambda: manage.delete("team_1", "../x"),
                 lambda: manage.open_card("team_1", "x"),
-                lambda: manage.answer_card("team_1", "x", {"nonce": "c" * 32, "choice": "run"}),
-                lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "other"}),
-                # Excluir is the confirmed deletion route, never a card answer.
-                lambda: manage.answer_card("team_1", ID, {"nonce": "c" * 32, "choice": "delete"}),
+                lambda: manage.answer_card("team_1", "x", {"tag": "c" * 64}),
+                lambda: manage.answer_card("team_1", ID, {"tag": "c" * 63}),
+                lambda: manage.answer_card("team_1", ID, {"tag": "c" * 64, "run_id": ID}),
                 lambda: manage.answer_card("team_1", ID, []),
                 lambda: manage.resume("team_1", "x"),
                 lambda: manage.diagnostics("team_1", "../x"),
