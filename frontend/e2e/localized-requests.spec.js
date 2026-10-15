@@ -5,6 +5,7 @@ import { expect, test } from '@playwright/test';
 
 import { LOCALES } from '../src/lib/i18n/locales.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
+import { languageMenu, sendMessage, switchLanguage } from './interaction.js';
 import { localizedChallenge } from './localizedRequest.js';
 import { routeChat, routeScenario } from './scenarioRoutes.js';
 
@@ -139,30 +140,12 @@ async function routeLocalizedTeam(page, { purpose = false } = {}) {
   };
 }
 
-async function sendMessage(page, locale, message) {
-  const label = messages[locale].chatPage.send;
-  const composer = page.getByRole('textbox', { name: label, exact: true });
-  const send = page.getByRole('button', { name: label, exact: true });
-  await expect(async () => {
-    await composer.fill(message);
-    await expect(send).toBeEnabled({ timeout: 1_000 });
-  }).toPass({ timeout: 20_000 });
-  await send.click();
-}
-
-async function switchLanguage(page, from, to) {
-  const name = (code) => LOCALES.find((entry) => entry.code === code).name;
-  await page.getByRole('button', { name: messages[from].shell.languageCurrent.replace('{name}', name(from)) }).click();
-  await page.getByRole('menuitemradio', { name: name(to) }).click();
-}
-
 // The open request makes the page behind it inert, so a language change while it is shown is driven through the
 // menu's own handlers, as any change of the interface language that does not pass through the person's pointer.
 async function switchLanguageBehindRequest(page, from, to) {
-  const name = (code) => LOCALES.find((entry) => entry.code === code).name;
-  await page.getByRole('button', { name: messages[from].shell.languageCurrent.replace('{name}', name(from)) })
-    .dispatchEvent('click');
-  await page.getByRole('menuitemradio', { name: name(to) }).dispatchEvent('click');
+  const { button, item } = languageMenu(page, from, to);
+  await button.dispatchEvent('click');
+  await item.dispatchEvent('click');
 }
 
 // Answer one open request with the person's choice; `value` is what the browser frame must carry.
@@ -193,7 +176,7 @@ for (const code of ['en', 'pt', 'ar']) {
 
     const answers = [];
     for (const [index, kind] of KINDS.entries()) {
-      await sendMessage(page, code, `Publish my DNS changes ${index + 1}`);
+      await sendMessage(page, `Publish my DNS changes ${index + 1}`, code);
       const shown = renderedCopy(kind, code);
       const dialog = page.getByRole('dialog', { name: shown.title });
       // The localized scope stays visible beside the purpose written in the same language, with the reviewed
@@ -230,7 +213,7 @@ test('a request that arrives after the language changed is answered only through
   const chat = await routeLocalizedTeam(page, { purpose: true });
   chat.team.hold = new Set(['chat']);
   await page.goto('/chat/?team=marketing');
-  await sendMessage(page, 'en', 'Publish my DNS changes');
+  await sendMessage(page, 'Publish my DNS changes');
   await expect.poll(() => chat.heldCount()).toBe(1);
 
   // The person switches the interface language while the turn that pauses for a request is still running.
@@ -257,7 +240,7 @@ test('a request that arrives after the language changed is answered only through
 test('switching back while a reissue is undelivered never answers the request Team replaced', async ({ page }) => {
   const chat = await routeLocalizedTeam(page);
   await page.goto('/chat/?team=marketing');
-  await sendMessage(page, 'en', 'Publish my DNS changes');
+  await sendMessage(page, 'Publish my DNS changes');
   const english = page.getByRole('dialog', { name: ENGLISH.approval.title });
   const approve = english.getByRole('button', { name: messages.en.humanRequest.approve, exact: true });
   await expect(approve).toBeEnabled();
@@ -296,7 +279,7 @@ test('switching back while a reissue is undelivered never answers the request Te
 test('a reconnect restores the pending request in the language selected while the socket was down', async ({ page }) => {
   const chat = await routeLocalizedTeam(page);
   await page.goto('/chat/?team=marketing');
-  await sendMessage(page, 'en', 'Publish my DNS changes');
+  await sendMessage(page, 'Publish my DNS changes');
   await expect(page.getByRole('dialog', { name: ENGLISH.approval.title })).toBeVisible();
 
   chat.team.hold = new Set(['sync']);

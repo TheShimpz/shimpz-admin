@@ -3,21 +3,11 @@
 import { expect, test } from '@playwright/test';
 
 import { accessibilityViolations } from './axe.js';
+import { sendMessage } from './interaction.js';
 import { routeScenario } from './scenarioRoutes.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 
 const copy = messages.en.humanRequest;
-
-async function sendMessage(page, message) {
-  const label = messages.en.chatPage.send;
-  const composer = page.getByRole('textbox', { name: label, exact: true });
-  const send = page.getByRole('button', { name: label, exact: true });
-  await expect(async () => {
-    await composer.fill(message);
-    await expect(send).toBeEnabled({ timeout: 1_000 });
-  }).toPass({ timeout: 20_000 });
-  await send.click();
-}
 
 async function openApproval(page) {
   const scenario = await routeScenario(page, 'approval-input');

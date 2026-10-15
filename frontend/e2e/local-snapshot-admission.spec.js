@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
-import { LOCALES } from '../src/lib/i18n/locales.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 import { assistantDetails } from './assistantPages.js';
+import { switchLanguage } from './interaction.js';
 import { routeRead } from './scenarioRoutes.js';
 import { authenticatedLocalSession } from './scenarios.js';
 
@@ -155,12 +155,6 @@ test('keeps Uninstall for an installed Local Assistant whose binding no longer r
   await expect(page.getByRole('dialog', { name: 'Uninstall refused?' })).toBeVisible();
 });
 
-async function reloadInPortuguese(page) {
-  const name = (code) => LOCALES.find((entry) => entry.code === code).name;
-  await page.getByRole('button', { name: messages.en.shell.languageCurrent.replace('{name}', name('en')) }).click();
-  await page.getByRole('menuitemradio', { name: name('pt') }).click();
-}
-
 // The same image proves the refusal is never cached: a refusal cached per image would also block it, so a restaged
 // new image adds nothing.
 test('a refusal is validated again on the next load for the same image', async ({ page }) => {
@@ -174,7 +168,7 @@ test('a refusal is validated again on the next load for the same image', async (
   await expect(sheet.getByRole('button', { name: 'Install', exact: true })).toBeDisabled();
 
   admitted = true;
-  await reloadInPortuguese(page);
+  await switchLanguage(page, 'en', 'pt');
 
   await expect(sheet.locator('.icon-frame img')).toHaveAttribute('src', /^blob:/);
   await expect(sheet.getByRole('button', { name: messages.pt.assistantPage.install, exact: true })).toBeEnabled();

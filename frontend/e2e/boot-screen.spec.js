@@ -33,8 +33,10 @@ async function routeSession(page, response, gate = null) {
   });
   return requested;
 }
-
-async function routeReadyChat(page, { teamGate, inferenceGate }) {
+// A signed-in Supervisor whose Team list `teams` answers, with an empty Assistant registry and every other API
+// call refused.
+// A signed-in Supervisor whose Team list `teams` answers, with no Assistant published, and nothing else of the API.
+async function routeSignedIn(page, teams) {
   await page.route('**/api/**', (route) => json(
     route,
     { detail: 'Unavailable outside this boot contract.' },
@@ -43,11 +45,15 @@ async function routeReadyChat(page, { teamGate, inferenceGate }) {
   await routeSession(page, {
     body: authenticatedLocalSession(),
   });
-  await routeRead(page, 'teams.list', async () => {
+  await routeRead(page, 'teams.list', teams);
+  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
+}
+
+async function routeReadyChat(page, { teamGate, inferenceGate }) {
+  await routeSignedIn(page, async () => {
     await teamGate.promise;
     return { status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } };
   });
-  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
   await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
   await routeRead(page, 'models.list', () => ({ status: 200, json: {
     providers: modelCatalog.providers.map(({ credential_validation: _credential, ...provider }) => ({
@@ -113,19 +119,10 @@ test('keeps one boot surface through Team and model hydration, then focuses usab
 
 test('keeps boot visible across the authenticated root redirect and releases without a model request', async ({ page }) => {
   const teamGate = deferred();
-  await page.route('**/api/**', (route) => json(
-    route,
-    { detail: 'Unavailable outside this boot contract.' },
-    503,
-  ));
-  await routeSession(page, {
-    body: authenticatedLocalSession(),
-  });
-  await routeRead(page, 'teams.list', async () => {
+  await routeSignedIn(page, async () => {
     await teamGate.promise;
     return { status: 200, json: { teams: [] } };
   });
-  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
 
   await page.goto('/');
   const boot = page.locator('[data-slot="boot-screen"]');
@@ -141,20 +138,11 @@ test('keeps boot visible across the authenticated root redirect and releases wit
 
 test('releases to the final Chat error when Team hydration fails', async ({ page }) => {
   const teamGate = deferred();
-  await page.route('**/api/**', (route) => json(
-    route,
-    { detail: 'Unavailable outside this boot contract.' },
-    503,
-  ));
-  await routeSession(page, {
-    body: authenticatedLocalSession(),
-  });
   // Team refuses the read: a failure of a working connection, which an outage (only read again) is not.
-  await routeRead(page, 'teams.list', async () => {
+  await routeSignedIn(page, async () => {
     await teamGate.promise;
     return { status: 400, json: { detail: 'Team catalog unavailable.' } };
   });
-  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
 
   await page.goto('/chat/');
   const boot = page.locator('[data-slot="boot-screen"]');
@@ -175,18 +163,9 @@ test('releases the Assistants route when initial catalog hydration does not sett
       if (document.querySelector('[data-slot="boot-screen"]')) window.bootScreenShown = true;
     }).observe(document, { subtree: true, childList: true });
   });
-  await page.route('**/api/**', (route) => json(
-    route,
-    { detail: 'Unavailable outside this boot contract.' },
-    503,
-  ));
-  await routeSession(page, {
-    body: authenticatedLocalSession(),
-  });
-  await routeRead(page, 'teams.list', () => ({
+  await routeSignedIn(page, () => ({
     status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] },
   }));
-  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
   await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
   await routeRead(page, 'store.catalog', async ({ locale }) => {
     if (locale !== 'en') return undefined;

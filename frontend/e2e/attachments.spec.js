@@ -36,6 +36,17 @@ async function choose(page, attach, files) {
   await (await chooser).setFiles(files);
 }
 
+// Holds every upload to Marketing's files unanswered and returns the held routes.
+async function holdUploads(page) {
+  const held = [];
+  await page.route('**/api/teams/marketing/files', (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    held.push(route);
+    return undefined;
+  });
+  return held;
+}
+
 function attachmentList(page, copy = EN) {
   return page.getByRole('list', { name: copy.list, exact: true });
 }
@@ -229,12 +240,7 @@ test('a full Team storage refuses the upload and the message is sent without fil
 
 test('cancelling stops the uploads in flight and sending waits for none of them', async ({ page }) => {
   const { scenario, composer, attach, send } = await openChat(page, 'attachments');
-  const held = [];
-  await page.route('**/api/teams/marketing/files', (route) => {
-    if (route.request().method() !== 'POST') return route.fallback();
-    held.push(route);
-    return undefined;
-  });
+  const held = await holdUploads(page);
   await choose(page, attach, [textFile('first.md'), textFile('second.md')]);
   await expect(page.getByText(EN.uploading.replace('{current}', '1').replace('{total}', '2'))).toBeVisible();
   await composer.fill('Hello');
@@ -252,16 +258,11 @@ test('cancelling stops the uploads in flight and sending waits for none of them'
 
 test('leaving the chat stops its uploads: the one in flight is aborted and the queued ones never start', async ({ page }) => {
   const { attach } = await openChat(page, 'attachments');
-  const held = [];
   const aborted = [];
   page.on('requestfailed', (request) => {
     if (new URL(request.url()).pathname === '/api/teams/marketing/files') aborted.push(request.failure()?.errorText);
   });
-  await page.route('**/api/teams/marketing/files', (route) => {
-    if (route.request().method() !== 'POST') return route.fallback();
-    held.push(route);
-    return undefined;
-  });
+  const held = await holdUploads(page);
   await choose(page, attach, [textFile('first.md'), textFile('second.md'), textFile('third.md')]);
   await expect.poll(() => held).toHaveLength(1);
 
@@ -390,12 +391,7 @@ async function selectTeam(page, name) {
 
 test('an upload that answers after a Team change never joins a later message', { tag: '@mobile' }, async ({ page }) => {
   const { scenario, composer, attach, send } = await openChat(page, 'ready');
-  const held = [];
-  await page.route('**/api/teams/marketing/files', (route) => {
-    if (route.request().method() !== 'POST') return route.fallback();
-    held.push(route);
-    return undefined;
-  });
+  const held = await holdUploads(page);
   await choose(page, attach, [textFile('marketing.md')]);
   await expect.poll(() => held.length).toBe(1);
   await selectTeam(page, 'Trinity');

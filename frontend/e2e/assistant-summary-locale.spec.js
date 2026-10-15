@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
 import { expect, test } from '@playwright/test';
-import { LOCALES } from '../src/lib/i18n/locales.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 import { assistantDetails, PAGE_COPY } from './assistantPages.js';
+import { switchLanguage } from './interaction.js';
 import { routeRead } from './scenarioRoutes.js';
 import { authenticatedLocalSession } from './scenarios.js';
 
@@ -96,12 +96,6 @@ function held() {
   let release;
   const promise = new Promise((resolve) => { release = resolve; });
   return { promise, release };
-}
-
-async function switchLanguage(page, from, to) {
-  const name = (code) => LOCALES.find((entry) => entry.code === code).name;
-  await page.getByRole('button', { name: messages[from].shell.languageCurrent.replace('{name}', name(from)) }).click();
-  await page.getByRole('menuitemradio', { name: name(to) }).click();
 }
 
 test('shows published and staged summaries in the interface language and reloads them on a language change', async ({ page }) => {
