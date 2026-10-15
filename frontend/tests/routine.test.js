@@ -339,8 +339,6 @@ test('a Routine card is admitted only whole, and its inputs say where each value
     for (const words of Object.values(catalog.proposal.refusals)) assert.ok(words.length > 0, locale);
     assert.ok(catalog.proposal.confirm && catalog.proposal.cancel && catalog.proposal.confirm !== catalog.proposal.cancel, locale);
   }
-  assert.equal(routineMessages.pt.proposal.confirm, 'Criar');
-  assert.equal(routineMessages.pt.proposal.cancel, 'Cancelar');
 });
 
 test('Criar confirms and Cancelar revokes exactly one card', async () => {
