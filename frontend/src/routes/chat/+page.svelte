@@ -35,6 +35,7 @@
   } from '#lib/chat/progress/projection.js';
   import { escapeMarkdownText } from '#lib/chat/markdown.js';
   import { ChatTurn } from '#lib/chat/turn.svelte.js';
+  import { HumanRequest } from '#lib/chat/humanRequest.svelte.js';
   import { locale, t } from '#lib/i18n/index.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { CLARIFICATION_LABELS } from '#lib/chat/clarificationLabels.js';
@@ -55,10 +56,8 @@
   import {
     capabilityContinuation,
     createChatFrame,
-    createHumanResponseFrame,
     createResumeTaskFrame,
     createStopFrame,
-    createSyncFrame,
     parseChatEvent,
   } from '#lib/chat/protocol.js';
 
@@ -131,12 +130,18 @@
   let integrationsButton = $state();
   let integrationsDialogOpen = $state(false);
   let integrationChallenge = $state();
-  let humanChallenge = $state();
-  let humanRejection = $state();
-  let humanWorking = $state(false);
-  let humanExpiredId = $state('');
-  // The interface language a reconciling sync asked Team to render the pending request in (ADR-0091).
-  let humanRelocalizing = $state('');
+  // The human request the turn waits on (ADR-0091).
+  const human = new HumanRequest({
+    liveTurn,
+    channel: () => (socketReady ? socket : null),
+    teamId: () => chatTeamId,
+    locale: () => $locale,
+    setError,
+    clearError,
+    failSend,
+    expired: () => humanRequestCopy.expired,
+    focusStop,
+  });
   let integrationWorking = $state('');
   let oauthFailedOnReturn = false;
   let composerInput = $state();
@@ -170,9 +175,9 @@
   let integrationsCopy = $derived($t('assistantIntegrations'));
   let humanRequestCopy = $derived($t('humanRequest'));
   // A request rendered in another language than the one selected now is never answered; a fresh one is requested.
-  let humanStale = $derived(Boolean(humanChallenge) && humanChallenge.locale !== $locale);
+  let humanStale = $derived(Boolean(human.challenge) && human.challenge.locale !== $locale);
   // While a reconciling sync is in flight Team may already have replaced the shown request, even after switching back.
-  let humanUnanswerable = $derived(humanStale || Boolean(humanRelocalizing));
+  let humanUnanswerable = $derived(humanStale || Boolean(human.relocalizing));
   let selectedTeamId = $derived($teamContext.selectedTeamId);
   let activeTeam = $derived(
     $teamContext.teams.find((entry) => entry.id === selectedTeamId) ?? null,
@@ -749,6 +754,12 @@
     errorDetail = detail;
   }
 
+  // A frame the channel could not take: the error says why, and the channel is closed.
+  function failSend(reason) {
+    setError(reason instanceof Error ? reason.message : copy.loadFailed);
+    socket.close();
+  }
+
   // The composer takes the focus back only when the chat owned it and the control holding it went away (a Stop that
   // became Send, a composer that turned read-only while reconnecting): focus in another region, or on a control the
   // Supervisor chose, stays where it is.
@@ -843,7 +854,7 @@
     if (fromElement && document.activeElement !== fromElement) return;
     if (
       mounted && liveTurn.busy && !liveTurn.syncing && (!lifecycleWorking || installPlanWorking) &&
-      !integrationChallenge && !humanChallenge
+      !integrationChallenge && !human.challenge
     ) {
       stopButton?.focus({ preventScroll: true });
     }
@@ -870,11 +881,7 @@
 
   function resetChallengeState() {
     integrationChallenge = undefined;
-    humanChallenge = undefined;
-    humanRejection = undefined;
-    humanWorking = false;
-    humanExpiredId = '';
-    humanRelocalizing = '';
+    human.reset();
     integrationsDialogOpen = false;
     integrationWorking = '';
   }
@@ -927,10 +934,7 @@
   function acceptIntegrationChallenge(incoming) {
     expireSocketLifecycles();
     integrationChallenge = incoming;
-    humanChallenge = undefined;
-    humanRejection = undefined;
-    humanWorking = false;
-    humanExpiredId = '';
+    human.dismiss();
     integrationsDialogOpen = true;
     oauthFailedOnReturn = false;
     integrationsOpen = false;
@@ -939,12 +943,7 @@
 
   function acceptHumanChallenge(incoming) {
     expireSocketLifecycles();
-    const reconciledExpiry = humanExpiredId === incoming.challenge_id;
-    humanExpiredId = '';
-    if (reconciledExpiry) clearError();
-    humanChallenge = incoming;
-    humanRejection = undefined;
-    humanWorking = false;
+    human.accept(incoming);
     integrationsOpen = false;
     liveTurn.pause();
   }
@@ -954,7 +953,7 @@
   const FRAME_HANDLERS = new Map([
     ['integrations-required', integrationsRequired],
     ['human-required', humanRequired],
-    ['human-response-rejected', humanResponseRejected],
+    ['human-response-rejected', (incoming) => human.rejected(incoming)],
     ['progress', progressFrame],
     ['sync-empty', syncEmpty],
     ['assistant-install-plan', installPlanFrame],
@@ -974,11 +973,7 @@
 
   // A human request: admitted once its Assistant is in the Team's inventory, in the language a reconciling sync named.
   function humanRequired(challenge, active, expectedTeamId) {
-    if (humanRelocalizing) {
-      // Admin opened the pending request in exactly the language the reconciling sync named.
-      if (challenge.locale !== humanRelocalizing) throw new Error('unexpected human request language');
-      humanRelocalizing = '';
-    }
+    human.admitLocale(challenge);
     if (knownHumanAssistant(challenge)) acceptHumanChallenge(challenge);
     else {
       void admitWithFreshInventory(active, expectedTeamId, [challenge.assistant.id], () => (
@@ -987,32 +982,10 @@
     }
   }
 
-  // Team refused the password a human request asked for; an expired request is reconciled instead.
-  function humanResponseRejected(incoming) {
-    if (
-      !humanWorking ||
-      humanChallenge?.challenge_id !== incoming.challenge_id ||
-      humanChallenge?.request?.kind !== 'auth:password'
-    ) throw new Error('unexpected human response rejection');
-    humanWorking = false;
-    if (humanExpiredId === incoming.challenge_id) {
-      reconcileExpiredHuman(incoming.challenge_id);
-      return;
-    }
-    humanRejection = incoming;
-  }
-
   // Team's progress of the turn; the first after a human answer ends that request.
   function progressFrame(incoming) {
     liveTurn.progress(incoming);
-    const completedHumanTransition = humanWorking;
-    if (completedHumanTransition) {
-      humanChallenge = undefined;
-      humanWorking = false;
-      humanExpiredId = '';
-    }
-    humanRejection = undefined;
-    if (completedHumanTransition) void focusStop();
+    human.progressed();
   }
 
   // Admin synchronized the Team and nothing is pending: a turn this page still waited on ended without a reply.
@@ -1021,7 +994,7 @@
     liveTurn.forgetSegments();
     liveTurn.resetProgress();
     liveTurn.clearInstalled();
-    if (humanRelocalizing) {
+    if (human.relocalizing) {
       // The request ended before it could be opened in the selected language.
       liveTurn.busy = false;
       liveTurn.stopping = false;
@@ -1029,7 +1002,7 @@
       setError(humanRequestCopy.expired);
       return;
     }
-    if (humanExpiredId) {
+    if (human.expiredId) {
       liveTurn.busy = false;
       liveTurn.stopping = false;
       resetChallengeState();
@@ -1460,8 +1433,7 @@
     } catch (reason) {
       liveTurn.busy = false;
       liveTurn.resetProgress();
-      setError(reason instanceof Error ? reason.message : copy.loadFailed);
-      socket.close();
+      failSend(reason);
       return false;
     }
   }
@@ -1551,90 +1523,16 @@
       socket.send(createStopFrame(teamId));
     } catch (reason) {
       liveTurn.stopping = false;
-      setError(reason instanceof Error ? reason.message : copy.loadFailed);
-      socket.close();
-    }
-  }
-
-  function respondToHuman(response) {
-    const teamId = chatTeamId;
-    const challenge = humanChallenge;
-    if (!teamId || !challenge || humanUnanswerable || humanWorking || !socketReady || !socket) return;
-    let frame;
-    try {
-      frame = createHumanResponseFrame(
-        teamId,
-        challenge.challenge_id,
-        response.decision,
-        response.value,
-      );
-      socket.send(frame);
-      const waitForAuthentication = response.decision === 'submit' && challenge.request.kind === 'auth:password';
-      if (waitForAuthentication) {
-        humanWorking = true;
-      } else {
-        humanChallenge = undefined;
-        humanWorking = false;
-      }
-      humanRejection = undefined;
-      clearError();
-      if (!waitForAuthentication) void focusStop();
-    } catch (reason) {
-      humanWorking = false;
-      setError(reason instanceof Error ? reason.message : copy.loadFailed);
-      socket.close();
-    }
-  }
-
-  function retryHumanAuthentication() {
-    if (humanChallenge?.request?.kind === 'auth:password') humanRejection = undefined;
-  }
-
-  function reconcileExpiredHuman(challengeId) {
-    if (humanChallenge?.challenge_id !== challengeId || humanWorking) return;
-    humanExpiredId = challengeId;
-    liveTurn.busy = false;
-    liveTurn.stopping = false;
-    humanChallenge = undefined;
-    humanRejection = undefined;
-    setError(humanRequestCopy.expired);
-    if (!socketReady || !socket || liveTurn.syncing) return;
-    liveTurn.syncing = true;
-    liveTurn.resetProgress();
-    try {
-      socket.send(createSyncFrame(chatTeamId, $locale));
-    } catch {
-      liveTurn.syncing = false;
-      socket.close();
-    }
-  }
-
-  // A pending or restored request in another language than the one selected is replaced by a fresh challenge in the
-  // selected language before it can be answered. A reply that arrives after yet another switch is reconciled again.
-  function relocalizeHumanRequest(selected) {
-    humanRelocalizing = selected;
-    liveTurn.syncing = true;
-    try {
-      socket.send(createSyncFrame(chatTeamId, selected));
-    } catch {
-      humanRelocalizing = '';
-      liveTurn.syncing = false;
-      socket.close();
+      failSend(reason);
     }
   }
 
   $effect(() => {
     const selected = $locale;
-    if (!humanStale || humanWorking || humanRelocalizing || liveTurn.syncing || !socketReady || !socket) return;
-    if (humanChallenge.challenge_id === humanExpiredId) return;
-    relocalizeHumanRequest(selected);
+    if (!humanStale || human.working || human.relocalizing || liveTurn.syncing || !socketReady || !socket) return;
+    if (human.challenge.challenge_id === human.expiredId) return;
+    human.relocalize(selected);
   });
-
-  function expireHumanRequest(challengeId) {
-    if (humanChallenge?.challenge_id !== challengeId || humanExpiredId === challengeId) return;
-    humanExpiredId = challengeId;
-    if (!humanWorking) reconcileExpiredHuman(challengeId);
-  }
 
   $effect(() => {
     const nextTeamId = chatTeamId;
@@ -1714,7 +1612,7 @@
           class="conversation"
           class:empty-conversation={turns.length === 0}
           aria-label={teamName}
-          aria-busy={composerBusy && !integrationChallenge && !humanChallenge}
+          aria-busy={composerBusy && !integrationChallenge && !human.challenge}
           inert={historyHydrating}
         >
         <p class="live-status sr-only" aria-live="polite" aria-atomic="true">{liveStatus}</p>
@@ -1774,7 +1672,7 @@
               onrewrite={rewriteRoutine}
               cardAnswer={answers.get(exchange.assistant?.routineProposal?.proposal_id) ?? ''}
               ondecide={submitLifecycleDecision}
-              thinking={index === exchanges.length - 1 && liveTurn.busy && !integrationChallenge && !humanChallenge &&
+              thinking={index === exchanges.length - 1 && liveTurn.busy && !integrationChallenge && !human.challenge &&
                 (exchange.assistant ? exchange.assistant.installPlan?.state === 'installed' : !lifecycleWorking)
                 ? liveThinking
                 : undefined}
@@ -1859,13 +1757,13 @@
           oncancel={cancelIntegrationAuthorization}
         />
         <AssistantHumanRequestDialog
-          open={Boolean(humanChallenge) && humanChallenge?.challenge_id !== humanExpiredId}
-          challenge={humanChallenge}
-          rejection={humanRejection}
-          working={humanWorking || humanUnanswerable}
-          onrespond={respondToHuman}
-          onretry={retryHumanAuthentication}
-          onexpire={expireHumanRequest}
+          open={human.open}
+          challenge={human.challenge}
+          rejection={human.rejection}
+          working={human.working || humanUnanswerable}
+          onrespond={(response) => { if (!humanUnanswerable) human.respond(response); }}
+          onretry={() => human.retry()}
+          onexpire={(challengeId) => human.expire(challengeId)}
         />
         {#if historyHydrating}
           <section class="history-loading">
