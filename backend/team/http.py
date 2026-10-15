@@ -1,4 +1,4 @@
-"""Bounded same-origin HTTP adaptation for Team controller responses."""
+"""Answer the browser with a Team call's result, or with Admin's own refusal of the request before any call."""
 
 from collections.abc import Iterator
 from contextlib import contextmanager
@@ -18,6 +18,7 @@ def refused_as_bad_request() -> Iterator[None]:
 
 
 def response(action) -> JSONResponse:
+    """Answer with the Team result ``action`` returns, keeping its status and body."""
     with refused_as_bad_request():
         result = action()
     return JSONResponse(status_code=result.status, content=result.body)
