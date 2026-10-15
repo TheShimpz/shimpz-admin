@@ -426,12 +426,9 @@ test("a Routine's history is read from its own view, newest first, a page at a t
     requested.push([params.before ?? null, params.routine ?? null]);
     return response(200, pages[params.before ?? null]);
   };
-  const seen = new Set();
-  const found = await routineRuns(fetcher, 'marketing', routine, { seen });
+  const found = await routineRuns(fetcher, 'marketing', routine);
   assert.deepEqual(found.runs.map((entry) => entry.runId[0]), ['3', '2', '1']);
   assert.equal(found.before, 'AAAAAAAAAMg');
-  // The newest page's marks, oldest first, are the boundary a refresh reads back to.
-  assert.deepEqual([...seen], ['1', '2', '3'].map((digit) => `${digit.repeat(32)}:routine@1`));
   const older = await routineRuns(fetcher, 'marketing', routine, { before: found.before });
   assert.deepEqual(older.runs.map((entry) => entry.runId[0]), ['0']);
   assert.equal(older.before, null);

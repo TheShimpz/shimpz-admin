@@ -361,12 +361,10 @@ function isRoutineRun(entry, routineId) {
 
 /**
  * One page of a Routine's own history from `before` (null for the newest), newest first, with the cursor to its older
- * runs, or null once there are none. `seen`, when given, receives the marks of the newest page, oldest first: the
- * boundary a later refresh reads back to.
+ * runs, or null once there are none.
  */
-export async function routineRuns(read, teamId, routineId, { before = null, seen = null } = {}) {
+export async function routineRuns(read, teamId, routineId, { before = null } = {}) {
   const { entries, before: older } = await listChatHistory(read, teamId, before, { routine: routineId });
-  for (const entry of entries) seen?.add(historyMark(entry));
   return { runs: [...entries].reverse(), before: older };
 }
 
