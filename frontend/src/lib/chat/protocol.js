@@ -517,11 +517,7 @@ function canonicalHumanIdentity(value, expectedKeys, maximum, valid) {
 }
 
 function canonicalChatTurn(turn) {
-  if (
-    !turn ||
-    typeof turn !== 'object' ||
-    Object.keys(turn).sort().join(',') !== 'assistant_ids,files,message'
-  ) {
+  if (!exactKeys(turn, ['message', 'files', 'assistant_ids'])) {
     throw new LocalApiError('Chat accepts only message, files, and assistant_ids.');
   }
   const message = typeof turn.message === 'string' ? turn.message.trim() : '';
