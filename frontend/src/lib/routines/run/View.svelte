@@ -109,7 +109,7 @@
     margin-inline: auto;
     padding: var(--gap-panel) var(--gap-panel) var(--gap-region);
   }
-  .meta { display: flex; flex-wrap: wrap; gap: var(--gap-group) var(--gap-panel); margin: 0; padding-block-end: var(--gap-group); border-block-end: 1px solid var(--shimpz-color-border-subtle); }
+  .meta { display: flex; flex-wrap: wrap; gap: var(--gap-group) var(--gap-panel); margin: 0; padding-block-end: var(--gap-group); border-block-end: 1px solid var(--shimpz-color-border-subtle); border-radius: 0; }
   .meta div { display: grid; gap: var(--gap-inside); }
   dt, h3 {
     margin: 0;

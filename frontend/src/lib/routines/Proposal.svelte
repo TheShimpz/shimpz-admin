@@ -257,6 +257,7 @@
     gap: var(--shimpz-space-2);
     padding: var(--shimpz-space-2) var(--shimpz-space-4);
     border-block-start: 1px solid var(--shimpz-color-border-subtle);
+    border-radius: 0;
     background: var(--shimpz-color-surface-high);
   }
   .bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-item); }

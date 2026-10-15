@@ -175,6 +175,7 @@
     inset-block: 1.6rem 0.4rem;
     inset-inline-start: 0.7rem;
     width: 1px;
+    border-radius: 0;
     background: var(--shimpz-color-border-subtle);
     content: '';
   }
