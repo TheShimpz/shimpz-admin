@@ -9,10 +9,9 @@ from chat.executor import ExecutorSaturatedError
 from fastapi import WebSocket
 from history import delivery as history_delivery
 from history import store as history
-from team import bridge as team
 from team import transport
 
-from chat import assistant_proposal, lifecycle
+from chat import assistant_proposal, lifecycle, payloads
 
 
 def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], dict[str, object]]:
@@ -27,7 +26,7 @@ def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], di
         "timezone",
     }:
         raise transport.TeamRequestError("invalid task resume request")
-    payload = team.canonical_chat_payload(
+    payload = payloads.canonical_chat_payload(
         {
             "message": frame["message"],
             "files": frame["files"],
@@ -36,7 +35,7 @@ def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], di
             "timezone": frame["timezone"],
         }
     )
-    objective = team.canonical_chat_payload(
+    objective = payloads.canonical_chat_payload(
         {
             "message": frame["objective"],
             "files": [],
@@ -63,7 +62,7 @@ async def admit(
 ) -> tuple[dict[str, object], dict[str, object], dict[str, object]] | None:
     """The resumed turn's payload, its objective, and the identity of its logical send, or None after a terminal."""
     try:
-        payloads = _canonical_payloads(frame)
+        canonical = _canonical_payloads(frame)
     except transport.TeamRequestError:
         await operations.send_event(websocket, operations.error_terminal(400, "invalid task resume request"))
         return None
@@ -76,7 +75,7 @@ async def admit(
             operations.error_terminal(409, "an Assistant challenge must be resolved before another turn"),
         )
         return None
-    return (*payloads, request_identity())
+    return (*canonical, request_identity())
 
 
 async def dispatch(

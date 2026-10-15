@@ -291,14 +291,6 @@ def configure_inference(team_id: object, payload: object) -> transport.TeamRespo
     return _changed(projected, canonical_id, "inference")
 
 
-canonical_chat_payload = payloads.canonical_chat_payload
-CHAT_PAYLOAD_FIELDS = payloads.CHAT_PAYLOAD_FIELDS
-canonical_team_chat_body = payloads.canonical_team_chat_body
-canonical_integration_resume = payloads.canonical_integration_resume
-canonical_human_resume = payloads.canonical_human_resume
-canonical_human_assurance = payloads.canonical_human_assurance
-
-
 def chat(
     team_id: object,
     payload: object,
@@ -309,7 +301,7 @@ def chat(
 ) -> transport.TeamResponse:
     """Send a turn whose JSON is secret-free; the key uses the private authenticated header."""
     canonical_id = payloads.canonical_team_id(team_id)
-    body = canonical_team_chat_body(payload)
+    body = payloads.canonical_team_chat_body(payload)
     return transport.call_stream(
         "POST",
         f"/v1/teams/{canonical_id}/chat",
@@ -403,7 +395,7 @@ def resume_chat_integrations(
     progress: Callable[[dict[str, object]], None],
 ) -> transport.TeamResponse:
     canonical_id = payloads.canonical_team_id(team_id)
-    body = canonical_integration_resume(payload)
+    body = payloads.canonical_integration_resume(payload)
     return transport.call_stream(
         "POST",
         f"/v1/teams/{canonical_id}/chat/integrations",
@@ -424,9 +416,9 @@ def resume_chat_human(
     assurance: dict[str, str] | None = None,
 ) -> transport.TeamResponse:
     canonical_id = payloads.canonical_team_id(team_id)
-    body = canonical_human_resume(payload)
+    body = payloads.canonical_human_resume(payload)
     if assurance is not None:
-        canonical_assurance = canonical_human_assurance(assurance)
+        canonical_assurance = payloads.canonical_human_assurance(assurance)
         if (
             body.get("decision") != "submit"
             or body.get("value") is not True

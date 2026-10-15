@@ -808,7 +808,7 @@ def turn(
     def team_body(value: object) -> dict[str, object]:
         # A non-object browser payload reaches the Team body validator unchanged and fails closed there.
         extra = {"conversation": wire, "request": request}
-        return team.canonical_team_chat_body({**value, **extra} if isinstance(value, dict) else value)
+        return payloads.canonical_team_chat_body({**value, **extra} if isinstance(value, dict) else value)
 
     # Team renders a new or already pending human request in the chat's interface language (ADR-0091).
     locale = payload.get("locale") if isinstance(payload, dict) else None
@@ -823,7 +823,7 @@ def resume_integrations(
     return _submit(
         team_id,
         {"challenge_id": challenge_id},
-        team.canonical_integration_resume,
+        payloads.canonical_integration_resume,
         team.resume_chat_integrations,
         progress,
     )
@@ -839,7 +839,7 @@ def resume_human(
     return _submit(
         team_id,
         payload,
-        team.canonical_human_resume,
+        payloads.canonical_human_resume,
         team.resume_chat_human,
         progress,
         assurance,

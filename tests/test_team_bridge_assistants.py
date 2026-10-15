@@ -233,13 +233,13 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         # Team waits up to 300 s for one Brain request and sends nothing meanwhile (teams/inference/client.py).
         self.assertGreater(team.CHAT_STREAM_TIMEOUT_SECONDS, 300)
         with (
-            mock.patch.object(team, "canonical_team_chat_body", return_value={"message": "oi"}),
+            mock.patch.object(team.payloads, "canonical_team_chat_body", return_value={"message": "oi"}),
             mock.patch.object(transport, "call_stream", return_value=transport.TeamResponse(200, {})) as stream,
         ):
             team.chat("team_1", {}, provider="openai", api_key="test-key", progress=print)
         self.assertEqual(stream.call_args.kwargs["timeout"], team.CHAT_STREAM_TIMEOUT_SECONDS)
         with (
-            mock.patch.object(team, "canonical_integration_resume", return_value={"challenge_id": "a" * 32}),
+            mock.patch.object(team.payloads, "canonical_integration_resume", return_value={"challenge_id": "a" * 32}),
             mock.patch.object(transport, "call_stream", return_value=transport.TeamResponse(200, {})) as stream,
         ):
             team.resume_chat_integrations("team_1", {}, provider="openai", api_key="test-key", progress=print)

@@ -21,7 +21,6 @@ from chat.executor import ExecutorSaturatedError, submit_in_context
 from fastapi import WebSocket, WebSocketDisconnect
 from history import delivery as history_delivery
 from history import store as history
-from team import bridge as team
 from team import transport
 
 from chat import (
@@ -31,6 +30,7 @@ from chat import (
     lanes,
     lifecycle,
     local,
+    payloads,
     projection,
     task_resume,
 )
@@ -556,14 +556,14 @@ async def _admit_chat_payload(
     frame: dict[str, object],
 ) -> tuple[dict[str, object], dict[str, object]] | None:
     """The admitted chat payload and the identity of its logical send, or None after an error terminal."""
-    if set(frame) != {"type", *team.CHAT_PAYLOAD_FIELDS}:
+    if set(frame) != {"type", *payloads.CHAT_PAYLOAD_FIELDS}:
         await _send_event(
             websocket,
             _error_terminal(400, "chat frame requires message, files, assistant_ids, locale, and timezone"),
         )
         return None
     try:
-        payload = team.canonical_chat_payload({key: frame[key] for key in team.CHAT_PAYLOAD_FIELDS})
+        payload = payloads.canonical_chat_payload({key: frame[key] for key in payloads.CHAT_PAYLOAD_FIELDS})
     except transport.TeamRequestError:
         payload = None
     if payload is None:
