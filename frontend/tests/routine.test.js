@@ -605,7 +605,7 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   assert.equal(routineErrorMessage(new RoutineError('team-context-unavailable'), errors), errors.unavailable);
   assert.equal(routineErrorMessage(new RoutineError('human-request-invalid'), errors), errors.changed);
   assert.equal(routineErrorMessage(new RoutineError('assistant-language-drift'), errors), errors.unavailable);
-  assert.equal(routineErrorMessage(new RoutineError('routine-card-stale'), errors), errors.stale);
+  assert.equal(routineErrorMessage(new RoutineError('routine-card-stale'), errors), errors.cardChanged);
   assert.equal(routineErrorMessage(new RoutineError('routine-incident-unavailable'), errors), errors.ended);
   for (const [code, key] of [
     ['routine-busy', 'busy'],

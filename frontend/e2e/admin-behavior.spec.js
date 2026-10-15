@@ -6363,7 +6363,7 @@ test.describe('Team Routines', () => {
     const auditPanel = await openRoutinePanel(page, audit.name);
     await expect.poll(() => choiceNames(auditPanel)).toEqual(['Run', 'Delete']);
     await auditPanel.getByRole('button', { name: 'Run' }).click();
-    await expect(auditPanel.getByRole('status')).toHaveText(messages.en.routine.errors.stale);
+    await expect(auditPanel.getByRole('status')).toHaveText(messages.en.routine.errors.cardChanged);
     await expect.poll(() => choiceNames(auditPanel)).toEqual(['Run', 'Delete']);
     await auditPanel.getByRole('button', { name: 'Run' }).click();
     await expect(auditPanel.getByRole('status')).toContainText('Set aside. The Routine runs again now.');
