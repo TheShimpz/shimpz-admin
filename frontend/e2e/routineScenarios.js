@@ -658,7 +658,8 @@ export function recordingReply(state, message, teamName) {
     const proposalId = `c${state.sequence.toString(16)}`.padStart(32, '0');
     const proposal = cloudflareCard(proposalId, state.locale, Date.now());
     state.proposals = { ...state.proposals, [proposalId]: proposal };
-    reply = { ...base, reply: text.cardReply, routine_proposal: proposal };
+    // A card that follows the person's answer comes with no text: the card says everything.
+    reply = { ...base, reply: state.asked ? '' : text.cardReply, routine_proposal: proposal };
   }
   recordTurn(state, message, reply);
   return reply;

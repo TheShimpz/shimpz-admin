@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  ANSWER_REPLY_TEXTS,
   cardAnswers,
   expiredTurns,
   friendlyChatError,
@@ -63,17 +62,10 @@ test('groups each user message with the reply that answered it, and a lone reply
   ]);
 });
 
-test("the fixed replies are exactly Team's answer replies", async () => {
-  const { readFileSync } = await import('node:fs');
-  const source = readFileSync(new URL('../../backend/protocol/http/v1/routine_proposal.py', import.meta.url), 'utf8');
-  const block = source.match(/ANSWER_REPLIES = \{\n([\s\S]*?)\n\}/u)[1];
-  const replies = [...block.matchAll(/"[a-z]{2}": "((?:[^"\\]|\\.)*)"/gu)].map(([, text]) => text);
-  assert.deepEqual([...ANSWER_REPLY_TEXTS].sort(), replies.sort());
-});
-
-test("a card's answer hides Team's fixed reply once its Routine exists, and only a change shows the answer itself", () => {
+test("a card's answer hides a card's empty reply once its Routine exists, and only a change shows the answer itself", () => {
   const card = (id) => ({ proposal_id: id.repeat(32) });
-  const fixed = ANSWER_REPLY_TEXTS[6];
+  // A card Team records from the person's answer, or the Brain records saying it, comes with no text.
+  const fixed = '';
   const answer = (id, status) => ({ routineAnswer: { proposalId: id.repeat(32), status, name: 'X' } });
   const turns = [
     { renderKey: 1, role: 'user' },

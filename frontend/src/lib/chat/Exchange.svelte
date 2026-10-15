@@ -107,9 +107,10 @@
         <p class="routine-run" role="group" aria-label={said.name} tabindex="-1">
           {fill($t('routine').proposal.answers[assistantTurn.routineRun ? 'created' : said.status], { name: said.name })}
         </p>
-      {:else if !assistantTurn.installPlan && (
+      {:else if assistantTurn.text && !assistantTurn.installPlan && (
         !assistantTurn.lifecycle || assistantTurn.lifecycle.state === 'proposed'
       )}
+        <!-- A reply beside a Routine card, question, or refusal may have no text: the card then says everything. -->
         <Markdown markdown={assistantTurn.text} variant="chat" />
       {/if}
       {#if assistantTurn.installPlan}

@@ -118,7 +118,8 @@ function messageEntry(value, suffix, status) {
     id: value.id,
     kind: 'message',
     role: value.role,
-    text: boundedText(
+    // A reply is empty only beside a Routine card, question, or refusal, which then says everything.
+    text: value.text === '' && routineKeys.length ? '' : boundedText(
       value.text,
       assistant ? MAX_REPLY_CHARS : MAX_MESSAGE_CHARS,
       CHAT_TEXT_CONTROL_RE,

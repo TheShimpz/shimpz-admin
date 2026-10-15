@@ -967,7 +967,8 @@ function parseDoneEvent(value, expectedTeamId) {
     // The Team id binds the turn; its display name may have changed by a rename (ADR-0088) and is only checked.
     !canonicalTeam(value.team_name) ||
     typeof value.reply !== 'string' ||
-    !value.reply.trim() ||
+    // A reply is empty only beside a Routine card, question, or refusal, which then says everything.
+    (!value.reply.trim() && (value.reply !== '' || Object.keys(routine).length === 0)) ||
     codePointLength(value.reply) > MAX_REPLY_CHARS ||
     CHAT_TEXT_CONTROL_RE.test(value.reply)
   ) {

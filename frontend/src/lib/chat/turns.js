@@ -10,19 +10,6 @@ import { attachmentKind } from './attachments/files.js';
 import { taskUsageSummary } from './usage.js';
 import { ASSISTANT_LIMIT_REACHED } from '../api.js';
 
-// The fixed reply Team gives a send it recorded itself, with no model, in each interface language (Team's
-// `routine_proposal.ANSWER_REPLIES`): it says only that a Routine card follows.
-export const ANSWER_REPLY_TEXTS = Object.freeze([
-  'طبّقتُ إجابتك على الروتين.',
-  'Ich habe Ihre Antwort auf die Routine angewendet.',
-  'I applied your answer to the Routine.',
-  'Apliqué tu respuesta a la rutina.',
-  "J'ai appliqué votre réponse à la routine.",
-  '回答をルーティンに反映しました。',
-  'Apliquei sua resposta à rotina.',
-  '已将你的回答应用到例行任务。',
-]);
-
 /** How the person answered each Routine card the transcript holds, by card id: created, changed, or revoked. */
 export function cardAnswers(turns) {
   return new Map(turns.filter((turn) => turn.routineAnswer).map((turn) => [
@@ -32,12 +19,12 @@ export function cardAnswers(turns) {
 
 /**
  * Whether a turn has nothing left to show: a card's answer that is not a change (a creation is said by its Routine's
- * own creation notice, a cancel by its card), or Team's fixed reply whose card created or changed its Routine.
+ * own creation notice, a cancel by its card), or a reply with no text whose card created or changed its Routine.
  */
 function settled(turn, answers) {
   if (turn.routineAnswer) return turn.routineAnswer.status !== 'changed';
   const answer = turn.routineProposal ? answers.get(turn.routineProposal.proposal_id) : undefined;
-  return (answer === 'created' || answer === 'changed') && ANSWER_REPLY_TEXTS.includes(turn.text);
+  return (answer === 'created' || answer === 'changed') && turn.text === '';
 }
 
 /** Turns as exchanges: a user message with the reply that answered it, or a reply that opens one on its own. */
