@@ -1,10 +1,10 @@
 import { ASSISTANT_LIMIT_REACHED, exactEnvelope, exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
-import { isShownText } from '../grammar.js';
+import { isShownText, isUniqueList } from '../grammar.js';
 import {
   DIGEST_RE,
   isAssistantId,
   isIdentifier,
-  PUBLIC_CREATOR_RE,
+  isPublicCreator,
   SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
 } from '../ids.js';
@@ -24,6 +24,7 @@ const CATALOG_CURSOR_RE = /^[1-9][0-9]{0,3}\.[0-9a-f]{32}$/;
 // The Assistant summary is a short description of at most 80 characters, in every interface language.
 const CREATED_AT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
 const CREATOR_RE = /^@[a-z0-9][a-z0-9-]{1,30}[a-z0-9]$/;
+const isDeclaredCreator = (value) => typeof value === 'string' && CREATOR_RE.test(value);
 
 /**
  * Project the controller-owned registry onto display-only Assistant identities. Admin sends only each identity and
@@ -138,11 +139,7 @@ export async function listPublicAssistantCatalog(locale, call = socketReads.call
       !SEMANTIC_VERSION_RE.test(entry.assistant_version) ||
       !isShownText(entry.name, 80) ||
       !isShownText(entry.summary, SUMMARY_CHARS) ||
-      !Array.isArray(entry.creators) ||
-      entry.creators.length < 1 ||
-      entry.creators.length > 16 ||
-      entry.creators.some((creator) => typeof creator !== 'string' || !PUBLIC_CREATOR_RE.test(creator)) ||
-      new Set(entry.creators).size !== entry.creators.length ||
+      !isUniqueList(entry.creators, 1, 16, isPublicCreator) ||
       !DIGEST_RE.test(entry.source_digest) ||
       !DIGEST_RE.test(entry.icon_digest) ||
       seen.has(entry.assistant_id)
@@ -338,22 +335,11 @@ export async function listLocalAssistantSnapshots(call = socketReads.call) {
       !SEMANTIC_VERSION_RE.test(entry.assistant_version) ||
       !isShownText(entry.name, 80) ||
       !isShownText(entry.summary, SUMMARY_CHARS) ||
-      !Array.isArray(entry.actions) ||
-      entry.actions.length < 1 ||
-      entry.actions.length > 128 ||
-      entry.actions.some((action) => !isIdentifier(action)) ||
-      new Set(entry.actions).size !== entry.actions.length ||
+      !isUniqueList(entry.actions, 1, 128, isIdentifier) ||
       entry.actions.some((action, index) => index > 0 && entry.actions[index - 1] >= action) ||
-      !Array.isArray(entry.integrations) ||
-      entry.integrations.length > 16 ||
-      entry.integrations.some((integration) => !isIdentifier(integration)) ||
-      new Set(entry.integrations).size !== entry.integrations.length ||
+      !isUniqueList(entry.integrations, 0, 16, isIdentifier) ||
       entry.integrations.some((integration, index) => index > 0 && entry.integrations[index - 1] >= integration) ||
-      !Array.isArray(entry.declared_creators) ||
-      entry.declared_creators.length < 1 ||
-      entry.declared_creators.length > 4 ||
-      entry.declared_creators.some((creator) => typeof creator !== 'string' || !CREATOR_RE.test(creator)) ||
-      new Set(entry.declared_creators).size !== entry.declared_creators.length ||
+      !isUniqueList(entry.declared_creators, 1, 4, isDeclaredCreator) ||
       typeof entry.created_at !== 'string' ||
       !CREATED_AT_RE.test(entry.created_at) ||
       Number.isNaN(Date.parse(entry.created_at)) ||

@@ -29,6 +29,17 @@ export function isShownText(value, maximum, controls = CONTROL_RE) {
   );
 }
 
+/** A list of `minimum` to `maximum` distinct items, each admitted by `isItem`. */
+export function isUniqueList(value, minimum, maximum, isItem) {
+  return (
+    Array.isArray(value) &&
+    value.length >= minimum &&
+    value.length <= maximum &&
+    value.every((item) => isItem(item)) &&
+    new Set(value).size === value.length
+  );
+}
+
 /** A real UTC instant in whole seconds, written YYYY-MM-DDTHH:MM:SSZ. */
 export function isInstant(value) {
   // Date.parse rolls impossible dates such as February 30 forward, so the instant must round-trip exactly.

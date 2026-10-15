@@ -3,8 +3,8 @@ import { AssistantPageError, canonicalPageCopy, isDisplayText, SUMMARY_CHARS } f
 import { catalogIconUrl } from './icons.js';
 import { isLocale } from '../i18n/locales.js';
 import { exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
-import { isShownText } from '../grammar.js';
-import { DIGEST_RE, isAssistantId, PUBLIC_CREATOR_RE, SEMANTIC_VERSION_RE, TEAM_ID_RE } from '../ids.js';
+import { isShownText, isUniqueList } from '../grammar.js';
+import { DIGEST_RE, isAssistantId, isPublicCreator, SEMANTIC_VERSION_RE, TEAM_ID_RE } from '../ids.js';
 
 const MAX_CONCURRENT_ICONS = 2;
 const MAX_ICON_BYTES = 1024 * 1024;
@@ -210,11 +210,7 @@ function acceptedDetails(body, expected, status) {
     !SEMANTIC_VERSION_RE.test(body.assistant_version) ||
     !isDisplayText(body.name, 80) ||
     !isDisplayText(body.summary, SUMMARY_CHARS) ||
-    !Array.isArray(body.creators) ||
-    body.creators.length < 1 ||
-    body.creators.length > expected.maxCreators ||
-    body.creators.some((creator) => typeof creator !== 'string' || !PUBLIC_CREATOR_RE.test(creator)) ||
-    new Set(body.creators).size !== body.creators.length
+    !isUniqueList(body.creators, 1, expected.maxCreators, isPublicCreator)
   ) {
     throw invalid();
   }

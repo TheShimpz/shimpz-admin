@@ -22,6 +22,11 @@ export const TRACE_ID_RE = OPAQUE_ID_RE;
 // A Team's display name, at most this many code points (Team's MAX_TEAM_NAME_CHARS).
 export const MAX_TEAM_NAME_CHARS = 80;
 
+/** A public Creator handle as the catalog names it. */
+export function isPublicCreator(value) {
+  return typeof value === 'string' && PUBLIC_CREATOR_RE.test(value);
+}
+
 export function isAssistantId(value) {
   return typeof value === 'string' && value.length <= MAX_ASSISTANT_ID_CHARS && ASSISTANT_ID_RE.test(value);
 }
