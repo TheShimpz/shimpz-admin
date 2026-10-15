@@ -32,8 +32,8 @@
     answerDisabled,
     lifecycleDisabled,
     onanswer,
-    onrewrite = () => false,
-    cardAnswer = '',
+    onrewrite,
+    cardAnswer,
     ondecide,
     thinking,
   } = $props();

@@ -10,7 +10,7 @@
   import { LocalApiError } from '#lib/api.js';
   import { createTeam, deleteTeam, teamContext } from '#lib/teams/context.js';
 
-  let { onsettled = () => {} } = $props();
+  let { onsettled } = $props();
 
   let createDialog = $state();
   let deleteDialog = $state();

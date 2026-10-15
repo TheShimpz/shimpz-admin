@@ -18,8 +18,8 @@
 
   let {
     active = '',
-    oncreate = () => {},
-    ondelete = () => {},
+    oncreate,
+    ondelete,
     onnavigate = () => {},
     createButton = $bindable(),
     // The Supervisor's menu in place of the symbol, where the sidebar shows it; the mobile drawer keeps the symbol.

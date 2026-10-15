@@ -18,9 +18,9 @@
     challenge,
     rejection,
     working = false,
-    onrespond = () => {},
-    onretry = () => {},
-    onexpire = () => {},
+    onrespond,
+    onretry,
+    onexpire,
     // A Routine run's challenge may be dismissed without an answer, leaving the run frozen (ADR-0086); chat has none.
     ondismiss = null,
     dismissLabel = '',

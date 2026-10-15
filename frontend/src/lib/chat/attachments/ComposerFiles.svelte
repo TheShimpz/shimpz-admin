@@ -12,8 +12,8 @@
     progress = null,
     reading = false,
     error = '',
-    oncancel = () => {},
-    onremove = () => {},
+    oncancel,
+    onremove,
   } = $props();
 
   let copy = $derived($t('attachments'));
