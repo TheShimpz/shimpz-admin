@@ -364,8 +364,9 @@
         <ul class="runs" aria-label={copy.panel.runs} bind:this={runList}>
           {#each live as run (run.run_id)}
             <li>
-              <RoutineIcon name={run.status === 'held' ? 'warning' : run.status === 'frozen' ? 'approval' : 'spinner'} />
-              <span class="run-what">{run.status === 'frozen' ? copy.panel.waitingApproval : run.status === 'held' ? copy.status.failed : copy.panel.runningNow}</span>
+              <!-- A held or frozen live run reads as its run notice does; a leased one is running now. -->
+              <RoutineIcon name={RUN_ICONS[run.status] ?? 'spinner'} />
+              <span class="run-what">{run.status === 'leased' ? copy.panel.runningNow : outcomeWords({ outcome: run.status, detail: run })}</span>
             </li>
           {/each}
           {#if !runsRead}
