@@ -1,6 +1,7 @@
 <script>
-  import { Card, DialogFrame, Modal, Notice } from '@shimpz/frontend';
+  import { DialogFrame, Modal, Notice } from '@shimpz/frontend';
   import DialogAction from '#lib/DialogAction.svelte';
+  import DialogTarget from '#lib/assistants/DialogTarget.svelte';
   import { t } from '#lib/i18n/index.js';
   let {
     open = $bindable(false),
@@ -51,11 +52,7 @@
     {lead}
   >
     {#if targetName}
-      <Card class="dialog-target" padding="compact">
-        <span class="target-label">{targetLabel}</span>
-        <strong>{targetName}</strong>
-        {#if targetId}<code>{targetId}</code>{/if}
-      </Card>
+      <DialogTarget label={targetLabel} name={targetName} id={targetId} />
     {/if}
     {#if progress}<p class="dialog-progress" role="status">{progress}</p>{/if}
     {#if hint}<p class="dialog-route-hint">{hint}</p>{/if}
@@ -79,10 +76,6 @@
 
 <style>
   form { margin: 0; }
-  :global(.dialog-target > [data-slot="card-content"]) { display: grid; gap: var(--gap-inside); }
-  .target-label { color: var(--text-faint); font-family: var(--font-mono); font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase; }
-  :global(.dialog-target strong) { font-size: 0.9rem; }
-  :global(.dialog-target code) { color: var(--accent); font-size: 0.65rem; }
   .dialog-progress { margin: var(--gap-group) 0 0; color: var(--accent); font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
   .dialog-route-hint { margin: var(--gap-group) 0 0; border-inline-start: 2px solid var(--accent); padding: var(--gap-item) var(--gap-group); color: var(--text-dim); font-size: 0.72rem; line-height: 1.5; }
 </style>

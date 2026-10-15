@@ -1,6 +1,7 @@
 <script>
-  import { Card, ChoiceItem, DialogFrame, Modal, Notice } from '@shimpz/frontend';
+  import { ChoiceItem, DialogFrame, Modal, Notice } from '@shimpz/frontend';
   import DialogAction from '#lib/DialogAction.svelte';
+  import DialogTarget from '#lib/assistants/DialogTarget.svelte';
   import { t } from '#lib/i18n/index.js';
 
   let {
@@ -68,18 +69,15 @@
         </div>
       {/if}
       {#if snapshot}
-        <Card class="local-install-target" padding="compact">
-          <span>{copy.localExactImage}</span>
-          <strong dir="ltr">v{snapshot.assistant_version} · {snapshot.platform}</strong>
-          <code dir="ltr">{snapshot.image_id}</code>
-        </Card>
+        <DialogTarget
+          label={copy.localExactImage}
+          name={`v${snapshot.assistant_version} · ${snapshot.platform}`}
+          id={snapshot.image_id}
+          nameDir="ltr"
+        />
       {/if}
       {#if team}
-        <Card class="local-install-target" padding="compact">
-          <span>{copy.assistantDestinationTeam}</span>
-          <strong>{team.name}</strong>
-          <code>{team.id}</code>
-        </Card>
+        <DialogTarget label={copy.assistantDestinationTeam} name={team.name} id={team.id} />
       {/if}
       {#if error}<Notice variant="error">{error}</Notice>{/if}
       {#snippet footer()}
@@ -96,16 +94,6 @@
 
 <style>
   form { margin: 0; }
-  :global(.local-install-target > [data-slot="card-content"]) { display: grid; gap: var(--gap-inside); }
-  :global(.local-install-target span) {
-    color: var(--text-faint);
-    font-family: var(--font-mono);
-    font-size: 0.58rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-  :global(.local-install-target strong) { font-size: 0.85rem; }
-  :global(.local-install-target code) { overflow-wrap: anywhere; color: var(--accent); font-size: 0.65rem; }
   .local-build-selector { display: grid; gap: var(--gap-item); }
   .local-build-selector > span {
     color: var(--text-faint);
