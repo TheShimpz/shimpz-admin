@@ -335,7 +335,7 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
         self.assert_status(400, self.admin_app.admin_setup(_request("/setup", {"password": 1})))
         for password, code in (
             ("short", "password-too-short"),
-            ("x" * (self.admin_app.MAX_PASSWORD_CHARS + 1), "password-too-long"),
+            ("x" * (self.admin_app.auth.MAX_PASSWORD_CHARS + 1), "password-too-long"),
             ("passwordpassword", "password-blocklisted"),
         ):
             with self.subTest(code=code):

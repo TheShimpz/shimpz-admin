@@ -73,7 +73,6 @@ _OAUTH_CHAT_REDIRECT = partial(
 )
 _ADMIN_SETUP_LOCK = asyncio.Lock()
 MAX_SPACE_RESET_BODY_BYTES = 8 * 1024
-MAX_PASSWORD_CHARS = auth.MAX_PASSWORD_CHARS
 SPA_SCRIPT_SOURCES = browser.spa_script_sources(UI_DIR)
 
 # Open surface: the SPA shell (served for any non-/api path) + these auth endpoints. Everything
@@ -489,7 +488,6 @@ app.add_api_route("/api/space/host", local_space_host_reset, methods=["DELETE"])
 async def local_space_reset(request: Request):
     return await space_reset.authenticated(
         request,
-        max_password_chars=MAX_PASSWORD_CHARS,
         read_json=partial(request_body.bounded_json_object, max_bytes=MAX_SPACE_RESET_BODY_BYTES),
         recheck_password=partial(local_auth.recheck_password, context=_LOCAL_AUTH_CONTEXT),
         team_response=_space_reset_response,
