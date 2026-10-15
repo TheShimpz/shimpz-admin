@@ -10,13 +10,11 @@
   import Composer from '#lib/chat/Composer.svelte';
   import Exchange from '#lib/chat/Exchange.svelte';
   import { snapshotIcon } from '#lib/chat/lifecycle/snapshot.js';
-  import { chatHistory, listChatHistory, newerRoutineEntries, withArrived } from '#lib/chat/history.js';
   import {
     cardAnswers,
     expiredTurns,
     friendlyChatError,
     groupExchanges,
-    historyTurn,
     installPlanTurns,
     lifecycleTurnIndex,
     lifecycleTurns,
@@ -28,7 +26,6 @@
   import ChatDay from '#lib/chat/Day.svelte';
   import { calendarDay, exchangeDays, turnInstants, untilNextDay } from '#lib/chat/days.js';
   import { questionWords } from '#lib/routines/words.js';
-  import { showTeamRoutines } from '#lib/routines/context.js';
   import { adminSocket, call, commandsReady, openChatChannel, outcomeUnknown } from '#lib/session/socket.js';
   import {
     localizedEventLabel,
@@ -37,6 +34,7 @@
   import { ChatTurn } from '#lib/chat/turn.svelte.js';
   import { HumanRequest } from '#lib/chat/humanRequest.svelte.js';
   import { IntegrationAuthorization } from '#lib/chat/integrationAuthorization.svelte.js';
+  import { Transcript } from '#lib/chat/transcript.svelte.js';
   import { locale, t } from '#lib/i18n/index.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { CLARIFICATION_LABELS } from '#lib/chat/clarificationLabels.js';
@@ -66,9 +64,18 @@
   // The next message's files (ADR-0093), uploaded one at a time to the Team they were selected for.
   const messageFiles = new MessageFiles(attachmentRefusalText, () => (attachmentsUnavailable ? '' : chatTeamId));
   let attachmentInput = $state();
-  // Every change replaces the list or the turn it changes, never a field in place, so no turn needs a deep proxy.
-  let turns = $state.raw([]);
-  let nextRenderKey = 0;
+  // The Team's turns and the history behind them (lib/chat/transcript.svelte.js).
+  const transcript = new Transcript({
+    teamId: () => chatTeamId,
+    mounted: () => mounted,
+    team: (teamId) => $teamContext.teams.find((entry) => entry.id === teamId),
+    words: () => words,
+    error: () => error,
+    setError,
+    clearError,
+    loadFailed: () => copy.loadFailed,
+    connect: (teamId) => connectSocket(teamId),
+  });
   // The turn in flight, its progress, and its receipt (lib/chat/turn.svelte.js).
   const liveTurn = new ChatTurn();
 
@@ -153,21 +160,9 @@
   // busy (reconnecting, its history being checked) at the moment the navigation ends.
   let focusWanted = $state(false);
   let stopButton = $state();
-  let turnsViewport = $state();
-  let scrollRequest = 0;
   let capabilityObjective = null;
   let promptHistoryIndex = -1;
-  let historyLoading = $state(true);
-  // A conversation the session kept shows at once, readable, while the head checks it is still current: the chat
-  // connects, and the composer opens, only after that.
-  let historyChecking = $state(false);
-  let historyWorking = $state(false);
-  let historyBefore = $state(null);
-  // Earlier history loads when the top of the transcript is in view, only after the opening scroll has settled.
-  let olderHistoryArmed = $state(false);
-  let olderHistoryFailed = $state(false);
   let historySentinel = $state();
-  let historyGeneration = 0;
 
   let copy = $derived($t('chatPage'));
   // The chat's words for its transcript (chat/turns.js): its copy and the localized Assistant-limit refusal.
@@ -190,28 +185,28 @@
   let placeholder = $derived($t('chatPage.placeholder', { team: teamName }));
   let thinking = $derived(copy.sending);
   // How each Routine card was answered, so a reloaded card shows its answer, never its buttons again.
-  let answers = $derived(cardAnswers(turns));
-  let exchanges = $derived(groupExchanges(turns, answers));
+  let answers = $derived(cardAnswers(transcript.turns));
+  let exchanges = $derived(groupExchanges(transcript.turns, answers));
   // Each exchange's calendar day in the viewer's timezone (chat/days.js says which time an item carries); a header
   // opens each day, and "today" moves at the viewer's midnight.
   const instantOf = turnInstants();
   let today = $state(calendarDay(Date.now()));
   let days = $derived(exchangeDays(exchanges, instantOf));
-  $effect(() => instantOf.retain(turns));
-  let installPlanWorking = $derived(turns.some((turn) => (
+  $effect(() => instantOf.retain(transcript.turns));
+  let installPlanWorking = $derived(transcript.turns.some((turn) => (
     ['planned', 'installing'].includes(turn.installPlan?.state)
   )));
-  let lifecycleWorking = $derived(turns.some((turn) => (
+  let lifecycleWorking = $derived(transcript.turns.some((turn) => (
     turn.lifecycle?.state === 'working'
   )) || installPlanWorking);
   let historyHydrating = $derived(
-    Boolean(chatTeamId) && (historyLoading || socketTeamId !== chatTeamId),
+    Boolean(chatTeamId) && (transcript.loading || socketTeamId !== chatTeamId),
   );
   // A connection that is opening is about to sync, so the composer stays read-only from the history load through the
   // first sync instead of accepting text for a moment and dropping what is typed when the sync starts.
   let socketOpening = $derived(Boolean(socket) && !socketReady);
   let composerBusy = $derived(
-    liveTurn.busy || liveTurn.syncing || socketOpening || lifecycleOutcomePending !== null || historyHydrating || historyChecking,
+    liveTurn.busy || liveTurn.syncing || socketOpening || lifecycleOutcomePending !== null || historyHydrating || transcript.checking,
   );
   // The Brain and fast-routing menus stay open while Admin reconnects, so a change they sent can say how it ended; what
   // they would send waits for the connection on its own.
@@ -282,8 +277,8 @@
   let liveAnswers = $state(new Map());
 
   function answerClarification(exchange, { composed }) {
-    const userKey = nextRenderKey;
-    if (submitMessage(composed) && turns.at(-1)?.renderKey === userKey) {
+    const userKey = transcript.nextKey;
+    if (submitMessage(composed) && transcript.turns.at(-1)?.renderKey === userKey) {
       liveAnswers = new Map(liveAnswers).set(userKey, exchange.assistant.renderKey);
     }
   }
@@ -312,282 +307,18 @@
     composerBusy || questionOpen || brainSaving || keyRequired || !chatTeamId,
   );
 
-  // The turns of history rows, keeping the render identity of a row already shown.
-  function historyTurns(entries, team) {
-    const keys = new Map(turns.filter((turn) => turn.historyId).map((turn) => [turn.historyId, turn.renderKey]));
-    return entries.map((entry) => historyTurn(entry, team.name, keys.get(entry.id) ?? nextRenderKey++, words));
-  }
-
-  // The Team's conversation as its head holds it (`view`, as a reload would open it) opens the transcript. A history
-  // that could not be read says why and the chat connects without it; once the head reads it after all, the
-  // conversation opens from it.
-  async function hydrateHistory(teamId, generation, view, connect) {
-    try {
-      const team = $teamContext.teams.find((entry) => entry.id === teamId);
-      if (!team) throw new Error(copy.loadFailed);
-      turns = historyTurns(view.entries, team);
-      historyBefore = view.before;
-      historyLoading = false;
-      if (turns.length > 0) await revealLatestExchange({ instant: true });
-      return true;
-    } catch (reason) {
-      failHydration(teamId, generation, reason, connect);
-      return false;
-    }
-  }
-
-  function failHydration(teamId, generation, reason, connect) {
-    if (generation !== historyGeneration || chatTeamId !== teamId) return;
-    historyLoading = false;
-    setError(
-      copy.loadFailed,
-      reason instanceof Error ? reason.message : copy.loadFailed,
-    );
-    connect();
-  }
-
-  async function loadOlderHistory() {
-    const teamId = chatTeamId;
-    const before = historyBefore;
-    if (!teamId || !before || historyWorking) return;
-    historyWorking = true;
-    const generation = historyGeneration;
-    try {
-      const page = await listChatHistory(call, teamId, before);
-      if (generation !== historyGeneration || chatTeamId !== teamId) return;
-      // An older page must move the cursor, or automatic loading would request the same page forever.
-      if (page.before === before || (page.entries.length === 0 && page.before !== null)) {
-        throw new Error(copy.loadFailed);
-      }
-      const known = new Set(turns.map((turn) => turn.historyId).filter(Boolean));
-      if (page.entries.some((entry) => known.has(entry.id))) throw new Error(copy.loadFailed);
-      const team = $teamContext.teams.find((entry) => entry.id === teamId);
-      if (!team) throw new Error(copy.loadFailed);
-      // Measure where the reader is now, not when the request started, so prepending never moves their view.
-      const viewport = turnsViewport;
-      const previousHeight = viewport?.scrollHeight ?? 0;
-      const previousTop = viewport?.scrollTop ?? 0;
-      turns = [
-        ...page.entries.map((entry) => historyTurn(entry, team.name, nextRenderKey++, words)),
-        ...turns,
-      ];
-      historyBefore = page.before;
-      // The loading status leaves in the same update, so the correction measures the layout the reader will see.
-      historyWorking = false;
-      await tick();
-      if (viewport && viewport === turnsViewport) {
-        viewport.scrollTop = previousTop + viewport.scrollHeight - previousHeight;
-      }
-      // Only an earlier page's own failure ends with it; any other error on screen stays.
-      if (error === copy.loadFailed) clearError();
-    } catch (reason) {
-      if (generation === historyGeneration && chatTeamId === teamId) {
-        olderHistoryFailed = true;
-        setError(
-          copy.loadFailed,
-          reason instanceof Error ? reason.message : copy.loadFailed,
-        );
-      }
-    } finally {
-      if (generation === historyGeneration && chatTeamId === teamId) historyWorking = false;
-    }
-  }
-
-  function retryOlderHistory() {
-    olderHistoryFailed = false;
-    void loadOlderHistory();
-  }
-
-  // Admin delivers Routine notices on its own schedule (ADR-0086) and says so on the session socket (ADR-0114): while a
-  // Local Team's conversation is open, its history head (`historyHead`) reads the history written since it last read,
-  // and the Team's Routines follow their own topic. The chat's view of the history holds, of the Routine notices, only
-  // each Routine's creation; its runs are its own history, which its panel reads. Only Routine rows merge into the
-  // transcript, by identity and version: a new row, or a newer version of a shown one, moves to the end as a reload
-  // would show it. The rest of the conversation, the draft, and the reader's place stay as they are; a reader already at
-  // the end follows the new row. When more was written than one refresh reads, the transcript starts again from what it
-  // read, as a reload shows it, and earlier history continues from where the refresh stopped. What the head reads while
-  // a turn or history is in motion waits, in order, until the conversation is idle again.
-  const FOLLOW_SLACK = 48;
-  let headQueue = [];
-  let headWaiting = $state(0);
-  let headApplying = false;
-
   // A row is never added while history or a turn is in motion, so never under a message still waiting for its reply:
   // a turn is busy from its send on. A message whose turn ended without a reply (stopped or failed) waits for nothing.
   function routineMergeIdle() {
-    return !composerBusy && !historyWorking;
-  }
-
-  async function applyHead(teamId, value) {
-    const team = $teamContext.teams.find((entry) => entry.id === teamId);
-    if (!team) return;
-    if (value.restart) {
-      turns = value.entries.map((entry) => historyTurn(entry, team.name, nextRenderKey++, words));
-      historyBefore = value.before;
-      await revealLatestExchange({ instant: true });
-      return;
-    }
-    const shown = new Map(turns.filter((turn) => turn.routineRun || turn.routineAnswer).map((turn) => [
-      turn.historyId, turn.routineRun?.version ?? 0,
-    ]));
-    const arrived = newerRoutineEntries(shown, value.entries);
-    if (arrived.length === 0) return;
-    const viewport = turnsViewport;
-    const following = Boolean(viewport) &&
-      viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= FOLLOW_SLACK;
-    turns = withArrived(
-      turns,
-      arrived.map((entry) => historyTurn(entry, team.name, nextRenderKey++, words)),
-      (turn) => turn.historyId,
-    );
-    if (following) await revealLatestExchange();
-  }
-
-  async function drainHead(teamId) {
-    if (headApplying) return;
-    headApplying = true;
-    try {
-      while (headQueue.length && chatTeamId === teamId && !historyHydrating && routineMergeIdle()) {
-        const value = headQueue.shift();
-        headWaiting = headQueue.length;
-        await applyHead(teamId, value);
-      }
-    } finally {
-      headApplying = false;
-    }
-  }
-
-  // The Team's history head and Routines are followed as the Team opens: the history is first read once its
-  // subscription is in place, so a Routine notice written meanwhile is never missed (ADR-0114). The session keeps the
-  // head (`chatHistory`), so a conversation shown before opens at once; the chat connects only once the head says it is
-  // current, and until then every value the head reads replaces the conversation, so nothing the channel restores is
-  // ever laid on a conversation older than Admin's.
-  let stopTeamTopics = () => {};
-
-  function watchTeam(teamId, generation) {
-    stopTeamTopics();
-    stopTeamTopics = () => {};
-    headQueue = [];
-    headWaiting = 0;
-    historyChecking = false;
-    if (!teamId) return;
-    // The chat connects once, after the history opened the conversation or failed to.
-    let connected = false;
-    const connect = () => {
-      if (connected || generation !== historyGeneration) return;
-      connected = true;
-      connectSocket(teamId);
-    };
-    const head = chatHistory(teamId);
-    const watching = () => generation === historyGeneration && mounted && chatTeamId === teamId;
-    let hydrated = false;
-    let failed = false;
-    let applied = null;
-    let latest = null;
-    let refusal = null;
-
-    // Whether the head's value can open the conversation: one that outgrew what a session keeps is read again from its
-    // newest page first.
-    function opens(value) {
-      if (value.view) return true;
-      void head.restart();
-      return false;
-    }
-
-    async function settle(opened) {
-      for (;;) {
-        const outcome = await head.current();
-        if (!watching()) return;
-        if (outcome === 'refused') {
-          // As when the history could not be read at all: nothing of the kept conversation stays, and the chat
-          // connects without it; a later read opens the conversation.
-          turns = [];
-          historyBefore = null;
-          hydrated = false;
-          failed = true;
-          historyChecking = false;
-          historyLoading = false;
-          failHydration(teamId, generation, refusal ?? new Error(copy.loadFailed), connect);
-          return;
-        }
-        if (outcome === 'current' && latest?.view) break;
-        if (outcome === 'current') opens(latest);
-      }
-      const ok = await opened;
-      if (!watching()) return;
-      historyChecking = false;
-      if (!ok) return;
-      if (error === copy.loadFailed) clearError();
-      olderHistoryArmed = true;
-      connect();
-    }
-
-    const stopHead = head.subscribe((state) => {
-      if (generation !== historyGeneration) return;
-      if (state.status === 'error') refusal = state.error;
-      if (state.status !== 'ready' || state.value === applied) {
-        if (state.status === 'error' || state.failing) {
-          // A history never read says why and the chat connects without it; a kept one being read again waits for the
-          // read, unless Admin refuses it.
-          if (!hydrated && !failed && (!historyChecking || state.status === 'error')) {
-            failed = true;
-            historyChecking = false;
-            failHydration(teamId, generation, state.error ?? state.failing, connect);
-          } else if (historyChecking) {
-            // The kept conversation stays readable while it is read again; the chat waits for the read.
-            setError(copy.loadFailed, (state.error ?? state.failing)?.message ?? copy.loadFailed);
-          }
-        }
-        return;
-      }
-      applied = state.value;
-      latest = state.value;
-      if (!hydrated) {
-        if (!opens(state.value)) {
-          // A kept conversation that outgrew what a session keeps: the chat waits for its newest page.
-          if (!connected) historyChecking = true;
-          return;
-        }
-        hydrated = true;
-        const opened = hydrateHistory(teamId, generation, state.value.view, connect);
-        // A conversation opened after the chat already connected without it (its history failed at first) is shown as
-        // it is; otherwise the chat connects once it is current.
-        if (connected) {
-          void opened.then((ok) => {
-            if (!ok || !watching()) return;
-            if (error === copy.loadFailed) clearError();
-            olderHistoryArmed = true;
-          });
-          return;
-        }
-        historyChecking = true;
-        void settle(opened);
-        return;
-      }
-      if (historyChecking) {
-        const team = $teamContext.teams.find((entry) => entry.id === teamId);
-        if (!team || !opens(state.value)) return;
-        const viewport = turnsViewport;
-        const following = Boolean(viewport) &&
-          viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= FOLLOW_SLACK;
-        turns = historyTurns(state.value.view.entries, team);
-        historyBefore = state.value.view.before;
-        if (following) void revealLatestExchange({ instant: true });
-        return;
-      }
-      headQueue.push(state.value);
-      headWaiting = headQueue.length;
-    });
-    const stopRoutines = showTeamRoutines(teamId);
-    stopTeamTopics = () => {
-      stopHead();
-      stopRoutines();
-    };
+    return !composerBusy && !transcript.working;
   }
 
   // What the head read while the conversation was in motion is applied, in order, once it is idle again.
   $effect(() => {
-    if (headWaiting && chatTeamId && !historyHydrating && routineMergeIdle()) void drainHead(chatTeamId);
+    const teamId = chatTeamId;
+    if (transcript.waiting && teamId && !historyHydrating && routineMergeIdle()) {
+      void transcript.drain(teamId, () => chatTeamId === teamId && !historyHydrating && routineMergeIdle());
+    }
   });
 
   $effect(() => {
@@ -598,9 +329,7 @@
 
   // A plan's frame adds or updates its turn; a new turn takes the next render identity.
   function applyInstallPlanEvent(incoming, receipt) {
-    const next = installPlanTurns(turns, incoming, receipt, nextRenderKey, words);
-    if (next.length > turns.length) nextRenderKey += 1;
-    turns = next;
+    transcript.extend((key) => installPlanTurns(transcript.turns, incoming, receipt, key, words));
   }
 
   function captureUninstallIcon(proposalId, assistantId, teamId) {
@@ -612,7 +341,7 @@
     const promise = snapshotIcon(teamId, assistantId, controller.signal).then((snapshot) => {
       if (!snapshot) return;
       captured = true;
-      turns = turns.map((turn) => (
+      transcript.turns = transcript.turns.map((turn) => (
         turn.lifecycle?.proposal_id === proposalId &&
         turn.lifecycle.assistant.id === assistantId
           ? { ...turn, lifecycle: { ...turn.lifecycle, iconSnapshot: snapshot } }
@@ -643,7 +372,7 @@
     clearLifecycleExpiry(proposalId);
     lifecycleExpiryTimers.set(proposalId, setTimeout(() => {
       lifecycleExpiryTimers.delete(proposalId);
-      turns = turns.map((turn) => (
+      transcript.turns = transcript.turns.map((turn) => (
         turn.lifecycle?.proposal_id === proposalId && turn.lifecycle.state === 'proposed'
           ? { ...turn, lifecycle: { ...turn.lifecycle, state: 'expired' } }
           : turn
@@ -654,17 +383,20 @@
   function expireSocketLifecycles() {
     for (const timer of lifecycleExpiryTimers.values()) clearTimeout(timer);
     lifecycleExpiryTimers.clear();
-    turns = expiredTurns(turns);
+    transcript.turns = expiredTurns(transcript.turns);
   }
 
   // A proposal adds its card, with its expiry and icon snapshot; a later frame moves it on. True when the uninstall ended.
   function applyLifecycleEvent(incoming, receipt) {
-    const next = lifecycleTurns(turns, incoming, receipt, nextRenderKey, words);
-    if (next.turns.length > turns.length) nextRenderKey += 1;
-    turns = next.turns;
+    let terminal = false;
+    transcript.extend((key) => {
+      const next = lifecycleTurns(transcript.turns, incoming, receipt, key, words);
+      terminal = next.terminal;
+      return next.turns;
+    });
     if (incoming.state !== 'proposed') {
       clearLifecycleExpiry(incoming.proposal_id);
-      return next.terminal;
+      return terminal;
     }
     scheduleLifecycleExpiry(incoming.proposal_id, incoming.expires_in);
     void captureUninstallIcon(
@@ -672,7 +404,7 @@
       incoming.assistant.id,
       incoming.team_id,
     );
-    return next.terminal;
+    return terminal;
   }
 
   async function appendUninstallOutcome(incoming) {
@@ -683,9 +415,9 @@
       lifecycleOutcomePending?.assistantId !== incoming.assistant_id ||
       chatTeamId !== incoming.team_id
     ) return;
-    const index = lifecycleTurnIndex(turns, incoming.proposal_id);
+    const index = lifecycleTurnIndex(transcript.turns, incoming.proposal_id);
     if (index < 0) return;
-    const uninstall = turns[index].lifecycle;
+    const uninstall = transcript.turns[index].lifecycle;
     if (
       uninstall.state !== 'uninstalled' ||
       uninstall.assistant.id !== incoming.assistant_id ||
@@ -706,12 +438,12 @@
       $teamContext.selectedTeamId !== incoming.team_id ||
       $teamContext.activeAssistantIds.includes(incoming.assistant_id)
     ) throw new Error('uninstalled Assistant inventory mismatch');
-    turns = turns.map((turn, turnIndex) => (
+    transcript.turns = transcript.turns.map((turn, turnIndex) => (
       turnIndex === index
         ? { ...turn, lifecycle: { ...turn.lifecycle, completionAnnounced: true } }
         : turn
     ));
-    void revealLatestExchange();
+    void transcript.reveal();
   }
 
   // An uninstall's outcome is announced once Team's inventory confirms the Assistant is gone. A read that fails keeps
@@ -866,19 +598,6 @@
     document.getElementById(`assistant-lifecycle-${proposalId}`)?.focus({ preventScroll: true });
   }
 
-  async function revealLatestExchange({ instant = false } = {}) {
-    const request = ++scrollRequest;
-    await tick();
-    if (request !== scrollRequest || !turnsViewport) return;
-    const latest = turnsViewport.querySelector('.exchange:last-of-type');
-    if (!latest) return;
-    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    latest.scrollIntoView({
-      block: 'start',
-      behavior: instant || reducedMotion ? 'auto' : 'smooth',
-    });
-  }
-
   function resetChallengeState() {
     integration.reset();
     human.reset();
@@ -1004,7 +723,7 @@
       resetChallengeState();
       return;
     }
-    if (liveTurn.busy && turns.length > 0) {
+    if (liveTurn.busy && transcript.turns.length > 0) {
       liveTurn.busy = false;
       liveTurn.stopping = false;
       resetChallengeState();
@@ -1051,18 +770,17 @@
   function guidanceFrame(incoming) {
     liveTurn.requireRunning('Assistant guidance event');
     capabilityObjective = null;
-    turns = [...turns, {
-      renderKey: nextRenderKey++,
+    transcript.append({
       role: 'assistant',
       text: escapeMarkdownText(incoming.reply),
       author: incoming.team_name,
       receipt: liveTurn.receipt(),
-    }];
+    });
     liveTurn.busy = false;
     liveTurn.stopping = false;
     liveTurn.resetProgress();
     clearError();
-    void revealLatestExchange();
+    void transcript.reveal();
   }
 
   // An uninstall proposal or its outcome; only an outcome ends the turn.
@@ -1092,14 +810,13 @@
     resetChallengeState();
     liveTurn.clearInstalled();
     if (incoming.type === 'done') {
-      turns = [...turns, {
-        renderKey: nextRenderKey++,
+      transcript.append({
         role: 'assistant',
         text: incoming.reply,
         author: incoming.team_name,
         receipt,
         ...replyFields(incoming),
-      }];
+      });
       clearError();
     } else if (incoming.type === 'stopped') {
       clearError();
@@ -1178,20 +895,12 @@
     if (nextTeamId && draftTeamId && draftTeamId !== nextTeamId) draft = '';
     if (nextTeamId) draftTeamId = nextTeamId;
     promptHistoryIndex = -1;
-    turns = [];
     liveTurn.busy = false;
-    historyBefore = null;
-    historyWorking = false;
-    olderHistoryArmed = false;
-    olderHistoryFailed = false;
-    historyLoading = Boolean(nextTeamId);
-    const generation = ++historyGeneration;
     liveTurn.resetProgress();
-    scrollRequest += 1;
     integrationsOpen = false;
     resetChallengeState();
     clearError();
-    watchTeam(nextTeamId, generation);
+    transcript.open(nextTeamId);
   }
 
   function closeIntegrations() {
@@ -1290,8 +999,7 @@
     liveTurn.resetProgress();
     clearError();
     if (projectUserTurn) {
-      turns = [...turns, {
-        renderKey: nextRenderKey++,
+      transcript.append({
         role: 'user',
         text: normalized,
         ...(resumedObjective ? { resumedObjective } : {}),
@@ -1302,8 +1010,8 @@
             )),
           }
           : {}),
-      }];
-      void revealLatestExchange();
+      });
+      void transcript.reveal();
     }
     try {
       socket.send(frame);
@@ -1327,14 +1035,14 @@
   }
 
   function proposedLifecycle(proposalId) {
-    return turns.some((turn) => turn.lifecycle?.proposal_id === proposalId && turn.lifecycle.state === 'proposed');
+    return transcript.turns.some((turn) => turn.lifecycle?.proposal_id === proposalId && turn.lifecycle.state === 'proposed');
   }
 
   async function submitLifecycleDecision(decision) {
     if (lifecycleDecisionPending) return false;
     lifecycleDecisionPending = true;
     try {
-      const pendingUninstall = turns.findLast((turn) => (
+      const pendingUninstall = transcript.turns.findLast((turn) => (
         turn.lifecycle?.state === 'proposed'
       ))?.lifecycle;
       if (decision === 'yes' && pendingUninstall && chatTeamId) {
@@ -1375,7 +1083,7 @@
   }
 
   function sentPrompts() {
-    return turns.filter((turn) => turn.role === 'user').map((turn) => turn.text);
+    return transcript.turns.filter((turn) => turn.role === 'user').map((turn) => turn.text);
   }
 
   function navigatePromptHistory(event) {
@@ -1435,10 +1143,10 @@
   // A fresh observer after every load reports whether the top is still in view, so a short page keeps filling.
   $effect(() => {
     const sentinel = historySentinel;
-    const root = turnsViewport;
-    if (!olderHistoryArmed || olderHistoryFailed || historyWorking || !sentinel || !root) return;
+    const root = transcript.viewport;
+    if (!transcript.olderArmed || transcript.olderFailed || transcript.working || !sentinel || !root) return;
     const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) void loadOlderHistory();
+      if (entries.some((entry) => entry.isIntersecting)) void transcript.loadOlder();
     }, { root, rootMargin: '240px 0px 0px 0px' });
     observer.observe(sentinel);
     return () => observer.disconnect();
@@ -1467,7 +1175,7 @@
     const oauthFailedOnReturn = oauthReturnFailure(location.href);
     const initialTeamId = chatTeamId;
     if (initialTeamId !== socketTeamId) activateTeam(initialTeamId);
-    else historyLoading = false;
+    else transcript.loading = false;
     if (oauthFailedOnReturn) {
       liveTurn.busy = false;
       liveTurn.resetProgress();
@@ -1478,8 +1186,7 @@
       document.removeEventListener('focusin', trackFocus);
       forgetProtocolFailures();
       mounted = false;
-      historyGeneration += 1;
-      stopTeamTopics();
+      transcript.close();
       closeSocket();
       clearLifecycleIconCaptures();
       // Files belong to the message being written here; leaving the chat stops their uploads.
@@ -1498,33 +1205,33 @@
       <div class="chat-workspace">
         <section
           class="conversation"
-          class:empty-conversation={turns.length === 0}
+          class:empty-conversation={transcript.turns.length === 0}
           aria-label={teamName}
           aria-busy={composerBusy && !integration.challenge && !human.challenge}
           inert={historyHydrating}
         >
         <p class="live-status sr-only" aria-live="polite" aria-atomic="true">{liveStatus}</p>
-        {#if historyBefore && !olderHistoryFailed}
+        {#if transcript.before && !transcript.olderFailed}
           <p id="chat-history-hint" class="sr-only">{copy.olderHint}</p>
         {/if}
         <ScrollArea
           class="turns"
-          bind:element={turnsViewport}
-          aria-describedby={historyBefore && !olderHistoryFailed ? 'chat-history-hint' : undefined}
+          bind:element={transcript.viewport}
+          aria-describedby={transcript.before && !transcript.olderFailed ? 'chat-history-hint' : undefined}
         >
-          {#if historyBefore}
+          {#if transcript.before}
             <div class="history-older" bind:this={historySentinel}>
-              {#if olderHistoryFailed}
+              {#if transcript.olderFailed}
                 <Button
                   variant="ghost"
                   size="compact"
                   type="button"
-                  onclick={retryOlderHistory}
-                  disabled={historyWorking}
+                  onclick={() => transcript.retryOlder()}
+                  disabled={transcript.working}
                 >
                   {copy.olderMessages}
                 </Button>
-              {:else if historyWorking}
+              {:else if transcript.working}
                 <p class="history-older-status" role="status">{copy.olderLoading}</p>
               {/if}
             </div>
