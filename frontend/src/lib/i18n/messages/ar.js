@@ -375,7 +375,6 @@ export default {
       title: 'الخطوات',
       step: '{assistant} · {action}',
       clock: '{format} لكل تشغيل',
-      clockText: '{text} (بين الأقواس المعقوصة تاريخ كل تشغيل: D اليوم، M الشهر، YYYY السنة، +N بعد N أيام، ورمز اللغة هو لغة اسم الشهر)',
       clocks: {
         date: 'التاريخ',
       },

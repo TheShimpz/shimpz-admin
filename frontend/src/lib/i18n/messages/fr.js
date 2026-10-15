@@ -375,7 +375,6 @@ export default {
       title: 'Étapes',
       step: '{assistant} · {action}',
       clock: '{format} de chaque exécution',
-      clockText: '{text} (entre accolades, la date de chaque exécution : D jour, M mois, YYYY année, +N jours plus tard et la langue du nom du mois)',
       clocks: {
         date: 'la date',
       },

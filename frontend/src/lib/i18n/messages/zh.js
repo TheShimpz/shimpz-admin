@@ -375,7 +375,6 @@ export default {
       title: '步骤',
       step: '{assistant} · {action}',
       clock: '每次运行的{format}',
-      clockText: '{text}（花括号内为每次运行的日期：D 为日，M 为月，YYYY 为年，+N 表示 N 天后，语言代码为月份名称的语言）',
       clocks: {
         date: '日期',
       },

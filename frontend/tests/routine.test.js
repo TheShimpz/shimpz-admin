@@ -383,7 +383,7 @@ test('a Routine card is admitted only whole, and its inputs say where each value
   // A dated text shows its whole template, each date in braces with what its notes mean.
   const dated = input({ origin: 'clock', value: 'notícias {D month YYYY|pt}' });
   assert.equal(parseRoutineProposal(withInput(dated)).steps[0].inputs[0].value, dated.value);
-  assert.equal(proposalInputValue(dated, copy.proposal, copy.plan), fill(copy.plan.clockText, { text: dated.value }));
+  assert.equal(proposalInputValue(dated, copy.proposal, copy.plan), dated.value);
   for (const value of ['no date', 'a‮b {D}', 7]) {
     assert.throws(() => parseRoutineProposal(withInput(input({ origin: 'clock', value }))), RoutineError, String(value));
   }

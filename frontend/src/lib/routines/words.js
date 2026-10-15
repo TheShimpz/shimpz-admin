@@ -97,7 +97,7 @@ export function inputWords(input, copy) {
   if (input.source === 'literal') return literalWords(input.value);
   if (input.source === 'run_clock') {
     // The run date, or the preview of a text whose dates in braces each run writes for its own date.
-    return input.value === 'date' ? fill(copy.clock, { format: copy.clocks.date }) : fill(copy.clockText, { text: input.value });
+    return input.value === 'date' ? fill(copy.clock, { format: copy.clocks.date }) : input.value;
   }
   const n = input.step;
   if (input.where !== null) {
@@ -446,7 +446,7 @@ export function refusalWords(refusal, copy) {
  */
 export function proposalInputValue(input, copy, planCopy) {
   if (input.origin === 'request' || input.origin === 'assistant') return literalWords(input.value);
-  if (input.origin === 'clock') return input.value === null ? copy.origins.clock : fill(planCopy.clockText, { text: input.value });
+  if (input.origin === 'clock') return input.value ?? copy.origins.clock;
   const path = [input.pointer, input.item ?? ''].filter(Boolean).map((pointer) => pointerWords(pointer, planCopy));
   const origin = input.origin === 'selector'
     ? fill(copy.origins.selector, { n: input.step, member: humanizeId(input.where.member), value: whereWords(input.where) })

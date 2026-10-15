@@ -375,7 +375,6 @@ export default {
       title: 'Pasos',
       step: '{assistant} · {action}',
       clock: '{format} de cada ejecución',
-      clockText: '{text} (entre llaves, la fecha de cada ejecución: D día, M mes, YYYY año, +N días después y el idioma del nombre del mes)',
       clocks: {
         date: 'la fecha',
       },
