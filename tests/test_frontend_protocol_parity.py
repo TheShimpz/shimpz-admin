@@ -150,7 +150,7 @@ class FrontendIdentifierParityTests(unittest.TestCase):
         source = IDS.read_text(encoding="utf-8")
 
         def exported(name: str) -> str:
-            match = re.search(rf"^export const {name} = (.+);$", source, re.MULTILINE)
+            match = re.search(rf"^(?:export )?const {name} = (.+);$", source, re.MULTILINE)
             if match is None:
                 raise AssertionError(f"{name} is missing from the browser validators")
             return match[1]

@@ -5,7 +5,7 @@ import { listAssistantCatalog, listInstalledAssistants } from '../assistants/api
 import { synced } from '../session/synced.js';
 import { exactKeys, jsonObject, LocalApiError, publicError, safeApiError } from '../api.js';
 import { codePointLength, isShownText } from '../grammar.js';
-import { ASSISTANT_ID_RE, MAX_TEAM_NAME_CHARS, TEAM_ID_RE, TRACE_ID_RE } from '../ids.js';
+import { ASSISTANT_ID_RE, MAX_TEAM_NAME_CHARS, OPAQUE_ID_RE, TEAM_ID_RE } from '../ids.js';
 
 const MAX_TEAMS = 128;
 const MAX_PASSWORD_CHARS = 4096;
@@ -38,7 +38,7 @@ export const teamContext = writable(emptyContext());
 function hasExactEnvelopeKeys(value, expected) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const keys = Object.keys(value);
-  if ('trace_id' in value && (typeof value.trace_id !== 'string' || !TRACE_ID_RE.test(value.trace_id))) {
+  if ('trace_id' in value && (typeof value.trace_id !== 'string' || !OPAQUE_ID_RE.test(value.trace_id))) {
     return false;
   }
   const payloadKeys = keys.filter((key) => key !== 'trace_id').sort();

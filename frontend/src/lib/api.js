@@ -1,7 +1,7 @@
 // How Admin's answers are admitted: the one error a refused or invalid answer becomes, the JSON body, exact key sets with
 // Team's optional trace id, and the safe public message an answer may carry.
 
-import { TRACE_ID_RE } from './ids.js';
+import { OPAQUE_ID_RE } from './ids.js';
 
 // Team's closed refusal of a fresh install beyond the Team's MAX_TEAM_ASSISTANTS (HTTP 409); Admin localizes it.
 export const ASSISTANT_LIMIT_REACHED = 'assistant_limit_reached';
@@ -34,7 +34,7 @@ export function exactEnvelope(value, keys) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const traced = 'trace_id' in value;
   return exactKeys(value, traced ? [...keys, 'trace_id'] : keys) &&
-    (!traced || (typeof value.trace_id === 'string' && TRACE_ID_RE.test(value.trace_id)));
+    (!traced || (typeof value.trace_id === 'string' && OPAQUE_ID_RE.test(value.trace_id)));
 }
 
 export function safeApiError(body, fallback) {

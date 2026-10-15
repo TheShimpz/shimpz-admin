@@ -10,14 +10,13 @@ export const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 export const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 // One public Creator handle, as the Store catalog and Team's stage labels admit it.
 export const PUBLIC_CREATOR_RE = /^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
-export const ACTION_ID_RE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
-export const MAX_ASSISTANT_ID_CHARS = 40;
-export const MAX_IDENTIFIER_CHARS = 64;
-export const MAX_ACTION_ID_CHARS = 128;
+const ACTION_ID_RE = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
+const MAX_ASSISTANT_ID_CHARS = 40;
+const MAX_IDENTIFIER_CHARS = 64;
+const MAX_ACTION_ID_CHARS = 128;
 export const OPAQUE_ID_RE = /^[0-9a-f]{32}$/;
 // A content digest as Team and Developers name an image, an icon, a source, a plan, or a language pack.
 export const DIGEST_RE = /^sha256:[0-9a-f]{64}$/;
-export const TRACE_ID_RE = OPAQUE_ID_RE;
 
 // A Team's display name, at most this many code points (Team's MAX_TEAM_NAME_CHARS).
 export const MAX_TEAM_NAME_CHARS = 80;
