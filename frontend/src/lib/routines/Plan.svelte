@@ -18,7 +18,7 @@
   // and the saved keys an Action uses by name only. A revision that changed while it was read is never mixed with the
   // new one: `onchanged` reads the Routine again, which brings its new summary. Every value is Team's escaped preview,
   // rendered as text, never as Markdown or HTML.
-  let { teamId, routine, copy, locale, onchanged = () => {} } = $props();
+  let { teamId, routine, copy, locale, onchanged } = $props();
 
   // Only the newest read of the newest revision may apply.
   const paging = new PagedList();

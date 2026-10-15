@@ -47,9 +47,9 @@
   // full (the result it shows and its step records), and its icon its execution details. The menu's far end keeps one icon
   // per action on every page: Pause or Resume, and Delete, which turns the whole panel into its confirmation: the
   // Supervisor's password and a second factor, and nothing else until it is deleted or canceled.
-  // `runs` and `incidents` are the Team's, which the panel reads for this Routine only. `onback` adds a Back control that
-  // returns to the list the panel was opened from; Escape then goes back as well.
-  let { teamId, teamName, routine, runs = [], incidents = [], copy, onclose, ondeleted, onback = null } = $props();
+  // `runs` and `incidents` are the Team's, which the panel reads for this Routine only. `onback` is its Back control,
+  // which returns to the list the panel was opened from; Escape then goes back as well.
+  let { teamId, teamName, routine, runs = [], incidents = [], copy, onclose, ondeleted, onback } = $props();
 
   const id = $props.id();
   let dialog = $state();
@@ -290,8 +290,8 @@
   title={confirming ? fill(copy.deletion.title, { name: routine.name }) : routine.name}
   frameClass={[confirming && 'frame--deletion', Boolean(pending) && !confirming && 'frame--deciding']}
   open={Boolean(pending) && !confirming}
-  closable={!confirming} onback={onback && !confirming ? back : null}
-  oncancel={confirming ? stay : onback ? back : undefined} {onclose}>
+  closable={!confirming} onback={confirming ? null : back}
+  oncancel={confirming ? stay : back} {onclose}>
     {#snippet tag()}
       {#if !confirming && word}<RoutineTag label={copy.status[word]} icon={STATUS_TAGS[word].icon} tone={STATUS_TAGS[word].tone} />{/if}
     {/snippet}

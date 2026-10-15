@@ -25,7 +25,7 @@
   // again, and Create confirms it. All of it is escaped text. A card past its lifetime is no
   // longer shown.
   // `answered` is how the person already answered this card, kept in the transcript, so a reload never offers it again.
-  let { teamId, proposal, copy, disabled = false, answered = '', onrewrite = () => false } = $props();
+  let { teamId, proposal, copy, disabled = false, answered = '', onrewrite } = $props();
 
   // Edit turns the description into the prompt that records the Routine again: sending it revokes this card and
   // sends the edited text as the person's next message, so the Routine's ordinary flow asks for anything it lacks.
