@@ -143,7 +143,6 @@
   // Nothing appears piece by piece: until the Team and the Assistant's sources are known a skeleton in the page's own
   // shape stands in for all of it; then the icon, name, and action show together, and until the details arrive their
   // line and the page body stay skeletons.
-  let pending = $derived(loading);
   let detailsPending = $derived(
     !loading && validAssistant && !['missing', 'unverified'].includes(target.mode) && detailsPhase === 'loading',
   );
@@ -471,12 +470,12 @@
   </div>
 {/snippet}
 
-<article class="sheet" aria-busy={pending || detailsPending}>
+<article class="sheet" aria-busy={loading || detailsPending}>
   <header class="hero">
     <TextLink class="back" href={`/assistants/${activeTeam ? `?team=${encodeURIComponent(activeTeam.id)}` : ''}`}>
       <span aria-hidden="true">‹</span> {pageCopy.back}
     </TextLink>
-    {#if pending}
+    {#if loading}
       <div class="hero-row" aria-hidden="true">
         <Skeleton class="icon-skeleton" width="6rem" height="6rem" />
         <div class="identity">
@@ -534,7 +533,7 @@
     <Notice variant="info">{storeCopy.localNoTeam}</Notice>
   {/if}
 
-  {#if pending}
+  {#if loading}
     {@render bodySkeleton()}
   {:else if !validAssistant || target.mode === 'missing'}
     <p class="missing">{pageCopy.notFound}</p>
