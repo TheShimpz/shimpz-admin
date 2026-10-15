@@ -17,7 +17,7 @@ MIN_RUN_TIMEOUT_SECONDS = 15 * 60
 RUN_TIMEOUT_MARGIN_SECONDS = 5 * 60
 # A person's answer resumes a run whose active time Admin was never told, so it waits as long as any run may spend.
 RESUME_TIMEOUT_SECONDS = routine_run_contract.MAX_ACTIVE_SECONDS + RUN_TIMEOUT_MARGIN_SECONDS
-# "held": a compiled run Team holds as an incident for recovery; "recovered": one its recovery completed (ADR-0092).
+# "held": a replayed run Team holds as an incident for recovery; "recovered": one its recovery completed (ADR-0092).
 RUN_STATUSES = frozenset({"done", "recovered", "failed", "denied", "stopped", "frozen", "held"})
 # Team admits at most this many deliveries in one notice acknowledgment.
 MAX_ACK_DELIVERIES = 256
