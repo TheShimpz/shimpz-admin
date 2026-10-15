@@ -3,15 +3,15 @@
   import { localizedStepLabel } from './projection.js';
 
   let {
-    label = 'I’m processing…',
-    steps = [],
-    currentIndex = -1,
-    elapsedText = 'Elapsed time',
-    progressLabels = {},
-    teamName = 'Team',
-    assistantNames = new Map(),
+    label,
+    steps,
+    currentIndex,
+    elapsedText,
+    progressLabels,
+    teamName,
+    assistantNames,
     // When the turn started (ms since the epoch): the turn owns it, so the count survives this view being shown again.
-    startedAt = Date.now(),
+    startedAt,
   } = $props();
   let elapsed = $state(0);
 
