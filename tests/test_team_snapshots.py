@@ -14,20 +14,8 @@ sys.path.insert(0, str(ROOT / "backend"))
 from team import bridge, snapshots, transport
 
 IMAGE_ID = "sha256:" + "c" * 64
-# One staged snapshot's page as Team answers it: Team HTTP protocol `assistant_details`.
-DETAILS = {
-    "locale": "pt",
-    "assistant_id": "shimpz-cloudflare",
-    "assistant_version": "1.4.0",
-    "name": "Shimpz Cloudflare",
-    "creators": ["@shimpz"],
-    "summary": "Publica alterações de DNS com segurança.",
-    "description": "Navegue pelas suas zonas e publique registros só depois da sua aprovação.",
-    "links": {"github": "https://github.com/TheShimpz"},
-    "actions": [{"id": "list-zones", "effect": "read_only", "description": "Liste suas zonas."}],
-    "integrations": [{"id": "cloudflare", "provider": "cloudflare"}],
-    "stored_inputs": [],
-}
+# One staged snapshot's page as Team answers it: the first valid `assistant_details` vector of Team's HTTP protocol.
+DETAILS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["assistant_details"]["valid"][0]
 
 
 class SnapshotListTests(unittest.TestCase):
