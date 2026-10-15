@@ -1,9 +1,9 @@
 // Serve the built Admin UI for the browser tests the way Admin's backend does: a real asset when the path maps to
 // one, otherwise the SPA's index.html; `/api` is never served here (the tests answer it), except a file's download,
-// which a browser saves only from a real response, never from one a test fulfilled: admitted by the Fetch Metadata Admin
-// admits (backend/browser.py same_origin_download), it answers DOWNLOAD_FIXTURE with the headers Admin's download sends,
-// and refuses any other request as Admin does. In CI, `build/` is the UI copied out of the Admin image, so the suite exercises
-// the shipping artifact.
+// which a browser saves only from a real response, never from one a test fulfilled: admitted by the Fetch Metadata
+// Admin admits (backend/browser.py same_origin_fetch with DOWNLOAD_DESTINATIONS), it answers DOWNLOAD_FIXTURE with
+// the headers Admin's download sends, and refuses any other request as Admin does. In CI, `build/` is the UI copied
+// out of the Admin image, so the suite exercises the shipping artifact.
 // Every response carries the Content-Security-Policy backend/browser.py builds for this origin, its inline bootstrap
 // hashed the same way, so the whole suite runs under the enforced script and Trusted Types policy.
 import { createHash } from 'node:crypto';
