@@ -80,7 +80,7 @@ export function receiptSteps(events, durationMs) {
   const projection = createExecutionProjection();
   for (const event of events) if (event.origin === 'team') extendExecutionProjection(projection, event);
   const steps = projection.steps;
-  // A reply restored from history, or one whose Team steps this page never saw, has no receipt.
+  // A reply whose Team steps its page never saw has no receipt.
   if (steps.length === 0 || !Number.isSafeInteger(durationMs) || durationMs < 0) return steps;
   const measured = steps.reduce((sum, step) => sum + (Number.isSafeInteger(step.elapsed_ms) ? step.elapsed_ms : 0), 0);
   const rest = durationMs - measured;

@@ -133,6 +133,15 @@ const STARTS = {
     runs: [],
     reorder: 'unavailable-once',
   }),
+  // Every reply lists the Team steps of its turn under its usage line, and the history keeps them with the reply as
+  // Admin does, so a reload opens the same steps (ADR-0082).
+  'chat-receipt': () => ({
+    session: authenticatedLocalSession(),
+    teams: [...TEAMS],
+    routines: [],
+    runs: [],
+    receipt: true,
+  }),
   routines: () => ({
     session: authenticatedLocalSession(),
     teams: [TEAM],
@@ -656,6 +665,52 @@ function chatReply(state, frame) {
   };
 }
 
+// The progress frames of a receipt scenario's turn: Admin prepares the request, Team gathers its context, calls its
+// model, runs one Action, and calls its model again, then Admin validates the reply.
+const ZONES_ACTION = Object.freeze({ assistant_id: 'shimpz-cloudflare', action: 'list-zones', index: 1, total: 1 });
+const RECEIPT_STEPS = Object.freeze([
+  { origin: 'admin', phase: 'admin-preparation', state: 'started' },
+  { origin: 'admin', phase: 'admin-preparation', state: 'finished', elapsed_ms: 20 },
+  { origin: 'team', phase: 'team-context', state: 'started' },
+  { origin: 'team', phase: 'team-context', state: 'finished', elapsed_ms: 9 },
+  { origin: 'team', phase: 'model', state: 'started' },
+  { origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 1240 },
+  { origin: 'team', phase: 'action', state: 'started', ...ZONES_ACTION },
+  { origin: 'team', phase: 'action', state: 'finished', elapsed_ms: 70, ...ZONES_ACTION },
+  { origin: 'team', phase: 'model', state: 'started' },
+  { origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 800 },
+  { origin: 'admin', phase: 'reply-validation', state: 'started' },
+  { origin: 'admin', phase: 'reply-validation', state: 'finished', elapsed_ms: 5 },
+]);
+
+// One receipt turn's frames, its reply last; its rows join the history as Admin writes them: the reply keeps the Team
+// steps the browser received, each with the delivery it came in, and Admin's own steps stay out (ADR-0082).
+function receiptTurn(state, frame) {
+  const progress = RECEIPT_STEPS.map((step, index) => ({ type: 'progress', seq: index + 1, ...step }));
+  const reply = structuredClone(chatReply(state, frame));
+  state.sequence += 1;
+  const turn = `${'c'.repeat(24)}${state.sequence.toString(16).padStart(8, '0')}`;
+  const at = '2026-10-03T12:00:00Z';
+  const receipt = progress
+    .filter((event) => event.origin === 'team')
+    .map(({ type: _type, ...event }) => ({ segment: 0, ...event }));
+  state.history = [
+    ...state.history,
+    { id: `${turn}:user`, created_at: at, kind: 'message', role: 'user', text: frame.message },
+    {
+      id: `${turn}:reply`,
+      created_at: at,
+      kind: 'message',
+      role: 'assistant',
+      text: reply.reply,
+      author: reply.team_name,
+      usage: structuredClone(reply.usage),
+      receipt,
+    },
+  ];
+  return [...progress, reply];
+}
+
 /**
  * The rows of a Team's history in the view Admin reads: the chat's view holds, of the Routine notices, only each
  * Routine's creation; a Routine's own view (`routine`, its id) holds only its runs, healthy rollups, and missed runs.
@@ -800,6 +855,7 @@ export function createScenario(name = 'ready', locale = 'en') {
           recordAttachedTurn(state, frame, reply);
           return [reply];
         }
+        if (frame?.type === 'chat' && state.receipt) return receiptTurn(state, frame);
         if (frame?.type === 'chat') return [structuredClone(chatReply(state, frame))];
         return [];
       },

@@ -72,6 +72,8 @@ export function replyFields(source) {
   return {
     ...(source.clarification ? { clarification: source.clarification } : {}),
     ...(source.usage ? { usage: taskUsageSummary(source.usage) } : {}),
+    // A stored reply keeps the steps its page was shown; a live one collects them from its progress frames.
+    ...(source.receipt ? { receipt: source.receipt } : {}),
     ...(source.routine_proposal ? { routineProposal: source.routine_proposal } : {}),
     ...(source.routine_refusal ? { routineRefusal: source.routine_refusal } : {}),
     ...(source.routine_question ? { routineQuestion: source.routine_question } : {}),

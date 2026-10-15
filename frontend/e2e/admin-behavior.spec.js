@@ -3896,6 +3896,26 @@ test('a reply restored from history shows its usage line, and one stored without
   await expect(replies.nth(1)).not.toContainText('tokens');
 });
 
+test('a reloaded reply opens the same recorded steps from its usage line', async ({ page }) => {
+  await routeScenario(page, 'chat-receipt');
+  await page.goto('/chat/?team=marketing');
+  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  const reply = page.getByRole('article', { name: 'Marketing' });
+  await expect(reply).toHaveCount(1);
+  // Team's four steps and the rest of its clock; Admin's own steps are not among them.
+  const steps = async () => {
+    await reply.locator('.receipt summary').click();
+    const rows = reply.locator('.receipt ol li');
+    await expect(rows).toHaveCount(5);
+    return rows.allTextContents();
+  };
+  const live = await steps();
+  await page.reload();
+  await expect(reply).toHaveCount(1);
+  expect(await steps()).toEqual(live);
+});
+
 test('a done frame with malformed usage is refused and shows no reply', async ({ page }) => {
   await routeReadyChat(page, { usage: { duration_ms: 1, models: [] } });
   await page.goto('/chat/');

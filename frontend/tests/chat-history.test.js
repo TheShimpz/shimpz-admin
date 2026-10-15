@@ -304,6 +304,52 @@ test('a restored reply whose usage breaks the closed shape, or a user message wi
   }
 });
 
+// Team's model call, then, in the delivery after a human request, the Action it ran (ADR-0082).
+const RECEIPT = [
+  { segment: 0, seq: 2, origin: 'team', phase: 'model', state: 'started' },
+  { segment: 0, seq: 3, origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 40 },
+  {
+    segment: 1, seq: 1, origin: 'team', phase: 'action', state: 'finished', elapsed_ms: 7,
+    assistant_id: 'shimpz-cloudflare', action: 'list-zones', index: 1, total: 1,
+  },
+];
+
+test('a restored reply keeps the receipt its page was shown, and one stored without a receipt has none', async () => {
+  const [recorded] = (await historyOf(replyEntry({ usage: USAGE, receipt: RECEIPT }))).entries;
+  assert.deepEqual(recorded.receipt, RECEIPT);
+  const [plain] = (await historyOf(replyEntry({ usage: USAGE }))).entries;
+  assert.equal(Object.hasOwn(plain, 'receipt'), false);
+});
+
+test('a restored receipt outside its closed shape, or a user message with one, fails closed', async () => {
+  const [model] = RECEIPT;
+  for (const receipt of [
+    null,
+    [],
+    {},
+    [null],
+    [{ ...model, origin: 'admin', phase: 'admin-preparation' }],
+    [{ ...model, state: 'finished' }],
+    [{ ...model, secret: 'value' }],
+    [{ ...model, segment: 1 }],
+    [{ ...model, segment: '0' }],
+    [{ ...model, seq: 0 }],
+    [model, model],
+    [model, { ...RECEIPT[1], segment: 2 }],
+    Array.from({ length: 2053 }, (_item, index) => ({ ...model, seq: index + 1 })),
+  ]) {
+    await assert.rejects(
+      historyOf(replyEntry({ receipt })),
+      (error) => error instanceof LocalApiError && error.message.includes('history is invalid'),
+      JSON.stringify(receipt)?.slice(0, 200),
+    );
+  }
+  await assert.rejects(
+    historyOf({ id: `${TURN_A}:user`, created_at: AT, kind: 'message', role: 'user', text: 'hello', receipt: RECEIPT }),
+    (error) => error instanceof LocalApiError,
+  );
+});
+
 const FILE = { id: 'f'.repeat(32), name: 'contract.pdf', media_type: 'application/pdf', size: 2048 };
 
 test('a reloaded user message keeps the references of the files it carried, and nothing more', async () => {

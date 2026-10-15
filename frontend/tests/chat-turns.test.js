@@ -21,6 +21,7 @@ import {
   replyFields,
   shownUsage,
 } from '../src/lib/chat/turns.js';
+import { receiptSteps } from '../src/lib/chat/progress/projection.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 
 const WORDS = { ...messages.en.chatPage, limit: 'This Team already has the maximum of 16 Assistants.' };
@@ -107,19 +108,50 @@ test('a receipt\'s rows set the usage duration shown, never below Team\'s own', 
 
 test('a reply carries the same fields from a live frame and from its stored row', () => {
   const usage = { duration_ms: 1200, models: [] };
+  const receipt = [{ segment: 0, seq: 1, origin: 'team', phase: 'model', state: 'started' }];
   const source = {
     clarification: { question: 'Which zone?' },
     usage,
+    receipt,
     routine_proposal: { proposal_id: 'p' },
     routine_refusal: { code: 'x' },
     routine_question: { code: 'y' },
   };
   const fields = replyFields(source);
   assert.deepEqual(Object.keys(fields), [
-    'clarification', 'usage', 'routineProposal', 'routineRefusal', 'routineQuestion',
+    'clarification', 'usage', 'receipt', 'routineProposal', 'routineRefusal', 'routineQuestion',
   ]);
+  assert.equal(fields.receipt, receipt);
   assert.equal(fields.usage.durationMs, 1200);
   assert.deepEqual(replyFields({}), {});
+});
+
+test('a stored reply restores the receipt its live turn showed', () => {
+  const usage = { duration_ms: 6240, models: [] };
+  // The live page's receipt: Admin's own step, Team's model call, and, after a human request, the Action it ran.
+  const live = [
+    { type: 'progress', seq: 1, origin: 'admin', phase: 'admin-preparation', state: 'started', segment: 0 },
+    { type: 'progress', seq: 2, origin: 'team', phase: 'model', state: 'started', segment: 0 },
+    { type: 'progress', seq: 3, origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 1240, segment: 0 },
+    {
+      type: 'progress', seq: 1, origin: 'team', phase: 'action', state: 'finished', elapsed_ms: 70, segment: 1,
+      assistant_id: 'shimpz-cloudflare', action: 'list-zones', index: 1, total: 1,
+    },
+  ];
+  // What Admin stores of it: Team's steps, each with its delivery and sequence.
+  const stored = live.filter((event) => event.origin === 'team').map(({ type: _type, ...event }) => event);
+  const liveTurn = { role: 'assistant', text: 'Two zones.', author: 'Marketing', receipt: live, ...replyFields({ usage }) };
+  const restored = historyTurn({
+    id: 'r', createdAt: '2026-10-02T21:15:00Z', kind: 'message', role: 'assistant', text: 'Two zones.',
+    author: 'Marketing', usage, receipt: stored,
+  }, 'Marketing', 4, WORDS);
+  assert.deepEqual(restored.receipt, stored);
+  assert.deepEqual(shownUsage(restored), shownUsage(liveTurn));
+  assert.equal(shownUsage(restored).receipt, true);
+  const steps = (turn) => receiptSteps(turn.receipt, turn.usage.durationMs)
+    .map(({ key: _key, ...step }) => step);
+  assert.deepEqual(steps(restored), steps(liveTurn));
+  assert.equal(steps(restored).length, 3);
 });
 
 test('an install ends in words: installed or already installed, refused at the limit or otherwise, or cut off', () => {

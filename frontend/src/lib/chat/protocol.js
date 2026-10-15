@@ -856,6 +856,83 @@ export function parseRoutineReply(value, clarification) {
   return { [present[0]]: ROUTINE_REPLIES[present[0]](value[present[0]]) };
 }
 
+// One progress occurrence's closed metadata, which a progress frame and a stored receipt carry beside `extra` keys;
+// any other shape throws.
+function progressEvent(value, extra) {
+  const action = value.phase === 'action';
+  const finished = value.state === 'finished';
+  const expected = [...extra, 'seq', 'origin', 'phase', 'state'];
+  if (finished) expected.push('elapsed_ms');
+  if (action) expected.push('assistant_id', 'index', 'action', 'total');
+  const validAuthority = (
+    (value.origin === 'admin' && ADMIN_PROGRESS_PHASES.has(value.phase)) ||
+    (value.origin === 'team' && !ADMIN_PROGRESS_PHASES.has(value.phase))
+  );
+  if (
+    !exactKeys(value, expected) ||
+    !Number.isSafeInteger(value.seq) ||
+    value.seq < 1 ||
+    value.seq > MAX_CHAT_PROGRESS_EVENTS ||
+    !validAuthority ||
+    !CHAT_PROGRESS_PHASE_SET.has(value.phase) ||
+    !CHAT_PROGRESS_STATES.has(value.state) ||
+    (finished && (
+      !Number.isSafeInteger(value.elapsed_ms) ||
+      value.elapsed_ms < 0 ||
+      value.elapsed_ms > MAX_CHAT_PROGRESS_ELAPSED_MS
+    )) ||
+    (action && (
+      !isAssistantId(value.assistant_id) ||
+      !isActionId(value.action) ||
+      !Number.isSafeInteger(value.index) ||
+      !Number.isSafeInteger(value.total) ||
+      value.index < 1 ||
+      value.total < value.index ||
+      value.total > 512
+    ))
+  ) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  const event = {
+    seq: value.seq,
+    origin: value.origin,
+    phase: value.phase,
+    state: value.state,
+  };
+  if (finished) event.elapsed_ms = value.elapsed_ms;
+  if (action) {
+    event.assistant_id = value.assistant_id;
+    event.index = value.index;
+    event.action = value.action;
+    event.total = value.total;
+  }
+  return event;
+}
+
+/**
+ * A reply's stored receipt (ADR-0082): the Team progress its page was shown, in the order it arrived, each event with
+ * the delivery it came in, numbered in order from 0, and its sequence, which only increases within a delivery. Any
+ * other shape throws.
+ */
+export function parseReceipt(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > MAX_CHAT_PROGRESS_EVENTS) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
+  const receipt = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      throw new LocalApiError('The local chat response is invalid.');
+    }
+    const event = progressEvent(item, ['segment']);
+    const previous = receipt.at(-1) ?? { segment: 0, seq: 0 };
+    const ordered = (item.segment === previous.segment && event.seq > previous.seq) ||
+      (receipt.length > 0 && item.segment === previous.segment + 1);
+    if (event.origin !== 'team' || !ordered) throw new LocalApiError('The local chat response is invalid.');
+    receipt.push({ ...event, segment: item.segment });
+  }
+  return receipt;
+}
+
 /** Parse one public chat frame. Raw provider events and extra fields fail closed. */
 export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -934,57 +1011,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
     }
     return { type: 'error', status: value.status, detail: value.detail };
   }
-  if (value.type === 'progress') {
-    const action = value.phase === 'action';
-    const finished = value.state === 'finished';
-    const expected = ['type', 'seq', 'origin', 'phase', 'state'];
-    if (finished) expected.push('elapsed_ms');
-    if (action) expected.push('assistant_id', 'index', 'action', 'total');
-    const validAuthority = (
-      (value.origin === 'admin' && ADMIN_PROGRESS_PHASES.has(value.phase)) ||
-      (value.origin === 'team' && !ADMIN_PROGRESS_PHASES.has(value.phase))
-    );
-    if (
-      !exactKeys(value, expected) ||
-      !Number.isSafeInteger(value.seq) ||
-      value.seq < 1 ||
-      value.seq > MAX_CHAT_PROGRESS_EVENTS ||
-      !validAuthority ||
-      !CHAT_PROGRESS_PHASE_SET.has(value.phase) ||
-      !CHAT_PROGRESS_STATES.has(value.state) ||
-      (finished && (
-        !Number.isSafeInteger(value.elapsed_ms) ||
-        value.elapsed_ms < 0 ||
-        value.elapsed_ms > MAX_CHAT_PROGRESS_ELAPSED_MS
-      )) ||
-      (action && (
-        !isAssistantId(value.assistant_id) ||
-        !isActionId(value.action) ||
-        !Number.isSafeInteger(value.index) ||
-        !Number.isSafeInteger(value.total) ||
-        value.index < 1 ||
-        value.total < value.index ||
-        value.total > 512
-      ))
-    ) {
-      throw new LocalApiError('The local chat response is invalid.');
-    }
-    const event = {
-      type: 'progress',
-      seq: value.seq,
-      origin: value.origin,
-      phase: value.phase,
-      state: value.state,
-    };
-    if (finished) event.elapsed_ms = value.elapsed_ms;
-    if (action) {
-      event.assistant_id = value.assistant_id;
-      event.index = value.index;
-      event.action = value.action;
-      event.total = value.total;
-    }
-    return event;
-  }
+  if (value.type === 'progress') return { type: 'progress', ...progressEvent(value, ['type']) };
   if (value.type === 'stopped' && exactKeys(value, ['type'])) return { type: 'stopped' };
   if (value.type === 'sync-empty' && exactKeys(value, ['type'])) return { type: 'sync-empty' };
   if (value.type === 'human-response-rejected') {

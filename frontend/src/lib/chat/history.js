@@ -6,6 +6,7 @@ import {
   MAX_GUIDANCE_REPLY_CHARS,
   MAX_MESSAGE_CHARS,
   MAX_REPLY_CHARS,
+  parseReceipt,
   parseRoutineReply,
 } from './protocol.js';
 import { isName as isRoutineName, parseRoutineRunEntry } from '../routines/protocol.js';
@@ -109,6 +110,8 @@ function messageEntry(value, suffix, status) {
   const clarified = assistant && Object.hasOwn(value, 'clarification');
   // What the turn consumed is kept with its reply only; it is the same closed shape as the done frame's.
   const used = assistant && Object.hasOwn(value, 'usage');
+  // The steps its page was shown are kept with a reply, so a reload lists them under its usage line again (ADR-0082).
+  const recorded = assistant && Object.hasOwn(value, 'receipt');
   // A recording turn's Routine card, question, or refusal is kept with its reply, so a reload shows it again (ADR-0101).
   const routineKeys = assistant
     ? ['routine_proposal', 'routine_refusal', 'routine_question'].filter((key) => Object.hasOwn(value, key))
@@ -124,14 +127,17 @@ function messageEntry(value, suffix, status) {
       'text',
       ...(clarified ? ['clarification'] : []),
       ...(used ? ['usage'] : []),
+      ...(recorded ? ['receipt'] : []),
       ...routineKeys,
     ]
     : ['id', 'kind', 'role', 'text', ...(attached ? ['files'] : [])];
   let usage = null;
+  let receipt = null;
   let files = null;
   let routine = {};
   try {
     if (used) usage = parseTaskUsage(value.usage);
+    if (recorded) receipt = parseReceipt(value.receipt);
     if (attached) files = parseFileReferences(value.files);
     if (routineKeys.length) routine = parseRoutineReply(value, value.clarification ?? null);
   } catch {
@@ -164,6 +170,7 @@ function messageEntry(value, suffix, status) {
     ...(assistant ? { author: publicText(value.author, MAX_TEAM_NAME_CHARS, status) } : {}),
     ...(clarification ? { clarification } : {}),
     ...(usage ? { usage } : {}),
+    ...(receipt ? { receipt } : {}),
     ...(files ? { files } : {}),
     ...routine,
   };
