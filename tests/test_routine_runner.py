@@ -241,6 +241,7 @@ class RoutineHistoryViewTests(ChatHistoryCase):
             SKIPPED,
             DONE,
             HEALTHY,
+            {**DEFINED["streak-paused"], "routine_id": routine},
             _run(DONE, "d", routine_id=other),
             _run(DONE, "e", team_id="team_2"),
             DELETED,
@@ -249,9 +250,10 @@ class RoutineHistoryViewTests(ChatHistoryCase):
         # The chat: the conversation and each Routine's creation, nothing it did or became afterwards.
         chat = history.page("team_1")["entries"]
         self.assertEqual([entry.get("outcome", entry["kind"]) for entry in chat], ["message", "created"])
-        # A Routine's history: its runs, healthy rollups, and missed runs, never another Routine's or Team's.
+        # A Routine's history: its runs, healthy rollups, missed runs, and its pause after a failure streak, never
+        # another Routine's or Team's.
         own = history.page("team_1", routine=routine)["entries"]
-        self.assertEqual([entry["outcome"] for entry in own], ["skipped", "done", "healthy"])
+        self.assertEqual([entry["outcome"] for entry in own], ["skipped", "done", "healthy", "streak-paused"])
         self.assertEqual(
             [entry["id"] for entry in history.page("team_1", routine=other)["entries"]], [f"{'d' * 32}:routine"]
         )
