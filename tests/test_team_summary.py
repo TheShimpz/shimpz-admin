@@ -103,7 +103,10 @@ class InstalledDetailsTests(unittest.TestCase):
             self.assertEqual(caught.exception.status_code, 502)
 
     def test_passes_a_bounded_team_failure_through(self) -> None:
-        invalid = {"error": "Assistant needs replacement", "code": "assistant-manifest-invalid"}
+        invalid = {
+            "error": "installed Assistant manifest failed its reviewed contract",
+            "code": "assistant-manifest-invalid",
+        }
         response = self.details(transport.TeamResponse(409, invalid))
         self.assertEqual(response.status_code, 409)
         self.assertEqual(json.loads(response.body), invalid)

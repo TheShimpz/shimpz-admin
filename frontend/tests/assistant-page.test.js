@@ -191,7 +191,7 @@ test('refuses a page for another Assistant, language, or shape, and too many sta
 test('reports a refused or unavailable page with its code and refuses an invalid request before any fetch', async () => {
   await assert.rejects(
     assistantDetails(
-      async () => json(409, { error: 'Assistant needs replacement', code: 'assistant-manifest-invalid' }),
+      async () => json(409, { error: 'installed Assistant manifest failed its reviewed contract', code: 'assistant-manifest-invalid' }),
       'marketing',
       'shimpz-cloudflare',
       'pt',
