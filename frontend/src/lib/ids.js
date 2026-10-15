@@ -5,7 +5,7 @@ export const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
 // The Team HTTP protocol's identifiers (teams protocol/http/v1/identifiers.py), pinned by the Admin parity test: an
 // Assistant id and an Integration, provider, or Stored Input identifier share the Developers grammar with two bounds,
 // and an Action id has Team's wider grammar.
-export const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+const ASSISTANT_ID_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 // A canonical semantic version, as Assistant publications and stage labels carry it.
 export const SEMANTIC_VERSION_RE = /^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$/;
 // One public Creator handle, as the Store catalog and Team's stage labels admit it.
