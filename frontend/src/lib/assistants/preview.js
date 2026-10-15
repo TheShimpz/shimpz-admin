@@ -34,7 +34,8 @@ function createQueue() {
 const localQueue = createQueue();
 const publicQueue = createQueue();
 
-function abortError() {
+/** The rejection of an Assistant icon request that was aborted. */
+export function abortError() {
   return new DOMException('The Assistant icon request was aborted.', 'AbortError');
 }
 
