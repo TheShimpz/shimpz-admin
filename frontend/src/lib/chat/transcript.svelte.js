@@ -98,15 +98,16 @@ export class Transcript {
     this.#stopTopics();
   }
 
-  // History rows as new turns, each with the next render identity.
-  #fresh(entries, team) {
-    return entries.map((entry) => historyTurn(entry, team.name, this.#nextKey++, this.#host.words()));
+  // History rows as new turns, each with the next render identity unless `keys` holds the one its row already has.
+  #fresh(entries, team, keys = new Map()) {
+    return entries.map((entry) => historyTurn(entry, team.name, keys.get(entry.id) ?? this.#nextKey++, this.#host.words()));
   }
 
   // The turns of history rows, keeping the render identity of a row already shown.
   #kept(entries, team) {
-    const keys = new Map(this.turns.filter((turn) => turn.historyId).map((turn) => [turn.historyId, turn.renderKey]));
-    return entries.map((entry) => historyTurn(entry, team.name, keys.get(entry.id) ?? this.#nextKey++, this.#host.words()));
+    return this.#fresh(entries, team, new Map(
+      this.turns.filter((turn) => turn.historyId).map((turn) => [turn.historyId, turn.renderKey]),
+    ));
   }
 
   // Whether the reader is at the end of the transcript, so a new row keeps them there.
@@ -115,7 +116,7 @@ export class Transcript {
     return Boolean(viewport) && viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= FOLLOW_SLACK;
   }
 
-  #failed(reason) {
+  #reportFailure(reason) {
     const loadFailed = this.#host.loadFailed();
     this.#host.setError(loadFailed, reason instanceof Error ? reason.message : loadFailed);
   }
@@ -145,7 +146,7 @@ export class Transcript {
   #fail(teamId, generation, reason, connect) {
     if (generation !== this.#generation || this.#host.teamId() !== teamId) return;
     this.loading = false;
-    this.#failed(reason);
+    this.#reportFailure(reason);
     connect();
   }
 
@@ -185,7 +186,7 @@ export class Transcript {
     } catch (reason) {
       if (current()) {
         this.olderFailed = true;
-        this.#failed(reason);
+        this.#reportFailure(reason);
       }
     } finally {
       if (current()) this.working = false;
