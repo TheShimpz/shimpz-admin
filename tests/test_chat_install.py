@@ -34,13 +34,13 @@ def _proposal() -> assistant_proposal.UninstallProposal:
         "0.4.4",
         "published",
     )
-    return assistant_proposal.create_uninstall_proposal(
-        "team_1",
-        assistant_proposal.UninstallTarget(candidate, "@shimpz"),
-        locale="pt",
-        now=1.0,
-        proposal_id_factory=lambda: "c" * 32,
-    )
+    with mock.patch.object(assistant_proposal.secrets, "token_hex", return_value="c" * 32):
+        return assistant_proposal.create_uninstall_proposal(
+            "team_1",
+            assistant_proposal.UninstallTarget(candidate, "@shimpz"),
+            locale="pt",
+            now=1.0,
+        )
 
 
 def _connection(**changes):
