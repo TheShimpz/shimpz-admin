@@ -188,7 +188,6 @@
   );
   let teamName = $derived(activeTeam?.name ?? copy.title);
   let placeholder = $derived($t('chatPage.placeholder', { team: teamName }));
-  let thinking = $derived(copy.sending);
   // How each Routine card was answered, so a reloaded card shows its answer, never its buttons again.
   let answers = $derived(cardAnswers(transcript.turns));
   let exchanges = $derived(groupExchanges(transcript.turns, answers));
@@ -249,8 +248,8 @@
         ? copy.install.working
         : copy.uninstall.working
       : currentProgress
-      ? `${thinking} ${localizedEventLabel(currentProgress, copy.progress, { assistantName: $assistantName })}`
-      : liveTurn.busy ? thinking : '',
+      ? `${copy.sending} ${localizedEventLabel(currentProgress, copy.progress, { assistantName: $assistantName })}`
+      : liveTurn.busy ? copy.sending : '',
   );
   let contextFailed = $derived($teamContext.phase === 'error');
   let teamsKnownEmpty = $derived($teamContext.phase === 'ready' && $teamContext.teams.length === 0 && !historyHydrating);
@@ -1054,7 +1053,7 @@
           <!-- The turn in flight's live progress, shown after its exchange. -->
           {#snippet liveThinking()}
             <ShimpzThinking
-              label={thinking}
+              label={copy.sending}
               steps={liveTurn.projection.steps}
               currentIndex={liveTurn.projection.currentIndex}
               elapsedText={copy.elapsed}
