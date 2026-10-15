@@ -202,8 +202,8 @@
 {/if}
 
 <style>
-  /* One cut-corner sheet: the heading, the agent's plain description, and the run notes on top; Team's facts and every
-     step in a footer disclosure on a raised surface, its title centered. The two buttons sit under the sheet. */
+  /* One cut-corner sheet: the heading, the agent's plain description, and any warning on top; every step in a footer
+     disclosure on a raised surface, its title centered. The buttons sit under the sheet. */
   .routine-proposal {
     --label: 600 0.6rem/1.5 var(--shimpz-font-mono);
     /* The step number's column: just wide enough for two digits. */
