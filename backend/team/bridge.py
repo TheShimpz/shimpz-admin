@@ -33,7 +33,6 @@ INTENT_ROUTE_TIMEOUT_SECONDS = 25
 ASSISTANT_INSTALL_TIMEOUT_SECONDS = 360
 
 MAX_TEAMS = 128
-MAX_TEAM_NAME_CHARS = team_contract.MAX_TEAM_NAME_CHARS
 _LATIN_ASCII_EXPANSIONS = str.maketrans(
     {"æ": "ae", "đ": "d", "ð": "d", "ı": "i", "ł": "l", "ø": "o", "œ": "oe", "þ": "th"}
 )
@@ -58,6 +57,13 @@ def canonical_local_team_name(value: object) -> str:
     canonical = team_contract.canonical_local_team_name(value)
     if canonical is None:
         raise transport.TeamRequestError("team name must contain 1 to 80 trimmed characters")
+    return canonical
+
+
+def canonical_locale(value: object) -> str:
+    canonical = team_contract.canonical_locale(value)
+    if canonical is None:
+        raise transport.TeamRequestError("locale must be one interface language")
     return canonical
 
 
@@ -131,10 +137,10 @@ def bootstrap_reset_space() -> transport.TeamResponse:
 
 
 def create(team_id: object, team_name: object) -> transport.TeamResponse:
+    """Create a Local Team under a display name exactly as Team admits it (ADR-0088)."""
     canonical_id = payloads.canonical_team_id(team_id)
-    if not isinstance(team_name, str) or not team_name.strip() or len(team_name) > MAX_TEAM_NAME_CHARS:
-        raise transport.TeamRequestError("team name must be between 1 and 80 characters")
-    return transport.call("POST", f"/v1/teams/{canonical_id}/create", {"team_name": team_name.strip()})
+    name = canonical_local_team_name(team_name)
+    return transport.call("POST", f"/v1/teams/{canonical_id}/create", {"team_name": name})
 
 
 def team_inventory(response: transport.TeamResponse) -> transport.TeamResponse | list[dict[str, str]]:
@@ -380,9 +386,9 @@ def pending_chat_integrations(team_id: object) -> transport.TeamResponse:
 def open_chat_human(team_id: object, locale: object) -> transport.TeamResponse:
     """Open the Team's pending human challenge with its request copy in one interface language (ADR-0091)."""
     canonical_id = payloads.canonical_team_id(team_id)
-    if team_contract.canonical_locale(locale) is None:
-        raise transport.TeamRequestError("opening a human challenge requires one interface language")
-    return transport.call("POST", f"/v1/teams/{canonical_id}/chat/human/challenge", {"locale": locale})
+    return transport.call(
+        "POST", f"/v1/teams/{canonical_id}/chat/human/challenge", {"locale": canonical_locale(locale)}
+    )
 
 
 def resume_chat_integrations(
@@ -466,28 +472,23 @@ def list_local_assistants() -> transport.TeamResponse:
     return transport.call("GET", "/v1/local-assistants")
 
 
+def _local_assistant_path(image_id: object) -> str:
+    return f"/v1/local-assistants/{canonical_source_digest(image_id).removeprefix('sha256:')}"
+
+
 def local_assistant_icon(image_id: object) -> transport.TeamAssetResponse:
     """Return the admitted PNG preview for one exact unpublished image."""
-    digest = canonical_source_digest(image_id)
-    return transport.call_asset(f"/v1/local-assistants/{digest.removeprefix('sha256:')}/icon")
+    return transport.call_asset(f"{_local_assistant_path(image_id)}/icon")
 
 
 def local_assistant_summary(image_id: object, locale: object) -> transport.TeamResponse:
     """Return one exact unpublished image's summary in one interface language, read from its own pack."""
-    digest = canonical_source_digest(image_id)
-    canonical_locale = team_contract.canonical_locale(locale)
-    if canonical_locale is None:
-        raise transport.TeamRequestError("locale must be one interface language")
-    return transport.call("GET", f"/v1/local-assistants/{digest.removeprefix('sha256:')}/summary/{canonical_locale}")
+    return transport.call("GET", f"{_local_assistant_path(image_id)}/summary/{canonical_locale(locale)}")
 
 
 def local_assistant_details(image_id: object, locale: object) -> transport.TeamResponse:
     """Return one exact unpublished image's page in one interface language, read from its own package and pack."""
-    digest = canonical_source_digest(image_id)
-    canonical_locale = team_contract.canonical_locale(locale)
-    if canonical_locale is None:
-        raise transport.TeamRequestError("locale must be one interface language")
-    return transport.call("GET", f"/v1/local-assistants/{digest.removeprefix('sha256:')}/details/{canonical_locale}")
+    return transport.call("GET", f"{_local_assistant_path(image_id)}/details/{canonical_locale(locale)}")
 
 
 def _assistant_path(team_id: object, assistant_id: object | None = None) -> str:
@@ -506,18 +507,12 @@ def assistant_icon(team_id: object, assistant_id: object) -> transport.TeamAsset
 
 def assistant_summary(team_id: object, assistant_id: object, locale: object) -> transport.TeamResponse:
     """Return one installed Assistant's summary in one interface language, read from its binding's pack."""
-    canonical_locale = team_contract.canonical_locale(locale)
-    if canonical_locale is None:
-        raise transport.TeamRequestError("locale must be one interface language")
-    return transport.call("GET", f"{_assistant_path(team_id, assistant_id)}/summary/{canonical_locale}")
+    return transport.call("GET", f"{_assistant_path(team_id, assistant_id)}/summary/{canonical_locale(locale)}")
 
 
 def assistant_details(team_id: object, assistant_id: object, locale: object) -> transport.TeamResponse:
     """Return one installed Assistant's page in one interface language, read from its exact binding and pack."""
-    canonical_locale = team_contract.canonical_locale(locale)
-    if canonical_locale is None:
-        raise transport.TeamRequestError("locale must be one interface language")
-    return transport.call("GET", f"{_assistant_path(team_id, assistant_id)}/details/{canonical_locale}")
+    return transport.call("GET", f"{_assistant_path(team_id, assistant_id)}/details/{canonical_locale(locale)}")
 
 
 def install_assistant(team_id: object, payload: object) -> transport.TeamResponse:

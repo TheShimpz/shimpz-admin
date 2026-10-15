@@ -41,7 +41,7 @@ class TeamBridgeEdgeTests(unittest.TestCase):
     def test_simple_lifecycle_routes_use_canonical_paths(self) -> None:
         expected = transport.TeamResponse(200, {})
         with mock.patch.object(transport, "call", return_value=expected) as call:
-            self.assertEqual(bridge.create("team_1", " Marketing "), expected)
+            self.assertEqual(bridge.create("team_1", "Marketing"), expected)
             self.assertEqual(bridge.stop_chat("team_1"), expected)
             self.assertEqual(bridge.pending_chat_integrations("team_1"), expected)
             self.assertEqual(bridge.open_chat_human("team_1", "pt"), expected)
@@ -54,8 +54,9 @@ class TeamBridgeEdgeTests(unittest.TestCase):
                 mock.call("POST", "/v1/teams/team_1/chat/human/challenge", {"locale": "pt"}),
             ],
         )
-        with self.assertRaisesRegex(transport.TeamRequestError, "team name"):
-            bridge.create("team_1", " ")
+        for name in (" ", " Marketing ", "Marke\u200bting"):
+            with self.subTest(name=name), self.assertRaisesRegex(transport.TeamRequestError, "team name"):
+                bridge.create("team_1", name)
         for locale in (None, "xx"):
             with self.assertRaisesRegex(transport.TeamRequestError, "interface language"):
                 bridge.open_chat_human("team_1", locale)
