@@ -770,17 +770,13 @@ function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
   if (value.state === 'proposed') {
     if (
       !exactKeys(value, [
-        'type', 'state', 'proposal_id', 'team_id', 'reply', 'expires_in', 'assistant',
+        'type', 'state', 'proposal_id', 'team_id', 'expires_in', 'assistant',
       ]) ||
       !OPAQUE_ID_RE.test(value.proposal_id) ||
       value.team_id !== expectedTeamId ||
       !Number.isSafeInteger(value.expires_in) ||
       value.expires_in < 1 ||
-      value.expires_in > 120 ||
-      typeof value.reply !== 'string' ||
-      !value.reply.trim() ||
-      codePointLength(value.reply) > MAX_REPLY_CHARS ||
-      CHAT_TEXT_CONTROL_RE.test(value.reply)
+      value.expires_in > 120
     ) throw new LocalApiError('The local chat response is invalid.');
     return {
       type: 'assistant-uninstall',
@@ -788,7 +784,6 @@ function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
       proposal_id: value.proposal_id,
       team_id: value.team_id,
       team_name: canonicalTeam(expectedTeamName),
-      reply: value.reply,
       expires_in: value.expires_in,
       assistant: canonicalUninstallAssistant(value.assistant),
     };

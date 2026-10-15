@@ -155,7 +155,7 @@ function lifecycleFrames(frame, teamId) {
     previewProposal = previewId();
     return [{
       type: 'assistant-uninstall', state: 'proposed', proposal_id: previewProposal, team_id: teamId,
-      reply: 'Exa is installed. Should I uninstall it from this Team?', expires_in: 120,
+      expires_in: 120,
       assistant: { id: 'shimpz-exa', name: 'Exa', version: '0.3.0', creator: '@shimpz', provenance: 'local' },
     }];
   }

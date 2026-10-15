@@ -606,7 +606,6 @@ test('chat admits only the exact conversational Assistant uninstall lifecycle', 
     state: 'proposed',
     proposal_id: proposalId,
     team_id: 'team_1',
-    reply: 'The Cloudflare Assistant is installed. Should I uninstall it?',
     expires_in: 120,
     assistant: {
       id: 'shimpz-cloudflare',
@@ -700,7 +699,6 @@ test('chat rejects widened, cross-Team, secret, or malformed Assistant uninstall
     state: 'proposed',
     proposal_id: proposalId,
     team_id: 'team_1',
-    reply: 'Uninstall this Assistant?',
     expires_in: 120,
     assistant: {
       id: 'shimpz-cloudflare',
@@ -1104,12 +1102,11 @@ test('chat text is bounded by Unicode code points, as its producers count it', (
     'Marketing',
   );
   const failure = (detail) => parseChatEvent({ type: 'error', status: 503, detail }, 'team_1', 'Marketing');
-  const uninstall = (reply, name) => parseChatEvent({
+  const uninstall = (name) => parseChatEvent({
     type: 'assistant-uninstall',
     state: 'proposed',
     proposal_id: 'd'.repeat(32),
     team_id: 'team_1',
-    reply,
     expires_in: 120,
     assistant: { id: 'shimpz-cloudflare', name, version: '0.4.4', creator: '@shimpz', provenance: 'published' },
   }, 'team_1', 'Marketing');
@@ -1126,11 +1123,8 @@ test('chat text is bounded by Unicode code points, as its producers count it', (
     assert.throws(() => done(text(60_001)), /response is invalid/);
     assert.equal(failure(text(800)).detail, text(800));
     assert.throws(() => failure(text(801)), /response is invalid/);
-    const proposed = uninstall(text(60_000), text(80));
-    assert.deepEqual([proposed.reply, proposed.assistant.name], [text(60_000), text(80)]);
-    for (const args of [[text(60_001), 'Name'], ['Reply', text(81)]]) {
-      assert.throws(() => uninstall(...args), /response is invalid/);
-    }
+    assert.equal(uninstall(text(80)).assistant.name, text(80));
+    assert.throws(() => uninstall(text(81)), /response is invalid/);
   }
 });
 

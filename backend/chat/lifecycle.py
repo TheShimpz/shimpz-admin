@@ -35,7 +35,6 @@ _LIFECYCLE_EXECUTOR = BoundedThreadPoolExecutor(
 _STORE_CATALOG = store_catalog.CATALOG
 monotonic = time.monotonic
 log = logging.getLogger("shimpz-admin")
-_PROPOSAL_REPLY = "Assistant uninstall requires confirmation."
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
 
@@ -89,7 +88,6 @@ def _proposal_event(
         "state": "proposed",
         "proposal_id": proposal.proposal_id,
         "team_id": proposal.team_id,
-        "reply": _PROPOSAL_REPLY,
         "expires_in": assistant_proposal.UNINSTALL_PROPOSAL_TTL_SECONDS,
         "assistant": _assistant_identity(proposal),
     }

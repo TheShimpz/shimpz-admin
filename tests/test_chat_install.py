@@ -103,7 +103,6 @@ class ChatLifecycleTests(unittest.TestCase):
                 "state": "proposed",
                 "proposal_id": "c" * 32,
                 "team_id": "team_1",
-                "reply": "Assistant uninstall requires confirmation.",
                 "expires_in": 120,
                 # The registry summary is Team's English catalog text and is never shown with the proposal.
                 "assistant": {

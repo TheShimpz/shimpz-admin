@@ -759,7 +759,6 @@ async function routeReadyChat(page, {
               state: 'proposed',
               proposal_id: 'e'.repeat(32),
               team_id: 'marketing',
-              reply: 'Shimpz Cloudflare is installed. Should I uninstall it from this Team?',
               expires_in: 120,
               assistant: {
                 id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1', creator: '@shimpz', provenance: 'local',
