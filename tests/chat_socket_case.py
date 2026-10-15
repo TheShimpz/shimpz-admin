@@ -148,19 +148,7 @@ def uninstall_guidance_route(
 
 def resume_operations():
     """The socket's own resume operations, as its task-resume delivery receives them."""
-    socket = importlib.import_module("chat.socket")
-    task_resume = importlib.import_module("chat.task_resume")
-    plan_delivery = importlib.import_module("chat.delivery.plan")
-    return task_resume.Operations(
-        send_event=socket._send_event,
-        plan=plan_delivery.Operations(
-            send_event=socket._send_event,
-            finish_turn=socket._finish_active_turn,
-            continue_turn=socket._continue_team_turn,
-            error_terminal=socket._error_terminal,
-        ),
-        error_terminal=socket._error_terminal,
-    )
+    return importlib.import_module("chat.socket")._plan_operations()
 
 
 class ChatDeliveryCase(unittest.TestCase):

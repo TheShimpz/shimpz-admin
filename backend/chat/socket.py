@@ -8,7 +8,6 @@ import asyncio
 import concurrent.futures
 import contextlib
 import logging
-import threading
 from collections.abc import Awaitable, Callable, Mapping
 
 import supervisor as local_supervisor
@@ -611,6 +610,16 @@ async def _commit_user_history(
     return True
 
 
+def _plan_operations() -> plan_delivery.Operations:
+    """The socket's own delivery operations, read when a turn starts."""
+    return plan_delivery.Operations(
+        send_event=_send_event,
+        finish_turn=_finish_active_turn,
+        continue_turn=_continue_team_turn,
+        error_terminal=_error_terminal,
+    )
+
+
 async def _dispatch_chat(
     websocket: WebSocket,
     connection: _Connection,
@@ -638,34 +647,9 @@ async def _dispatch_chat(
     except ExecutorSaturatedError:
         await _send_event(websocket, _error_terminal(429, "Assistant routing capacity reached"))
         return
-    turn = _Turn(
-        future=preparation,
-        operation="assistant-route",
-        locale=payload["locale"],
-        lifecycle_stop=threading.Event(),
-        history_id=lifecycle.take_history_id(connection),
-        conversation=conversation,
-        request=identity,
-    )
-    connection.active = turn
+    turn = route_delivery.begin(connection, preparation, payload["locale"], conversation, identity)
     turn.delivery = asyncio.create_task(
-        route_delivery.deliver(
-            websocket,
-            connection,
-            turn,
-            team_id,
-            payload,
-            route_delivery.Operations(
-                plan=plan_delivery.Operations(
-                    send_event=_send_event,
-                    finish_turn=_finish_active_turn,
-                    continue_turn=_continue_team_turn,
-                    error_terminal=_error_terminal,
-                ),
-                finish_turn=_finish_active_turn,
-                error_terminal=_error_terminal,
-            ),
-        )
+        route_delivery.deliver(websocket, connection, turn, team_id, payload, _plan_operations())
     )
 
 
@@ -729,22 +713,7 @@ async def _dispatch(
     elif frame_type == "chat":
         await _dispatch_chat(websocket, connection, team_id, frame)
     elif frame_type == "resume-task":
-        await task_resume.dispatch(
-            websocket,
-            connection,
-            team_id,
-            frame,
-            task_resume.Operations(
-                send_event=_send_event,
-                plan=plan_delivery.Operations(
-                    send_event=_send_event,
-                    finish_turn=_finish_active_turn,
-                    continue_turn=_continue_team_turn,
-                    error_terminal=_error_terminal,
-                ),
-                error_terminal=_error_terminal,
-            ),
-        )
+        await task_resume.dispatch(websocket, connection, team_id, frame, _plan_operations())
     elif frame_type == "stop" and set(frame) == {"type"}:
         await _dispatch_stop(websocket, connection, team_id)
     elif frame_type == "human-response":

@@ -34,14 +34,6 @@ def _operations(**changes) -> plan_delivery.Operations:
     return plan_delivery.Operations(**values)
 
 
-def _route_operations() -> route_delivery.Operations:
-    return route_delivery.Operations(
-        plan=_operations(),
-        finish_turn=mock.AsyncMock(),
-        error_terminal=mock.Mock(return_value={"type": "error"}),
-    )
-
-
 async def _deliver_admitted(
     plan, operations, turn: Turn, message: str, *, connection: Connection | None = None
 ) -> None:
@@ -206,7 +198,7 @@ class PlanDeliveryEdges(unittest.TestCase):
     def test_route_delivery_handles_closed_stopped_and_invalid_results(self) -> None:
         async def scenario() -> None:
             result = assistant_route.Result("ordinary-task", preparation=assistant_plan.Preparation())
-            operations = _route_operations()
+            operations = _operations()
             await route_delivery._deliver_result(
                 mock.sentinel.websocket,
                 Connection(closed=True),
@@ -218,7 +210,7 @@ class PlanDeliveryEdges(unittest.TestCase):
             )
             operations.finish_turn.assert_not_awaited()
 
-            operations = _route_operations()
+            operations = _operations()
             await route_delivery._deliver_result(
                 mock.sentinel.websocket,
                 Connection(),
@@ -247,7 +239,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                         Turn(resolved_future(invalid), "assistant-route"),
                         "team_1",
                         {},
-                        _route_operations(),
+                        _operations(),
                         None,
                     )
 
@@ -258,7 +250,7 @@ class PlanDeliveryEdges(unittest.TestCase):
             fallback = {"message": "continue", "files": [], "assistant_ids": [], "locale": "en", "timezone": None}
             preparation = assistant_plan.Preparation()
             result = assistant_route.Result("ordinary-task", preparation=preparation)
-            operations = _route_operations()
+            operations = _operations()
             await route_delivery._deliver_result(
                 mock.sentinel.websocket,
                 Connection(),
@@ -268,7 +260,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                 operations,
                 fallback,
             )
-            operations.plan.continue_turn.assert_awaited_once_with(
+            operations.continue_turn.assert_awaited_once_with(
                 mock.sentinel.websocket,
                 mock.ANY,
                 mock.ANY,
@@ -280,7 +272,7 @@ class PlanDeliveryEdges(unittest.TestCase):
 
     def test_route_delivery_turns_router_failures_into_one_terminal_event(self) -> None:
         async def scenario() -> None:
-            operations = _route_operations()
+            operations = _operations()
             turn = Turn(None, "assistant-route")
             connection = Connection(active=turn)
             await route_delivery.deliver(
@@ -294,7 +286,7 @@ class PlanDeliveryEdges(unittest.TestCase):
             operations.finish_turn.assert_awaited_once()
             self.assertIsNone(connection.active)
 
-            operations = _route_operations()
+            operations = _operations()
             closed = Connection(closed=True)
             await route_delivery.deliver(
                 mock.sentinel.websocket,
@@ -306,7 +298,7 @@ class PlanDeliveryEdges(unittest.TestCase):
             )
             operations.finish_turn.assert_not_awaited()
 
-            operations = _route_operations()
+            operations = _operations()
             terminal = Turn(None, "assistant-route", terminal_sent=True)
             await route_delivery.deliver(
                 mock.sentinel.websocket,

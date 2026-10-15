@@ -1,25 +1,20 @@
 """Delivery for one structured Assistant intent preparation turn."""
 
 import asyncio
-from dataclasses import dataclass
+import concurrent.futures
+import threading
 
 from chat.connection import Connection, Turn
 from chat.delivery import plan as plan_delivery
 from chat.delivery import terminal as terminal_delivery
 from chat.delivery import uninstall as uninstall_delivery
 from fastapi import WebSocket
+from history import context as history_context
 from history import delivery as history_delivery
 from history import store as history
 from team import transport
 
-from chat import assistant_route
-
-
-@dataclass(frozen=True, slots=True)
-class Operations:
-    plan: plan_delivery.Operations
-    finish_turn: plan_delivery.FinishTurn
-    error_terminal: plan_delivery.ErrorTerminal
+from chat import assistant_route, lifecycle
 
 
 async def _deliver_guidance(
@@ -28,7 +23,7 @@ async def _deliver_guidance(
     turn: Turn,
     team_id: str,
     guidance: assistant_route.Guidance,
-    operations: Operations,
+    operations: plan_delivery.Operations,
 ) -> None:
     try:
         await history_delivery.guidance(team_id, turn.history_id, guidance.code, guidance.reply)
@@ -67,7 +62,7 @@ async def _deliver_result(
     turn: Turn,
     team_id: str,
     payload: dict[str, object],
-    operations: Operations,
+    operations: plan_delivery.Operations,
     fallback_payload: dict[str, object] | None,
 ) -> None:
     result = await _result(turn)
@@ -106,7 +101,7 @@ async def _deliver_result(
         and result.preparation.already_installed is None
         and result.preparation.error_status is None
     ):
-        await operations.plan.continue_turn(
+        await operations.continue_turn(
             websocket,
             connection,
             turn,
@@ -121,7 +116,7 @@ async def _deliver_result(
         team_id,
         payload,
         result.preparation,
-        operations.plan,
+        operations,
     )
 
 
@@ -131,7 +126,7 @@ async def deliver(
     turn: Turn,
     team_id: str,
     payload: dict[str, object],
-    operations: Operations,
+    operations: plan_delivery.Operations,
     *,
     fallback_payload: dict[str, object] | None = None,
 ) -> None:
@@ -157,3 +152,24 @@ async def deliver(
     finally:
         if connection.active is turn and turn.operation == "assistant-route":
             connection.active = None
+
+
+def begin(
+    connection: Connection,
+    preparation: concurrent.futures.Future,
+    locale: str,
+    conversation: tuple[history_context.Entry, ...],
+    request: dict[str, object],
+) -> Turn:
+    """Make the routed preparation of one sent message the connection's active turn."""
+    turn = Turn(
+        future=preparation,
+        operation="assistant-route",
+        locale=locale,
+        lifecycle_stop=threading.Event(),
+        history_id=lifecycle.take_history_id(connection),
+        conversation=conversation,
+        request=request,
+    )
+    connection.active = turn
+    return turn

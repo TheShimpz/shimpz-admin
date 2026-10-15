@@ -1,10 +1,8 @@
 """One-use Admin task resumption after a chat transport reconnect."""
 
 import asyncio
-import threading
-from dataclasses import dataclass
 
-from chat.connection import Connection, Turn, request_identity
+from chat.connection import Connection, request_identity
 from chat.delivery import plan as plan_delivery
 from chat.delivery import route as route_delivery
 from chat.executor import ExecutorSaturatedError
@@ -15,13 +13,6 @@ from team import bridge as team
 from team import transport
 
 from chat import assistant_proposal, lifecycle
-
-
-@dataclass(frozen=True, slots=True)
-class Operations:
-    send_event: plan_delivery.SendEvent
-    plan: plan_delivery.Operations
-    error_terminal: plan_delivery.ErrorTerminal
 
 
 def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], dict[str, object]]:
@@ -68,7 +59,7 @@ async def admit(
     websocket: WebSocket,
     connection: Connection,
     frame: dict[str, object],
-    operations: Operations,
+    operations: plan_delivery.Operations,
 ) -> tuple[dict[str, object], dict[str, object], dict[str, object]] | None:
     """The resumed turn's payload, its objective, and the identity of its logical send, or None after a terminal."""
     try:
@@ -93,7 +84,7 @@ async def dispatch(
     connection: Connection,
     team_id: str,
     frame: dict[str, object],
-    operations: Operations,
+    operations: plan_delivery.Operations,
 ) -> None:
     admitted = await admit(websocket, connection, frame, operations)
     if admitted is None:
@@ -117,28 +108,7 @@ async def dispatch(
     except ExecutorSaturatedError:
         await operations.send_event(websocket, operations.error_terminal(429, "Assistant routing capacity reached"))
         return
-    turn = Turn(
-        future=preparation,
-        operation="assistant-route",
-        locale=objective["locale"],
-        lifecycle_stop=threading.Event(),
-        history_id=lifecycle.take_history_id(connection),
-        conversation=conversation,
-        request=identity,
-    )
-    connection.active = turn
+    turn = route_delivery.begin(connection, preparation, objective["locale"], conversation, identity)
     turn.delivery = asyncio.create_task(
-        route_delivery.deliver(
-            websocket,
-            connection,
-            turn,
-            team_id,
-            objective,
-            route_delivery.Operations(
-                plan=operations.plan,
-                finish_turn=operations.plan.finish_turn,
-                error_terminal=operations.error_terminal,
-            ),
-            fallback_payload=payload,
-        )
+        route_delivery.deliver(websocket, connection, turn, team_id, objective, operations, fallback_payload=payload)
     )
