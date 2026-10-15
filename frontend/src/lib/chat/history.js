@@ -1,5 +1,5 @@
 import { parseFileReferences } from './attachments/files.js';
-import { parseClarification, renderClarification } from './clarification.js';
+import { parseClarification, renderClarification } from './clarification/compose.js';
 import {
   CHAT_TEXT_CONTROL_RE,
   GUIDANCE_CODES,

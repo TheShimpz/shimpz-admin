@@ -10,7 +10,7 @@ import {
   matchClarificationAnswers,
   parseClarification,
   renderClarification,
-} from '../src/lib/chat/clarification.js';
+} from '../src/lib/chat/clarification/compose.js';
 import { parseChatEvent } from '../src/lib/chat/protocol.js';
 
 const ASKED = {

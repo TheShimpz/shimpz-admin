@@ -1,7 +1,7 @@
 <script>
   import { untrack } from 'svelte';
 
-  import AnswerForm from '#lib/chat/AnswerForm.svelte';
+  import AnswerForm from '#lib/chat/clarification/AnswerForm.svelte';
 
   // A Brain multiple-choice question (ADR-0081). Answering sends the original request with the chosen answer;
   // once the exchange holds that answer, the card shows only the question and the answer.

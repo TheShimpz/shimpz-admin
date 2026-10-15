@@ -3,7 +3,7 @@
 // human-request challenge Routines reuse for frozen runs. Any other shape throws.
 
 import { parseFileDisclosure } from './attachments/files.js';
-import { parseClarification, renderClarification } from './clarification.js';
+import { parseClarification, renderClarification } from './clarification/compose.js';
 import { parseTaskUsage } from './usage.js';
 import {
   browserTimezone,

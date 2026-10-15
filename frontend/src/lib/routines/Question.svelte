@@ -1,5 +1,5 @@
 <script>
-  import AnswerForm from '#lib/chat/AnswerForm.svelte';
+  import AnswerForm from '#lib/chat/clarification/AnswerForm.svelte';
   import { questionWords } from '#lib/routines/words.js';
 
   // What Team asks before a recorded Routine can become a card (ADR-0101). The person's answer is an ordinary send,

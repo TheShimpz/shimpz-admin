@@ -2,7 +2,7 @@
   import { tick, untrack } from 'svelte';
   import { Button, RadioField, TextField } from '@shimpz/frontend';
 
-  import { composeClarifiedRequest } from '#lib/chat/clarification.js';
+  import { composeClarifiedRequest } from '#lib/chat/clarification/compose.js';
 
   // A question the person answers before their request goes on: a Brain clarification (ADR-0081) or a Routine question
   // Team asks (ADR-0101). Its host words the question and its `options`, each `{ value, label, description, answer }`

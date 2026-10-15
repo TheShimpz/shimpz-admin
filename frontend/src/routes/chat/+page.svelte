@@ -18,7 +18,7 @@
     projectedChatError,
     replyFields,
   } from '#lib/chat/turns.js';
-  import { clarifiedRequest, matchClarificationAnswers } from '#lib/chat/clarification.js';
+  import { clarifiedRequest, matchClarificationAnswers } from '#lib/chat/clarification/compose.js';
   import { promptHistoryStep } from '#lib/chat/prompts.js';
   import ChatDay from '#lib/chat/Day.svelte';
   import { calendarDay, exchangeDays, turnInstants, untilNextDay } from '#lib/chat/days.js';
@@ -34,7 +34,7 @@
   import { Transcript } from '#lib/chat/transcript.svelte.js';
   import { locale, t } from '#lib/i18n/index.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
-  import { CLARIFICATION_LABELS } from '#lib/chat/clarificationLabels.js';
+  import { CLARIFICATION_LABELS } from '#lib/chat/clarification/labels.js';
   import { routineQuestionMessages } from '#lib/routines/questionMessages.js';
   import { configureModelContext, loadModelContext, modelContext } from '#lib/brain/context.js';
   import { sessionContext } from '#lib/session/context.js';

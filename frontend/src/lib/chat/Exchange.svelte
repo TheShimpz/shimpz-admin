@@ -5,8 +5,8 @@
   import InstallPlan from '#lib/chat/lifecycle/InstallPlan.svelte';
   import Uninstall from '#lib/chat/lifecycle/Uninstall.svelte';
   import { shownUsage } from '#lib/chat/turns.js';
-  import ClarificationCard from '#lib/chat/ClarificationCard.svelte';
-  import { clarifiedRequest } from '#lib/chat/clarification.js';
+  import ClarificationCard from '#lib/chat/clarification/Card.svelte';
+  import { clarifiedRequest } from '#lib/chat/clarification/compose.js';
   import ExecutionReceipt from '#lib/chat/progress/Receipt.svelte';
   import { locale, t } from '#lib/i18n/index.js';
   import Markdown from '#lib/chat/Markdown.svelte';
