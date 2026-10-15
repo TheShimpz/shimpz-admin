@@ -137,7 +137,7 @@ def canonical_human_resume(payload: object) -> dict[str, object]:
     }
     if decision == "submit":
         value = payload["value"]
-        if not chat_ws_common._human_value(value):
+        if not chat_ws_common.human_value(value):
             raise TeamRequestError("human continuation value is invalid")
         result["value"] = value
     return result

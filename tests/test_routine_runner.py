@@ -123,7 +123,7 @@ class RoutineIdentityTests(unittest.TestCase):
     def test_the_run_segment_carries_only_the_routine_assertion_even_inside_a_session(self) -> None:
         identity = supervisor.new_identity()
         session = "v1:9999999999:0123456789abcdef:" + "a" * 64
-        bindings = transport._RequestBindings(routine=(supervisor.new_identity(), "lease-token"))
+        bindings = transport.RequestBindings(routine=(supervisor.new_identity(), "lease-token"))
         with (
             mock.patch.object(transport, "_team_token", return_value="machine-bearer"),
             transport.supervisor_session(session, local_identity=identity),

@@ -59,7 +59,7 @@ DEFAULT_BOUNDS = ByteBounds()
 
 
 @dataclass(frozen=True, slots=True, repr=False)
-class _RequestBindings:
+class RequestBindings:
     model_credential: tuple[str, str] | None = None
     human_assurance: dict[str, str] | None = None
     # The Supervisor's TypeSafe key, sent only with intent classification (ADR-0077).
@@ -68,7 +68,7 @@ class _RequestBindings:
     routine: tuple[local_supervisor.LocalIdentity, str] | None = None
 
 
-_NO_BINDINGS = _RequestBindings()
+_NO_BINDINGS = RequestBindings()
 
 _SUPERVISOR_SESSION: ContextVar[_SupervisorSession | None] = ContextVar(
     "shimpz_supervisor_session",
@@ -187,7 +187,7 @@ def _local_assertion(
     *,
     content_type: str | None,
     filename: str | None,
-    bindings: _RequestBindings,
+    bindings: RequestBindings,
 ) -> str:
     binding = _SUPERVISOR_SESSION.get()
     if binding is None:
@@ -207,7 +207,7 @@ def _request_binding(
     *,
     content_type: str | None,
     filename: str | None,
-    bindings: _RequestBindings,
+    bindings: RequestBindings,
 ) -> local_supervisor.RequestBinding:
     if filename is not None:
         if body is None or content_type is None:
@@ -337,7 +337,7 @@ def _request_headers(
     accept: str,
     content_type: str | None,
     filename: str | None,
-    bindings: _RequestBindings,
+    bindings: RequestBindings,
 ) -> dict[str, str]:
     headers = {"Accept": accept, "Authorization": f"Bearer {_team_token()}"}
     if content_type is not None:
@@ -413,7 +413,7 @@ def _exchange[Result: (TeamResponse, TeamAssetResponse)](
     entity: _Entity,
     *,
     timeout: int,
-    bindings: _RequestBindings,
+    bindings: RequestBindings,
     reading: _Reading[Result],
 ) -> Result:
     """One authenticated Team exchange, sent again once with a re-read bearer when Team refuses the cached one.
@@ -438,7 +438,7 @@ def _exchange_once[Result: (TeamResponse, TeamAssetResponse)](
     entity: _Entity,
     *,
     timeout: int,
-    bindings: _RequestBindings,
+    bindings: RequestBindings,
     reading: _Reading[Result],
 ) -> Result | None:
     """One Team exchange; None when Team refused the bearer, and unavailable on any other failure."""
@@ -489,7 +489,7 @@ def _request(
     entity: _Entity,
     *,
     timeout: int,
-    bindings: _RequestBindings = _NO_BINDINGS,
+    bindings: RequestBindings = _NO_BINDINGS,
     max_response_bytes: int = MAX_JSON_RESPONSE_BYTES,
 ) -> TeamResponse:
     return _exchange(
@@ -639,7 +639,7 @@ def _stream_request(
     body: bytes,
     *,
     timeout: int,
-    bindings: _RequestBindings,
+    bindings: RequestBindings,
     progress: ProgressSink,
 ) -> TeamResponse:
     return _exchange(
@@ -674,7 +674,7 @@ def call(
         path,
         _Entity(body, "application/json" if body is not None else None),
         timeout=timeout,
-        bindings=_RequestBindings(model_credential, decision_key=decision_key),
+        bindings=RequestBindings(model_credential, decision_key=decision_key),
         max_response_bytes=bounds.response,
     )
 
@@ -702,7 +702,7 @@ def call_stream(
     *,
     timeout: int,
     max_body_bytes: int = MAX_JSON_BODY_BYTES,
-    bindings: _RequestBindings,
+    bindings: RequestBindings,
     progress: ProgressSink,
 ) -> TeamResponse:
     body = _encode_payload(payload, max_bytes=max_body_bytes)

@@ -246,8 +246,8 @@ class WebSocketEdges(unittest.TestCase):
         }
         with self.assertRaises(websocket.FrameError):
             websocket.canonical_human_response(invalid)
-        self.assertTrue(websocket._human_value("text"))
-        self.assertFalse(websocket._human_value(["a", "a"]))
+        self.assertTrue(websocket.human_value("text"))
+        self.assertFalse(websocket.human_value(["a", "a"]))
 
 
 if __name__ == "__main__":

@@ -171,7 +171,7 @@ class TeamTransportAuthorityTest(unittest.TestCase):
                 b'{"challenge_id":"dddddddddddddddddddddddddddddddd","decision":"submit","value":true}',
                 content_type="application/json",
                 filename=None,
-                bindings=transport._RequestBindings(
+                bindings=transport.RequestBindings(
                     ("openai", "sk-test-0123456789"),
                     assurance,
                 ),

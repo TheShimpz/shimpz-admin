@@ -307,7 +307,7 @@ def chat(
         body,
         timeout=CHAT_STREAM_TIMEOUT_SECONDS,
         max_body_bytes=MAX_CHAT_JSON_BODY_BYTES,
-        bindings=transport._RequestBindings((provider, api_key)),
+        bindings=transport.RequestBindings((provider, api_key)),
         progress=progress,
     )
 
@@ -400,7 +400,7 @@ def resume_chat_integrations(
         f"/v1/teams/{canonical_id}/chat/integrations",
         body,
         timeout=CHAT_STREAM_TIMEOUT_SECONDS,
-        bindings=transport._RequestBindings((provider, api_key)),
+        bindings=transport.RequestBindings((provider, api_key)),
         progress=progress,
     )
 
@@ -432,7 +432,7 @@ def resume_chat_human(
         body,
         timeout=CHAT_STREAM_TIMEOUT_SECONDS,
         max_body_bytes=MAX_CHAT_JSON_BODY_BYTES,
-        bindings=transport._RequestBindings(
+        bindings=transport.RequestBindings(
             (provider, api_key),
             canonical_assurance,
         ),

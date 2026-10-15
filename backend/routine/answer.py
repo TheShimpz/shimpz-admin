@@ -197,7 +197,7 @@ def _resume(canonical: str, run: str, action: str, payload: dict[str, object], a
         f"/v1/teams/{canonical}/routines/runs/{run}/{action}",
         payload,
         timeout=routine_team.RESUME_TIMEOUT_SECONDS,
-        bindings=transport._RequestBindings(human_assurance=assurance),
+        bindings=transport.RequestBindings(human_assurance=assurance),
         progress=lambda _event: None,
         # A human answer is as long as a chat one may be (Team admits the same 128 KiB for both).
         max_body_bytes=team.MAX_CHAT_JSON_BODY_BYTES,

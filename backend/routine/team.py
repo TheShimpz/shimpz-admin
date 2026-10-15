@@ -71,7 +71,7 @@ def run(claimed: dict[str, object], identity: supervisor.LocalIdentity) -> str:
         # The signed segment names exactly the revision and plan its claim leased (ADR-0092).
         {"revision": claimed["revision"], "plan_digest": claimed["plan_digest"]},
         timeout=run_timeout(claimed),
-        bindings=transport._RequestBindings(routine=(identity, claimed["lease_token"])),
+        bindings=transport.RequestBindings(routine=(identity, claimed["lease_token"])),
         progress=lambda _event: None,
     )
     body = _answer(response)

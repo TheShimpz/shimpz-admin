@@ -620,7 +620,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 None,
                 content_type=None,
                 filename=None,
-                bindings=assistant_plan.team.transport._RequestBindings(),
+                bindings=assistant_plan.team.transport.RequestBindings(),
             )
             assertions.append(assertion)
             barrier.wait(timeout=1)

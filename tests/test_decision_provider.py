@@ -155,7 +155,7 @@ class DecisionHandOffTests(unittest.TestCase):
             supervisor.decision_binding(KEY),
             {"provider": "typesafe", "key_sha256": hashlib.sha256(KEY.encode()).hexdigest()},
         )
-        bindings = transport._RequestBindings(("openai", "sk-test-0123456789"), decision_key=KEY)
+        bindings = transport.RequestBindings(("openai", "sk-test-0123456789"), decision_key=KEY)
         with (
             mock.patch.object(transport, "_team_token", return_value="machine-bearer"),
             mock.patch.object(transport, "_local_assertion", return_value=None) as assertion,
@@ -184,7 +184,7 @@ class DecisionHandOffTests(unittest.TestCase):
                     accept="application/json",
                     content_type="application/json",
                     filename=None,
-                    bindings=transport._RequestBindings(("openai", "sk-test-0123456789"), decision_key=invalid),
+                    bindings=transport.RequestBindings(("openai", "sk-test-0123456789"), decision_key=invalid),
                 )
 
 

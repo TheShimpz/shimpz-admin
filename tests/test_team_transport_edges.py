@@ -89,7 +89,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
                     None,
                     content_type=None,
                     filename="file.txt",
-                    bindings=transport._RequestBindings(),
+                    bindings=transport.RequestBindings(),
                 )
             self.assertTrue(
                 transport._local_assertion(
@@ -98,7 +98,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
                     None,
                     content_type=None,
                     filename=None,
-                    bindings=transport._RequestBindings(),
+                    bindings=transport.RequestBindings(),
                 )
             )
 
@@ -183,7 +183,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
                 accept="application/json",
                 content_type=None,
                 filename=None,
-                bindings=transport._RequestBindings(("unknown", "secret-secret-secret")),
+                bindings=transport.RequestBindings(("unknown", "secret-secret-secret")),
             )
 
         _Connection.response = _Response(99)
@@ -202,7 +202,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
                     "/chat",
                     b"{}",
                     timeout=1,
-                    bindings=transport._RequestBindings(),
+                    bindings=transport.RequestBindings(),
                     progress=mock.Mock(),
                 ).status,
                 HTTPStatus.BAD_GATEWAY,
@@ -275,7 +275,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
                     lines=[terminal],
                 ),
                 lambda: transport._stream_request(
-                    "POST", "/chat", b"{}", timeout=1, bindings=transport._RequestBindings(), progress=mock.Mock()
+                    "POST", "/chat", b"{}", timeout=1, bindings=transport.RequestBindings(), progress=mock.Mock()
                 ),
                 transport.TeamResponse(200, {"ok": True}),
             ),
@@ -300,7 +300,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
                 "/chat",
                 None,
                 timeout=1,
-                bindings=transport._RequestBindings(),
+                bindings=transport.RequestBindings(),
                 progress=mock.Mock(),
             )
         for body, filename, media_type in (("bad", "x", "text/plain"), (b"x", 7, "text/plain")):
