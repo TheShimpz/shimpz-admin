@@ -725,8 +725,7 @@ def call_raw(
     *,
     filename: str,
     media_type: str,
-    timeout: int = CONTROL_TIMEOUT_SECONDS,
 ) -> TeamResponse:
     if not isinstance(body, bytes) or not isinstance(filename, str) or not isinstance(media_type, str):
         raise TeamRequestError("raw file request is invalid")
-    return _request(method, path, _Entity(body, media_type, filename), timeout=timeout)
+    return _request(method, path, _Entity(body, media_type, filename), timeout=CONTROL_TIMEOUT_SECONDS)
