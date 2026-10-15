@@ -115,7 +115,7 @@ export default {
     assistantUninstallFailureTitle: 'Assistant をアンインストールできませんでした。',
     assistantUninstallFailureLead: '結果を確認できませんでした。以下のエラーを確認して再試行してください。アンインストールは安全に繰り返せます。',
   },
-  chatContext: {
+  teamDialogs: {
     createKicker: 'チーム // 初期化',
     createTitle: 'チームを作成',
     createLead: 'この分離されたローカルワークスペースに分かりやすい名前を付けます。',
@@ -138,8 +138,6 @@ export default {
     deleteSuccessMessage: '{team} とそのすべてのデータは安全に削除されました。',
     wrongPassword: 'Supervisor パスワードが正しくありません。',
     technicalDetail: '技術詳細',
-    modelLoading: 'モデルを読み込み中…',
-    modelFailed: 'Brain を更新できませんでした。',
     cancel: 'キャンセル',
   },
   chatPage: {
@@ -737,6 +735,8 @@ export default {
     orderStale: '並べ替え中にチームが変更されました。リストを再読み込みしました。もう一度お試しください。',
   },
   brainMenu: {
+    modelLoading: 'モデルを読み込み中…',
+    modelFailed: 'Brain を更新できませんでした。',
     label: 'Brain を選択',
     current: 'Brain：{model}',
     settings: 'Brain の設定',

@@ -115,7 +115,7 @@ export default {
     assistantUninstallFailureTitle: 'Não foi possível desinstalar o Assistant.',
     assistantUninstallFailureLead: 'Não foi possível confirmar o resultado. Revise o erro abaixo e tente novamente; repetir a desinstalação é seguro.',
   },
-  chatContext: {
+  teamDialogs: {
     createKicker: 'Time // inicializar',
     createTitle: 'Criar um Time',
     createLead: 'Dê um nome claro para este ambiente local isolado.',
@@ -138,8 +138,6 @@ export default {
     deleteSuccessMessage: '{team} e todos os seus dados foram excluídos com segurança.',
     wrongPassword: 'A senha do Supervisor está incorreta.',
     technicalDetail: 'Detalhe técnico',
-    modelLoading: 'Carregando modelos…',
-    modelFailed: 'Não foi possível atualizar o Brain.',
     cancel: 'Cancelar',
   },
   chatPage: {
@@ -737,6 +735,8 @@ export default {
     orderStale: 'Os Times mudaram enquanto você reordenava. A lista foi recarregada; tente de novo.',
   },
   brainMenu: {
+    modelLoading: 'Carregando modelos…',
+    modelFailed: 'Não foi possível atualizar o Brain.',
     label: 'Escolher o Brain',
     current: 'Brain: {model}',
     settings: 'Configurações do Brain',

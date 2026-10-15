@@ -39,7 +39,7 @@
   let triggerLabel = $derived(
     selected
       ? $t('brainMenu.current', { model: selected.title })
-      : $t('chatContext.modelLoading'),
+      : $t('brainMenu.modelLoading'),
   );
 
   $effect(() => {
@@ -73,7 +73,7 @@
   }
 
   function failed(error) {
-    const message = outcomeUnknown(error) ? $t('shell.outcomeUnknown') : $t('chatContext.modelFailed');
+    const message = outcomeUnknown(error) ? $t('shell.outcomeUnknown') : $t('brainMenu.modelFailed');
     showAdminNotice({ tone: 'error', label: copy.label, message });
   }
 

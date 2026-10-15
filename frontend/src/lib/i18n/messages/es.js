@@ -115,7 +115,7 @@ export default {
     assistantUninstallFailureTitle: 'No se pudo desinstalar el Assistant.',
     assistantUninstallFailureLead: 'No se pudo confirmar el resultado. Revisa el error e inténtalo de nuevo; repetir la desinstalación es seguro.',
   },
-  chatContext: {
+  teamDialogs: {
     createKicker: 'Equipo // iniciar',
     createTitle: 'Crear un Equipo',
     createLead: 'Ponle un nombre claro a este espacio local aislado.',
@@ -138,8 +138,6 @@ export default {
     deleteSuccessMessage: '{team} y todos sus datos se eliminaron de forma segura.',
     wrongPassword: 'La contraseña del Supervisor es incorrecta.',
     technicalDetail: 'Detalle técnico',
-    modelLoading: 'Cargando modelos…',
-    modelFailed: 'No se pudo actualizar el Brain.',
     cancel: 'Cancelar',
   },
   chatPage: {
@@ -737,6 +735,8 @@ export default {
     orderStale: 'Los Equipos cambiaron mientras reordenabas. La lista se recargó; inténtalo de nuevo.',
   },
   brainMenu: {
+    modelLoading: 'Cargando modelos…',
+    modelFailed: 'No se pudo actualizar el Brain.',
     label: 'Elegir el Brain',
     current: 'Brain: {model}',
     settings: 'Configuración del Brain',

@@ -113,7 +113,7 @@ export default {
     assistantUninstallFailureTitle: 'The Assistant could not be uninstalled.',
     assistantUninstallFailureLead: 'The result could not be confirmed. Review the error below and try again; repeating uninstall is safe.',
   },
-  chatContext: {
+  teamDialogs: {
     createKicker: 'Team // initialize',
     createTitle: 'Create a Team',
     createLead: 'Give this isolated local workspace a clear name.',
@@ -136,8 +136,6 @@ export default {
     deleteSuccessMessage: '{team} and all of its data were securely deleted.',
     wrongPassword: 'The Supervisor password is incorrect.',
     technicalDetail: 'Technical detail',
-    modelLoading: 'Loading model settings…',
-    modelFailed: 'Brain settings could not be updated.',
     cancel: 'Cancel',
   },
   chatPage: {
@@ -752,6 +750,8 @@ export default {
     orderStale: 'The Teams changed while you were reordering. The list was reloaded; try again.',
   },
   brainMenu: {
+    modelLoading: 'Loading model settings…',
+    modelFailed: 'Brain settings could not be updated.',
     label: 'Choose the Brain',
     current: 'Brain: {model}',
     settings: 'Brain settings',

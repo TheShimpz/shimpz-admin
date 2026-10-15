@@ -115,7 +115,7 @@ export default {
     assistantUninstallFailureTitle: 'تعذّر إلغاء تثبيت Assistant.',
     assistantUninstallFailureLead: 'تعذّر تأكيد النتيجة. راجع الخطأ أدناه ثم حاول مجددًا؛ تكرار إلغاء التثبيت آمن.',
   },
-  chatContext: {
+  teamDialogs: {
     createKicker: 'الفريق // التهيئة',
     createTitle: 'إنشاء فريق',
     createLead: 'امنح مساحة العمل المحلية المعزولة اسمًا واضحًا.',
@@ -138,8 +138,6 @@ export default {
     deleteSuccessMessage: 'تم حذف {team} وجميع بياناته بأمان.',
     wrongPassword: 'كلمة مرور Supervisor غير صحيحة.',
     technicalDetail: 'تفاصيل تقنية',
-    modelLoading: 'جارٍ تحميل النماذج…',
-    modelFailed: 'تعذر تحديث Brain.',
     cancel: 'إلغاء',
   },
   chatPage: {
@@ -737,6 +735,8 @@ export default {
     orderStale: 'تغيّرت الفرق أثناء إعادة الترتيب. أُعيد تحميل القائمة؛ حاول مرة أخرى.',
   },
   brainMenu: {
+    modelLoading: 'جارٍ تحميل النماذج…',
+    modelFailed: 'تعذر تحديث Brain.',
     label: 'اختيار Brain',
     current: 'Brain: {model}',
     settings: 'إعدادات Brain',

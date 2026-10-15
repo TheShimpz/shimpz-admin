@@ -115,7 +115,7 @@ export default {
     assistantUninstallFailureTitle: '无法卸载 Assistant。',
     assistantUninstallFailureLead: '无法确认结果。请查看下面的错误并重试；重复卸载是安全的。',
   },
-  chatContext: {
+  teamDialogs: {
     createKicker: '团队 // 初始化',
     createTitle: '创建团队',
     createLead: '为这个隔离的本地工作区起一个清晰的名称。',
@@ -138,8 +138,6 @@ export default {
     deleteSuccessMessage: '{team} 及其所有数据已安全删除。',
     wrongPassword: 'Supervisor 密码不正确。',
     technicalDetail: '技术详情',
-    modelLoading: '正在加载模型…',
-    modelFailed: '无法更新 Brain 设置。',
     cancel: '取消',
   },
   chatPage: {
@@ -737,6 +735,8 @@ export default {
     orderStale: '在你调整顺序时团队发生了变化。列表已重新加载，请重试。',
   },
   brainMenu: {
+    modelLoading: '正在加载模型…',
+    modelFailed: '无法更新 Brain 设置。',
     label: '选择 Brain',
     current: 'Brain：{model}',
     settings: 'Brain 设置',

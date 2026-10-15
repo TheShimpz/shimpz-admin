@@ -24,7 +24,7 @@
   let deleteError = $state('');
   let deleteErrorDetail = $state('');
 
-  let copy = $derived($t('chatContext'));
+  let copy = $derived($t('teamDialogs'));
   let supervisorPasswordError = $derived(deleteError === copy.wrongPassword ? deleteError : '');
   let requiresTeam = $derived(
     $teamContext.phase === 'ready' && $teamContext.teams.length === 0,
@@ -134,8 +134,8 @@
     supervisorPassword = '';
     showAdminNotice({
       tone: 'success',
-      label: $t('chatContext.deleteSuccessLabel'),
-      message: $t('chatContext.deleteSuccessMessage', { team: target.name }),
+      label: $t('teamDialogs.deleteSuccessLabel'),
+      message: $t('teamDialogs.deleteSuccessMessage', { team: target.name }),
     });
     // goto refuses a location without a route (the not-found page), which has no Team selection to record.
     if (page.route.id) {
@@ -158,14 +158,14 @@
       kicker={copy.deleteKicker}
       title={copy.deleteTitle}
       titleId="team-delete-title"
-      lead={$t('chatContext.deleteLead', { name: deletingTeam?.name ?? '' })}
+      lead={$t('teamDialogs.deleteLead', { name: deletingTeam?.name ?? '' })}
     >
       <TextField
         id="team-delete-name"
         label={copy.deleteName}
         type="text"
         bind:value={deleteName}
-        placeholder={$t('chatContext.deleteNamePlaceholder', { name: deletingTeam?.name ?? '' })}
+        placeholder={$t('teamDialogs.deleteNamePlaceholder', { name: deletingTeam?.name ?? '' })}
         autocomplete="off"
         autocapitalize="off"
         spellcheck="false"
