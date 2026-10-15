@@ -1,5 +1,6 @@
 <script>
   import { downloadUrl, fetchFileBytes, formatFileSize, MAX_TEXT_SOURCE_BYTES } from '#lib/chat/attachments/files.js';
+  import Unavailable from '#lib/chat/attachments/Unavailable.svelte';
   import { locale, t } from '#lib/i18n/index.js';
 
   // A text file's own text in the viewer (ADR-0093): at most MAX_TEXT_SOURCE_BYTES of the stored file, read through
@@ -55,7 +56,7 @@
 
 <div class="text-stage">
   {#if failed}
-    <p class="unavailable">{$t('attachments.notRead')}</p>
+    <Unavailable text={$t('attachments.notRead')} fill />
   {:else if text !== null}
     {#if cut}
       <p class="text-cut">{$t('attachments.textCut', { size: formatFileSize(MAX_TEXT_SOURCE_BYTES, $locale) })}</p>
@@ -87,16 +88,5 @@
     padding: var(--gap-inside) var(--gap-item);
     color: var(--shimpz-color-text-dim);
     font: 400 0.68rem/1.4 var(--shimpz-font-mono);
-  }
-
-  .unavailable {
-    display: grid;
-    height: 100%;
-    margin: 0;
-    place-items: center;
-    color: var(--shimpz-color-text-dim);
-    font: 600 0.72rem/1.4 var(--shimpz-font-mono);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
   }
 </style>

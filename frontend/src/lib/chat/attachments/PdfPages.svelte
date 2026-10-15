@@ -2,6 +2,7 @@
   import { untrack } from 'svelte';
   import { fetchFileBytes } from '#lib/chat/attachments/files.js';
   import { MAX_PDF_PAGES, PAGE_COUNT_HEADER, pageUrl } from '#lib/chat/attachments/previews.js';
+  import Unavailable from '#lib/chat/attachments/Unavailable.svelte';
   import { t } from '#lib/i18n/index.js';
 
   // A PDF's pages in the viewer (ADR-0093), one under another: each is Team's sanitized rendition of that page, never
@@ -83,7 +84,7 @@
 
 <div class="pdf-stage" bind:this={stage}>
   {#if failed}
-    <p class="unavailable">{$t('attachments.noPreview')}</p>
+    <Unavailable text={$t('attachments.noPreview')} fill />
   {:else}
     <ol class="pages">
       {#each Array.from({ length: Math.max(count, 1) }, (_, offset) => offset + 1) as page (page)}
@@ -145,16 +146,5 @@
   .page-pending {
     aspect-ratio: 1 / 1.414;
     background: color-mix(in srgb, var(--shimpz-color-text) 6%, var(--shimpz-color-bg));
-  }
-
-  .unavailable {
-    display: grid;
-    height: 100%;
-    margin: 0;
-    place-items: center;
-    color: var(--shimpz-color-text-dim);
-    font: 600 0.72rem/1.4 var(--shimpz-font-mono);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
   }
 </style>

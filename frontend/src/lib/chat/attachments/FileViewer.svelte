@@ -5,6 +5,7 @@
   import { attachmentKind } from '#lib/chat/attachments/files.js';
   import { paged, previewable, previewUrl, stored } from '#lib/chat/attachments/previews.js';
   import TextPreview from '#lib/chat/attachments/TextPreview.svelte';
+  import Unavailable from '#lib/chat/attachments/Unavailable.svelte';
   import { t } from '#lib/i18n/index.js';
 
   // The files of one message opened over the chat (ADR-0093) in the design system's dialog frame, filling the viewport
@@ -91,9 +92,9 @@
             {:else if shows === 'text'}
               <TextPreview {teamId} file={current} />
             {:else if shows === 'none'}
-              <p class="unavailable">{$t('attachments.noPreview')}</p>
+              <Unavailable text={$t('attachments.noPreview')} />
             {:else if failed && !(index === start && thumbnail)}
-              <p class="unavailable">{$t('attachments.notRead')}</p>
+              <Unavailable text={$t('attachments.notRead')} />
             {:else}
               <img
                 src={failed ? thumbnail.url : previewUrl(teamId, current.id)}
@@ -223,14 +224,6 @@
   }
 
   /* An image Team can no longer read, or a file with no preview, says so in its place. */
-  .unavailable {
-    margin: 0;
-    color: var(--shimpz-color-text-dim);
-    font: 600 0.72rem/1.4 var(--shimpz-font-mono);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-  }
-
   /* Each arrow fills its column; one with nowhere to go stays in place, disabled. */
   .viewer-shell :global(.shimpz-button.viewer-step) {
     --button-border: transparent;
