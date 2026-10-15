@@ -7,6 +7,7 @@ import {
   MAX_MESSAGE_CHARS,
   MAX_REPLY_CHARS,
   parseInstallPlanAssistant,
+  parseUninstallAssistant,
   parseReceipt,
   parseRoutineReply,
 } from './protocol.js';
@@ -17,11 +18,8 @@ import { synced } from '../session/synced.js';
 import { ASSISTANT_LIMIT_REACHED, exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
 import { isInstant, isShownText } from '../grammar.js';
 import {
-  isAssistantId,
   MAX_TEAM_NAME_CHARS,
   OPAQUE_ID_RE,
-  PUBLIC_CREATOR_RE,
-  SEMANTIC_VERSION_RE,
   TEAM_ID_RE,
 } from '../ids.js';
 
@@ -45,29 +43,12 @@ function publicText(value, maximum, status) {
   return boundedText(value, maximum, PUBLIC_TEXT_CONTROL_RE, status);
 }
 
-function assistantId(value, status) {
-  if (!isAssistantId(value)) throw invalidHistory(status);
-  return value;
-}
-
-function publicAssistant(value, status) {
-  if (!exactKeys(value, ['creator', 'id', 'name', 'provenance', 'version'])) throw invalidHistory(status);
-  if (
-    typeof value.version !== 'string' ||
-    !SEMANTIC_VERSION_RE.test(value.version) ||
-    typeof value.creator !== 'string' ||
-    !PUBLIC_CREATOR_RE.test(value.creator) ||
-    !['local', 'published'].includes(value.provenance)
-  ) {
+function uninstallAssistant(value, status) {
+  try {
+    return parseUninstallAssistant(value);
+  } catch {
     throw invalidHistory(status);
   }
-  return {
-    id: assistantId(value.id, status),
-    name: publicText(value.name, 80, status),
-    version: value.version,
-    creator: value.creator,
-    provenance: value.provenance,
-  };
 }
 
 // A stored plan keeps each Assistant's final state, never the transient `installing`.
@@ -204,7 +185,7 @@ function uninstallEntry(value, suffix, status) {
     id: value.id,
     kind: 'assistant-uninstall',
     state: value.state,
-    assistant: publicAssistant(value.assistant, status),
+    assistant: uninstallAssistant(value.assistant, status),
     ...(value.state === 'uninstalled' ? { uninstalled: value.uninstalled } : {}),
     ...(value.state === 'failed' ? { status: value.status } : {}),
   };

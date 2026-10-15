@@ -676,7 +676,8 @@ export function parseInstallPlanAssistant(value, { maxProviders = MAX_INSTALL_PR
   };
 }
 
-function canonicalUninstallAssistant(value) {
+/** The Assistant an uninstall proposal or its stored row names, exactly; otherwise it throws. */
+export function parseUninstallAssistant(value) {
   if (
     !value ||
     typeof value !== 'object' ||
@@ -791,7 +792,7 @@ function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
       team_id: value.team_id,
       team_name: canonicalTeam(expectedTeamName),
       expires_in: value.expires_in,
-      assistant: canonicalUninstallAssistant(value.assistant),
+      assistant: parseUninstallAssistant(value.assistant),
     };
   }
   if (!OPAQUE_ID_RE.test(value.proposal_id)) {
