@@ -9,7 +9,7 @@ import { OPAQUE_ID_RE, TEAM_ID_RE } from '../../ids.js';
 
 export const MAX_PREVIEWS = 48;
 export const MAX_LOADING = 2;
-export const THUMBNAIL_EDGE = 640;
+const THUMBNAIL_EDGE = 640;
 // Team's rendition never exceeds these (Team protocol/http/v1/turn.py); a larger answer is refused before it is drawn.
 const RENDITION_EDGE = 1_568;
 const RENDITION_PIXELS = 1_200_000;

@@ -251,7 +251,7 @@ const FILE_RETRY_LIMIT_MS = 2_000;
 // saved originals the page holds at once: a save that would go beyond them waits, in order, until earlier ones are let
 // go. Every original fits the bound on its own.
 const SAVED_URL_MS = 20_000;
-export const MAX_SAVED_BYTES = 64 * MIB;
+const MAX_SAVED_BYTES = 64 * MIB;
 let savedBytes = 0;
 const waitingSaves = [];
 

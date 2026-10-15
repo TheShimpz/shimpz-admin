@@ -407,7 +407,7 @@ export function mergedRoutineRuns(runs, arrived, routineId) {
 // A kept view of the chat holds at most this many rows, and this many UTF-8 bytes of them; a larger one is dropped, and
 // the chat then opens from the newest page again.
 export const MAX_VIEW_ROWS = 4 * MAX_PAGE_ENTRIES;
-export const MAX_VIEW_BYTES = 2 * 1024 * 1024;
+const MAX_VIEW_BYTES = 2 * 1024 * 1024;
 const encoder = new TextEncoder();
 
 function rowBytes(entries) {
