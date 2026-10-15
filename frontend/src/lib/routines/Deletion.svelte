@@ -32,8 +32,8 @@
     'passkey-failed', 'passkey-suspended', 'authentication-unavailable', 'authentication-origin-refused',
   ]);
   let ready = $derived(password.length > 0 && (method === 'passkey' || /^[0-9]{6}$/.test(code)));
-  // The fields read this deletion's own words; the method's legend is every confirmation's.
-  let fields = $derived({ ...copy, method: $t('security.method') });
+  // Every confirmation's words, with this deletion's own where it differs: its hints, expiry, code lock, and buttons.
+  let words = $derived({ ...$t('security'), ...copy });
 
   $effect(() => {
     document.getElementById(`${id}-password`)?.focus();
@@ -49,32 +49,32 @@
     const reason = failure instanceof RoutineError ? failure.code : '';
     if (reason === 'password-incorrect') {
       password = '';
-      passwordError = copy.passwordIncorrect;
+      passwordError = words.passwordIncorrect;
       focus('password');
     } else if (reason === 'code-incorrect') {
       code = '';
-      codeError = copy.codeIncorrect;
+      codeError = words.codeIncorrect;
       focus('code');
     } else if (reason === 'authentication-locked') {
-      error = fill(copy.locked, { seconds: failure.retryAfter || 60 });
+      error = fill(words.locked, { seconds: failure.retryAfter || 60 });
     } else if (reason === 'code-locked') {
       code = '';
-      error = copy.codeLocked;
+      error = words.codeLocked;
     } else if (reason === 'authentication-expired') {
-      error = copy.expired;
+      error = words.expired;
     } else if (reason === 'passkey-failed' || reason === 'passkey-suspended') {
-      error = copy.passkeyFailed;
+      error = words.passkeyFailed;
     } else if (reason === 'authentication-unavailable' || reason === 'authentication-origin-refused') {
-      error = copy.unavailable;
+      error = words.unavailable;
     } else if (failure instanceof RoutineError) {
       error = routineErrorMessage(failure, errors);
     } else if (outcomeUnknown(failure)) {
       error = $t('shell.outcomeUnknown');
     } else if (failure instanceof LocalApiError) {
       // The socket dropped before the request left: nothing was asked, and the panel stays for another try.
-      error = copy.unavailable;
+      error = words.unavailable;
     } else {
-      error = copy[passkeyFailure(failure) === 'canceled' ? 'passkeyCanceled' : 'passkeyFailed'];
+      error = words[passkeyFailure(failure) === 'canceled' ? 'passkeyCanceled' : 'passkeyFailed'];
     }
   }
 
@@ -83,7 +83,7 @@
     if (!offer.passkey) {
       passkeyOffered = false;
       method = 'totp';
-      error = copy.passkeyMissing;
+      error = words.passkeyMissing;
       focus('code');
       return null;
     }
@@ -117,7 +117,7 @@
 <form class="deletion" onsubmit={submit}>
   <div class="content">
     <p class="lead">{copy.lead}</p>
-    <SecondFactor {id} copy={fields} {busy} {passkeyOffered} bind:password bind:code bind:method {passwordError} {codeError}
+    <SecondFactor {id} copy={words} {busy} {passkeyOffered} bind:password bind:code bind:method {passwordError} {codeError}
       {error} />
   </div>
   <footer class="foot">

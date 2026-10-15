@@ -523,23 +523,12 @@ export default {
     deletion: {
       title: 'Delete “{name}”?',
       lead: 'It will never run again, and a run in progress is stopped. Changes it already made stay.',
-      password: 'Supervisor password',
-      methodCode: 'Authenticator code',
-      methodPasskey: 'Passkey',
-      code: 'Six-digit code',
       codeHint: 'From your authenticator app.',
       passkeyHint: 'Your browser asks for your passkey after you press Delete.',
       delete: 'Delete',
       deleting: 'Deleting…',
-      passwordIncorrect: 'The Supervisor password is incorrect.',
-      codeIncorrect: 'That code was not accepted. Enter the current code.',
-      locked: 'Too many attempts. Try again in {seconds} seconds.',
       codeLocked: 'Too many wrong codes. Try again in a few minutes.',
       expired: 'The confirmation expired. Press Delete to try again.',
-      passkeyCanceled: 'The passkey request was canceled or timed out.',
-      passkeyFailed: 'The passkey did not confirm it. Try again, or use an authenticator code.',
-      passkeyMissing: 'This address has no passkey. Use an authenticator code.',
-      unavailable: 'The confirmation is unavailable right now. Try again.',
     },
     // A recorded Routine's confirmation card and why a recording made none (ADR-0101). The card states facts only: each
     // button does one thing, and none is preselected or recommended.
