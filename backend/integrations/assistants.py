@@ -13,8 +13,6 @@ from protocol.http.v1 import websocket as chat_ws_common
 
 log = logging.getLogger("shimpz-admin")
 
-TeamResponse = transport.TeamResponse
-TeamRequestError = transport.TeamRequestError
 
 MAX_ASSISTANT_INTEGRATIONS = 512
 MAX_INTEGRATION_SCOPES = 32
@@ -26,13 +24,13 @@ _RFC3339_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:
 
 def canonical_oauth_binding(value: object) -> str:
     if not isinstance(value, str) or _OAUTH_BINDING_RE.fullmatch(value) is None:
-        raise TeamRequestError("OAuth browser binding is invalid")
+        raise transport.TeamRequestError("OAuth browser binding is invalid")
     return value
 
 
 def canonical_oauth_claim(value: object) -> str:
     if not isinstance(value, str) or _OAUTH_CLAIM_RE.fullmatch(value) is None:
-        raise TeamRequestError("OAuth authorization response is invalid")
+        raise transport.TeamRequestError("OAuth authorization response is invalid")
     return value
 
 
@@ -77,7 +75,7 @@ def _integration_expiry(value: object) -> str | None:
     return value
 
 
-def _project_integration_inventory(response: TeamResponse, team_id: str) -> TeamResponse:
+def _project_integration_inventory(response: transport.TeamResponse, team_id: str) -> transport.TeamResponse:
     """Expose status metadata only; provider tokens, controller generations, and English summaries stay private.
 
     Team's Assistant summary is canonical English (ADR-0091), so the browser reads each summary in the interface
@@ -139,13 +137,13 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
                     "expires_at": _integration_expiry(item["expires_at"]),
                 }
             )
-    except KeyError, TypeError, ValueError, TeamRequestError:
+    except KeyError, TypeError, ValueError, transport.TeamRequestError:
         log.warning("team returned an invalid Assistant integration inventory")
-        return TeamResponse(502, {"detail": "Assistant integration inventory is invalid."})
-    return TeamResponse(200, {"integrations": integrations})
+        return transport.TeamResponse(502, {"detail": "Assistant integration inventory is invalid."})
+    return transport.TeamResponse(200, {"integrations": integrations})
 
 
-def list_assistant_integrations(team_id: object) -> TeamResponse:
+def list_assistant_integrations(team_id: object) -> transport.TeamResponse:
     canonical_id = payloads.canonical_team_id(team_id)
     return _project_integration_inventory(
         transport._call("GET", f"/v1/teams/{canonical_id}/assistant-integrations"),
@@ -153,7 +151,7 @@ def list_assistant_integrations(team_id: object) -> TeamResponse:
     )
 
 
-def _project_authorization_response(response: TeamResponse, callback_mode: str) -> TeamResponse:
+def _project_authorization_response(response: transport.TeamResponse, callback_mode: str) -> transport.TeamResponse:
     if not 200 <= response.status < 300:
         return response
     try:
@@ -163,8 +161,8 @@ def _project_authorization_response(response: TeamResponse, callback_mode: str) 
         cloudflare.authorization_state(authorization_url, callback_mode)
     except KeyError, TypeError, ValueError:
         log.warning("team returned an invalid OAuth authorization response")
-        return TeamResponse(502, {"detail": "OAuth authorization response is invalid."})
-    return TeamResponse(200, {"authorization_url": authorization_url})
+        return transport.TeamResponse(502, {"detail": "OAuth authorization response is invalid."})
+    return transport.TeamResponse(200, {"authorization_url": authorization_url})
 
 
 def start_local_assistant_integration_authorization(
@@ -174,14 +172,14 @@ def start_local_assistant_integration_authorization(
     integration_id: object,
     session_binding: object,
     callback_mode: object,
-) -> TeamResponse:
+) -> transport.TeamResponse:
     canonical_id = payloads.canonical_team_id(team_id)
     canonical_challenge = payloads.canonical_challenge_id(challenge_id)
     assistant = payloads.canonical_assistant_id(assistant_id)
     integration = payloads.canonical_identifier(integration_id)
     binding = canonical_oauth_binding(session_binding)
     if callback_mode not in {"loopback", "local-domain", "out-of-band"}:
-        raise TeamRequestError("OAuth callback mode is invalid.")
+        raise transport.TeamRequestError("OAuth callback mode is invalid.")
     response = transport._call(
         "POST",
         f"/v1/teams/{canonical_id}/assistant-integrations/challenges/{canonical_challenge}/authorize",
@@ -199,7 +197,7 @@ def cancel_local_assistant_integration_authorization(
     team_id: object,
     challenge_id: object,
     session_binding: object,
-) -> TeamResponse:
+) -> transport.TeamResponse:
     canonical_id = payloads.canonical_team_id(team_id)
     canonical_challenge = payloads.canonical_challenge_id(challenge_id)
     binding = canonical_oauth_binding(session_binding)
@@ -216,15 +214,15 @@ def cancel_local_assistant_integration_authorization(
         or type(response.body["cancelled"]) is not bool
     ):
         log.warning("team returned an invalid OAuth cancellation response")
-        return TeamResponse(502, {"detail": "OAuth cancellation response is invalid."})
-    return TeamResponse(204, {})
+        return transport.TeamResponse(502, {"detail": "OAuth cancellation response is invalid."})
+    return transport.TeamResponse(204, {})
 
 
 def disconnect_assistant_integration(
     team_id: object,
     assistant_id: object,
     integration_id: object,
-) -> TeamResponse:
+) -> transport.TeamResponse:
     canonical_id = payloads.canonical_team_id(team_id)
     assistant = payloads.canonical_assistant_id(assistant_id)
     integration = payloads.canonical_identifier(integration_id)
@@ -240,12 +238,14 @@ def disconnect_assistant_integration(
         or type(response.body["disconnected"]) is not bool
     ):
         log.warning("team returned an invalid OAuth disconnect response")
-        return TeamResponse(502, {"detail": "OAuth disconnect response is invalid."})
+        return transport.TeamResponse(502, {"detail": "OAuth disconnect response is invalid."})
     topics.team_changed(canonical_id, "integrations")
-    return TeamResponse(204, {})
+    return transport.TeamResponse(204, {})
 
 
-def complete_cloudflare_oauth_callback(*, state: object, claim: object, session_binding: object) -> TeamResponse:
+def complete_cloudflare_oauth_callback(
+    *, state: object, claim: object, session_binding: object
+) -> transport.TeamResponse:
     identifier = canonical_oauth_binding(state)
     one_time_claim = canonical_oauth_claim(claim)
     binding = canonical_oauth_binding(session_binding)
@@ -268,9 +268,9 @@ def complete_cloudflare_oauth_callback(*, state: object, claim: object, session_
             "assistant_id": payloads.canonical_assistant_id(response.body["assistant_id"]),
             "integration_id": payloads.canonical_identifier(response.body["integration_id"]),
         }
-    except KeyError, TypeError, ValueError, TeamRequestError:
+    except KeyError, TypeError, ValueError, transport.TeamRequestError:
         log.warning("team returned an invalid OAuth callback response")
-        return TeamResponse(502, {"detail": "OAuth callback response is invalid."})
+        return transport.TeamResponse(502, {"detail": "OAuth callback response is invalid."})
     # Whichever page or tab completed it, a connected Integration changes what its Team's pages show.
     topics.team_changed(body["team_id"], "integrations")
-    return TeamResponse(200, body)
+    return transport.TeamResponse(200, body)

@@ -143,7 +143,7 @@ class PrivateChatTransportTests(unittest.TestCase):
             prefix = f"a{index}"
             assistant_ids.append(prefix + ("x" * (team_contract.MAX_ASSISTANT_ID_CHARS - len(prefix))))
 
-        with team.supervisor_session(session, local_identity=identity):
+        with transport.supervisor_session(session, local_identity=identity):
             team.chat(
                 "team_1",
                 {

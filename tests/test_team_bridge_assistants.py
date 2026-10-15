@@ -227,7 +227,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
             timeout=team.ASSISTANT_INSTALL_TIMEOUT_SECONDS,
         )
-        self.assertGreater(team.ASSISTANT_INSTALL_TIMEOUT_SECONDS, team.CONTROL_TIMEOUT_SECONDS)
+        self.assertGreater(team.ASSISTANT_INSTALL_TIMEOUT_SECONDS, transport.CONTROL_TIMEOUT_SECONDS)
 
     def test_a_chat_stream_outlasts_teams_wait_on_one_brain_request(self):
         # Team waits up to 300 s for one Brain request and sends nothing meanwhile (teams/inference/client.py).
@@ -252,7 +252,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
 
         response = team.assistant_icon("team_1", "hello-pulse")
 
-        self.assertEqual(response, team.TeamAssetResponse(200, icon, {}))
+        self.assertEqual(response, transport.TeamAssetResponse(200, icon, {}))
         request = _TeamHandler.requests[-1]
         self.assertEqual(request["path"], "/v1/teams/team_1/assistants/hello-pulse/icon")
         self.assertEqual(request["headers"]["accept"], "image/png")
@@ -264,7 +264,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
 
         response = team.local_assistant_icon("sha256:" + ("c" * 64))
 
-        self.assertEqual(response, team.TeamAssetResponse(200, icon, {}))
+        self.assertEqual(response, transport.TeamAssetResponse(200, icon, {}))
         request = _TeamHandler.requests[-1]
         self.assertEqual(request["path"], "/v1/local-assistants/" + ("c" * 64) + "/icon")
         self.assertEqual(request["headers"]["accept"], "image/png")
@@ -338,7 +338,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
 
         self.assertEqual(
             response,
-            team.TeamAssetResponse(502, None, {"detail": "team unavailable"}),
+            transport.TeamAssetResponse(502, None, {"detail": "team unavailable"}),
         )
 
     def test_resolves_a_current_team_name_only_from_the_strict_inventory(self):
@@ -506,7 +506,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 b"",
                 {
                     "Content-Type": "application/json",
-                    "Content-Length": str(team.MAX_JSON_RESPONSE_BYTES + 1),
+                    "Content-Length": str(transport.MAX_JSON_RESPONSE_BYTES + 1),
                 },
             ),
         )

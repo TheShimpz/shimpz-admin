@@ -259,7 +259,7 @@ class SessionMethodAuthorityTests(SessionMethodCase):
         # The bounds the routes had: a Team name 1 KiB, a Team order or deletion 8 KiB, every other body J16.
         self.assertEqual(self.calls.frames.BODY_BYTES["teams.create"], 1024)
         self.assertEqual(self.calls.frames.BODY_BYTES["teams.reorder"], 8 * 1024)
-        self.assertEqual(self.calls.frames.BODY_BYTES["models.save"], self.team.MAX_JSON_BODY_BYTES)
+        self.assertEqual(self.calls.frames.BODY_BYTES["models.save"], self.team.transport.MAX_JSON_BODY_BYTES)
         # A confirmation's password and the recovery codes' or signing key's second factor kept the ceremony's 8 KiB, a
         # Routine deletion's second factor J16, and an acknowledgment 1 KiB.
         bounds = self.calls.frames.BODY_BYTES
@@ -271,7 +271,7 @@ class SessionMethodAuthorityTests(SessionMethodCase):
         ):
             self.assertEqual(bounds[method], self.admin_app.local_auth.MAX_BODY_BYTES)
         for method in ("routines.delete", "routines.challenge", "routines.card_answer"):
-            self.assertEqual(bounds[method], self.team.MAX_JSON_BODY_BYTES)
+            self.assertEqual(bounds[method], self.team.transport.MAX_JSON_BODY_BYTES)
         # A held run's text answer is as long as a chat answer may be.
         self.assertEqual(bounds["routines.human"], 96 * 1024)
         self.assertEqual(bounds["security.acknowledge"], 1024)

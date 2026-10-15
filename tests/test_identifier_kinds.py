@@ -17,11 +17,11 @@ IDENTIFIERS = ("api-token", "a" * 64)
 
 
 class TeamIdentifierKindTests(unittest.TestCase):
-    def test_the_bridge_admits_each_kind_and_refuses_the_others(self) -> None:
+    def test_payloads_admit_each_kind_and_refuse_the_others(self) -> None:
         for admit, valid, invalid in (
-            (team.canonical_assistant_id, ("a" * 40,), ("a" * 41, "dns.read", "a--b")),
-            (team.canonical_identifier, IDENTIFIERS, ("a" * 65, "api.token", "api_token", 7)),
-            (team.canonical_action_id, ACTIONS, ("a" * 129, "dns..read", "Lookup", None)),
+            (payloads.canonical_assistant_id, ("a" * 40,), ("a" * 41, "dns.read", "a--b")),
+            (payloads.canonical_identifier, IDENTIFIERS, ("a" * 65, "api.token", "api_token", 7)),
+            (payloads.canonical_action_id, ACTIONS, ("a" * 129, "dns..read", "Lookup", None)),
         ):
             for value in valid:
                 with self.subTest(admit=admit.__name__, value=value):

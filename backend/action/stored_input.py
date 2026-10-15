@@ -7,15 +7,13 @@ from team import transport
 
 from chat import payloads
 
-TeamResponse = transport.TeamResponse
-TeamRequestError = transport.TeamRequestError
 MAX_STORED_INPUTS = 128
 STATUSES = frozenset({"missing", "stored"})
 
 log = logging.getLogger("shimpz-admin")
 
 
-def _project_inventory(response: TeamResponse, team_id: str) -> TeamResponse:
+def _project_inventory(response: transport.TeamResponse, team_id: str) -> transport.TeamResponse:
     if not 200 <= response.status < 300:
         return response
     try:
@@ -44,13 +42,13 @@ def _project_inventory(response: TeamResponse, team_id: str) -> TeamResponse:
             )
         if inventory != sorted(inventory, key=lambda item: (item["assistant_id"], item["stored_input_id"])):
             raise ValueError("unsorted Stored Input inventory")
-    except KeyError, TypeError, ValueError, TeamRequestError:
+    except KeyError, TypeError, ValueError, transport.TeamRequestError:
         log.warning("team returned an invalid Stored Input inventory")
-        return TeamResponse(502, {"detail": "Assistant Stored Input inventory is invalid."})
-    return TeamResponse(200, {"stored_inputs": inventory})
+        return transport.TeamResponse(502, {"detail": "Assistant Stored Input inventory is invalid."})
+    return transport.TeamResponse(200, {"stored_inputs": inventory})
 
 
-def list_assistant_stored_inputs(team_id: object) -> TeamResponse:
+def list_assistant_stored_inputs(team_id: object) -> transport.TeamResponse:
     canonical = payloads.canonical_team_id(team_id)
     return _project_inventory(
         transport._call("GET", f"/v1/teams/{canonical}/assistant-stored-inputs"),
@@ -62,7 +60,7 @@ def clear_assistant_stored_input(
     team_id: object,
     assistant_id: object,
     stored_input_id: object,
-) -> TeamResponse:
+) -> transport.TeamResponse:
     canonical = payloads.canonical_team_id(team_id)
     assistant = payloads.canonical_assistant_id(assistant_id)
     stored_input = payloads.canonical_identifier(stored_input_id)
@@ -82,6 +80,6 @@ def clear_assistant_stored_input(
         or type(response.body["cleared"]) is not bool
     ):
         log.warning("team returned an invalid Stored Input clear response")
-        return TeamResponse(502, {"detail": "Assistant Stored Input clear response is invalid."})
+        return transport.TeamResponse(502, {"detail": "Assistant Stored Input clear response is invalid."})
     topics.team_changed(canonical, "integrations")
-    return TeamResponse(200, {"cleared": response.body["cleared"]})
+    return transport.TeamResponse(200, {"cleared": response.body["cleared"]})

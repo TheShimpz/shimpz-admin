@@ -22,15 +22,8 @@ from protocol.http.v1 import turn as team_turn
 
 log = logging.getLogger("shimpz-admin")
 
-CONTROL_TIMEOUT_SECONDS = transport.CONTROL_TIMEOUT_SECONDS
-MAX_JSON_BODY_BYTES = transport.MAX_JSON_BODY_BYTES
-MAX_JSON_RESPONSE_BYTES = transport.MAX_JSON_RESPONSE_BYTES
 TeamResponse = transport.TeamResponse
-TeamAssetResponse = transport.TeamAssetResponse
 TeamRequestError = transport.TeamRequestError
-is_team_response = transport.is_team_response
-is_trace_id = transport.is_trace_id
-trace_envelope = transport.trace_envelope
 _call = transport._call
 _call_raw = transport._call_raw
 _call_stream = transport._call_stream
@@ -38,7 +31,6 @@ _call_asset = transport._call_asset
 _call_preview = transport._call_preview
 _call_page_preview = transport._call_page_preview
 _call_content = transport._call_content
-supervisor_session = transport.supervisor_session
 
 MAX_CHAT_JSON_BODY_BYTES = 128 * 1024
 # A chat turn's stream is silent while Team waits on one Brain request, which Team allows 300 s
@@ -83,18 +75,10 @@ def canonical_local_team_name(value: object) -> str:
     return canonical
 
 
-canonical_assistant_id = payloads.canonical_assistant_id
-canonical_identifier = payloads.canonical_identifier
-canonical_action_id = payloads.canonical_action_id
-
-
 def canonical_source_digest(value: object) -> str:
     if not isinstance(value, str) or team_contract.SOURCE_DIGEST_RE.fullmatch(value) is None:
         raise TeamRequestError("source digest must be a canonical sha256 digest")
     return value
-
-
-canonical_challenge_id = payloads.canonical_challenge_id
 
 
 def canonical_filename(value: object) -> str:
@@ -172,7 +156,7 @@ def team_inventory(response: TeamResponse) -> TeamResponse | list[dict[str, str]
     if not 200 <= response.status < 300:
         return response
     try:
-        if set(response.body) != trace_envelope(response.body, {"teams"}):
+        if set(response.body) != transport.trace_envelope(response.body, {"teams"}):
             raise ValueError("unexpected inventory fields")
         inventory = response.body["teams"]
         if not isinstance(inventory, list) or len(inventory) > MAX_TEAMS:
@@ -231,7 +215,7 @@ def rename(team_id: object, team_name: object) -> TeamResponse:
         set(body) - {"trace_id"} != {"team_id", "team_name"}
         or body["team_id"] != canonical_id
         or body["team_name"] != name
-        or ("trace_id" in body and not is_trace_id(body["trace_id"]))
+        or ("trace_id" in body and not transport.is_trace_id(body["trace_id"]))
     ):
         log.warning("team returned an invalid rename response")
         return TeamResponse(502, {"detail": "Team rename response is invalid."})
@@ -262,7 +246,7 @@ def _project_inference_response(
             or selected_team_id != team_id
             or provider != selected_provider
             or model != selected_model
-            or not is_trace_id(trace_id)
+            or not transport.is_trace_id(trace_id)
         ):
             raise ValueError("non-canonical inference metadata")
         if expected is not None and (selected_provider, selected_model) != expected:
@@ -279,7 +263,7 @@ def _project_inference_response(
 
 def _changed(response: TeamResponse, team_id: str, *names: str, registry: bool = False) -> TeamResponse:
     """A change Admin made through Team raises the topics it changed for the session sockets that show them."""
-    if is_team_response(response) and 200 <= response.status < 300:
+    if transport.is_team_response(response) and 200 <= response.status < 300:
         topics.team_changed(team_id, *names)
         if registry:
             topics.changed("assistants/registry")
@@ -472,7 +456,7 @@ def resume_chat_human(
     )
     # An admitted answer may have stored an Input for the Team's Assistants, also one that paused again for the next
     # request (428) after sealing it.
-    if is_team_response(response) and response.status == 428:
+    if transport.is_team_response(response) and response.status == 428:
         topics.team_changed(canonical_id, "integrations")
         return response
     return _changed(response, canonical_id, "integrations")
@@ -498,7 +482,7 @@ def list_local_assistants() -> TeamResponse:
     return _call("GET", "/v1/local-assistants")
 
 
-def local_assistant_icon(image_id: object) -> TeamAssetResponse:
+def local_assistant_icon(image_id: object) -> transport.TeamAssetResponse:
     """Return the admitted PNG preview for one exact unpublished image."""
     digest = canonical_source_digest(image_id)
     return _call_asset(f"/v1/local-assistants/{digest.removeprefix('sha256:')}/icon")
@@ -525,14 +509,14 @@ def local_assistant_details(image_id: object, locale: object) -> TeamResponse:
 def _assistant_path(team_id: object, assistant_id: object | None = None) -> str:
     canonical_id = canonical_team_id(team_id)
     base = f"/v1/teams/{canonical_id}/assistants"
-    return base if assistant_id is None else f"{base}/{canonical_assistant_id(assistant_id)}"
+    return base if assistant_id is None else f"{base}/{payloads.canonical_assistant_id(assistant_id)}"
 
 
 def list_installed_assistants(team_id: object) -> TeamResponse:
     return _call("GET", _assistant_path(team_id))
 
 
-def assistant_icon(team_id: object, assistant_id: object) -> TeamAssetResponse:
+def assistant_icon(team_id: object, assistant_id: object) -> transport.TeamAssetResponse:
     return _call_asset(f"{_assistant_path(team_id, assistant_id)}/icon")
 
 
@@ -555,7 +539,7 @@ def assistant_details(team_id: object, assistant_id: object, locale: object) -> 
 def install_assistant(team_id: object, payload: object) -> TeamResponse:
     if not isinstance(payload, dict) or set(payload) != {"assistant_id", "source_digest"}:
         raise TeamRequestError("request body must contain only assistant_id and source_digest")
-    assistant_id = canonical_assistant_id(payload["assistant_id"])
+    assistant_id = payloads.canonical_assistant_id(payload["assistant_id"])
     source_digest = canonical_source_digest(payload["source_digest"])
     response = _call(
         "POST",
@@ -681,18 +665,20 @@ _BUSY_CODES = frozenset({"file-preview-busy", "file-download-busy"})
 MAX_PREVIEW_RETRY_MS = 2000
 
 
-def _file_bytes(response: TeamAssetResponse, refusals: dict[int, frozenset[str]], detail: str) -> TeamAssetResponse:
+def _file_bytes(
+    response: transport.TeamAssetResponse, refusals: dict[int, frozenset[str]], detail: str
+) -> transport.TeamAssetResponse:
     """Team's file bytes as they came, or its closed refusal with a busy answer's bounded retry delay."""
     if response.contents is not None:
         return response
     code = response.error.get("code")
     if response.status not in refusals or code not in refusals[response.status]:
-        return TeamAssetResponse(502, None, {"detail": "team unavailable"})
+        return transport.TeamAssetResponse(502, None, {"detail": "team unavailable"})
     error: dict[str, object] = {"detail": detail, "code": code}
     retry = response.error.get("retry_after_ms")
     if code in _BUSY_CODES and type(retry) is int and 1 <= retry <= MAX_PREVIEW_RETRY_MS:
         error["retry_after_ms"] = retry
-    return TeamAssetResponse(response.status, None, error)
+    return transport.TeamAssetResponse(response.status, None, error)
 
 
 def _canonical_file(team_id: object, file_id: object) -> str:
@@ -701,13 +687,13 @@ def _canonical_file(team_id: object, file_id: object) -> str:
     return _files_path(canonical_id, canonical_file_id)
 
 
-def file_preview(team_id: object, file_id: object) -> TeamAssetResponse:
+def file_preview(team_id: object, file_id: object) -> transport.TeamAssetResponse:
     """One Team file's sanitized image rendition, or its closed refusal (ADR-0093)."""
     response = _call_preview(f"{_canonical_file(team_id, file_id)}/preview")
     return _file_bytes(response, _PREVIEW_REFUSALS, "file preview unavailable")
 
 
-def file_page_preview(team_id: object, file_id: object, page: object) -> TeamAssetResponse:
+def file_page_preview(team_id: object, file_id: object, page: object) -> transport.TeamAssetResponse:
     """One page of a Team PDF as a sanitized rendition with the page count, or its closed refusal (ADR-0093)."""
     canonical_page = preview_contract.canonical_page(page)
     if canonical_page is None:
@@ -716,7 +702,7 @@ def file_page_preview(team_id: object, file_id: object, page: object) -> TeamAss
     return _file_bytes(response, _PREVIEW_REFUSALS, "file preview unavailable")
 
 
-def file_content(team_id: object, file_id: object) -> TeamAssetResponse:
+def file_content(team_id: object, file_id: object) -> transport.TeamAssetResponse:
     """One Team file's original, verified against its digest, or its closed refusal (ADR-0093)."""
     response = _call_content(f"{_canonical_file(team_id, file_id)}/content")
     return _file_bytes(response, _CONTENT_REFUSALS, "file download unavailable")

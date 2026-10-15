@@ -37,6 +37,7 @@ from team import bridge as team
 from team import files as team_files
 from team import http as team_http
 from team import order as team_order
+from team import transport
 
 from chat import assets as chat_assets
 from chat import human as chat_human
@@ -225,7 +226,7 @@ def _session_deadlines(cookies) -> tuple[float, float] | None:
 
 
 def _team_session_scope(cookies, *, authority_kind: str = "session"):
-    return team.supervisor_session(
+    return transport.supervisor_session(
         cookies.get(COOKIE, ""),
         local_identity=state.local_supervisor(),
         authority_kind=authority_kind,

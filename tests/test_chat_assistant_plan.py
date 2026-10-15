@@ -629,7 +629,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         identity = assistant_plan.team.transport.local_supervisor.new_identity()
         session = "v1:9999999999:0123456789abcdef:" + ("a" * 64)
         with (
-            assistant_plan.team.supervisor_session(
+            assistant_plan.team.transport.supervisor_session(
                 session,
                 local_identity=identity,
             ),

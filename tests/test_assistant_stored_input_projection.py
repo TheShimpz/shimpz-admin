@@ -19,7 +19,7 @@ class AssistantStoredInputProjectionTest(unittest.TestCase):
             "stored_input_id": "whatsapp-token",
             "status": "stored",
         }
-        inventory = stored_input.TeamResponse(
+        inventory = stored_input.transport.TeamResponse(
             200,
             {
                 "team_id": "team_1",
@@ -30,11 +30,11 @@ class AssistantStoredInputProjectionTest(unittest.TestCase):
         with mock.patch.object(stored_input.transport, "_call", return_value=inventory) as call:
             listed = stored_input.list_assistant_stored_inputs("team_1")
 
-        self.assertEqual(listed, stored_input.TeamResponse(200, {"stored_inputs": [metadata]}))
+        self.assertEqual(listed, stored_input.transport.TeamResponse(200, {"stored_inputs": [metadata]}))
         call.assert_called_once_with("GET", "/v1/teams/team_1/assistant-stored-inputs")
         self.assertNotRegex(json.dumps(listed.body), r'"value"|"generation"')
 
-        cleared_response = stored_input.TeamResponse(
+        cleared_response = stored_input.transport.TeamResponse(
             200,
             {
                 "team_id": "team_1",
@@ -51,14 +51,14 @@ class AssistantStoredInputProjectionTest(unittest.TestCase):
                 "whatsapp-token",
             )
 
-        self.assertEqual(cleared, stored_input.TeamResponse(200, {"cleared": True}))
+        self.assertEqual(cleared, stored_input.transport.TeamResponse(200, {"cleared": True}))
         call.assert_called_once_with(
             "DELETE",
             "/v1/teams/team_1/assistant-stored-inputs/whatsapp/whatsapp-token",
         )
 
         invalid = stored_input._project_inventory(
-            stored_input.TeamResponse(
+            stored_input.transport.TeamResponse(
                 200,
                 {
                     "team_id": "team_1",
@@ -70,7 +70,7 @@ class AssistantStoredInputProjectionTest(unittest.TestCase):
         )
         self.assertEqual(
             invalid,
-            stored_input.TeamResponse(502, {"detail": "Assistant Stored Input inventory is invalid."}),
+            stored_input.transport.TeamResponse(502, {"detail": "Assistant Stored Input inventory is invalid."}),
         )
 
 

@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 from team import bridge as team
+from team import transport
 
 from chat import assistant_inventory, assistant_proposal
 
@@ -67,7 +68,7 @@ def uninstall(proposal: assistant_proposal.UninstallProposal) -> UninstallResult
 
 
 def _project_result(response: object, assistant_id: str) -> UninstallResult:
-    if not team.is_team_response(response):
+    if not transport.is_team_response(response):
         return UninstallResult(502)
     if not 200 <= response.status < 300:
         return UninstallResult(response.status)
@@ -81,7 +82,7 @@ def _project_result(response: object, assistant_id: str) -> UninstallResult:
 def _uninstall_body(response: team.TeamResponse, assistant_id: str) -> bool:
     if not isinstance(response.body, dict):
         raise ValueError("Assistant uninstall result is invalid")
-    allowed = team.trace_envelope(response.body, {"assistant", "uninstalled"})
+    allowed = transport.trace_envelope(response.body, {"assistant", "uninstalled"})
     uninstalled = response.body.get("uninstalled")
     if (
         set(response.body) != allowed

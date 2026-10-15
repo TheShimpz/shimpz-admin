@@ -24,7 +24,7 @@ from history import context as conversation_context
 from team import bridge as team
 from team import transport
 
-from chat import assistant_proposal, human
+from chat import assistant_proposal, human, payloads
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import routine_proposal as routine_proposal_contract
@@ -347,7 +347,7 @@ def capability_plan(
             or len(raw_ids) > MAX_CAPABILITY_PLAN_IDS
         ):
             raise ValueError("invalid capability plan identity")
-        assistant_ids = [team.canonical_assistant_id(value) for value in raw_ids]
+        assistant_ids = [payloads.canonical_assistant_id(value) for value in raw_ids]
         if assistant_ids != sorted(set(assistant_ids)) or (status == "sufficient") != (not assistant_ids):
             raise ValueError("invalid capability plan selection")
     except KeyError, TypeError, ValueError, team.TeamRequestError:
@@ -370,7 +370,7 @@ def _intent_route_directory(
     for candidate in candidates:
         if not isinstance(candidate, dict) or set(candidate) != {"id", "name", "summary"}:
             raise team.TeamRequestError("invalid Assistant directory")
-        assistant_id = team.canonical_assistant_id(candidate["id"])
+        assistant_id = payloads.canonical_assistant_id(candidate["id"])
         name = candidate["name"]
         summary = candidate["summary"]
         if (
@@ -401,7 +401,7 @@ def _intent_route_reference(
     if expected_intent is not None or not isinstance(reference, assistant_proposal.AssistantReference):
         raise team.TeamRequestError("Assistant lifecycle reference is classification-only")
     return {
-        "id": team.canonical_assistant_id(reference.assistant_id),
+        "id": payloads.canonical_assistant_id(reference.assistant_id),
         "name": chat_ws_common.public_text(reference.name, MAX_INTENT_ROUTE_NAME_CHARS),
     }
 
@@ -460,10 +460,10 @@ def _project_intent_route(
         or len(raw_ids) > MAX_INTENT_ROUTE_IDS
         or not isinstance(reply, str)
         or (reply and chat_ws_common.public_text(reply, MAX_INTENT_ROUTE_REPLY_CHARS) != reply)
-        or not team.is_trace_id(body["trace_id"])
+        or not transport.is_trace_id(body["trace_id"])
     ):
         raise ValueError("invalid intent route identity")
-    assistant_ids = [team.canonical_assistant_id(value) for value in raw_ids]
+    assistant_ids = [payloads.canonical_assistant_id(value) for value in raw_ids]
     if assistant_ids != sorted(set(assistant_ids)) or any(value not in expected_ids for value in assistant_ids):
         raise ValueError("invalid intent route selection")
     if expected_intent is None:
@@ -556,7 +556,7 @@ def _challenge_envelope(
     if (
         response.body["team_id"] != team_id
         or response.body["status"] != status
-        or not team.is_trace_id(response.body["trace_id"])
+        or not transport.is_trace_id(response.body["trace_id"])
     ):
         raise ValueError("invalid challenge identity")
     identity = chat_ws_common.challenge_identity(response.body, team_id)
@@ -599,8 +599,8 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
                 "actions",
             }:
                 raise ValueError("invalid integration requirement")
-            assistant_id = team.canonical_assistant_id(raw["assistant_id"])
-            integration_id = team.canonical_identifier(raw["integration_id"])
+            assistant_id = payloads.canonical_assistant_id(raw["assistant_id"])
+            integration_id = payloads.canonical_identifier(raw["integration_id"])
             identity = (assistant_id, integration_id)
             if identity in seen_integrations:
                 raise ValueError("duplicate integration")
@@ -624,7 +624,7 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
             for raw_action in raw_actions:
                 if not isinstance(raw_action, dict) or set(raw_action) != {"id", "name", "summary"}:
                     raise ValueError("invalid integration Action")
-                action_id = team.canonical_action_id(raw_action["id"])
+                action_id = payloads.canonical_action_id(raw_action["id"])
                 if action_id in seen_actions:
                     raise ValueError("duplicate integration Action")
                 seen_actions.add(action_id)
@@ -639,7 +639,7 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
                     "assistant_id": assistant_id,
                     "assistant_name": chat_ws_common.public_text(raw["assistant_name"], MAX_INTEGRATION_LABEL_CHARS),
                     "integration_id": integration_id,
-                    "provider": team.canonical_identifier(raw["provider"]),
+                    "provider": payloads.canonical_identifier(raw["provider"]),
                     "name": chat_ws_common.public_text(raw["name"], MAX_INTEGRATION_LABEL_CHARS),
                     "scopes": scopes,
                     "actions": actions,
@@ -727,7 +727,7 @@ def _project_turn(
     if (
         set(response.body) - _OPTIONAL_DONE_FIELDS != _TURN_RESPONSE_FIELDS
         or response_team_id != team_id
-        or not team.is_trace_id(response.body.get("trace_id"))
+        or not transport.is_trace_id(response.body.get("trace_id"))
         or team_contract.canonical_team_name(team_name) is None
         or not isinstance(reply, str)
         or not reply.strip()
@@ -877,7 +877,7 @@ def _pending(
     if (
         response.body.get("team_id") == canonical_id
         and response.body.get("status") == "none"
-        and team.is_trace_id(response.body.get("trace_id"))
+        and transport.is_trace_id(response.body.get("trace_id"))
     ):
         return PublicResponse(response.status, {"team_id": canonical_id, "status": "none"})
     return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": invalid_code})

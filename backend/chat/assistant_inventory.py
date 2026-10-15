@@ -4,8 +4,9 @@ import re
 from dataclasses import dataclass
 
 from team import bridge as team
+from team import transport
 
-from chat import assistant_proposal, store_catalog
+from chat import assistant_proposal, payloads, store_catalog
 from protocol.http.v1 import payload as team_contract
 
 MAX_ASSISTANTS = 128
@@ -24,9 +25,13 @@ class InstalledAssistant:
 
 
 def _payload(response: object, field: str) -> object:
-    if not team.is_team_response(response) or not 200 <= response.status < 300 or not isinstance(response.body, dict):
+    if (
+        not transport.is_team_response(response)
+        or not 200 <= response.status < 300
+        or not isinstance(response.body, dict)
+    ):
         raise ValueError("Team Assistant inventory is unavailable")
-    if set(response.body) != team.trace_envelope(response.body, {field}):
+    if set(response.body) != transport.trace_envelope(response.body, {field}):
         raise ValueError("Team Assistant inventory fields are invalid")
     return response.body[field]
 
@@ -44,7 +49,7 @@ def installed(response: object) -> dict[str, InstalledAssistant]:
             "status",
         }:
             raise ValueError("installed Assistant fields are invalid")
-        assistant_id = team.canonical_assistant_id(item["assistant"])
+        assistant_id = payloads.canonical_assistant_id(item["assistant"])
         version = item["assistant_version"]
         provenance = item["provenance"]
         status = item["status"]
@@ -69,7 +74,7 @@ def binding_creator(team_id: str, assistant_id: str, version: str) -> str:
     else, or a Team failure, is refused.
     """
     response = team.assistant_details(team_id, assistant_id, store_catalog.PLANNING_LOCALE)
-    if not team.is_team_response(response) or response.status != 200 or not isinstance(response.body, dict):
+    if not transport.is_team_response(response) or response.status != 200 or not isinstance(response.body, dict):
         raise ValueError("installed Assistant details are unavailable")
     details = team_contract.canonical_assistant_details(
         {key: value for key, value in response.body.items() if key != "trace_id"}
@@ -93,7 +98,7 @@ def names(response: object) -> dict[str, str]:
     for item in raw:
         if not isinstance(item, dict) or set(item) != {"id", "title"}:
             raise ValueError("Assistant name fields are invalid")
-        assistant_id = team.canonical_assistant_id(item["id"])
+        assistant_id = payloads.canonical_assistant_id(item["id"])
         if assistant_id != item["id"] or assistant_id in named:
             raise ValueError("Assistant name identity is invalid")
         named[assistant_id] = store_catalog.catalog_text(item["title"], 80)
@@ -109,13 +114,13 @@ def registry(response: object) -> dict[str, assistant_proposal.Capability]:
     for item in raw:
         if not isinstance(item, dict) or set(item) != {"id", "title", "summary", "actions"}:
             raise ValueError("Assistant catalog fields are invalid")
-        assistant_id = team.canonical_assistant_id(item["id"])
+        assistant_id = payloads.canonical_assistant_id(item["id"])
         actions = item["actions"]
         if (
             assistant_id != item["id"]
             or not isinstance(actions, list)
             or not 1 <= len(actions) <= MAX_ACTIONS_PER_ASSISTANT
-            or any(not isinstance(action, str) or team.canonical_action_id(action) != action for action in actions)
+            or any(not isinstance(action, str) or payloads.canonical_action_id(action) != action for action in actions)
             or len(set(actions)) != len(actions)
             or assistant_id in capabilities
         ):

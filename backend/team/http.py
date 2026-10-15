@@ -6,7 +6,7 @@ from contextlib import contextmanager
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
-from team import bridge
+from team import bridge, transport
 
 from protocol.http.v1 import strict_json
 
@@ -28,7 +28,7 @@ def response(action) -> JSONResponse:
 
 async def bounded_json_object(
     request: Request,
-    max_bytes: int = bridge.MAX_JSON_BODY_BYTES,
+    max_bytes: int = transport.MAX_JSON_BODY_BYTES,
 ) -> dict:
     """Read one JSON object without allowing a request to grow without bound."""
     content_type = request.headers.get("content-type", "").partition(";")[0].strip().lower()

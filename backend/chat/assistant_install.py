@@ -4,6 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from team import bridge as team
+from team import transport
 
 from chat import local_catalog, store_catalog
 
@@ -44,7 +45,7 @@ def install_local_snapshot(team_id: str, assistant: local_catalog.LocalAssistant
 
 
 def _result(response: object, installed: Callable[[team.TeamResponse], bool]) -> InstallResult:
-    if not team.is_team_response(response):
+    if not transport.is_team_response(response):
         return InstallResult(502)
     if not 200 <= response.status < 300:
         return InstallResult(response.status, code=limit_code(response.status, response.body))
@@ -57,7 +58,7 @@ def _result(response: object, installed: Callable[[team.TeamResponse], bool]) ->
 def _install_body(response: team.TeamResponse, assistant_id: str) -> bool:
     if not isinstance(response.body, dict):
         raise ValueError("Assistant install result is invalid")
-    allowed = team.trace_envelope(response.body, {"assistant", "installed"})
+    allowed = transport.trace_envelope(response.body, {"assistant", "installed"})
     installed = response.body.get("installed")
     if (
         set(response.body) != allowed
@@ -71,7 +72,9 @@ def _install_body(response: team.TeamResponse, assistant_id: str) -> bool:
 def _local_install_body(response: team.TeamResponse, assistant: local_catalog.LocalAssistant) -> bool:
     if not isinstance(response.body, dict):
         raise ValueError("Local Assistant install result is invalid")
-    allowed = team.trace_envelope(response.body, {"assistant", "installed", "provenance", "image_id", "unpublished"})
+    allowed = transport.trace_envelope(
+        response.body, {"assistant", "installed", "provenance", "image_id", "unpublished"}
+    )
     installed = response.body.get("installed")
     if (
         set(response.body) != allowed

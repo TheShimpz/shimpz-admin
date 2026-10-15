@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from team import bridge as team
+from team import transport
 
 from chat import store_catalog
 from protocol.http.v1 import payload as team_contract
@@ -74,9 +75,13 @@ def primary(response: object) -> LocalInventory:
     An identity with any staged image whose labels Team refused (`labels-invalid`) is never offered: that image has no
     creation time to rank it, so it shadows the identity as a whole.
     """
-    if not team.is_team_response(response) or not 200 <= response.status < 300 or not isinstance(response.body, dict):
+    if (
+        not transport.is_team_response(response)
+        or not 200 <= response.status < 300
+        or not isinstance(response.body, dict)
+    ):
         raise ValueError("Local Assistant inventory is unavailable")
-    allowed = team.trace_envelope(response.body, {"assistants"})
+    allowed = transport.trace_envelope(response.body, {"assistants"})
     raw = response.body.get("assistants")
     if set(response.body) != allowed or not isinstance(raw, list) or len(raw) > MAX_ASSISTANTS:
         raise ValueError("Local Assistant inventory is invalid")

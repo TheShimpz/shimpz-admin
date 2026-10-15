@@ -14,7 +14,9 @@ from dataclasses import dataclass
 
 from signin import auth
 from team import bridge as team
+from team import transport
 
+from chat import payloads
 from protocol.http.v1 import challenge as team_challenge
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
@@ -227,7 +229,7 @@ def project(body: object, team_id: str) -> dict[str, object]:
     if body["team_id"] != team_id or body["status"] != "human-required":
         raise HumanChallengeError("invalid human challenge identity")
     identity = chat_ws_common.challenge_identity(body, team_id)
-    if identity is None or not team.is_trace_id(body["trace_id"]):
+    if identity is None or not transport.is_trace_id(body["trace_id"]):
         raise HumanChallengeError("invalid human challenge identity")
     challenge_id, turn_id = identity
     expires_in = body["expires_in"]
@@ -297,7 +299,7 @@ def _assistant(value: object) -> dict[str, str]:
     if not isinstance(value, dict) or set(value) != {"id", "name", "version"}:
         raise HumanChallengeError("invalid human challenge Assistant")
     try:
-        assistant_id = team.canonical_assistant_id(value["id"])
+        assistant_id = payloads.canonical_assistant_id(value["id"])
         name = chat_ws_common.public_text(value["name"], 80)
         version = chat_ws_common.public_text(value["version"], 40, field="Assistant version")
     except (ValueError, team.TeamRequestError) as exc:
@@ -309,7 +311,7 @@ def _action(value: object) -> dict[str, str]:
     if not isinstance(value, dict) or set(value) != {"id", "summary"}:
         raise HumanChallengeError("invalid human challenge Action")
     try:
-        action_id = team.canonical_action_id(value["id"])
+        action_id = payloads.canonical_action_id(value["id"])
         summary = chat_ws_common.public_text(value["summary"], 160)
     except (ValueError, team.TeamRequestError) as exc:
         raise HumanChallengeError("invalid human challenge Action") from exc

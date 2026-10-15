@@ -14,6 +14,7 @@ from starlette.formparsers import MultiPartException, MultiPartParser
 from starlette.types import Receive, Scope, Send
 from team import bridge as team
 from team import http as team_http
+from team import transport
 
 from protocol.http.v1 import preview as preview_contract
 
@@ -138,7 +139,7 @@ def team_file_page_preview(team_id: str, file_id: str, page: str, request: Reque
     return _rendition(result, {preview_contract.PAGE_COUNT_HEADER: str(result.page_count)})
 
 
-def _rendition(result: team.TeamAssetResponse, headers: dict[str, str] | None = None) -> Response:
+def _rendition(result: transport.TeamAssetResponse, headers: dict[str, str] | None = None) -> Response:
     if result.contents is None:
         return JSONResponse(status_code=result.status, content=result.error, headers=_NO_STORE)
     return Response(

@@ -54,7 +54,7 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
             integration={"id": "123", "name": "Shimpz", "username": "shimpz"},
             expires_at="2026-07-20T12:00:00Z",
         )
-        response = assistants.TeamResponse(
+        response = assistants.transport.TeamResponse(
             200,
             {"team_id": "team_1", "integrations": [integration], "trace_id": "f" * 32},
         )
@@ -64,14 +64,14 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
         # Team's English summaries are validated but never reach the browser, which reads the Assistant summary per
         # interface language and never shows the provider summary.
         browser = {key: value for key, value in integration.items() if key not in {"assistant_summary", "summary"}}
-        self.assertEqual(projected, assistants.TeamResponse(200, {"integrations": [browser]}))
+        self.assertEqual(projected, assistants.transport.TeamResponse(200, {"integrations": [browser]}))
         self.assertNotIn(integration["assistant_summary"], json.dumps(projected.body))
         self.assertNotIn(integration["summary"], json.dumps(projected.body))
         call.assert_called_once_with("GET", "/v1/teams/team_1/assistant-integrations")
         self.assertNotRegex(json.dumps(projected.body), r"token|code|verifier|client_secret")
 
         invalid = assistants._project_integration_inventory(
-            assistants.TeamResponse(
+            assistants.transport.TeamResponse(
                 200,
                 {
                     "team_id": "team_1",
@@ -83,7 +83,7 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
         )
         self.assertEqual(
             invalid,
-            assistants.TeamResponse(502, {"detail": "Assistant integration inventory is invalid."}),
+            assistants.transport.TeamResponse(502, {"detail": "Assistant integration inventory is invalid."}),
         )
 
     def test_scalar_and_nested_canonicalizers_reject_invalid_values(self) -> None:
@@ -100,7 +100,7 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
             lambda: cloudflare.canonical_authorization_scopes(None),
         )
         for operation in operations:
-            with self.assertRaises((assistants.TeamRequestError, ValueError)):
+            with self.assertRaises((assistants.transport.TeamRequestError, ValueError)):
                 operation()
         self.assertIsNone(assistants._integration_identity(None))
         self.assertIsNone(assistants._integration_expiry(None))
@@ -111,7 +111,7 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
                 assistants._integration_expiry("2026-01-01T00:00:00Z")
 
     def test_inventory_projection_rejects_status_envelope_size_and_duplicates(self) -> None:
-        upstream_error = assistants.TeamResponse(503, {"detail": "offline"})
+        upstream_error = assistants.transport.TeamResponse(503, {"detail": "offline"})
         self.assertEqual(assistants._project_integration_inventory(upstream_error, "team_1"), upstream_error)
 
         invalid = (
@@ -145,7 +145,9 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
         )
         for body in invalid:
             with self.subTest(body=body):
-                projected = assistants._project_integration_inventory(assistants.TeamResponse(200, body), "team_1")
+                projected = assistants._project_integration_inventory(
+                    assistants.transport.TeamResponse(200, body), "team_1"
+                )
             self.assertEqual(projected.status, 502)
 
     def test_authorization_url_and_response_fail_closed(self) -> None:
@@ -174,13 +176,13 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
         read_only = _authorization_url(scope="dns.read offline_access zone.read", state="c" * 43)
         self.assertEqual(cloudflare.authorization_state(read_only, "local-domain"), "c" * 43)
 
-        upstream_error = assistants.TeamResponse(503, {"detail": "offline"})
+        upstream_error = assistants.transport.TeamResponse(503, {"detail": "offline"})
         self.assertEqual(assistants._project_authorization_response(upstream_error, "local-domain"), upstream_error)
 
     def test_cancellation_disconnect_and_callback_reject_upstream_contract_drift(self) -> None:
-        upstream_error = assistants.TeamResponse(503, {"detail": "offline"})
-        invalid = assistants.TeamResponse(200, {"unexpected": True})
-        invalid_connected = assistants.TeamResponse(
+        upstream_error = assistants.transport.TeamResponse(503, {"detail": "offline"})
+        invalid = assistants.transport.TeamResponse(200, {"unexpected": True})
+        invalid_connected = assistants.transport.TeamResponse(
             200,
             {
                 "connected": False,

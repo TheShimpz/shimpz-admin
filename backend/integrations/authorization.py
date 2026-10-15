@@ -14,6 +14,7 @@ import state
 from fastapi import HTTPException
 from team import bridge as team
 
+from chat import payloads
 from integrations import assistants as integrations
 from integrations import handoff as handoff_store
 
@@ -62,7 +63,7 @@ def authorize(
     authorized = False
     try:
         canonical_team = team.canonical_team_id(team_id)
-        canonical_challenge = team.canonical_challenge_id(challenge_id)
+        canonical_challenge = payloads.canonical_challenge_id(challenge_id)
         preparation = HANDOFFS.issue(
             team_id=canonical_team, challenge_id=canonical_challenge, admin_session=session, callback_mode=mode
         )
@@ -94,7 +95,7 @@ def complete(team_id: str, challenge_id: str, payload: dict, session: str) -> te
     try:
         completion = HANDOFFS.complete(
             team_id=team.canonical_team_id(team_id),
-            challenge_id=team.canonical_challenge_id(challenge_id),
+            challenge_id=payloads.canonical_challenge_id(challenge_id),
             admin_session=session,
             completion_code=payload["completion_code"],
         )
@@ -111,7 +112,7 @@ def cancel(team_id: str, challenge_id: str, session: str) -> object:
     """Cancel the session's pending authorization of one challenge; nothing pending is already cancelled (204)."""
     try:
         canonical_team = team.canonical_team_id(team_id)
-        canonical_challenge = team.canonical_challenge_id(challenge_id)
+        canonical_challenge = payloads.canonical_challenge_id(challenge_id)
         binding = HANDOFFS.cancel(team_id=canonical_team, challenge_id=canonical_challenge, admin_session=session)
         if binding is None:
             return 204, {}
