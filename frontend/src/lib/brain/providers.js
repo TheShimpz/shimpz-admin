@@ -3,6 +3,9 @@ import MODEL_CATALOG from './catalog.json' with { type: 'json' };
 import { exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
 import { TEAM_ID_RE } from '../ids.js';
 
+// A stored provider key as Admin shows it: never the key, only four bullets and its last four characters.
+export const MASKED_RE = /^••••[!-~]{4}$/;
+
 const EXPECTED_CATALOG = Object.freeze(Object.fromEntries(MODEL_CATALOG.providers.map((provider) => [
   provider.id,
   Object.freeze({
@@ -36,7 +39,7 @@ function validProvider(entry) {
       MODEL_FIELDS.every((field) => model[field] === expected.models[index][field])
     )) &&
     typeof entry.configured === 'boolean' &&
-    (entry.masked === null || (typeof entry.masked === 'string' && /^••••[!-~]{4}$/.test(entry.masked)))
+    (entry.masked === null || (typeof entry.masked === 'string' && MASKED_RE.test(entry.masked)))
   );
 }
 
