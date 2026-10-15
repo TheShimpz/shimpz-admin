@@ -5,7 +5,7 @@
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n/index.js';
   import { authenticateWithPasskey, passkeyFailure } from '#lib/auth/passkey.js';
-  import { secondFactorRefusal } from '#lib/auth/refusal.js';
+  import { AUTHENTICATION_REFUSALS, secondFactorRefusal } from '#lib/auth/refusal.js';
   import SecondFactor from '#lib/auth/SecondFactor.svelte';
   import { beginRoutineDeletion, deleteRoutine, RoutineError } from '#lib/routines/protocol.js';
   import { routineErrorMessage } from '#lib/routines/words.js';
@@ -25,11 +25,6 @@
   let codeError = $state('');
   let error = $state('');
   let live = true;
-  // Admin refused the proof itself, so Team was never asked: what was typed stays for the next try.
-  const REFUSALS = new Set([
-    'password-incorrect', 'authentication-locked', 'code-incorrect', 'code-locked', 'authentication-expired',
-    'passkey-failed', 'passkey-suspended', 'authentication-unavailable', 'authentication-origin-refused',
-  ]);
   let ready = $derived(password.length > 0 && (method === 'passkey' || /^[0-9]{6}$/.test(code)));
   // Every confirmation's words, with this deletion's own where it differs: its hints, expiry, code lock, and buttons.
   let words = $derived({ ...$t('security'), ...copy });
@@ -88,7 +83,8 @@
       password = code = '';
       ondone(deleted);
     } catch (failure) {
-      if (sent && !(failure instanceof RoutineError && REFUSALS.has(failure.code))) password = code = '';
+      // Admin refused the proof itself, so Team was never asked: what was typed stays for the next try.
+      if (sent && !(failure instanceof RoutineError && AUTHENTICATION_REFUSALS.has(failure.code))) password = code = '';
       refused(failure);
     } finally {
       busy = false;
