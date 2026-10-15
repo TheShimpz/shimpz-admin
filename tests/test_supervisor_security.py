@@ -15,7 +15,7 @@ from unittest import mock
 import app_import
 from fastapi import HTTPException
 from http_request import json_request, response_cookie
-from mfa_helper import NOW, code, configure_supervisor, isolated_store, recovery_codes, unjournaled
+from mfa_helper import NOW, code, configure_supervisor, isolated_store, passkey_record, recovery_codes, unjournaled
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -72,20 +72,7 @@ class SecondFactorFailureStateTests(unittest.TestCase):
         self.assertEqual(_failures(), {"since_sign_in": 1, "unacknowledged": 0})
 
     def test_a_passkey_sign_in_reports_the_refusals_and_a_passkey_confirmation_does_not(self) -> None:
-        record = {
-            "credential_id": "credential_A",
-            "public_key": "public_key_A",
-            "sign_count": 3,
-            "backup_eligible": False,
-            "backup_state": False,
-            "rp_id": "localhost",
-            "origin": ORIGIN,
-            "status": "active",
-            "created_at": NOW,
-            "updated_at": NOW,
-            "last_used_at": NOW,
-        }
-        state.add_passkey(record, state.factor_generation(), journal=unjournaled)
+        state.add_passkey(passkey_record(), state.factor_generation(), journal=unjournaled)
         state.verify_totp("000000", ceremony="operation", now=NOW + 60, journal=unjournaled)
         generation = state.factor_generation()
 

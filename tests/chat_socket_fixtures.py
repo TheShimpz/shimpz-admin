@@ -4,6 +4,7 @@ import asyncio
 import importlib
 import json
 import threading
+from collections.abc import Callable
 from unittest import mock
 
 from tests import localized_request
@@ -252,6 +253,19 @@ def completed_turn(reply: str) -> object:
         200,
         {"team_id": "team_1", "team_name": "Marketing", "reply": reply, "clarification": None},
     )
+
+
+def held_turn() -> tuple[Callable[..., object], threading.Event, threading.Event]:
+    """A Team turn that reports its start, then completes only once released (or after five seconds)."""
+    started = threading.Event()
+    release = threading.Event()
+
+    def turn(*_args, **_kwargs):
+        started.set()
+        release.wait(5)
+        return completed_turn("late")
+
+    return turn, started, release
 
 
 def done_frame(reply: str) -> dict[str, object]:

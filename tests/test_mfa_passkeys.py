@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from mfa_helper import configure_supervisor, isolated_store, unjournaled
+from mfa_helper import configure_supervisor, isolated_store, passkey_record, unjournaled
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -26,22 +26,6 @@ from webauthn.registration.verify_registration_response import VerifiedRegistrat
 
 NOW = 1_800_000_000
 ORIGIN = "http://localhost:7777"
-
-
-def credential() -> dict[str, object]:
-    return {
-        "credential_id": "credential_A",
-        "public_key": "public_key_A",
-        "sign_count": 3,
-        "backup_eligible": False,
-        "backup_state": False,
-        "rp_id": "localhost",
-        "origin": ORIGIN,
-        "status": "active",
-        "created_at": NOW,
-        "updated_at": NOW,
-        "last_used_at": NOW,
-    }
 
 
 class PasskeyTests(unittest.TestCase):
@@ -120,7 +104,7 @@ class PasskeyTests(unittest.TestCase):
                 return_value='{"kind":"registration"}',
             ),
         ):
-            options = passkeys.registration_options(challenge, "00" * 32, [credential()])
+            options = passkeys.registration_options(challenge, "00" * 32, [passkey_record()])
         self.assertEqual(options, {"kind": "registration"})
         registration_arguments = registration.call_args.kwargs
         self.assertEqual(registration_arguments["rp_id"], challenge.rp_id)
@@ -155,7 +139,7 @@ class PasskeyTests(unittest.TestCase):
             ),
         ):
             self.assertEqual(
-                passkeys.authentication_options(challenge, [credential()]),
+                passkeys.authentication_options(challenge, [passkey_record()]),
                 {"kind": "authentication"},
             )
         authentication_arguments = authentication.call_args.kwargs
@@ -177,7 +161,7 @@ class PasskeyTests(unittest.TestCase):
             mock.patch.object(passkeys, "options_to_json", autospec=True, side_effect=ValueError),
             self.assertRaises(passkeys.PasskeyError),
         ):
-            passkeys.authentication_options(challenge, [credential()])
+            passkeys.authentication_options(challenge, [passkey_record()])
 
     def test_registration_verification_projects_only_public_state(self) -> None:
         verified = VerifiedRegistration(
@@ -265,7 +249,7 @@ class PasskeyTests(unittest.TestCase):
             user_verified=True,
         )
         challenge = self.challenge()
-        stored = credential()
+        stored = passkey_record()
         credential_payload = {"credential": "response"}
         with (
             mock.patch.object(
@@ -306,7 +290,7 @@ class PasskeyTests(unittest.TestCase):
             ),
             self.assertRaises(passkeys.PasskeyUnavailableError),
         ):
-            passkeys.verify_authentication(self.challenge(), None, credential())
+            passkeys.verify_authentication(self.challenge(), None, passkey_record())
         with (
             mock.patch.object(
                 passkeys,
@@ -322,28 +306,28 @@ class PasskeyTests(unittest.TestCase):
             ),
             self.assertRaises(passkeys.PasskeyError),
         ):
-            passkeys.verify_authentication(self.challenge(), {}, credential())
+            passkeys.verify_authentication(self.challenge(), {}, passkey_record())
 
     def test_registration_rotates_sessions_and_selects_only_the_exact_origin(self) -> None:
         generation = state.factor_generation()
         old_secret = state.get()["session_secret"]
         self.assertEqual(state.passkeys_for_registration(ORIGIN), [])
 
-        new_secret = state.add_passkey(credential(), generation, journal=unjournaled)
+        new_secret = state.add_passkey(passkey_record(), generation, journal=unjournaled)
 
         self.assertNotEqual(new_secret, old_secret)
-        self.assertEqual(state.active_passkeys(ORIGIN), [credential()])
+        self.assertEqual(state.active_passkeys(ORIGIN), [passkey_record()])
         self.assertEqual(state.active_passkeys("https://other.example.test"), [])
         with self.assertRaises(passkeys.PasskeyConflictError):
-            state.add_passkey(credential(), generation, journal=unjournaled)
+            state.add_passkey(passkey_record(), generation, journal=unjournaled)
         with self.assertRaises(passkeys.PasskeyConflictError):
-            state.add_passkey(credential(), state.factor_generation(), journal=unjournaled)
+            state.add_passkey(passkey_record(), state.factor_generation(), journal=unjournaled)
         with self.assertRaises(passkeys.PasskeyUnavailableError):
             state.passkey_for_authentication("missing", ORIGIN)
 
     def test_counter_regression_suspends_the_credential_and_rotates_sessions(self) -> None:
         generation = state.factor_generation()
-        state.add_passkey(credential(), generation, journal=unjournaled)
+        state.add_passkey(passkey_record(), generation, journal=unjournaled)
         generation = state.factor_generation()
         original = state.passkey_for_authentication("credential_A", ORIGIN)
         old_secret = state.get()["session_secret"]
@@ -357,7 +341,7 @@ class PasskeyTests(unittest.TestCase):
         self.assertNotEqual(new_secret, old_secret)
         self.assertEqual(state.active_passkeys(ORIGIN), [])
 
-        replacement = credential()
+        replacement = passkey_record()
         replacement["credential_id"] = "credential_B"
         replacement["public_key"] = "public_key_B"
         state.add_passkey(replacement, state.factor_generation(), journal=unjournaled)
@@ -370,10 +354,10 @@ class PasskeyTests(unittest.TestCase):
         generation = state.factor_generation()
         before = state.get()
         with self.assertRaises(RuntimeError):
-            state.add_passkey(credential(), generation, journal=unwritable)
+            state.add_passkey(passkey_record(), generation, journal=unwritable)
         self.assertEqual(state.get(), before)
 
-        state.add_passkey(credential(), generation, journal=unjournaled)
+        state.add_passkey(passkey_record(), generation, journal=unjournaled)
         generation = state.factor_generation()
         before = state.get()
         original = state.passkey_for_authentication("credential_A", ORIGIN)
@@ -390,7 +374,9 @@ class PasskeyTests(unittest.TestCase):
         from signin import audit, local_auth
 
         # Registered a minute ago: a sign-in now records the current time as its use.
-        registered = credential() | dict.fromkeys(("created_at", "updated_at", "last_used_at"), int(time.time()) - 60)
+        registered = passkey_record() | dict.fromkeys(
+            ("created_at", "updated_at", "last_used_at"), int(time.time()) - 60
+        )
         state.add_passkey(registered, state.factor_generation(), journal=unjournaled)
         generation = state.factor_generation()
         context = local_auth.Context()
@@ -412,7 +398,7 @@ class PasskeyTests(unittest.TestCase):
         self.assertEqual(state.active_passkeys(ORIGIN), [])
 
     def test_counterless_passkey_arms_regression_protection_after_a_positive_count(self) -> None:
-        counterless = credential()
+        counterless = passkey_record()
         counterless["sign_count"] = 0
         state.add_passkey(counterless, state.factor_generation(), journal=unjournaled)
         generation = state.factor_generation()
@@ -444,7 +430,7 @@ class PasskeyTests(unittest.TestCase):
 
     def test_registration_capacity_counts_active_credentials_before_the_ceremony(self) -> None:
         for index in range(passkeys.MAX_PASSKEYS):
-            record = credential()
+            record = passkey_record()
             record["credential_id"] = f"credential_{index}"
             record["public_key"] = f"public_key_{index}"
             state.add_passkey(record, state.factor_generation(), journal=unjournaled)
@@ -453,7 +439,7 @@ class PasskeyTests(unittest.TestCase):
             state.passkeys_for_registration(ORIGIN)
 
     def test_successful_assertion_updates_counter_only_against_exact_original(self) -> None:
-        state.add_passkey(credential(), state.factor_generation(), journal=unjournaled)
+        state.add_passkey(passkey_record(), state.factor_generation(), journal=unjournaled)
         generation = state.factor_generation()
         original = state.passkey_for_authentication("credential_A", ORIGIN)
         result = passkeys.Authentication("credential_A", 4, False, False)
@@ -473,12 +459,12 @@ class PasskeyTests(unittest.TestCase):
             state.commit_passkey_authentication(original, result, generation + 1, now=NOW + 2, journal=unjournaled)
 
     def test_impossible_backup_state_and_changed_eligibility_fail_closed(self) -> None:
-        impossible = credential()
+        impossible = passkey_record()
         impossible["backup_state"] = True
         with self.assertRaises(passkeys.PasskeyError):
             state.add_passkey(impossible, state.factor_generation(), journal=unjournaled)
 
-        state.add_passkey(credential(), state.factor_generation(), journal=unjournaled)
+        state.add_passkey(passkey_record(), state.factor_generation(), journal=unjournaled)
         generation = state.factor_generation()
         original = state.passkey_for_authentication("credential_A", ORIGIN)
         result = passkeys.Authentication("credential_A", 4, True, True)
@@ -490,7 +476,7 @@ class PasskeyTests(unittest.TestCase):
         self.assertEqual(suspension_reason, "backup-identity-change")
         self.assertEqual(state.active_passkeys(ORIGIN), [])
 
-        state.add_passkey(credential(), state.factor_generation(), journal=unjournaled)
+        state.add_passkey(passkey_record(), state.factor_generation(), journal=unjournaled)
         generation = state.factor_generation()
         original = state.passkey_for_authentication("credential_A", ORIGIN)
         impossible_result = passkeys.Authentication("credential_A", 4, False, True)
@@ -506,14 +492,14 @@ class PasskeyTests(unittest.TestCase):
     def test_persisted_passkey_collections_fail_closed(self) -> None:
         with self.assertRaises(passkeys.PasskeyError):
             state._validated_passkey(None)
-        wrong_origin = credential()
+        wrong_origin = passkey_record()
         wrong_origin["rp_id"] = "other.example"
         with self.assertRaises(passkeys.PasskeyError):
             state._validated_passkey(wrong_origin)
         with self.assertRaises(passkeys.PasskeyError):
             state._validated_passkeys(None)
         with self.assertRaises(passkeys.PasskeyError):
-            state._validated_passkeys([credential(), credential()])
+            state._validated_passkeys([passkey_record(), passkey_record()])
 
         data = state.get()
         data["passkeys"] = [{}]

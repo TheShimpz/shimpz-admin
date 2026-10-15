@@ -1,7 +1,6 @@
 """The Admin session socket's chat channel (ADR-0114): attach, detach, waiting frames, halting, and authority."""
 
 import asyncio
-import threading
 from unittest import mock
 
 from tests.session_socket_case import SessionSocketCase
@@ -43,13 +42,7 @@ class SessionSocketChatChannelTests(SessionSocketCase):
         asyncio.run(scenario())
 
     def test_detaching_stops_the_teams_active_turn_and_keeps_the_others(self) -> None:
-        started = threading.Event()
-        release = threading.Event()
-
-        def turn(*_args, **_kwargs):
-            started.set()
-            release.wait(5)
-            return chat_socket_fixtures.completed_turn("late")
+        turn, started, release = chat_socket_fixtures.held_turn()
 
         async def scenario() -> None:
             stopped = self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
@@ -134,14 +127,8 @@ class SessionSocketWaitingTests(SessionSocketCase):
         asyncio.run(scenario())
 
     def test_a_closing_socket_ends_its_authority_before_its_channels_finish_stopping(self) -> None:
-        started = threading.Event()
-        release = threading.Event()
+        turn, started, release = chat_socket_fixtures.held_turn()
         observed = {}
-
-        def turn(*_args, **_kwargs):
-            started.set()
-            release.wait(5)
-            return chat_socket_fixtures.completed_turn("late")
 
         def stop(_team_id):
             # Team is slow to answer the Stop: the socket's binding and close already happened.

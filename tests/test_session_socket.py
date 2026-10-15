@@ -7,7 +7,7 @@ import threading
 import time
 from unittest import mock
 
-from mfa_helper import unjournaled
+from mfa_helper import passkey_record, unjournaled
 from tests.session_socket_case import SessionSocketCase
 
 from tests import chat_socket_fixtures
@@ -322,21 +322,6 @@ class SessionSocketFrameTests(SessionSocketCase):
         asyncio.run(scenario())
 
 
-PASSKEY = {
-    "credential_id": "credential_A",
-    "public_key": "public_key_A",
-    "sign_count": 3,
-    "backup_eligible": False,
-    "backup_state": False,
-    "rp_id": "localhost",
-    "origin": "http://localhost:7777",
-    "status": "active",
-    "created_at": 1_800_000_000,
-    "updated_at": 1_800_000_000,
-    "last_used_at": 1_800_000_000,
-}
-
-
 class SessionSocketClosureTests(SessionSocketCase):
     """Every session-ending event closes the session's sockets at once with 4401, without waiting for a frame."""
 
@@ -360,7 +345,7 @@ class SessionSocketClosureTests(SessionSocketCase):
 
     def test_a_passkey_suspension_closes_every_socket_at_once(self) -> None:
         state = self.admin_app.state
-        state.add_passkey(dict(PASSKEY), state.factor_generation(), journal=unjournaled)
+        state.add_passkey(passkey_record(), state.factor_generation(), journal=unjournaled)
         self.token = self.admin_app.auth.issue_session(state.get()["session_secret"], "webauthn")
         passkeys = importlib.import_module("mfa.passkeys")
 
@@ -451,14 +436,8 @@ class SessionSocketClosureTests(SessionSocketCase):
 
         asyncio.run(scenario())
 
-    def test_closing_stops_the_active_turn_as_a_closed_v7_socket_did(self) -> None:
-        started = threading.Event()
-        release = threading.Event()
-
-        def turn(*_args, **_kwargs):
-            started.set()
-            release.wait(5)
-            return chat_socket_fixtures.completed_turn("late")
+    def test_closing_stops_the_active_turn(self) -> None:
+        turn, started, release = chat_socket_fixtures.held_turn()
 
         async def scenario() -> None:
             stopped = self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})

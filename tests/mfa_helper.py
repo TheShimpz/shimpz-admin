@@ -12,6 +12,23 @@ from pathlib import Path
 NOW = 1_800_000_000
 
 
+def passkey_record() -> dict[str, object]:
+    """One active passkey registered at NOW for the loopback Admin origin, exactly as Admin stores it."""
+    return {
+        "credential_id": "credential_A",
+        "public_key": "public_key_A",
+        "sign_count": 3,
+        "backup_eligible": False,
+        "backup_state": False,
+        "rp_id": "localhost",
+        "origin": "http://localhost:7777",
+        "status": "active",
+        "created_at": NOW,
+        "updated_at": NOW,
+        "last_used_at": NOW,
+    }
+
+
 def unjournaled(_result: object) -> None:
     """The journal of a state call whose test checks no audit line: it records nothing."""
 
