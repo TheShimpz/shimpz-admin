@@ -26,7 +26,6 @@ TRACE = "a" * 32
 INFERENCE = {"team_id": "team_1", "provider": "openai", "model": "gpt-6.1-sol", "trace_id": TRACE}
 ROUTINE = "c" * 32
 RUN = "d" * 32
-NONCE = "e" * 32
 
 
 def _provider_url(callback: str) -> str:
