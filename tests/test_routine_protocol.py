@@ -3,7 +3,6 @@
 import json
 import sys
 import unittest
-from fractions import Fraction
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -69,10 +68,10 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
             with self.subTest(case=case):
                 self.assertIsNone(routine_contract.canonical_position(case["value"], case["steps"]))
 
-    def test_schedules_name_their_rate_cap_and_active_time(self) -> None:
-        for case in VECTORS["routine_schedule"]["daily_rate"]:
-            self.assertEqual(str(routine_contract.daily_rate(case["schedule"])), case["rate"])
-        self.assertEqual(routine_contract.daily_rate({"kind": "continuous", "gap": 18_000}), Fraction(5))
+    def test_schedules_name_their_cap_and_active_time(self) -> None:
+        for case in VECTORS["routine_schedule"]["daily_cap"]:
+            self.assertEqual(routine_contract.daily_cap(case["schedule"]), case["cap"])
+        self.assertEqual(routine_contract.daily_cap({"kind": "continuous", "gap": 18_000}), 5)
         self.assertEqual(routine_contract.daily_cap({"kind": "continuous", "gap": 5}), 17_280)
         self.assertEqual(routine_run_contract.active_seconds(8), routine_run_contract.SHORT_ACTIVE_SECONDS)
         self.assertEqual(routine_run_contract.active_seconds(320), routine_run_contract.MAX_ACTIVE_SECONDS)

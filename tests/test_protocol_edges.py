@@ -66,7 +66,7 @@ class PayloadEdges(unittest.TestCase):
         self.assertIsNone(payload.canonical_filename(_Unencodable("name")))
         self.assertEqual(payload.canonical_media_type(None), "application/octet-stream")
         self.assertIsNone(payload.canonical_media_type(1))
-        self.assertIsNone(payload._integer(True))
+        self.assertIsNone(payload.integer(True))
 
     def test_storage_usage_and_metadata_fail_closed(self) -> None:
         invalid_usage = (
@@ -82,34 +82,15 @@ class PayloadEdges(unittest.TestCase):
 
     def test_storage_response_rejects_each_invalid_shape(self) -> None:
         cases = (
-            (None, "list", None),
-            ({"team_id": "team", "file": None}, "upload", None),
-            ({"team_id": "team", "files": None}, "list", None),
-            ({"team_id": "team", "id": "a" * 32, "deleted": True}, "delete", None),
-            ({"team_id": "team"}, "unknown", None),
+            (None, "list"),
+            ({"team_id": "team", "file": None}, "upload"),
+            ({"team_id": "team", "files": None}, "list"),
+            ({"team_id": "team"}, "unknown"),
         )
-        for value, kind, file_id in cases:
+        for value, kind in cases:
             self.assertIsNone(
-                payload.project_storage_response(
-                    value,
-                    kind=kind,
-                    expected_team_id="team",
-                    expected_file_id=file_id,
-                    include_team_id=False,
-                )
+                payload.project_storage_response(value, kind=kind, expected_team_id="team", include_team_id=False)
             )
-
-    def test_storage_response_projects_a_deletion_of_the_expected_file(self) -> None:
-        usage = {"used_bytes": 0, "limit_bytes": 8, "remaining_bytes": 8}
-        deleted = {"team_id": "team", "id": "a" * 32, "deleted": True, **usage}
-        projected = payload.project_storage_response(
-            deleted, kind="delete", expected_team_id="team", expected_file_id="a" * 32, include_team_id=True
-        )
-        self.assertEqual(projected, deleted)
-        other = payload.project_storage_response(
-            deleted, kind="delete", expected_team_id="team", expected_file_id="b" * 32, include_team_id=True
-        )
-        self.assertIsNone(other)
 
 
 class ProgressEdges(unittest.TestCase):

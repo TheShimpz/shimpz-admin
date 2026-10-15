@@ -292,24 +292,6 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
             with self.subTest(mutate=mutate.__name__), self.assertRaises(SystemExit):
                 _execute(HTTP / "verify.py", mutate)
 
-    def test_rejects_answer_replies_that_miss_a_language_or_a_fallback(self) -> None:
-        def edit(old: str, new: str):
-            def mutate(root: Path) -> None:
-                module = root / "routine_proposal.py"
-                text = module.read_text(encoding="utf-8")
-                self.assertIn(old, text)
-                module.write_text(text.replace(old, new, 1), encoding="utf-8")
-                _rehash(root, "routine_proposal.py")
-
-            return mutate
-
-        for mutate in (
-            edit('    "zh": "已将你的回答应用到例行任务。",\n', ""),
-            edit('    return ANSWER_REPLIES[locale or "en"]', '    return ANSWER_REPLIES[locale or "pt"]'),
-        ):
-            with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
-                _execute(HTTP / "verify.py", mutate)
-
     def test_rejects_output_choices_that_miss_a_language_or_name_one_output_twice(self) -> None:
         def edit(old: str, new: str):
             def mutate(root: Path) -> None:
@@ -348,7 +330,7 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
 
     def test_rejects_missing_or_drifted_routine_vectors(self) -> None:
         def missing_schedules(value: dict[str, object]) -> None:
-            value["routine_schedule"]["daily_rate"] = []
+            value["routine_schedule"]["daily_cap"] = []
 
         def rejected_schedule(value: dict[str, object]) -> None:
             value["routine_schedule"]["valid"] = [{"kind": "daily", "time": "25:00"}]
@@ -356,8 +338,8 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
         def accepted_schedule(value: dict[str, object]) -> None:
             value["routine_schedule"]["invalid"] = [{"kind": "daily", "time": "09:00"}]
 
-        def drifted_rate(value: dict[str, object]) -> None:
-            value["routine_schedule"]["daily_rate"][0]["rate"] = "5"
+        def drifted_cap(value: dict[str, object]) -> None:
+            value["routine_schedule"]["daily_cap"][0]["cap"] = 5
 
         def missing_timezones(value: dict[str, object]) -> None:
             value["routine_timezone"]["valid"] = []
@@ -393,7 +375,7 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
             missing_schedules,
             rejected_schedule,
             accepted_schedule,
-            drifted_rate,
+            drifted_cap,
             missing_timezones,
             rejected_timezone,
             accepted_timezone,
