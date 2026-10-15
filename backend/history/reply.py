@@ -6,25 +6,14 @@ Pure shape checks, the same when a reply is written and when its row is read bac
 from collections.abc import Mapping
 
 from chat import local as chat_local
-from protocol.http.v1 import routine_proposal as routine_proposal_contract
-
-# A reply's Routine card for the person to confirm, what Team asks first, or why the recording made none: at most one,
-# never with a clarification, so a reload restores the same question or card for the same turn.
-ROUTINE_FIELDS = {
-    "routine_proposal": routine_proposal_contract.canonical_proposal,
-    "routine_refusal": routine_proposal_contract.canonical_refusal,
-    "routine_question": routine_proposal_contract.canonical_question,
-}
 
 
 def routine_reply(value: Mapping[str, object], clarification: object) -> dict[str, object]:
-    present = [name for name in ROUTINE_FIELDS if name in value]
-    if not present:
-        return {}
-    admitted = ROUTINE_FIELDS[present[0]](value[present[0]])
-    if len(present) > 1 or clarification is not None or admitted is None or admitted != value[present[0]]:
+    """A stored reply's Routine card, question, or refusal, exactly in the closed form a live reply admits it in."""
+    admitted = chat_local.admit_routine_fields(dict(value), clarification)
+    if admitted is None or any(admitted[name] != value[name] for name in admitted):
         raise ValueError("chat history Routine reply is invalid")
-    return {present[0]: admitted}
+    return admitted
 
 
 def receipt(value: object) -> list[dict[str, object]]:
