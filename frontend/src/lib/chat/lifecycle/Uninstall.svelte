@@ -6,7 +6,7 @@
   import DialogAction from '#lib/DialogAction.svelte';
   import Markdown from '#lib/chat/Markdown.svelte';
   import { escapeMarkdownText } from '#lib/chat/markdown.js';
-  import { t } from '#lib/i18n/index.js';
+  import { fill } from '#lib/i18n/fill.js';
 
   // One Assistant uninstall a chat turn proposed (ADR-0066): its card with Cancel and Uninstall while it waits for the
   // Supervisor, then how it went, and once Team's inventory confirms it, the outcome in the Team's words. `teamId` is
@@ -24,13 +24,12 @@
 
   function outcome() {
     if (lifecycle.state !== 'uninstalled') return '';
-    const outcomeKey = lifecycle.uninstalled ? 'uninstalledReply' : 'absentReply';
-    const reply = $t(`chatPage.uninstall.${outcomeKey}`, {
+    const reply = fill(lifecycle.uninstalled ? lifecycleMessages.uninstalledReply : lifecycleMessages.absentReply, {
       assistant: escapeMarkdownText(lifecycle.assistant.name),
       version: escapeMarkdownText(lifecycle.assistant.version),
       team: escapeMarkdownText(author),
     });
-    return `${reply}\n\n${words.uninstall.reinstall}`;
+    return `${reply}\n\n${lifecycleMessages.reinstall}`;
   }
 </script>
 
@@ -53,9 +52,7 @@
           type="button"
           onclick={() => ondecide('no')}
           {disabled}
-          aria-label={$t('chatPage.uninstall.cancelActionLabel', {
-            assistant: lifecycle.assistant.name,
-          })}
+          aria-label={fill(lifecycleMessages.cancelActionLabel, { assistant: lifecycle.assistant.name })}
         >
           {lifecycleMessages.cancelAction}
         </DialogAction>
@@ -65,9 +62,7 @@
           type="button"
           onclick={() => ondecide('yes')}
           {disabled}
-          aria-label={$t('chatPage.uninstall.uninstallActionLabel', {
-            assistant: lifecycle.assistant.name,
-          })}
+          aria-label={fill(lifecycleMessages.uninstallActionLabel, { assistant: lifecycle.assistant.name })}
         >
           {lifecycleMessages.uninstallAction}
         </DialogAction>
