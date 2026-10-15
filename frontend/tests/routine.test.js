@@ -207,6 +207,26 @@ test("every interface language offers exactly the Team protocol's output choices
   }
 });
 
+test("every interface language offers exactly the Team protocol's schedule and over-budget answers", async () => {
+  const { readFileSync } = await import('node:fs');
+  // Team reads a send that is exactly one of these as a settings answer, which only records again (ADR-0101).
+  const source = readFileSync(new URL('../../backend/protocol/http/v1/routine_proposal.py', import.meta.url), 'utf8');
+  const block = (name) => source.match(new RegExp(`${name} = \\{\\n([\\s\\S]*?)\\n\\}`, 'u'))[1];
+  const strings = (text) => [...text.matchAll(/"((?:[^"\\]|\\.)*)"/gu)].map(([, value]) => value);
+  const schedules = Object.fromEntries(
+    [...block('SCHEDULE_CHOICES').matchAll(/"([a-z]{2})": \(([^)]*)\)/gu)].map(([, locale, body]) => [locale, strings(body)]),
+  );
+  const intervals = Object.fromEntries(
+    [...block('OVER_BUDGET_ANSWERS').matchAll(/"([a-z]{2})": "((?:[^"\\]|\\.)*)"/gu)].map(([, locale, answer]) => [locale, answer]),
+  );
+  assert.deepEqual(Object.keys(schedules).sort(), Object.keys(routineMessages).sort());
+  assert.deepEqual(Object.keys(intervals).sort(), Object.keys(routineMessages).sort());
+  for (const [locale, catalog] of Object.entries(routineMessages)) {
+    assert.deepEqual(catalog.proposal.questions.schedule.answers, schedules[locale], locale);
+    assert.equal(catalog.proposal.questions.overBudget.answer, intervals[locale], locale);
+  }
+});
+
 test('a Routine question is admitted only in its closed form and reads as facts with answers in every locale', () => {
   // Each option carries its target's exact JSON text: a string with its quotes, an integer with every digit.
   const target = (text, label = 'shimpz.com') => ({ value: text, label });
