@@ -2,7 +2,7 @@
 
 Opening a frozen run's notice asks Team for a fresh one-use challenge; Admin keeps its request until it expires, so an
 answer is checked against it and an authentication request is verified here, as in chat, before the run resumes under
-the Supervisor's session with the Team's model key.
+the Supervisor's session; a run asks no model, so the answer carries no model key (ADR-0092).
 """
 
 import contextlib
@@ -17,7 +17,6 @@ from team import bridge as team
 from team import transport
 
 from chat import human
-from chat import local as chat_local
 from protocol.http.v1 import routine_run as routine_run_contract
 from protocol.http.v1 import websocket as chat_ws_common
 from routine import manage
@@ -193,18 +192,12 @@ def _resumed(response: team.TeamResponse, canonical: str, run: str) -> team.Team
 
 
 def _resume(canonical: str, run: str, action: str, payload: dict[str, object], assurance) -> team.TeamResponse:
-    credential = chat_local.model_credential(canonical)
-    if isinstance(credential, team.TeamResponse):
-        if credential.body != {"code": "model-credential-missing"}:
-            return credential
-        # A compiled run resumes without a key; a recovery it then needs pauses as unavailable in Team (ADR-0092).
-        credential = None
     response = transport._call_stream(
         "POST",
         f"/v1/teams/{canonical}/routines/runs/{run}/{action}",
         payload,
         timeout=routine_team.RESUME_TIMEOUT_SECONDS,
-        bindings=transport._RequestBindings(model_credential=credential, human_assurance=assurance),
+        bindings=transport._RequestBindings(human_assurance=assurance),
         progress=lambda _event: None,
         # A human answer is as long as a chat one may be (Team admits the same 128 KiB for both).
         max_body_bytes=team.MAX_CHAT_JSON_BODY_BYTES,

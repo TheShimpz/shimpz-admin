@@ -105,14 +105,6 @@ def active_seconds(units: int) -> int:
     return min(360 + 30 * units, MAX_ACTIVE_SECONDS)
 
 
-# How a claimed run was scheduled: by its firings, or continuously after the previous run ended (ADR-0092).
-RUN_MODES = ("scheduled", "continuous")
-
-
-def run_mode(schedule: dict[str, object]) -> str:
-    return "continuous" if schedule["kind"] == "continuous" else "scheduled"
-
-
 def canonical_claim(value: object) -> dict[str, object] | None:
     """A claim's answer: one run with the lease token Admin's routine identity signs for, or none and a wake hint.
 
@@ -125,11 +117,11 @@ def canonical_claim(value: object) -> dict[str, object] | None:
     run, hint = value["run"], value["next_due_at"]
     if run is None:
         return {"run": None, "next_due_at": hint} if hint is None or (type(hint) is int and hint > 0) else None
-    fields = {"team_id", "run_id", "routine_id", "lease_token", "lease_expires_at", "provider", "active_seconds"}
+    fields = {"team_id", "run_id", "routine_id", "lease_token", "lease_expires_at", "active_seconds"}
     valid = (
         hint is None
         and isinstance(run, dict)
-        and set(run) == fields | {"revision", "plan_digest", "mode"}
+        and set(run) == fields | {"revision", "plan_digest"}
         and type(run["active_seconds"]) is int
         and 0 < run["active_seconds"] <= MAX_ACTIVE_SECONDS
         and routine._team(run["team_id"])
@@ -138,17 +130,15 @@ def canonical_claim(value: object) -> dict[str, object] | None:
         and routine._identity(run["lease_token"], routine_notice.LEASE_TOKEN_RE)
         and type(run["lease_expires_at"]) is int
         and run["lease_expires_at"] > 0
-        and run["provider"] in routine.MODEL_PROVIDERS
         and routine._revision(run["revision"])
         and routine._identity(run["plan_digest"], routine.PLAN_DIGEST_RE)
-        and run["mode"] in RUN_MODES
     )
     return copy.deepcopy(value) if valid else None
 
 
 def canonical_segment_request(value: object) -> dict[str, object] | None:
     """A leased run's segment request: exactly the revision and plan digest its claim named, under the signature."""
-    if not isinstance(value, dict) or set(value) != {"revision", "plan_digest", "mode"}:
+    if not isinstance(value, dict) or set(value) != {"revision", "plan_digest"}:
         return None
     # A request body reaches only the fixed-length digest pattern, never the shared identifier patterns.
     plan_digest = value["plan_digest"]
@@ -156,9 +146,8 @@ def canonical_segment_request(value: object) -> dict[str, object] | None:
         routine._revision(value["revision"])
         and isinstance(plan_digest, str)
         and routine.PLAN_DIGEST_RE.fullmatch(plan_digest) is not None
-        and value["mode"] in RUN_MODES
     )
-    return {"revision": value["revision"], "plan_digest": plan_digest, "mode": value["mode"]} if valid else None
+    return {"revision": value["revision"], "plan_digest": plan_digest} if valid else None
 
 
 # Per-execution diagnostics (ADR-0092 section 8): one Team-sanitized handled failure, or one safe transport condition,
@@ -274,7 +263,7 @@ def _run_input(value: object) -> bool:
     )
 
 
-def canonical_run_step(value: object, position: dict[str, object], steps: int) -> dict[str, object] | None:
+def canonical_run_step(value: object, position: int, steps: int) -> dict[str, object] | None:
     """One entry at ``position``: what its attempt did, or only that it never ran or cannot be shown."""
     if not isinstance(value, dict) or set(value) != RUN_STEP_FIELDS or value.get("position") != position:
         return None
@@ -301,11 +290,6 @@ def canonical_run_step(value: object, position: dict[str, object], steps: int) -
     return copy.deepcopy(value) if valid else None
 
 
-def run_position(index: int) -> dict[str, object]:
-    """The position of a run page's ``index``-th entry (1-based): its replay step."""
-    return {"phase": "replay", "step": index}
-
-
 def canonical_run_steps(value: object) -> dict[str, object] | None:
     """One page of a run's entries from ``offset``: whole consecutive steps of its own revision's run.
 
@@ -323,6 +307,6 @@ def canonical_run_steps(value: object) -> dict[str, object] | None:
         and routine._identity(value["plan_digest"], routine.PLAN_DIGEST_RE)
         and routine._identity(value["snapshot"], SNAPSHOT_RE)
         and type(value["ended"]) is bool
-        and routine._paged(value, lambda item, index: canonical_run_step(item, run_position(index), total))
+        and routine._paged(value, lambda item, index: canonical_run_step(item, index, total))
     )
     return copy.deepcopy(value) if valid else None

@@ -19,7 +19,6 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-import models
 import state
 import supervisor
 from history import store as history
@@ -125,9 +124,7 @@ class RoutineIdentityTests(unittest.TestCase):
     def test_the_run_segment_carries_only_the_routine_assertion_even_inside_a_session(self) -> None:
         identity = supervisor.new_identity()
         session = "v1:9999999999:0123456789abcdef:" + "a" * 64
-        bindings = transport._RequestBindings(
-            model_credential=("openai", "sk-test-0123456789"), routine=(supervisor.new_identity(), "lease-token")
-        )
+        bindings = transport._RequestBindings(routine=(supervisor.new_identity(), "lease-token"))
         with (
             mock.patch.object(transport, "_team_token", return_value="machine-bearer"),
             transport.supervisor_session(session, local_identity=identity),
@@ -155,7 +152,7 @@ class RoutineIdentityTests(unittest.TestCase):
         self.assertIn(contract.ASSERTION_HEADER, plain)
         self.assertNotIn(contract.ROUTINE_ASSERTION_HEADER, plain)
         claims = json.loads(_decode(headers[contract.ROUTINE_ASSERTION_HEADER].split(".")[1]))
-        self.assertEqual(claims["model"]["provider"], "openai")
+        self.assertNotIn("model", claims)
 
 
 class RoutineHistoryTests(ChatHistoryCase):
@@ -294,15 +291,10 @@ class RoutineHistoryViewTests(ChatHistoryCase):
 
 class RoutineTeamCallTests(unittest.TestCase):
     def test_calls_admit_only_closed_answers(self) -> None:
-        # A claim holds no model key: a healthy compiled run needs none.
-        with (
-            mock.patch.object(models, "resolve_api_key") as resolve,
-            mock.patch.object(transport, "_call", return_value=answer(CLAIMED)) as call,
-        ):
+        with mock.patch.object(transport, "_call", return_value=answer(CLAIMED)) as call:
             self.assertEqual(team.claim(False), CLAIMED)
         # The claim says only whether Admin can take a long run now.
         call.assert_called_once_with("POST", "/v1/routines/claim", {"long": False})
-        resolve.assert_not_called()
         with mock.patch.object(transport, "_call", return_value=answer({"run": LONG, "next_due_at": None})) as call:
             self.assertEqual(team.claim(True)["run"], LONG)
         call.assert_called_once_with("POST", "/v1/routines/claim", {"long": True})
@@ -319,7 +311,7 @@ class RoutineTeamCallTests(unittest.TestCase):
             {"team_id": "team_1", "notice_id": first["notice_id"], "version": first["version"]},
         )
         for response, action in (
-            (answer({**CLAIMED, "run": {**CLAIM, "provider": "other"}}), lambda: team.claim(False)),
+            (answer({**CLAIMED, "run": {**CLAIM, "active_seconds": 0}}), lambda: team.claim(False)),
             (answer({"run": None}), lambda: team.claim(False)),
             (answer({"notices": [], "more": True}), team.notices),
             (answer({"acknowledged": False}), lambda: team.acknowledge(BATCH["notices"])),
@@ -370,39 +362,25 @@ class RoutineTeamCallTests(unittest.TestCase):
     def test_a_run_segment_is_signed_for_its_own_lease_and_answers_its_own_run(self) -> None:
         identity = supervisor.new_identity()
         done = answer({"team_id": CLAIM["team_id"], "run_id": CLAIM["run_id"], "status": "done"})
-        with (
-            mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
-            mock.patch.object(transport, "_call_stream", return_value=done) as stream,
-        ):
+        with mock.patch.object(transport, "_call_stream", return_value=done) as stream:
             self.assertEqual(team.run(CLAIM, identity), "done")
         bindings = stream.call_args.kwargs["bindings"]
         self.assertEqual(bindings.routine, (identity, CLAIM["lease_token"]))
-        # The signed segment names exactly the revision, plan, and mode the claim leased.
-        self.assertEqual(
-            stream.call_args.args[2],
-            {"revision": CLAIM["revision"], "plan_digest": CLAIM["plan_digest"], "mode": CLAIM["mode"]},
-        )
-        self.assertEqual(bindings.model_credential, ("openai", "sk-test-0123456789"))
+        # The signed segment names exactly the revision and plan the claim leased, and no model key travels.
+        self.assertEqual(stream.call_args.args[2], {"revision": CLAIM["revision"], "plan_digest": CLAIM["plan_digest"]})
+        self.assertIsNone(bindings.model_credential)
         self.assertEqual(stream.call_args.args[1], f"/v1/teams/team_1/routines/runs/{CLAIM['run_id']}/segment")
         # A segment waits for its run's active time plus a margin, never less than fifteen minutes.
         self.assertEqual(stream.call_args.kwargs["timeout"], team.MIN_RUN_TIMEOUT_SECONDS)
         self.assertEqual(team.run_timeout(LONG), 7200 + team.RUN_TIMEOUT_MARGIN_SECONDS)
         self.assertEqual(team.run_timeout({**CLAIM, "active_seconds": 60}), team.MIN_RUN_TIMEOUT_SECONDS)
         stream.call_args.kwargs["progress"]({"type": "progress"})
-        # Without a key the segment still runs, carrying no model credential; Team pauses a recovery it then needs.
-        with (
-            mock.patch.object(models, "resolve_api_key", return_value=None),
-            mock.patch.object(transport, "_call_stream", return_value=done) as stream,
-        ):
-            self.assertEqual(team.run(CLAIM, identity), "done")
-        self.assertIsNone(stream.call_args.kwargs["bindings"].model_credential)
-        for key, response in (
-            ("sk-test-0123456789", answer({"team_id": "team_2", "run_id": CLAIM["run_id"], "status": "done"})),
-            ("sk-test-0123456789", answer({"team_id": "team_1", "run_id": CLAIM["run_id"], "status": "running"})),
+        for response in (
+            answer({"team_id": "team_2", "run_id": CLAIM["run_id"], "status": "done"}),
+            answer({"team_id": "team_1", "run_id": CLAIM["run_id"], "status": "running"}),
         ):
             with (
                 self.subTest(response=response),
-                mock.patch.object(models, "resolve_api_key", return_value=key),
                 mock.patch.object(transport, "_call_stream", return_value=response),
                 self.assertRaises(team.RoutineTeamError),
             ):

@@ -69,14 +69,11 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
             with self.subTest(case=case):
                 self.assertIsNone(routine_contract.canonical_position(case["value"], case["steps"]))
 
-    def test_schedules_name_their_rate_cap_mode_and_active_time(self) -> None:
+    def test_schedules_name_their_rate_cap_and_active_time(self) -> None:
         for case in VECTORS["routine_schedule"]["daily_rate"]:
             self.assertEqual(str(routine_contract.daily_rate(case["schedule"])), case["rate"])
-        self.assertEqual(routine_contract.daily_rate({"kind": "hourly", "every": 5}), Fraction(24, 5))
-        self.assertEqual(routine_contract.daily_cap({"kind": "hourly", "every": 5}), 5)
-        self.assertEqual(routine_contract.daily_cap({"kind": "continuous", "gap": 5, "cap": 300}), 300)
-        self.assertEqual(routine_run_contract.run_mode({"kind": "continuous", "gap": 5, "cap": 300}), "continuous")
-        self.assertEqual(routine_run_contract.run_mode({"kind": "daily", "time": "09:00"}), "scheduled")
+        self.assertEqual(routine_contract.daily_rate({"kind": "continuous", "gap": 18_000}), Fraction(5))
+        self.assertEqual(routine_contract.daily_cap({"kind": "continuous", "gap": 5}), 17_280)
         self.assertEqual(routine_run_contract.active_seconds(8), routine_run_contract.SHORT_ACTIVE_SECONDS)
         self.assertEqual(routine_run_contract.active_seconds(320), routine_run_contract.MAX_ACTIVE_SECONDS)
 
@@ -106,11 +103,7 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
         self.assertFalse(routine_proposal_contract._card_input([], 1))
         self.assertFalse(routine_proposal_contract._card_input({**literal, "origin": "guess"}, 2))
         self.assertFalse(routine_proposal_contract._card_input({**literal, "member": "a\u2028b"}, 2))
-        self.assertFalse(routine_proposal_contract._card_permitted({}))
-        self.assertFalse(
-            routine_proposal_contract._card_permitted([CARD["permitted"][0]] * (routine_contract.MAX_PERMITTED + 1))
-        )
-        self.assertFalse(routine_proposal_contract._card_permitted([{**CARD["permitted"][0], "read_only": 1}]))
+        self.assertIsNone(routine_proposal_contract.canonical_proposal({**CARD, "steps": []}))
 
     def test_routine_assertions_bind_no_human_authority(self) -> None:
         valid = VECTORS["local_routine"]["valid"][0]

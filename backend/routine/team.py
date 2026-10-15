@@ -6,7 +6,6 @@ lease. Every answer is admitted only in its canonical protocol view.
 
 import json
 
-import models
 import supervisor
 from team import bridge as team
 from team import transport
@@ -42,8 +41,8 @@ def _answer(response: team.TeamResponse) -> dict[str, object]:
 def claim(long: bool) -> dict[str, object]:
     """Lease at most one due run: ``run`` is None when nothing may start now, and ``next_due_at`` then hints when.
 
-    ``long`` says whether Admin can take a long run now. A healthy compiled run needs no model key, so a claim is never
-    gated on one (ADR-0092).
+    ``long`` says whether Admin can take a long run now. A run asks no model, so a claim is never gated on a key
+    (ADR-0092).
     """
     body = routine_run_contract.canonical_claim(_answer(transport._call("POST", "/v1/routines/claim", {"long": long})))
     if body is None:
@@ -64,21 +63,16 @@ def run_timeout(claimed: dict[str, object]) -> int:
 def run(claimed: dict[str, object], identity: supervisor.LocalIdentity) -> str:
     """Run one segment of a claimed run under its lease; returns how the run stands afterwards.
 
-    The Team's model key travels only when Admin holds one: a compiled run needs none, and without it a recovery
-    the run needs pauses as unavailable in Team instead of reasoning (ADR-0092).
+    A run asks no model, so no model key travels with it (ADR-0092).
     """
     team_id, run_id = claimed["team_id"], claimed["run_id"]
-    api_key = models.resolve_api_key(claimed["provider"])
     response = transport._call_stream(
         "POST",
         f"/v1/teams/{team_id}/routines/runs/{run_id}/segment",
-        # The signed segment names exactly the revision, plan, and mode its claim leased (ADR-0092).
-        {"revision": claimed["revision"], "plan_digest": claimed["plan_digest"], "mode": claimed["mode"]},
+        # The signed segment names exactly the revision and plan its claim leased (ADR-0092).
+        {"revision": claimed["revision"], "plan_digest": claimed["plan_digest"]},
         timeout=run_timeout(claimed),
-        bindings=transport._RequestBindings(
-            model_credential=(claimed["provider"], api_key) if api_key else None,
-            routine=(identity, claimed["lease_token"]),
-        ),
+        bindings=transport._RequestBindings(routine=(identity, claimed["lease_token"])),
         progress=lambda _event: None,
     )
     body = _answer(response)

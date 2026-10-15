@@ -216,7 +216,7 @@ The Team→Brain Routine forms of a recording chat are defined here too, so the 
 them (ADR-0101). `routine_context.canonical_routine_listings` admits the Team's Routine listing: at most
 `routine.MAX_ROUTINES` entries, no Routine twice, each `routine_context.canonical_routine_listing` `{routine_id, name, schedule,
 timezone, timezone_source, revision, daily_steps, output, steps}`, where `daily_steps` is 1 to
-`routine_context.MAX_LISTED_DAILY_STEPS`, `output` is `{mode, when}` as on the card, and each of at most 256 steps is `{id,
+`routine_context.MAX_LISTED_DAILY_STEPS`, `output` is `{mode}` (a shown mode shows the last step), and each of at most 256 steps is `{id,
 assistant, action, inputs}` with its plan id (`routine_context.ROUTINE_STEP_ID_RE`) and at most 64 sorted input member names,
 never a value. The pending question the Brain sees is `routine_proposal.canonical_question`, exactly as the reply carried it.
 `routine_context.canonical_rerun` admits the work a pending unsourced or rerun question asks the Brain to repeat: 1 to
@@ -228,12 +228,11 @@ and whether it is a target the person chose; a `clock` input is the run's date; 
 and names the `{assistant, action}` whose earlier result held it, or `null`. Team sends no such work past these
 bounds. `routine_mode`, whether the chat is about a Routine, is a plain advisory boolean. `routine_proposal` is
 the Routine's confirmation card (`routine_proposal.canonical_proposal`), at most 160 KiB, which Team checks against the whole
-terminal line bound before publishing: `{proposal_id, expires_at, replaces, name, schedule, timezone, timezone_source,
-next_runs, daily_cap, output, steps, permitted}`. `replaces` is `null` for a new Routine or the id
-of the Routine it changes; `timezone_source` is `browser`, `person` (a zone the person wrote), or `none` (`routine.zoned`:
-the Routine then runs on `UTC` by convention, its run date included, which is never a claim about the person); `next_runs` holds one to three instants;
-`daily_cap` is exactly `routine.daily_cap` of the schedule; `output` is `{mode}`, and a shown mode shows the last
-step. Each step is `{position,
+terminal line bound before publishing: exactly `{proposal_id, expires_at, replaces, name, description, steps}` (ADR-0101
+amendment, 2026-10-15). `replaces` is `null` for a new Routine or the id of the Routine it changes; `description` is the
+recording agent's one plain paragraph, which states how often the Routine runs exactly as Team read it from the person
+and what is done with each run's result; the schedule, zone, output, and permitted Actions are Team's own, bound by the
+confirmation, never carried on the card. Each step is `{position,
 assistant, action, read_only, inputs}`, and each input `{member, origin, value, step, pointer, where, item}` names
 exactly where its value comes from: `request` (named in the person's request) or `assistant` (chosen by the assistant,
 the same on every run), each with the literal's complete JSON text escaped (never cut); `clock`, the date of each run
@@ -242,8 +241,7 @@ reads it, escaped: every literal brace doubled and each date in braces as its fo
 language and its offset in days, such as `{D month YYYY|pt}` or `{DD/MM/YYYY|+6}`);
 `step`, an earlier step's position and RFC 6901 pointer; or `selector`, the same through the one array item whose
 `where` member (`{member, value_json}`, the constant's JSON text as `routine.where_text` escapes it) matches, then that
-item's own pointer. `permitted` lists every Action the Routine may call, each once in identity order with whether its
-reviewed effect is read-only. A Supervisor answers the card once: `POST /v1/teams/:team_id/routines/proposals/:proposal_id` with `{}`
+item's own pointer. A Supervisor answers the card once: `POST /v1/teams/:team_id/routines/proposals/:proposal_id` with `{}`
 (Criar rotina) creates or changes the Routine, and `DELETE` on the same path (Cancelar) revokes the card; both answer
 `routine_proposal.canonical_proposal_answer`, `{team_id, proposal_id, routine_id, status}` with status `created`, `changed`, or
 `revoked` (whose `routine_id` is `null`). A revoked or already-consumed card is answered as such, never twice applied.
@@ -274,12 +272,13 @@ of every Assistant it names, and a `procedure-` content key derived from both. N
 skill), then its new skill, which becomes the newest while the oldest give way beyond the bound; a skill the same turn
 forgets is not learned again.
 
-A Team Routine (ADR-0086) fires on a closed schedule (`routine.canonical_schedule`): `hourly` every 1 to 24 elapsed
-hours, `daily` at `HH:MM`, `weekly` on a weekday (0 is Monday) at `HH:MM`, or `monthly` on day 1 to 28 at `HH:MM`, in an
-IANA timezone name (`routine.canonical_timezone`; Team also requires that the zone loads), or, only when the user asks
-for it, `continuous`: its next run is due `gap` seconds (5 to 31,622,400, 366 days) after the previous one ended, never overlapping,
-with `cap` exactly `routine.continuous_cap(gap)`, `ceil(86400 / gap)` (at most `routine.MAX_CONTINUOUS_CAP`, 17,280),
-starts in any rolling 24 hours, so the interval a person stated runs all day and no cap ever rewrites it (ADR-0101).
+A Team Routine (ADR-0086) fires on a closed schedule (`routine.canonical_schedule`): `daily` at `HH:MM`, `weekly` on a
+weekday (0 is Monday) at `HH:MM`, or `monthly` on day 1 to 28 at `HH:MM`, in an IANA timezone name
+(`routine.canonical_timezone`; Team also requires that the zone loads), or `continuous` (any interval the person
+states, hours included): exactly `{kind, gap}`, its first run right after confirmation and each next one due `gap`
+seconds (5 to 31,622,400, 366 days) after the previous one started, never overlapping. Its rolling 24-hour cap is
+derived, never carried: `routine.continuous_cap(gap)`, `ceil(86400 / gap)` (at most `routine.MAX_CONTINUOUS_CAP`,
+17,280), so the interval a person stated runs all day and no cap ever rewrites it (ADR-0101).
 `routine.daily_rate` is a schedule's runs per day and `routine.daily_cap` its whole rolling 24-hour cap; the Team's
 daily Action-step budget alone bounds what its Routines' caps may start together. A Routine is recorded from the work the ordinary chat agent did in one turn and exists only once a person
 confirms its card (ADR-0101). Its notice then has the Routine outcome `created` or `changed`, no run id, and exactly
@@ -287,7 +286,8 @@ confirms its card (ADR-0101). Its notice then has the Routine outcome `created` 
 (`routine.canonical_name`, 1 to 80 NFC printable characters on one line), its revision's summary, its output
 disposition (`routine.canonical_disposition`: `{mode, step}`, where `mode` is `show`, `changes`, or `none`, and `step`
 is the 1-based position of the shown step for `show` and `changes`), its schedule, zone, and the zone's source
-(`routine.zoned`, as on the card), and its standing scope: its `state` (`active` or `paused`) and its permitted Actions
+(`routine.zoned`: `browser`, `person`, a zone the person wrote, or `none`, when the Routine runs on `UTC` by convention,
+its run date included, which is never a claim about the person), and its standing scope: its `state` (`active` or `paused`) and its permitted Actions
 as `{total, changes}` (`routine.canonical_permitted`, 1 to `routine.MAX_PERMITTED`). A plan holds 1 to 256 steps; on the
 wire a step is always named by its position, never by its internal id. The summary
 (`routine.canonical_summary`) is `{revision, plan_digest, steps, actions, more}`: the step count and the Actions as runs
@@ -311,8 +311,7 @@ response cap.
 Every notice (`routine_notice.canonical_notice`) names its Routine by the `name` it had when Team wrote that version, so a row
 keeps its title after the Routine is renamed or deleted, and carries `usage` and `protection_lost`. A run notice's
 `usage` (`routine.canonical_run_usage`) has a chat reply's shape, `{duration_ms, models}`, its active time excluding
-frozen time and per provider and model the tokens its recovery calls reported; a run that needed no recovery lists no
-model. A Routine outcome carries `usage` `null`, except `healthy`, which carries its runs' summed usage.
+frozen time; a Routine run asks no model, so it lists none. A Routine outcome carries `usage` `null`, except `healthy`, which carries its runs' summed usage.
 `protection_lost` is true on a run's notice versions written after the run lost the protection of its secret values
 (ADR-0101 section 6.2), so nothing it produced afterwards was shown anywhere; it is always false on a Routine outcome.
 The Routine outcome `deleted` (detail `{}`) closes a Routine's timeline once its confirmed deletion completes.
@@ -331,11 +330,11 @@ at most `routine.MAX_OUTPUT_BYTES` (16 KiB); `cut`, `omitted`, `elided`, and `tr
 Routine publishes a completed run only when its result differs from the last one shown, and `none` publishes no
 completion of its own; a run that already has a notice always gets its terminal version.
 
-Every call is placed by a position (`routine.canonical_position`): `{"phase": "replay", "step": n}`, a replay step's
-1-based position among the plan's `steps`; no other phase is admitted. `held` names the call whose effect is unresolved as `{assistant_id, action,
+Every call is placed by its position (`routine.canonical_position`): its step's 1-based position, an integer, among
+the plan's `steps`. `held` names the call whose effect is unresolved as `{assistant_id, action,
 position, steps}`, all `null` when the run sealed no plan cursor; a `frozen` run names its call the same way with its
-`request_kind`: `human` or `integrations`. The same run's notice then goes on as `paused`, the same call plus a `reason` (`decided`,
-`unavailable`, `exhausted`, `policy`, or `evidence`, recovery evidence that could not be read), or `user-skipped` when a
+`request_kind`: `human` or `integrations`. The same run's notice then goes on as `paused`, the same call plus a `reason`
+(`exhausted`, `policy`, or `evidence`, recovery evidence Team never classified), or `user-skipped` when a
 person set the run aside, the same call plus the `choice` that did it (`run`, or `delete`, a deletion of its Routine). A
 person's `user-skipped` is a run outcome; the Routine outcome `skipped` reports missed firings and has no run id. A
 continuous Routine's healthy runs that show nothing, each completed with no earlier notice, share one versioned
@@ -461,17 +460,16 @@ Ed25519 assertion travels in `X-Shimpz-Routine` with the JWT key id `local-routi
 `team-local-routine`; `supervisor.canonical_claims(value, audience=ROUTINE_AUDIENCE)` admits the same request, body,
 model, lifetime, and one-use nonce bindings as a Supervisor assertion, requires `authority: "routine"` with
 `authority_sha256` equal to the SHA-256 of the run's lease token, and refuses any human assurance or decision binding.
-Admin's scheduler claims under the Team bearer with `POST /v1/routines/claim` and exactly `{}`
+Admin's scheduler claims under the Team bearer with `POST /v1/routines/claim` and exactly `{long}`
 (`routine_run.canonical_claim_request`): no model key gates a claim, because a healthy compiled run needs none (ADR-0092),
 and any Team with a configured model may be claimed. The answer (`routine_run.canonical_claim`) is one run with its lease
-token, lease expiry, the Team's configured provider, and the Routine `revision`, `plan_digest`, and `mode` (`scheduled`
-or `continuous`, `routine_run.RUN_MODES`) it was claimed at, or `null` with `next_due_at`, the earliest epoch second a
-Routine of a Team Admin can run becomes due (`null` when none will), so Admin wakes then while still reconciling on its
-own interval. The run's signed segment request, `POST /v1/teams/:team_id/routines/runs/:run_id/segment`, carries exactly
-that `{revision, plan_digest, mode}` (`routine_run.canonical_segment_request`); any other is refused as
-`routine-revision-stale` before anything runs. The run's segment and its frozen answers carry the private model
-credential only when Admin holds the Team's key; it then travels whole and the assertion binds it, and without it a held
-run's recovery pauses as `unavailable`.
+token, lease expiry, and the Routine `revision` and `plan_digest` it was claimed at, or `null` with `next_due_at`, the
+earliest epoch second a Routine of a Team Admin can run becomes due (`null` when none will), so Admin wakes then while
+still reconciling on its own interval. The run's signed segment request, `POST
+/v1/teams/:team_id/routines/runs/:run_id/segment`, carries exactly that `{revision, plan_digest}`
+(`routine_run.canonical_segment_request`); any other is refused as `routine-revision-stale` before anything runs. No
+run, recovery, or frozen run's answer asks a model, so none carries a model credential (ADR-0092 amendment,
+2026-10-15).
 
 An intent-route classification (never selection, chat, or any other request) may also carry one Supervisor-configured
 TypeSafe key in `X-Shimpz-Decision-Api-Key` (ADR-0077). The Local Supervisor assertion then binds its digest as

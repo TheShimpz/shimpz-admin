@@ -17,7 +17,6 @@ from test_chat_human_projection import INPUT, _fingerprinted, _request, _respons
 from tests.localized_request import localization, rendered_for
 
 from chat import human
-from chat import local as chat_local
 from routine import answer, manage
 
 RUN = "d" * 32
@@ -49,9 +48,6 @@ class RoutineAnswerTests(unittest.TestCase):
         answer._OPENINGS.clear()
         self.addCleanup(answer._CHALLENGES.clear)
         self.addCleanup(answer._GENERATIONS.clear)
-        for patch in (mock.patch.object(chat_local, "model_credential", return_value=CREDENTIAL),):
-            patch.start()
-            self.addCleanup(patch.stop)
 
     def open(self, kind: str = "approval") -> dict[str, object]:
         with mock.patch.object(transport, "_call", return_value=frozen(kind)) as call:
@@ -87,7 +83,8 @@ class RoutineAnswerTests(unittest.TestCase):
         self.assertEqual(result.body, {"team_id": "team_1", "run_id": RUN, "status": "done"})
         self.assertEqual(stream.call_args.args[1], f"/v1/teams/team_1/routines/runs/{RUN}/human")
         self.assertEqual(stream.call_args.args[2], {"challenge_id": CHALLENGE, "decision": "submit", "value": True})
-        self.assertEqual(stream.call_args.kwargs["bindings"].model_credential, CREDENTIAL)
+        # A run asks no model, so its answer carries no model key.
+        self.assertIsNone(stream.call_args.kwargs["bindings"].model_credential)
         self.assertIsNone(stream.call_args.kwargs["bindings"].human_assurance)
         stream.call_args.kwargs["progress"]({"type": "progress"})
         # A resumed run may replay for as long as any run may spend, which Admin was never told for this one.
@@ -258,27 +255,11 @@ class RoutineAnswerTests(unittest.TestCase):
                     answer.open_challenge("team_1", RUN, {"locale": "pt"}), team.TeamResponse(409, {"code": code})
                 )
 
-    def test_an_integration_resume_carries_the_team_model_key_only_when_admin_holds_one(self) -> None:
+    def test_an_integration_resume_carries_no_model_key(self) -> None:
         with mock.patch.object(transport, "_call_stream", return_value=resumed("frozen")) as stream:
             self.assertEqual(answer.resume_integrations("team_1", RUN).body["status"], "frozen")
         self.assertEqual(stream.call_args.args[1], f"/v1/teams/team_1/routines/runs/{RUN}/integrations")
-        self.assertIsNotNone(stream.call_args.kwargs["bindings"].model_credential)
-        # A compiled run resumes without a key; Team pauses a recovery it then needs as unavailable.
-        missing = team.TeamResponse(409, {"code": "model-credential-missing"})
-        with (
-            mock.patch.object(chat_local, "model_credential", return_value=missing),
-            mock.patch.object(transport, "_call_stream", return_value=resumed("done")) as stream,
-        ):
-            self.assertEqual(answer.resume_integrations("team_1", RUN).body["status"], "done")
         self.assertIsNone(stream.call_args.kwargs["bindings"].model_credential)
-        # Any other credential failure still refuses before Team is asked.
-        broken = team.TeamResponse(502, {"code": "model-credential-store-invalid"})
-        with (
-            mock.patch.object(chat_local, "model_credential", return_value=broken),
-            mock.patch.object(transport, "_call_stream") as stream,
-        ):
-            self.assertIs(answer.resume_integrations("team_1", RUN), broken)
-        stream.assert_not_called()
 
     def test_open_challenges_are_bounded_and_one_per_team(self) -> None:
         for index in range(answer.MAX_OPEN_CHALLENGES + 1):
