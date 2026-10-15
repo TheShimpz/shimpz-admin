@@ -2,28 +2,18 @@
   --bg: var(--shimpz-color-bg);
   --surface-1: var(--shimpz-color-surface);
   --surface-2: var(--shimpz-color-surface-raised);
-  --surface-3: var(--shimpz-color-surface-high);
   --border: var(--shimpz-color-border-subtle);
   --border-strong: var(--shimpz-color-border);
   --text: var(--shimpz-color-text);
   --text-dim: var(--shimpz-color-text-muted);
   --text-faint: var(--shimpz-color-text-dim);
   --accent: var(--shimpz-color-cyan);
-  --accent-strong: var(--shimpz-color-cyan);
   --accent-alt: var(--shimpz-color-magenta);
-  --accent-ink: var(--shimpz-color-bg);
-  --success: var(--shimpz-color-green);
   --danger: var(--shimpz-color-danger);
   --warn: var(--shimpz-color-yellow);
-  --info: var(--shimpz-color-cyan);
   --cut: var(--shimpz-cut);
-  --r-sm: 0;
-  --r-md: 0;
-  --r-lg: 0;
   --font-sans: var(--shimpz-font-sans);
   --font-mono: var(--shimpz-font-mono);
-  --shadow: 0 20px 60px rgb(0 0 0 / 55%);
-  --ring: var(--shimpz-focus-ring);
   --admin-divider: var(--shimpz-color-border);
   --ease: cubic-bezier(0.22, 1, 0.36, 1);
   /* Spacing rhythm: every gap, margin, and padding is one of six steps, chosen by how closely two things belong
@@ -266,7 +256,6 @@ input, textarea, select { border-radius: 5px !important; }
 .icon-frame > .shimpz-assistant-icon:not(.has-image)::before,
 .icon-frame > .shimpz-assistant-icon:not(.has-image)::after { inset: 0; clip-path: none; }
 
-:root { --shimpz-radius: 5px; }
 /* One sober accent line for outline buttons, dialog cards, and focused fields. */
 :root { --shimpz-color-cyan-line: color-mix(in srgb, var(--shimpz-color-cyan) 42%, var(--shimpz-color-border)); }
 .shimpz-button--secondary { --button-border: var(--shimpz-color-cyan-line) !important; }
