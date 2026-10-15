@@ -332,6 +332,24 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
             with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
                 _execute(HTTP / "verify.py", mutate)
 
+    def test_rejects_a_split_keep_latest_answer_that_misses_a_language_or_spans_lines(self) -> None:
+        def edit(old: str, new: str):
+            def mutate(root: Path) -> None:
+                module = root / "routine_proposal.py"
+                text = module.read_text(encoding="utf-8")
+                self.assertIn(old, text)
+                module.write_text(text.replace(old, new, 1), encoding="utf-8")
+                _rehash(root, "routine_proposal.py")
+
+            return mutate
+
+        for mutate in (
+            edit('    "zh": "只使用最后一条消息的工作",\n', ""),
+            edit('"Use only the latest message\'s work"', '"Use only the latest\\nmessage\'s work"'),
+        ):
+            with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
+                _execute(HTTP / "verify.py", mutate)
+
     def test_rejects_missing_or_drifted_rendered_copy_vectors(self) -> None:
         def missing(value: dict[str, object]) -> None:
             value.pop("rendered_copy")

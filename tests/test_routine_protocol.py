@@ -47,6 +47,11 @@ FAMILIES = {
 
 
 class RoutineProtocolMirrorTests(unittest.TestCase):
+    def test_the_split_answer_that_keeps_the_latest_work_matches_its_label_in_any_language(self) -> None:
+        for label in routine_proposal_contract.SPLIT_LATEST.values():
+            self.assertTrue(routine_proposal_contract.keeps_latest_work(f"  {label.upper()} "))
+        self.assertFalse(routine_proposal_contract.keeps_latest_work("Executar tudo de novo"))
+
     def test_every_routine_vector_family_is_admitted_exactly(self) -> None:
         for family, admit in FAMILIES.items():
             for value in VECTORS[family]["valid"]:
