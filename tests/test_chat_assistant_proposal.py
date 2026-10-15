@@ -358,7 +358,6 @@ class AssistantProposalTests(unittest.TestCase):
             assistant_proposal.UninstallTarget(CLOUDFLARE_UNINSTALL, "@shimpz"),
             locale="pt",
             now=10.0,
-            proposal_id_factory=lambda: "c" * 32,
         )
 
         self.assertEqual(proposal.assistant_version, "0.4.4")
@@ -370,7 +369,6 @@ class AssistantProposalTests(unittest.TestCase):
             assistant_proposal.UninstallTarget(CLOUDFLARE_UNINSTALL, "@shimpz"),
             locale="Desinstale o Assistant",
             now=10.0,
-            proposal_id_factory=lambda: "c" * 32,
         )
         self.assertIsNone(retired.locale)
 
@@ -381,7 +379,6 @@ class AssistantProposalTests(unittest.TestCase):
                 assistant_proposal.UninstallTarget(CLOUDFLARE_UNINSTALL, "@shimpz"),
                 locale="pt",
                 now=10.0,
-                proposal_id_factory=lambda: "b" * 32,
             )
 
 

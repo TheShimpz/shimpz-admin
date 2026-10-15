@@ -3,7 +3,7 @@
 import re
 import secrets
 import unicodedata
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal
 
@@ -20,7 +20,6 @@ _SPACELESS_RUN = re.compile(
     "[\u0e00-\u0eff\u1000-\u109f\u1780-\u17ff\u3005-\u3007\u3040-\u30ff\u31f0-\u31ff\u3400-\u4dbf\u4e00-\u9fff"
     "\uf900-\ufaff\U00020000-\U0003ffff]+"
 )
-_PROPOSAL_ID = re.compile(r"^[0-9a-f]{32}$")
 _STOP_WORDS = frozenset(
     {
         "a",
@@ -396,25 +395,18 @@ def uninstall_shortlist(
     return _bounded_pool(ranked, MAX_ROUTE_SHORTLIST)
 
 
-def _proposal_id(team_id: str, now: float, proposal_id_factory: Callable[[], str]) -> str:
-    proposal_id = proposal_id_factory()
-    if team_contract.TEAM_ID_RE.fullmatch(team_id) is None or _PROPOSAL_ID.fullmatch(proposal_id) is None or now < 0:
-        raise ValueError("invalid Assistant lifecycle proposal")
-    return proposal_id
-
-
 def create_uninstall_proposal(
     team_id: str,
     target: UninstallTarget,
     *,
     locale: object,
     now: float,
-    proposal_id_factory: Callable[[], str] = lambda: secrets.token_hex(16),
 ) -> UninstallProposal:
-    proposal_id = _proposal_id(team_id, now, proposal_id_factory)
+    if team_contract.TEAM_ID_RE.fullmatch(team_id) is None or now < 0:
+        raise ValueError("invalid Assistant lifecycle proposal")
     candidate = target.candidate
     return UninstallProposal(
-        proposal_id=proposal_id,
+        proposal_id=secrets.token_hex(16),
         team_id=team_id,
         assistant=candidate.assistant,
         assistant_version=candidate.version,

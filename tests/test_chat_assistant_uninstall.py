@@ -69,7 +69,6 @@ def _proposal(version: str = "0.4.4") -> assistant_proposal.UninstallProposal:
         assistant_proposal.UninstallTarget(candidate, "@shimpz"),
         locale="pt",
         now=1.0,
-        proposal_id_factory=lambda: "b" * 32,
     )
 
 
