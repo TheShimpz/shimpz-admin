@@ -50,10 +50,8 @@
   import {
     authorizeAssistantIntegration,
     cancelAssistantIntegrationAuthorization,
-    clearAssistantStoredInput,
     completeAssistantIntegration,
     oauthReturnFailure,
-    teamIntegrations,
   } from '#lib/assistants/integrations.js';
   import {
     capabilityContinuation,
@@ -169,12 +167,7 @@
   let humanExpiredId = $state('');
   // The interface language a reconciling sync asked Team to render the pending request in (ADR-0091).
   let humanRelocalizing = $state('');
-  // The shown Team's Integrations and Stored Inputs while the drawer is open, each a synced value (ADR-0114).
-  let integrationSources = $state(null);
-  let integrationsState = $state(null);
-  let storedInputsState = $state(null);
   let integrationWorking = $state('');
-  let storedInputWorking = $state('');
   let oauthFailedOnReturn = false;
   let composerInput = $state();
   let chatRoute = $state();
@@ -944,7 +937,6 @@
     humanRelocalizing = '';
     integrationsDialogOpen = false;
     integrationWorking = '';
-    storedInputWorking = '';
   }
 
   function closeSocket() {
@@ -1289,98 +1281,6 @@
 
   function closeIntegrationsDialog() {
     integrationsDialogOpen = false;
-  }
-
-  // While the drawer is open it follows the shown Team's Integrations and Stored Inputs; closing it forgets them.
-  $effect(() => {
-    const teamId = integrationsOpen ? chatTeamId : '';
-    if (!teamId) {
-      integrationSources = null;
-      integrationsState = null;
-      storedInputsState = null;
-      return undefined;
-    }
-    const sources = teamIntegrations(teamId);
-    integrationSources = sources;
-    const stops = [
-      sources.integrations.subscribe((state) => { integrationsState = { teamId, ...state }; }),
-      sources.storedInputs.subscribe((state) => { storedInputsState = { teamId, ...state }; }),
-    ];
-    return () => {
-      for (const stop of stops) stop();
-    };
-  });
-
-  // What the drawer shows: both read for the shown Team, and every Assistant they name in the Team's inventory. One that
-  // names an Assistant the inventory does not list yet waits for the inventory's next read.
-  let integrationView = $derived.by(() => {
-    const teamId = chatTeamId;
-    const listed = integrationsState?.teamId === teamId ? integrationsState.value : null;
-    const stored = storedInputsState?.teamId === teamId ? storedInputsState.value : null;
-    if (!listed || !stored) return { ready: false, integrations: [], storedInputs: [], unknown: false };
-    const installed = new Set($teamContext.installedAssistants.map((assistant) => assistant.assistant));
-    const unknown = listed.some((integration) => !installed.has(integration.assistant_id)) ||
-      stored.some((item) => !installed.has(item.assistant_id));
-    return unknown
-      ? { ready: false, integrations: [], storedInputs: [], unknown: true }
-      : { ready: true, integrations: listed, storedInputs: stored, unknown: false };
-  });
-  let integrations = $derived(integrationView.integrations);
-  let storedInputs = $derived(integrationView.storedInputs);
-  let integrationsReady = $derived(integrationView.ready);
-
-  // An Assistant the Integrations name but the inventory does not: the inventory is read again, and an inventory read
-  // that still does not list it says the drawer cannot be shown.
-  let inventoryChecked = '';
-  $effect(() => {
-    if (!integrationView.unknown) {
-      inventoryChecked = '';
-      return;
-    }
-    const teamId = chatTeamId;
-    if (inventoryChecked === teamId) return;
-    inventoryChecked = teamId;
-    void refreshTeamInventory().catch(() => {}).then(() => {
-      if (chatTeamId === teamId && integrationView.unknown) setError(integrationsCopy.inventoryFailed);
-    });
-  });
-
-  // A refused read of either is said once; an outage is retried on its own and is the shell's to say.
-  $effect(() => {
-    const refused = [integrationsState, storedInputsState].find((state) => state?.status === 'error');
-    if (refused && refused.teamId === chatTeamId) {
-      setError(integrationsCopy.inventoryFailed, refused.error?.message ?? integrationsCopy.inventoryFailed);
-    }
-  });
-
-  async function clearStoredInput(item) {
-    const teamId = chatTeamId;
-    const key = `${item?.assistant_id}/${item?.stored_input_id}`;
-    if (
-      !teamId ||
-      storedInputWorking ||
-      !storedInputs.some((candidate) => (
-        candidate.assistant_id === item?.assistant_id &&
-        candidate.stored_input_id === item?.stored_input_id &&
-        candidate.status === 'stored'
-      ))
-    ) throw new Error(integrationsCopy.storedInputClearFailed);
-    storedInputWorking = key;
-    const sources = integrationSources;
-    try {
-      await clearAssistantStoredInput(teamId, item.assistant_id, item.stored_input_id);
-      // What the drawer shows next is the Stored Inputs read after Admin announces the change, never this answer.
-      if (sources?.teamId === teamId) await sources.storedInputs.refresh();
-    } catch (reason) {
-      if (chatTeamId !== teamId) return;
-      setError(
-        integrationsCopy.storedInputClearFailed,
-        failureDetail(reason, integrationsCopy.storedInputClearFailed),
-      );
-      throw reason;
-    } finally {
-      if (chatTeamId === teamId) storedInputWorking = '';
-    }
   }
 
   // A failure's detail: a change Admin never confirmed before it disconnected may or may not have happened.
@@ -2047,15 +1947,12 @@
         <AssistantIntegrationsDrawer
           open={integrationsOpen}
           teamId={chatTeamId}
-          {integrations}
-          {storedInputs}
           {assistantNames}
-          synced={integrationsReady}
           pending={integrationChallenge}
-          working={integrationWorking || storedInputWorking}
+          authorizing={integrationWorking}
           onclose={closeIntegrations}
           onconnect={authorizeIntegration}
-          onclearstoredinput={clearStoredInput}
+          onerror={setError}
         />
         <AssistantIntegrationsDialog
           open={integrationsDialogOpen}

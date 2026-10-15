@@ -10,25 +10,103 @@
     Toolbar,
   } from '@shimpz/frontend';
   import { untrack } from 'svelte';
-  import { commandsReady } from '#lib/session/socket.js';
+  import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import { installedIconUrl } from '#lib/assistants/icons.js';
   import { installedSummary } from '#lib/assistants/sources.js';
   import { locale, t } from '#lib/i18n/index.js';
-  import { assistantIntegrationProviderLabel } from '#lib/assistants/integrations.js';
+  import {
+    assistantIntegrationProviderLabel,
+    clearAssistantStoredInput,
+    teamIntegrations,
+  } from '#lib/assistants/integrations.js';
+  import { refreshTeamInventory, teamContext } from '#lib/teams/context.js';
 
   let {
     open = false,
     teamId = '',
-    integrations = [],
-    storedInputs = [],
     assistantNames = new Map(),
-    synced = false,
     pending = undefined,
-    working = '',
+    // The Integration authorization the page has in flight, named `assistant/integration`.
+    authorizing = '',
     onclose = undefined,
     onconnect = undefined,
-    onclearstoredinput = undefined,
+    // Says a failure in the chat's error area: its message and its detail.
+    onerror = undefined,
   } = $props();
+
+  // The Team's Integrations and Stored Inputs while the drawer is open, each a synced value (ADR-0114); closing the
+  // drawer forgets them.
+  let sources = $state(null);
+  let integrationsState = $state(null);
+  let storedInputsState = $state(null);
+  let storedInputWorking = $state('');
+  let working = $derived(authorizing || storedInputWorking);
+
+  $effect(() => {
+    const shownTeamId = open ? teamId : '';
+    if (!shownTeamId) {
+      sources = null;
+      integrationsState = null;
+      storedInputsState = null;
+      return undefined;
+    }
+    const read = teamIntegrations(shownTeamId);
+    sources = read;
+    const stops = [
+      read.integrations.subscribe((state) => { integrationsState = { teamId: shownTeamId, ...state }; }),
+      read.storedInputs.subscribe((state) => { storedInputsState = { teamId: shownTeamId, ...state }; }),
+    ];
+    return () => {
+      for (const stop of stops) stop();
+    };
+  });
+
+  // A clear in flight belongs to the Team it was asked for: another Team's drawer is free to act.
+  $effect(() => {
+    void teamId;
+    storedInputWorking = '';
+  });
+
+  // What the drawer shows: both read for the Team, and every Assistant they name in the Team's inventory. One that names
+  // an Assistant the inventory does not list yet waits for the inventory's next read.
+  let view = $derived.by(() => {
+    const listed = integrationsState?.teamId === teamId ? integrationsState.value : null;
+    const stored = storedInputsState?.teamId === teamId ? storedInputsState.value : null;
+    if (!listed || !stored) return { ready: false, integrations: [], storedInputs: [], unknown: false };
+    const installed = new Set($teamContext.installedAssistants.map((assistant) => assistant.assistant));
+    const unknown = listed.some((integration) => !installed.has(integration.assistant_id)) ||
+      stored.some((item) => !installed.has(item.assistant_id));
+    return unknown
+      ? { ready: false, integrations: [], storedInputs: [], unknown: true }
+      : { ready: true, integrations: listed, storedInputs: stored, unknown: false };
+  });
+  let integrations = $derived(view.integrations);
+  let storedInputs = $derived(view.storedInputs);
+  let synced = $derived(view.ready);
+
+  // An Assistant the Integrations name but the inventory does not: the inventory is read again, and an inventory read
+  // that still does not list it says the drawer cannot be shown.
+  let inventoryChecked = '';
+  $effect(() => {
+    if (!view.unknown) {
+      inventoryChecked = '';
+      return;
+    }
+    const checkedTeamId = teamId;
+    if (inventoryChecked === checkedTeamId) return;
+    inventoryChecked = checkedTeamId;
+    void refreshTeamInventory().catch(() => {}).then(() => {
+      if (teamId === checkedTeamId && view.unknown) onerror?.(copy.inventoryFailed, '');
+    });
+  });
+
+  // A refused read of either is said once; an outage is retried on its own and is the shell's to say.
+  $effect(() => {
+    const refused = [integrationsState, storedInputsState].find((state) => state?.status === 'error');
+    if (refused && refused.teamId === teamId) {
+      onerror?.(copy.inventoryFailed, refused.error?.message ?? copy.inventoryFailed);
+    }
+  });
 
   let closeButton = $state();
   let expandedAssistantId = $state('');
@@ -76,10 +154,32 @@
   }
 
   async function clearStoredInput(item) {
+    const clearedTeamId = teamId;
+    const key = `${item?.assistant_id}/${item?.stored_input_id}`;
+    if (
+      !clearedTeamId ||
+      storedInputWorking ||
+      !storedInputs.some((candidate) => (
+        candidate.assistant_id === item?.assistant_id &&
+        candidate.stored_input_id === item?.stored_input_id &&
+        candidate.status === 'stored'
+      ))
+    ) return;
+    storedInputWorking = key;
+    const read = sources;
     try {
-      await onclearstoredinput?.(item);
-    } catch {
-      // The parent exposes the localized failure in the persistent chat error area.
+      await clearAssistantStoredInput(clearedTeamId, item.assistant_id, item.stored_input_id);
+      // What the drawer shows next is the Stored Inputs read after Admin announces the change, never this answer.
+      if (read?.teamId === clearedTeamId) await read.storedInputs.refresh();
+    } catch (reason) {
+      if (teamId !== clearedTeamId) return;
+      // A change Admin never confirmed before it disconnected may or may not have happened.
+      const detail = outcomeUnknown(reason)
+        ? $t('shell.outcomeUnknown')
+        : reason instanceof Error ? reason.message : copy.storedInputClearFailed;
+      onerror?.(copy.storedInputClearFailed, detail);
+    } finally {
+      if (teamId === clearedTeamId) storedInputWorking = '';
     }
   }
 
