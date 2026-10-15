@@ -116,7 +116,7 @@ test('mirrors the schedule and timezone grammar', () => {
   assert.equal(isTimezone(null), false);
 });
 
-// The confirmation card Team's golden vectors carry: the owner's Cloudflare watch, its zone chosen by name.
+// The confirmation card Team's golden vectors carry: the Supervisor's Cloudflare watch, its zone chosen by name.
 const PROPOSAL = Object.freeze({
   proposal_id: '1'.repeat(32),
   expires_at: '2026-10-05T12:16:07Z',

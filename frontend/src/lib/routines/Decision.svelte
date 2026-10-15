@@ -61,8 +61,8 @@
   const HINTS = { run: 'runHint', delete: 'deleteHint' };
   let recovery = $derived(outcome === 'held');
 
-  // Where a held run stopped, as one sentence: its position the card, its incident, and its notice name, a replay step
-  // of the plan the run executed.
+  // Where a held run stopped, as one sentence: the step its open card names, else the one its incident or notice names,
+  // a replay step of the plan the run executed.
   let situation = $derived.by(() => {
     if (!recovery) return '';
     const step = card ?? detail;

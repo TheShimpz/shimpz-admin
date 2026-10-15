@@ -1,10 +1,10 @@
 import { routineQuestionMessages } from '../src/lib/routines/questionMessages.js';
 
 // Routine scenarios for the owner's preview and the browser tests (ADR-0087, ADR-0092, ADR-0101): every Routine notice
-// titled by the name Team froze into it, a deleted Routine's last notice, each run's active duration, a held
-// run's recovery card with the error its step returned (a Cloudflare account out of credits), a paused Routine, a
-// minute rollup, a run's execution details and step records, a 120-step plan read page by page, the confirmation card
-// of the owner's recorded Cloudflare watch, and a recording turn's refusal. Pure data and state transitions; nothing
+// titled by the name Team froze into it, each run's active duration, a held run's recovery card with the error its
+// step returned (a Cloudflare account out of credits), a paused Routine, a minute rollup, a run's execution details and
+// step records, a 120-step plan read page by page, the confirmation card of the Supervisor's recorded Cloudflare
+// watch, and a recording turn's refusal. Pure data and state transitions; nothing
 // here reaches a real Admin, Team, Brain, or provider.
 
 // A projected step at its 1-based position: on the wire a step is named by position (ADR-0092 amendment, scale).
@@ -520,7 +520,7 @@ export const ROUTINE_STEP_METHODS = Object.freeze({
   },
 });
 
-// The owner's recorded Cloudflare watch (ADR-0101): it listed the zones, then the DNS records of the one zone whose
+// The Supervisor's recorded Cloudflare watch (ADR-0101): it listed the zones, then the DNS records of the one zone whose
 // name is shimpz.com, every 30 seconds up to 1,000 times a day, showing the records after every run.
 const SELECTOR = Object.freeze({ pointer: '/result', where: { member: 'name', value_json: '"shimpz.com"' }, item: '/id' });
 const CARD_STEPS = Object.freeze([
@@ -529,7 +529,7 @@ const CARD_STEPS = Object.freeze([
 ]);
 const CARD_LIFETIME_MS = 15 * 60 * 1000;
 
-/** The confirmation card of the owner's recorded watch, as a recording turn's reply carries it. */
+/** The confirmation card of the Supervisor's recorded watch, as a recording turn's reply carries it. */
 // The questions Team may ask before a card (ADR-0101): the schedule nobody stated, what each run does with its result,
 // two zones of one name to choose between, and two targets of the same digits, one a string and one an integer. Each
 // target is its exact JSON text.
