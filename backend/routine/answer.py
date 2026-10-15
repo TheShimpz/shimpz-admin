@@ -148,7 +148,7 @@ def _open(canonical: str, run: str, opening: dict[str, str]) -> transport.TeamRe
     except human.HumanChallengeError:
         return manage.INVALID
     # A Routine holds no file grant, so its challenge never discloses one (ADR-0093); a run's card carries no input rows
-    # (ADR-0101 §6).
+    # (ADR-0115).
     if "file" in projected or "input" in projected or projected["locale"] != opening["locale"]:
         # Team renders the opening in exactly the language it names (ADR-0091); any other copy is not this opening.
         return manage.INVALID

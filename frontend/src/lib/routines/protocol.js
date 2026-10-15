@@ -790,7 +790,7 @@ export async function openRoutineChallenge(call, teamId, runId, locale, parseCha
     throw new RoutineError('routine-response-invalid');
   }
   // The opening named the language its copy renders in; a challenge in any other language is not this opening. A run's
-  // card shows no input rows (ADR-0101 §6).
+  // card shows no input rows (ADR-0115).
   if (challenge.locale !== locale || challenge.input) {
     throw new RoutineError('routine-response-invalid');
   }
