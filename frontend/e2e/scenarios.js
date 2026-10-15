@@ -355,7 +355,7 @@ const STARTS = {
   }),
   // First setup: the password, the authenticator, then the recovery codes shown once (ADR-0051).
   setup: () => ({
-    session: { profile: 'local', authenticated: false, initialized: false, authentication_state: 'uninitialized' },
+    session: localSession(),
     teams: [],
     routines: [],
     runs: [],

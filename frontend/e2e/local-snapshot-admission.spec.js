@@ -3,6 +3,7 @@ import { LOCALES } from '../src/lib/i18n/locales.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 import { assistantDetails } from './assistantPages.js';
 import { routeRead } from './scenarioRoutes.js';
+import { authenticatedLocalSession } from './scenarios.js';
 
 // Team admits a staged snapshot's preview from the image's own files. A refused preview (409) keeps that Assistant's
 // page uninstallable and names the next action; a transient failure stays installable, and every load validates each
@@ -63,11 +64,7 @@ async function routeStore(page, { snapshots, preview, installed = () => [], inst
       return route.fulfill(answer.status ? answer : { contentType: 'image/png', body: ICON });
     }
     const body = {
-      '/api/session': {
-        profile: 'local', authenticated: true, initialized: true, authentication_state: 'configured',
-        authentication_method: 'webauthn', origin_admitted: true, oauth_completion_mode: 'automatic',
-        passkey_enrollment_available: true, passkey_registered: true,
-      },
+      '/api/session': authenticatedLocalSession(),
     }[url.pathname];
     return route.fulfill({ status: body ? 200 : 503, json: body ?? {} });
   });

@@ -241,12 +241,7 @@ test('registers and then uses a UV passkey through the browser ceremony', async 
 test('renders bounded Local login feedback instead of the raw API error', async ({ page }) => {
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({
-      profile: 'local',
-      authenticated: false,
-      initialized: true,
-      authentication_state: 'configured',
-    }),
+    body: JSON.stringify(localSession({ initialized: true, authentication_state: 'configured' })),
   }));
   await page.route('**/api/login', (route) => route.fulfill({
     status: 429,
@@ -269,12 +264,7 @@ test('renders bounded Local login feedback instead of the raw API error', async 
 test('renders the terminal recovery action for an unsupported password record', async ({ page }) => {
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify({
-      profile: 'local',
-      authenticated: false,
-      initialized: true,
-      authentication_state: 'recovery-required',
-    }),
+    body: JSON.stringify(localSession({ initialized: true, authentication_state: 'recovery-required' })),
   }));
 
   await page.goto('/');

@@ -4,6 +4,7 @@ import { assistantDetails, publicAssistant, stagedSnapshot } from './assistantPa
 import { accessibilityViolations } from './axe.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 import { dropSessions, nextRead, raiseTopic, readsOf, routeRead, waitForRead } from './scenarioRoutes.js';
+import { authenticatedLocalSession } from './scenarios.js';
 
 // One Assistant's own page (ADR-0087 functional coverage): it reads the exact target for the Team its link names,
 // shows its copy, Actions, credentials, and Creator links, and installs or removes it only for that Team.
@@ -11,11 +12,6 @@ const ICON = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9WlN7eIAAAAASUVORK5CYII=',
   'base64',
 );
-const SESSION = {
-  profile: 'local', authenticated: true, initialized: true, authentication_state: 'configured',
-  authentication_method: 'webauthn', origin_admitted: true, oauth_completion_mode: 'automatic',
-  passkey_enrollment_available: true, passkey_registered: true,
-};
 // A credential's help: what the secret is and how to get it, and the official page to get it from (ADR-0090).
 const TOKEN_HELP = 'A key that lets this Assistant change your DNS. Open My Profile > API Tokens, create a token, and copy it.';
 const TOKEN_PAGE = 'https://dash.cloudflare.com/profile/api-tokens';
@@ -97,7 +93,7 @@ async function routePage(page, {
     if (url.pathname.endsWith('/icon') || url.pathname.endsWith('/catalog-icon')) {
       return route.fulfill({ contentType: 'image/png', body: ICON });
     }
-    const body = { '/api/session': SESSION }[url.pathname];
+    const body = { '/api/session': authenticatedLocalSession() }[url.pathname];
     return route.fulfill({ status: body ? 200 : 503, json: body ?? {} });
   });
 }

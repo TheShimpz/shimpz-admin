@@ -4,6 +4,7 @@ import { LOCALES } from '../src/lib/i18n/locales.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 import { assistantDetails, PAGE_COPY } from './assistantPages.js';
 import { routeRead } from './scenarioRoutes.js';
+import { authenticatedLocalSession } from './scenarios.js';
 
 // ADR-0091: published and staged Assistant summaries follow the interface language. Published summaries come from
 // the locale-keyed public catalog; a staged snapshot's comes from its own language pack through Team. English is the
@@ -84,11 +85,7 @@ async function routeAssistants(page, { catalogLocale = (locale) => locale, catal
       return route.fulfill({ contentType: 'image/png', body: ICON });
     }
     const body = {
-      '/api/session': {
-        profile: 'local', authenticated: true, initialized: true, authentication_state: 'configured',
-        authentication_method: 'webauthn', origin_admitted: true, oauth_completion_mode: 'automatic',
-        passkey_enrollment_available: true, passkey_registered: true,
-      },
+      '/api/session': authenticatedLocalSession(),
     }[url.pathname];
     return route.fulfill({ status: body ? 200 : 503, json: body ?? {} });
   });
