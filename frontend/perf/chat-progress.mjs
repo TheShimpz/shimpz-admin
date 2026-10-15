@@ -75,7 +75,6 @@ function fixture(method, path) {
       authentication_state: 'configured', authentication_method: 'webauthn',
       origin_admitted: true, passkey_enrollment_available: false,
       passkey_registered: false, oauth_completion_mode: 'automatic',
-      features: { teamCredentials: true },
     }),
   };
   return answers[`${method} ${path}`]?.() ?? null;

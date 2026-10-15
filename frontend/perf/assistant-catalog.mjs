@@ -144,7 +144,6 @@ function sessionBody() {
     authentication_state: 'configured', authentication_method: 'webauthn',
     origin_admitted: true, passkey_enrollment_available: true,
     passkey_registered: true, oauth_completion_mode: 'automatic',
-    features: { teamCredentials: true },
   };
 }
 
