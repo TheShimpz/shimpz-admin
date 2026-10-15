@@ -22,10 +22,10 @@
   // The decision one Routine run waits for (ADR-0092), the same wherever it is shown: a held or paused run's
   // recovery card, or a frozen run's approval through chat's own dialog. Nothing runs until the Supervisor answers.
   // A card says which step stopped, the error it returned, and its likely cause in plain words, then offers exactly
-  // Rodar, Recriar, and Excluir; Excluir is the Routine's own confirmed deletion, which `ondelete` opens in the host.
+  // Rodar and Excluir; Excluir is the Routine's own confirmed deletion, which `ondelete` opens in the host.
   // `onsettled` hears the outcome words once this decision is answered, and whether the same run was held again and
-  // so waits for a fresh decision. With `onunavailable`, a card Team cannot open yet (a held run listed before its
-  // incident) keeps Retry here and lets the host refresh; without it, the decision simply ends.
+  // so waits for a fresh decision. A card Team cannot open yet (a held run listed before its incident) keeps Retry here
+  // and `onunavailable` lets the host refresh.
   let {
     teamId,
     teamName,
@@ -34,7 +34,7 @@
     detail,
     copy,
     onsettled = () => {},
-    onunavailable = null,
+    onunavailable,
     ondelete = () => {},
   } = $props();
 
@@ -135,7 +135,6 @@
       card = null;
       // A run already settled has nothing left to answer here; its newer notice replaces this one.
       if (error?.code !== 'routine-incident-unavailable') result = failed(error);
-      else if (!onunavailable) finish('');
       else if (mounted) onunavailable();
     }
   }
@@ -184,7 +183,7 @@
     working = true;
     result = '';
     try {
-      const answered = await answerRoutineCard(call, teamId, runId, card, choice);
+      await answerRoutineCard(call, teamId, runId, card, choice);
       result = copy.card.requested;
       finish(result);
     } catch (error) {
@@ -373,9 +372,7 @@
   /* Terminal lines flow as text, so a narrow card wraps words, never whole pieces of the line. */
   .line { margin: 0; font: 400 0.78rem/1.55 var(--shimpz-font-mono); overflow-wrap: break-word; }
   .line > * + * { margin-inline-start: var(--gap-inside); }
-  .line :global(.routine-icon) { width: 0.85rem; height: 0.85rem; margin-inline-end: var(--gap-inside); vertical-align: -0.15em; }
   .line.muted { color: var(--shimpz-color-text-muted); }
-  .line.muted :global(.routine-icon--warning) { color: var(--shimpz-color-yellow); }
   .prompt { color: var(--shimpz-color-cyan); }
   .value { color: var(--shimpz-color-text); }
   /* What happened: a warning badge beside the headline and where it stopped; the likely cause and the technical error
