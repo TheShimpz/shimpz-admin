@@ -34,7 +34,8 @@ def canonical_oauth_claim(value: object) -> str:
     return value
 
 
-def _integration_scopes(value: object) -> list[str]:
+def integration_scopes(value: object) -> list[str]:
+    """Admit the distinct OAuth scopes Team reports for one Assistant Integration, or raise ValueError."""
     if not isinstance(value, list) or not 1 <= len(value) <= MAX_INTEGRATION_SCOPES:
         raise ValueError("invalid OAuth scopes")
     scopes: list[str] = []
@@ -131,7 +132,7 @@ def _project_integration_inventory(response: transport.TeamResponse, team_id: st
                     "id": integration_id,
                     "provider": payloads.canonical_identifier(item["provider"]),
                     "name": chat_ws_common.public_text(item["name"], 80, field="integration name"),
-                    "scopes": _integration_scopes(item["scopes"]),
+                    "scopes": integration_scopes(item["scopes"]),
                     "status": status,
                     "integration": _integration_identity(item["integration"]),
                     "expires_at": _integration_expiry(item["expires_at"]),

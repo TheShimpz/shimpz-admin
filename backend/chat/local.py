@@ -25,6 +25,7 @@ from team import bridge as team
 from team import transport
 
 from chat import assistant_proposal, human, payloads
+from integrations import assistants as integration_assistants
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import routine_proposal as routine_proposal_contract
@@ -56,9 +57,7 @@ _INTEGRATION_CHALLENGE_RESPONSE_FIELDS = frozenset(
     {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements", "trace_id"}
 )
 MAX_INTEGRATION_REQUIREMENTS = 64
-MAX_INTEGRATION_SCOPES = 32
 MAX_INTEGRATION_ACTIONS = 128
-MAX_INTEGRATION_SCOPE_CHARS = 128
 MAX_INTEGRATION_LABEL_CHARS = 80
 MAX_INTEGRATION_SUMMARY_CHARS = 160
 _CHAT_ERROR_DETAILS = {
@@ -565,6 +564,50 @@ def _challenge_envelope(
     return identity
 
 
+_INTEGRATION_REQUIREMENT_FIELDS = frozenset(
+    {"assistant_id", "assistant_name", "integration_id", "provider", "name", "summary", "scopes", "actions"}
+)
+
+
+def _integration_actions(raw_actions: object) -> list[dict[str, str]]:
+    """The distinct Action ids one integration requirement names; their English catalog text stays with Team."""
+    if not isinstance(raw_actions, list) or not 1 <= len(raw_actions) <= MAX_INTEGRATION_ACTIONS:
+        raise ValueError("invalid integration Actions")
+    actions: list[dict[str, str]] = []
+    seen_actions: set[str] = set()
+    for raw_action in raw_actions:
+        if not isinstance(raw_action, dict) or set(raw_action) != {"id", "name", "summary"}:
+            raise ValueError("invalid integration Action")
+        action_id = payloads.canonical_action_id(raw_action["id"])
+        if action_id in seen_actions:
+            raise ValueError("duplicate integration Action")
+        seen_actions.add(action_id)
+        # The Action's name and summary are its Creator's English catalog text; the browser shows only its id.
+        chat_ws_common.public_text(raw_action["name"], MAX_INTEGRATION_LABEL_CHARS)
+        chat_ws_common.public_text(raw_action["summary"], MAX_INTEGRATION_SUMMARY_CHARS)
+        actions.append({"id": action_id})
+    return actions
+
+
+def _integration_requirement(raw: object) -> dict[str, object]:
+    """Project one integration requirement of an OAuth consent gate."""
+    if not isinstance(raw, dict) or set(raw) != _INTEGRATION_REQUIREMENT_FIELDS:
+        raise ValueError("invalid integration requirement")
+    scopes = integration_assistants.integration_scopes(raw["scopes"])
+    actions = _integration_actions(raw["actions"])
+    # Team's provider summary is English platform text; the browser words each provider per language.
+    chat_ws_common.public_text(raw["summary"], MAX_INTEGRATION_SUMMARY_CHARS)
+    return {
+        "assistant_id": payloads.canonical_assistant_id(raw["assistant_id"]),
+        "assistant_name": chat_ws_common.public_text(raw["assistant_name"], MAX_INTEGRATION_LABEL_CHARS),
+        "integration_id": payloads.canonical_identifier(raw["integration_id"]),
+        "provider": payloads.canonical_identifier(raw["provider"]),
+        "name": chat_ws_common.public_text(raw["name"], MAX_INTEGRATION_LABEL_CHARS),
+        "scopes": scopes,
+        "actions": actions,
+    }
+
+
 def _project_integration_challenge(response: team.TeamResponse, team_id: str) -> team.TeamResponse:
     """Project an OAuth consent gate without exposing any authorization material."""
     try:
@@ -584,67 +627,10 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
             or not 1 <= len(raw_requirements) <= MAX_INTEGRATION_REQUIREMENTS
         ):
             raise ValueError("invalid integration metadata")
-
-        requirements: list[dict[str, object]] = []
-        seen_integrations: set[tuple[str, str]] = set()
-        for raw in raw_requirements:
-            if not isinstance(raw, dict) or set(raw) != {
-                "assistant_id",
-                "assistant_name",
-                "integration_id",
-                "provider",
-                "name",
-                "summary",
-                "scopes",
-                "actions",
-            }:
-                raise ValueError("invalid integration requirement")
-            assistant_id = payloads.canonical_assistant_id(raw["assistant_id"])
-            integration_id = payloads.canonical_identifier(raw["integration_id"])
-            identity = (assistant_id, integration_id)
-            if identity in seen_integrations:
-                raise ValueError("duplicate integration")
-            seen_integrations.add(identity)
-
-            raw_scopes = raw["scopes"]
-            raw_actions = raw["actions"]
-            if (
-                not isinstance(raw_scopes, list)
-                or not 1 <= len(raw_scopes) <= MAX_INTEGRATION_SCOPES
-                or not isinstance(raw_actions, list)
-                or not 1 <= len(raw_actions) <= MAX_INTEGRATION_ACTIONS
-            ):
-                raise ValueError("invalid integration capabilities")
-            scopes = [chat_ws_common.public_text(scope, MAX_INTEGRATION_SCOPE_CHARS) for scope in raw_scopes]
-            if len(set(scopes)) != len(scopes):
-                raise ValueError("duplicate integration scope")
-
-            actions: list[dict[str, str]] = []
-            seen_actions: set[str] = set()
-            for raw_action in raw_actions:
-                if not isinstance(raw_action, dict) or set(raw_action) != {"id", "name", "summary"}:
-                    raise ValueError("invalid integration Action")
-                action_id = payloads.canonical_action_id(raw_action["id"])
-                if action_id in seen_actions:
-                    raise ValueError("duplicate integration Action")
-                seen_actions.add(action_id)
-                # The Action's name and summary are its Creator's English catalog text; the browser shows only its id.
-                chat_ws_common.public_text(raw_action["name"], MAX_INTEGRATION_LABEL_CHARS)
-                chat_ws_common.public_text(raw_action["summary"], MAX_INTEGRATION_SUMMARY_CHARS)
-                actions.append({"id": action_id})
-            # Team's provider summary is English platform text; the browser words each provider per language.
-            chat_ws_common.public_text(raw["summary"], MAX_INTEGRATION_SUMMARY_CHARS)
-            requirements.append(
-                {
-                    "assistant_id": assistant_id,
-                    "assistant_name": chat_ws_common.public_text(raw["assistant_name"], MAX_INTEGRATION_LABEL_CHARS),
-                    "integration_id": integration_id,
-                    "provider": payloads.canonical_identifier(raw["provider"]),
-                    "name": chat_ws_common.public_text(raw["name"], MAX_INTEGRATION_LABEL_CHARS),
-                    "scopes": scopes,
-                    "actions": actions,
-                }
-            )
+        requirements = [_integration_requirement(raw) for raw in raw_requirements]
+        identities = {(item["assistant_id"], item["integration_id"]) for item in requirements}
+        if len(identities) != len(requirements):
+            raise ValueError("duplicate integration")
     except KeyError, TypeError, ValueError, team.TeamRequestError:
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "integration-challenge-response-invalid"})
     return PublicResponse(
