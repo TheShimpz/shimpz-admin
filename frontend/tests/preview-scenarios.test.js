@@ -402,7 +402,7 @@ test("every locale's Routine preview names its Routines and its card in that lan
   for (const locale of Object.keys(ROUTINE_TEXT)) {
     const scenario = createScenario('routine-lifecycle', locale);
     const { routines } = await listRoutines(reader(scenario), 'marketing');
-    assert.deepEqual(routines.map((routine) => routine.name), ROUTINE_TEXT[locale].names.slice(0, 4), locale);
+    assert.deepEqual(routines.map((routine) => routine.name), ROUTINE_TEXT[locale].names, locale);
     for (const entry of routineLifecycleStart(locale).history) {
       assert.ok(ROUTINE_TEXT[locale].names.includes(parseRoutineRunEntry(entry).name), locale);
     }

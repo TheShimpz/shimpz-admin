@@ -55,11 +55,11 @@ export function routineView(fields, steps) {
   };
 }
 
-// Every fixture text in the preview's interface language, so a Routine's name, the owner's request, and Team's reply
-// read as the Admin does. `names[4]` is a Routine that was deleted; its last notice still names it.
+// Every fixture text in the preview's interface language, so a Routine's name, the person's request, and Team's reply
+// read as the Admin does.
 export const ROUTINE_TEXT = Object.freeze({
   en: {
-    names: ["DNS watch", "Weekly www update", "Certificate check", "Monthly DNS cleanup", "Old DNS report"],
+    names: ["DNS watch", "Weekly www update", "Certificate check", "Monthly DNS cleanup"],
     card: "shimpz.com DNS",
     cardDescription: "Every 30 seconds, this checks the zones in your Cloudflare account and reads the DNS records of shimpz.com. It only reads; nothing is changed.",
     request: "Every 30 seconds, list the DNS records of my zone shimpz.com, up to 1,000 times a day",
@@ -69,7 +69,7 @@ export const ROUTINE_TEXT = Object.freeze({
     questionReply: "I listed your zones and the DNS records of shimpz.com.",
   },
   pt: {
-    names: ["Vigia de DNS", "Atualização semanal do www", "Verificação de certificados", "Limpeza mensal de DNS", "Relatório antigo de DNS"],
+    names: ["Vigia de DNS", "Atualização semanal do www", "Verificação de certificados", "Limpeza mensal de DNS"],
     card: "DNS de shimpz.com",
     cardDescription: "A cada 30 segundos, confere as zonas da sua conta Cloudflare e lê os registros DNS de shimpz.com. Só lê; nada é alterado.",
     request: "A cada 30 segundos, liste os registros DNS da minha zona shimpz.com, até 1.000 vezes por dia",
@@ -79,7 +79,7 @@ export const ROUTINE_TEXT = Object.freeze({
     questionReply: "Listei suas zonas e os registros DNS de shimpz.com.",
   },
   es: {
-    names: ["Vigilancia de DNS", "Actualización semanal de www", "Revisión de certificados", "Limpieza mensual de DNS", "Informe antiguo de DNS"],
+    names: ["Vigilancia de DNS", "Actualización semanal de www", "Revisión de certificados", "Limpieza mensual de DNS"],
     card: "DNS de shimpz.com",
     cardDescription: "Cada 30 segundos, revisa las zonas de tu cuenta de Cloudflare y lee los registros DNS de shimpz.com. Solo lee; no cambia nada.",
     request: "Cada 30 segundos, lista los registros DNS de mi zona shimpz.com, hasta 1.000 veces al día",
@@ -89,7 +89,7 @@ export const ROUTINE_TEXT = Object.freeze({
     questionReply: "Listé tus zonas y los registros DNS de shimpz.com.",
   },
   zh: {
-    names: ["DNS 监控", "每周更新 www", "证书检查", "每月 DNS 清理", "旧 DNS 报告"],
+    names: ["DNS 监控", "每周更新 www", "证书检查", "每月 DNS 清理"],
     card: "shimpz.com 的 DNS",
     cardDescription: "每 30 秒检查一次你 Cloudflare 账户中的区域，并读取 shimpz.com 的 DNS 记录。只读取，不做任何更改。",
     request: "每 30 秒列出我的区域 shimpz.com 的 DNS 记录，每天最多 1,000 次",
@@ -99,7 +99,7 @@ export const ROUTINE_TEXT = Object.freeze({
     questionReply: "我列出了你的区域和 shimpz.com 的 DNS 记录。",
   },
   fr: {
-    names: ["Veille DNS", "Mise à jour hebdomadaire de www", "Vérification des certificats", "Nettoyage DNS mensuel", "Ancien rapport DNS"],
+    names: ["Veille DNS", "Mise à jour hebdomadaire de www", "Vérification des certificats", "Nettoyage DNS mensuel"],
     card: "DNS de shimpz.com",
     cardDescription: "Toutes les 30 secondes, vérifie les zones de votre compte Cloudflare et lit les enregistrements DNS de shimpz.com. Lecture seule ; rien n’est modifié.",
     request: "Toutes les 30 secondes, liste les enregistrements DNS de ma zone shimpz.com, jusqu’à 1 000 fois par jour",
@@ -109,7 +109,7 @@ export const ROUTINE_TEXT = Object.freeze({
     questionReply: "J’ai listé vos zones et les enregistrements DNS de shimpz.com.",
   },
   de: {
-    names: ["DNS-Wache", "Wöchentliches www-Update", "Zertifikatsprüfung", "Monatliche DNS-Bereinigung", "Alter DNS-Bericht"],
+    names: ["DNS-Wache", "Wöchentliches www-Update", "Zertifikatsprüfung", "Monatliche DNS-Bereinigung"],
     card: "DNS von shimpz.com",
     cardDescription: "Alle 30 Sekunden prüft dies die Zonen deines Cloudflare-Kontos und liest die DNS-Einträge von shimpz.com. Nur lesen; nichts wird geändert.",
     request: "Liste alle 30 Sekunden die DNS-Einträge meiner Zone shimpz.com auf, bis zu 1.000-mal am Tag",
@@ -119,7 +119,7 @@ export const ROUTINE_TEXT = Object.freeze({
     questionReply: "Ich habe deine Zonen und die DNS-Einträge von shimpz.com aufgelistet.",
   },
   ja: {
-    names: ["DNS 監視", "www の週次更新", "証明書チェック", "毎月の DNS 整理", "旧 DNS レポート"],
+    names: ["DNS 監視", "www の週次更新", "証明書チェック", "毎月の DNS 整理"],
     card: "shimpz.com の DNS",
     cardDescription: "30 秒ごとに Cloudflare アカウントのゾーンを確認し、shimpz.com の DNS レコードを読み取ります。読み取りのみで、何も変更しません。",
     request: "30 秒ごとに、私のゾーン shimpz.com の DNS レコードを一覧にして。1 日最大 1,000 回まで",
@@ -129,7 +129,7 @@ export const ROUTINE_TEXT = Object.freeze({
     questionReply: "ゾーンと shimpz.com の DNS レコードを一覧にしました。",
   },
   ar: {
-    names: ["مراقبة DNS", "تحديث www الأسبوعي", "فحص الشهادات", "تنظيف DNS الشهري", "تقرير DNS القديم"],
+    names: ["مراقبة DNS", "تحديث www الأسبوعي", "فحص الشهادات", "تنظيف DNS الشهري"],
     card: "DNS لـ shimpz.com",
     cardDescription: "كل 30 ثانية، يتحقق من مناطق حسابك في Cloudflare ويقرأ سجلات DNS لـ shimpz.com. للقراءة فقط؛ لا يتغير شيء.",
     request: "كل 30 ثانية، اعرض سجلات DNS لمنطقتي shimpz.com، حتى 1000 مرة يوميًا",
@@ -181,7 +181,6 @@ function routines(locale) {
 const HELD_RUN = id('5');
 const PAUSED_RUN = id('6');
 const FAILED_RUN = id('7');
-const REMOVED = id('0');
 const STREAK_PAUSE = `${'d'.repeat(31)}0`;
 
 // A held run's incident names the call it was held at by its position among its plan's steps.
@@ -273,11 +272,10 @@ const SHOWN_RECORDS = Object.freeze({
 // renders (a Routine's change, deletion, and scope change are never stored). The chat shows only the creations among
 // them and each Routine's panel its own runs. Its rows span the day before the
 // preview opened and that day itself, so the transcript shows a day header for each and today's replacing yesterday's.
-function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now, removedName) {
+function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now) {
   const opened = Math.floor(now / 1000) * 1000;
   const at = (offset) => instant(opened + offset * 1000);
   const yesterday = (offset) => at(offset - 86_400);
-  const removed = { routine_id: REMOVED, name: removedName };
   const completed = (plan, output) => ({ plan, output });
   return [
     row(id('a'), CONTINUOUS, 'created', {}, { at: yesterday(-120) }),
@@ -310,7 +308,7 @@ export function routineLifecycleStart(locale = 'en', now = Date.now()) {
       incident(HELD_RUN, HELD, placed('update-dns-record', 3, 3)),
       incident(PAUSED_RUN, PAUSED_HELD, placed('delete-dns-record', 3, 3)),
     ],
-    history: history(listed, now, textFor(locale).names[4]),
+    history: history(listed, now),
   };
 }
 
