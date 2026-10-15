@@ -171,7 +171,8 @@
     } catch (error) {
       result = failed(error);
     } finally {
-      // The card was used or refused either way; while the run is still held, the next answer needs a fresh one.
+      // An answer, refused or not, may have moved the run on, so its card is read again: while the run is still held,
+      // the next answer carries the current tag.
       card = null;
       wanted = true;
       working = false;

@@ -198,7 +198,8 @@ export function routineErrorMessage(error, copy) {
     'routine-run-changed': copy.stale,
     'routine-run-not-found': copy.ended,
     'routine-incident-unavailable': copy.ended,
-    'routine-card-stale': copy.stale,
+    // The card changed before the answer arrived; the decision opens its current card itself, so nothing is to reopen.
+    'routine-card-stale': copy.cardChanged,
     'routine-not-found': copy.ended,
     'routine-busy': copy.busy,
     'routine-workload-unquiesced': copy.stillRunning,

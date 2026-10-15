@@ -567,6 +567,7 @@ export default {
       ended: 'Cette exécution est déjà terminée.',
       unavailable: 'Les routines sont indisponibles pour le moment. Réessayez.',
       stale: 'Cette exécution a changé. Rouvrez-la.',
+      cardChanged: 'Cette exécution a changé, donc rien n’a été fait. Ce qu’elle affiche maintenant est à jour.',
       tooLarge: 'Cette routine dépasse ce que l’Équipe peut accueillir. Rien n’a changé.',
       stepBudget: 'Les routines de cette Équipe peuvent exécuter au plus 20 000 étapes d’Action par jour au total, et ce changement dépasserait cette limite. Rien n’a changé.',
       teamBudget: 'Les routines de cette Équipe, ensemble, dépassent ce qu’une Équipe peut accueillir. Rien n’a changé.',

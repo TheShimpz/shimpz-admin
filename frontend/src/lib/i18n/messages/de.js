@@ -567,6 +567,7 @@ export default {
       ended: 'Diese Ausführung ist bereits beendet.',
       unavailable: 'Routinen sind gerade nicht verfügbar. Versuchen Sie es erneut.',
       stale: 'Diese Ausführung hat sich geändert. Öffnen Sie sie erneut.',
+      cardChanged: 'Diese Ausführung hat sich geändert, daher wurde nichts getan. Was sie jetzt zeigt, ist aktuell.',
       tooLarge: 'Diese Routine ist größer, als das Team aufnehmen kann. Nichts wurde geändert.',
       stepBudget: 'Die Routinen dieses Teams können zusammen höchstens 20.000 Action-Schritte pro Tag ausführen, und diese Änderung würde das überschreiten. Nichts wurde geändert.',
       teamBudget: 'Die Routinen dieses Teams sind zusammen größer, als ein Team aufnehmen kann. Nichts wurde geändert.',
