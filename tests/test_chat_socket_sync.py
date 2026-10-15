@@ -6,7 +6,6 @@ import threading
 import unittest
 from unittest import mock
 
-from history import store as history_store
 from tests.chat_socket_case import ChatWebSocketCase
 
 from tests import chat_socket_fixtures
@@ -48,9 +47,9 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
         self.addCleanup(pending_human.stop)
 
     def _bind_history(self, message: str) -> str:
-        turn_id = history_store.new_turn_id()
-        self.assertTrue(history_store.append_user("team_1", turn_id, message))
-        self.assertTrue(history_store.bind_resumable_turn("team_1", turn_id))
+        turn_id = self.history_store.new_turn_id()
+        self.assertTrue(self.history_store.append_user("team_1", turn_id, message))
+        self.assertTrue(self.history_store.bind_resumable_turn("team_1", turn_id))
         return turn_id
 
     def test_integration_sync_rejects_augmented_pending_state_without_resuming(self) -> None:
@@ -139,9 +138,9 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
                     return completed
 
                 resume.side_effect = resume_integrations
-                history_id = history_store.new_turn_id()
-                history_store.append_user("team_1", history_id, "Publish after OAuth")
-                history_store.bind_resumable_turn("team_1", history_id)
+                history_id = self.history_store.new_turn_id()
+                self.history_store.append_user("team_1", history_id, "Publish after OAuth")
+                self.history_store.bind_resumable_turn("team_1", history_id)
                 websocket = await self._open(synchronized=False)
                 self.assertEqual(
                     [await websocket.next_json() for _index in range(4)],
@@ -157,9 +156,9 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
                 resume.assert_called_once_with("team_1", CHALLENGE_ID, mock.ANY)
                 await websocket.disconnect()
 
-            self.assertIsNone(history_store.resumable_turn("team_1"))
+            self.assertIsNone(self.history_store.resumable_turn("team_1"))
             self.assertEqual(
-                [entry.get("text") for entry in history_store.page("team_1")["entries"]],
+                [entry.get("text") for entry in self.history_store.page("team_1")["entries"]],
                 ["Publish after OAuth", "Published."],
             )
 

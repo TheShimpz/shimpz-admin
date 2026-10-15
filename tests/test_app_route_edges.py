@@ -9,12 +9,12 @@ from pathlib import Path
 from unittest import mock
 
 import app_import
-from history import store as history_store
 from starlette.requests import Request
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from history import store as history_store
 from http_request import http_request, json_request, remote
 
 

@@ -9,7 +9,6 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from history import store as history_store
 from tests.mfa_helper import configure_supervisor
 
 from tests import chat_socket_fixtures
@@ -37,20 +36,21 @@ class ChatWebSocketCase(unittest.TestCase):
         cls.assistant_plan = importlib.import_module("chat.assistant_plan")
         cls.assistant_route = importlib.import_module("chat.assistant_route")
         cls.team = importlib.import_module("team.bridge")
+        cls.history_store = importlib.import_module("history.store")
         previous_store = cls.admin_app.state.STORE_PATH
-        previous_history_store = history_store.STORE_PATH
+        previous_history_store = cls.history_store.STORE_PATH
         browser = importlib.import_module("browser")
         previous_origins = browser.STATIC_ORIGINS
         cls.admin_app.state.STORE_PATH = cls.root / "admin.json"
-        history_store.STORE_PATH = cls.root / "chat-history.sqlite3"
+        cls.history_store.STORE_PATH = cls.root / "chat-history.sqlite3"
         browser.STATIC_ORIGINS = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
         cls.addClassCleanup(setattr, cls.admin_app.state, "STORE_PATH", previous_store)
-        cls.addClassCleanup(setattr, history_store, "STORE_PATH", previous_history_store)
+        cls.addClassCleanup(setattr, cls.history_store, "STORE_PATH", previous_history_store)
         cls.addClassCleanup(setattr, browser, "STATIC_ORIGINS", previous_origins)
 
     def setUp(self) -> None:
         self.admin_app.state.STORE_PATH.unlink(missing_ok=True)
-        history_store.STORE_PATH.unlink(missing_ok=True)
+        self.history_store.STORE_PATH.unlink(missing_ok=True)
         secret = configure_supervisor(self.admin_app.state, "violet otter lantern quartz 92")
         self.token = self.admin_app.auth.issue_session(secret, "totp")
         route = mock.patch.object(

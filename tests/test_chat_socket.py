@@ -5,7 +5,6 @@ import concurrent.futures
 import threading
 from unittest import mock
 
-from history import store as history_store
 from tests.chat_socket_case import ChatWebSocketCase
 
 from tests import chat_socket_fixtures
@@ -356,7 +355,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("connect"))
                 self.assertEqual((await websocket.next_json())["type"], "integrations-required")
-                self.assertIsNotNone(history_store.resumable_turn("team_1"))
+                self.assertIsNotNone(self.history_store.resumable_turn("team_1"))
                 await websocket.disconnect()
                 stop.assert_not_called()
 

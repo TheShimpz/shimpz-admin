@@ -4,7 +4,6 @@ import asyncio
 import json
 from unittest import mock
 
-from history import store as history_store
 from tests.session_socket_case import SessionSocketCase
 
 from tests import chat_socket_fixtures
@@ -532,18 +531,18 @@ class SessionSocketTopicTests(SessionSocketCase):
     def test_admin_raises_the_topics_its_own_writes_change(self) -> None:
         async def scenario() -> None:
             websocket = await self._subscribed("team/team_1/history", "security/summary", "session")
-            await asyncio.to_thread(history_store.append_user, "team_1", "c" * 32, "hello")
+            await asyncio.to_thread(self.history_store.append_user, "team_1", "c" * 32, "hello")
             await self._changed(websocket, "team/team_1/history")
             await asyncio.to_thread(self.admin_app.audit.record, "logout", outcome="ok", origin=None)
             await self._changed(websocket, "security/summary")
             await asyncio.to_thread(self.admin_app.state.bind_browser_origin, "https://admin.example.test")
             await self._changed(websocket, "session")
-            await asyncio.to_thread(history_store.clear_team, "team_1")
+            await asyncio.to_thread(self.history_store.clear_team, "team_1")
             await self._changed(websocket, "team/team_1/history")
             # A write that commits nothing changes nothing.
-            await asyncio.to_thread(history_store.append_user, "team_1", "d" * 32, "first")
+            await asyncio.to_thread(self.history_store.append_user, "team_1", "d" * 32, "first")
             await self._changed(websocket, "team/team_1/history")
-            self.assertFalse(await asyncio.to_thread(history_store.append_user, "team_1", "d" * 32, "conflicting"))
+            self.assertFalse(await asyncio.to_thread(self.history_store.append_user, "team_1", "d" * 32, "conflicting"))
             with self.assertRaises(TimeoutError):
                 await websocket.next_frame(0.2)
             await websocket.disconnect()
