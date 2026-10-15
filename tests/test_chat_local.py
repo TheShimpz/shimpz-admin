@@ -517,17 +517,18 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             {"provider": "anthropic", "model": "gpt-6.1-sol"},
             {"provider": "OpenAI", "model": "gpt-6.1-sol"},
         )
-        for body in invalid:
+        for selection in invalid:
+            body = {"team_id": "team_1", **selection, "trace_id": TRACE_ID}
             with (
                 self.subTest(body=body),
-                mock.patch.object(team, "get_inference", return_value=transport.TeamResponse(200, body)),
+                mock.patch.object(transport, "call", return_value=transport.TeamResponse(200, body)),
                 mock.patch.object(models, "resolve_api_key") as resolve_key,
                 mock.patch.object(team, "chat") as chat,
             ):
                 response = _hi_turn()
             self.assertEqual(
                 response,
-                transport.TeamResponse(502, {"code": "inference-response-invalid"}),
+                transport.TeamResponse(502, {"code": "chat-request-failed"}),
             )
             resolve_key.assert_not_called()
             chat.assert_not_called()
@@ -702,7 +703,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
     def test_inference_and_credential_failures_are_reduced_to_public_codes(self) -> None:
         with mock.patch.object(team, "get_inference", return_value=transport.TeamResponse(500, {"private": "value"})):
-            response = local._inference("team_1")
+            response = local.model_credential("team_1")
         self.assertEqual(response, transport.TeamResponse(500, {"code": "chat-request-failed"}))
 
         with (

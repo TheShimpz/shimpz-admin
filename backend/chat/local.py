@@ -79,7 +79,6 @@ _CHAT_ERROR_DETAILS = {
     "file-not-found": "a selected file was not found",
     "inference-not-configured": "the Team model provider is not configured",
     "inference-provider-mismatch": "the configured model provider changed; retry",
-    "inference-response-invalid": "the Team model configuration is invalid",
     "invalid-files": "the selected files are invalid",
     "invalid-action-input": "an Assistant Action received invalid input",
     "model-credential-missing": "the selected model provider needs an API key",
@@ -277,29 +276,14 @@ def _safe_error(response: transport.TeamResponse) -> transport.TeamResponse:
     return PublicResponse(response.status, {"code": code})
 
 
-def _inference(team_id: str) -> tuple[str, str] | transport.TeamResponse:
+def model_credential(team_id: str) -> tuple[str, str] | transport.TeamResponse:
+    # The bridge already admitted the answer as one exact catalog provider and model pair for this Team.
     response = team.get_inference(team_id)
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
     if not 200 <= response.status < 300:
         return _safe_error(response)
-    provider = response.body.get("provider")
-    model = response.body.get("model")
-    try:
-        selected_provider = models.canonical_provider(provider)
-        selected_model = models.canonical_model(selected_provider, model)
-    except models.ModelProviderError:
-        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "inference-response-invalid"})
-    if provider != selected_provider:
-        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "inference-response-invalid"})
-    return selected_provider, selected_model
-
-
-def model_credential(team_id: str) -> tuple[str, str] | transport.TeamResponse:
-    inference = _inference(team_id)
-    if isinstance(inference, transport.TeamResponse):
-        return inference
-    provider, _model = inference
+    provider = response.body["provider"]
     try:
         api_key = models.resolve_api_key(provider)
     except models.ModelProviderError:
