@@ -441,6 +441,8 @@
     --button-hover-bg: transparent;
     clip-path: none;
     box-shadow: none;
+    /* Square corners, so the selected tab's underline runs straight to its edges. */
+    border-radius: 0 !important;
   }
   .tabs :global(.tab:hover:not(:disabled)) { color: var(--shimpz-color-text); border-color: transparent; box-shadow: none; }
   .tabs :global(.tab[aria-selected="true"]) { --button-color: var(--shimpz-color-cyan); box-shadow: inset 0 -2px 0 var(--shimpz-color-cyan); }

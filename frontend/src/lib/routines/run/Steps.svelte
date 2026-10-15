@@ -193,7 +193,7 @@
   .step--unavailable .status :global(.routine-icon) { color: var(--shimpz-color-text-dim); }
   .meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--gap-inside) var(--gap-group); color: var(--shimpz-color-text-muted); font-size: 0.76rem; }
   .dim { color: var(--shimpz-color-text-dim); font-size: 0.75rem; }
-  .attempts { display: grid; gap: var(--gap-item); margin-block-start: var(--gap-inside); padding: var(--gap-item) var(--gap-group); border-inline-start: 2px solid var(--shimpz-color-border); background: rgb(255 255 255 / 0.015); }
+  .attempts { display: grid; gap: var(--gap-item); margin-block-start: var(--gap-inside); padding: var(--gap-item) var(--gap-group); border-inline-start: 2px solid var(--shimpz-color-border); border-radius: 0; background: rgb(255 255 255 / 0.015); }
   .attempts.apart { margin-block-start: var(--gap-item); }
   .attempts-title { color: var(--shimpz-color-text-muted); font-size: 0.75rem; }
   .attempts ul { display: grid; gap: var(--gap-item); margin: 0; padding: 0; list-style: none; }
