@@ -14,12 +14,12 @@
   import {
     ATTENTION_STATUSES,
     clockWords,
+    countWords,
     fillParts,
     instantWords,
     routineFailureWords,
     routineNotice,
     routineStatus,
-    runCountWords,
     scheduleWords,
     STATUS_TAGS,
     STATUS_WORDS,
@@ -218,8 +218,8 @@
       held: copy.status.failed,
       paused: copy.status.paused,
       frozen: copy.panel.waitingApproval,
-      healthy: runCountWords(copy.panel.healthyRuns, entry.detail.runs, $locale),
-      skipped: runCountWords(copy.panel.missedRuns, entry.detail.missed, $locale),
+      healthy: countWords(copy.panel.healthyRuns, entry.detail.runs, $locale),
+      skipped: countWords(copy.panel.missedRuns, entry.detail.missed, $locale),
     }[entry.outcome];
   }
 
@@ -420,7 +420,7 @@
 </RoutineModal>
 
 {#if viewedRun}
-  {@const shown = routineNotice(viewedRun, { copy, locale: $locale })}
+  {@const shown = routineNotice(viewedRun, copy)}
   <RoutineRunView {teamId} entry={viewedRun} {routine} name={viewedRun.name} status={shown.status} tone={shown.tone} {copy}
     onclose={closeRun} />
 {/if}

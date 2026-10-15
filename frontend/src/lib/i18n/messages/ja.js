@@ -337,7 +337,6 @@ export default {
     },
     notice: {
       status: {
-        created: '作成済み',
         done: '完了',
         recovered: '復旧後に完了',
         failed: '失敗',
@@ -396,12 +395,12 @@ export default {
       runsUnavailable: '最近の実行を読み込めませんでした。',
       olderRuns: '以前の実行を探す',
       healthyRuns: {
-        one: '{runs} 回の実行が完了',
-        other: '{runs} 回の実行が完了',
+        one: '{count} 回の実行が完了',
+        other: '{count} 回の実行が完了',
       },
       missedRuns: {
-        one: '{runs} 回の実行を逃しました',
-        other: '{runs} 回の実行を逃しました',
+        one: '{count} 回の実行を逃しました',
+        other: '{count} 回の実行を逃しました',
       },
       pause: '一時停止',
       summary: '概要',

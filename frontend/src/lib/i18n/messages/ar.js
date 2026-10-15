@@ -337,7 +337,6 @@ export default {
     },
     notice: {
       status: {
-        created: 'أُنشئ',
         done: 'اكتمل',
         recovered: 'اكتمل بعد الاسترداد',
         failed: 'فشل',
@@ -396,12 +395,12 @@ export default {
       runsUnavailable: 'تعذّر تحميل عمليات التشغيل الأخيرة.',
       olderRuns: 'البحث عن عمليات تشغيل أقدم',
       healthyRuns: {
-        one: 'عمليات التشغيل المكتملة: {runs}',
-        other: 'عمليات التشغيل المكتملة: {runs}',
+        one: 'عمليات التشغيل المكتملة: {count}',
+        other: 'عمليات التشغيل المكتملة: {count}',
       },
       missedRuns: {
-        one: 'عمليات التشغيل الفائتة: {runs}',
-        other: 'عمليات التشغيل الفائتة: {runs}',
+        one: 'عمليات التشغيل الفائتة: {count}',
+        other: 'عمليات التشغيل الفائتة: {count}',
       },
       pause: 'إيقاف مؤقت',
       summary: 'الملخص',

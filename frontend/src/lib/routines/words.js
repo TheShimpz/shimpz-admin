@@ -2,7 +2,6 @@
 // and results, its failures' likely causes, its questions and refusals, and every count, each in the interface
 // language's copy. Display only: what these words describe is admitted by routines/protocol.js.
 
-import { clockTime } from '../chat/days.js';
 import { fill } from '../i18n/fill.js';
 import { dateFormat, numberFormat, pluralRules, relativeFormat } from '../i18n/formats.js';
 import { humanizeId } from '../ids.js';
@@ -11,8 +10,7 @@ import { escapedText, questionTarget, RoutineError } from './protocol.js';
 
 /**
  * How a listed Routine stands for the person, most urgent first: being deleted, held for recovery, waiting to be asked
- * again, paused, waiting for an approval, running now, or idle between runs (continuous or
- * on its schedule).
+ * again, paused, waiting for an approval, or running (a run now, or between runs on its schedule).
  */
 export function routineStatus(routine, runs = [], incidents = []) {
   const own = runs.filter((run) => run.routine_id === routine.routine_id);
@@ -23,8 +21,7 @@ export function routineStatus(routine, runs = [], incidents = []) {
   if (routine.needs_reconfirm) return 'reconfirm';
   if (routine.state === 'paused') return 'paused';
   if (own.some((run) => run.status === 'frozen')) return 'waiting';
-  if (own.length) return 'running';
-  return routine.schedule.kind === 'continuous' ? 'continuous' : 'healthy';
+  return 'running';
 }
 
 /**
@@ -33,8 +30,6 @@ export function routineStatus(routine, runs = [], incidents = []) {
  * panel names the reason beside the word. A Routine being deleted shows no word.
  */
 export const STATUS_WORDS = Object.freeze({
-  healthy: 'running',
-  continuous: 'running',
   running: 'running',
   paused: 'paused',
   waiting: 'paused',
@@ -143,7 +138,7 @@ const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 /** A schedule in words for the viewer's locale; wall-clock times are in the Routine's own timezone. */
 export function scheduleWords(schedule, copy, locale) {
   if (schedule.kind === 'continuous') {
-    // The gap in its largest whole unit: "Every 30 minutes", never seconds and a daily cap.
+    // The gap in its largest whole unit: "Every 30 minutes", "Every 90 seconds".
     const [unit, seconds] = CONTINUOUS_UNITS.find(([, size]) => schedule.gap % size === 0);
     return countWords(copy.every[unit], schedule.gap / seconds, locale);
   }
@@ -238,13 +233,8 @@ export function countWords(forms, count, locale) {
   return fill(plural(forms, count, locale), { count: numberFormat(locale).format(count) });
 }
 
-/** How many runs one rollup counts, in words: the healthy runs of a continuous Routine, or the runs one missed. */
-export function runCountWords(forms, runs, locale) {
-  return fill(plural(forms, runs, locale), { runs });
-}
-
-// Each notice's tone where it is shown: a Routine's creation in the transcript, or a run in full: healthy (done,
-// recovered), danger (failed, held, denied), waiting (paused, frozen), or neutral (created, set aside, stopped).
+// Each run notice's tone where its run is shown in full: healthy (done, recovered), danger (failed, held, denied),
+// waiting (paused, frozen), or neutral (set aside, stopped).
 const NOTICE_TONES = Object.freeze({
   done: 'healthy',
   recovered: 'healthy',
@@ -253,7 +243,6 @@ const NOTICE_TONES = Object.freeze({
   denied: 'danger',
   paused: 'waiting',
   frozen: 'waiting',
-  created: 'neutral',
   'user-skipped': 'neutral',
   stopped: 'neutral',
 });
@@ -277,11 +266,8 @@ export function summaryChain(plan, assistantName, copy, locale) {
   return `${chain} › ${countWords(copy.rest, plan.more, locale)}`;
 }
 
-/**
- * A Routine's creation in a Team's transcript (ADR-0086), or one of its runs opened in full, in plain text only: its
- * tone, a short status phrase, and the notice's time of day in the viewer's own clock.
- */
-export function routineNotice(entry, { copy, locale }) {
+/** One of a Routine's runs opened in full, in plain text only: its tone and a short status phrase. */
+export function routineNotice(entry, copy) {
   const notice = copy.notice;
   const frozen = {
     human: notice.status.frozenHuman,
@@ -291,7 +277,7 @@ export function routineNotice(entry, { copy, locale }) {
     'user-skipped': notice.status.userSkipped,
     frozen: frozen[entry.detail.request_kind],
   }[entry.outcome] ?? notice.status[entry.outcome];
-  return { tone: NOTICE_TONES[entry.outcome], status, time: clockTime(Date.parse(entry.createdAt), locale) };
+  return { tone: NOTICE_TONES[entry.outcome], status };
 }
 
 /** What a Routine does with each run's result, in words: the shown step is named by its place in the plan. */

@@ -337,7 +337,6 @@ export default {
     },
     notice: {
       status: {
-        created: '已创建',
         done: '已完成',
         recovered: '恢复后已完成',
         failed: '失败',
@@ -396,12 +395,12 @@ export default {
       runsUnavailable: '无法加载最近的运行。',
       olderRuns: '查找更早的运行',
       healthyRuns: {
-        one: '完成了 {runs} 次运行',
-        other: '完成了 {runs} 次运行',
+        one: '完成了 {count} 次运行',
+        other: '完成了 {count} 次运行',
       },
       missedRuns: {
-        one: '错过了 {runs} 次运行',
-        other: '错过了 {runs} 次运行',
+        one: '错过了 {count} 次运行',
+        other: '错过了 {count} 次运行',
       },
       pause: '暂停',
       summary: '概要',

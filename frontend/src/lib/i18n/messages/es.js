@@ -337,7 +337,6 @@ export default {
     },
     notice: {
       status: {
-        created: 'creada',
         done: 'completada',
         recovered: 'completada tras recuperación',
         failed: 'falló',
@@ -396,12 +395,12 @@ export default {
       runsUnavailable: 'No se pudieron cargar las ejecuciones recientes.',
       olderRuns: 'Buscar ejecuciones anteriores',
       healthyRuns: {
-        one: '{runs} ejecución completada',
-        other: '{runs} ejecuciones completadas',
+        one: '{count} ejecución completada',
+        other: '{count} ejecuciones completadas',
       },
       missedRuns: {
-        one: '{runs} ejecución perdida',
-        other: '{runs} ejecuciones perdidas',
+        one: '{count} ejecución perdida',
+        other: '{count} ejecuciones perdidas',
       },
       pause: 'Pausar',
       summary: 'Resumen',

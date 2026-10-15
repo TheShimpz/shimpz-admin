@@ -337,7 +337,6 @@ export default {
     },
     notice: {
       status: {
-        created: 'created',
         done: 'done',
         recovered: 'done after recovery',
         failed: 'failed',
@@ -397,12 +396,12 @@ export default {
       runsUnavailable: 'Recent runs could not be loaded.',
       olderRuns: 'Look for older runs',
       healthyRuns: {
-        one: '{runs} run finished',
-        other: '{runs} runs finished',
+        one: '{count} run finished',
+        other: '{count} runs finished',
       },
       missedRuns: {
-        one: '{runs} run missed',
-        other: '{runs} runs missed',
+        one: '{count} run missed',
+        other: '{count} runs missed',
       },
       pause: 'Pause',
       summary: 'Summary',

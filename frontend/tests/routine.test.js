@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { clockTime } from '../src/lib/chat/days.js';
 import { listChatHistory, newerRoutineEntries } from '../src/lib/chat/history.js';
 import { parseChatEvent } from '../src/lib/chat/protocol.js';
 import { LocalApiError } from '../src/lib/api.js';
@@ -48,6 +47,7 @@ import {
 import {
   attemptWords,
   clockWords,
+  countWords,
   dispositionWords,
   failureCause,
   fillParts,
@@ -65,7 +65,6 @@ import {
   routineFailureWords,
   routineNotice,
   routineStatus,
-  runCountWords,
   scheduleWords,
   STATUS_TAGS,
   STATUS_WORDS,
@@ -598,8 +597,8 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   assert.equal(scheduleWords(every(90), words, 'en'), 'Every 90 seconds');
   // A rollup counts its runs in the plural form the count takes.
   const panel = routineMessages.en.panel;
-  assert.equal(runCountWords(panel.healthyRuns, 1, 'en'), '1 run finished');
-  assert.equal(runCountWords(panel.missedRuns, 3, 'en'), '3 runs missed');
+  assert.equal(countWords(panel.healthyRuns, 1, 'en'), '1 run finished');
+  assert.equal(countWords(panel.missedRuns, 3, 'en'), '3 runs missed');
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     for (const gap of [5, 60, 1800, 3600, 86400, 3 * 86400, 7 * 86400, 21 * 86400]) {
       assert.doesNotMatch(scheduleWords(every(gap), catalog.schedule, locale), /\{|undefined/, locale);
@@ -853,12 +852,12 @@ test("the chat's view admits each card's answer and only a Routine's creation, a
   assert.equal(requested.length, 1);
 });
 
-// A notice as the transcript (a creation) or a run opened in full shows it, in Portuguese.
+// A run opened in full as its notice shows it, in Portuguese.
 function noticeShown(entry) {
-  return routineNotice(parseRoutineRunEntry(entry), { copy: routineMessages.pt, locale: 'pt' });
+  return routineNotice(parseRoutineRunEntry(entry), routineMessages.pt);
 }
 
-test('a creation and every run read as one line: a status phrase colored by meaning and its time', () => {
+test('every run reads as one line: a status phrase colored by meaning', () => {
   const cases = [
     [{ outcome: 'done', detail: { plan: SUMMARY, output: SHOWN_OUTPUT } }, ['healthy', 'concluída']],
     [{ outcome: 'recovered', detail: { plan: LONG, output: UNSHOWN } }, ['healthy', 'concluída após recuperação']],
@@ -872,19 +871,14 @@ test('a creation and every run read as one line: a status phrase colored by mean
     [{ outcome: 'frozen', detail: { request_kind: 'integrations', ...STEP } }, ['waiting', 'aguardando conexão']],
     [{ outcome: 'stopped', detail: { actions: [['shimpz-cloudflare', 'list-zones']] } }, ['neutral', 'interrompida']],
     [{ outcome: 'user-skipped', detail: { ...STEP, choice: 'delete' } }, ['neutral', 'deixada de lado']],
-    [{ outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, schedule: { kind: 'continuous', gap: 5 }, plan: TWO } },
-      ['neutral', 'criada']],
   ];
-  const time = clockTime(Date.parse(RUN_ENTRY.created_at), 'pt');
-  // The notice keeps its seconds (created at 12:01:07 UTC).
-  assert.match(time, /^\d{2}:01:07$/);
   for (const [change, [tone, status]] of cases) {
-    assert.deepEqual(noticeShown({ ...RUN_ENTRY, ...change }), { tone, status, time }, change.outcome);
+    assert.deepEqual(noticeShown({ ...RUN_ENTRY, ...change }), { tone, status }, change.outcome);
   }
   // Every shown outcome has its status words in every Admin language.
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     for (const [change] of cases) {
-      const shown = routineNotice(parseRoutineRunEntry({ ...RUN_ENTRY, ...change }), { copy: catalog, locale });
+      const shown = routineNotice(parseRoutineRunEntry({ ...RUN_ENTRY, ...change }), catalog);
       assert.ok(shown.status && !/\{\w+\}/u.test(shown.status), `${locale} ${change.outcome}`);
     }
   }
@@ -1502,8 +1496,8 @@ test("a Routine's status is its most urgent one", () => {
   const routine = { routine_id: 'a'.repeat(32), schedule: { kind: 'daily', time: '09:00' }, state: 'active', deleting: false, needs_reconfirm: false };
   const run = (status) => ({ run_id: 'b'.repeat(32), routine_id: routine.routine_id, status });
   const incident = { incident_id: 'c'.repeat(32), routine_id: routine.routine_id };
-  assert.equal(routineStatus(routine), 'healthy');
-  assert.equal(routineStatus({ ...routine, schedule: { kind: 'continuous', gap: 5 } }), 'continuous');
+  assert.equal(routineStatus(routine), 'running');
+  assert.equal(routineStatus({ ...routine, schedule: { kind: 'continuous', gap: 5 } }), 'running');
   assert.equal(routineStatus(routine, [run('leased')]), 'running');
   assert.equal(routineStatus(routine, [run('frozen')]), 'waiting');
   assert.equal(routineStatus({ ...routine, state: 'paused' }, [run('frozen')]), 'paused');
@@ -1511,14 +1505,14 @@ test("a Routine's status is its most urgent one", () => {
   assert.equal(routineStatus({ ...routine, state: 'paused' }, [], [incident]), 'recovery');
   assert.equal(routineStatus(routine, [run('held')]), 'recovery');
   assert.equal(routineStatus({ ...routine, deleting: true }, [], [incident]), 'deleting');
-  assert.equal(routineStatus(routine, [{ ...run('leased'), routine_id: 'd'.repeat(32) }]), 'healthy');
+  assert.equal(routineStatus(routine, [{ ...run('leased'), routine_id: 'd'.repeat(32) }]), 'running');
 });
 
 test('a Routine shows the person only running, paused, or failed', () => {
   assert.deepEqual(
     Object.entries(STATUS_WORDS),
     [
-      ['healthy', 'running'], ['continuous', 'running'], ['running', 'running'],
+      ['running', 'running'],
       ['paused', 'paused'], ['waiting', 'paused'], ['reconfirm', 'paused'],
       ['recovery', 'failed'],
     ],
