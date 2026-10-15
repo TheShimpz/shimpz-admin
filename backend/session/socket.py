@@ -36,7 +36,6 @@ SIGNED_OUT = registry.SIGNED_OUT
 ORIGIN_REFUSED = 4403
 PROTOCOL_REFUSED = 4406
 UNAVAILABLE = 1013
-POLICY = 1008
 # A margin past a session's expiry before its timer checks it, so the check never runs a moment too early.
 EXPIRY_MARGIN_SECONDS = 0.05
 # The longest a quiet socket goes without checking its Origin and session again.

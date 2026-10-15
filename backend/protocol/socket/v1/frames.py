@@ -22,7 +22,6 @@ MAX_IN_FLIGHT = 16
 MAX_SUBSCRIPTIONS = 64
 MAX_ATTACHED_TEAMS = 4
 MAX_SOCKETS_PER_SESSION = 8
-MAX_REVISION = 2**53 - 1
 
 CALL_ID_RE = re.compile(r"[A-Za-z0-9_-]{1,64}\Z")
 EPOCH_RE = re.compile(r"[0-9a-f]{32}\Z")
@@ -34,8 +33,6 @@ TOPIC_RE = re.compile(
     r"|local-assistants"
     r"|team/[a-z0-9_]{1,40}/(?:routines|history|inventory|inference|integrations))\Z"
 )
-# The Team's own topics a client may name; every other topic is the Space's or the session's.
-TEAM_TOPICS = ("routines", "history", "inventory", "inference", "integrations")
 MAX_PARAM_CHARS = 128
 KIB = 1024
 
@@ -171,11 +168,9 @@ ACTIVITY = {"type": "activity"}
 
 
 class ProtocolError(ValueError):
-    """A client frame outside this protocol; it closes the socket with `close_code`."""
+    """A client frame outside this protocol; it closes the socket with policy violation (1008)."""
 
-    def __init__(self, detail: str, close_code: int = 1008) -> None:
-        super().__init__(detail)
-        self.close_code = close_code
+    close_code = 1008
 
 
 def is_call_id(value: object) -> bool:

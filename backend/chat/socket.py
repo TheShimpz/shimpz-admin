@@ -58,7 +58,6 @@ _request_identity = connection.request_identity
 # A retry, resend, or reconnect of a send whose identity Team would no longer admit is refused, never renewed.
 _error_terminal = projection.error_terminal
 error_terminal = projection.error_terminal
-_projected_event = projection.projected_event
 turn_terminal = projection.turn_terminal
 integration_challenge_event = projection.integration_challenge_event
 _first_challenge = projection.first_challenge
