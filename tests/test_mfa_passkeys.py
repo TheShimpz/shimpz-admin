@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from mfa_helper import configure_supervisor, isolated_store
+from mfa_helper import configure_supervisor, isolated_store, unjournaled
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -329,27 +329,29 @@ class PasskeyTests(unittest.TestCase):
         old_secret = state.get()["session_secret"]
         self.assertEqual(state.passkeys_for_registration(ORIGIN), [])
 
-        new_secret = state.add_passkey(credential(), generation)
+        new_secret = state.add_passkey(credential(), generation, journal=unjournaled)
 
         self.assertNotEqual(new_secret, old_secret)
         self.assertEqual(state.active_passkeys(ORIGIN), [credential()])
         self.assertEqual(state.active_passkeys("https://other.example.test"), [])
         with self.assertRaises(passkeys.PasskeyConflictError):
-            state.add_passkey(credential(), generation)
+            state.add_passkey(credential(), generation, journal=unjournaled)
         with self.assertRaises(passkeys.PasskeyConflictError):
-            state.add_passkey(credential(), state.factor_generation())
+            state.add_passkey(credential(), state.factor_generation(), journal=unjournaled)
         with self.assertRaises(passkeys.PasskeyUnavailableError):
             state.passkey_for_authentication("missing", ORIGIN)
 
     def test_counter_regression_suspends_the_credential_and_rotates_sessions(self) -> None:
         generation = state.factor_generation()
-        state.add_passkey(credential(), generation)
+        state.add_passkey(credential(), generation, journal=unjournaled)
         generation = state.factor_generation()
         original = state.passkey_for_authentication("credential_A", ORIGIN)
         old_secret = state.get()["session_secret"]
         result = passkeys.Authentication("credential_A", 3, False, False)
 
-        new_secret, suspension_reason = state.commit_passkey_authentication(original, result, generation, now=NOW + 1)
+        new_secret, suspension_reason = state.commit_passkey_authentication(
+            original, result, generation, now=NOW + 1, journal=unjournaled
+        )
 
         self.assertEqual(suspension_reason, "counter-regression")
         self.assertNotEqual(new_secret, old_secret)
@@ -358,7 +360,7 @@ class PasskeyTests(unittest.TestCase):
         replacement = credential()
         replacement["credential_id"] = "credential_B"
         replacement["public_key"] = "public_key_B"
-        state.add_passkey(replacement, state.factor_generation())
+        state.add_passkey(replacement, state.factor_generation(), journal=unjournaled)
         self.assertEqual([item["credential_id"] for item in state.get()["passkeys"]], ["credential_B"])
 
     def test_a_journal_failure_persists_no_passkey_change(self) -> None:
@@ -371,7 +373,7 @@ class PasskeyTests(unittest.TestCase):
             state.add_passkey(credential(), generation, journal=unwritable)
         self.assertEqual(state.get(), before)
 
-        state.add_passkey(credential(), generation)
+        state.add_passkey(credential(), generation, journal=unjournaled)
         generation = state.factor_generation()
         before = state.get()
         original = state.passkey_for_authentication("credential_A", ORIGIN)
@@ -389,7 +391,7 @@ class PasskeyTests(unittest.TestCase):
 
         # Registered a minute ago: a sign-in now records the current time as its use.
         registered = credential() | dict.fromkeys(("created_at", "updated_at", "last_used_at"), int(time.time()) - 60)
-        state.add_passkey(registered, state.factor_generation())
+        state.add_passkey(registered, state.factor_generation(), journal=unjournaled)
         generation = state.factor_generation()
         context = local_auth.Context()
         ticket = tickets.Ticket("login", ORIGIN, generation, NOW + 60)
@@ -412,24 +414,30 @@ class PasskeyTests(unittest.TestCase):
     def test_counterless_passkey_arms_regression_protection_after_a_positive_count(self) -> None:
         counterless = credential()
         counterless["sign_count"] = 0
-        state.add_passkey(counterless, state.factor_generation())
+        state.add_passkey(counterless, state.factor_generation(), journal=unjournaled)
         generation = state.factor_generation()
         session_secret = state.get()["session_secret"]
 
         original = state.passkey_for_authentication("credential_A", ORIGIN)
         zero = passkeys.Authentication("credential_A", 0, False, False)
-        secret, suspension_reason = state.commit_passkey_authentication(original, zero, generation, now=NOW + 1)
+        secret, suspension_reason = state.commit_passkey_authentication(
+            original, zero, generation, now=NOW + 1, journal=unjournaled
+        )
         self.assertEqual((secret, suspension_reason), (session_secret, None))
         self.assertEqual(state.active_passkeys(ORIGIN)[0]["sign_count"], 0)
 
         original = state.passkey_for_authentication("credential_A", ORIGIN)
         positive = passkeys.Authentication("credential_A", 1, False, False)
-        secret, suspension_reason = state.commit_passkey_authentication(original, positive, generation, now=NOW + 2)
+        secret, suspension_reason = state.commit_passkey_authentication(
+            original, positive, generation, now=NOW + 2, journal=unjournaled
+        )
         self.assertEqual((secret, suspension_reason), (session_secret, None))
         self.assertEqual(state.active_passkeys(ORIGIN)[0]["sign_count"], 1)
 
         original = state.passkey_for_authentication("credential_A", ORIGIN)
-        secret, suspension_reason = state.commit_passkey_authentication(original, positive, generation, now=NOW + 3)
+        secret, suspension_reason = state.commit_passkey_authentication(
+            original, positive, generation, now=NOW + 3, journal=unjournaled
+        )
         self.assertEqual(suspension_reason, "counter-regression")
         self.assertNotEqual(secret, session_secret)
         self.assertEqual(state.active_passkeys(ORIGIN), [])
@@ -439,18 +447,20 @@ class PasskeyTests(unittest.TestCase):
             record = credential()
             record["credential_id"] = f"credential_{index}"
             record["public_key"] = f"public_key_{index}"
-            state.add_passkey(record, state.factor_generation())
+            state.add_passkey(record, state.factor_generation(), journal=unjournaled)
 
         with self.assertRaisesRegex(passkeys.PasskeyUnavailableError, "maximum passkey count"):
             state.passkeys_for_registration(ORIGIN)
 
     def test_successful_assertion_updates_counter_only_against_exact_original(self) -> None:
-        state.add_passkey(credential(), state.factor_generation())
+        state.add_passkey(credential(), state.factor_generation(), journal=unjournaled)
         generation = state.factor_generation()
         original = state.passkey_for_authentication("credential_A", ORIGIN)
         result = passkeys.Authentication("credential_A", 4, False, False)
 
-        secret, suspension_reason = state.commit_passkey_authentication(original, result, generation, now=NOW + 1)
+        secret, suspension_reason = state.commit_passkey_authentication(
+            original, result, generation, now=NOW + 1, journal=unjournaled
+        )
 
         self.assertIsNone(suspension_reason)
         self.assertEqual(secret, state.get()["session_secret"])
@@ -458,27 +468,29 @@ class PasskeyTests(unittest.TestCase):
         changed = copy.deepcopy(original)
         changed["sign_count"] = 99
         with self.assertRaises(passkeys.PasskeyConflictError):
-            state.commit_passkey_authentication(changed, result, generation, now=NOW + 2)
+            state.commit_passkey_authentication(changed, result, generation, now=NOW + 2, journal=unjournaled)
         with self.assertRaises(passkeys.PasskeyConflictError):
-            state.commit_passkey_authentication(original, result, generation + 1, now=NOW + 2)
+            state.commit_passkey_authentication(original, result, generation + 1, now=NOW + 2, journal=unjournaled)
 
     def test_impossible_backup_state_and_changed_eligibility_fail_closed(self) -> None:
         impossible = credential()
         impossible["backup_state"] = True
         with self.assertRaises(passkeys.PasskeyError):
-            state.add_passkey(impossible, state.factor_generation())
+            state.add_passkey(impossible, state.factor_generation(), journal=unjournaled)
 
-        state.add_passkey(credential(), state.factor_generation())
+        state.add_passkey(credential(), state.factor_generation(), journal=unjournaled)
         generation = state.factor_generation()
         original = state.passkey_for_authentication("credential_A", ORIGIN)
         result = passkeys.Authentication("credential_A", 4, True, True)
 
-        _secret, suspension_reason = state.commit_passkey_authentication(original, result, generation, now=NOW + 1)
+        _secret, suspension_reason = state.commit_passkey_authentication(
+            original, result, generation, now=NOW + 1, journal=unjournaled
+        )
 
         self.assertEqual(suspension_reason, "backup-identity-change")
         self.assertEqual(state.active_passkeys(ORIGIN), [])
 
-        state.add_passkey(credential(), state.factor_generation())
+        state.add_passkey(credential(), state.factor_generation(), journal=unjournaled)
         generation = state.factor_generation()
         original = state.passkey_for_authentication("credential_A", ORIGIN)
         impossible_result = passkeys.Authentication("credential_A", 4, False, True)
@@ -487,6 +499,7 @@ class PasskeyTests(unittest.TestCase):
             impossible_result,
             generation,
             now=NOW + 2,
+            journal=unjournaled,
         )
         self.assertEqual(suspension_reason, "backup-identity-change")
 

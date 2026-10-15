@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from mfa_helper import configure_supervisor, isolated_store
+from mfa_helper import configure_supervisor, isolated_store, unjournaled
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
@@ -93,7 +93,7 @@ class SupervisorKeyRotationTests(unittest.TestCase):
     def test_a_restart_after_team_switched_completes_with_the_new_key(self) -> None:
         # Admin saved the pending key and Team switched, but Admin stopped before it made the new key current.
         pending = supervisor.LocalIdentity(self.original.supervisor_id, supervisor.new_identity().private_key_hex)
-        state.begin_supervisor_key_rotation(pending)
+        state.begin_supervisor_key_rotation(pending, journal=unjournaled)
         team = _Team(_digest(pending))
         with self._team(team):
             self.assertIs(supervisor_key.resolve(), supervisor_key.Outcome.ROTATED)
@@ -105,7 +105,7 @@ class SupervisorKeyRotationTests(unittest.TestCase):
 
     def test_a_restart_before_team_heard_of_the_rotation_sends_it_under_the_old_key(self) -> None:
         pending = supervisor.LocalIdentity(self.original.supervisor_id, supervisor.new_identity().private_key_hex)
-        state.begin_supervisor_key_rotation(pending)
+        state.begin_supervisor_key_rotation(pending, journal=unjournaled)
         team = _Team(_digest(self.original))
         with self._team(team):
             self.assertIs(supervisor_key.resolve(), supervisor_key.Outcome.ROTATED)
@@ -170,7 +170,7 @@ class SupervisorKeyRotationTests(unittest.TestCase):
         self.assertEqual(team.signers, [])
 
         pending = supervisor.LocalIdentity(self.original.supervisor_id, supervisor.new_identity().private_key_hex)
-        state.begin_supervisor_key_rotation(pending)
+        state.begin_supervisor_key_rotation(pending, journal=unjournaled)
 
         def refuse_adoption(event: str, **_fields: object) -> None:
             if event == "supervisor-key-rotated":
@@ -203,22 +203,23 @@ class PendingKeyStateTests(unittest.TestCase):
     def test_a_rotation_begins_only_for_a_configured_supervisor_with_another_key(self) -> None:
         identity = supervisor.new_identity()
         with self.assertRaises(supervisor.SupervisorAuthorityError):
-            state.begin_supervisor_key_rotation(identity)
+            state.begin_supervisor_key_rotation(identity, journal=unjournaled)
         configure_supervisor(state, PASSWORD)
         current = state.local_supervisor()
         other = supervisor.LocalIdentity(current.supervisor_id, supervisor.new_identity().private_key_hex)
         for refused in (current, supervisor.new_identity()):
             with self.subTest(refused=refused), self.assertRaises(state.SupervisorKeyRotationError):
-                state.begin_supervisor_key_rotation(refused)
-        state.begin_supervisor_key_rotation(other)
+                state.begin_supervisor_key_rotation(refused, journal=unjournaled)
+        state.begin_supervisor_key_rotation(other, journal=unjournaled)
         with self.assertRaises(state.SupervisorKeyRotationError):
             state.begin_supervisor_key_rotation(
-                supervisor.LocalIdentity(current.supervisor_id, supervisor.new_identity().private_key_hex)
+                supervisor.LocalIdentity(current.supervisor_id, supervisor.new_identity().private_key_hex),
+                journal=unjournaled,
             )
         stranger = supervisor.LocalIdentity(current.supervisor_id, supervisor.new_identity().private_key_hex)
         for settle in (state.adopt_supervisor_key, state.abandon_supervisor_key):
             with self.subTest(settle=settle), self.assertRaises(state.SupervisorKeyRotationError):
-                settle(stranger)
+                settle(stranger, journal=unjournaled)
         self.assertEqual(state.pending_supervisor_key(), other)
 
     def test_a_damaged_pending_key_is_unavailable(self) -> None:

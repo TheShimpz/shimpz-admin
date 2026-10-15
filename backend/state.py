@@ -433,7 +433,7 @@ def passkey_for_authentication(credential_id: str, origin: str) -> dict[str, obj
     return matches[0]
 
 
-def add_passkey(record: dict[str, object], generation: int, *, journal: Callable[[object], None] | None = None) -> str:
+def add_passkey(record: dict[str, object], generation: int, *, journal: Callable[[object], None]) -> str:
     """Persist one verified credential and rotate all existing sessions, journaling it first."""
     validated = _validated_passkey(copy.deepcopy(record))
 
@@ -460,7 +460,7 @@ def commit_passkey_authentication(
     *,
     now: int,
     sign_in: bool = False,
-    journal: Callable[[object], None] | None = None,
+    journal: Callable[[object], None],
 ) -> tuple[str, str | None]:
     """Commit one assertion update or suspension against the exact original record, journaling its outcome first.
 
@@ -513,7 +513,7 @@ def verify_totp(
     now: int | None = None,
     generation: int | None = None,
     codes: dict[str, object] | None = None,
-    journal: Callable[[object], None] | None = None,
+    journal: Callable[[object], None],
 ) -> totp.Verification:
     """Persist one TOTP attempt, activation, replay evidence, and session rotation, journaling its outcome first.
 
@@ -560,7 +560,7 @@ def spend_recovery_code(
     *,
     generation: int,
     now: int | None = None,
-    journal: Callable[[object], None] | None = None,
+    journal: Callable[[object], None],
 ) -> tuple[totp.Verification, totp.Enrollment | None]:
     """Spend one recovery code under the TOTP failure budget, journaling the outcome before it is persisted.
 
@@ -591,7 +591,7 @@ def spend_recovery_code(
     return cast(tuple[totp.Verification, totp.Enrollment | None], outcome)
 
 
-def replace_recovery_codes(codes: dict[str, object], *, journal: Callable[[object], None] | None = None) -> None:
+def replace_recovery_codes(codes: dict[str, object], *, journal: Callable[[object], None]) -> None:
     """Replace the whole set with a fresh one, journaling it first; every code of the previous set stops working."""
     recovery.validated(codes)
 
@@ -685,9 +685,7 @@ def pending_supervisor_key() -> supervisor.LocalIdentity | None:
     return pending
 
 
-def begin_supervisor_key_rotation(
-    pending: supervisor.LocalIdentity, *, journal: Callable[[object], None] | None = None
-) -> None:
+def begin_supervisor_key_rotation(pending: supervisor.LocalIdentity, *, journal: Callable[[object], None]) -> None:
     """Durably save a new signing key beside the current one, journaling it first; one rotation is open at a time."""
 
     def begin(data: dict) -> None:
@@ -707,7 +705,7 @@ def begin_supervisor_key_rotation(
     _mutate(begin, journal=journal)
 
 
-def _settle_rotation(pending: supervisor.LocalIdentity, adopt: bool, journal: Callable[[object], None] | None) -> None:
+def _settle_rotation(pending: supervisor.LocalIdentity, adopt: bool, journal: Callable[[object], None]) -> None:
     def settle(data: dict) -> None:
         if data.get(PENDING_KEY_FIELD) != pending.private_key_hex:
             raise SupervisorKeyRotationError("the Supervisor key rotation is no longer open")
@@ -719,14 +717,12 @@ def _settle_rotation(pending: supervisor.LocalIdentity, adopt: bool, journal: Ca
     _mutate(settle, journal=journal)
 
 
-def adopt_supervisor_key(pending: supervisor.LocalIdentity, *, journal: Callable[[object], None] | None = None) -> None:
+def adopt_supervisor_key(pending: supervisor.LocalIdentity, *, journal: Callable[[object], None]) -> None:
     """Team pins the pending key now: make it current and drop the earlier one, journaling it first."""
     _settle_rotation(pending, True, journal)
 
 
-def abandon_supervisor_key(
-    pending: supervisor.LocalIdentity, *, journal: Callable[[object], None] | None = None
-) -> None:
+def abandon_supervisor_key(pending: supervisor.LocalIdentity, *, journal: Callable[[object], None]) -> None:
     """Team kept the current key: drop the pending one, journaling it first."""
     _settle_rotation(pending, False, journal)
 

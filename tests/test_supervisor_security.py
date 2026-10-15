@@ -15,7 +15,7 @@ from unittest import mock
 import app_import
 from fastapi import HTTPException
 from http_request import json_request, response_cookie
-from mfa_helper import NOW, code, configure_supervisor, isolated_store, recovery_codes
+from mfa_helper import NOW, code, configure_supervisor, isolated_store, recovery_codes, unjournaled
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
@@ -46,28 +46,28 @@ class SecondFactorFailureStateTests(unittest.TestCase):
     def test_refused_codes_are_reported_by_the_next_sign_in_until_acknowledged(self) -> None:
         later = NOW + 60
         for _attempt in range(totp.FAILURE_LIMIT + 1):
-            state.verify_totp("000000", ceremony="operation", now=later)
+            state.verify_totp("000000", ceremony="operation", now=later, journal=unjournaled)
         # The last attempt was refused while locked, unevaluated; it still counts as a refused attempt.
         self.assertEqual(_failures(), {"since_sign_in": totp.FAILURE_LIMIT + 1, "unacknowledged": 0})
 
         unlocked = later + totp.LOCK_SECONDS
-        accepted = state.verify_totp(code(_secret(), unlocked), ceremony="login", now=unlocked)
+        accepted = state.verify_totp(code(_secret(), unlocked), ceremony="login", now=unlocked, journal=unjournaled)
 
         self.assertIs(accepted, totp.Verification.ACCEPTED)
         self.assertEqual(_failures(), {"since_sign_in": 0, "unacknowledged": totp.FAILURE_LIMIT + 1})
         self.assertEqual(state.unacknowledged_second_factor_failures(), totp.FAILURE_LIMIT + 1)
         # A later refusal and sign-in add to what is still unacknowledged.
-        state.verify_totp("000000", ceremony="operation", now=unlocked + 60)
-        state.verify_totp(code(_secret(), unlocked + 90), ceremony="login", now=unlocked + 90)
+        state.verify_totp("000000", ceremony="operation", now=unlocked + 60, journal=unjournaled)
+        state.verify_totp(code(_secret(), unlocked + 90), ceremony="login", now=unlocked + 90, journal=unjournaled)
         self.assertEqual(state.unacknowledged_second_factor_failures(), totp.FAILURE_LIMIT + 2)
 
         self.assertEqual(state.acknowledge_second_factor_failures(2), totp.FAILURE_LIMIT)
         self.assertEqual(state.acknowledge_second_factor_failures(totp.FAILURE_LIMIT + 10), 0)
 
     def test_confirming_an_operation_is_no_sign_in(self) -> None:
-        state.verify_totp("000000", ceremony="operation", now=NOW + 60)
+        state.verify_totp("000000", ceremony="operation", now=NOW + 60, journal=unjournaled)
 
-        state.verify_totp(code(_secret(), NOW + 90), ceremony="operation", now=NOW + 90)
+        state.verify_totp(code(_secret(), NOW + 90), ceremony="operation", now=NOW + 90, journal=unjournaled)
 
         self.assertEqual(_failures(), {"since_sign_in": 1, "unacknowledged": 0})
 
@@ -85,18 +85,20 @@ class SecondFactorFailureStateTests(unittest.TestCase):
             "updated_at": NOW,
             "last_used_at": NOW,
         }
-        state.add_passkey(record, state.factor_generation())
-        state.verify_totp("000000", ceremony="operation", now=NOW + 60)
+        state.add_passkey(record, state.factor_generation(), journal=unjournaled)
+        state.verify_totp("000000", ceremony="operation", now=NOW + 60, journal=unjournaled)
         generation = state.factor_generation()
 
         original = state.passkey_for_authentication("credential_A", ORIGIN)
         result = passkeys.Authentication("credential_A", 4, False, False)
-        state.commit_passkey_authentication(original, result, generation, now=NOW + 61)
+        state.commit_passkey_authentication(original, result, generation, now=NOW + 61, journal=unjournaled)
         self.assertEqual(_failures(), {"since_sign_in": 1, "unacknowledged": 0})
 
         original = state.passkey_for_authentication("credential_A", ORIGIN)
         result = passkeys.Authentication("credential_A", 5, False, False)
-        state.commit_passkey_authentication(original, result, generation, now=NOW + 62, sign_in=True)
+        state.commit_passkey_authentication(
+            original, result, generation, now=NOW + 62, sign_in=True, journal=unjournaled
+        )
         self.assertEqual(_failures(), {"since_sign_in": 0, "unacknowledged": 1})
 
     def test_malformed_failure_counters_require_bounded_recovery(self) -> None:
@@ -117,8 +119,8 @@ class SecondFactorFailureStateTests(unittest.TestCase):
         maximum = state.MAX_SECOND_FACTOR_FAILURES
         state._write({**current, "second_factor_failures": {"since_sign_in": maximum, "unacknowledged": maximum}})
 
-        state.verify_totp("000000", ceremony="operation", now=NOW + 60)
-        state.verify_totp(code(_secret(), NOW + 90), ceremony="login", now=NOW + 90)
+        state.verify_totp("000000", ceremony="operation", now=NOW + 60, journal=unjournaled)
+        state.verify_totp(code(_secret(), NOW + 90), ceremony="login", now=NOW + 90, journal=unjournaled)
 
         self.assertEqual(_failures(), {"since_sign_in": 0, "unacknowledged": maximum})
 
@@ -137,7 +139,9 @@ class RecoveryCodeStateTests(unittest.TestCase):
 
     def _spend(self, typed: str, now: int = NOW + 60, generation: int | None = None):
         generation = state.factor_generation() if generation is None else generation
-        return state.spend_recovery_code(state.recovery_candidate(typed), generation=generation, now=now)
+        return state.spend_recovery_code(
+            state.recovery_candidate(typed), generation=generation, now=now, journal=unjournaled
+        )
 
     def test_a_code_replaces_totp_ends_every_session_and_admits_only_its_re_enrollment(self) -> None:
         before = state.get()
@@ -155,15 +159,19 @@ class RecoveryCodeStateTests(unittest.TestCase):
         # Discovery and the release admission see a configured Supervisor, whose way forward is signing in.
         self.assertEqual(state.classified_authentication_state(), "configured")
         with self.assertRaises(totp.TotpStateError):
-            state.verify_totp(code(old_secret, NOW + 90), ceremony="login", now=NOW + 90)
+            state.verify_totp(code(old_secret, NOW + 90), ceremony="login", now=NOW + 90, journal=unjournaled)
         with self.assertRaises(totp.TotpStateError):
             state.recovery_codes_remaining()
         with self.assertRaises(totp.TotpStateError):
-            state.replace_recovery_codes(recovery.new_set().record)
+            state.replace_recovery_codes(recovery.new_set().record, journal=unjournaled)
 
         fresh = recovery.new_set()
         accepted = state.verify_totp(
-            code(enrollment.secret, NOW + 120), ceremony="recovery", now=NOW + 120, codes=fresh.record
+            code(enrollment.secret, NOW + 120),
+            ceremony="recovery",
+            now=NOW + 120,
+            codes=fresh.record,
+            journal=unjournaled,
         )
         self.assertIs(accepted, totp.Verification.ACCEPTED)
         self.assertEqual(state.authentication_state(), "configured")
@@ -171,7 +179,11 @@ class RecoveryCodeStateTests(unittest.TestCase):
         # Every code of the earlier set stopped working with it.
         with self.assertRaises(totp.TotpStateError):
             state.verify_totp(
-                code(enrollment.secret, NOW + 150), ceremony="recovery", now=NOW + 150, codes=fresh.record
+                code(enrollment.secret, NOW + 150),
+                ceremony="recovery",
+                now=NOW + 150,
+                codes=fresh.record,
+                journal=unjournaled,
             )
         self.assertIs(self._spend(recovery_codes()[1], NOW + 180)[0], totp.Verification.INVALID)
         self.assertIs(self._spend(fresh.codes[0], NOW + 181)[0], totp.Verification.ACCEPTED)
@@ -192,7 +204,7 @@ class RecoveryCodeStateTests(unittest.TestCase):
         self.assertIs(self._spend("not a code", NOW + 70)[0], totp.Verification.LOCKED)
         self.assertIs(self._spend(recovery_codes()[0], NOW + 71)[0], totp.Verification.LOCKED)
         # The shared budget also locks TOTP itself.
-        locked = state.verify_totp(code(_secret(), NOW + 90), ceremony="login", now=NOW + 90)
+        locked = state.verify_totp(code(_secret(), NOW + 90), ceremony="login", now=NOW + 90, journal=unjournaled)
         self.assertIs(locked, totp.Verification.LOCKED)
         self.assertEqual(_failures()["since_sign_in"], totp.FAILURE_LIMIT + 2)
         self.assertEqual(recovery.remaining(state.get()["recovery_codes"]), recovery.CODE_COUNT)
@@ -203,11 +215,15 @@ class RecoveryCodeStateTests(unittest.TestCase):
     def test_a_ceremony_from_before_a_factor_change_spends_nothing(self) -> None:
         generation = state.factor_generation()
         derived = state.recovery_candidate(recovery_codes()[0])
-        state.replace_recovery_codes(recovery.new_set().record)
+        state.replace_recovery_codes(recovery.new_set().record, journal=unjournaled)
 
-        self.assertIs(state.spend_recovery_code(derived, generation=generation)[0], totp.Verification.CHANGED)
+        self.assertIs(
+            state.spend_recovery_code(derived, generation=generation, journal=unjournaled)[0], totp.Verification.CHANGED
+        )
         stale = state.recovery_candidate(recovery_codes()[0])
-        self.assertIs(state.spend_recovery_code(stale, generation=generation)[0], totp.Verification.CHANGED)
+        self.assertIs(
+            state.spend_recovery_code(stale, generation=generation, journal=unjournaled)[0], totp.Verification.CHANGED
+        )
         self.assertEqual(state.factor_generation(), generation + 1)
 
     def test_a_journal_failure_persists_no_spent_code(self) -> None:
@@ -240,9 +256,11 @@ class RecoveryCodeStateTests(unittest.TestCase):
         with self.assertRaises(totp.TotpStateError):
             state.recovery_candidate(recovery_codes()[0])
         with self.assertRaises(totp.TotpStateError):
-            state.spend_recovery_code(recovery.Candidate("0" * 64, None), generation=state.factor_generation())
+            state.spend_recovery_code(
+                recovery.Candidate("0" * 64, None), generation=state.factor_generation(), journal=unjournaled
+            )
         with self.assertRaises(recovery.RecoveryStateError):
-            state.verify_totp("000000", ceremony="setup", now=NOW)
+            state.verify_totp("000000", ceremony="setup", now=NOW, journal=unjournaled)
 
 
 class SecurityRouteTests(unittest.TestCase):
@@ -539,7 +557,7 @@ class SecurityRouteTests(unittest.TestCase):
         app = self.admin_app
         _session, codes = self._configure()
         _methods, ticket = self._login()
-        app.state.replace_recovery_codes(recovery.new_set().record)
+        app.state.replace_recovery_codes(recovery.new_set().record, journal=unjournaled)
 
         stale = self._call(
             app.local_login_recovery, "/api/login/recovery", {"code": codes[0]}, shimpz_admin_ticket=ticket

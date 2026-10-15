@@ -12,6 +12,10 @@ from pathlib import Path
 NOW = 1_800_000_000
 
 
+def unjournaled(_result: object) -> None:
+    """The journal of a state call whose test checks no audit line: it records nothing."""
+
+
 def code(secret: str, timestamp: int = NOW) -> str:
     """Generate one RFC 6238 test code for a fixture secret."""
     key = base64.b32decode(secret)
@@ -42,7 +46,9 @@ def recovery_record() -> dict[str, object]:
 def configure_supervisor(state_module, password: str) -> str:
     """Create password+TOTP state with the fixture recovery codes and return its current session secret."""
     enrollment = state_module.begin_supervisor_setup(password, now=NOW)
-    result = state_module.verify_totp(code(enrollment.secret), ceremony="setup", now=NOW, codes=recovery_record())
+    result = state_module.verify_totp(
+        code(enrollment.secret), ceremony="setup", now=NOW, codes=recovery_record(), journal=unjournaled
+    )
     if result.value != "accepted":
         raise AssertionError("test MFA setup failed")
     return state_module.get()["session_secret"]

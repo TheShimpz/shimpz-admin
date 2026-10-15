@@ -7,6 +7,7 @@ import threading
 import time
 from unittest import mock
 
+from mfa_helper import unjournaled
 from tests.session_socket_case import SessionSocketCase
 
 from tests import chat_socket_fixtures
@@ -359,7 +360,7 @@ class SessionSocketClosureTests(SessionSocketCase):
 
     def test_a_passkey_suspension_closes_every_socket_at_once(self) -> None:
         state = self.admin_app.state
-        state.add_passkey(dict(PASSKEY), state.factor_generation())
+        state.add_passkey(dict(PASSKEY), state.factor_generation(), journal=unjournaled)
         self.token = self.admin_app.auth.issue_session(state.get()["session_secret"], "webauthn")
         passkeys = importlib.import_module("mfa.passkeys")
 
@@ -368,7 +369,9 @@ class SessionSocketClosureTests(SessionSocketCase):
             # A signature counter that went backwards suspends the passkey and rotates every session.
             result = passkeys.Authentication("credential_A", 1, False, False)
             self.assertEqual(
-                state.commit_passkey_authentication(original, result, state.factor_generation(), now=1_800_000_100)[1],
+                state.commit_passkey_authentication(
+                    original, result, state.factor_generation(), now=1_800_000_100, journal=unjournaled
+                )[1],
                 "counter-regression",
             )
 
@@ -380,7 +383,9 @@ class SessionSocketClosureTests(SessionSocketCase):
 
         def spend() -> None:
             candidate = state.recovery_candidate(mfa_helper.recovery_codes()[0])
-            verification, _enrollment = state.spend_recovery_code(candidate, generation=state.factor_generation())
+            verification, _enrollment = state.spend_recovery_code(
+                candidate, generation=state.factor_generation(), journal=unjournaled
+            )
             self.assertEqual(verification.value, "accepted")
 
         self._ends_every_socket(spend)
