@@ -22,6 +22,10 @@
     destructive = false,
     onconfirm = () => {},
     oncancel = () => {},
+    // The dialog's own title id, distinct for each dialog a page holds.
+    titleId = 'assistant-action-title',
+    // What the dialog shows before its target, its progress, and its error.
+    body,
   } = $props();
 
   let dialog = $state();
@@ -43,14 +47,15 @@
   }
 </script>
 
-<Modal bind:element={dialog} labelledBy="assistant-action-title" oncancel={cancel}>
+<Modal bind:element={dialog} labelledBy={titleId} oncancel={cancel}>
   <form onsubmit={submit}>
   <DialogFrame
     kicker={kicker || $t('store.destinationKicker')}
     {title}
-    titleId="assistant-action-title"
+    {titleId}
     {lead}
   >
+    {@render body?.()}
     {#if targetName}
       <DialogTarget label={targetLabel} name={targetName} id={targetId} />
     {/if}
