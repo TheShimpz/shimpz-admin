@@ -1,21 +1,11 @@
 import { writable } from 'svelte/store';
 
 export const DEFAULT_ADMIN_NOTICE_DURATION_MS = 10_000;
-const MIN_ADMIN_NOTICE_DURATION_MS = 1_000;
-const MAX_ADMIN_NOTICE_DURATION_MS = 120_000;
 
 const TONES = new Set(['error', 'info', 'success']);
 let nextId = 0;
 
 export const adminNotice = writable(null);
-
-function validAdminNoticeDuration(value) {
-  return (
-    Number.isSafeInteger(value) &&
-    value >= MIN_ADMIN_NOTICE_DURATION_MS &&
-    value <= MAX_ADMIN_NOTICE_DURATION_MS
-  );
-}
 
 function text(value, field, required = true) {
   if (typeof value !== 'string' || value !== value.trim() || value.length > 300 || (required && !value)) {
@@ -107,7 +97,7 @@ export function createAdminNoticeTimer({ now, setTimer, clearTimer, onExpire, on
   }
 
   function start(id, durationMs, initiallyPaused = false) {
-    if (!Number.isSafeInteger(id) || id < 1 || !validAdminNoticeDuration(durationMs)) {
+    if (!Number.isSafeInteger(id) || id < 1) {
       throw new TypeError('Invalid Admin notice timer start.');
     }
     stop();
