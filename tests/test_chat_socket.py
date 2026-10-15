@@ -390,7 +390,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             progress: asyncio.Queue[dict[str, object]] = asyncio.Queue()
             loop.call_soon(progress.put_nowait, dict(_MEASURED_PROGRESS[0]))
             websocket = mock.AsyncMock()
-            connection = self.chat_socket._Connection()
+            connection = self.chat_socket.Connection()
             recorded: list[object] = []
 
             with mock.patch.object(self.chat_socket.progress_transport.asyncio, "wrap_future", return_value=response):
@@ -418,7 +418,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             response = loop.create_future()
             progress: asyncio.Queue[dict[str, object]] = asyncio.Queue()
             progress.put_nowait(dict(_MEASURED_PROGRESS[0]))
-            connection = self.chat_socket._Connection()
+            connection = self.chat_socket.Connection()
 
             class FailingWebSocket:
                 async def send_json(self, _event) -> None:

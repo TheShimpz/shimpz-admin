@@ -264,7 +264,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
                 {**pending.body, "turn_id": "c" * 32},
             )
             websocket = mock.AsyncMock()
-            connection = self.chat_socket._Connection(sync_terminal_sent=True)
+            connection = self.chat_socket.Connection(sync_terminal_sent=True)
 
             await self.chat_socket.sync_delivery.integration(
                 websocket,

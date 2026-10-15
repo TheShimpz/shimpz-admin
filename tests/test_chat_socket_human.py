@@ -2,6 +2,7 @@
 
 import asyncio
 import contextlib
+import importlib
 import json
 import unittest
 from collections.abc import Iterator
@@ -300,7 +301,7 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
 
     def test_a_receipt_is_kept_only_for_its_own_turn_and_within_its_bound(self) -> None:
         progress = self.chat_socket.progress_transport
-        receipt = self.chat_socket.connection.Receipt()
+        receipt = importlib.import_module("chat.connection").Receipt()
         step = {"type": "progress", "seq": 1, "origin": "team", "phase": "model", "state": "started"}
         # A delivery that showed no Team step takes no number.
         progress.receipt_delivery(receipt, "a" * 32, fresh=True)({**step, "origin": "admin"})

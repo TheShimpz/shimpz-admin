@@ -42,7 +42,7 @@ class ChatWebSocketRuntimeTests(ChatWebSocketCase):
             uri = f"ws://127.0.0.1:{port}/api/session/ws"
             headers = {"Cookie": f"shimpz_admin={self.token}"}
             response = completed_turn("hello from the Team")
-            empty = self.chat_socket._SyncSnapshot(
+            empty = self.chat_socket.SyncSnapshot(
                 "integration", self.transport.TeamResponse(200, {"team_id": "team_1", "status": "none"})
             )
             try:
@@ -101,7 +101,7 @@ class ChatWebSocketRuntimeTests(ChatWebSocketCase):
         asyncio.run(scenario())
 
     def test_worker_queue_rejects_instead_of_growing(self) -> None:
-        executor = self.chat_socket.BoundedThreadPoolExecutor(
+        executor = self.chat_socket.lanes.BoundedThreadPoolExecutor(
             max_workers=1,
             max_outstanding=1,
             thread_name_prefix="chat-test",
@@ -124,7 +124,7 @@ class ChatWebSocketRuntimeTests(ChatWebSocketCase):
             binding = transport._SUPERVISOR_SESSION.get()
             return None if binding is None else binding.value
 
-        executor = self.chat_socket.BoundedThreadPoolExecutor(
+        executor = self.chat_socket.lanes.BoundedThreadPoolExecutor(
             max_workers=1,
             max_outstanding=1,
             thread_name_prefix="chat-context-test",

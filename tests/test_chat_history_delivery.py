@@ -27,7 +27,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
     def test_admission_commits_user_history_before_work_can_start(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            connection = socket._Connection()
+            connection = socket.Connection()
             frame = chat_socket_fixtures.chat_frame("Hello")
             with (
                 mock.patch.object(socket.history, "new_turn_id", return_value="a" * 32),
@@ -41,7 +41,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
             self.assertEqual(connection.admitted_history_id, "a" * 32)
             append.assert_called_once_with("team_1", "a" * 32, "Hello", files=[])
 
-            connection = socket._Connection()
+            connection = socket.Connection()
             with (
                 mock.patch.object(socket.history, "new_turn_id", return_value="b" * 32),
                 mock.patch.object(
@@ -96,7 +96,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
     def test_a_message_naming_a_file_the_team_no_longer_holds_is_refused_before_any_work(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            connection = socket._Connection()
+            connection = socket.Connection()
             frame = {
                 "type": "chat",
                 "message": "Summarize",
@@ -175,7 +175,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
                         queued.append(asyncio.create_task(delivery.admit("team_1", "Hello")))
                         await asyncio.sleep(0)
                     websocket = mock.AsyncMock()
-                    connection = socket._Connection()
+                    connection = socket.Connection()
                     admission = socket._admit_chat_payload(websocket, connection, "team_1", frame)
                     self.assertIsNone(await asyncio.wait_for(admission, 5))
                     refused = websocket.send_json.await_args.args[0]
@@ -194,8 +194,8 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
     def test_terminal_reply_is_committed_before_socket_projection(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            connection = socket._Connection()
-            turn = socket._Turn(None, "chat", history_id="a" * 32)
+            connection = socket.Connection()
+            turn = socket.Turn(None, "chat", history_id="a" * 32)
             event = {
                 "type": "done",
                 "team_id": "team_1",
@@ -213,8 +213,8 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
     def test_uncommitted_terminal_reply_fails_visibly(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            connection = socket._Connection()
-            turn = socket._Turn(None, "chat", history_id="a" * 32)
+            connection = socket.Connection()
+            turn = socket.Turn(None, "chat", history_id="a" * 32)
             event = {
                 "type": "done",
                 "team_id": "team_1",
@@ -235,7 +235,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
             turn_id = socket.history.new_turn_id()
             self.assertTrue(socket.history.append_user("team_1", turn_id, "Approve the Action"))
             self.assertTrue(socket.history.bind_resumable_turn("team_1", turn_id))
-            connection = socket._Connection(pending_history_id=turn_id)
+            connection = socket.Connection(pending_history_id=turn_id)
             websocket = mock.AsyncMock()
 
             await sync_delivery.human(
@@ -264,7 +264,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
             turn_id = socket.history.new_turn_id()
             self.assertTrue(socket.history.append_user("team_1", turn_id, "Expired approval"))
             self.assertTrue(socket.history.bind_resumable_turn("team_1", turn_id))
-            connection = socket._Connection(
+            connection = socket.Connection(
                 pending_challenge_id="b" * 32,
                 pending_challenge_type="human",
                 pending_history_id=turn_id,
@@ -286,7 +286,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
             self.assertTrue(socket.history.append_user("team_1", first, "Expired approval"))
             self.assertTrue(socket.history.append_user("team_1", second, "New approval"))
             self.assertTrue(socket.history.bind_resumable_turn("team_1", first))
-            connection = socket._Connection(pending_history_id=first)
+            connection = socket.Connection(pending_history_id=first)
 
             socket.history.finish_resumable_turn(first)
             self.assertTrue(socket.history.bind_resumable_turn("team_1", second))
@@ -301,7 +301,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
             turn_id = socket.history.new_turn_id()
             self.assertTrue(socket.history.append_user("team_1", turn_id, "Connect Cloudflare"))
             self.assertTrue(socket.history.bind_resumable_turn("team_1", turn_id))
-            connection = socket._Connection(pending_history_id=turn_id)
+            connection = socket.Connection(pending_history_id=turn_id)
             pending = chat_socket_fixtures.integration_challenge().websocket_event("team_1")
             websocket = mock.AsyncMock()
 
@@ -325,7 +325,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
             turn_id = socket.history.new_turn_id()
             self.assertTrue(socket.history.append_user("team_1", turn_id, "Approve the Action"))
             self.assertTrue(socket.history.bind_resumable_turn("team_1", turn_id))
-            connection = socket._Connection(
+            connection = socket.Connection(
                 pending_challenge_id="b" * 32,
                 pending_challenge_type="human",
                 pending_history_id=turn_id,
@@ -468,8 +468,8 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
             ):
                 await challenge_delivery.deliver(
                     websocket,
-                    socket._Connection(),
-                    socket._Turn(None, "chat", history_id="a" * 32),
+                    socket.Connection(),
+                    socket.Turn(None, "chat", history_id="a" * 32),
                     "team_1",
                     {"type": "human-required"},
                     "human",
@@ -483,7 +483,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
                 send_terminal=mock.AsyncMock(return_value=True),
                 error_terminal=mock.Mock(return_value=error),
             )
-            connection = socket._Connection(pending_history_id="a" * 32)
+            connection = socket.Connection(pending_history_id="a" * 32)
             with mock.patch.object(
                 sync_delivery.history_delivery,
                 "abandon",
@@ -500,7 +500,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
             ):
                 await sync_delivery.integration_terminal(
                     websocket,
-                    socket._Connection(),
+                    socket.Connection(),
                     "team_1",
                     pending,
                     object(),
@@ -508,13 +508,13 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
                 )
                 await sync_delivery.human(
                     websocket,
-                    socket._Connection(),
+                    socket.Connection(),
                     "team_1",
                     chat_socket_fixtures.human_challenge("approval"),
                     sync_operations,
                 )
 
-            terminal_connection = socket._Connection(pending_history_id="a" * 32)
+            terminal_connection = socket.Connection(pending_history_id="a" * 32)
             with mock.patch.object(
                 terminal_delivery.history_delivery,
                 "resumed_terminal",
@@ -539,15 +539,15 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
             for failure in (TypeError("frozen"), RuntimeError("unexpected"), KeyError("missing")):
                 with self.subTest(failure=type(failure).__name__):
                     websocket = mock.AsyncMock()
-                    connection = socket._Connection()
-                    turn = socket._Turn(None, "chat", history_id="a" * 32)
+                    connection = socket.Connection()
+                    turn = socket.Turn(None, "chat", history_id="a" * 32)
                     with mock.patch.object(
                         terminal_delivery.history_delivery, "terminal", new=mock.AsyncMock(side_effect=failure)
                     ):
                         self.assertTrue(await terminal_delivery.turn(websocket, connection, turn, {"type": "done"}))
                     self.assertEqual(websocket.send_json.await_args.args[0]["status"], 503)
                     self.assertTrue(turn.terminal_sent)
-                    resumed = socket._Connection(pending_history_id="a" * 32)
+                    resumed = socket.Connection(pending_history_id="a" * 32)
                     with mock.patch.object(
                         terminal_delivery.history_delivery,
                         "resumed_terminal",

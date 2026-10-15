@@ -22,7 +22,7 @@ class ChatHistoryFailureEdgeTests(ChatDeliveryCase):
     def test_uninstall_guidance_and_pending_stop_history_failures_are_explicit(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            connection = socket._Connection()
+            connection = socket.Connection()
             with (
                 mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
                 mock.patch.object(
@@ -48,7 +48,7 @@ class ChatHistoryFailureEdgeTests(ChatDeliveryCase):
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 503)
             send.assert_not_awaited()
 
-            pending = socket._Connection(pending_challenge_id="a" * 32)
+            pending = socket.Connection(pending_challenge_id="a" * 32)
             with (
                 mock.patch.object(
                     socket.history_delivery,
@@ -66,8 +66,8 @@ class ChatHistoryFailureEdgeTests(ChatDeliveryCase):
     def test_assistant_route_without_future_can_still_be_stopped(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            turn = socket._Turn(None, "assistant-route", lifecycle_stop=threading.Event())
-            connection = socket._Connection(active=turn)
+            turn = socket.Turn(None, "assistant-route", lifecycle_stop=threading.Event())
+            connection = socket.Connection(active=turn)
             task = socket._request_stop(websocket, connection, turn, "team_1", emit=True)
             self.assertIsNotNone(task)
             await task
@@ -79,7 +79,7 @@ class ChatHistoryFailureEdgeTests(ChatDeliveryCase):
         async def scenario() -> None:
             websocket = mock.AsyncMock()
             future: concurrent.futures.Future[object] = concurrent.futures.Future()
-            connection = socket._Connection(
+            connection = socket.Connection(
                 pending_challenge_id="a" * 32,
                 pending_challenge_type="human",
             )
@@ -110,7 +110,7 @@ class ChatHistoryFailureEdgeTests(ChatDeliveryCase):
                 (task_resume.ExecutorSaturatedError("full"), 429),
             ):
                 websocket = mock.AsyncMock()
-                connection = socket._Connection()
+                connection = socket.Connection()
                 with (
                     mock.patch.object(task_resume.history_delivery, "admit", new=mock.AsyncMock(side_effect=error)),
                     mock.patch.object(task_resume.lifecycle, "submit_resume") as prepare,

@@ -11,6 +11,7 @@ import logging
 from collections.abc import Awaitable, Callable, Mapping
 
 import supervisor as local_supervisor
+from chat.connection import Connection, SyncSnapshot, Turn, forget_challenge, remember_challenge, request_identity
 from chat.delivery import challenge as challenge_delivery
 from chat.delivery import plan as plan_delivery
 from chat.delivery import progress as progress_transport
@@ -18,6 +19,7 @@ from chat.delivery import route as route_delivery
 from chat.delivery import sync as sync_delivery
 from chat.delivery import terminal as terminal_delivery
 from chat.executor import ExecutorSaturatedError, submit_in_context
+from chat.projection import error_terminal, first_challenge, integration_challenge_event, stop_accepted, turn_terminal
 from fastapi import WebSocket, WebSocketDisconnect
 from history import delivery as history_delivery
 from history import store as history
@@ -25,19 +27,16 @@ from team import transport
 
 from chat import (
     assistant_route,
-    connection,
     human,
     lanes,
     lifecycle,
     local,
     payloads,
-    projection,
     task_resume,
 )
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
-MAX_PUBLIC_ERROR_CHARS = projection.MAX_PUBLIC_ERROR_CHARS
 STOP_RESULT_WAIT_SECONDS = 15
 # The frames one Team's channel may hold while an earlier one dispatches; a page sends one at a time, and Stop.
 MAX_WAITING_FRAMES = 8
@@ -45,27 +44,6 @@ FrameError = chat_ws_common.FrameError
 log = logging.getLogger("shimpz-admin")
 
 
-_TURN_EXECUTOR = lanes.TURN
-_STOP_EXECUTOR = lanes.STOP
-_SYNC_EXECUTOR = lanes.SYNC
-BoundedThreadPoolExecutor = lanes.BoundedThreadPoolExecutor
-
-
-_Turn = connection.Turn
-_Connection = connection.Connection
-_SyncSnapshot = connection.SyncSnapshot
-_request_identity = connection.request_identity
-# A retry, resend, or reconnect of a send whose identity Team would no longer admit is refused, never renewed.
-_error_terminal = projection.error_terminal
-error_terminal = projection.error_terminal
-turn_terminal = projection.turn_terminal
-integration_challenge_event = projection.integration_challenge_event
-_first_challenge = projection.first_challenge
-_stop_accepted = projection.stop_accepted
-
-
-_remember_challenge = connection.remember_challenge
-_forget_challenge = connection.forget_challenge
 _send_terminal_once = terminal_delivery.turn
 _send_sync_terminal_once = terminal_delivery.resumed
 _send_event = terminal_delivery.send
@@ -73,7 +51,7 @@ _send_event = terminal_delivery.send
 
 async def _send_sync_event(
     websocket: WebSocket,
-    connection: _Connection,
+    connection: Connection,
     event: Mapping[str, object],
 ) -> bool:
     if connection.closed or connection.sync_terminal_sent:
@@ -87,7 +65,7 @@ async def _send_sync_event(
 _SYNC_OPERATIONS = sync_delivery.Operations(
     send_event=_send_sync_event,
     send_terminal=_send_sync_terminal_once,
-    error_terminal=_error_terminal,
+    error_terminal=error_terminal,
 )
 
 
@@ -96,7 +74,7 @@ _progress_channel = progress_transport.channel
 
 async def _await_progress_result(
     websocket: WebSocket,
-    connection: _Connection,
+    connection: Connection,
     future: concurrent.futures.Future,
     progress: asyncio.Queue[dict[str, object]],
     inactive: Callable[[], bool],
@@ -120,8 +98,8 @@ async def _await_progress_result(
 
 async def _await_turn_response(
     websocket: WebSocket,
-    connection: _Connection,
-    turn: _Turn,
+    connection: Connection,
+    turn: Turn,
 ) -> object:
     if turn.future is None or turn.progress is None:
         return transport.TeamResponse(502, {})
@@ -136,7 +114,7 @@ async def _await_turn_response(
     return transport.TeamResponse(502, {}) if result is None else result
 
 
-async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Turn, team_id: str) -> None:
+async def _deliver_turn(websocket: WebSocket, connection: Connection, turn: Turn, team_id: str) -> None:
     try:
         response = transport.TeamResponse(502, {})
         # A provider callback may raise any ordinary exception. This process boundary must fail
@@ -158,7 +136,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
         # A channel that closed meanwhile stops its turn as it closes (`_close_connection`).
         if connection.closed or turn.terminal_sent:
             return
-        challenge, challenge_type = _first_challenge(response, team_id)
+        challenge, challenge_type = first_challenge(response, team_id)
         if challenge is not None and challenge_type is not None:
             connection.lifecycle_proposal = None
             await challenge_delivery.deliver(
@@ -171,7 +149,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
                 challenge_delivery.Operations(
                     send_event=_send_event,
                     send_terminal=_send_terminal_once,
-                    error_terminal=_error_terminal,
+                    error_terminal=error_terminal,
                 ),
             )
             return
@@ -182,11 +160,11 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
                 and response.body.get("status") in {"human-required", "integrations-required"}
             )
         ):
-            event = _error_terminal(502, "the Assistant challenge was invalid")
+            event = error_terminal(502, "the Assistant challenge was invalid")
         else:
             event = turn_terminal(response, team_id)
         if event.get("type") == "done":
-            _forget_challenge(connection)
+            forget_challenge(connection)
         await _send_terminal_once(websocket, connection, turn, event)
     finally:
         if connection.active is turn:
@@ -196,17 +174,17 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
 def _submit_team_turn(
     team_id: str,
     payload: dict[str, object],
-    turn: _Turn,
+    turn: Turn,
 ) -> tuple[concurrent.futures.Future, asyncio.Queue[dict[str, object]]]:
     progress, report = _progress_channel()
-    future = submit_in_context(_TURN_EXECUTOR, local.turn, team_id, payload, turn.conversation, turn.request, report)
+    future = submit_in_context(lanes.TURN, local.turn, team_id, payload, turn.conversation, turn.request, report)
     return future, progress
 
 
 async def _continue_team_turn(
     websocket: WebSocket,
-    connection: _Connection,
-    turn: _Turn,
+    connection: Connection,
+    turn: Turn,
     team_id: str,
     payload: dict[str, object],
 ) -> None:
@@ -218,7 +196,7 @@ async def _continue_team_turn(
     try:
         future, progress = _submit_team_turn(team_id, payload, turn)
     except ExecutorSaturatedError:
-        await _send_terminal_once(websocket, connection, turn, _error_terminal(429, "local chat capacity reached"))
+        await _send_terminal_once(websocket, connection, turn, error_terminal(429, "local chat capacity reached"))
         if connection.active is turn:
             connection.active = None
         return
@@ -231,8 +209,8 @@ async def _continue_team_turn(
 
 async def _finish_active_turn(
     websocket: WebSocket,
-    connection: _Connection,
-    turn: _Turn,
+    connection: Connection,
+    turn: Turn,
     event: Mapping[str, object],
 ) -> None:
     await _send_terminal_once(websocket, connection, turn, event)
@@ -244,34 +222,34 @@ def _sync_snapshot(
     team_id: str,
     locale: str,
     progress: Callable[[dict[str, object]], None],
-) -> _SyncSnapshot:
+) -> SyncSnapshot:
     pending_integration = local.pending_integrations(team_id)
     integration_challenge = integration_challenge_event(pending_integration, team_id)
     if integration_challenge is not None:
         # Continuation is explicit and one-use. The OAuth callback only stores the grant; this
         # exact pending challenge remains the controller-owned binding for the paused turn.
         resumed = local.resume_integrations(team_id, integration_challenge["challenge_id"], progress)
-        return _SyncSnapshot("integration", pending_integration, resumed)
+        return SyncSnapshot("integration", pending_integration, resumed)
     if not sync_delivery.is_empty_pending(pending_integration, team_id):
-        return _SyncSnapshot("integration", pending_integration)
+        return SyncSnapshot("integration", pending_integration)
     # A pending human request is restored in the interface language the browser selected (ADR-0091).
-    return _SyncSnapshot("human", local.open_human(team_id, locale))
+    return SyncSnapshot("human", local.open_human(team_id, locale))
 
 
 async def _load_sync_snapshot(
     websocket: WebSocket,
-    connection: _Connection,
+    connection: Connection,
     team_id: str,
     locale: str,
-) -> _SyncSnapshot | None:
+) -> SyncSnapshot | None:
     progress, report = _progress_channel()
     try:
-        future = submit_in_context(_SYNC_EXECUTOR, _sync_snapshot, team_id, locale, report)
+        future = submit_in_context(lanes.SYNC, _sync_snapshot, team_id, locale, report)
     except ExecutorSaturatedError:
         await _send_sync_terminal_once(
             websocket,
             connection,
-            _error_terminal(429, "local chat capacity reached"),
+            error_terminal(429, "local chat capacity reached"),
         )
         return None
     snapshot = None
@@ -285,11 +263,11 @@ async def _load_sync_snapshot(
             progress_transport.receipt_delivery(connection.receipt, connection.pending_history_id, fresh=False),
         )
     if snapshot is None and not connection.closed:
-        await _send_sync_terminal_once(websocket, connection, _error_terminal(502))
+        await _send_sync_terminal_once(websocket, connection, error_terminal(502))
     return snapshot
 
 
-async def _deliver_sync(websocket: WebSocket, connection: _Connection, team_id: str, locale: str) -> None:
+async def _deliver_sync(websocket: WebSocket, connection: Connection, team_id: str, locale: str) -> None:
     task = asyncio.current_task()
     try:
         completed = False
@@ -325,7 +303,7 @@ async def _deliver_sync(websocket: WebSocket, connection: _Connection, team_id: 
             and not await _send_sync_terminal_once(
                 websocket,
                 connection,
-                _error_terminal(502),
+                error_terminal(502),
             )
         ):
             connection.closed = True
@@ -336,8 +314,8 @@ async def _deliver_sync(websocket: WebSocket, connection: _Connection, team_id: 
 
 async def _run_stop(
     websocket: WebSocket,
-    connection: _Connection,
-    turn: _Turn,
+    connection: Connection,
+    turn: Turn,
     team_id: str,
     *,
     emit: bool,
@@ -347,14 +325,14 @@ async def _run_stop(
         # Stop has the same fail-closed callback boundary as turn delivery.
         with contextlib.suppress(Exception):
             try:
-                response = await asyncio.wrap_future(submit_in_context(_STOP_EXECUTOR, local.stop, team_id))
+                response = await asyncio.wrap_future(submit_in_context(lanes.STOP, local.stop, team_id))
             except ExecutorSaturatedError:
                 response = transport.TeamResponse(429, {})
-        accepted = _stop_accepted(response, team_id)
+        accepted = stop_accepted(response, team_id)
         if not emit or connection.closed or turn.terminal_sent:
             return
         if accepted is True:
-            _forget_challenge(connection)
+            forget_challenge(connection)
             await _send_terminal_once(
                 websocket,
                 connection,
@@ -368,14 +346,14 @@ async def _run_stop(
                 websocket,
                 connection,
                 turn,
-                _error_terminal(status, "chat turn could not be stopped"),
+                error_terminal(status, "chat turn could not be stopped"),
             )
         elif turn.operation == "pending-stop":
             await _send_terminal_once(
                 websocket,
                 connection,
                 turn,
-                _error_terminal(409, "no active chat turn"),
+                error_terminal(409, "no active chat turn"),
                 finish_history=True,
             )
         # ``False`` races safely with a turn that has already finished; its normal terminal wins.
@@ -385,7 +363,7 @@ async def _run_stop(
             connection.active = None
 
 
-async def _finish_cancelled_turn(websocket: WebSocket, connection: _Connection, turn: _Turn) -> None:
+async def _finish_cancelled_turn(websocket: WebSocket, connection: Connection, turn: Turn) -> None:
     try:
         await _send_terminal_once(websocket, connection, turn, {"type": "stopped"})
     finally:
@@ -395,8 +373,8 @@ async def _finish_cancelled_turn(websocket: WebSocket, connection: _Connection, 
 
 def _request_stop(
     websocket: WebSocket,
-    connection: _Connection,
-    turn: _Turn,
+    connection: Connection,
+    turn: Turn,
     team_id: str,
     *,
     emit: bool,
@@ -422,9 +400,9 @@ def _request_stop(
     return turn.stop_task
 
 
-async def _dispatch_sync(websocket: WebSocket, connection: _Connection, team_id: str, locale: str) -> None:
+async def _dispatch_sync(websocket: WebSocket, connection: Connection, team_id: str, locale: str) -> None:
     if connection.sync_task is not None or connection.active is not None:
-        await _send_event(websocket, _error_terminal(409, "a chat operation is already active"))
+        await _send_event(websocket, error_terminal(409, "a chat operation is already active"))
         return
     connection.sync_terminal_sent = False
     connection.sync_task = asyncio.create_task(_deliver_sync(websocket, connection, team_id, locale))
@@ -440,7 +418,7 @@ def _authenticated_denial(response: object) -> bool:
 
 async def _deliver_human_response(
     websocket: WebSocket,
-    connection: _Connection,
+    connection: Connection,
     team_id: str,
     future: concurrent.futures.Future,
     progress: asyncio.Queue[dict[str, object]],
@@ -460,15 +438,15 @@ async def _deliver_human_response(
             )
         if response is None or connection.closed:
             if not connection.closed:
-                await _send_sync_terminal_once(websocket, connection, _error_terminal(502))
+                await _send_sync_terminal_once(websocket, connection, error_terminal(502))
             return
         if authentication_failure is not None:
             confirmed = _authenticated_denial(response)
-            event = _error_terminal(*authentication_failure) if confirmed else turn_terminal(response, team_id)
+            event = error_terminal(*authentication_failure) if confirmed else turn_terminal(response, team_id)
             if event.get("type") == "done":
                 confirmed = True
             if confirmed:
-                _forget_challenge(connection)
+                forget_challenge(connection)
             await _send_sync_terminal_once(
                 websocket,
                 connection,
@@ -476,15 +454,15 @@ async def _deliver_human_response(
                 finish_history=confirmed,
             )
             return
-        challenge, challenge_type = _first_challenge(response, team_id)
+        challenge, challenge_type = first_challenge(response, team_id)
         if challenge is not None and challenge_type is not None:
-            _remember_challenge(connection, challenge, challenge_type)
+            remember_challenge(connection, challenge, challenge_type)
             await _send_sync_event(websocket, connection, challenge)
             return
         event = turn_terminal(response, team_id)
         confirmed = event.get("type") == "done"
         if confirmed:
-            _forget_challenge(connection)
+            forget_challenge(connection)
         await _send_sync_terminal_once(websocket, connection, event, finish_history=confirmed)
     finally:
         if connection.sync_task is task:
@@ -493,13 +471,13 @@ async def _deliver_human_response(
 
 async def _dispatch_human_response(
     websocket: WebSocket,
-    connection: _Connection,
+    connection: Connection,
     team_id: str,
     frame: dict[str, object],
     authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
 ) -> None:
     if connection.active is not None or connection.sync_task is not None:
-        await _send_event(websocket, _error_terminal(409, "a chat operation is already active"))
+        await _send_event(websocket, error_terminal(409, "a chat operation is already active"))
         return
     request = connection.pending_human_request
     if (
@@ -507,7 +485,7 @@ async def _dispatch_human_response(
         or connection.pending_challenge_id != frame.get("challenge_id")
         or request is None
     ):
-        await _send_event(websocket, _error_terminal(409, "the human challenge is not pending"))
+        await _send_event(websocket, error_terminal(409, "the human challenge is not pending"))
         return
     try:
         payload, assurance, rejection, authentication_failure = await human.response_payload(
@@ -523,7 +501,7 @@ async def _dispatch_human_response(
             raise FrameError(503, "authentication is unavailable")
         progress, report = _progress_channel()
         future = submit_in_context(
-            _SYNC_EXECUTOR,
+            lanes.SYNC,
             local.resume_human,
             team_id,
             payload,
@@ -531,10 +509,10 @@ async def _dispatch_human_response(
             assurance=assurance,
         )
     except FrameError as exc:
-        await _send_event(websocket, _error_terminal(exc.status, exc.detail))
+        await _send_event(websocket, error_terminal(exc.status, exc.detail))
         return
     except ExecutorSaturatedError:
-        await _send_event(websocket, _error_terminal(429, "local chat capacity reached"))
+        await _send_event(websocket, error_terminal(429, "local chat capacity reached"))
         return
     connection.sync_terminal_sent = False
     connection.sync_task = asyncio.create_task(
@@ -551,7 +529,7 @@ async def _dispatch_human_response(
 
 async def _admit_chat_payload(
     websocket: WebSocket,
-    connection: _Connection,
+    connection: Connection,
     team_id: str,
     frame: dict[str, object],
 ) -> tuple[dict[str, object], dict[str, object]] | None:
@@ -559,7 +537,7 @@ async def _admit_chat_payload(
     if set(frame) != {"type", *payloads.CHAT_PAYLOAD_FIELDS}:
         await _send_event(
             websocket,
-            _error_terminal(400, "chat frame requires message, files, assistant_ids, locale, and timezone"),
+            error_terminal(400, "chat frame requires message, files, assistant_ids, locale, and timezone"),
         )
         return None
     try:
@@ -567,18 +545,18 @@ async def _admit_chat_payload(
     except transport.TeamRequestError:
         payload = None
     if payload is None:
-        await _send_event(websocket, _error_terminal(400, "invalid chat request"))
+        await _send_event(websocket, error_terminal(400, "invalid chat request"))
         return None
     if connection.active is not None or connection.sync_task is not None or connection.lifecycle is not None:
-        await _send_event(websocket, _error_terminal(409, "a chat turn is already active"))
+        await _send_event(websocket, error_terminal(409, "a chat turn is already active"))
         return None
     if connection.pending_challenge_id is not None:
         await _send_event(
             websocket,
-            _error_terminal(409, "an Assistant challenge must be resolved before another turn"),
+            error_terminal(409, "an Assistant challenge must be resolved before another turn"),
         )
         return None
-    identity = _request_identity()
+    identity = request_identity()
     admitted = lifecycle.reuses_history(connection, payload) or await _commit_user_history(
         websocket,
         connection,
@@ -590,21 +568,21 @@ async def _admit_chat_payload(
 
 async def _commit_user_history(
     websocket: WebSocket,
-    connection: _Connection,
+    connection: Connection,
     team_id: str,
     payload: dict[str, object],
 ) -> bool:
     try:
         history_id = await history_delivery.admit(team_id, payload["message"], files=payload["files"])
     except ExecutorSaturatedError:
-        await _send_event(websocket, _error_terminal(429, "Admin chat history capacity reached"))
+        await _send_event(websocket, error_terminal(429, "Admin chat history capacity reached"))
         return False
     except history_delivery.SelectedFileUnavailableError:
-        await _send_event(websocket, _error_terminal(404, "selected file not found"))
+        await _send_event(websocket, error_terminal(404, "selected file not found"))
         return False
     except history.HistoryUnavailableError, ValueError:
         log.exception("Admin chat user history commit failed")
-        await _send_event(websocket, _error_terminal(503, "Admin chat history is unavailable"))
+        await _send_event(websocket, error_terminal(503, "Admin chat history is unavailable"))
         return False
     connection.admitted_history_id = history_id
     return True
@@ -616,13 +594,13 @@ def _plan_operations() -> plan_delivery.Operations:
         send_event=_send_event,
         finish_turn=_finish_active_turn,
         continue_turn=_continue_team_turn,
-        error_terminal=_error_terminal,
+        error_terminal=error_terminal,
     )
 
 
 async def _dispatch_chat(
     websocket: WebSocket,
-    connection: _Connection,
+    connection: Connection,
     team_id: str,
     frame: dict[str, object],
 ) -> None:
@@ -636,7 +614,7 @@ async def _dispatch_chat(
         conversation = await history_delivery.conversation(team_id, connection.admitted_history_id)
     except history.HistoryUnavailableError, ValueError:
         log.exception("Admin chat conversation context projection failed")
-        await _send_event(websocket, _error_terminal(503, "Admin chat history is unavailable"))
+        await _send_event(websocket, error_terminal(503, "Admin chat history is unavailable"))
         return
     route_context = assistant_route.Context(
         reference=connection.assistant_reference,
@@ -645,7 +623,7 @@ async def _dispatch_chat(
     try:
         preparation = lifecycle.submit_route(team_id, payload, route_context)
     except ExecutorSaturatedError:
-        await _send_event(websocket, _error_terminal(429, "Assistant routing capacity reached"))
+        await _send_event(websocket, error_terminal(429, "Assistant routing capacity reached"))
         return
     turn = route_delivery.begin(connection, preparation, payload["locale"], conversation, identity)
     turn.delivery = asyncio.create_task(
@@ -653,12 +631,12 @@ async def _dispatch_chat(
     )
 
 
-async def _dispatch_stop(websocket: WebSocket, connection: _Connection, team_id: str) -> None:
+async def _dispatch_stop(websocket: WebSocket, connection: Connection, team_id: str) -> None:
     if connection.sync_task is not None:
         sent = await _send_sync_terminal_once(
             websocket,
             connection,
-            _error_terminal(409, "a chat continuation is already active"),
+            error_terminal(409, "a chat continuation is already active"),
         )
         if sent:
             connection.closed = True
@@ -673,10 +651,10 @@ async def _dispatch_stop(websocket: WebSocket, connection: _Connection, team_id:
             except history.HistoryUnavailableError, ValueError:
                 await _send_event(
                     websocket,
-                    _error_terminal(503, "Admin chat history is unavailable"),
+                    error_terminal(503, "Admin chat history is unavailable"),
                 )
                 return
-        connection.active = _Turn(
+        connection.active = Turn(
             future=None,
             operation="pending-stop",
             history_id=history_id,
@@ -686,7 +664,7 @@ async def _dispatch_stop(websocket: WebSocket, connection: _Connection, team_id:
 
 async def _dispatch(
     websocket: WebSocket,
-    connection: _Connection,
+    connection: Connection,
     team_id: str,
     frame: dict[str, object],
     authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
@@ -702,10 +680,10 @@ async def _dispatch(
         # or an approved uninstall that ends with its own result. That turn already ended exactly once.
         return
     if connection.lifecycle is not None:
-        await _send_event(websocket, _error_terminal(409, "an Assistant lifecycle operation is already active"))
+        await _send_event(websocket, error_terminal(409, "an Assistant lifecycle operation is already active"))
         return
     if connection.lifecycle_proposal is not None and frame_type != "chat":
-        await _send_event(websocket, _error_terminal(409, "an Assistant lifecycle decision is pending"))
+        await _send_event(websocket, error_terminal(409, "an Assistant lifecycle decision is pending"))
         return
     sync_locale = _sync_locale(frame) if frame_type == "sync" else None
     if sync_locale is not None:
@@ -719,7 +697,7 @@ async def _dispatch(
     elif frame_type == "human-response":
         await _dispatch_human_response(websocket, connection, team_id, frame, authenticate)
     else:
-        await _send_event(websocket, _error_terminal(400, "unsupported chat frame"))
+        await _send_event(websocket, error_terminal(400, "unsupported chat frame"))
 
 
 def _sync_locale(frame: dict[str, object]) -> str | None:
@@ -729,7 +707,7 @@ def _sync_locale(frame: dict[str, object]) -> str | None:
 
 async def _close_connection(
     websocket: WebSocket,
-    connection: _Connection,
+    connection: Connection,
     team_id: str,
 ) -> None:
     connection.closed = True
@@ -793,7 +771,7 @@ class Channel:
     ) -> None:
         self.transport = transport
         self.team_id = team_id
-        self.connection = _Connection()
+        self.connection = Connection()
         self._scope = request_scope
         self._authorized = authorized
         self._authenticate = authenticate
@@ -823,7 +801,7 @@ class Channel:
                 except transport.TeamRequestError, local_supervisor.SupervisorAuthorityError, RuntimeError:
                     # The current Supervisor authority is unavailable: the frame is refused as the HTTP gate refuses.
                     log.warning("chat channel frame refused: Supervisor authority is unavailable")
-                    await _send_event(self.transport, _error_terminal(503, "Supervisor authority is unavailable"))
+                    await _send_event(self.transport, error_terminal(503, "Supervisor authority is unavailable"))
         except WebSocketDisconnect:
             self.connection.closed = True
 

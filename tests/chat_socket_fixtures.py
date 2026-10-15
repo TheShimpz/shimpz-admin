@@ -217,7 +217,7 @@ class Socket:
                 raise AssertionError(f"attach failed: {result!r}")
             return
         socket_module = importlib.import_module("chat.socket")
-        empty = socket_module._SyncSnapshot(
+        empty = socket_module.SyncSnapshot(
             "integration",
             importlib.import_module("team.transport").TeamResponse(200, {"team_id": self.team_id, "status": "none"}),
         )

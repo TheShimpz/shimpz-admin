@@ -20,7 +20,7 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
     def test_targetless_uninstall_guidance_survives_a_retired_ambiguous_proposal(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            connection = socket._Connection(lifecycle_proposal=mock.sentinel.proposal)
+            connection = socket.Connection(lifecycle_proposal=mock.sentinel.proposal)
 
             async def retire_proposal(*_args) -> bool:
                 connection.lifecycle_proposal = None
@@ -60,7 +60,7 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
     def test_targeted_uninstall_after_retired_proposal_never_enters_install_planning(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            connection = socket._Connection(lifecycle_proposal=mock.sentinel.proposal)
+            connection = socket.Connection(lifecycle_proposal=mock.sentinel.proposal)
 
             async def retire_proposal(*_args) -> bool:
                 connection.lifecycle_proposal = None
@@ -90,7 +90,7 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
     def test_guidance_for_a_noncanonical_message_remains_a_normal_question(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            connection = socket._Connection()
+            connection = socket.Connection()
             guidance = assistant_route.Guidance(
                 "assistant-uninstall-target-required",
                 "Qual Assistant instalado você quer desinstalar?",
@@ -118,7 +118,7 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
     def test_unavailable_conversation_projection_fails_before_routing(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            connection = socket._Connection()
+            connection = socket.Connection()
             with (
                 mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
                 mock.patch.object(
@@ -145,7 +145,7 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
         async def scenario() -> None:
             websocket = mock.AsyncMock()
             reference = assistant_proposal.AssistantReference("shimpz-cloudflare", "Shimpz Cloudflare")
-            connection = socket._Connection(assistant_reference=reference)
+            connection = socket.Connection(assistant_reference=reference)
             with (
                 mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
                 mock.patch.object(
@@ -171,7 +171,7 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
         async def scenario() -> None:
             future: concurrent.futures.Future[object] = concurrent.futures.Future()
             future.set_result(chat_socket_fixtures.completed_turn("Done."))
-            connection = socket._Connection()
+            connection = socket.Connection()
             websocket = mock.AsyncMock()
             message = "x" * 2_001
             with mock.patch.object(socket, "submit_in_context", return_value=future):
@@ -212,7 +212,7 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
                     mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)) as send,
                     mock.patch.object(socket.lifecycle, "submit_route") as route,
                 ):
-                    connection = socket._Connection()
+                    connection = socket.Connection()
                     await socket._dispatch_chat(mock.AsyncMock(), connection, "team_1", frame)
                     self.assertEqual(send.await_args.args[-1]["status"], 400)
                     self.assertIsNone(connection.active)
