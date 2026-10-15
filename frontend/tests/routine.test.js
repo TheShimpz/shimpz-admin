@@ -66,6 +66,7 @@ import {
   routineFailureWords,
   routineNotice,
   routineStatus,
+  runCountWords,
   scheduleWords,
   STATUS_TAGS,
   STATUS_WORDS,
@@ -596,6 +597,10 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   assert.equal(scheduleWords(every(108000), words, 'en'), 'Every 30 hours');
   assert.equal(scheduleWords(every(3600), words, 'en'), 'Every hour');
   assert.equal(scheduleWords(every(90), words, 'en'), 'Every 90 seconds');
+  // A rollup counts its runs in the plural form the count takes.
+  const panel = routineMessages.en.panel;
+  assert.equal(runCountWords(panel.healthyRuns, 1, 'en'), '1 run finished');
+  assert.equal(runCountWords(panel.missedRuns, 3, 'en'), '3 runs missed');
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     for (const gap of [5, 60, 1800, 3600, 86400, 3 * 86400, 7 * 86400, 21 * 86400]) {
       assert.doesNotMatch(scheduleWords(every(gap), catalog.schedule, locale), /\{|undefined/, locale);
