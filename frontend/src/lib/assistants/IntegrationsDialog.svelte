@@ -19,10 +19,10 @@
     open = false,
     challenge = undefined,
     installedAssistants = [],
-    onclose = undefined,
-    onauthorize = undefined,
-    oncomplete = undefined,
-    oncancel = undefined,
+    onclose,
+    onauthorize,
+    oncomplete,
+    oncancel,
   } = $props();
   let dialog = $state();
   let submitting = $state(false);
@@ -79,14 +79,14 @@
     const challengeId = challenge?.challenge_id;
     if (awaitingCompletion && challengeId) {
       submitting = true;
-      await oncancel?.(challengeId);
+      await oncancel(challengeId);
     }
     awaitingCompletion = false;
     completionCode = '';
     activeRequirement = undefined;
     submitting = false;
     submitError = '';
-    onclose?.();
+    onclose();
   }
 
   async function authorize(requirement) {
@@ -95,7 +95,7 @@
     activeRequirement = requirement;
     submitError = '';
     try {
-      const result = await onauthorize?.(challenge.challenge_id, requirement);
+      const result = await onauthorize(challenge.challenge_id, requirement);
       if (result?.completion_mode === 'code') {
         awaitingCompletion = true;
         submitting = false;
@@ -111,7 +111,7 @@
     submitting = true;
     submitError = '';
     try {
-      await oncomplete?.(challenge.challenge_id, completionCode.trim());
+      await oncomplete(challenge.challenge_id, completionCode.trim());
     } catch {
       submitError = copy.completionFailed;
       submitting = false;

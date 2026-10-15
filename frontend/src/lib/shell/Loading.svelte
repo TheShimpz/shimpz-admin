@@ -4,11 +4,13 @@
   // A page's own loading indicator, centred in the area it fills: nothing for the first moment, so a load that ends
   // within it never flashes, then `label`, glitching, over a chamfered track a cyan scan crosses (all still when
   // motion is reduced), in the status region that was already in place.
-  let { label, delay = 150 } = $props();
+  let { label } = $props();
+  // The first moment, in milliseconds.
+  const QUIET_MS = 150;
   let shown = $state(false);
 
   onMount(() => {
-    const timer = setTimeout(() => (shown = true), delay);
+    const timer = setTimeout(() => (shown = true), QUIET_MS);
     return () => clearTimeout(timer);
   });
 </script>

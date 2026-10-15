@@ -28,10 +28,10 @@
     pending = undefined,
     // The Integration authorization the page has in flight, named `assistant/integration`.
     authorizing = '',
-    onclose = undefined,
-    onconnect = undefined,
+    onclose,
+    onconnect,
     // Says a failure in the chat's error area: its message and its detail.
-    onerror = undefined,
+    onerror,
   } = $props();
 
   // The Team's Integrations and Stored Inputs while the drawer is open, each a synced value (ADR-0114); closing the
@@ -96,7 +96,7 @@
     if (inventoryChecked === checkedTeamId) return;
     inventoryChecked = checkedTeamId;
     void refreshTeamInventory().catch(() => {}).then(() => {
-      if (teamId === checkedTeamId && view.unknown) onerror?.(copy.inventoryFailed, '');
+      if (teamId === checkedTeamId && view.unknown) onerror(copy.inventoryFailed, '');
     });
   });
 
@@ -104,7 +104,7 @@
   $effect(() => {
     const refused = [integrationsState, storedInputsState].find((state) => state?.status === 'error');
     if (refused && refused.teamId === teamId) {
-      onerror?.(copy.inventoryFailed, refused.error?.message ?? copy.inventoryFailed);
+      onerror(copy.inventoryFailed, refused.error?.message ?? copy.inventoryFailed);
     }
   });
 
@@ -147,7 +147,7 @@
 
   async function connect(challengeId, requirement) {
     try {
-      await onconnect?.(challengeId, requirement);
+      await onconnect(challengeId, requirement);
     } catch {
       // The parent exposes the localized failure in the persistent chat error area.
     }
@@ -177,7 +177,7 @@
       const detail = outcomeUnknown(reason)
         ? $t('shell.outcomeUnknown')
         : reason instanceof Error ? reason.message : copy.storedInputClearFailed;
-      onerror?.(copy.storedInputClearFailed, detail);
+      onerror(copy.storedInputClearFailed, detail);
     } finally {
       if (teamId === clearedTeamId) storedInputWorking = '';
     }
@@ -186,7 +186,7 @@
   function handleKeydown(event) {
     if (open && event.key === 'Escape') {
       event.preventDefault();
-      onclose?.();
+      onclose();
     }
   }
 
@@ -208,7 +208,7 @@
       <p>{copy.drawerKicker}</p>
       <h2 id="assistant-integrations-title">{copy.drawerTitle}</h2>
     </div>
-    <Button bind:element={closeButton} variant="ghost" size="icon" type="button" onclick={() => onclose?.()} aria-label={copy.closeDrawer}>×</Button>
+    <Button bind:element={closeButton} variant="ghost" size="icon" type="button" onclick={() => onclose()} aria-label={copy.closeDrawer}>×</Button>
   </header>
 
   <p class="drawer-lead">{copy.drawerLead}</p>

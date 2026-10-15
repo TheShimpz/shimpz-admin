@@ -13,9 +13,9 @@
     // Whether a change may be sent now; while Admin reconnects the install waits for it.
     ready = true,
     error = '',
-    onconfirm = () => {},
-    oncancel = () => {},
-    onselect = () => {},
+    onconfirm,
+    oncancel,
+    onselect,
   } = $props();
 
   let copy = $derived($t('store'));

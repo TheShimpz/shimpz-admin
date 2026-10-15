@@ -13,12 +13,11 @@
     installed = false,
     installedLabel,
     href,
-    class: className,
     ...attributes
   } = $props();
 </script>
 
-<TextLink class={['assistant-row', installed && 'is-installed', className]} {href} {...attributes}>
+<TextLink class={['assistant-row', installed && 'is-installed']} {href} {...attributes}>
   <span class="icon-frame">
     <AssistantIcon assistant={name} size={36} src={iconSrc} status={iconStatus} loading="eager" />
   </span>
