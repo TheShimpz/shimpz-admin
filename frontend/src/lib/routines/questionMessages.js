@@ -24,7 +24,7 @@ export const routineQuestionMessages = {
     },
     split: {
       question: 'The work was split across several messages. Should the assistant run all of it again in one message?',
-      answers: ['Run it all again'],
+      answers: ['Run it all again', 'Use only the latest message\'s work'],
     },
     rerun: {
       question: 'The chosen item differs from what the work used. Should the assistant run the work again with it?',
@@ -59,7 +59,7 @@ export const routineQuestionMessages = {
     },
     split: {
       question: 'O trabalho ficou dividido em várias mensagens. O assistente deve executá-lo todo de novo em uma mensagem?',
-      answers: ['Executar tudo de novo'],
+      answers: ['Executar tudo de novo', 'Usar só o trabalho da última mensagem'],
     },
     rerun: {
       question: 'O item escolhido é diferente do que o trabalho usou. O assistente deve executar o trabalho de novo com ele?',
@@ -89,7 +89,7 @@ export const routineQuestionMessages = {
     },
     split: {
       question: 'El trabajo quedó dividido en varios mensajes. ¿Debe el asistente ejecutarlo todo de nuevo en un mensaje?',
-      answers: ['Ejecutar todo de nuevo'],
+      answers: ['Ejecutar todo de nuevo', 'Usar solo el trabajo del último mensaje'],
     },
     rerun: {
       question: 'El elemento elegido es distinto del que usó el trabajo. ¿Debe el asistente ejecutar el trabajo de nuevo con él?',
@@ -119,7 +119,7 @@ export const routineQuestionMessages = {
     },
     split: {
       question: '这项工作分散在多条消息中。要让助手在一条消息中重新运行全部工作吗？',
-      answers: ['全部重新运行'],
+      answers: ['全部重新运行', '只使用最后一条消息的工作'],
     },
     rerun: {
       question: '所选项目与工作使用的不同。要让助手用它重新运行这项工作吗？',
@@ -154,7 +154,7 @@ export const routineQuestionMessages = {
     },
     split: {
       question: 'Le travail a été réparti sur plusieurs messages. L’assistant doit-il tout exécuter de nouveau en un seul message ?',
-      answers: ['Tout exécuter de nouveau'],
+      answers: ['Tout exécuter de nouveau', 'Utiliser seulement le travail du dernier message'],
     },
     rerun: {
       question: 'L’élément choisi diffère de celui utilisé par le travail. L’assistant doit-il exécuter le travail de nouveau avec lui ?',
@@ -189,7 +189,7 @@ export const routineQuestionMessages = {
     },
     split: {
       question: 'Die Arbeit war auf mehrere Nachrichten verteilt. Soll der Assistent alles erneut in einer Nachricht ausführen?',
-      answers: ['Alles erneut ausführen'],
+      answers: ['Alles erneut ausführen', 'Nur die Arbeit der letzten Nachricht verwenden'],
     },
     rerun: {
       question: 'Das gewählte Element unterscheidet sich von dem, das die Arbeit verwendet hat. Soll der Assistent die Arbeit damit erneut ausführen?',
@@ -219,7 +219,7 @@ export const routineQuestionMessages = {
     },
     split: {
       question: '作業が複数のメッセージに分かれています。アシスタントに 1 つのメッセージですべてもう一度実行させますか？',
-      answers: ['すべてもう一度実行する'],
+      answers: ['すべてもう一度実行する', '最後のメッセージの作業だけを使う'],
     },
     rerun: {
       question: '選んだ項目は作業で使われたものと異なります。アシスタントにそれで作業をもう一度実行させますか？',
@@ -249,7 +249,7 @@ export const routineQuestionMessages = {
     },
     split: {
       question: 'انقسم العمل على عدة رسائل. هل يشغّل المساعد العمل كله مجددًا في رسالة واحدة؟',
-      answers: ['تشغيل الكل مجددًا'],
+      answers: ['تشغيل الكل مجددًا', 'استخدم عمل الرسالة الأخيرة فقط'],
     },
     rerun: {
       question: 'العنصر المختار يختلف عما استخدمه العمل. هل يشغّل المساعد العمل مجددًا به؟',

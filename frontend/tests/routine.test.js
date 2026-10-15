@@ -226,6 +226,18 @@ test("every interface language offers exactly the Team protocol's output choices
   }
 });
 
+test("every interface language offers the Team protocol's answer that keeps only the latest work", async () => {
+  const { readFileSync } = await import('node:fs');
+  // Team reads this label back with no model call (ADR-0101), so each language's must be exactly the protocol's.
+  const source = readFileSync(new URL('../../backend/protocol/http/v1/routine_proposal.py', import.meta.url), 'utf8');
+  const block = source.match(/SPLIT_LATEST = \{\n([\s\S]*?)\n\}/u)[1];
+  const protocol = Object.fromEntries([...block.matchAll(/"([a-z]{2})": "((?:[^"\\]|\\.)*)"/gu)].map(([, locale, label]) => [locale, label]));
+  assert.deepEqual(Object.keys(protocol).sort(), Object.keys(routineMessages).sort());
+  for (const [locale, catalog] of Object.entries(routineMessages)) {
+    assert.deepEqual(catalog.proposal.questions.split.answers.at(-1), protocol[locale], locale);
+  }
+});
+
 test('a Routine question is admitted only in its closed form and reads as facts with answers in every locale', () => {
   // Each option carries its target's exact JSON text: a string with its quotes, an integer with every digit.
   const target = (text, label = 'shimpz.com') => ({ value: text, label });
