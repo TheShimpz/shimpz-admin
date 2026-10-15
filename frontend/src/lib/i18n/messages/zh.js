@@ -143,7 +143,6 @@ export default {
     cancel: '取消',
   },
   chatPage: {
-    kicker: '团队 // 聊天',
     title: '你的团队',
     placeholder: '给 {team} 发消息…',
     send: '发送',

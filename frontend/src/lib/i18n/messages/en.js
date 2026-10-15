@@ -141,7 +141,6 @@ export default {
     cancel: 'Cancel',
   },
   chatPage: {
-    kicker: 'Team // Chat',
     title: 'Your Team',
     placeholder: 'Message {team}…',
     send: 'Send',

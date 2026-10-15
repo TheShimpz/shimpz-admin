@@ -143,7 +143,6 @@ export default {
     cancel: 'إلغاء',
   },
   chatPage: {
-    kicker: 'الفريق // الدردشة',
     title: 'فريقك',
     placeholder: 'راسل {team}…',
     send: 'إرسال',

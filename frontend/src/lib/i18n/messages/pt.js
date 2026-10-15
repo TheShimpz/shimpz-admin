@@ -143,7 +143,6 @@ export default {
     cancel: 'Cancelar',
   },
   chatPage: {
-    kicker: 'Time // Chat',
     title: 'Seu Time',
     placeholder: 'Envie uma mensagem para {team}…',
     send: 'Enviar',

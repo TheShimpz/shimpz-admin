@@ -143,7 +143,6 @@ export default {
     cancel: 'Cancelar',
   },
   chatPage: {
-    kicker: 'Equipo // Chat',
     title: 'Tu Equipo',
     placeholder: 'Escribe a {team}…',
     send: 'Enviar',

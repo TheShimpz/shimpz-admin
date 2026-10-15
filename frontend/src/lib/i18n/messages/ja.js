@@ -143,7 +143,6 @@ export default {
     cancel: 'キャンセル',
   },
   chatPage: {
-    kicker: 'チーム // チャット',
     title: 'あなたのチーム',
     placeholder: '{team} にメッセージ…',
     send: '送信',
