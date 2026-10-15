@@ -1611,8 +1611,8 @@ test('overlapping progress returns the visible summary to the earlier active pha
   });
   await expect(current).toHaveText('Waiting for execution');
   chat.releaseReply();
-  // The receipt lists only Team's steps; Admin's run outside Team's clock.
-  await expect(page.locator('.receipt summary')).toHaveAccessibleName(/Execution stages recorded: 1$/);
+  // The receipt lists only Team's steps, its one measured step and the rest of its clock; Admin's run outside it.
+  await expect(page.locator('.receipt summary')).toHaveAccessibleName(/Execution stages recorded: 2$/);
 });
 
 test('shows a pending chat state before any server progress frame', async ({ page }) => {
