@@ -139,17 +139,6 @@ export async function raiseTopic(page, topic) {
   raise(mock.revisions, mock.sessions, topic);
 }
 
-/** Every API request the page's own scripts send from now on, in order: its method and its path. */
-export function recordRequests(page) {
-  const requests = [];
-  page.on('request', (request) => {
-    const url = new URL(request.url());
-    if (!url.pathname.startsWith('/api/') || !['fetch', 'xhr'].includes(request.resourceType())) return;
-    requests.push({ method: request.method(), path: url.pathname });
-  });
-  return requests;
-}
-
 /**
  * How many times the page reported the person's own input on its session sockets (ADR-0114): the only report that
  * keeps the session alive. Nothing the page does on its own sends one.

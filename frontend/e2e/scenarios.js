@@ -25,10 +25,10 @@ import {
 } from './routineScenarios.js';
 import { recoveryCodeSet, SECURITY_METHODS, securityRoutes, securityStart, securitySummary } from './securityScenarios.js';
 
-export const TEAM = { team_id: 'marketing', team_name: 'Marketing', status: 'running' };
+const TEAM = { team_id: 'marketing', team_name: 'Marketing', status: 'running' };
 
 // The Local sidebar as the owner sees it: newest first, Marketing (the Team the chat scenarios talk to) on top.
-export const TEAMS = Object.freeze([
+const TEAMS = Object.freeze([
   TEAM,
   ...['Trinity', 'Cypher', 'Morpheus', 'Neo', 'Smith'].map((name) => ({
     team_id: name.toLowerCase(),
@@ -39,7 +39,7 @@ export const TEAMS = Object.freeze([
 const MAX_TEAMS = 128;
 const TEAM_ID_RE = /^[a-z0-9_]{1,40}$/;
 
-export const ASSISTANTS = [
+const ASSISTANTS = [
   { id: 'shimpz-cloudflare', title: 'Cloudflare' },
   { id: 'whatsapp', title: 'WhatsApp' },
 ];

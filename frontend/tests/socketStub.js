@@ -28,10 +28,3 @@ export function recorder(status, body) {
   };
   return { calls, call };
 }
-
-/** A stub whose answer the test releases later with `answer(response)`. */
-export function held() {
-  const pending = {};
-  pending.call = () => new Promise((resolve) => { pending.answer = resolve; });
-  return pending;
-}
