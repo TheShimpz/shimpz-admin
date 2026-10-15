@@ -79,6 +79,8 @@ class LocalBrainOperationTests(unittest.TestCase):
             {**base, "team_id": "team_2"},
             {**base, "assistant_ids": ["cloudflare", "cloudflare"]},
             {**base, "status": "sufficient"},
+            {**base, "status": "unknown"},
+            {**base, "assistant_ids": "cloudflare"},
             {**base, "trace_id": "bad"},
             {**base, "extra": True},
         )
