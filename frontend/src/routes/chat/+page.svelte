@@ -989,8 +989,6 @@
     if (initialTeamId !== socketTeamId) activateTeam(initialTeamId);
     else transcript.loading = false;
     if (oauthFailedOnReturn) {
-      liveTurn.busy = false;
-      liveTurn.resetProgress();
       history.replaceState(history.state, '', '/chat');
       setError(integrationsCopy.authorizationFailed);
     }
