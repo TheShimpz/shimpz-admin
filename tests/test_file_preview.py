@@ -5,9 +5,8 @@ import base64
 import contextlib
 import json
 import sys
-import threading
 import unittest
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import ClassVar
 from unittest import mock
@@ -78,15 +77,12 @@ class _PreviewTeam(BaseHTTPRequestHandler):
 
 
 class FilePreviewRouteTests(_LiveTeamCase):
+    # The shared case's Team answers JSON only; this Team answers each file id as ANSWERS says.
+    team_handler = _PreviewTeam
+
     def setUp(self):
-        super().setUp()
-        # The shared case's Team answers JSON only; this Team answers each file id as ANSWERS says.
-        self._stop_server()
         _PreviewTeam.requests = []
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), _PreviewTeam)
-        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
-        self.thread.start()
-        self.team_url = f"http://127.0.0.1:{self.server.server_port}"
+        super().setUp()
 
     def test_the_page_receives_exactly_the_framed_rendition_under_the_supervisor_session(self) -> None:
         document = self._run_asgi_probe("preview", Path(__file__).resolve())

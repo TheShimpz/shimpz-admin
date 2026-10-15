@@ -3,16 +3,17 @@
 import json
 import sys
 import tempfile
-import threading
 import unittest
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import ClassVar
+from unittest import mock
 from urllib.parse import urlencode
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from admin_http import serve_loopback
 from team import bridge as team
 from team import transport
 
@@ -57,29 +58,13 @@ class TeamOAuthBridgeTest(unittest.TestCase):
         _TeamHandler.requests = []
         _TeamHandler.response_by_route = {}
         _TeamHandler.response_body = b'{"ok":true}'
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), _TeamHandler)
-        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
-        self.thread.start()
-        self.addCleanup(self._stop_server)
-
+        team_url = serve_loopback(self, _TeamHandler)
         self.tempdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tempdir.cleanup)
         token_file = Path(self.tempdir.name) / "team.token"
         token_file.write_text("internal-test-bearer\n", encoding="utf-8")
-        self.original_token_file = transport.TOKEN_FILE
-        self.original_url = transport.URL
-        transport.TOKEN_FILE = str(token_file)
-        transport.URL = f"http://127.0.0.1:{self.server.server_port}"
-        self.addCleanup(self._restore_bridge_config)
-
-    def _stop_server(self):
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join(timeout=2)
-
-    def _restore_bridge_config(self):
-        transport.TOKEN_FILE = self.original_token_file
-        transport.URL = self.original_url
+        self.enterContext(mock.patch.object(transport, "TOKEN_FILE", str(token_file)))
+        self.enterContext(mock.patch.object(transport, "URL", team_url))
 
     @staticmethod
     def _authorization_url(**overrides: str) -> str:

@@ -5,16 +5,17 @@ import copy
 import json
 import sys
 import tempfile
-import threading
 import unittest
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import ClassVar
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import supervisor as local_supervisor
+from admin_http import serve_loopback
 from team import bridge as team
 from team import transport
 
@@ -83,27 +84,13 @@ class _ControllerHandler(BaseHTTPRequestHandler):
 class PrivateChatTransportTests(unittest.TestCase):
     def setUp(self) -> None:
         _ControllerHandler.response_mode = "valid"
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), _ControllerHandler)
-        self.thread = threading.Thread(
-            target=self.server.serve_forever,
-            kwargs={"poll_interval": 0.01},
-            daemon=True,
-        )
-        self.thread.start()
+        team_url = serve_loopback(self, _ControllerHandler)
         self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
         self.token_file = Path(self.temporary.name) / "token"
         self.token_file.write_text("controller-test-token", encoding="ascii")
-        self.previous_url, self.previous_token = transport.URL, transport.TOKEN_FILE
-        transport.URL = f"http://127.0.0.1:{self.server.server_port}"
-        transport.TOKEN_FILE = str(self.token_file)
-
-    def tearDown(self) -> None:
-        transport.URL = self.previous_url
-        transport.TOKEN_FILE = self.previous_token
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join(timeout=2)
-        self.temporary.cleanup()
+        self.enterContext(mock.patch.object(transport, "URL", team_url))
+        self.enterContext(mock.patch.object(transport, "TOKEN_FILE", str(self.token_file)))
 
     def test_key_uses_private_header_while_json_remains_team_contract(self) -> None:
         api_key = "sk-test-0123456789"

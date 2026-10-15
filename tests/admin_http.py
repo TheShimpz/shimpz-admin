@@ -8,11 +8,29 @@ import re
 import socket
 import subprocess
 import sys
+import threading
 import time
+import unittest
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
+
+
+def serve_loopback(case: unittest.TestCase, handler: type[BaseHTTPRequestHandler]) -> str:
+    """Serve `handler` on a free loopback port until `case` ends, and return the server's base URL."""
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+    thread.start()
+
+    def stop() -> None:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    case.addCleanup(stop)
+    return f"http://127.0.0.1:{server.server_port}"
 
 
 def request(

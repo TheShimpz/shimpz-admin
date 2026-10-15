@@ -11,9 +11,8 @@ import gc
 import hashlib
 import json
 import sys
-import threading
 import unittest
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import ClassVar
 from unittest import mock
@@ -95,14 +94,11 @@ class _FileTeam(BaseHTTPRequestHandler):
 
 
 class FileDownloadRouteTests(_LiveTeamCase):
+    team_handler = _FileTeam
+
     def setUp(self):
-        super().setUp()
-        self._stop_server()
         _FileTeam.requests = []
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), _FileTeam)
-        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
-        self.thread.start()
-        self.team_url = f"http://127.0.0.1:{self.server.server_port}"
+        super().setUp()
 
     def test_the_page_downloads_exactly_the_verified_original_as_a_sandboxed_attachment(self) -> None:
         document = self._run_asgi_probe("download", Path(__file__).resolve())

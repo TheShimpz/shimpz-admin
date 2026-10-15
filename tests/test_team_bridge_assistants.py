@@ -6,11 +6,10 @@ import os
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import unittest
 from collections.abc import Callable
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import ClassVar
 from unittest import mock
@@ -19,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(ROOT))
 
+from admin_http import serve_loopback
 from mfa_helper import configure_supervisor
 from team import bridge as team
 from team import transport
@@ -90,6 +90,8 @@ class _TeamHandler(BaseHTTPRequestHandler):
 class _LiveTeamCase(unittest.TestCase):
     """Give each contract a real loopback Team endpoint and real bearer file."""
 
+    team_handler: type[BaseHTTPRequestHandler] = _TeamHandler
+
     def setUp(self):
         _TeamHandler.requests = []
         _TeamHandler.response_by_route = {}
@@ -98,22 +100,13 @@ class _LiveTeamCase(unittest.TestCase):
         _TeamHandler.response_headers = {"Content-Type": "application/json"}
         _TeamHandler.response_delay_seconds = 0.0
         _TeamHandler.responder = None
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), _TeamHandler)
-        self.thread = threading.Thread(target=self.server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
-        self.thread.start()
-        self.addCleanup(self._stop_server)
+        self.team_url = serve_loopback(self, self.team_handler)
 
         self.tempdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tempdir.cleanup)
         self.root = Path(self.tempdir.name)
         self.token_file = self.root / "team.token"
         self.token_file.write_text("internal-test-bearer\n", encoding="utf-8")
-        self.team_url = f"http://127.0.0.1:{self.server.server_port}"
-
-    def _stop_server(self):
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join(timeout=2)
 
     def _run_asgi_probe(self, scenario: str, script: Path | None = None) -> dict[str, object]:
         env = os.environ.copy()
@@ -161,15 +154,8 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
 
     def setUp(self):
         super().setUp()
-        self.original_token_file = transport.TOKEN_FILE
-        self.original_url = transport.URL
-        transport.TOKEN_FILE = str(self.token_file)
-        transport.URL = self.team_url
-        self.addCleanup(self._restore_bridge_config)
-
-    def _restore_bridge_config(self):
-        transport.TOKEN_FILE = self.original_token_file
-        transport.URL = self.original_url
+        self.enterContext(mock.patch.object(transport, "TOKEN_FILE", str(self.token_file)))
+        self.enterContext(mock.patch.object(transport, "URL", self.team_url))
 
     def test_forwards_only_the_fixed_assistant_routes_with_existing_bearer(self):
         team.list_assistants()
