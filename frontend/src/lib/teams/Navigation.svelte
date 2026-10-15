@@ -11,9 +11,9 @@
   import { retainTeamRoutines, routineContext } from '#lib/routines/context.js';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import TeamActionsMenu from '#lib/teams/ActionsMenu.svelte';
-  import { renameTeam, reorderTeams, teamContext } from '#lib/teams/context.js';
+  import { canonicalTeamName, renameTeam, reorderTeams, teamContext } from '#lib/teams/context.js';
+  import { TeamDrag } from '#lib/teams/reorder.svelte.js';
   import TeamRoutinesDialog from '#lib/routines/List.svelte';
-  import { canonicalTeamName } from '#lib/teams/context.js';
 
   let {
     active = '',
@@ -217,183 +217,19 @@
     void moveTeam(team, delta);
   }
 
-  // A mouse or pen drags a Team by its name; touch never does, so the list keeps scrolling and the name keeps opening
-  // the Team. A press that never moves stays a click. A drag starts after a short movement, follows the pointer, and
-  // drops between rows. The name keeps the default touch-action, which also governs a pen: where a stylus pans, the
-  // pan cancels the drag and nothing is saved.
-  const DRAG_THRESHOLD = 6;
   // Rows glide to a new place unless the Supervisor asked for reduced motion.
   const settle = () => (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 160);
-  const SCROLL_EDGE = 48;
-  let gesture = null;
-  let dragId = $state('');
-  let dragOffset = $state(0);
-  let dropIndex = $state(-1);
-
-  // The drop slot among the other rows, and whether it actually changes the order.
-  let dropTarget = $derived.by(() => {
-    if (!dragId || dropIndex < 0) return null;
-    const ids = teamIds();
-    if (ids.indexOf(dragId) === dropIndex) return null;
-    const others = ids.filter((id) => id !== dragId);
-    return dropIndex < others.length ? { id: others[dropIndex], side: 'before' } : { id: others.at(-1), side: 'after' };
+  const drag = new TeamDrag({
+    list: () => list,
+    ids: teamIds,
+    canStart: () => canReorder && !renaming,
+    drop: (ids, team) => void saveOrder(ids, team),
   });
 
-  function scrollParent(element) {
-    for (let node = element?.parentElement; node; node = node.parentElement) {
-      const { overflowY } = getComputedStyle(node);
-      if (/(auto|scroll)/u.test(overflowY) && node.scrollHeight > node.clientHeight) return node;
-    }
-    return document.scrollingElement;
-  }
-
-  function handleDown(event, team) {
-    if (!canReorder || gesture || renaming || !event.isPrimary || event.button !== 0) return;
-    if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
-    const source = event.currentTarget;
-    source.setPointerCapture?.(event.pointerId);
-    const scroller = scrollParent(list);
-    gesture = {
-      team,
-      source,
-      pointerId: event.pointerId,
-      startY: event.clientY,
-      y: event.clientY,
-      scroller,
-      startScroll: scroller?.scrollTop ?? 0,
-      active: false,
-      frame: 0,
-    };
-  }
-
-  function track() {
-    if (!gesture?.active) return;
-    dragOffset = gesture.y - gesture.startY + (gesture.scroller?.scrollTop ?? 0) - gesture.startScroll;
-    let index = 0;
-    for (const row of list?.querySelectorAll(':scope > li') ?? []) {
-      if (row.dataset.teamRow === gesture.team.id) continue;
-      const box = row.querySelector('.row').getBoundingClientRect();
-      if (gesture.y > box.top + box.height / 2) index += 1;
-    }
-    dropIndex = index;
-  }
-
-  // Holding the pointer near the top or bottom edge of the scrolling list scrolls it, faster the closer it gets.
-  function autoScroll() {
-    if (!gesture?.active) return;
-    // A name that left the page (its row was removed, or the layout swapped this navigation out) ends the drag, so
-    // the loop never re-arms and never keeps a removed list or scroller alive.
-    if (!gesture.source.isConnected) {
-      cancelDrag();
-      return;
-    }
-    const scroller = gesture.scroller;
-    if (scroller) {
-      const box = scroller === document.scrollingElement
-        ? { top: 0, bottom: window.innerHeight }
-        : scroller.getBoundingClientRect();
-      const top = Math.max(box.top, 0) + SCROLL_EDGE;
-      const bottom = Math.min(box.bottom, window.innerHeight) - SCROLL_EDGE;
-      const step = gesture.y < top ? -Math.ceil((top - gesture.y) / 4) : gesture.y > bottom ? Math.ceil((gesture.y - bottom) / 4) : 0;
-      if (step) {
-        scroller.scrollTop += step;
-        track();
-      }
-    }
-    gesture.frame = requestAnimationFrame(autoScroll);
-  }
-
-  function handleMove(event) {
-    if (!gesture || event.pointerId !== gesture.pointerId) return;
-    gesture.y = event.clientY;
-    if (!gesture.active) {
-      if (Math.abs(gesture.y - gesture.startY) < DRAG_THRESHOLD) return;
-      gesture.active = true;
-      dragId = gesture.team.id;
-      gesture.frame = requestAnimationFrame(autoScroll);
-    }
-    event.preventDefault();
-    track();
-  }
-
-  function endGesture() {
-    const ended = gesture;
-    gesture = null;
-    if (!ended) return null;
-    cancelAnimationFrame(ended.frame);
-    if (ended.source.hasPointerCapture?.(ended.pointerId)) ended.source.releasePointerCapture(ended.pointerId);
-    const result = { ...ended, dropIndex, moved: ended.active };
-    dragId = '';
-    dragOffset = 0;
-    dropIndex = -1;
-    return result;
-  }
-
-  // A drag never doubles as a click on whatever sits under the pointer when it ends.
-  function suppressNextClick() {
-    const swallow = (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-    };
-    window.addEventListener('click', swallow, { capture: true, once: true });
-    setTimeout(() => window.removeEventListener('click', swallow, { capture: true }), 0);
-  }
-
-  function handleUp(event) {
-    if (!gesture || event.pointerId !== gesture.pointerId) return;
-    const ended = endGesture();
-    if (!ended.moved) return;
-    suppressNextClick();
-    const ids = teamIds().filter((id) => id !== ended.team.id);
-    if (ended.dropIndex < 0 || teamIds().indexOf(ended.team.id) === ended.dropIndex) return;
-    ids.splice(ended.dropIndex, 0, ended.team.id);
-    void saveOrder(ids, ended.team);
-  }
-
-  // A cancelled pointer, a lost capture, or Escape drops nothing: the order was never changed during the drag.
-  function cancelDrag() {
-    return endGesture();
-  }
-
-  // A drag cancelled by Escape still never ends in a click on the name it started from when the pointer is released.
-  // The navigation watches for that release only while it exists.
-  let watchedRelease = null;
-
-  function stopWatchingRelease() {
-    if (!watchedRelease) return;
-    window.removeEventListener('pointerup', watchedRelease, { capture: true });
-    window.removeEventListener('pointercancel', watchedRelease, { capture: true });
-    watchedRelease = null;
-  }
-
-  function suppressClickOnRelease(pointerId) {
-    stopWatchingRelease();
-    const release = (event) => {
-      if (event.pointerId !== pointerId) return;
-      stopWatchingRelease();
-      if (event.type === 'pointerup') suppressNextClick();
-    };
-    watchedRelease = release;
-    window.addEventListener('pointerup', release, { capture: true });
-    window.addEventListener('pointercancel', release, { capture: true });
-  }
-
-  onDestroy(() => {
-    cancelDrag();
-    stopWatchingRelease();
-  });
-
-  function dragKeydown(event) {
-    if (event.key !== 'Escape' || !gesture?.active) return;
-    // Escape ends only the drag, never an enclosing dialog such as the mobile Team drawer.
-    event.preventDefault();
-    event.stopPropagation();
-    const ended = cancelDrag();
-    if (ended) suppressClickOnRelease(ended.pointerId);
-  }
+  onDestroy(() => drag.destroy());
 </script>
 
-<svelte:window onkeydowncapture={dragKeydown} />
+<svelte:window onkeydowncapture={drag.keydown} />
 
 <div class="team-navigation">
   <div class="head">
@@ -415,19 +251,19 @@
   </div>
   {#if $teamContext.teams.length > 0}
     <nav aria-label={copy.label}>
-      <ul bind:this={list} class={['teams', dragId && 'is-reordering']}>
+      <ul bind:this={list} class={['teams', drag.dragId && 'is-reordering']}>
         {#each $teamContext.teams as team (team.id)}
           {@const selected = team.id === $teamContext.selectedTeamId}
           <li
             class={[
               'team',
               selected && 'is-selected',
-              dragId === team.id && 'is-dragging',
-              dropTarget?.id === team.id && `drop-${dropTarget.side}`,
+              drag.dragId === team.id && 'is-dragging',
+              drag.target?.id === team.id && `drop-${drag.target.side}`,
             ]}
             data-team-row={team.id}
             animate:flip={{ duration: settle }}
-            style:transform={dragId === team.id ? `translateY(${dragOffset}px)` : undefined}
+            style:transform={drag.dragId === team.id ? `translateY(${drag.offset}px)` : undefined}
           >
             <div class={['row', 'glitch-host', renaming === team.id && 'is-renaming']}>
               {#if renaming === team.id}
@@ -458,11 +294,11 @@
                 draggable="false"
                 onclick={onnavigate}
                 onkeydown={(event) => nameKeydown(event, team)}
-                onpointerdown={(event) => handleDown(event, team)}
-                onpointermove={handleMove}
-                onpointerup={handleUp}
-                onpointercancel={cancelDrag}
-                onlostpointercapture={(event) => { if (gesture?.pointerId === event.pointerId) cancelDrag(); }}
+                onpointerdown={(event) => drag.down(event, team)}
+                onpointermove={drag.move}
+                onpointerup={drag.up}
+                onpointercancel={drag.cancel}
+                onlostpointercapture={drag.lostCapture}
               >
                 <span class="monogram" aria-hidden="true">{monogram(team.name)}</span>
                 <span class="name glitch-text">{team.name}</span>
