@@ -519,14 +519,17 @@ async function request(call, method, params) {
   return admitted(await call(method, params));
 }
 
+// The refusal an answer names: its safe code and how long to wait before asking again, if it says so.
+function refusal(response, body) {
+  const code = typeof body.code === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(body.code) ? body.code : 'routine-request-failed';
+  const retryAfter = Number.isInteger(body.retry_after) && body.retry_after > 0 && body.retry_after <= 3600 ? body.retry_after : 0;
+  return new RoutineError(code, response.status, retryAfter);
+}
+
 // Admin's answer, a session socket result: its body, or the refusal it names.
 async function admitted(response) {
   const body = await jsonObject(response);
-  if (!response.ok) {
-    const code = typeof body.code === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(body.code) ? body.code : 'routine-request-failed';
-    const retryAfter = Number.isInteger(body.retry_after) && body.retry_after > 0 && body.retry_after <= 3600 ? body.retry_after : 0;
-    throw new RoutineError(code, response.status, retryAfter);
-  }
+  if (!response.ok) throw refusal(response, body);
   return body;
 }
 
@@ -896,11 +899,7 @@ export async function answerRoutineChallenge(call, teamId, runId, frame) {
     const { code: _code, ...rejection } = body;
     return { rejection };
   }
-  if (!response.ok) {
-    const code = typeof body.code === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(body.code) ? body.code : 'routine-request-failed';
-    const retryAfter = Number.isInteger(body.retry_after) && body.retry_after > 0 && body.retry_after <= 3600 ? body.retry_after : 0;
-    throw new RoutineError(code, response.status, retryAfter);
-  }
+  if (!response.ok) throw refusal(response, body);
   return { status: resumed(body, teamId, runId) };
 }
 
