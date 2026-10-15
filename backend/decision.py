@@ -6,22 +6,12 @@ route and is never a call.
 """
 
 import models
-import request_body
 import state
-from fastapi import HTTPException
 
 PROVIDER = "typesafe"
 # TypeSafe's authenticated model listing: 2xx for a valid key, 401 or 403 otherwise.
 VALIDATION_HOST = "api.typesafe.ai"
 VALIDATION_PATH = "/v1/models"
-
-
-class DecisionProviderError(ValueError):
-    """The Supervisor supplied an unusable or rejected TypeSafe key."""
-
-
-class DecisionProviderUnavailableError(RuntimeError):
-    """TypeSafe could not confirm the key right now."""
 
 
 def _verified_secret() -> str | None:
@@ -34,20 +24,14 @@ def status() -> dict[str, object]:
     return {
         "provider": PROVIDER,
         "configured": secret is not None,
-        "masked": None if secret is None else f"••••{secret[-4:]}",
+        "masked": None if secret is None else models.masked(secret),
     }
 
 
 def configure(api_key: object) -> dict[str, object]:
-    try:
-        secret = models.canonical_api_key(api_key)
-    except models.ModelProviderError as exc:
-        raise DecisionProviderError(str(exc)) from None
-    status_code = models.probe_status(VALIDATION_HOST, VALIDATION_PATH, {"Authorization": f"Bearer {secret}"})
-    if status_code is None or not (200 <= status_code < 300 or status_code in {401, 403}):
-        raise DecisionProviderUnavailableError("TypeSafe validation is temporarily unavailable")
-    if status_code in {401, 403}:
-        raise DecisionProviderError("TypeSafe rejected API key")
+    """Store a key TypeSafe confirmed; it raises the model-key errors a session save maps to 400 and 503."""
+    secret = models.canonical_api_key(api_key)
+    models.confirm_api_key(VALIDATION_HOST, VALIDATION_PATH, {"Authorization": f"Bearer {secret}"}, "TypeSafe")
     state.set_decision_api_key(secret)
     return status()
 
@@ -60,14 +44,3 @@ def remove() -> dict[str, object]:
 def resolve() -> str | None:
     """Return the verified key for the Team intent-route hand-off; never expose it to the browser."""
     return _verified_secret()
-
-
-def save(payload: dict) -> dict[str, object]:
-    """Validate the key with TypeSafe, then store it; a rejected key is 400 and an unreachable TypeSafe 503."""
-    request_body.exact_fields(payload, "api_key")
-    try:
-        return configure(payload["api_key"])
-    except DecisionProviderError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-    except DecisionProviderUnavailableError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from None

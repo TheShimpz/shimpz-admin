@@ -98,7 +98,8 @@ def _records() -> dict:
     return records
 
 
-def _masked(secret: str) -> str:
+def masked(secret: str) -> str:
+    """The only projection of a key the browser sees: its last four characters."""
     return f"••••{secret[-4:]}"
 
 
@@ -153,17 +154,19 @@ def probe_status(host: str, path: str, headers: dict[str, str]) -> int | None:
         connection.close()
 
 
-def _validate_api_key(provider: str, secret: str) -> None:
-    """Confirm one key against its fixed TLS endpoint without consuming response data."""
-    host, path = _VALIDATION_ENDPOINTS[provider]
-    status_code = probe_status(host, path, _validation_headers(provider, secret))
-    if status_code is None:
-        raise ModelProviderUnavailableError("model provider validation is temporarily unavailable")
-    if 200 <= status_code < 300:
+def confirm_api_key(host: str, path: str, headers: dict[str, str], provider_name: str) -> None:
+    """Confirm one key against its fixed TLS endpoint: 401 or 403 rejects it, and anything but 2xx is unavailable."""
+    status_code = probe_status(host, path, headers)
+    if status_code is not None and 200 <= status_code < 300:
         return
     if status_code in {401, 403}:
-        raise ModelProviderError("model provider rejected API key")
-    raise ModelProviderUnavailableError("model provider validation is temporarily unavailable")
+        raise ModelProviderError(f"{provider_name} rejected API key")
+    raise ModelProviderUnavailableError(f"{provider_name} validation is temporarily unavailable")
+
+
+def _validate_api_key(provider: str, secret: str) -> None:
+    host, path = _VALIDATION_ENDPOINTS[provider]
+    confirm_api_key(host, path, _validation_headers(provider, secret), "model provider")
 
 
 def status() -> dict[str, list[dict[str, object]]]:
@@ -189,7 +192,7 @@ def status() -> dict[str, list[dict[str, object]]]:
                     for model in metadata.models
                 ],
                 "configured": configured,
-                "masked": _masked(secret) if configured else None,
+                "masked": masked(secret) if configured else None,
             }
         )
     return {"providers": providers}

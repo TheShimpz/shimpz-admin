@@ -25,6 +25,7 @@ class DecisionProviderTests(unittest.TestCase):
         cls.decision = importlib.import_module("decision")
         cls.state = importlib.import_module("state")
         cls.models = importlib.import_module("models")
+        cls.methods = importlib.import_module("session.methods")
 
     def setUp(self) -> None:
         self.state.STORE_PATH = self.root / "admin.json"
@@ -48,10 +49,10 @@ class DecisionProviderTests(unittest.TestCase):
 
     def test_rejected_unavailable_and_malformed_keys_are_never_stored(self) -> None:
         for status_code, error in (
-            (401, self.decision.DecisionProviderError),
-            (403, self.decision.DecisionProviderError),
-            (500, self.decision.DecisionProviderUnavailableError),
-            (None, self.decision.DecisionProviderUnavailableError),
+            (401, self.models.ModelProviderError),
+            (403, self.models.ModelProviderError),
+            (500, self.models.ModelProviderUnavailableError),
+            (None, self.models.ModelProviderUnavailableError),
         ):
             with (
                 self.subTest(status=status_code),
@@ -61,7 +62,7 @@ class DecisionProviderTests(unittest.TestCase):
                 self.decision.configure(KEY)
         with (
             mock.patch.object(self.models, "probe_status") as probe,
-            self.assertRaises(self.decision.DecisionProviderError),
+            self.assertRaises(self.models.ModelProviderError),
         ):
             self.decision.configure("short")
         probe.assert_not_called()
@@ -78,19 +79,19 @@ class DecisionProviderTests(unittest.TestCase):
 
     def test_a_save_validates_exactly_one_key_and_maps_failures(self) -> None:
         with mock.patch.object(self.decision, "configure", return_value={"configured": True}) as configure:
-            self.assertEqual(self.decision.save({"api_key": KEY}), {"configured": True})
+            self.assertEqual(self.methods.save_decision_key({"api_key": KEY}), {"configured": True})
         configure.assert_called_once_with(KEY)
         for body, error, status in (
             ({"api_key": KEY, "extra": 1}, None, 400),
-            ({"api_key": KEY}, self.decision.DecisionProviderError("TypeSafe rejected API key"), 400),
-            ({"api_key": KEY}, self.decision.DecisionProviderUnavailableError("down"), 503),
+            ({"api_key": KEY}, self.models.ModelProviderError("TypeSafe rejected API key"), 400),
+            ({"api_key": KEY}, self.models.ModelProviderUnavailableError("down"), 503),
         ):
             with (
                 self.subTest(status=status),
                 mock.patch.object(self.decision, "configure", side_effect=error),
                 self.assertRaises(HTTPException) as raised,
             ):
-                self.decision.save(body)
+                self.methods.save_decision_key(body)
             self.assertEqual(raised.exception.status_code, status)
 
 

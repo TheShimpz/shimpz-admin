@@ -63,15 +63,25 @@ def _team_call(owner: object, operation: str, *names: str) -> Method:
     return method
 
 
-def save_model_key(provider: str, payload: dict) -> dict[str, object]:
-    """Validate a model key with its provider, then store it; a rejected key is 400 and an unreachable provider 503."""
-    request_body.exact_fields(payload, "api_key")
+def _saved_key(configure: Callable[..., dict[str, object]], *args: object) -> dict[str, object]:
+    """Validate a key with its provider, then store it; a rejected key is 400 and an unreachable provider 503."""
     try:
-        return models.configure(provider, payload["api_key"])
+        return configure(*args)
     except models.ModelProviderError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     except models.ModelProviderUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
+
+
+def save_model_key(provider: str, payload: dict) -> dict[str, object]:
+    request_body.exact_fields(payload, "api_key")
+    return _saved_key(models.configure, provider, payload["api_key"])
+
+
+def save_decision_key(payload: dict) -> dict[str, object]:
+    """Save the Supervisor's TypeSafe key for the intent-classification fast path (ADR-0077)."""
+    request_body.exact_fields(payload, "api_key")
+    return _saved_key(decision.configure, payload["api_key"])
 
 
 # The Space's and the session's state
@@ -237,7 +247,7 @@ METHODS: dict[str, Method] = {
     "models.list": _on_lane(models, "status"),
     "models.save": _on_lane(sys.modules[__name__], "save_model_key", "provider", "body"),
     "decision.read": _on_lane(decision, "status"),
-    "decision.save": _on_lane(decision, "save", "body"),
+    "decision.save": _on_lane(sys.modules[__name__], "save_decision_key", "body"),
     "decision.remove": _on_lane(decision, "remove"),
     "integrations.list": _team_call(integrations, "list_assistant_integrations", "team_id"),
     "integrations.authorize": _authorize,
