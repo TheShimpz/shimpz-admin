@@ -15,11 +15,11 @@
     dismiss: { variant: 'ghost', icon: 'M6 12h12' },
   };
 
-  let { kind, variant, element = $bindable(), children, ...attributes } = $props();
+  let { kind, variant, children, ...attributes } = $props();
   let action = $derived(KINDS[kind]);
 </script>
 
-<Button bind:element variant={variant ?? action.variant} {...attributes}>
+<Button variant={variant ?? action.variant} {...attributes}>
   {@render children?.()}
   <svg viewBox="0 0 24 24" aria-hidden="true"><path d={action.icon}></path></svg>
 </Button>
