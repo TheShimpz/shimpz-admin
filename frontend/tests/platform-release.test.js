@@ -41,6 +41,7 @@ test('hides unavailable, malformed, widened, or secret-bearing status', async ()
     { release, ordinal: 42, checked_at: '2026-08-08T22:52:21Z', outcome: 'installing' },
     { release, ordinal: true, checked_at: '2026-08-08T22:52:21Z', outcome: 'current' },
     { release, ordinal: 42, checked_at: 'tomorrow', outcome: 'current' },
+    { release, ordinal: 42, checked_at: '2026-02-30T22:52:21Z', outcome: 'current' },
     { release, ordinal: 42, checked_at: '2026-08-08T22:52:21Z', outcome: 'current', token: 'secret' },
   ]) {
     assert.equal(await fetchPlatformRelease(async () => response(200, body)), null);

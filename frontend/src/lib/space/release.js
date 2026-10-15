@@ -1,8 +1,8 @@
 import { exactKeys, jsonObject } from '../api.js';
+import { isInstant } from '../grammar.js';
 
 // A published release set, or a developer release built on this host (ADR-0099).
 const RELEASE = /^(?:ghcr\.io\/theshimpz|localhost)\/shimpz-local-release@sha256:[0-9a-f]{64}$/;
-const TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const OUTCOMES = new Set(['current', 'updated', 'rollback-needed']);
 
 export async function fetchPlatformRelease(read) {
@@ -14,9 +14,7 @@ export async function fetchPlatformRelease(read) {
     || !RELEASE.test(body.release)
     || !Number.isSafeInteger(body.ordinal)
     || body.ordinal <= 0
-    || typeof body.checked_at !== 'string'
-    || !TIMESTAMP.test(body.checked_at)
-    || Number.isNaN(Date.parse(body.checked_at))
+    || !isInstant(body.checked_at)
     || !OUTCOMES.has(body.outcome)
   ) return null;
   return body;
