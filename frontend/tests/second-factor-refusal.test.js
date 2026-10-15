@@ -19,8 +19,10 @@ const WORDS = {
 
 class OwnError extends Error {}
 
-const own = (failure) => (failure instanceof OwnError ? 'own' : null);
-const shown = (failure, reason = '') => secondFactorRefusal(failure, reason, WORDS, own);
+const operation = (failure) => (failure instanceof OwnError ? 'own' : null);
+// A passkey ceremony the person dismissed reads as canceled, as passkey.js reads a NotAllowedError.
+const ceremony = (failure) => (failure?.name === 'NotAllowedError' ? 'canceled' : 'failed');
+const shown = (failure, reason = '') => secondFactorRefusal(failure, { reason, words: WORDS, operation, ceremony });
 
 test('an authentication refusal clears and focuses the field that fixes it, or says why at the form', () => {
   const failure = new OwnError();

@@ -1,6 +1,5 @@
 import { LocalApiError } from '#lib/api.js';
 import { fill } from '#lib/i18n/fill.js';
-import { passkeyFailure } from '#lib/auth/passkey.js';
 import { outcomeUnknown } from '#lib/session/socket.js';
 
 /**
@@ -11,9 +10,10 @@ import { outcomeUnknown } from '#lib/session/socket.js';
  * `reason` is the refusal code the operation's own error carried, or '' for any other failure. `words` are the
  * security words with the operation's own where they differ, plus `outcomeUnknown`. `operation(failure)` words a
  * failure of the operation's own error type that is no authentication refusal, or returns null for any other failure;
- * a socket lost before Admin answered, a request that never left, and a passkey ceremony that failed follow it.
+ * a socket lost before Admin answered, a request that never left, and a passkey ceremony that failed follow it, which
+ * `ceremony(failure)` reads as `canceled` or another failure (passkey.js's `passkeyFailure`).
  */
-export function secondFactorRefusal(failure, reason, words, operation) {
+export function secondFactorRefusal(failure, { reason, words, operation, ceremony }) {
   if (reason === 'password-incorrect') {
     return { clear: 'password', focus: 'password', passwordError: words.passwordIncorrect };
   }
@@ -30,5 +30,5 @@ export function secondFactorRefusal(failure, reason, words, operation) {
   if (outcomeUnknown(failure)) return { error: words.outcomeUnknown };
   // The socket dropped before the request left: nothing was asked, and the form stays for another try.
   if (failure instanceof LocalApiError) return { error: words.unavailable };
-  return { error: words[passkeyFailure(failure) === 'canceled' ? 'passkeyCanceled' : 'passkeyFailed'] };
+  return { error: words[ceremony(failure) === 'canceled' ? 'passkeyCanceled' : 'passkeyFailed'] };
 }

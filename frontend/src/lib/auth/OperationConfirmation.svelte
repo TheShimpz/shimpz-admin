@@ -4,7 +4,7 @@
   import { commandsReady } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n/index.js';
-  import { authenticateWithPasskey } from '#lib/auth/passkey.js';
+  import { authenticateWithPasskey, passkeyFailure } from '#lib/auth/passkey.js';
   import { secondFactorRefusal } from '#lib/auth/refusal.js';
   import SecondFactor from '#lib/auth/SecondFactor.svelte';
   import { SecurityError } from '#lib/auth/security.js';
@@ -53,15 +53,15 @@
   // Each refusal says what to fix where it is fixed; nothing typed is ever echoed back.
   function refused(failure) {
     const reason = failure instanceof SecurityError ? failure.code : '';
-    const shown = secondFactorRefusal(
-      failure,
+    const shown = secondFactorRefusal(failure, {
       reason,
-      { ...$t('security'), expired, outcomeUnknown: $t('shell.outcomeUnknown') },
-      (other) => {
+      words: { ...$t('security'), expired, outcomeUnknown: $t('shell.outcomeUnknown') },
+      operation: (other) => {
         if (!(other instanceof SecurityError)) return null;
         return Object.hasOwn(failures, other.code) ? failures[other.code] : $t('security.unavailable');
       },
-    );
+      ceremony: passkeyFailure,
+    });
     if (shown.clear === 'password') password = '';
     if (shown.clear === 'code') code = '';
     passwordError = shown.passwordError ?? '';

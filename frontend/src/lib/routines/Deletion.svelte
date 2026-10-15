@@ -4,7 +4,7 @@
   import { call, commandsReady } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n/index.js';
-  import { authenticateWithPasskey } from '#lib/auth/passkey.js';
+  import { authenticateWithPasskey, passkeyFailure } from '#lib/auth/passkey.js';
   import { secondFactorRefusal } from '#lib/auth/refusal.js';
   import SecondFactor from '#lib/auth/SecondFactor.svelte';
   import { beginRoutineDeletion, deleteRoutine, RoutineError } from '#lib/routines/protocol.js';
@@ -46,12 +46,12 @@
   // Each refusal says what to fix where it is fixed; nothing typed is ever echoed back.
   function refused(failure) {
     const reason = failure instanceof RoutineError ? failure.code : '';
-    const shown = secondFactorRefusal(
-      failure,
+    const shown = secondFactorRefusal(failure, {
       reason,
-      { ...words, outcomeUnknown: $t('shell.outcomeUnknown') },
-      (other) => (other instanceof RoutineError ? routineErrorMessage(other, errors) : null),
-    );
+      words: { ...words, outcomeUnknown: $t('shell.outcomeUnknown') },
+      operation: (other) => (other instanceof RoutineError ? routineErrorMessage(other, errors) : null),
+      ceremony: passkeyFailure,
+    });
     if (shown.clear === 'password') password = '';
     if (shown.clear === 'code') code = '';
     passwordError = shown.passwordError ?? '';
