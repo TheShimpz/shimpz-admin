@@ -56,7 +56,7 @@ class RoutineScheduler:
         self._workers.shutdown(wait=False, cancel_futures=True)
 
     def wake(self) -> None:
-        """Claim soon: a person's Rodar made a Routine due now."""
+        """Claim soon: a person's Rodar or a confirmed card made a Routine due now."""
         self._due_at = time.time()
         self._wake.set()
 
@@ -80,7 +80,7 @@ class RoutineScheduler:
                 log.exception("Routine scheduler tick failed; retrying on the next tick")
 
     def tick(self) -> None:
-        """Deliver notices, then start at most one due run; a failure waits for the next tick."""
+        """Deliver notices, then start a due run in every free slot; a failure waits for the next tick."""
         try:
             delivery.deliver()
         except _FAILURES:

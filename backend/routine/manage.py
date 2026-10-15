@@ -86,7 +86,7 @@ def list_routines(team_id: object) -> transport.TeamResponse:
         "team_id": lambda value: value == canonical,
         "routines": items(routine_notice_contract.canonical_routine_view, routine_contract.MAX_ROUTINES),
         "runs": items(routine_notice_contract.canonical_run_view, routine_contract.MAX_ROUTINES),
-        # Held runs' incidents, which outlive a deleted Routine, each settled through its recovery card (ADR-0092).
+        # Held runs' incidents, each settled through its recovery card or its Routine's deletion (ADR-0092).
         "incidents": items(
             routine_notice_contract.canonical_incident_view, routine_notice_contract.MAX_UNRESOLVED_INCIDENTS
         ),
