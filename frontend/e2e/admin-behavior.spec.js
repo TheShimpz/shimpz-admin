@@ -4297,10 +4297,10 @@ function noticeExtras(outcome) {
 // account out of credits), and exactly Rodar and Excluir.
 const CREDITS_MESSAGE = "Client error '402 Payment Required' for url 'https://api.cloudflare.com/client/v4/zones/[REDACTED]'";
 
-function recoveryCard(incidentId, { tag = 'f'.repeat(64), action = 'replace-dns-record', failure = {} } = {}) {
+function recoveryCard(runId, { tag = 'f'.repeat(64), action = 'replace-dns-record', failure = {} } = {}) {
   return {
     team_id: 'marketing',
-    run_id: incidentId,
+    run_id: runId,
     routine_id: ROUTINE_VIEW.routine_id,
     revision: 1,
     assistant_id: 'shimpz-cloudflare',
@@ -4424,12 +4424,12 @@ async function routeRoutines(
     return ok({ team_id: 'marketing', routine_id: routineId, deleted: !runEnding });
   });
   // The held run's card. Rodar sets the run aside and lifts the pause.
-  await routeRead(page, 'routines.card', ({ run_id: incidentId }) => ok(recoveryCard(incidentId)));
-  await routeRead(page, 'routines.card_answer', ({ run_id: incidentId, body: answer }) => {
+  await routeRead(page, 'routines.card', ({ run_id: runId }) => ok(recoveryCard(runId)));
+  await routeRead(page, 'routines.card_answer', ({ run_id: runId, body: answer }) => {
     calls.answers.push(answer);
-    incidents = incidents.filter((item) => item.run_id !== incidentId);
+    incidents = incidents.filter((item) => item.run_id !== runId);
     routines = routines.map((routine) => ({ ...routine, state: 'active' }));
-    return ok({ team_id: 'marketing', run_id: incidentId });
+    return ok({ team_id: 'marketing', run_id: runId });
   });
   return calls;
 }
@@ -6302,20 +6302,20 @@ test.describe('Team Routines', () => {
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines, runs: [], incidents }) : undefined));
     const opened = [];
     const answers = [];
-    await routeRead(page, 'routines.card', ({ run_id: incidentId }) => {
-      opened.push(incidentId);
+    await routeRead(page, 'routines.card', ({ run_id: runId }) => {
+      opened.push(runId);
       // Team's card names its current step, which the transcript row may not show yet.
-      const action = incidentId === held ? 'create-dns-record' : 'replace-dns-record';
-      return ok(recoveryCard(incidentId, { tag: String(opened.length).repeat(64), action }));
+      const action = runId === held ? 'create-dns-record' : 'replace-dns-record';
+      return ok(recoveryCard(runId, { tag: String(opened.length).repeat(64), action }));
     });
     // The paused run's first answer finds its card stale; everything else settles its run and lifts its Routine's pause.
-    await routeRead(page, 'routines.card_answer', ({ run_id: incidentId, body: answer }) => {
+    await routeRead(page, 'routines.card_answer', ({ run_id: runId, body: answer }) => {
       answers.push(answer);
-      if (incidentId === paused && answers.length === 2) return ok({ code: 'routine-card-stale' }, 409);
-      const settled = incidents.find((item) => item.run_id === incidentId);
+      if (runId === paused && answers.length === 2) return ok({ code: 'routine-card-stale' }, 409);
+      const settled = incidents.find((item) => item.run_id === runId);
       incidents = incidents.filter((item) => item !== settled);
       routines = routines.map((routine) => (routine.routine_id === settled.routine_id ? { ...routine, state: 'active' } : routine));
-      return ok({ team_id: 'marketing', run_id: incidentId });
+      return ok({ team_id: 'marketing', run_id: runId });
     });
     await page.goto('/chat/?team=marketing');
     // The chat shows no run; the Team's Routines button says a Routine needs the person, and opening one is the card.
