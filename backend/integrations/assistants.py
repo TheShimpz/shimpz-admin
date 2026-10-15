@@ -86,11 +86,7 @@ def _project_integration_inventory(response: TeamResponse, team_id: str) -> Team
     if not 200 <= response.status < 300:
         return response
     try:
-        if (
-            set(response.body) != {"team_id", "integrations", "trace_id"}
-            or response.body["team_id"] != team_id
-            or not transport.is_trace_id(response.body["trace_id"])
-        ):
+        if not transport.is_closed_traced(response.body, {"team_id", "integrations"}, team_id=team_id):
             raise ValueError("invalid Team integration envelope")
         raw_integrations = response.body["integrations"]
         if not isinstance(raw_integrations, list) or len(raw_integrations) > MAX_ASSISTANT_INTEGRATIONS:
@@ -161,9 +157,7 @@ def _project_authorization_response(response: TeamResponse, callback_mode: str) 
     if not 200 <= response.status < 300:
         return response
     try:
-        if set(response.body) != {"authorization_url", "trace_id"} or not transport.is_trace_id(
-            response.body["trace_id"]
-        ):
+        if not transport.is_closed_traced(response.body, {"authorization_url"}):
             raise ValueError("invalid OAuth authorization response")
         authorization_url = response.body["authorization_url"]
         cloudflare.authorization_state(authorization_url, callback_mode)
@@ -218,9 +212,8 @@ def cancel_local_assistant_integration_authorization(
         return response
     if (
         response.status != 200
-        or set(response.body) != {"cancelled", "trace_id"}
+        or not transport.is_closed_traced(response.body, {"cancelled"})
         or type(response.body["cancelled"]) is not bool
-        or not transport.is_trace_id(response.body["trace_id"])
     ):
         log.warning("team returned an invalid OAuth cancellation response")
         return TeamResponse(502, {"detail": "OAuth cancellation response is invalid."})
@@ -243,9 +236,8 @@ def disconnect_assistant_integration(
         return response
     if (
         response.status != 200
-        or set(response.body) != {"disconnected", "trace_id"}
+        or not transport.is_closed_traced(response.body, {"disconnected"})
         or type(response.body["disconnected"]) is not bool
-        or not transport.is_trace_id(response.body["trace_id"])
     ):
         log.warning("team returned an invalid OAuth disconnect response")
         return TeamResponse(502, {"detail": "OAuth disconnect response is invalid."})
@@ -265,9 +257,10 @@ def complete_cloudflare_oauth_callback(*, state: object, claim: object, session_
     if not 200 <= response.status < 300:
         return response
     try:
-        if set(response.body) != {"connected", "team_id", "assistant_id", "integration_id", "trace_id"}:
-            raise ValueError("invalid OAuth callback response")
-        if response.body["connected"] is not True or not transport.is_trace_id(response.body["trace_id"]):
+        if (
+            not transport.is_closed_traced(response.body, {"connected", "team_id", "assistant_id", "integration_id"})
+            or response.body["connected"] is not True
+        ):
             raise ValueError("invalid OAuth callback response")
         body = {
             "connected": True,

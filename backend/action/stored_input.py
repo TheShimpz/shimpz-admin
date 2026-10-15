@@ -19,11 +19,7 @@ def _project_inventory(response: TeamResponse, team_id: str) -> TeamResponse:
     if not 200 <= response.status < 300:
         return response
     try:
-        if (
-            set(response.body) != {"team_id", "stored_inputs", "trace_id"}
-            or response.body["team_id"] != team_id
-            or not transport.is_trace_id(response.body["trace_id"])
-        ):
+        if not transport.is_closed_traced(response.body, {"team_id", "stored_inputs"}, team_id=team_id):
             raise ValueError("invalid Stored Input envelope")
         raw = response.body["stored_inputs"]
         if not isinstance(raw, list) or len(raw) > MAX_STORED_INPUTS:
@@ -78,19 +74,12 @@ def clear_assistant_stored_input(
         return response
     if (
         response.status != 200
-        or set(response.body)
-        != {
-            "team_id",
-            "assistant_id",
-            "stored_input_id",
-            "cleared",
-            "trace_id",
-        }
-        or response.body["team_id"] != canonical
+        or not transport.is_closed_traced(
+            response.body, {"team_id", "assistant_id", "stored_input_id", "cleared"}, team_id=canonical
+        )
         or response.body["assistant_id"] != assistant
         or response.body["stored_input_id"] != stored_input
         or type(response.body["cleared"]) is not bool
-        or not transport.is_trace_id(response.body["trace_id"])
     ):
         log.warning("team returned an invalid Stored Input clear response")
         return TeamResponse(502, {"detail": "Assistant Stored Input clear response is invalid."})

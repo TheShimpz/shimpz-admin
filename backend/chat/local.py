@@ -22,6 +22,7 @@ import decision
 import models
 from history import context as conversation_context
 from team import bridge as team
+from team import transport
 
 from chat import assistant_proposal, human
 from protocol.http.v1 import payload as team_contract
@@ -50,11 +51,10 @@ ROUTINE_FIELDS = {
     QUESTION_FIELD: routine_proposal_contract.canonical_question,
 }
 _OPTIONAL_DONE_FIELDS = frozenset({USAGE_FIELD, *ROUTINE_FIELDS})
-_STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart", "trace_id"})
+_STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart"})
 _INTEGRATION_CHALLENGE_RESPONSE_FIELDS = frozenset(
     {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements", "trace_id"}
 )
-_HUMAN_DENIED_RESPONSE_FIELDS = frozenset({"team_id", "status", "reason", "trace_id"})
 MAX_INTEGRATION_REQUIREMENTS = 64
 MAX_INTEGRATION_SCOPES = 32
 MAX_INTEGRATION_ACTIONS = 128
@@ -337,16 +337,14 @@ def capability_plan(
         return _safe_error(response)
     try:
         body = response.body
-        if set(body) != {"team_id", "status", "assistant_ids", "trace_id"}:
+        if not transport.is_closed_traced(body, {"team_id", "status", "assistant_ids"}, team_id=canonical_id):
             raise ValueError("invalid capability plan fields")
         status = body["status"]
         raw_ids = body["assistant_ids"]
         if (
-            body["team_id"] != canonical_id
-            or status not in {"sufficient", "install-required"}
+            status not in {"sufficient", "install-required"}
             or not isinstance(raw_ids, list)
             or len(raw_ids) > MAX_CAPABILITY_PLAN_IDS
-            or not team.is_trace_id(body["trace_id"])
         ):
             raise ValueError("invalid capability plan identity")
         assistant_ids = [team.canonical_assistant_id(value) for value in raw_ids]
@@ -683,10 +681,8 @@ def _project_pending_challenge(
 
 def _project_human_denial(response: team.TeamResponse, team_id: str) -> team.TeamResponse:
     if (
-        set(response.body) != _HUMAN_DENIED_RESPONSE_FIELDS
-        or response.body.get("team_id") != team_id
-        or response.body.get("status") != "human-denied"
-        or not team.is_trace_id(response.body.get("trace_id"))
+        not transport.is_closed_traced(response.body, {"team_id", "status", "reason"}, team_id=team_id)
+        or response.body["status"] != "human-denied"
     ):
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "human-response-invalid"})
     reason = response.body.get("reason")
@@ -913,15 +909,12 @@ def stop(team_id: object) -> team.TeamResponse:
         return _unavailable()
     if not 200 <= response.status < 300:
         return _safe_error(response)
-    response_team_id = response.body.get("team_id")
     requested = response.body.get("requested")
     accepted = response.body.get("accepted")
     confirmed = response.body.get("confirmed")
     forced_restart = response.body.get("forced_restart")
     if (
-        set(response.body) != _STOP_RESPONSE_FIELDS
-        or response_team_id != canonical_id
-        or not team.is_trace_id(response.body.get("trace_id"))
+        not transport.is_closed_traced(response.body, _STOP_RESPONSE_FIELDS, team_id=canonical_id)
         or not all(isinstance(value, bool) for value in (requested, accepted, confirmed, forced_restart))
         or requested != accepted
         or ((confirmed or forced_restart) and not accepted)

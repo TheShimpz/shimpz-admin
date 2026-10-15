@@ -114,6 +114,15 @@ def trace_envelope(body: dict[str, object], fields: set[str]) -> set[str]:
     return {*fields, "trace_id"}
 
 
+def is_closed_traced(body: dict[str, object], fields: set[str] | frozenset[str], *, team_id: str | None = None) -> bool:
+    """Admit a closed envelope of exactly `fields` plus Team's required trace identifier, and of `team_id` if given."""
+    return (
+        set(body) == {*fields, "trace_id"}
+        and is_trace_id(body["trace_id"])
+        and (team_id is None or body["team_id"] == team_id)
+    )
+
+
 @dataclass(frozen=True)
 class TeamAssetResponse:
     status: int
