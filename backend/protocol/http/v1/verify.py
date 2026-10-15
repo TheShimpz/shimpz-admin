@@ -242,14 +242,14 @@ if any(
     fail("Team HTTP rendered copy negative vector differs")
 
 schedules = vectors.get("routine_schedule", {})
-if not schedules.get("valid") or not schedules.get("invalid") or not schedules.get("daily_rate"):
+if not schedules.get("valid") or not schedules.get("invalid") or not schedules.get("daily_cap"):
     fail("routine schedule vectors are missing")
 if any(routine.canonical_schedule(value) != value for value in schedules["valid"]):
     fail("a valid routine schedule vector was not admitted exactly")
 if any(routine.canonical_schedule(value) is not None for value in schedules["invalid"]):
     fail("an invalid routine schedule vector was admitted")
-if any(str(routine.daily_rate(case["schedule"])) != case["rate"] for case in schedules["daily_rate"]):
-    fail("a routine daily rate vector differs")
+if any(routine.daily_cap(case["schedule"]) != case["cap"] for case in schedules["daily_cap"]):
+    fail("a routine daily cap vector differs")
 timezones = vectors.get("routine_timezone", {})
 if not timezones.get("valid") or not timezones.get("invalid"):
     fail("routine timezone vectors are missing")
@@ -373,17 +373,10 @@ for case in labels["authored_segments"]:
     if list(payload.authored_segments(case["message"])) != case["segments"]:
         fail("an authored-segments vector differs")
 
-if set(routine_proposal.ANSWER_REPLIES) != set(routine.LOCALES) or any(
-    routine.canonical_name(text) != text for text in routine_proposal.ANSWER_REPLIES.values()
-):
-    fail("the Routine answer replies do not cover every interface language with one plain line")
-if routine_proposal.answer_reply(None) != routine_proposal.ANSWER_REPLIES["en"]:
-    fail("a chat without an interface language does not get the English answer reply")
-
 choices = routine_proposal.OUTPUT_CHOICES
 if set(choices) != set(routine.LOCALES) or any(
-    tuple(labels) != routine_proposal.OUTPUT_KINDS
-    or any(routine.canonical_name(label) != label for label in labels.values())
+    tuple(labels) != routine.OUTPUT_MODES
+    or not all(routine.exact_name(label) for label in labels.values())
     or len({label.casefold() for label in labels.values()}) != len(labels)
     for labels in choices.values()
 ):
