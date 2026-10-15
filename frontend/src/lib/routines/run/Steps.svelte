@@ -1,14 +1,15 @@
 <script>
   import { Button } from '@shimpz/frontend';
-  import { tick, untrack } from 'svelte';
+  import { untrack } from 'svelte';
 
   import { call } from '#lib/session/socket.js';
   import RoutineIcon from '#lib/routines/Icon.svelte';
   import { fill } from '#lib/i18n/fill.js';
   import { humanizeId } from '#lib/ids.js';
-  import { needsPage, pageBinding, readRunSteps } from '#lib/routines/protocol.js';
+  import { PagedSteps } from '#lib/routines/paging.svelte.js';
+  import { pageBinding, readRunSteps } from '#lib/routines/protocol.js';
   import { attemptWords, conditionWords, countWords, literalWords } from '#lib/routines/words.js';
-  import { durationWords, visibleSteps } from '#lib/routines/reading.js';
+  import { durationWords } from '#lib/routines/reading.js';
 
   // The steps of one Routine run as the run recorded them (ADR-0092 amendment, 2026-10-05, scale), numbered in order:
   // each step's Action and Assistant, what happened to it, how long its attempt took, the inputs that attempt was
@@ -29,80 +30,57 @@
   // A changed snapshot is read again from the newest this many times before the steps are said to be unavailable.
   const RESTARTS = 2;
 
-  let steps = $state([]);
-  let next = $state(0);
+  // Only the newest read of this run may apply.
+  const paging = new PagedSteps(untrack(() => pageSize));
   let bound = $state(null);
   let snapshot = 'latest';
-  let pages = $state(1);
-  let loading = $state(false);
-  let failed = $state(false);
   let list = $state();
-  // Only the newest read of this run may apply.
-  let reading = 0;
 
-  let shown = $derived(visibleSteps(steps, pages, pageSize));
-  let remaining = $derived((total ?? 0) - shown.length);
+  let remaining = $derived((total ?? 0) - paging.shown.length);
 
   const assistantName = (assistant) => names[assistant] ?? humanizeId(assistant);
 
   function restart() {
-    steps = [];
-    next = 0;
+    paging.restart();
     snapshot = 'latest';
   }
 
-  // Read pages of one snapshot until `wanted` steps are loaded or the run has no more.
-  async function load(wanted) {
-    const ticket = reading;
-    loading = true;
+  // Read pages of one snapshot until `wanted` steps are loaded or the run has no more; a snapshot that changed is read
+  // again from the newest, at most RESTARTS times in one load.
+  function load(wanted) {
     let restarts = 0;
-    try {
-      while (ticket === reading && needsPage(steps.length, wanted, next)) {
-        let page;
+    async function read(ticket) {
+      for (;;) {
         try {
-          page = await readRunSteps(call, teamId, runId, bound, snapshot, next);
+          return await readRunSteps(call, teamId, runId, bound, snapshot, paging.next);
         } catch (error) {
           if (error?.code !== 'routine-run-changed' || restarts === RESTARTS) throw error;
           restarts += 1;
-          if (ticket === reading) restart();
-          continue;
+          if (paging.current(ticket)) restart();
         }
-        if (ticket !== reading) return;
-        steps = [...steps, ...page.steps];
-        next = page.next;
+      }
+    }
+    return paging.load(wanted, read, {
+      onPage: (page) => {
         snapshot = page.snapshot;
         // Every later page, and a restart from the newest records, must match the run the first page named.
         bound = pageBinding(page);
         total = page.total;
-      }
-    } catch {
-      if (ticket === reading) failed = true;
-    } finally {
-      if (ticket === reading) loading = false;
-    }
+      },
+      onError: () => (paging.failed = true),
+    });
   }
 
   $effect(() => {
     void `${teamId}:${runId}:${binding.plan_digest}`;
     untrack(() => {
-      reading += 1;
+      paging.reset();
       bound = binding;
       total = null;
-      restart();
-      pages = 1;
-      failed = false;
+      snapshot = 'latest';
       void load(pageSize);
     });
   });
-
-  // Revealing more steps reads the pages they need, then moves focus to the first one revealed.
-  async function more() {
-    const first = shown.length;
-    pages += 1;
-    await load(pages * pageSize);
-    await tick();
-    list?.querySelectorAll(':scope > li')[first]?.focus();
-  }
 </script>
 
 {#snippet attempt(item, named)}
@@ -125,7 +103,7 @@
 {/snippet}
 
 <ol class="steps" bind:this={list}>
-  {#each shown as step (step.position)}
+  {#each paging.shown as step (step.position)}
     <li class={['step', `step--${step.status}`]} tabindex="-1">
       <span class="number" aria-hidden="true">{String(step.position).padStart(2, '0')}</span>
       <div class="body">
@@ -166,12 +144,12 @@
     </li>
   {/each}
 </ol>
-{#if failed}
+{#if paging.failed}
   <div class="dim">{copy.result.stepsUnavailable}</div>
-{:else if loading}
+{:else if paging.loading}
   <div class="dim" role="status">{copy.result.stepsLoading}</div>
 {:else if remaining > 0}
-  <Button class="more" variant="ghost" size="sm" type="button" onclick={more}>
+  <Button class="more" variant="ghost" size="sm" type="button" onclick={() => paging.more(list, load)}>
     {countWords(copy.result.more, Math.min(pageSize, remaining), locale)}
   </Button>
 {/if}

@@ -1,15 +1,15 @@
 <script>
   import { Button } from '@shimpz/frontend';
-  import { tick, untrack } from 'svelte';
+  import { untrack } from 'svelte';
 
   import { call } from '#lib/session/socket.js';
   import RoutineIcon from '#lib/routines/Icon.svelte';
   import Inputs from '#lib/routines/Inputs.svelte';
   import { fill } from '#lib/i18n/fill.js';
   import { humanizeId } from '#lib/ids.js';
-  import { needsPage, readPlanSteps } from '#lib/routines/protocol.js';
+  import { PagedSteps } from '#lib/routines/paging.svelte.js';
+  import { readPlanSteps } from '#lib/routines/protocol.js';
   import { countWords, dispositionWords, inputWords, summaryChain } from '#lib/routines/words.js';
-  import { visibleSteps } from '#lib/routines/reading.js';
 
   // A Routine plan's safe projection (ADR-0092) in words. Its revision's summary shows at once: how many steps, their
   // Actions in order, and what each run does with its result. The steps themselves are read page by page for exactly
@@ -20,39 +20,23 @@
   // rendered as text, never as Markdown or HTML.
   let { teamId, routine, copy, names = {}, locale, onchanged = () => {}, pageSize = 10 } = $props();
 
-  let steps = $state([]);
-  let next = $state(0);
-  let pages = $state(1);
-  let loading = $state(false);
-  let failed = $state(false);
-  let list = $state();
   // Only the newest read of the newest revision may apply.
-  let reading = 0;
+  const paging = new PagedSteps(untrack(() => pageSize));
+  let list = $state();
 
   const assistantName = (id) => names[id] ?? humanizeId(id);
   let plan = $derived(routine.plan);
-  let shown = $derived(visibleSteps(steps, pages, pageSize));
-  let remaining = $derived(plan.steps - shown.length);
+  let remaining = $derived(plan.steps - paging.shown.length);
   let summary = $derived(summaryChain(plan, assistantName, copy.notice, locale));
 
   // Read pages until `wanted` steps are loaded or the plan has no more.
-  async function load(wanted) {
-    const ticket = reading;
-    loading = true;
-    try {
-      while (ticket === reading && needsPage(steps.length, wanted, next)) {
-        const page = await readPlanSteps(call, teamId, routine.routine_id, plan, next);
-        if (ticket !== reading) return;
-        steps = [...steps, ...page.steps];
-        next = page.next;
-      }
-    } catch (error) {
-      if (ticket !== reading) return;
-      if (error?.code === 'routine-revision-changed') onchanged();
-      else failed = true;
-    } finally {
-      if (ticket === reading) loading = false;
-    }
+  function load(wanted) {
+    return paging.load(wanted, () => readPlanSteps(call, teamId, routine.routine_id, plan, paging.next), {
+      onError: (error) => {
+        if (error?.code === 'routine-revision-changed') onchanged();
+        else paging.failed = true;
+      },
+    });
   }
 
   // A new Routine or revision starts again from its first page. The Routine is read again in the background, which
@@ -63,35 +47,22 @@
     const revision = `${routine.routine_id}:${plan.revision}:${plan.plan_digest}`;
     untrack(() => {
       if (revision === readFor) {
-        if (failed && !loading) {
-          failed = false;
-          void load(pages * pageSize);
+        if (paging.failed && !paging.loading) {
+          paging.failed = false;
+          void load(paging.pages * pageSize);
         }
         return;
       }
       readFor = revision;
-      reading += 1;
-      steps = [];
-      next = 0;
-      pages = 1;
-      failed = false;
+      paging.reset();
       void load(pageSize);
     });
   });
-
-  // Revealing more steps reads the pages they need, then moves focus to the first one revealed.
-  async function more() {
-    const first = shown.length;
-    pages += 1;
-    await load(pages * pageSize);
-    await tick();
-    list?.querySelectorAll(':scope > li')[first]?.focus();
-  }
 </script>
 
 <p class="overview">{countWords(copy.result.stepCount, plan.steps, locale)} · {summary}</p>
 <ol class="plan" aria-label={copy.plan.title} bind:this={list}>
-  {#each shown as step (step.position)}
+  {#each paging.shown as step (step.position)}
     <li tabindex="-1">
       <span class="number" aria-hidden="true">{String(step.position).padStart(2, '0')}</span>
       <div class="step">
@@ -115,12 +86,12 @@
     </li>
   {/each}
 </ol>
-{#if failed}
+{#if paging.failed}
   <p class="note">{copy.plan.unavailable}</p>
-{:else if loading}
+{:else if paging.loading}
   <p class="note" role="status">{copy.plan.loading}</p>
 {:else if remaining > 0}
-  <Button class="more" variant="ghost" size="sm" type="button" onclick={more}>
+  <Button class="more" variant="ghost" size="sm" type="button" onclick={() => paging.more(list, load)}>
     {countWords(copy.result.more, Math.min(pageSize, remaining), locale)}
   </Button>
 {/if}
