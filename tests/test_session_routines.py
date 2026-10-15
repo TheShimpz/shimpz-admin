@@ -108,11 +108,13 @@ class RoutineOperationTests(RoutineMethodCase):
             called.assert_called_once_with(*arguments)
             self.assertEqual((result["status"], result["body"]), (200, OK))
         with mock.patch.object(self.answer, "open_challenge", return_value=self.ok) as opened:
-            (result,), _raised = self.results(
-                ("routines.challenge", {"team_id": "team_1", "run_id": RUN, "body": {"locale": "ja"}})
+            (result,), raised = self.results(
+                ("routines.challenge", {"team_id": "team_1", "run_id": RUN, "body": {"locale": "ja"}}),
+                topics=("team/team_1/routines",),
             )
         opened.assert_called_once_with("team_1", RUN, {"locale": "ja"})
-        self.assertEqual(result["status"], 200)
+        # Opening a challenge changes nothing the Team's Routine list shows, so no page reads it again.
+        self.assertEqual((result["status"], raised), (200, set()))
 
     def test_a_request_admin_refuses_before_team_is_the_pages_own_400(self) -> None:
         with mock.patch.object(self.transport, "call") as call:

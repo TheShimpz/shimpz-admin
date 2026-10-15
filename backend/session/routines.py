@@ -49,13 +49,21 @@ def _settled(socket: SessionSocket, team_id: object, response: transport.TeamRes
     return response
 
 
-def _read(operation: str, *names: str):
-    """A read of Team's Routine records, found when it runs so a test may stand in for it."""
+def _unlisted(owner: object, operation: str, *names: str):
+    """A Routine call that changes nothing the Team's Routine list shows, so no page reads it again.
+
+    Its operation is found when it runs, so a test may stand in for it.
+    """
 
     async def method(socket: SessionSocket, params: dict[str, object]) -> Answer:
-        return await lane.run(socket, _relayed, getattr(manage, operation), *(params[name] for name in names))
+        return await lane.run(socket, _relayed, getattr(owner, operation), *(params[name] for name in names))
 
     return method
+
+
+def _read(operation: str, *names: str):
+    """A read of Team's Routine records."""
+    return _unlisted(manage, operation, *names)
 
 
 def _change(owner: object, operation: str, *names: str, wake: bool = False):
@@ -176,7 +184,9 @@ METHODS = {
     "routines.card": _read("open_card", "team_id", "run_id"),
     # Rodar makes the Routine due again.
     "routines.card_answer": _change(manage, "answer_card", "team_id", "run_id", "body", wake=True),
-    "routines.challenge": _change(answer, "open_challenge", "team_id", "run_id", "body"),
+    # Opening a frozen run's challenge mints a fresh one, which the browser never replays, but changes nothing the
+    # Team's Routine list shows.
+    "routines.challenge": _unlisted(answer, "open_challenge", "team_id", "run_id", "body"),
     # Criar rotina: a created Routine is due soon.
     "routines.proposal_confirm": _proposal("confirm_proposal", wake=True),
     "routines.proposal_revoke": _proposal("revoke_proposal"),
