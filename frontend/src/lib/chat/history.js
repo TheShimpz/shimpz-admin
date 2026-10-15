@@ -390,18 +390,36 @@ export async function routineRuns(read, teamId, routineId, { before = null, seen
 }
 
 /**
+ * The Routine rows of a re-read history page that a transcript does not show yet at their version, and the card
+ * answers it does not show yet, in page order. `shown` maps each shown row id to its version (0 for an answer); any
+ * other kind of entry is left to the conversation.
+ */
+export function newerRoutineEntries(shown, entries) {
+  return entries.filter((entry) => (
+    (entry.kind === 'routine-run' && (!shown.has(entry.id) || shown.get(entry.id) < entry.version)) ||
+    (entry.kind === 'routine-answer' && !shown.has(entry.id))
+  ));
+}
+
+/**
+ * `rows` (oldest first) with the rows written since (`arrived`, oldest first) after them: a row written again leaves
+ * its earlier place, as a reload shows it. `key` reads a row's history id.
+ */
+export function withArrived(rows, arrived, key = (row) => row.id) {
+  if (arrived.length === 0) return rows;
+  const moved = new Set(arrived.map(key));
+  return [...rows.filter((row) => !moved.has(key(row))), ...arrived];
+}
+
+/**
  * A Routine's listed runs, newest first, with the rows written since (`arrived`, oldest first) merged in: each new run,
  * or newer version of a listed one, moves to the top, where the newest history shows it. No listed run is dropped, so
  * the cursor to older runs still reaches every run the list does not hold.
  */
 export function mergedRoutineRuns(runs, arrived, routineId) {
   const listed = new Map(runs.map((entry) => [entry.id, entry.version]));
-  const fresh = arrived
-    .filter((entry) => isRoutineRun(entry, routineId) && !(listed.get(entry.id) >= entry.version))
-    .reverse();
-  if (fresh.length === 0) return runs;
-  const moved = new Set(fresh.map((entry) => entry.id));
-  return [...fresh, ...runs.filter((entry) => !moved.has(entry.id))];
+  const fresh = newerRoutineEntries(listed, arrived.filter((entry) => isRoutineRun(entry, routineId)));
+  return fresh.length === 0 ? runs : withArrived(runs.toReversed(), fresh).toReversed();
 }
 
 // A kept view of the chat holds at most this many rows, and this many UTF-8 bytes of them; a larger one is dropped, and
@@ -426,8 +444,7 @@ function chatView(entries, before) {
 function grownView(view, arrived) {
   if (!view) return null;
   if (!arrived.length) return view;
-  const moved = new Set(arrived.map((entry) => entry.id));
-  return chatView([...view.entries.filter((entry) => !moved.has(entry.id)), ...arrived], view.before);
+  return chatView(withArrived(view.entries, arrived), view.before);
 }
 
 /**

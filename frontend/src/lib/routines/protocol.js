@@ -836,18 +836,6 @@ export function parseRoutineRunEntry(value) {
 }
 
 /**
- * The Routine rows of a re-read history page that a transcript does not show yet at their version, and the card
- * answers it does not show yet, in page order. `shown` maps each shown row id to its version (0 for an answer); any
- * other kind of entry is left to the conversation.
- */
-export function newerRoutineEntries(shown, entries) {
-  return entries.filter((entry) => (
-    (entry.kind === 'routine-run' && (!shown.has(entry.id) || shown.get(entry.id) < entry.version)) ||
-    (entry.kind === 'routine-answer' && !shown.has(entry.id))
-  ));
-}
-
-/**
  * Open a frozen run's fresh challenge, or learn that it waits for an Integration. Team renders the request copy in the
  * interface language named here, so a different language always opens a fresh challenge (ADR-0091).
  */

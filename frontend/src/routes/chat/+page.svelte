@@ -10,7 +10,7 @@
   import Composer from '#lib/chat/Composer.svelte';
   import Exchange from '#lib/chat/Exchange.svelte';
   import { snapshotIcon } from '#lib/chat/lifecycle/snapshot.js';
-  import { chatHistory, listChatHistory } from '#lib/chat/history.js';
+  import { chatHistory, listChatHistory, newerRoutineEntries, withArrived } from '#lib/chat/history.js';
   import {
     cardAnswers,
     expiredTurns,
@@ -27,7 +27,6 @@
   import { promptHistoryStep } from '#lib/chat/prompts.js';
   import ChatDay from '#lib/chat/Day.svelte';
   import { calendarDay, exchangeDays, turnInstants, untilNextDay } from '#lib/chat/days.js';
-  import { newerRoutineEntries } from '#lib/routines/protocol.js';
   import { questionWords } from '#lib/routines/words.js';
   import { showTeamRoutines } from '#lib/routines/context.js';
   import { adminSocket, call, commandsReady, openChatChannel, outcomeUnknown } from '#lib/session/socket.js';
@@ -431,11 +430,11 @@
     const viewport = turnsViewport;
     const following = Boolean(viewport) &&
       viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight <= FOLLOW_SLACK;
-    const moved = new Set(arrived.map((entry) => entry.id));
-    turns = [
-      ...turns.filter((turn) => !moved.has(turn.historyId)),
-      ...arrived.map((entry) => historyTurn(entry, team.name, nextRenderKey++, words)),
-    ];
+    turns = withArrived(
+      turns,
+      arrived.map((entry) => historyTurn(entry, team.name, nextRenderKey++, words)),
+      (turn) => turn.historyId,
+    );
     if (following) await revealLatestExchange();
   }
 
