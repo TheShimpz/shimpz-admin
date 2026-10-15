@@ -38,7 +38,9 @@
   // `created`, `changed`, or `revoked` once the person answered here or before. A created or changed Routine says so
   // in its own message below, so the card leaves; a revoked card gives way to one line saying so.
   let given = $state('');
-  let answer = $derived(answered || given);
+  let revoked = $state(false);
+  // A card this page revoked for an edit keeps its editor until the edited text went out, whatever the transcript says.
+  let answer = $derived(revoked ? given : answered || given);
   let error = $state('');
   let now = $state(Date.now());
   let expired = $derived(now >= Date.parse(proposal.expires_at));
@@ -83,7 +85,6 @@
 
   // The card is revoked once; the edited text is then sent as the next message of this card's own Team. A send the
   // page cannot take now keeps the text in its field to send again, never revoking twice.
-  let revoked = $state(false);
   // The card answers only while it is shown: a revocation that ends after it left sends nothing.
   let shown = true;
   $effect(() => () => {
@@ -99,7 +100,13 @@
       working = true;
       error = '';
       try {
-        await revokeRoutineProposal(call, teamId, proposal.proposal_id);
+        const result = await revokeRoutineProposal(call, teamId, proposal.proposal_id);
+        if (result.status !== 'revoked') {
+          // The card was already confirmed: its Routine exists, so the edited text is not sent again.
+          editing = false;
+          given = result.status;
+          return;
+        }
         revoked = true;
       } catch (failure) {
         error = outcomeUnknown(failure) ? $t('shell.outcomeUnknown') : routineErrorMessage(failure, copy.errors);
@@ -265,7 +272,7 @@
     gap: var(--shimpz-space-2);
     vertical-align: middle;
     color: var(--shimpz-color-text-muted);
-    text-decoration: none;
+    font-weight: inherit;
   }
   /* On hover it brightens and takes Admin's shared glitch (app.css), never an underline. */
   .what :global(.assistant:hover) { color: var(--shimpz-color-text); }

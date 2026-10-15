@@ -1206,5 +1206,6 @@ export async function confirmRoutineProposal(call, teamId, proposalId) {
 /** Cancelar: revoke a card, so nothing it shows can be created; an absent card is already revoked. */
 export async function revokeRoutineProposal(call, teamId, proposalId) {
   const body = await request(call, 'routines.proposal_revoke', { team_id: team(teamId), proposal_id: opaque(proposalId) });
-  return answered(body, teamId, proposalId, ['revoked']);
+  // A card already confirmed answers with the Routine its confirmation created or changed.
+  return answered(body, teamId, proposalId, ['revoked', 'created', 'changed']);
 }

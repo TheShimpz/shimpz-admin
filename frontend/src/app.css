@@ -70,8 +70,10 @@
 }
 
 /* Every Admin link is never underlined and glitches on hover and keyboard focus, like a Button; a link that already
-   glitches through its own parts (a Button, a `glitch-host`) keeps only that. */
+   glitches through its own parts (a Button, a `glitch-host`) keeps only that. A link inside text stands apart from it
+   by its weight as well as its color, so it never relies on color alone. */
 a { text-decoration: none; }
+.shimpz-text-link { font-weight: 600; }
 
 a:not(.shimpz-button, .glitch-host):is(:hover, :focus-visible) {
   text-shadow: var(--glitch-split-text);

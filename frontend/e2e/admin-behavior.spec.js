@@ -7319,7 +7319,7 @@ test.describe('Team Routines', () => {
     // The first stored message opens its own day.
     await expect(turns.locator('h2 + .exchange').first()).toContainText('Question a0');
     // Every message shows when it was sent and every reply when it was completed, to the second, in the viewer's
-    // timezone; a Routine notice shows its own time to the second on its rail.
+    // timezone; a Routine's creation shows its own time to the second.
     const timeOf = (text) => turns.locator('article', { hasText: text }).locator('time');
     await expect(timeOf('Question a0')).toHaveText('11:00:05');
     await expect(timeOf('Question a0')).toHaveAttribute('datetime', '2026-09-29T14:00:05Z');
@@ -7327,7 +7327,7 @@ test.describe('Team Routines', () => {
     await expect(timeOf('Answer a0')).toHaveAttribute('datetime', '2026-09-29T14:00:14Z');
     await expect(timeOf('Question c5')).toHaveText('23:30:00');
     await expect(timeOf('Answer c5')).toHaveText('23:30:09');
-    await expect(turns.locator('.routine-run time').first()).toHaveText('12:00:00');
+    await expect(turns.locator('article', { has: page.locator('.routine-run') }).locator('time').first()).toHaveText('12:00:00');
 
     // A message sent now belongs to today, under the header already there.
     const composer = page.getByRole('textbox', { name: 'Send', exact: true });
