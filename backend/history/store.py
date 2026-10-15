@@ -259,30 +259,25 @@ _NOTICE_FIELDS = (
 )
 
 
-# What a stored Routine notice keeps of its detail, by outcome: only what the chat or the Routine's history renders. A
-# Routine's change, deletion, and scope change show nowhere, so their notices are acknowledged and never stored.
-_STORED_DETAIL = {
-    "done": ("plan", "output"),
-    "recovered": ("plan", "output"),
-    "held": (),
-    "paused": ("reason",),
-    "user-skipped": (),
-    "skipped": ("missed",),
-    "healthy": ("runs",),
-    "frozen": ("request_kind",),
-    "failed": ("code",),
-    "denied": (),
-    "stopped": (),
-    "created": (),
-    "streak-paused": ("failures",),
-}
-# The outcomes whose whole detail is stored, which Team's own closed form then checks again when a row is read.
-_WHOLE_DETAIL = frozenset({"done", "recovered", "skipped", "healthy", "created", "streak-paused"})
-_KEPT_DETAIL = {
-    "paused": lambda detail: detail["reason"] in routine_contract.PAUSE_REASONS,
-    "frozen": lambda detail: detail["request_kind"] in routine_notice_contract.REQUEST_KINDS,
-    "failed": lambda detail: routine_contract.matches(detail["code"], routine_contract.ERROR_CODE_RE),
-}
+# The Routine notices a view shows, whose whole detail Team limits to what that view renders. A Routine's change,
+# deletion, and scope change show nowhere, so their notices are acknowledged and never stored.
+_STORED_OUTCOMES = frozenset(
+    {
+        "done",
+        "recovered",
+        "held",
+        "paused",
+        "user-skipped",
+        "skipped",
+        "healthy",
+        "frozen",
+        "failed",
+        "denied",
+        "stopped",
+        "created",
+        "streak-paused",
+    }
+)
 
 
 def append_routine_notice(notice: object) -> bool:
@@ -296,12 +291,10 @@ def append_routine_notice(notice: object) -> bool:
     if admitted is None:
         raise ValueError("Routine notice is invalid")
     team_id = _team_id(admitted["team_id"])
-    kept = _STORED_DETAIL.get(admitted["outcome"])
-    if kept is None:
+    if admitted["outcome"] not in _STORED_OUTCOMES:
         return True
     event_key = f"{admitted['notice_id']}:routine"
     payload = {"kind": "routine-run", **{name: admitted[name] for name in _NOTICE_FIELDS}}
-    payload["detail"] = {name: admitted["detail"][name] for name in kept}
     encoded = _encoded(payload)
     with _database() as database:
         existing = database.execute(
@@ -578,13 +571,8 @@ def _validate_stored_guidance(payload: dict[str, object]) -> None:
 
 
 def _stored_detail(outcome: object, detail: object) -> bool:
-    """Whether a stored notice's detail is exactly what its outcome keeps, each kept field in Team's closed form."""
-    kept = _STORED_DETAIL.get(outcome) if isinstance(outcome, str) else None
-    if kept is None or not isinstance(detail, dict) or set(detail) != set(kept):
-        return False
-    if outcome in _WHOLE_DETAIL:
-        return routine_notice_contract.canonical_notice_detail(outcome, detail) == detail
-    return outcome not in _KEPT_DETAIL or _KEPT_DETAIL[outcome](detail)
+    """Whether a stored notice's detail is exactly Team's closed form for an outcome a view shows."""
+    return outcome in _STORED_OUTCOMES and routine_notice_contract.canonical_notice_detail(outcome, detail) == detail
 
 
 def _validate_stored_routine(payload: dict[str, object]) -> None:

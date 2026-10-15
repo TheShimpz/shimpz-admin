@@ -435,32 +435,24 @@ class StoredNoticeTests(ChatHistoryCase):
         for notice in unseen:
             self.assertEqual(history.page("team_1", routine=notice["routine_id"])["entries"], [])
 
-    def test_a_shown_notice_keeps_only_the_detail_its_view_renders(self) -> None:
-        kept = {
-            "frozen": {"request_kind"},
-            "failed": {"code"},
-            "paused": {"reason"},
-            "held": set(),
-            "user-skipped": set(),
-            "denied": set(),
-            "stopped": set(),
-        }
-        for index, (outcome, fields) in enumerate(kept.items()):
+    def test_a_shown_notice_keeps_teams_closed_detail_and_a_stored_one_must_still_be_it(self) -> None:
+        shown = ("frozen", "failed", "paused", "held", "user-skipped", "denied", "stopped")
+        for index, outcome in enumerate(shown):
             run = f"{index:x}" * 32
             notice = {**_notice(outcome), "notice_id": run, "run_id": run}
             with self.subTest(outcome=outcome):
                 self.assertTrue(history.append_routine_notice(notice))
                 entries = history.page(notice["team_id"], routine=notice["routine_id"])["entries"]
                 (entry,) = [item for item in entries if item["id"] == f"{notice['notice_id']}:routine"]
-                self.assertEqual(entry["detail"], {name: notice["detail"][name] for name in fields})
-        # A stored detail that holds more than its view renders is corrupt, never shown.
+                self.assertEqual(entry["detail"], notice["detail"])
+        # A stored detail that is not Team's closed form for its outcome is corrupt, never shown.
         frozen = {**_notice("frozen"), "notice_id": "0" * 32, "run_id": "0" * 32}
         with sqlite3.connect(self.path) as database:
             row = database.execute(
                 "SELECT payload FROM transcript WHERE event_key = ?", (f"{frozen['notice_id']}:routine",)
             ).fetchone()
             stored = json.loads(row[0])
-            stored["detail"] = dict(frozen["detail"])
+            stored["detail"] = {**frozen["detail"], "action": "list-dns-records"}
             database.execute(
                 "UPDATE transcript SET payload = ? WHERE event_key = ?",
                 (json.dumps(stored), f"{frozen['notice_id']}:routine"),
