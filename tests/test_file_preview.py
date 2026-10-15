@@ -55,8 +55,13 @@ REFUSED_PAGES = {
 }
 
 
-class _PreviewTeam(BaseHTTPRequestHandler):
+class AnsweringTeam(BaseHTTPRequestHandler):
+    """A fake Team that records each file request and answers it as its subclass's `answer` says."""
+
     requests: ClassVar[list[dict[str, object]]] = []
+
+    def answer(self, file_id: str) -> tuple[int, dict[str, str], bytes]:
+        raise NotImplementedError
 
     def log_message(self, *_args):
         pass
@@ -65,8 +70,7 @@ class _PreviewTeam(BaseHTTPRequestHandler):
         self.__class__.requests.append(
             {"path": self.path, "headers": {key.lower(): value for key, value in self.headers.items()}}
         )
-        file_id = self.path.split("/")[5]
-        status, headers, body = ANSWERS[file_id]
+        status, headers, body = self.answer(self.path.split("/")[5])
         self.send_response(status)
         for key, value in {"Content-Length": str(len(body)), **headers}.items():
             self.send_header(key, value)
@@ -74,6 +78,13 @@ class _PreviewTeam(BaseHTTPRequestHandler):
         # Admin refuses an oversized answer from its headers and closes before reading the body.
         with contextlib.suppress(ConnectionError):
             self.wfile.write(body)
+
+
+class _PreviewTeam(AnsweringTeam):
+    requests: ClassVar[list[dict[str, object]]] = []
+
+    def answer(self, file_id: str) -> tuple[int, dict[str, str], bytes]:
+        return ANSWERS[file_id]
 
 
 class FilePreviewRouteTests(_LiveTeamCase):
@@ -139,7 +150,7 @@ class FilePreviewRouteTests(_LiveTeamCase):
                 self.assertEqual(answer["headers"]["cache-control"], "no-store")
 
 
-def _browser_request(headers: dict[str, str]) -> Request:
+def browser_request(headers: dict[str, str]) -> Request:
     raw = [(name.encode(), value.encode()) for name, value in headers.items()]
     return Request({"type": "http", "method": "GET", "path": "/", "headers": raw})
 
@@ -148,15 +159,15 @@ class FilePreviewUnitTests(unittest.TestCase):
     """The same boundary in process, where branch coverage sees it."""
 
     def test_fetch_metadata_admits_only_the_pages_own_image_or_script_read(self) -> None:
-        self.assertTrue(browser.same_origin_fetch(_browser_request(IMAGE_LOAD), browser.IMAGE_DESTINATIONS))
+        self.assertTrue(browser.same_origin_fetch(browser_request(IMAGE_LOAD), browser.IMAGE_DESTINATIONS))
         self.assertTrue(
             browser.same_origin_fetch(
-                _browser_request({**IMAGE_LOAD, "sec-fetch-dest": "empty"}), browser.IMAGE_DESTINATIONS
+                browser_request({**IMAGE_LOAD, "sec-fetch-dest": "empty"}), browser.IMAGE_DESTINATIONS
             )
         )
         for headers in (*REFUSED_PAGES.values(),):
             sent = {name: value for name, value in headers.items() if value is not None}
-            self.assertFalse(browser.same_origin_fetch(_browser_request(sent), browser.IMAGE_DESTINATIONS))
+            self.assertFalse(browser.same_origin_fetch(browser_request(sent), browser.IMAGE_DESTINATIONS))
 
     def test_the_bridge_forwards_a_rendition_and_closes_every_refusal(self) -> None:
         rendition = transport.TeamAssetResponse(200, PNG, {}, "image/png")
@@ -191,7 +202,7 @@ class FilePreviewUnitTests(unittest.TestCase):
     def test_the_route_answers_the_page_and_never_caches(self) -> None:
         rendition = transport.TeamAssetResponse(200, JPEG, {}, "image/jpeg")
         with mock.patch.object(team_files.team, "file_preview", return_value=rendition):
-            answer = team_files.team_file_preview("team_1", "b" * 32, _browser_request(IMAGE_LOAD))
+            answer = team_files.team_file_preview("team_1", "b" * 32, browser_request(IMAGE_LOAD))
         self.assertEqual((answer.status_code, answer.body, answer.media_type), (200, JPEG, "image/jpeg"))
         self.assertEqual(answer.headers["cache-control"], "no-store")
         self.assertEqual(answer.headers["x-content-type-options"], "nosniff")
@@ -199,11 +210,11 @@ class FilePreviewUnitTests(unittest.TestCase):
             404, None, {"detail": "file preview unavailable", "code": "file-not-found"}
         )
         with mock.patch.object(team_files.team, "file_preview", return_value=refusal):
-            answer = team_files.team_file_preview("team_1", "b" * 32, _browser_request(IMAGE_LOAD))
+            answer = team_files.team_file_preview("team_1", "b" * 32, browser_request(IMAGE_LOAD))
         self.assertEqual((answer.status_code, json.loads(answer.body)["code"]), (404, "file-not-found"))
         self.assertEqual(answer.headers["cache-control"], "no-store")
         with mock.patch.object(team_files.team, "file_preview") as preview:
-            answer = team_files.team_file_preview("team_1", "b" * 32, _browser_request(REFUSED_PAGES["cross_site"]))
+            answer = team_files.team_file_preview("team_1", "b" * 32, browser_request(REFUSED_PAGES["cross_site"]))
         self.assertEqual(answer.status_code, 403)
         preview.assert_not_called()
 

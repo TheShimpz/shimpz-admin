@@ -6,13 +6,11 @@ slots.
 
 import asyncio
 import base64
-import contextlib
 import gc
 import hashlib
 import json
 import sys
 import unittest
-from http.server import BaseHTTPRequestHandler
 from pathlib import Path
 from typing import ClassVar
 from unittest import mock
@@ -26,7 +24,7 @@ from fastapi import HTTPException
 from starlette.requests import Request
 from team import bridge, transport
 from team import files as team_files
-from test_file_preview import PNG, _raw_request
+from test_file_preview import PNG, AnsweringTeam, _raw_request, browser_request
 from test_team_bridge_assistants import _LiveTeamCase, _probe_session
 from test_team_transport_edges import _Response
 
@@ -73,24 +71,11 @@ REFUSED = {
 }
 
 
-class _FileTeam(BaseHTTPRequestHandler):
+class _FileTeam(AnsweringTeam):
     requests: ClassVar[list[dict[str, object]]] = []
 
-    def log_message(self, *_args):
-        pass
-
-    def do_GET(self):
-        self.__class__.requests.append(
-            {"path": self.path, "headers": {key.lower(): value for key, value in self.headers.items()}}
-        )
-        file_id = self.path.split("/")[5]
-        status, headers, body = (CONTENT if self.path.endswith("/content") else PAGES)[file_id]
-        self.send_response(status)
-        for key, value in {"Content-Length": str(len(body)), **headers}.items():
-            self.send_header(key, value)
-        self.end_headers()
-        with contextlib.suppress(ConnectionError):
-            self.wfile.write(body)
+    def answer(self, file_id: str) -> tuple[int, dict[str, str], bytes]:
+        return (CONTENT if self.path.endswith("/content") else PAGES)[file_id]
 
 
 class FileDownloadRouteTests(_LiveTeamCase):
@@ -169,11 +154,6 @@ class FileDownloadRouteTests(_LiveTeamCase):
         self.assertEqual(len(pages), len(PAGES))
 
 
-def _browser_request(headers: dict[str, str]) -> Request:
-    raw = [(name.encode(), value.encode()) for name, value in headers.items()]
-    return Request({"type": "http", "method": "GET", "path": "/", "headers": raw})
-
-
 def _sent(headers: dict[str, str | None]) -> dict[str, str]:
     return {name: value for name, value in headers.items() if value is not None}
 
@@ -191,10 +171,10 @@ class FileDownloadUnitTests(unittest.TestCase):
         self.assertEqual(held, [True] * team_files.MAX_DOWNLOADS)
 
     def test_fetch_metadata_admits_only_the_pages_own_download_or_script_read(self) -> None:
-        self.assertTrue(browser.same_origin_fetch(_browser_request(DOWNLOAD), browser.DOWNLOAD_DESTINATIONS))
-        self.assertTrue(browser.same_origin_fetch(_browser_request(SCRIPT_READ), browser.DOWNLOAD_DESTINATIONS))
+        self.assertTrue(browser.same_origin_fetch(browser_request(DOWNLOAD), browser.DOWNLOAD_DESTINATIONS))
+        self.assertTrue(browser.same_origin_fetch(browser_request(SCRIPT_READ), browser.DOWNLOAD_DESTINATIONS))
         for headers in REFUSED.values():
-            self.assertFalse(browser.same_origin_fetch(_browser_request(_sent(headers)), browser.DOWNLOAD_DESTINATIONS))
+            self.assertFalse(browser.same_origin_fetch(browser_request(_sent(headers)), browser.DOWNLOAD_DESTINATIONS))
 
     def test_the_transport_admits_only_an_exactly_framed_verified_original(self) -> None:
         def answer(body: bytes, **headers: str) -> _Response:
@@ -278,14 +258,14 @@ class FileDownloadUnitTests(unittest.TestCase):
 
     def test_the_page_preview_route_answers_its_page_count_and_refuses_other_pages(self) -> None:
         page = transport.TeamAssetResponse(200, PNG, {}, "image/png", 3)
-        image = _browser_request({"sec-fetch-site": "same-origin", "sec-fetch-dest": "image"})
+        image = browser_request({"sec-fetch-site": "same-origin", "sec-fetch-dest": "image"})
         with mock.patch.object(team_files.team, "file_page_preview", return_value=page):
             answer = team_files.team_file_page_preview("team_1", "a" * 32, "2", image)
         self.assertEqual((answer.status_code, answer.body), (200, PNG))
         self.assertEqual(answer.headers["x-page-count"], "3")
         with mock.patch.object(team_files.team, "file_page_preview") as preview:
             answer = team_files.team_file_page_preview(
-                "team_1", "a" * 32, "2", _browser_request(_sent(REFUSED["frame"]))
+                "team_1", "a" * 32, "2", browser_request(_sent(REFUSED["frame"]))
             )
         self.assertEqual(answer.status_code, 403)
         preview.assert_not_called()
@@ -311,17 +291,17 @@ class FileDownloadUnitTests(unittest.TestCase):
 
     def test_a_download_holds_its_slot_until_its_response_ends(self) -> None:
         original = transport.TeamAssetResponse(200, ORIGINAL, {}, "application/octet-stream")
-        response = self._download(_browser_request(DOWNLOAD), original)
+        response = self._download(browser_request(DOWNLOAD), original)
         self.assertIsInstance(response, team_files._Download)
         self.assertEqual(response.headers["content-security-policy"], "sandbox; default-src 'none'")
         # The other slot is still free; a third download beyond both is busy until the first ends.
-        second = self._download(_browser_request(DOWNLOAD), original)
-        busy = self._download(_browser_request(DOWNLOAD), original)
+        second = self._download(browser_request(DOWNLOAD), original)
+        busy = self._download(browser_request(DOWNLOAD), original)
         self.assertEqual((busy.status_code, json.loads(busy.body)["code"]), (503, "file-download-busy"))
         self.assertEqual(busy.headers["cache-control"], "no-store")
         messages = self._send(response)
         self.assertEqual(b"".join(message.get("body", b"") for message in messages), ORIGINAL)
-        third = self._download(_browser_request(DOWNLOAD), original)
+        third = self._download(browser_request(DOWNLOAD), original)
         self.assertIsInstance(third, team_files._Download)
         self._send(second)
         self._send(third)
@@ -331,14 +311,14 @@ class FileDownloadUnitTests(unittest.TestCase):
             404, None, {"detail": "file download unavailable", "code": "file-not-found"}
         )
         for _ in range(team_files.MAX_DOWNLOADS + 1):
-            answer = self._download(_browser_request(DOWNLOAD), refusal)
+            answer = self._download(browser_request(DOWNLOAD), refusal)
             self.assertEqual(answer.status_code, 404)
             self.assertEqual(answer.headers["cache-control"], "no-store")
             with self.assertRaises(HTTPException):
-                self._download(_browser_request(DOWNLOAD), transport.TeamRequestError("file id is invalid"))
+                self._download(browser_request(DOWNLOAD), transport.TeamRequestError("file id is invalid"))
             with self.assertRaises(OSError):
-                self._download(_browser_request(DOWNLOAD), OSError("team failed"))
-        refused = self._download(_browser_request(_sent(REFUSED["image"])), refusal)
+                self._download(browser_request(DOWNLOAD), OSError("team failed"))
+        refused = self._download(browser_request(_sent(REFUSED["image"])), refusal)
         self.assertEqual(refused.status_code, 403)
 
     def test_a_download_that_fails_or_outlives_its_deadline_releases_its_slot(self) -> None:
@@ -348,13 +328,13 @@ class FileDownloadUnitTests(unittest.TestCase):
             raise OSError("the browser went away")
 
         with self.assertRaises(OSError):
-            self._send(self._download(_browser_request(DOWNLOAD), original), broken)
+            self._send(self._download(browser_request(DOWNLOAD), original), broken)
 
         async def stalled(_message: dict[str, object]) -> None:
             await asyncio.sleep(5)
 
         with mock.patch.object(team_files, "DOWNLOAD_SEND_SECONDS", 0.01):
-            self._send(self._download(_browser_request(DOWNLOAD), original), stalled)
+            self._send(self._download(browser_request(DOWNLOAD), original), stalled)
 
     def test_a_download_response_that_is_never_sent_gives_its_slot_back_once_dropped(self) -> None:
         for _ in range(team_files.MAX_DOWNLOADS + 1):
