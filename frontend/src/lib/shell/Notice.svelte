@@ -6,16 +6,12 @@
     createAdminNoticeTimer,
     adminNotice,
     dismissAdminNotice,
-    validAdminNoticeDuration,
   } from '#lib/shell/notice.js';
   import { t } from '#lib/i18n/index.js';
 
-  let { defaultDurationMs = DEFAULT_ADMIN_NOTICE_DURATION_MS } = $props();
   let host = $state();
   let paused = $state(false);
   let closeLabel = $derived($t('shell.close'));
-  let safeDefaultDurationMs = $derived(validAdminNoticeDuration(defaultDurationMs) ? defaultDurationMs : DEFAULT_ADMIN_NOTICE_DURATION_MS);
-  let durationMs = $derived($adminNotice?.durationMs ?? safeDefaultDurationMs);
 
   const noticeTimer = createAdminNoticeTimer({
     now: () => Date.now(),
@@ -36,7 +32,7 @@
 
   $effect(() => {
     const notice = $adminNotice;
-    if (notice) noticeTimer.start(notice.id, notice.durationMs ?? safeDefaultDurationMs, document.hidden);
+    if (notice) noticeTimer.start(notice.id, DEFAULT_ADMIN_NOTICE_DURATION_MS, document.hidden);
     else noticeTimer.stop();
     return () => noticeTimer.stop();
   });
@@ -54,7 +50,7 @@
       class="admin-toast"
       tone={$adminNotice.tone === 'error' ? 'error' : $adminNotice.tone === 'success' ? 'success' : 'info'}
       label={$adminNotice.label}
-      {durationMs}
+      durationMs={DEFAULT_ADMIN_NOTICE_DURATION_MS}
       {paused}
       {closeLabel}
       onClose={dismissCurrentNotice}

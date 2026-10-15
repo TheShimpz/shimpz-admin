@@ -3,7 +3,6 @@ import test from 'node:test';
 import { get } from 'svelte/store';
 
 import {
-  DEFAULT_ADMIN_NOTICE_DURATION_MS,
   adminNotice,
   clearAdminNotice,
   createAdminNoticeTimer,
@@ -19,7 +18,6 @@ test('replaces notices atomically and only lets their owner dismiss them', () =>
     tone: 'success',
     label: 'Installed',
     message: 'Second notice',
-    durationMs: 4_000,
   });
 
   assert.notEqual(firstId, secondId);
@@ -29,20 +27,12 @@ test('replaces notices atomically and only lets their owner dismiss them', () =>
     tone: 'success',
     label: 'Installed',
     message: 'Second notice',
-    durationMs: 4_000,
   });
   assert.equal(dismissAdminNotice(secondId), true);
   assert.equal(get(adminNotice), null);
 });
 
-test('uses a safe configurable duration contract', () => {
-  assert.equal(DEFAULT_ADMIN_NOTICE_DURATION_MS, 10_000);
-  const id = showAdminNotice({ message: 'Default duration' });
-  assert.equal(get(adminNotice).durationMs, null);
-  assert.equal(dismissAdminNotice(id), true);
-
-  assert.throws(() => showAdminNotice({ message: 'Too fast', durationMs: 999 }), /duration/);
-  assert.throws(() => showAdminNotice({ message: 'Too slow', durationMs: 120_001 }), /duration/);
+test('refuses an unknown tone and untrimmed text', () => {
   assert.throws(() => showAdminNotice({ tone: 'unknown', message: 'Bad tone' }), /tone/);
   assert.throws(() => showAdminNotice({ message: ' padded ' }), /message/);
 });

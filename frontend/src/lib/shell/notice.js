@@ -9,7 +9,7 @@ let nextId = 0;
 
 export const adminNotice = writable(null);
 
-export function validAdminNoticeDuration(value) {
+function validAdminNoticeDuration(value) {
   return (
     Number.isSafeInteger(value) &&
     value >= MIN_ADMIN_NOTICE_DURATION_MS &&
@@ -24,20 +24,13 @@ function text(value, field, required = true) {
   return value;
 }
 
-export function showAdminNotice({ tone = 'info', label = '', message, durationMs = null } = {}) {
+export function showAdminNotice({ tone = 'info', label = '', message } = {}) {
   if (!TONES.has(tone)) throw new TypeError('Invalid Admin notice tone.');
-  if (
-    durationMs !== null &&
-    !validAdminNoticeDuration(durationMs)
-  ) {
-    throw new TypeError('Invalid Admin notice duration.');
-  }
   const notice = {
     id: ++nextId,
     tone,
     label: text(label, 'label', false),
     message: text(message, 'message'),
-    durationMs,
   };
   adminNotice.set(notice);
   return notice.id;
