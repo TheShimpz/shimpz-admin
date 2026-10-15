@@ -240,6 +240,8 @@ body, [data-slot="workspace-stage"], [data-slot="workspace-main"], .authenticate
 input, textarea, select { border-radius: 5px !important; }
 /* The shared controls that force square corners take the same light rounding; round avatars stay round. */
 .shimpz-button:not(.supervisor-menu .trigger), .shimpz-choice-item, .shimpz-text-action, select { border-radius: 5px !important; }
+/* A notice's accent is one edge, a straight line: its ends never curve with the shared rounding. */
+.shimpz-notice { border-radius: 0; }
 /* Closed boxes take the same chamfered cuts as buttons and cards: Team monograms, menu panels, popovers, dialogs. */
 .monogram { clip-path: var(--shimpz-control-shape) !important; }
 /* Larger boxes cut deeper than their rounding, so the chamfer stays visible. A dialog's frame is cut, never the dialog
