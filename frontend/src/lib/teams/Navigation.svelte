@@ -396,7 +396,7 @@
       linear-gradient(180deg, color-mix(in srgb, var(--shimpz-color-cyan) 3%, var(--shimpz-color-bg)), var(--shimpz-color-bg));
   }
   .head::after {
-    position: absolute; inset-inline: 0; inset-block-end: 0; height: 1px; content: "";
+    position: absolute; inset-inline: 0; inset-block-end: 0; height: 1px; border-radius: 0; content: "";
     background: linear-gradient(90deg, rgb(0 240 255 / 45%), rgb(255 42 109 / 25%) 55%, transparent);
   }
   /* The symbol artwork sits inside ~29% transparent margin; crop the frame to the drawn mark (137–1029 × 151–1025 of
@@ -423,6 +423,8 @@
   .team-rename { display: flex; min-width: 0; overflow: hidden; min-height: 2.75rem; align-items: center; gap: var(--gap-item); padding: var(--gap-inside) var(--gap-group); }
   .team-rename :global(.rename-field) { display: block; flex: 1 1 0; width: auto; min-width: 0; }
   .team-rename :global(.rename-field input) { width: 100%; min-width: 0; height: 1.9rem; min-height: 0; padding: 0 var(--gap-inside); color: var(--shimpz-color-text); font: 500 0.95rem/1 var(--shimpz-font-sans); background: color-mix(in srgb, var(--shimpz-color-cyan) 6%, var(--shimpz-color-bg)); border: 0; border-block-end: 1px solid var(--shimpz-color-cyan); clip-path: none; box-shadow: none; }
+  /* Its underline runs straight; the shared input rounding is !important, so this must be too. */
+  .team-rename :global(.rename-field input) { border-radius: 0 !important; }
   .team-rename :global(.rename-field input:focus) { outline: none; box-shadow: 0 1px 0 0 var(--shimpz-color-cyan); }
   .row.is-renaming .row-actions { display: none; }
   .row :global(.team-link .action-link-content) { display: flex; min-width: 0; align-items: center; gap: var(--gap-item); }
