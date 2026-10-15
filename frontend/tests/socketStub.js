@@ -8,7 +8,7 @@ export function response(status, body) {
 }
 
 /** Answer every call the code under test makes next with `stub`. */
-export function answering(stub) {
+function answering(stub) {
   socketReads.call = stub;
   return stub;
 }

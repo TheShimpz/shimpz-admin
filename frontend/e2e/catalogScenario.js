@@ -146,7 +146,7 @@ const ASSISTANTS = [
   },
 ];
 
-export const CATALOG_INSTALLED = Object.freeze(['shimpz-cloudflare', 'shimpz-exa']);
+const CATALOG_INSTALLED = Object.freeze(['shimpz-cloudflare', 'shimpz-exa']);
 
 const imageId = (assistant) => `sha256:${assistant.hex.repeat(64)}`;
 const text = (copy, locale) => copy[locale] ?? copy.en;

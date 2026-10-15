@@ -2,7 +2,7 @@
 // reference into the Assistant's English catalog, and a separate `rendered` block carries the text to show in the
 // challenge's locale. Shared by the browser tests, the unit tests, and the preview scenarios, which run in the browser.
 
-export const PACK_DIGEST = `sha256:${'5'.repeat(64)}`;
+const PACK_DIGEST = `sha256:${'5'.repeat(64)}`;
 const COPY_FIELDS = ['title', 'description', 'label', 'placeholder'];
 
 // A stable lowercase 64-hex id per message. Team derives the real id as the SHA-256 of the template; Admin verified the
@@ -28,7 +28,7 @@ export function messageReference(text, params = {}) {
  * Split a request written with plain English copy into Team's canonical request and the rendered copy. `shown`
  * replaces any rendered field (and `shown.options` any option's copy) with the text of another locale.
  */
-export function localizeRequest(plain, shown = {}) {
+function localizeRequest(plain, shown = {}) {
   const request = { ...plain };
   const rendered = {};
   for (const field of COPY_FIELDS) {
