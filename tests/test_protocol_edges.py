@@ -99,6 +99,18 @@ class PayloadEdges(unittest.TestCase):
                 )
             )
 
+    def test_storage_response_projects_a_deletion_of_the_expected_file(self) -> None:
+        usage = {"used_bytes": 0, "limit_bytes": 8, "remaining_bytes": 8}
+        deleted = {"team_id": "team", "id": "a" * 32, "deleted": True, **usage}
+        projected = payload.project_storage_response(
+            deleted, kind="delete", expected_team_id="team", expected_file_id="a" * 32, include_team_id=True
+        )
+        self.assertEqual(projected, deleted)
+        other = payload.project_storage_response(
+            deleted, kind="delete", expected_team_id="team", expected_file_id="b" * 32, include_team_id=True
+        )
+        self.assertIsNone(other)
+
 
 class ProgressEdges(unittest.TestCase):
     def test_helpers_and_events_reject_invalid_values(self) -> None:
