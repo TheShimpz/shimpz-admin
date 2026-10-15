@@ -214,7 +214,7 @@ function answerEntry(value, suffix, status) {
     suffix !== 'answer' ||
     !exactKeys(value, ['id', 'kind', 'name', 'proposal_id', 'status']) ||
     typeof value.proposal_id !== 'string' ||
-    !/^[0-9a-f]{32}$/.test(value.proposal_id) ||
+    !OPAQUE_ID_RE.test(value.proposal_id) ||
     value.id !== `${value.proposal_id}:answer` ||
     !CARD_ANSWERS.has(value.status) ||
     !isRoutineName(value.name)
