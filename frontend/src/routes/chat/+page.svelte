@@ -65,7 +65,7 @@
   const transcript = new Transcript({
     teamId: () => chatTeamId,
     mounted: () => mounted,
-    team: (teamId) => $teamContext.teams.find((entry) => entry.id === teamId),
+    team: teamOf,
     words: () => words,
     error: () => error,
     setError,
@@ -181,9 +181,7 @@
   // While a reconciling sync is in flight Team may already have replaced the shown request, even after switching back.
   let humanUnanswerable = $derived(humanStale || Boolean(human.relocalizing));
   let selectedTeamId = $derived($teamContext.selectedTeamId);
-  let activeTeam = $derived(
-    $teamContext.teams.find((entry) => entry.id === selectedTeamId) ?? null,
-  );
+  let activeTeam = $derived(teamOf(selectedTeamId) ?? null);
   // The conversation stays mounted while this Team's Brain loads, needs a key, or failed; only a send needs it ready.
   let chatTeamId = $derived(
     $modelContext.phase !== 'idle' && $modelContext.teamId === selectedTeamId ? selectedTeamId : '',
@@ -339,6 +337,11 @@
     transcript.extend((key) => installPlanTurns(transcript.turns, incoming, receipt, key, words));
   }
 
+  // A listed Team by its id.
+  function teamOf(teamId) {
+    return $teamContext.teams.find((entry) => entry.id === teamId);
+  }
+
   function clearError() {
     error = '';
     errorDetail = '';
@@ -392,9 +395,6 @@
     focusWanted = true;
   });
 
-  $effect(() => {
-    if (focusWanted && mounted && chatTeamId && $modelContext.ready && !composerBusy && !integrationsOpen) void focusComposer();
-  });
 
   async function saveProviderKey(event) {
     event.preventDefault();
@@ -571,26 +571,16 @@
     liveTurn.forgetSegments();
     liveTurn.resetProgress();
     liveTurn.clearInstalled();
-    if (human.relocalizing) {
-      // The request ended before it could be opened in the selected language.
-      liveTurn.busy = false;
-      liveTurn.stopping = false;
-      resetChallengeState();
-      setError(humanRequestCopy.expired);
-      return;
-    }
-    if (human.expiredId) {
-      liveTurn.busy = false;
-      liveTurn.stopping = false;
-      resetChallengeState();
-      return;
-    }
-    if (liveTurn.busy && transcript.turns.length > 0) {
-      liveTurn.busy = false;
-      liveTurn.stopping = false;
-      resetChallengeState();
-      setError(copy.turnFailed);
-    }
+    // A request that ended before it could be opened in the selected language, one that expired, or a turn that ended
+    // without its reply: nothing of it stays live.
+    let failure;
+    if (human.relocalizing) failure = humanRequestCopy.expired;
+    else if (human.expiredId) failure = '';
+    else if (liveTurn.busy && transcript.turns.length > 0) failure = copy.turnFailed;
+    else return;
+    liveTurn.settle();
+    resetChallengeState();
+    if (failure) setError(failure);
   }
 
   // An install plan of the turn; an installed plan that continues keeps the turn running.
@@ -638,8 +628,7 @@
       author: incoming.team_name,
       receipt: liveTurn.receipt(),
     });
-    liveTurn.busy = false;
-    liveTurn.stopping = false;
+    liveTurn.settle();
     liveTurn.resetProgress();
     clearError();
     void transcript.reveal();
@@ -693,7 +682,7 @@
     closeSocket();
     if (!mounted || !expectedTeamId || chatTeamId !== expectedTeamId) return;
 
-    const expectedTeam = $teamContext.teams.find((entry) => entry.id === expectedTeamId);
+    const expectedTeam = teamOf(expectedTeamId);
     if (!expectedTeam) return;
 
     let active;
@@ -960,7 +949,9 @@
     activateTeam(nextTeamId);
   });
 
+  // The composer takes the focus whenever it turns usable, and again when a navigation asks for it (`focusWanted`).
   $effect(() => {
+    void focusWanted;
     if (mounted && chatTeamId && $modelContext.ready && !composerBusy && !integrationsOpen) void focusComposer();
   });
 
