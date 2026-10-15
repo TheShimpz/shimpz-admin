@@ -1,12 +1,11 @@
 <script>
   import { Notice } from '@shimpz/frontend';
 
-  import { call } from '#lib/session/socket.js';
   import { locale } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
   import RoutineModal from '#lib/routines/Modal.svelte';
   import RoutineRunSteps from '#lib/routines/run/Steps.svelte';
-  import { readRunDiagnostics, runBinding } from '#lib/routines/protocol.js';
+  import { RunDiagnostics, entryBinding } from '#lib/routines/run/diagnostics.svelte.js';
   import { attemptWords, conditionWords, instantWords, routineErrorMessage } from '#lib/routines/words.js';
 
   // One Routine run's execution details (ADR-0092 section 8): its own step records, read page by page for its
@@ -19,22 +18,14 @@
   let copy = $derived(routineCopy.details);
   let errors = $derived(routineCopy.errors);
   let runId = $derived(entry.runId);
-  let binding = $derived(runBinding(entry.routineId, entry.detail.plan ?? null));
+  let binding = $derived(entryBinding(entry));
 
   const id = $props.id();
-  let diagnostics = $state(null);
-  let error = $state('');
+  const reading = new RunDiagnostics();
+  let diagnostics = $derived(reading.value);
+  let error = $derived(reading.failure === null ? '' : routineErrorMessage(reading.failure, errors));
 
-  $effect(() => {
-    let current = true;
-    diagnostics = null;
-    error = '';
-    readRunDiagnostics(call, teamId, runId)
-      .then((value) => { if (current) diagnostics = value; })
-      .catch((failure) => { if (current) error = routineErrorMessage(failure, errors); });
-    return () => { current = false; };
-  });
-
+  $effect(() => reading.read(teamId, runId));
 </script>
 
 <RoutineModal class="routine-run-details" size="md" title={copy.open} {onclose}>

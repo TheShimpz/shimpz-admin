@@ -1,11 +1,11 @@
 <script>
-  import { call } from '#lib/session/socket.js';
   import { locale } from '#lib/i18n/index.js';
   import RoutineModal from '#lib/routines/Modal.svelte';
   import RoutineResult from '#lib/routines/result/View.svelte';
   import RoutineRunSteps from '#lib/routines/run/Steps.svelte';
   import RoutineTag from '#lib/routines/Tag.svelte';
-  import { MAX_ROUTINE_STEPS, readRunDiagnostics, runBinding } from '#lib/routines/protocol.js';
+  import { MAX_ROUTINE_STEPS } from '#lib/routines/protocol.js';
+  import { RunDiagnostics, entryBinding } from '#lib/routines/run/diagnostics.svelte.js';
   import { countWords, instantWords } from '#lib/routines/words.js';
   import { attemptsByStep, resultView } from '#lib/routines/reading.js';
 
@@ -27,14 +27,15 @@
   const WAITING = ['held', 'paused', 'frozen'];
 
   const id = $props.id();
-  let diagnostics = $state(null);
-  let unavailable = $state(false);
+  const reading = new RunDiagnostics();
   let copied = $state('');
   let copiedTimer;
 
   let output = $derived(entry.detail.output?.state === 'shown' ? entry.detail.output : null);
   let view = $derived(output ? resultView(output.value) : null);
-  let binding = $derived(runBinding(entry.routineId, entry.detail.plan ?? null));
+  let binding = $derived(entryBinding(entry));
+  let diagnostics = $derived(reading.value);
+  let unavailable = $derived(reading.failure !== null);
   // A completed run's notice says how many steps its revision has; any other run's first page of records does.
   let total = $state(null);
   let steps = $derived(entry.detail.plan?.steps ?? total);
@@ -44,18 +45,7 @@
   let badge = $derived(TAGS[tone] ?? TAGS.neutral);
   let label = $derived(status.charAt(0).toLocaleUpperCase($locale) + status.slice(1));
 
-
-  $effect(() => {
-    const runId = entry.runId;
-    const team = teamId;
-    let current = true;
-    diagnostics = null;
-    unavailable = false;
-    readRunDiagnostics(call, team, runId)
-      .then((value) => { if (current) diagnostics = value; })
-      .catch(() => { if (current) unavailable = true; });
-    return () => { current = false; };
-  });
+  $effect(() => reading.read(teamId, entry.runId));
 
   $effect(() => () => clearTimeout(copiedTimer));
 
