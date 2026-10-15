@@ -59,7 +59,6 @@ _AUTHENTICATE_ACTION_REQUEST = chat_human.LocalPasswordAuthority(
 )
 _LOCAL_AUTH_CONTEXT = local_auth.Context()
 auth.blocklist()  # a missing password blocklist fails at import, not at the first Supervisor setup
-TEAM_CREDENTIALS_ENABLED = os.environ.get("SHIMPZ_TEAM_CREDENTIALS_ENABLED", "1").strip() == "1"
 
 UI_DIR = Path(__file__).resolve().parent.parent / "frontend" / "build"
 COOKIE = "shimpz_admin"
@@ -351,13 +350,11 @@ async def session(request: Request):
             "authenticated": False,
             "initialized": True,
             "authentication_state": authentication_state,
-            "features": {"teamCredentials": TEAM_CREDENTIALS_ENABLED},
         }
     evidence = _session_evidence(request.cookies)
     response = {
         "profile": "local",
         "authenticated": evidence is not None,
-        "features": {"teamCredentials": TEAM_CREDENTIALS_ENABLED},
         "initialized": authentication_state != auth.RECORD_STATE_UNINITIALIZED,
         "authentication_state": authentication_state,
     }

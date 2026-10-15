@@ -51,7 +51,7 @@ class AuthHTTPTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             store = root / "admin.json"
-            with AdminHTTPServer(root, SHIMPZ_TEAM_CREDENTIALS_ENABLED="0") as server:
+            with AdminHTTPServer(root) as server:
                 self._exercise_lifecycle(server.port, store)
 
     def test_real_http_login_locks_after_five_rejected_passwords(self) -> None:
@@ -104,7 +104,6 @@ class AuthHTTPTests(unittest.TestCase):
                             "authenticated": False,
                             "initialized": True,
                             "authentication_state": "recovery-required",
-                            "features": {"teamCredentials": True},
                         },
                     ),
                 )
@@ -128,7 +127,6 @@ class AuthHTTPTests(unittest.TestCase):
                 "authenticated": False,
                 "initialized": False,
                 "authentication_state": "uninitialized",
-                "features": {"teamCredentials": False},
             },
         )
         self.assertEqual(request(port, "GET", GATED)[0], 401)

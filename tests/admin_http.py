@@ -97,9 +97,8 @@ def ticket_cookie(set_cookie: str) -> str | None:
 
 
 class AdminHTTPServer:
-    def __init__(self, root: Path, **environment: str) -> None:
+    def __init__(self, root: Path) -> None:
         self.root = root
-        self.environment = environment
         self.port = self._free_port()
         self.process: subprocess.Popen[str] | None = None
 
@@ -133,7 +132,6 @@ class AdminHTTPServer:
                 "SHIMPZ_ADMIN_ALLOWED_ORIGINS": f"http://localhost:{self.port},http://127.0.0.1:{self.port}",
                 "SHIMPZ_LOCAL_SUPERVISOR_PUBLIC_KEY_FILE": str(supervisor_directory / "public.pem"),
                 "SHIMPZ_LOCAL_SUPERVISOR_KEY_GROUP": grp.getgrgid(os.getgid()).gr_name,
-                **self.environment,
             },
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
