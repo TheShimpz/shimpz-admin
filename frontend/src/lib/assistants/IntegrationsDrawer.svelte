@@ -329,7 +329,7 @@
 </Drawer>
 
 <style>
-  :global([data-slot="drawer"]#assistant-integrations-drawer) { min-height: 0; grid-template-rows: auto auto minmax(0, 1fr); gap: var(--gap-group); overflow: hidden; }
+  :global([data-slot="drawer"]#assistant-integrations-drawer) { min-height: 0; grid-template-rows: auto auto minmax(0, 1fr); gap: var(--gap-group); overflow: hidden; border-radius: 0; }
   :global([data-slot="drawer"]#assistant-integrations-drawer:not([hidden])) { display: grid; }
   :global([data-slot="drawer"]#assistant-integrations-drawer) > header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: var(--gap-group); }
   :global([data-slot="drawer"]#assistant-integrations-drawer) > header p { margin: 0 0 var(--gap-inside); color: var(--accent); font-family: var(--font-mono); font-size: 0.55rem; letter-spacing: 0.12em; text-transform: uppercase; }
