@@ -624,7 +624,6 @@ export default {
     queued: '等待中',
     sending: '上传中',
     pdfText: 'PDF：仅文本',
-    willNotRead: '不会被读取',
     notRead: '无法读取',
     kinds: {
       image: '图片',

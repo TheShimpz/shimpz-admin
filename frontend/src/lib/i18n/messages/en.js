@@ -637,7 +637,6 @@ export default {
     queued: 'Waiting',
     sending: 'Uploading',
     pdfText: 'PDF: text only',
-    willNotRead: 'Won\'t be read',
     notRead: 'Couldn\'t be read',
     kinds: {
       image: 'Image',

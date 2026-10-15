@@ -624,7 +624,6 @@ export default {
     queued: '待機中',
     sending: 'アップロード中',
     pdfText: 'PDF：テキストのみ',
-    willNotRead: '読み取られません',
     notRead: '読み取れませんでした',
     kinds: {
       image: '画像',

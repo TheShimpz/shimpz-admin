@@ -624,7 +624,6 @@ export default {
     queued: 'Na fila',
     sending: 'Enviando',
     pdfText: 'PDF: só texto',
-    willNotRead: 'Não será lido',
     notRead: 'Não pôde ser lido',
     kinds: {
       image: 'Imagem',

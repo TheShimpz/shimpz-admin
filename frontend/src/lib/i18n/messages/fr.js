@@ -624,7 +624,6 @@ export default {
     queued: 'En attente',
     sending: 'Envoi',
     pdfText: 'PDF : texte seulement',
-    willNotRead: 'Ne sera pas lu',
     notRead: 'N\'a pas pu être lu',
     kinds: {
       image: 'Image',

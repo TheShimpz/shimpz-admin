@@ -624,7 +624,6 @@ export default {
     queued: 'En espera',
     sending: 'Subiendo',
     pdfText: 'PDF: solo texto',
-    willNotRead: 'No se leerá',
     notRead: 'No se pudo leer',
     kinds: {
       image: 'Imagen',

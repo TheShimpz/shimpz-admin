@@ -624,7 +624,6 @@ export default {
     queued: 'في الانتظار',
     sending: 'جارٍ الرفع',
     pdfText: 'PDF: النص فقط',
-    willNotRead: 'لن يُقرأ',
     notRead: 'تعذّرت قراءته',
     kinds: {
       image: 'صورة',
