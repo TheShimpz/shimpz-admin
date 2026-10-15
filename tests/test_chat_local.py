@@ -726,6 +726,8 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         invalid = (
             {**base, "turn_id": "c" * 32},
             {**base, "requirements": [{**requirement, "scopes": []}]},
+            {**base, "requirements": [{**requirement, "scopes": ["tweet read"]}]},
+            {**base, "requirements": [{**requirement, "actions": []}]},
             {**base, "requirements": [{**requirement, "actions": [{}]}]},
         )
         for body in invalid:
