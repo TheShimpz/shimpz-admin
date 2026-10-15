@@ -15,10 +15,10 @@ from collections.abc import Iterator, Mapping
 from pathlib import Path
 
 from history import context as conversation_context
+from history import reply as reply_payload
 from session import topics
 
 from chat import assistant_install, store_catalog
-from chat import local as chat_local
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import routine_notice as routine_notice_contract
@@ -363,57 +363,6 @@ def append_user(team_id: object, turn_id: object, message: object, *, files: obj
     )
 
 
-# A reply's Routine card for the person to confirm, what Team asks first, or why the recording made none: at most one,
-# never with a clarification, so a reload restores the same question or card for the same turn.
-_ROUTINE_REPLY_FIELDS = {
-    "routine_proposal": routine_proposal_contract.canonical_proposal,
-    "routine_refusal": routine_proposal_contract.canonical_refusal,
-    "routine_question": routine_proposal_contract.canonical_question,
-}
-
-
-def _routine_reply(value: Mapping[str, object], clarification: object) -> dict[str, object]:
-    present = [name for name in _ROUTINE_REPLY_FIELDS if name in value]
-    if not present:
-        return {}
-    admitted = _ROUTINE_REPLY_FIELDS[present[0]](value[present[0]])
-    if len(present) > 1 or clarification is not None or admitted is None or admitted != value[present[0]]:
-        raise ValueError("chat history Routine reply is invalid")
-    return {present[0]: admitted}
-
-
-def _receipt(value: object) -> list[dict[str, object]]:
-    """A reply's receipt (ADR-0082): the Team progress its page was shown, in the order it arrived.
-
-    Each event is a canonical public Team progress event with the sequence it was delivered under and the delivery it
-    came in, numbered in order from 0; within a delivery the sequence only increases.
-    """
-    if not isinstance(value, list) or not 1 <= len(value) <= chat_local.MAX_PUBLIC_PROGRESS_EVENTS:
-        raise ValueError("chat history receipt is invalid")
-    receipt: list[dict[str, object]] = []
-    for item in value:
-        if not isinstance(item, dict):
-            raise ValueError("chat history receipt is invalid")
-        segment, seq = item.get("segment"), item.get("seq")
-        event = {key: field for key, field in item.items() if key not in {"segment", "seq"}}
-        try:
-            public = chat_local.canonical_public_progress(event)
-        except ValueError:
-            raise ValueError("chat history receipt is invalid") from None
-        previous = (receipt[-1]["segment"], receipt[-1]["seq"]) if receipt else (0, 0)
-        if (
-            public != event
-            or public["origin"] != "team"
-            or type(segment) is not int
-            or type(seq) is not int
-            or not 1 <= seq <= chat_local.MAX_PUBLIC_PROGRESS_EVENTS
-            or not ((segment == previous[0] and seq > previous[1]) or (receipt and segment == previous[0] + 1))
-        ):
-            raise ValueError("chat history receipt is invalid")
-        receipt.append({"segment": segment, "seq": seq, **public})
-    return receipt
-
-
 def _fits(entry: Mapping[str, object]) -> bool:
     try:
         _encoded(entry)
@@ -426,7 +375,7 @@ def append_reply(team_id: object, turn_id: object, event: object, *, receipt: ob
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
     fields = {"type", "team_id", "team_name", "reply", "clarification"}
-    optional = {"usage", *_ROUTINE_REPLY_FIELDS}
+    optional = {"usage", *reply_payload.ROUTINE_FIELDS}
     if not isinstance(event, Mapping) or set(event) - optional != fields:
         raise ValueError("chat history reply event is invalid")
     if event["type"] != "done" or event["team_id"] != canonical_team:
@@ -447,11 +396,11 @@ def append_reply(team_id: object, turn_id: object, event: object, *, receipt: ob
         # Stored so a reload shows what the turn consumed under its reply; it never enters the Brain window.
         entry["usage"] = usage
     # Stored so a reload shows the same Routine card or refusal under the reply (ADR-0101 section 5.2).
-    entry.update(_routine_reply(event, entry.get("clarification")))
+    entry.update(reply_payload.routine_reply(event, entry.get("clarification")))
     if receipt is not None:
         # Stored so a reload lists the same steps under the reply's usage line; it never enters the Brain window. A
         # receipt too large for its row is left out, and the reply is kept without it.
-        entry["receipt"] = _receipt(receipt)
+        entry["receipt"] = reply_payload.receipt(receipt)
         if not _fits(entry):
             del entry["receipt"]
     return _append(
@@ -720,9 +669,9 @@ def _validate_stored_message(payload: dict[str, object]) -> None:
     if role == "assistant" and "receipt" in payload:
         expected.add("receipt")
         # Only an exact receipt is admitted, so a stored one is valid exactly as written.
-        _receipt(payload["receipt"])
+        reply_payload.receipt(payload["receipt"])
     if role == "assistant":
-        expected.update(_routine_reply(payload, payload.get("clarification")))
+        expected.update(reply_payload.routine_reply(payload, payload.get("clarification")))
     if role == "user" and "files" in payload:
         expected.add("files")
         _file_references(payload["files"])

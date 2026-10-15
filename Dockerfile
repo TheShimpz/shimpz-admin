@@ -98,7 +98,7 @@ COPY --link backend/chat/delivery/challenge.py backend/chat/delivery/plan.py \
     backend/chat/delivery/progress.py backend/chat/delivery/route.py \
     backend/chat/delivery/sync.py backend/chat/delivery/terminal.py \
     backend/chat/delivery/uninstall.py ./chat/delivery/
-COPY --link backend/history/context.py backend/history/delivery.py backend/history/http.py backend/history/store.py \
+COPY --link backend/history/context.py backend/history/delivery.py backend/history/http.py backend/history/reply.py backend/history/store.py \
     ./history/
 COPY --link backend/integrations/assistants.py backend/integrations/authorization.py backend/integrations/cloudflare.py \
     backend/integrations/handoff.py ./integrations/
