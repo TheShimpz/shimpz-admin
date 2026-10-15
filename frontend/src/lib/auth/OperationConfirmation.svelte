@@ -1,11 +1,11 @@
 <script>
-  import { Notice, RadioField, TextField } from '@shimpz/frontend';
   import { get } from 'svelte/store';
 
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n/index.js';
   import { authenticateWithPasskey, passkeyFailure } from '#lib/auth/passkey.js';
+  import SecondFactor from '#lib/auth/SecondFactor.svelte';
   import { SecurityError } from '#lib/auth/security.js';
   import { sessionContext } from '#lib/session/context.js';
   import { LocalApiError } from '#lib/api.js';
@@ -39,6 +39,7 @@
   let busy = $state(false);
   let live = true;
   let ready = $derived(password.length > 0 && (method === 'passkey' || /^[0-9]{6}$/.test(code)));
+  let fields = $derived({ ...$t('security'), passkeyHint });
 
   $effect(() => {
     document.getElementById(`${id}-password`)?.focus();
@@ -117,23 +118,8 @@
 
 <form class="regeneration" onsubmit={submit}>
   <p class="lead">{lead}</p>
-  <TextField id={`${id}-password`} label={$t('security.password')} type="password" bind:value={password}
-    autocomplete="current-password" required disabled={busy} error={passwordError} />
-  {#if passkeyOffered}
-    <fieldset class="method" disabled={busy}>
-      <legend>{$t('security.method')}</legend>
-      <RadioField id={`${id}-method-code`} name={`${id}-method`} label={$t('security.methodCode')} optionValue="totp" bind:value={method} />
-      <RadioField id={`${id}-method-passkey`} name={`${id}-method`} label={$t('security.methodPasskey')} optionValue="passkey" bind:value={method} />
-    </fieldset>
-  {/if}
-  {#if method === 'totp'}
-    <TextField id={`${id}-code`} label={$t('security.code')} type="text" bind:value={code}
-      autocomplete="one-time-code" inputmode="numeric" pattern={'[0-9]{6}'} minlength="6" maxlength="6" required
-      disabled={busy} error={codeError} />
-  {:else}
-    <p class="hint">{passkeyHint}</p>
-  {/if}
-  {#if error}<Notice variant="error">{error}</Notice>{/if}
+  <SecondFactor {id} copy={fields} {busy} {passkeyOffered} bind:password bind:code bind:method {passwordError} {codeError}
+    {error} />
   <footer class="foot">
     <DialogAction kind="cancel" type="button" disabled={busy} onclick={oncancel}>{$t('security.cancel')}</DialogAction>
     <DialogAction kind="confirm" type="submit" disabled={busy || !ready || !$commandsReady}>{busy ? working : action}</DialogAction>
@@ -143,9 +129,6 @@
 <style>
   .regeneration { display: grid; gap: var(--gap-group); margin: 0; }
   .lead { margin: 0; color: var(--text-dim); line-height: 1.6; }
-  .method { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--gap-group); min-width: 0; margin: 0; padding: 0; border: 0; }
-  .method legend { margin-block-end: var(--gap-item); padding: 0; font: 600 0.7rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.07em; }
-  .hint { margin: 0; color: var(--text-dim); font-size: 0.8rem; }
   .foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--gap-group); }
   .foot > :global(:first-child) { margin-inline-end: auto; }
 </style>

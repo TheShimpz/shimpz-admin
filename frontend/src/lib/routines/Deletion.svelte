@@ -1,5 +1,4 @@
 <script>
-  import { Notice, RadioField, TextField } from '@shimpz/frontend';
   import { get } from 'svelte/store';
 
   import { call, commandsReady, outcomeUnknown } from '#lib/session/socket.js';
@@ -7,6 +6,7 @@
   import { t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
   import { authenticateWithPasskey, passkeyFailure } from '#lib/auth/passkey.js';
+  import SecondFactor from '#lib/auth/SecondFactor.svelte';
   import { beginRoutineDeletion, deleteRoutine, RoutineError } from '#lib/routines/protocol.js';
   import { routineErrorMessage } from '#lib/routines/words.js';
   import { sessionContext } from '#lib/session/context.js';
@@ -32,6 +32,8 @@
     'passkey-failed', 'passkey-suspended', 'authentication-unavailable', 'authentication-origin-refused',
   ]);
   let ready = $derived(password.length > 0 && (method === 'passkey' || /^[0-9]{6}$/.test(code)));
+  // The fields read this deletion's own words; the method's legend is every confirmation's.
+  let fields = $derived({ ...copy, method: $t('security.method') });
 
   $effect(() => {
     document.getElementById(`${id}-password`)?.focus();
@@ -115,26 +117,11 @@
 <form class="deletion" onsubmit={submit}>
   <div class="content">
     <p class="lead">{copy.lead}</p>
-    <TextField id={`${id}-password`} label={copy.password} type="password" bind:value={password}
-      autocomplete="current-password" required disabled={busy} error={passwordError} />
-    {#if passkeyOffered}
-      <fieldset class="method" disabled={busy}>
-        <legend>{copy.method}</legend>
-        <RadioField id={`${id}-method-code`} name={`${id}-method`} label={copy.methodCode} optionValue="totp" bind:value={method} />
-        <RadioField id={`${id}-method-passkey`} name={`${id}-method`} label={copy.methodPasskey} optionValue="passkey" bind:value={method} />
-      </fieldset>
-    {/if}
-    {#if method === 'totp'}
-      <TextField id={`${id}-code`} label={copy.code} hint={copy.codeHint} type="text" bind:value={code}
-        autocomplete="one-time-code" inputmode="numeric" pattern={'[0-9]{6}'} minlength="6" maxlength="6" required
-        disabled={busy} error={codeError} />
-    {:else}
-      <p class="hint">{copy.passkeyHint}</p>
-    {/if}
-    {#if error}<Notice variant="error">{error}</Notice>{/if}
+    <SecondFactor {id} copy={fields} {busy} {passkeyOffered} bind:password bind:code bind:method {passwordError} {codeError}
+      {error} />
   </div>
   <footer class="foot">
-    <DialogAction kind="cancel" type="button" disabled={busy} onclick={oncancel}>{copy.cancel}</DialogAction>
+    <DialogAction kind="cancel" type="button" disabled={busy} onclick={oncancel}>{$t('security.cancel')}</DialogAction>
     <DialogAction kind="danger" type="submit" disabled={busy || !ready || !$commandsReady}>{busy ? copy.deleting : copy.delete}</DialogAction>
   </footer>
 </form>
@@ -143,9 +130,6 @@
   .deletion { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; margin: 0; }
   .content { display: grid; align-content: start; gap: var(--gap-group); min-width: 0; padding: var(--gap-panel); overflow: auto; }
   .lead { max-width: 62ch; margin: 0; color: var(--shimpz-color-text); font-size: 0.9rem; line-height: 1.6; }
-  .method { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: var(--gap-group); min-width: 0; margin: 0; padding: 0; border: 0; }
-  .method legend { margin-block-end: var(--gap-item); padding: 0; color: var(--shimpz-color-text); font: 600 0.7rem/1.2 var(--shimpz-font-mono); letter-spacing: 0.07em; }
-  .hint { margin: 0; color: var(--shimpz-color-text-dim); font-size: 0.8rem; line-height: 1.45; }
   .foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--gap-group); padding: var(--gap-group) var(--gap-panel); border-block-start: 1px solid var(--shimpz-color-border); }
   .foot > :global(:first-child) { margin-inline-end: auto; }
   @media (forced-colors: active) { .foot { border-color: CanvasText; } }
