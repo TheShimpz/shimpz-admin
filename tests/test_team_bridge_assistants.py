@@ -113,7 +113,6 @@ class _LiveTeamCase(unittest.TestCase):
         env.update(
             {
                 "PYTHONPATH": str(ROOT / "backend"),
-                "SHIMPZ_REPO": str(self.root),
                 "SHIMPZ_ADMIN_STORE": str(self.root / "admin.json"),
                 "SHIMPZ_TEAM_URL": self.team_url,
                 "SHIMPZ_TEAM_TOKEN_FILE": str(self.token_file),
@@ -816,15 +815,6 @@ def _run_asgi_probe(scenario: str) -> None:
     def request(method: str, path: str, payload: bytes, **options: object) -> dict[str, object]:
         status, body = asyncio.run(_asgi_request(admin_app, method, path, payload, token=token, **options))
         return {"status": status, "body": body}
-
-    async def json_requests(method: str, path: str, cases: tuple[tuple[str, object], ...]) -> dict[str, object]:
-        results = {}
-        for key, payload in cases:
-            status, body = await _asgi_request(
-                admin_app, method, path, json.dumps(payload, separators=(",", ":")).encode(), token=token
-            )
-            results[key] = {"status": status, "body": body}
-        return results
 
     boundary = "shimpz-admin-upload-boundary"
     multipart = {"content-type": f"multipart/form-data; boundary={boundary}"}

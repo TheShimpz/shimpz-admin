@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from history import store as history_store
-from http_request import http_request, json_request, remote
+from http_request import http_request, remote
 from team import transport
 
 
@@ -30,11 +30,6 @@ def _request(
     if cookie:
         request_headers.append((b"cookie", f"shimpz_admin={cookie}".encode()))
     return http_request(path, remote("192.0.2.20"), body=body, headers=request_headers)
-
-
-def _json_request(payload: object, *, cookie: str = "") -> Request:
-    cookies = {"shimpz_admin": cookie} if cookie else None
-    return json_request("/api/test", payload, peer=remote("192.0.2.20"), cookies=cookies, browser=())
 
 
 class AppRouteEdgeTests(app_import.RouteStatusAssertions):

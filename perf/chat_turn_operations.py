@@ -407,7 +407,6 @@ def main() -> int:
             with mock.patch.dict(
                 os.environ,
                 {
-                    "SHIMPZ_REPO": str(root),
                     "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
                     "SHIMPZ_CHAT_HISTORY_STORE": str(root / "history.sqlite3"),
                     "SHIMPZ_ADMIN_ALLOWED_ORIGINS": "http://localhost:7777,http://127.0.0.1:7777",

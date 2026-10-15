@@ -22,7 +22,6 @@ def temporary_root(case: type[unittest.TestCase]) -> Path:
 def environment(root: Path, extra: dict[str, str] | None = None) -> dict[str, str]:
     """Return the Local Admin environment for a Space rooted at ``root``, plus any extra variables."""
     return {
-        "SHIMPZ_REPO": str(root),
         "SHIMPZ_ADMIN_STORE": str(root / "admin.json"),
         **(extra or {}),
     }
