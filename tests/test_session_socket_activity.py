@@ -1,6 +1,7 @@
 """The Supervisor's own input, reported on the session socket, alone restarts its idle time (ADR-0114)."""
 
 import asyncio
+import importlib
 import time
 from unittest import mock
 
@@ -48,7 +49,7 @@ class SessionSocketActivityTests(SessionSocketCase):
         asyncio.run(scenario())
 
     def test_a_socket_names_the_commit_its_admin_was_built_from_as_it_opens(self) -> None:
-        session_socket = __import__("session.socket", fromlist=["socket"])
+        session_socket = importlib.import_module("session.socket")
 
         async def scenario() -> None:
             with mock.patch.object(session_socket, "SOURCE_BUILD", ("a" * 40, 1_791_884_573)):

@@ -38,7 +38,7 @@ class AppOAuthEdgeTests(app_import.RouteStatusAssertions):
     def call(self, operation: str, *args: object) -> tuple[int, object]:
         """One authorization operation as its session call answers it."""
         authorization = self.admin_app.authorization
-        return __import__("session.lane", fromlist=["lane"]).http(getattr(authorization, operation), *args)
+        return importlib.import_module("session.lane").http(getattr(authorization, operation), *args)
 
     def authorize(self, team_id: str = "team_1") -> tuple[int, object]:
         pair = {"assistant_id": "shimpz-cloudflare", "integration_id": "cloudflare"}

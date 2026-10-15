@@ -1,7 +1,10 @@
 """The Admin session socket (ADR-0114): admission, per-frame checks, calls, budgets, and closure."""
 
 import asyncio
+import importlib
 import json
+import threading
+import time
 from unittest import mock
 
 from tests.session_socket_case import SessionSocketCase
@@ -226,8 +229,8 @@ class SessionSocketFrameTests(SessionSocketCase):
         external = "https://developer.example.test"
         workers = 4
         started = []
-        busy = __import__("threading").Event()
-        release = __import__("threading").Event()
+        busy = threading.Event()
+        release = threading.Event()
 
         def listing():
             started.append(True)
@@ -358,7 +361,7 @@ class SessionSocketClosureTests(SessionSocketCase):
         state = self.admin_app.state
         state.add_passkey(dict(PASSKEY), state.factor_generation())
         self.token = self.admin_app.auth.issue_session(state.get()["session_secret"], "webauthn")
-        passkeys = __import__("mfa.passkeys", fromlist=["passkeys"])
+        passkeys = importlib.import_module("mfa.passkeys")
 
         def regress() -> None:
             original = state.passkey_for_authentication("credential_A", "http://localhost:7777")
@@ -373,7 +376,7 @@ class SessionSocketClosureTests(SessionSocketCase):
 
     def test_a_recovery_code_spent_closes_every_socket_at_once(self) -> None:
         state = self.admin_app.state
-        mfa_helper = __import__("tests.mfa_helper", fromlist=["mfa_helper"])
+        mfa_helper = importlib.import_module("tests.mfa_helper")
 
         def spend() -> None:
             candidate = state.recovery_candidate(mfa_helper.recovery_codes()[0])
@@ -399,7 +402,7 @@ class SessionSocketClosureTests(SessionSocketCase):
         auth = self.admin_app.auth
         secret = self.admin_app.state.get()["session_secret"]
         # A session signed in almost a day ago ends in a moment; its quiet socket closes then, with no frame sent.
-        self.token = auth.issue_session(secret, "totp", issued_at=int(__import__("time").time()) - auth.TTL + 1)
+        self.token = auth.issue_session(secret, "totp", issued_at=int(time.time()) - auth.TTL + 1)
 
         async def scenario() -> None:
             websocket = await self._connect()
@@ -444,8 +447,8 @@ class SessionSocketClosureTests(SessionSocketCase):
         asyncio.run(scenario())
 
     def test_closing_stops_the_active_turn_as_a_closed_v7_socket_did(self) -> None:
-        started = __import__("threading").Event()
-        release = __import__("threading").Event()
+        started = threading.Event()
+        release = threading.Event()
 
         def turn(*_args, **_kwargs):
             started.set()
@@ -513,7 +516,7 @@ class SessionSocketTopicTests(SessionSocketCase):
         asyncio.run(scenario())
 
     def test_queued_changes_coalesce_to_the_newest_revision(self) -> None:
-        outbound = __import__("session.outbound", fromlist=["outbound"]).Outbound(limit=4096)
+        outbound = importlib.import_module("session.outbound").Outbound(limit=4096)
         outbound.put('{"type":"result"}')
         for revision in range(1, 6):
             outbound.put(json.dumps({"type": "changed", "topic": "teams", "revision": revision}), topic="teams")
@@ -550,7 +553,7 @@ class SessionSocketTopicTests(SessionSocketCase):
         asyncio.run(scenario())
 
     def test_routine_notices_and_runs_raise_the_teams_routines(self) -> None:
-        delivery = __import__("routine.delivery", fromlist=["delivery"])
+        delivery = importlib.import_module("routine.delivery")
         changed = []
         notice = {"team_id": "team_1", "notice_id": "n", "version": 1}
         with (
@@ -566,7 +569,7 @@ class SessionSocketTopicTests(SessionSocketCase):
 class SessionSocketWatcherTests(SessionSocketCase):
     def setUp(self) -> None:
         super().setUp()
-        watcher_module = __import__("session.watcher", fromlist=["watcher"])
+        watcher_module = importlib.import_module("session.watcher")
         self.values = {"local-assistants": [1, 1, 2]}
         self.reads = []
 
@@ -634,7 +637,7 @@ class SessionSocketWatcherTests(SessionSocketCase):
 
 class SessionSocketWatchedValueTests(SessionSocketCase):
     def test_a_watched_read_compares_only_what_the_page_sees_never_teams_per_request_trace(self) -> None:
-        watcher_module = __import__("session.watcher", fromlist=["watcher"])
+        watcher_module = importlib.import_module("session.watcher")
         bridge = self.methods.team_order.bridge
         listed = [{"team_id": "team_1", "team_name": "Marketing", "status": "running"}]
         failed = {"detail": "Team is unavailable"}
@@ -730,7 +733,7 @@ class StepUpFoundationTests(SessionSocketCase):
     """A step-up ticket issued over a socket keeps every binding it has and also dies with its socket or session."""
 
     def test_a_socket_bound_ticket_is_spent_only_by_its_own_socket_and_session(self) -> None:
-        tickets = __import__("mfa.tickets", fromlist=["tickets"])
+        tickets = importlib.import_module("mfa.tickets")
         store = tickets.TicketStore()
         own = tickets.Binding("s" * 64, "a" * 32)
         for presented in (None, tickets.Binding("s" * 64, "b" * 32), tickets.Binding("t" * 64, "a" * 32)):
@@ -764,7 +767,7 @@ class StepUpFoundationTests(SessionSocketCase):
             self.assertTrue(self.registry.REGISTRY.live(binding))
             await websocket.disconnect()
             self.assertFalse(self.registry.REGISTRY.live(binding))
-            with self.assertRaises(__import__("mfa.tickets", fromlist=["tickets"]).TicketError):
+            with self.assertRaises(importlib.import_module("mfa.tickets").TicketError):
                 context.ticket_store.consume(token, "operation", "recovery-codes", binding)
 
         asyncio.run(scenario())

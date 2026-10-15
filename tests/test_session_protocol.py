@@ -1,5 +1,6 @@
 """The Admin session socket protocol replays its golden vectors (ADR-0114)."""
 
+import importlib
 import json
 import sys
 import unittest
@@ -96,7 +97,7 @@ class SessionProtocolVectorTests(unittest.TestCase):
             frames.encode(frames.result("c", 200, {"text": "x" * frames.MAX_OUTBOUND_BYTES}))
 
     def test_a_full_history_page_fits_one_result_frame(self) -> None:
-        history = __import__("history.store", fromlist=["store"])
+        history = importlib.import_module("history.store")
         # The largest page the store returns: its byte bound of stored rows, each re-serialized with its envelope.
         entry = {
             "id": "a" * 32 + ":reply",

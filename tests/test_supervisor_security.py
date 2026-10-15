@@ -322,7 +322,7 @@ class SecurityRouteTests(unittest.TestCase):
 
         A socket Admin refuses to open answers as the HTTP gate did: 401 signed out, 403 another origin's page.
         """
-        socket_fixtures = __import__("tests.chat_socket_fixtures", fromlist=["chat_socket_fixtures"])
+        socket_fixtures = importlib.import_module("tests.chat_socket_fixtures")
         origin = request.headers.get("origin")
 
         async def answer() -> types.SimpleNamespace:

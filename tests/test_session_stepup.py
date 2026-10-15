@@ -11,6 +11,7 @@ operation reaches Team or Admin's state.
 import asyncio
 import contextlib
 import hashlib
+import importlib
 import json
 import threading
 from unittest import mock
@@ -42,11 +43,11 @@ class StepUpCase(SessionSocketCase):
         super().setUp()
         self.state = self.admin_app.state
         self.local_auth = self.admin_app.local_auth
-        self.tickets = __import__("mfa.tickets", fromlist=["tickets"])
-        self.totp = __import__("mfa.totp", fromlist=["totp"])
-        self.passkeys = __import__("mfa.passkeys", fromlist=["passkeys"])
-        self.stepup = __import__("session.stepup", fromlist=["stepup"])
-        self.manage = __import__("routine.manage", fromlist=["manage"])
+        self.tickets = importlib.import_module("mfa.tickets")
+        self.totp = importlib.import_module("mfa.totp")
+        self.passkeys = importlib.import_module("mfa.passkeys")
+        self.stepup = importlib.import_module("session.stepup")
+        self.manage = importlib.import_module("routine.manage")
         # Every test begins with a fresh sign-in limiter and ticket store, which the socket's gate takes as it opens.
         self.now = [0.0]
         self.context = self.local_auth.Context(ticket_store=self.tickets.TicketStore(clock=lambda: self.now[0]))

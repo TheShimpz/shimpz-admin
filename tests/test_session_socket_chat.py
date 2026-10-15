@@ -1,6 +1,7 @@
 """The Admin session socket's chat channel (ADR-0114): attach, detach, waiting frames, halting, and authority."""
 
 import asyncio
+import threading
 from unittest import mock
 
 from tests.session_socket_case import SessionSocketCase
@@ -42,8 +43,8 @@ class SessionSocketChatChannelTests(SessionSocketCase):
         asyncio.run(scenario())
 
     def test_detaching_stops_the_teams_active_turn_and_keeps_the_others(self) -> None:
-        started = __import__("threading").Event()
-        release = __import__("threading").Event()
+        started = threading.Event()
+        release = threading.Event()
 
         def turn(*_args, **_kwargs):
             started.set()
@@ -133,8 +134,8 @@ class SessionSocketWaitingTests(SessionSocketCase):
         asyncio.run(scenario())
 
     def test_a_closing_socket_ends_its_authority_before_its_channels_finish_stopping(self) -> None:
-        started = __import__("threading").Event()
-        release = __import__("threading").Event()
+        started = threading.Event()
+        release = threading.Event()
         observed = {}
 
         def turn(*_args, **_kwargs):

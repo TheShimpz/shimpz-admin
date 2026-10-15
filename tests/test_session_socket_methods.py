@@ -6,6 +6,7 @@ renews the session; and Team identity, the Team deletion password, its limiter, 
 """
 
 import asyncio
+import importlib
 import json
 from unittest import mock
 
@@ -681,7 +682,7 @@ class IntegrationAuthorizationTests(SessionMethodCase):
 
     def setUp(self) -> None:
         super().setUp()
-        self.authorization = __import__("integrations.authorization", fromlist=["authorization"])
+        self.authorization = importlib.import_module("integrations.authorization")
         handoffs = mock.patch.object(
             self.authorization, "HANDOFFS", self.authorization.handoff_store.OAuthHandoffStore(ttl_seconds=30)
         )

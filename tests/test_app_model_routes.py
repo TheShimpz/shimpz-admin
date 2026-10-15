@@ -18,7 +18,7 @@ class ModelProviderOperationTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         root = app_import.temporary_root(cls)
         cls.admin_app = app_import.load_app(root)
-        cls.models = __import__("models")
+        cls.models = importlib.import_module("models")
         cls.methods = importlib.import_module("session.methods")
 
     def test_no_route_resolves_or_returns_a_model_key(self) -> None:

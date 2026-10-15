@@ -1,6 +1,7 @@
 """The Admin-owned local OAuth browser bridge: the authorization calls and the start and callback routes."""
 
 import asyncio
+import importlib
 import sys
 import unittest
 from http.cookies import SimpleCookie
@@ -48,8 +49,8 @@ class OAuthRoutesTest(unittest.TestCase):
     def setUpClass(cls) -> None:
         root = app_import.temporary_root(cls)
         cls.admin_app = app_import.load_app(root)
-        cls.authorization = __import__("integrations.authorization", fromlist=["authorization"])
-        cls.lane = __import__("session.lane", fromlist=["lane"])
+        cls.authorization = importlib.import_module("integrations.authorization")
+        cls.lane = importlib.import_module("session.lane")
 
     def setUp(self) -> None:
         handoffs = mock.patch.object(

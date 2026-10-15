@@ -1,5 +1,6 @@
 """The base case of the Admin session socket tests (ADR-0114): an app with fresh session budgets per test."""
 
+import importlib
 from unittest import mock
 
 from tests.chat_socket_case import ChatWebSocketCase
@@ -12,16 +13,16 @@ Socket = chat_socket_fixtures.Socket
 class SessionSocketCase(ChatWebSocketCase):
     def setUp(self) -> None:
         super().setUp()
-        self.session_socket = __import__("session.socket", fromlist=["socket"])
-        self.registry = __import__("session.registry", fromlist=["registry"])
-        self.topics = __import__("session.topics", fromlist=["topics"])
-        self.budget = __import__("session.budget", fromlist=["budget"])
-        self.calls = __import__("session.calls", fromlist=["calls"])
-        self.methods = __import__("session.methods", fromlist=["methods"])
-        self.lane = __import__("session.lane", fromlist=["lane"])
+        self.session_socket = importlib.import_module("session.socket")
+        self.registry = importlib.import_module("session.registry")
+        self.topics = importlib.import_module("session.topics")
+        self.budget = importlib.import_module("session.budget")
+        self.calls = importlib.import_module("session.calls")
+        self.methods = importlib.import_module("session.methods")
+        self.lane = importlib.import_module("session.lane")
         # The real watcher's first samples would announce their topics to any test that subscribes to them; a test of
         # the watcher installs its own.
-        watcher = __import__("session.watcher", fromlist=["watcher"])
+        watcher = importlib.import_module("session.watcher")
         quiet = mock.patch.object(watcher, "WATCHER", watcher.Watcher({}))
         quiet.start()
         self.addCleanup(quiet.stop)
