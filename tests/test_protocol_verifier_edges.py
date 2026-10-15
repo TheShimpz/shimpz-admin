@@ -346,6 +346,7 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
         for mutate in (
             edit('    "zh": "只使用最后一条消息的工作",\n', ""),
             edit('"Use only the latest message\'s work"', '"Use only the latest\\nmessage\'s work"'),
+            edit('this Routine repeat?"', 'this Routine repeat? "'),
         ):
             with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
                 _execute(HTTP / "verify.py", mutate)

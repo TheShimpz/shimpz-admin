@@ -233,8 +233,13 @@ test("every interface language offers the Team protocol's answer that keeps only
   const block = source.match(/SPLIT_LATEST = \{\n([\s\S]*?)\n\}/u)[1];
   const protocol = Object.fromEntries([...block.matchAll(/"([a-z]{2})": "((?:[^"\\]|\\.)*)"/gu)].map(([, locale, label]) => [locale, label]));
   assert.deepEqual(Object.keys(protocol).sort(), Object.keys(routineMessages).sort());
+  const asked = source.match(/SPLIT_QUESTION = \{\n([\s\S]*?)\n\}/u)[1];
+  const questions = Object.fromEntries([...asked.matchAll(/"([a-z]{2})": "((?:[^"\\]|\\.)*)"/gu)].map(([, locale, text]) => [locale, text]));
+  assert.deepEqual(Object.keys(questions).sort(), Object.keys(routineMessages).sort());
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     assert.deepEqual(catalog.proposal.questions.split.answers.at(-1), protocol[locale], locale);
+    // Team binds that answer only to this exact question, so Admin must ask it word for word.
+    assert.equal(catalog.proposal.questions.split.question, questions[locale], locale);
   }
 });
 

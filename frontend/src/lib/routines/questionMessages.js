@@ -23,7 +23,7 @@ export const routineQuestionMessages = {
       answers: ['Look it up again'],
     },
     split: {
-      question: 'The work was split across several messages. Should the assistant run all of it again in one message?',
+      question: 'The work was split across several messages. What should this Routine repeat?',
       answers: ['Run it all again', 'Use only the latest message\'s work'],
     },
     rerun: {
@@ -58,7 +58,7 @@ export const routineQuestionMessages = {
       answers: ['Consultar de novo'],
     },
     split: {
-      question: 'O trabalho ficou dividido em várias mensagens. O assistente deve executá-lo todo de novo em uma mensagem?',
+      question: 'O trabalho ficou dividido em várias mensagens. O que esta rotina deve repetir?',
       answers: ['Executar tudo de novo', 'Usar só o trabalho da última mensagem'],
     },
     rerun: {
@@ -88,7 +88,7 @@ export const routineQuestionMessages = {
       answers: ['Consultar de nuevo'],
     },
     split: {
-      question: 'El trabajo quedó dividido en varios mensajes. ¿Debe el asistente ejecutarlo todo de nuevo en un mensaje?',
+      question: 'El trabajo quedó dividido en varios mensajes. ¿Qué debe repetir esta rutina?',
       answers: ['Ejecutar todo de nuevo', 'Usar solo el trabajo del último mensaje'],
     },
     rerun: {
@@ -118,7 +118,7 @@ export const routineQuestionMessages = {
       answers: ['重新查询'],
     },
     split: {
-      question: '这项工作分散在多条消息中。要让助手在一条消息中重新运行全部工作吗？',
+      question: '这项工作分散在多条消息中。此例行任务应重复什么？',
       answers: ['全部重新运行', '只使用最后一条消息的工作'],
     },
     rerun: {
@@ -153,7 +153,7 @@ export const routineQuestionMessages = {
       answers: ['La consulter de nouveau'],
     },
     split: {
-      question: 'Le travail a été réparti sur plusieurs messages. L’assistant doit-il tout exécuter de nouveau en un seul message ?',
+      question: 'Le travail a été réparti sur plusieurs messages. Que doit répéter cette routine ?',
       answers: ['Tout exécuter de nouveau', 'Utiliser seulement le travail du dernier message'],
     },
     rerun: {
@@ -188,7 +188,7 @@ export const routineQuestionMessages = {
       answers: ['Erneut abfragen'],
     },
     split: {
-      question: 'Die Arbeit war auf mehrere Nachrichten verteilt. Soll der Assistent alles erneut in einer Nachricht ausführen?',
+      question: 'Die Arbeit war auf mehrere Nachrichten verteilt. Was soll diese Routine wiederholen?',
       answers: ['Alles erneut ausführen', 'Nur die Arbeit der letzten Nachricht verwenden'],
     },
     rerun: {
@@ -218,7 +218,7 @@ export const routineQuestionMessages = {
       answers: ['もう一度調べる'],
     },
     split: {
-      question: '作業が複数のメッセージに分かれています。アシスタントに 1 つのメッセージですべてもう一度実行させますか？',
+      question: '作業が複数のメッセージに分かれています。このルーティンは何を繰り返しますか？',
       answers: ['すべてもう一度実行する', '最後のメッセージの作業だけを使う'],
     },
     rerun: {
@@ -248,7 +248,7 @@ export const routineQuestionMessages = {
       answers: ['البحث مجددًا'],
     },
     split: {
-      question: 'انقسم العمل على عدة رسائل. هل يشغّل المساعد العمل كله مجددًا في رسالة واحدة؟',
+      question: 'انقسم العمل على عدة رسائل. ماذا يجب أن يكرر هذا الروتين؟',
       answers: ['تشغيل الكل مجددًا', 'استخدم عمل الرسالة الأخيرة فقط'],
     },
     rerun: {
