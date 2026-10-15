@@ -57,14 +57,15 @@ export function groupExchanges(turns, answers = new Map()) {
 }
 
 /**
- * A reply's usage as its receipt shows it (ADR-0082): with a receipt, the duration shown is what its rows add up to,
- * which is Team's duration unless steps measured on another clock overrun it.
+ * A reply's usage and the receipt rows its usage line opens (ADR-0082): only a reply with usage has a receipt, and with
+ * one the duration shown is what its rows add up to, which is Team's duration unless steps measured on another clock
+ * overrun it.
  */
 export function shownUsage(turn) {
-  const steps = receiptSteps(turn.receipt ?? [], turn.usage?.durationMs);
-  if (!turn.usage || steps.length === 0) return { usage: turn.usage, receipt: false };
+  const steps = turn.usage ? receiptSteps(turn.receipt ?? [], turn.usage.durationMs) : [];
+  if (steps.length === 0) return { usage: turn.usage, steps };
   const total = steps.reduce((sum, step) => sum + (Number.isSafeInteger(step.elapsed_ms) ? step.elapsed_ms : 0), 0);
-  return { usage: { ...turn.usage, seconds: Math.max(total, turn.usage.durationMs) / 1000 }, receipt: true };
+  return { usage: { ...turn.usage, seconds: Math.max(total, turn.usage.durationMs) / 1000 }, steps };
 }
 
 /** What a reply carries beside its text, the same from a live `done` frame and from its stored history row. */

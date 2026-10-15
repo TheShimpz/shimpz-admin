@@ -21,7 +21,6 @@ import {
   replyFields,
   shownUsage,
 } from '../src/lib/chat/turns.js';
-import { receiptSteps } from '../src/lib/chat/progress/projection.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 
 const WORDS = { ...messages.en.chatPage, limit: 'This Team already has the maximum of 16 Assistants.' };
@@ -97,13 +96,15 @@ test("a card's answer hides Team's fixed reply once its Routine exists, and only
 
 test('a receipt\'s rows set the usage duration shown, never below Team\'s own', () => {
   const usage = { durationMs: 1000, seconds: 1 };
-  assert.deepEqual(shownUsage({ usage }), { usage, receipt: false });
+  assert.deepEqual(shownUsage({ usage }), { usage, steps: [] });
   const receipt = [
     { seq: 1, origin: 'team', phase: 'model', state: 'started' },
     { seq: 2, origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 1500 },
   ];
-  assert.deepEqual(shownUsage({ usage, receipt }), { usage: { durationMs: 1000, seconds: 1.5 }, receipt: true });
-  assert.deepEqual(shownUsage({ receipt }), { usage: undefined, receipt: false });
+  const shown = shownUsage({ usage, receipt });
+  assert.deepEqual(shown.usage, { durationMs: 1000, seconds: 1.5 });
+  assert.deepEqual(shown.steps.map((step) => step.elapsed_ms), [1500]);
+  assert.deepEqual(shownUsage({ receipt }), { usage: undefined, steps: [] });
 });
 
 test('a reply carries the same fields from a live frame and from its stored row', () => {
@@ -146,10 +147,8 @@ test('a stored reply restores the receipt its live turn showed', () => {
     author: 'Marketing', usage, receipt: stored,
   }, 'Marketing', 4, WORDS);
   assert.deepEqual(restored.receipt, stored);
-  assert.deepEqual(shownUsage(restored), shownUsage(liveTurn));
-  assert.equal(shownUsage(restored).receipt, true);
-  const steps = (turn) => receiptSteps(turn.receipt, turn.usage.durationMs)
-    .map(({ key: _key, ...step }) => step);
+  assert.deepEqual(shownUsage(restored).usage, shownUsage(liveTurn).usage);
+  const steps = (turn) => shownUsage(turn).steps.map(({ key: _key, ...step }) => step);
   assert.deepEqual(steps(restored), steps(liveTurn));
   assert.equal(steps(restored).length, 3);
 });

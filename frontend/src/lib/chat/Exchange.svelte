@@ -126,29 +126,29 @@
           {ondecide}
         />
       {/if}
-      <!-- With recorded steps, the usage line itself opens them: one line, its triangle beside it. -->
-      {#snippet usageLine()}
-        {@const shown = shownUsage(assistantTurn).usage}
-        <span class="task-usage" title={formatTaskUsageDetail(shown, $locale, words.usage)}>
-          {formatTaskUsage(shown, $locale, words.usage)}
-        </span>
-      {/snippet}
-      {#if assistantTurn.usage && !shownUsage(assistantTurn).receipt}
-        <p class="task-usage" title={formatTaskUsageDetail(assistantTurn.usage, $locale, words.usage)}>
-          {formatTaskUsage(assistantTurn.usage, $locale, words.usage)}
-        </p>
-      {/if}
-      <!-- Only a reply's usage line opens its recorded steps; a reply without usage shows none. -->
+      <!-- Only a reply's usage line opens its recorded steps; a reply without usage shows none. With recorded steps,
+           the usage line itself opens them: one line, its triangle beside it. -->
       {#if assistantTurn.usage}
-      <ExecutionReceipt
-        line={usageLine}
-        durationMs={assistantTurn.usage?.durationMs}
-        events={assistantTurn.receipt ?? []}
-        label={words.progressStagesExecuted}
-        progressLabels={words.progress}
-        teamName={assistantTurn.author}
-        {assistantNames}
-      />
+        {@const shown = shownUsage(assistantTurn)}
+        {#if shown.steps.length > 0}
+          {#snippet usageLine()}
+            <span class="task-usage" title={formatTaskUsageDetail(shown.usage, $locale, words.usage)}>
+              {formatTaskUsage(shown.usage, $locale, words.usage)}
+            </span>
+          {/snippet}
+          <ExecutionReceipt
+            line={usageLine}
+            steps={shown.steps}
+            label={words.progressStagesExecuted}
+            progressLabels={words.progress}
+            teamName={assistantTurn.author}
+            {assistantNames}
+          />
+        {:else}
+          <p class="task-usage" title={formatTaskUsageDetail(shown.usage, $locale, words.usage)}>
+            {formatTaskUsage(shown.usage, $locale, words.usage)}
+          </p>
+        {/if}
       {/if}
       <!-- A recording turn's Routine card, what Team asks first, or why it made none; a reload shows it again. -->
       {#if assistantTurn.routineQuestion && exchange.user}

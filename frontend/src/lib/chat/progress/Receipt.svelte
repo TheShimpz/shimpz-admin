@@ -1,57 +1,39 @@
 <script>
   import { Disclosure } from '@shimpz/frontend';
-  import {
-    formatExecutionDuration,
-    localizedStepLabel,
-    receiptSteps,
-  } from './projection.js';
+  import { fill } from '#lib/i18n/fill.js';
+  import { formatExecutionDuration, localizedStepLabel } from './projection.js';
 
   let {
-    events = [],
-    label = 'Execution stages recorded: {count}',
-    progressLabels = {},
-    teamName = 'Team',
-    assistantNames = new Map(),
+    // The reply's receipt rows (chat/turns.js shownUsage), which add up to Team's measured duration of the turn.
+    steps,
+    // The announced step count, a template with `{count}`.
+    label,
+    progressLabels,
+    teamName,
+    assistantNames,
     // The reply's usage line, the visible summary; the step count is announced after it.
     line,
-    // Team's measured duration of the turn, which the receipt's rows add up to exactly.
-    durationMs = undefined,
   } = $props();
   let open = $state(false);
-  let steps = $derived(receiptSteps(events, durationMs));
-  let stepCount = $derived(steps.length);
-  let summaryLabel = $derived(countLabelParts(label));
-
-  function countLabelParts(template) {
-    const token = '{count}';
-    const position = template.indexOf(token);
-    if (position === -1) return { before: '', after: ` ${template}` };
-    return {
-      before: template.slice(0, position),
-      after: template.slice(position + token.length),
-    };
-  }
 </script>
 
-{#if stepCount > 0}
-  <Disclosure class="receipt" bind:open>
-    {#snippet summary()}
-      {@render line()}<span class="sr-only"> · {summaryLabel.before}{stepCount}{summaryLabel.after}</span>
-    {/snippet}
-    {#if open}
-      <ol>
-        {#each steps as step (step.key)}
-          <li>
-            <span class="tip">
-              <span class="step-copy">{localizedStepLabel(step, progressLabels, { teamName, assistantNames })}</span>
-              <time>{formatExecutionDuration(step.elapsed_ms)}</time>
-            </span>
-          </li>
-        {/each}
-      </ol>
-    {/if}
-  </Disclosure>
-{/if}
+<Disclosure class="receipt" bind:open>
+  {#snippet summary()}
+    {@render line()}<span class="sr-only"> · {fill(label, { count: steps.length })}</span>
+  {/snippet}
+  {#if open}
+    <ol>
+      {#each steps as step (step.key)}
+        <li>
+          <span class="tip">
+            <span class="step-copy">{localizedStepLabel(step, progressLabels, { teamName, assistantNames })}</span>
+            <time>{formatExecutionDuration(step.elapsed_ms)}</time>
+          </span>
+        </li>
+      {/each}
+    </ol>
+  {/if}
+</Disclosure>
 
 <style>
   :global(.receipt.shimpz-disclosure) {
