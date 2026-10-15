@@ -8,12 +8,12 @@
 
   // A ChoiceList a person can search and page through: a search field on top finds items by text similarity (typos,
   // accents, and partial words allowed) over each item's `search` text or its label and line, and Previous and Next
-  // below move between pages of `pageSize`. The page starts on `initial` when it is listed, and a new search starts on
-  // the first page. `copy` holds the field's label, its placeholder, the empty result, the page words, and the two
-  // page buttons.
-  let {
-    label, items = [], copy, variant = 'item', pageSize = 3, initial = '', disabled = false, onchoose = () => {},
-  } = $props();
+  // below move between pages of PAGE_SIZE items. The page starts on `initial` when it is listed, and a new search
+  // starts on the first page. `copy` holds the field's label, its placeholder, the empty result, the page words, and
+  // the two page buttons.
+  let { label, items = [], copy, initial = '', onchoose = () => {} } = $props();
+
+  const PAGE_SIZE = 3;
 
   const id = $props.id();
   let query = $state('');
@@ -24,14 +24,14 @@
     if (placed) return;
     placed = true;
     const at = items.findIndex((item) => item.id === initial);
-    if (at > 0) page = Math.floor(at / pageSize);
+    if (at > 0) page = Math.floor(at / PAGE_SIZE);
   });
 
   let found = $derived(
     rankBySimilarity(items, query, (item) => item.search ?? `${item.label} ${item.description ?? ''}`),
   );
-  let pages = $derived(Math.max(1, Math.ceil(found.length / pageSize)));
-  let shown = $derived(found.slice(page * pageSize, (page + 1) * pageSize));
+  let pages = $derived(Math.max(1, Math.ceil(found.length / PAGE_SIZE)));
+  let shown = $derived(found.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE));
 
   // Searching again shows its best matches from the first page; a shorter list never leaves the page past its end.
   function search(value) {
@@ -60,7 +60,7 @@
   {/if}
 
   {#if shown.length > 0}
-    <ChoiceList {label} items={shown} {variant} {disabled} {onchoose} />
+    <ChoiceList {label} items={shown} variant="item" {onchoose} />
   {:else}
     <p class="empty" role="status">{fill(copy.noMatch, { query })}</p>
   {/if}
