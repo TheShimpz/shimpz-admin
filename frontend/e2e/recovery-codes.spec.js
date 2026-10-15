@@ -135,7 +135,7 @@ test('Security replaces every recovery code after the password and an authentica
   await expect(dialog).toContainText('10 of 10');
   await dialog.getByRole('button', { name: 'Close' }).click();
   await expect(dialog).toBeHidden();
-  // Closing returns to the Supervisor account that opened it.
+  // Closing returns to the Supervisor menu that opened it.
   await expect(page.getByRole('button', { name: 'Supervisor' })).toBeFocused();
   // Both steps go over the session socket (ADR-0114).
   const sent = (await sessionCalls(page)).filter((call) => call.method.startsWith('recovery_codes.'))

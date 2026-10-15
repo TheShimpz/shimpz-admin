@@ -22,7 +22,7 @@
     onnavigate = () => {},
     createButton = $bindable(),
     // The Supervisor's menu in place of the symbol, where the sidebar shows it; the mobile drawer keeps the symbol.
-    account = undefined,
+    supervisorMenu = undefined,
   } = $props();
 
   let copy = $derived($t('teamNavigation'));
@@ -233,7 +233,7 @@
 
 <div class="team-navigation">
   <div class="head">
-    {#if account}{@render account()}{:else}<ShimpzBrand class="head-mark" variant="symbol" decorative />{/if}
+    {#if supervisorMenu}{@render supervisorMenu()}{:else}<ShimpzBrand class="head-mark" variant="symbol" decorative />{/if}
     <Button
       bind:element={createButton}
       class="new-team"

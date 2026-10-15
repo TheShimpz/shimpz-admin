@@ -151,7 +151,7 @@
           bind:createButton
           oncreate={createTeam}
           ondelete={deleteTeam}
-          account={supervisorMenu}
+          {supervisorMenu}
         />
         <TeamSidebar {active} />
       </div>

@@ -2,7 +2,7 @@
   import { DropdownMenu } from '@shimpz/frontend';
   import { t } from '#lib/i18n/index.js';
 
-  // The Supervisor's account menu, the same menu as the language one: an avatar listing the account's actions.
+  // The Supervisor's menu, the same menu as the language one: an avatar listing the Supervisor's actions.
   let { onsecurity } = $props();
   let items = $derived([{ value: 'security', label: $t('security.open') }]);
 </script>
