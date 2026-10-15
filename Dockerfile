@@ -125,8 +125,7 @@ COPY --link --from=ui /w/revision /app/backend/revision
 
 ENV PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    SHIMPZ_ADMIN_STORE=/data/admin.json
+    PYTHONUNBUFFERED=1
 # Fail during the image build, rather than after publication smoke startup, if the explicit runtime
 # copy surface omits a module imported by the Admin application, then compile the application like its environment.
 RUN python -c "import app" && \

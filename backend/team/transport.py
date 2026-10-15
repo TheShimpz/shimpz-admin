@@ -29,7 +29,7 @@ from protocol.http.v1 import websocket as team_http
 log = logging.getLogger("shimpz-admin")
 
 URL = os.environ.get("SHIMPZ_TEAM_URL", "http://team:7077")
-TOKEN_FILE = os.environ.get("SHIMPZ_TEAM_TOKEN_FILE", "/run/shimpz-team/token")
+TOKEN_FILE = os.environ.get("SHIMPZ_TEAM_TOKEN_FILE", "/run/shimpz-local/token")
 
 MAX_JSON_BODY_BYTES = 16 * 1024
 MAX_JSON_RESPONSE_BYTES = 256 * 1024
