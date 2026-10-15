@@ -567,7 +567,7 @@ export default {
       prompt: 'Texto de la rutina',
       rewriteUnsent: 'Todavía no se pudo enviar el texto. Envíalo de nuevo.',
       working: 'Guardando…',
-      revoked: 'No se creó nada.',
+      revoked: 'Creación de rutina cancelada por el usuario.',
       answers: {
         created: 'La rutina: {name} se creó correctamente.',
         changed: 'La rutina: {name} se cambió correctamente.',

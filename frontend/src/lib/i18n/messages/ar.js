@@ -567,7 +567,7 @@ export default {
       prompt: 'نص الروتين',
       rewriteUnsent: 'تعذّر إرسال النص بعد. أرسله مرة أخرى.',
       working: 'جارٍ الحفظ…',
-      revoked: 'لم يُنشأ شيء.',
+      revoked: 'ألغى المستخدم إنشاء الروتين.',
       answers: {
         created: 'الروتين: تم إنشاء {name} بنجاح!',
         changed: 'الروتين: تم تغيير {name} بنجاح!',

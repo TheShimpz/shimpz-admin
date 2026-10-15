@@ -567,7 +567,7 @@ export default {
       prompt: 'Routinetext',
       rewriteUnsent: 'Der Text konnte noch nicht gesendet werden. Sende ihn erneut.',
       working: 'Wird gespeichert…',
-      revoked: 'Es wurde nichts erstellt.',
+      revoked: 'Erstellung der Routine vom Benutzer abgebrochen.',
       answers: {
         created: 'Die Routine: {name} wurde erfolgreich erstellt!',
         changed: 'Die Routine: {name} wurde erfolgreich geändert!',

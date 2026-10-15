@@ -567,7 +567,7 @@ export default {
       prompt: 'Texte de la routine',
       rewriteUnsent: 'Le texte n’a pas encore pu être envoyé. Renvoyez-le.',
       working: 'Enregistrement…',
-      revoked: 'Rien n’a été créé.',
+      revoked: 'Création de routine annulée par l’utilisateur.',
       answers: {
         created: 'La routine : {name} a été créée avec succès !',
         changed: 'La routine : {name} a été modifiée avec succès !',

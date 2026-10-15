@@ -1585,7 +1585,8 @@ test('finishing a measured span updates its duration and announcements across tu
 });
 
 test('overlapping progress returns the visible summary to the earlier active phase', async ({ page }) => {
-  const chat = await routeReadyChat(page, { holdProgressFinish: true, holdReply: true });
+  const usage = { duration_ms: 1000, models: [{ provider: 'openai', model: 'gpt-6-luna', input_tokens: 100, output_tokens: 10 }] };
+  const chat = await routeReadyChat(page, { holdProgressFinish: true, holdReply: true, usage });
   await page.goto('/chat/');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   await expect(composer).toBeEnabled();
@@ -1611,7 +1612,7 @@ test('overlapping progress returns the visible summary to the earlier active pha
   await expect(current).toHaveText('Waiting for execution');
   chat.releaseReply();
   // The receipt lists only Team's steps; Admin's run outside Team's clock.
-  await expect(page.getByText('Execution stages recorded: 1')).toBeVisible();
+  await expect(page.locator('.receipt summary')).toHaveAccessibleName(/Execution stages recorded: 1$/);
 });
 
 test('shows a pending chat state before any server progress frame', async ({ page }) => {

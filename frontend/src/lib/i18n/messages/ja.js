@@ -567,7 +567,7 @@ export default {
       prompt: 'ルーティンのテキスト',
       rewriteUnsent: 'テキストをまだ送信できませんでした。もう一度送信してください。',
       working: '保存中…',
-      revoked: '何も作成されませんでした。',
+      revoked: 'ルーティンの作成はユーザーによってキャンセルされました。',
       answers: {
         created: 'ルーティン：{name} を作成しました。',
         changed: 'ルーティン：{name} を変更しました。',

@@ -12,8 +12,8 @@
     progressLabels = {},
     teamName = 'Team',
     assistantNames = new Map(),
-    // The reply's usage line: when given, it is the visible summary and the step count is announced after it.
-    line = undefined,
+    // The reply's usage line, the visible summary; the step count is announced after it.
+    line,
     // Team's measured duration of the turn, which the receipt's rows add up to exactly.
     durationMs = undefined,
   } = $props();
@@ -36,11 +36,7 @@
 {#if stepCount > 0}
   <Disclosure class="receipt" bind:open>
     {#snippet summary()}
-      {#if line}
-        {@render line()}<span class="sr-only"> · {summaryLabel.before}{stepCount}{summaryLabel.after}</span>
-      {:else}
-        {summaryLabel.before}<span class="step-count">{stepCount}</span>{summaryLabel.after}
-      {/if}
+      {@render line()}<span class="sr-only"> · {summaryLabel.before}{stepCount}{summaryLabel.after}</span>
     {/snippet}
     {#if open}
       <ol>
@@ -73,11 +69,6 @@
     cursor: pointer;
     letter-spacing: 0.055em;
     text-transform: uppercase;
-  }
-
-  .step-count {
-    color: var(--accent);
-    font-variant-numeric: tabular-nums;
   }
 
   /* The steps read like the Store's terminal tree, at the receipt's own size: a drawn trunk with a branch into each

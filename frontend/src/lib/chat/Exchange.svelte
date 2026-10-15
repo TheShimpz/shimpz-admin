@@ -138,8 +138,10 @@
           {formatTaskUsage(assistantTurn.usage, $locale, words.usage)}
         </p>
       {/if}
+      <!-- Only a reply's usage line opens its recorded steps; a reply without usage shows none. -->
+      {#if assistantTurn.usage}
       <ExecutionReceipt
-        line={assistantTurn.usage ? usageLine : undefined}
+        line={usageLine}
         durationMs={assistantTurn.usage?.durationMs}
         events={assistantTurn.receipt ?? []}
         label={words.progressStagesExecuted}
@@ -147,6 +149,7 @@
         teamName={assistantTurn.author}
         {assistantNames}
       />
+      {/if}
       <!-- A recording turn's Routine card, what Team asks first, or why it made none; a reload shows it again. -->
       {#if assistantTurn.routineQuestion && exchange.user}
         <RoutineQuestion

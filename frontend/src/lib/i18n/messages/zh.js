@@ -567,7 +567,7 @@ export default {
       prompt: '例行任务文本',
       rewriteUnsent: '文本暂时无法发送。请再次发送。',
       working: '正在保存…',
-      revoked: '未创建任何内容。',
+      revoked: '例行任务的创建已被用户取消。',
       answers: {
         created: '例行任务：{name} 已成功创建！',
         changed: '例行任务：{name} 已成功更改！',

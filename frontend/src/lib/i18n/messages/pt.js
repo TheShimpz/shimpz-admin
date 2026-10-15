@@ -567,7 +567,7 @@ export default {
       prompt: 'Texto da rotina',
       rewriteUnsent: 'Não foi possível enviar o texto ainda. Envie de novo.',
       working: 'Salvando…',
-      revoked: 'Nada foi criado.',
+      revoked: 'Criação de rotina cancelada pelo usuário.',
       answers: {
         created: 'A rotina: {name} foi criada com sucesso!',
         changed: 'A rotina: {name} foi alterada com sucesso!',
