@@ -71,7 +71,6 @@
     }
   }
 
-  const changeWords = (readOnly) => (readOnly ? card.reads : card.changes);
   let changes = $derived(proposal.steps.some((step) => !step.read_only));
 
   // The field takes the keyboard at once, its caret after the text, so the person types straight away.
@@ -169,7 +168,8 @@
                     {:else}<span class={part.key || 'joint'}>{part.text}</span>{/if}
                   {/each}
                 </span>
-                <Tag size="xs" tone={step.read_only ? 'neutral' : 'warning'} label={changeWords(step.read_only)} />
+                <!-- Each step reads or writes, each in its own color. -->
+                <Tag size="xs" tone={step.read_only ? 'accent' : 'warning'} label={step.read_only ? card.stepRead : card.stepWrite} />
               </div>
               {#if step.inputs.length}
                 <div class="inputs">

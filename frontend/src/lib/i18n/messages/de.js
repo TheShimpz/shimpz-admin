@@ -550,7 +550,8 @@ export default {
       replaces: 'Ändert die Routine „{name}“',
       steps: 'Was diese Routine tun wird',
       stepLine: '{assistant} · {action}',
-      reads: 'liest',
+      stepRead: 'Lesen',
+      stepWrite: 'Schreiben',
       changes: 'ändert bei jeder Ausführung etwas',
       origins: {
         clock: 'das Datum jeder Ausführung',

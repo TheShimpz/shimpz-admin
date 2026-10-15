@@ -557,7 +557,8 @@ export default {
       replaces: 'Changes the Routine “{name}”',
       steps: 'What this routine will do',
       stepLine: '{assistant} · {action}',
-      reads: 'reads',
+      stepRead: 'Read',
+      stepWrite: 'Write',
       changes: 'changes something on every run',
       origins: {
         clock: 'the date of each run',

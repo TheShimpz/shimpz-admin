@@ -550,7 +550,8 @@ export default {
       replaces: '更改例行任务“{name}”',
       steps: '此例行任务将执行的操作',
       stepLine: '{assistant} · {action}',
-      reads: '读取',
+      stepRead: '读取',
+      stepWrite: '写入',
       changes: '每次运行都会更改内容',
       origins: {
         clock: '每次运行的日期',

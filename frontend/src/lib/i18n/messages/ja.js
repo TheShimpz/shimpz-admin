@@ -550,7 +550,8 @@ export default {
       replaces: 'ルーティン「{name}」を変更します',
       steps: 'このルーティンが行うこと',
       stepLine: '{assistant} · {action}',
-      reads: '読み取り',
+      stepRead: '読み取り',
+      stepWrite: '書き込み',
       changes: '実行のたびに何かを変更します',
       origins: {
         clock: '各実行の日付',

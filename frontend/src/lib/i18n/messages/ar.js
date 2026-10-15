@@ -550,7 +550,8 @@ export default {
       replaces: 'يغيّر الروتين «{name}»',
       steps: 'ما سيفعله هذا الروتين',
       stepLine: '{assistant} · {action}',
-      reads: 'يقرأ',
+      stepRead: 'قراءة',
+      stepWrite: 'كتابة',
       changes: 'يغيّر شيئًا في كل تشغيل',
       origins: {
         clock: 'تاريخ كل تشغيل',
