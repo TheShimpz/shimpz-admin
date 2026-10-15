@@ -272,8 +272,6 @@ export default {
   },
   routine: {
     schedule: {
-      hour: '毎時',
-      hours: '{every} 時間ごと',
       daily: '毎日 {time}',
       weekly: '{weekday} {time}',
       weekdays: {
@@ -319,8 +317,6 @@ export default {
       recovered: '復旧後に完了',
       paused: '一時停止中：{reason}',
       pauseReasons: {
-        decided: '再試行しても解決しません。',
-        unavailable: '復旧を実行できませんでした。',
         exhausted: '復旧の上限に達しました。',
         policy: 'Action が安全ルールに違反しました。',
         evidence: '復旧の記録を読み取れませんでした。',

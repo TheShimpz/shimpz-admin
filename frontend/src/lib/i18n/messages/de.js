@@ -272,8 +272,6 @@ export default {
   },
   routine: {
     schedule: {
-      hour: 'Jede Stunde',
-      hours: 'Alle {every} Stunden',
       daily: 'Jeden Tag um {time}',
       weekly: '{weekday} um {time}',
       weekdays: {
@@ -319,8 +317,6 @@ export default {
       recovered: 'Nach Wiederherstellung erledigt',
       paused: 'Pausiert: {reason}',
       pauseReasons: {
-        decided: 'ein erneuter Versuch würde nicht helfen.',
-        unavailable: 'die Wiederherstellung konnte nicht laufen.',
         exhausted: 'das Wiederherstellungsbudget ist aufgebraucht.',
         policy: 'eine Action hat gegen eine Sicherheitsregel verstoßen.',
         evidence: 'die Wiederherstellungsdaten konnten nicht gelesen werden.',

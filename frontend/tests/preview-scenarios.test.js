@@ -67,7 +67,7 @@ test('a recording turn carries the Cloudflare card; Criar creates its Routine an
   const [first] = scenario.chat.message(frame(ROUTINE_TEXT.pt.request));
   const card = parseChatEvent(first, 'marketing', 'Marketing').routine_proposal;
   assert.equal(card.name, ROUTINE_TEXT.pt.card);
-  assert.deepEqual(card.schedule, { kind: 'continuous', gap: 30, cap: 2880 });
+  assert.equal(card.description, ROUTINE_TEXT.pt.cardDescription);
   assert.deepEqual(card.steps.map((step) => step.action), ['list-zones', 'list-dns-records']);
   assert.deepEqual(card.steps[1].inputs[0].where, { member: 'name', value_json: '"shimpz.com"' });
   assert.equal(card.steps[1].inputs[0].item, '/id');
@@ -78,7 +78,7 @@ test('a recording turn carries the Cloudflare card; Criar creates its Routine an
     routineId: scenario.call('routines.list', { team_id: 'marketing' }).json.routines[0].routine_id,
   });
   const [routine] = (await listRoutines(reader(scenario), 'marketing')).routines;
-  assert.equal(routine.name, card.name);
+  assert.deepEqual([routine.name, routine.schedule], [card.name, { kind: 'continuous', gap: 30 }]);
   // A used card answers once; a second confirmation is refused as expired.
   await assert.rejects(
     confirmRoutineProposal(reader(scenario), 'marketing', card.proposal_id),

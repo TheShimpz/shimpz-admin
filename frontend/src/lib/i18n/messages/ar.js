@@ -272,8 +272,6 @@ export default {
   },
   routine: {
     schedule: {
-      hour: 'كل ساعة',
-      hours: 'كل {every} ساعات',
       daily: 'كل يوم في {time}',
       weekly: '{weekday} في {time}',
       weekdays: {
@@ -319,8 +317,6 @@ export default {
       recovered: 'اكتمل بعد الاسترداد',
       paused: 'متوقف مؤقتًا: {reason}',
       pauseReasons: {
-        decided: 'لن تفيد إعادة المحاولة.',
-        unavailable: 'تعذّر تشغيل الاسترداد.',
         exhausted: 'نفدت ميزانية الاسترداد.',
         policy: 'خالفت Action قاعدة أمان.',
         evidence: 'تعذّرت قراءة سجلات الاسترداد.',

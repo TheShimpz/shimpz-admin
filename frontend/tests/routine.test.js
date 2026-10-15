@@ -12,8 +12,6 @@ import {
   beginRoutineDeletion,
   browserTimezone,
   confirmRoutineProposal,
-  continuousCap,
-  dailyCap,
   deleteRoutine,
   isDisposition,
   isOutput,
@@ -47,7 +45,6 @@ import {
   revokeRoutineProposal,
   RoutineError,
   runBinding,
-  runPosition,
 } from '../src/lib/routines/protocol.js';
 import {
   attemptWords,
@@ -87,14 +84,12 @@ const WEEKLY = { kind: 'weekly', weekday: 0, time: '09:00' };
 
 test('mirrors the schedule and timezone grammar', () => {
   for (const schedule of [
-    { kind: 'hourly', every: 1 },
-    { kind: 'hourly', every: 24 },
     { kind: 'daily', time: '23:59' },
     { kind: 'weekly', weekday: 6, time: '00:00' },
     { kind: 'monthly', day: 28, time: '12:30' },
-    { kind: 'continuous', gap: 5, cap: 17280 },
-    { kind: 'continuous', gap: 30, cap: 2880 },
-    { kind: 'continuous', gap: 86400, cap: 1 },
+    { kind: 'continuous', gap: 5 },
+    { kind: 'continuous', gap: 3600 },
+    { kind: 'continuous', gap: 86400 },
   ]) {
     assert.equal(isSchedule(schedule), true, JSON.stringify(schedule));
   }
@@ -102,21 +97,16 @@ test('mirrors the schedule and timezone grammar', () => {
     null,
     'daily',
     { kind: 'yearly', time: '09:00' },
-    { kind: 'hourly', every: 25 },
-    { kind: 'hourly', every: 0 },
     { kind: 'daily', time: '24:00' },
     { kind: 'daily', time: 900 },
     { kind: 'weekly', weekday: 7, time: '09:00' },
     { kind: 'monthly', day: 29, time: '09:00' },
     { kind: 'daily', time: '09:00', extra: 1 },
-    { kind: 'continuous', gap: 4, cap: 10 },
-    { kind: 'continuous', gap: 86401, cap: 10 },
-    { kind: 'continuous', gap: 5, cap: 0 },
-    { kind: 'continuous', gap: 5, cap: 1001 },
-    { kind: 'continuous', gap: 30, cap: 1000 },
-    { kind: 'continuous', gap: 5, cap: 17281 },
-    { kind: 'continuous', gap: 5.5, cap: 10 },
-    { kind: 'continuous', gap: 5 },
+    { kind: 'continuous', gap: 4 },
+    { kind: 'continuous', gap: 366 * 86400 + 1 },
+    { kind: 'continuous', gap: 5.5 },
+    { kind: 'continuous', gap: 30, every: 1 },
+    { kind: 'continuous' },
   ]) {
     assert.equal(isSchedule(schedule), false, JSON.stringify(schedule));
   }
@@ -133,12 +123,6 @@ const PROPOSAL = Object.freeze({
   replaces: null,
   name: 'DNS de shimpz.com',
   description: 'A cada 30 segundos, lista as zonas da sua conta Cloudflare e lê os registros DNS de shimpz.com.',
-  schedule: { kind: 'continuous', gap: 30, cap: 2880 },
-  timezone: 'America/Sao_Paulo',
-  timezone_source: 'browser',
-  next_runs: ['2026-10-05T12:01:37Z', '2026-10-05T12:02:07Z', '2026-10-05T12:02:37Z'],
-  daily_cap: 2880,
-  output: { mode: 'show' },
   steps: [
     { position: 1, assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true, inputs: [] },
     {
@@ -151,10 +135,6 @@ const PROPOSAL = Object.freeze({
         where: { member: 'name', value_json: '"shimpz.com"' }, item: '/id',
       }],
     },
-  ],
-  permitted: [
-    { assistant: 'shimpz-cloudflare', action: 'list-dns-records', read_only: true },
-    { assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true },
   ],
 });
 
@@ -297,13 +277,7 @@ test('a Routine question is admitted only in its closed form and reads as facts 
   assert.deepEqual(budget.answers, [{ label: 'Every 9 seconds', text: 'Every 9 seconds' }]);
 });
 
-test("a Routine's cap is its gap's whole day and UTC stands in when no timezone was given", () => {
-  assert.equal(continuousCap(5), 17280);
-  assert.equal(continuousCap(30), 2880);
-  assert.equal(continuousCap(86400), 1);
-  assert.equal(dailyCap({ kind: 'continuous', gap: 30, cap: 2880 }), 2880);
-  assert.equal(dailyCap({ kind: 'hourly', every: 5 }), 5);
-  assert.equal(dailyCap({ kind: 'weekly', weekday: 0, time: '09:00' }), 1);
+test('UTC stands in when no timezone was given', () => {
   assert.equal(isZoned('America/Sao_Paulo', 'browser'), true);
   assert.equal(isZoned('Europe/Paris', 'person'), true);
   assert.equal(isZoned('UTC', 'none'), true);
@@ -313,14 +287,6 @@ test("a Routine's cap is its gap's whole day and UTC stands in when no timezone 
   // With no timezone given, instants show in the UTC the Routine actually runs in.
   assert.equal(displayZone({ timezone: 'UTC', timezone_source: 'none' }), 'UTC');
   assert.equal(displayZone({ timezone: 'America/Sao_Paulo', timezone_source: 'browser' }), 'America/Sao_Paulo');
-  // A card whose cap is not its schedule's is refused.
-  assert.throws(() => parseRoutineProposal({ ...PROPOSAL, daily_cap: 1000 }), RoutineError);
-  assert.throws(() => parseRoutineProposal({ ...PROPOSAL, clamped: false }), RoutineError);
-  // A calendar schedule and a run date both run in UTC when no timezone was given.
-  const clocked = { ...PROPOSAL.steps[0], inputs: [{ member: 'day', origin: 'clock', value: null, step: null, pointer: null, where: null, item: null }] };
-  const daily = { ...PROPOSAL, schedule: { kind: 'daily', time: '09:00' }, daily_cap: 1, timezone: 'UTC', timezone_source: 'none' };
-  assert.equal(parseRoutineProposal({ ...daily, steps: [clocked, PROPOSAL.steps[1]] }).timezone_source, 'none');
-  assert.equal(parseRoutineProposal({ ...PROPOSAL, timezone: 'UTC', timezone_source: 'none' }).timezone_source, 'none');
 });
 
 function withInput(value) {
@@ -330,37 +296,12 @@ function withInput(value) {
 test('a Routine card is admitted only whole, and its inputs say where each value comes from', () => {
   assert.deepEqual(parseRoutineProposal(structuredClone(PROPOSAL)), PROPOSAL);
   // A step that changes something reads like any other: the card names it.
-  const changing = {
-    ...PROPOSAL,
-    steps: [PROPOSAL.steps[0], { ...PROPOSAL.steps[1], read_only: false }],
-    permitted: [{ ...PROPOSAL.permitted[0], read_only: false }, PROPOSAL.permitted[1]],
-  };
+  const changing = { ...PROPOSAL, steps: [PROPOSAL.steps[0], { ...PROPOSAL.steps[1], read_only: false }] };
   assert.equal(parseRoutineProposal(changing).steps[1].read_only, false);
-  // The permitted Actions are exactly the steps' Actions with their effect: none extra, none missing, none other.
-  for (const permitted of [
-    [...PROPOSAL.permitted, { assistant: 'shimpz-cloudflare', action: 'purge-cache', read_only: false }],
-    PROPOSAL.permitted.slice(1),
-    [{ ...PROPOSAL.permitted[0], read_only: false }, PROPOSAL.permitted[1]],
-    [],
-  ]) {
-    assert.throws(() => parseRoutineProposal({ ...PROPOSAL, permitted }), RoutineError, JSON.stringify(permitted));
-  }
-  // The output takes only a closed mode and its own members, and every plan runs a step.
-  for (const invalid of [
-    { ...PROPOSAL, output: { mode: 'other' } },
-    { ...PROPOSAL, output: { ...PROPOSAL.output, extra: null } },
-    { ...PROPOSAL, steps: [], permitted: [] },
-  ]) {
-    assert.throws(() => parseRoutineProposal(invalid), RoutineError, JSON.stringify(invalid));
-  }
   for (const invalid of [
     { ...PROPOSAL, extra: 1 },
-    { ...PROPOSAL, next_runs: [] },
-    { ...PROPOSAL, next_runs: [PROPOSAL.next_runs[1], PROPOSAL.next_runs[0]] },
-    { ...PROPOSAL, daily_cap: 1001 },
+    { ...PROPOSAL, steps: [] },
     { ...PROPOSAL, name: ' padded ' },
-    { ...PROPOSAL, output: { mode: 'show', step: 2 } },
-    { ...PROPOSAL, permitted: [...PROPOSAL.permitted].reverse() },
     { ...PROPOSAL, steps: [{ ...PROPOSAL.steps[0], position: 2 }] },
     { ...PROPOSAL, steps: [PROPOSAL.steps[0], { ...PROPOSAL.steps[1], inputs: [{ ...PROPOSAL.steps[1].inputs[0], where: null }] }] },
     {
@@ -473,7 +414,7 @@ const LEASED = {
 };
 const FROZEN = {
   ...LEASED, status: 'frozen', request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'list-zones',
-  position: { phase: 'replay', step: 1 }, steps: 1,
+  position: 1, steps: 1,
 };
 const HELD = { ...LEASED, status: 'held' };
 // One recorded handled failure of a held step, in Team's sanitized diagnostic view (ADR-0092 section 8).
@@ -482,7 +423,7 @@ const ATTEMPT_FAILURE = Object.freeze({
   attempt: 1,
   assistant_id: 'shimpz-cloudflare',
   action: 'list-zones',
-  position: { phase: 'replay', step: 1 },
+  position: 1,
   recorded_at: '2026-10-05T12:01:05Z',
   failure: Object.freeze({
     error_type: 'httpx.HTTPStatusError',
@@ -503,7 +444,7 @@ const INCIDENT = {
   created_at: '2026-10-05T12:01:07Z',
   assistant_id: 'shimpz-cloudflare',
   action: 'replace-dns-record',
-  position: { phase: 'replay', step: 2 },
+  position: 2,
   steps: 3,
 };
 const UNPLACED = Object.freeze({ assistant_id: null, action: null, position: null, steps: null });
@@ -539,7 +480,7 @@ test('Routines and runs are admitted only in their closed views', () => {
     { ...HELD, assistant_id: 'shimpz-cloudflare' },
     { ...FROZEN, action: null },
     { ...FROZEN, position: null },
-    { ...FROZEN, position: { phase: 'other', step: 1 } },
+    { ...FROZEN, position: '1' },
     { ...FROZEN, request_kind: 'email' },
   ]) {
     assert.throws(() => parseRunView(invalid), RoutineError, JSON.stringify(invalid));
@@ -549,11 +490,11 @@ test('Routines and runs are admitted only in their closed views', () => {
   }
   for (const invalid of [
     { ...INCIDENT, assistant_id: null },
-    { ...INCIDENT, position: { phase: 'replay', step: 4 } },
+    { ...INCIDENT, position: 4 },
     { ...INCIDENT, position: null },
     { ...INCIDENT, step: 2 },
     { ...INCIDENT, ...UNPLACED, steps: 3 },
-    { ...INCIDENT, steps: 257, position: { phase: 'replay', step: 1 } },
+    { ...INCIDENT, steps: 257, position: 1 },
     { ...INCIDENT, name: '' },
     { ...INCIDENT, extra: 'x' },
     { ...INCIDENT, created_at: '2026-10-05' },
@@ -635,8 +576,6 @@ test('Routine requests go to exact Admin operations and admit only exact answers
 
 test('schedules, instants, and failures read naturally in each locale', () => {
   const words = routineMessages.en.schedule;
-  assert.equal(scheduleWords({ kind: 'hourly', every: 1 }, words, 'en'), 'Every hour');
-  assert.equal(scheduleWords({ kind: 'hourly', every: 6 }, words, 'en'), 'Every 6 hours');
   assert.equal(scheduleWords({ kind: 'daily', time: '09:00' }, words, 'en'), 'Every day at 09:00');
   assert.equal(scheduleWords({ kind: 'weekly', weekday: 0, time: '09:00' }, words, 'en'), 'Every Monday at 09:00');
   // Portuguese weekdays take their own article: Todo sábado and Todo domingo, Toda segunda-feira.
@@ -649,11 +588,11 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   }
   assert.equal(scheduleWords({ kind: 'monthly', day: 28, time: '18:30' }, words, 'en'), 'On day 28 of every month at 18:30');
   // A continuous Routine's gap reads in its largest whole unit, in the viewer's locale.
-  const continuous = { kind: 'continuous', gap: 5, cap: 17280 };
+  const continuous = { kind: 'continuous', gap: 5 };
   assert.equal(scheduleWords(continuous, words, 'en'), 'Every 5 seconds');
-  assert.equal(scheduleWords({ kind: 'continuous', gap: 1800, cap: 48 }, routineMessages.pt.schedule, 'pt'), 'A cada 30 minutos');
+  assert.equal(scheduleWords({ kind: 'continuous', gap: 1800 }, routineMessages.pt.schedule, 'pt'), 'A cada 30 minutos');
   // Whole weeks or days read in that unit.
-  const every = (gap) => ({ kind: 'continuous', gap, cap: continuousCap(gap) });
+  const every = (gap) => ({ kind: 'continuous', gap });
   assert.equal(scheduleWords(every(30 * 86400), words, 'en'), 'Every 30 days');
   assert.equal(scheduleWords(every(86400), words, 'en'), 'Every day');
   assert.equal(scheduleWords(every(14 * 86400), words, 'en'), 'Every 2 weeks');
@@ -731,7 +670,7 @@ const RUN_ENTRY = {
   usage: REPLAY_USAGE,
   protection_lost: false,
 };
-const STEP = { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 };
+const STEP = { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 };
 // A two-step plan's summary, and a 120-step one whose middle Action repeats.
 const TWO = Object.freeze({ ...SUMMARY, steps: 2, actions: [['shimpz-cloudflare', 'list-zones', 1], ['shimpz-cloudflare', 'list-dns-records', 1]] });
 const LONG = Object.freeze({
@@ -796,7 +735,7 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 60 } },
     { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'human', ...STEP } },
     { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']], position: null, steps: null } },
-    { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'plan-input-type', actions: [], position: { phase: 'replay', step: 37 }, steps: 120 } },
+    { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'plan-input-type', actions: [], position: 37, steps: 120 } },
     { ...RUN_ENTRY, outcome: 'denied', detail: { actions: [] } },
     { ...RUN_ENTRY, outcome: 'stopped', detail: { actions: [] } },
     { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: DEFINED },
@@ -820,7 +759,7 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, usage: { duration_ms: 1, models: [], extra: 1 } },
     { ...RUN_ENTRY, protection_lost: 'no' },
     { ...RUN_ENTRY, detail: { ...RUN_ENTRY.detail, extra: null } },
-    { ...RUN_ENTRY, outcome: 'held', detail: { ...STEP, position: { phase: 'other', step: 2 } } },
+    { ...RUN_ENTRY, outcome: 'held', detail: { ...STEP, position: '2' } },
     { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'email', ...STEP } },
     { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, extra: null } },
     { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, output: { mode: 'other', step: null } } },
@@ -841,9 +780,8 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'needs-input', detail: { question: 'Which zone?' } },
     { ...RUN_ENTRY, outcome: 'held', detail: { ...STEP, action: null } },
     { ...RUN_ENTRY, outcome: 'held', detail: { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' } },
-    { ...RUN_ENTRY, outcome: 'held', detail: { ...STEP, position: { phase: 'replay', step: 4 } } },
-    { ...RUN_ENTRY, outcome: 'held', detail: { ...STEP, position: 2 } },
-    { ...RUN_ENTRY, outcome: 'held', detail: { ...UNPLACED, position: { phase: 'replay', step: 1 } } },
+    { ...RUN_ENTRY, outcome: 'held', detail: { ...STEP, position: 4 } },
+    { ...RUN_ENTRY, outcome: 'held', detail: { ...UNPLACED, position: 1 } },
     { ...RUN_ENTRY, outcome: 'paused', detail: { ...STEP, reason: 'approve' } },
     // A person's skip is a run outcome; it never stands in for the missed-schedule skip.
     { ...RUN_ENTRY, outcome: 'user-skipped', run_id: null, usage: null, detail: STEP },
@@ -855,7 +793,7 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'human', ...UNPLACED } },
     { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'Bad Code', actions: [], position: null, steps: null } },
     { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'x', actions: [] } },
-    { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'x', actions: [], position: { phase: 'replay', step: 1 }, steps: null } },
+    { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'x', actions: [], position: 1, steps: null } },
     { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, usage: null, detail: { assistants: [] } },
     { ...RUN_ENTRY, outcome: 'skipped', run_id: null, usage: null, detail: { missed: 0 } },
     { ...RUN_ENTRY, outcome: 'created', detail: DEFINED },
@@ -934,7 +872,7 @@ test('a creation and every run read as one line: a status phrase colored by mean
   const cases = [
     [{ outcome: 'done', detail: { plan: SUMMARY, output: SHOWN_OUTPUT } }, ['healthy', 'concluída']],
     [{ outcome: 'recovered', detail: { plan: LONG, output: UNSHOWN } }, ['healthy', 'concluída após recuperação']],
-    [{ outcome: 'failed', detail: { code: 'plan-input-type', actions: [['shimpz-cloudflare', 'list-zones']], position: { phase: 'replay', step: 37 }, steps: 120 } },
+    [{ outcome: 'failed', detail: { code: 'plan-input-type', actions: [['shimpz-cloudflare', 'list-zones']], position: 37, steps: 120 } },
       ['danger', 'falhou']],
     [{ outcome: 'denied', detail: { actions: [] } }, ['danger', 'negada']],
     [{ outcome: 'held', detail: STEP }, ['danger', 'parou com erro']],
@@ -944,7 +882,7 @@ test('a creation and every run read as one line: a status phrase colored by mean
     [{ outcome: 'frozen', detail: { request_kind: 'integrations', ...STEP } }, ['waiting', 'aguardando conexão']],
     [{ outcome: 'stopped', detail: { actions: [['shimpz-cloudflare', 'list-zones']] } }, ['neutral', 'interrompida']],
     [{ outcome: 'user-skipped', detail: { ...STEP, choice: 'delete' } }, ['neutral', 'deixada de lado']],
-    [{ outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, schedule: { kind: 'continuous', gap: 5, cap: 17280 }, plan: TWO } },
+    [{ outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, schedule: { kind: 'continuous', gap: 5 }, plan: TWO } },
       ['neutral', 'criada']],
   ];
   const time = clockTime(Date.parse(RUN_ENTRY.created_at), 'pt');
@@ -1227,13 +1165,13 @@ test("a Routine's steps are read page by page for exactly the revision its summa
 
 // A run's own step records as Team pages them (ADR-0092 amendment, 2026-10-05, scale).
 const SNAPSHOT = 'c'.repeat(32);
-const REPLAY_1 = Object.freeze({ phase: 'replay', step: 1 });
+const REPLAY_1 = 1;
 const RECORDED = Object.freeze({
   position: REPLAY_1, status: 'done', assistant_id: 'shimpz-cloudflare', action: 'list-zones', attempt: 1, duration_ms: 812,
   recorded_at: '2026-10-05T12:01:05Z', inputs: [{ member: 'page', source: 'literal', value: '1' }],
 });
 const GAP = Object.freeze({
-  position: { phase: 'replay', step: 2 }, status: 'not_run', assistant_id: null, action: null, attempt: null, duration_ms: null, recorded_at: null, inputs: null,
+  position: 2, status: 'not_run', assistant_id: null, action: null, attempt: null, duration_ms: null, recorded_at: null, inputs: null,
 });
 
 function runPage(offset, steps, { total = 2, snapshot = SNAPSHOT, ended = true } = {}) {
@@ -1242,8 +1180,8 @@ function runPage(offset, steps, { total = 2, snapshot = SNAPSHOT, ended = true }
     total, snapshot, ended, offset, steps, next: offset + steps.length === total ? null : offset + steps.length,
   };
 }
-// A position outside the replay phase, and a record placed there.
-const ASTRAY_POSITION = Object.freeze({ phase: 'other', step: 2 });
+// A position that is no step number, and a record placed there.
+const ASTRAY_POSITION = '2';
 const ASTRAY = Object.freeze({ ...RECORDED, position: ASTRAY_POSITION });
 
 test("a run's step records are admitted only for its own revision and one snapshot of them", async () => {
@@ -1270,15 +1208,10 @@ test("a run's step records are admitted only for its own revision and one snapsh
   ]) {
     assert.ok(isRunStep(valid, valid.position, 2), JSON.stringify(valid));
   }
-  // A run's entries are its replay steps, each at its own position.
-  assert.deepEqual([1, 2, 3].map((index) => runPosition(index)), [
-    { phase: 'replay', step: 1 }, { phase: 'replay', step: 2 }, { phase: 'replay', step: 3 },
-  ]);
   for (const [invalid, position] of [
-    [RECORDED, { phase: 'replay', step: 2 }],
+    [RECORDED, 2],
     [RECORDED, ASTRAY_POSITION],
     [ASTRAY, ASTRAY_POSITION],
-    [{ ...RECORDED, position: 1 }, REPLAY_1],
     [{ ...RECORDED, status: 'running' }, REPLAY_1],
     [{ ...RECORDED, status: 'recovered' }, REPLAY_1],
     [{ ...RECORDED, duration_ms: -1 }, REPLAY_1],
@@ -1341,7 +1274,7 @@ test("a run whose notice names no plan binds its records to the run its first pa
   const run = RUN_ENTRY.run_id;
   const unknown = runBinding(ROUTINE.routine_id);
   assert.deepEqual(unknown, { routine_id: ROUTINE.routine_id, revision: null, plan_digest: null, total: null });
-  const steps = Array.from({ length: 70 }, (_, index) => ({ ...RECORDED, position: { phase: 'replay', step: index + 1 } }));
+  const steps = Array.from({ length: 70 }, (_, index) => ({ ...RECORDED, position: index + 1 }));
   const first = runPage(0, steps.slice(0, 64), { total: 70 });
   const page = await readRunSteps(fetcher([[200, first]]).fetch, 'team_1', run, unknown, 'latest', 0);
   const bound = pageBinding(page);
@@ -1376,10 +1309,10 @@ test('a recovery card shows its recorded failure, offers exactly Rodar and Exclu
     revision: 2,
     assistant_id: 'shimpz-cloudflare',
     action: 'replace-dns-record',
-    position: { phase: 'replay', step: 2 },
+    position: 2,
     steps: 3,
     evidence: 'recorded',
-    diagnostic: { ...ATTEMPT_FAILURE, action: 'replace-dns-record', position: { phase: 'replay', step: 2 } },
+    diagnostic: { ...ATTEMPT_FAILURE, action: 'replace-dns-record', position: 2 },
     nonce: 'c'.repeat(32),
     expires_in: 300,
     choices: ['run', 'delete'],
@@ -1396,10 +1329,10 @@ test('a recovery card shows its recorded failure, offers exactly Rodar and Exclu
       params: { team_id: 'team_1', incident_id: INCIDENT.incident_id, body: { nonce: card.nonce, choice: 'run' } },
     },
   ]);
-  // A card outside the replay phase is refused.
+  // A card whose position is no step number is refused.
   const astray = {
-    ...card, position: { phase: 'other', step: 2 },
-    diagnostic: { ...card.diagnostic, position: { phase: 'other', step: 2 } },
+    ...card, position: '2',
+    diagnostic: { ...card.diagnostic, position: '2' },
   };
   await assert.rejects(
     openRoutineCard(fetcher([[200, astray]]).fetch, 'team_1', INCIDENT.incident_id),
@@ -1423,10 +1356,10 @@ test('a recovery card shows its recorded failure, offers exactly Rodar and Exclu
     { ...card, team_id: 'team_2' },
     { ...card, assistant_id: null, action: null },
     { ...card, expires_in: 600 },
-    { ...card, position: { phase: 'replay', step: 4 } },
-    { ...card, position: { phase: 'replay', step: 0 } },
+    { ...card, position: 4 },
+    { ...card, position: 0 },
     { ...card, step: 2 },
-    { ...card, diagnostic: { ...card.diagnostic, position: { phase: 'replay', step: 1 } } },
+    { ...card, diagnostic: { ...card.diagnostic, position: 1 } },
     { ...card, evidence: 'absent' },
     { ...card, diagnostic: null },
     // Never another step's error: the diagnostic must be of exactly the card's step.
@@ -1492,7 +1425,7 @@ const ATTEMPT = Object.freeze({
   attempt: 1,
   assistant_id: 'shimpz-cloudflare',
   action: 'replace-dns-record',
-  position: { phase: 'replay', step: 2 },
+  position: 2,
   recorded_at: '2026-10-05T12:00:03Z',
   failure: {
     error_type: 'httpx.HTTPStatusError',
@@ -1509,7 +1442,7 @@ const RUN_ID = 'b'.repeat(32);
 
 test("a run's execution details admit exactly Team's diagnostics view for that run", async () => {
   const transport = { ...ATTEMPT, attempt: 2, failure: null, condition: 'exit-status:1' };
-  const later = { ...ATTEMPT, attempt: 3, position: { phase: 'replay', step: 2 } };
+  const later = { ...ATTEMPT, attempt: 3, position: 2 };
   for (const diagnostics of [[], [ATTEMPT], [ATTEMPT, transport, later]]) {
     const api = fetcher([[200, { team_id: 'team_1', run_id: RUN_ID, diagnostics: structuredClone(diagnostics) }]]);
     assert.deepEqual(await readRunDiagnostics(api.fetch, 'team_1', RUN_ID), diagnostics);
@@ -1522,10 +1455,9 @@ test("a run's execution details admit exactly Team's diagnostics view for that r
     { ...ATTEMPT, operation_id: '6f1c2b8e-3a4d-1c5e-9f60-718293a4b5c6' },
     { ...ATTEMPT, attempt: 65 },
     // Each attempt names its replay step.
-    { ...ATTEMPT, position: { phase: 'replay', step: 0 } },
-    { ...ATTEMPT, position: { phase: 'replay', step: 257 } },
-    { ...ATTEMPT, position: { phase: 'other', step: 1 } },
-    { ...ATTEMPT, position: 2 },
+    { ...ATTEMPT, position: 0 },
+    { ...ATTEMPT, position: 257 },
+    { ...ATTEMPT, position: '1' },
     { ...ATTEMPT, recorded_at: '2026-02-30T12:00:00Z' },
     { ...ATTEMPT, failure: null, condition: 'stderr: secret' },
     { ...ATTEMPT, failure: { ...failure, message: 'bidi \u202e override' } },
@@ -1594,7 +1526,7 @@ test("a Routine's status is its most urgent one", () => {
   const run = (status) => ({ run_id: 'b'.repeat(32), routine_id: routine.routine_id, status });
   const incident = { incident_id: 'c'.repeat(32), routine_id: routine.routine_id };
   assert.equal(routineStatus(routine), 'healthy');
-  assert.equal(routineStatus({ ...routine, schedule: { kind: 'continuous', gap: 5, cap: 17280 } }), 'continuous');
+  assert.equal(routineStatus({ ...routine, schedule: { kind: 'continuous', gap: 5 } }), 'continuous');
   assert.equal(routineStatus(routine, [run('leased')]), 'running');
   assert.equal(routineStatus(routine, [run('frozen')]), 'waiting');
   assert.equal(routineStatus({ ...routine, state: 'paused' }, [run('frozen')]), 'paused');
@@ -1771,7 +1703,7 @@ test("a recorded attempt reads in words by its replay step", () => {
   const item = { assistant_id: 'shimpz-cloudflare', action: 'delete-dns-record', attempt: 2 };
   const names = { assistant: () => 'Cloudflare', action: humanizeId };
   assert.notEqual(
-    attemptWords({ ...item, position: { phase: 'replay', step: 3 } }, copy.details.attempt, names),
-    attemptWords({ ...item, position: { phase: 'replay', step: 4 } }, copy.details.attempt, names),
+    attemptWords({ ...item, position: 3 }, copy.details.attempt, names),
+    attemptWords({ ...item, position: 4 }, copy.details.attempt, names),
   );
 });

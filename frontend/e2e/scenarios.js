@@ -79,7 +79,7 @@ const HELD_INCIDENT = {
   created_at: '2026-09-30T12:01:07Z',
   assistant_id: 'shimpz-cloudflare',
   action: 'replace-dns-record',
-  position: { phase: 'replay', step: 1 },
+  position: 1,
   steps: 1,
 };
 
@@ -91,7 +91,7 @@ const FROZEN_RUN = {
   request_kind: 'human',
   assistant_id: 'shimpz-cloudflare',
   action: 'list-zones',
-  position: { phase: 'replay', step: 1 },
+  position: 1,
   steps: 1,
 };
 

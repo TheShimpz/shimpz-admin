@@ -161,7 +161,7 @@ export function attemptsByStep(diagnostics, steps) {
   const byStep = new Map();
   const apart = [];
   for (const item of diagnostics) {
-    const { step } = item.position;
+    const step = item.position;
     if (step > steps) apart.push(item);
     else byStep.set(step, [...(byStep.get(step) ?? []), item]);
   }

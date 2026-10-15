@@ -125,9 +125,9 @@
 {/snippet}
 
 <ol class="steps" bind:this={list}>
-  {#each shown as step (step.position.step)}
+  {#each shown as step (step.position)}
     <li class={['step', `step--${step.status}`]} tabindex="-1">
-      <span class="number" aria-hidden="true">{String(step.position.step).padStart(2, '0')}</span>
+      <span class="number" aria-hidden="true">{String(step.position).padStart(2, '0')}</span>
       <div class="body">
         {#if step.action}
           <div class="head">
@@ -156,10 +156,10 @@
             <div class="dim">{copy.result.noInputs}</div>
           {/if}
         {/if}
-        {#if attempts?.byStep.get(step.position.step)?.length}
+        {#if attempts?.byStep.get(step.position)?.length}
           <div class="attempts">
-            <div class="attempts-title">{countWords(copy.result.attempts, attempts.byStep.get(step.position.step).length, locale)}</div>
-            <ul>{#each attempts.byStep.get(step.position.step) as item (`${item.operation_id}:${item.attempt}`)}{@render attempt(item, false)}{/each}</ul>
+            <div class="attempts-title">{countWords(copy.result.attempts, attempts.byStep.get(step.position).length, locale)}</div>
+            <ul>{#each attempts.byStep.get(step.position) as item (`${item.operation_id}:${item.attempt}`)}{@render attempt(item, false)}{/each}</ul>
           </div>
         {/if}
       </div>

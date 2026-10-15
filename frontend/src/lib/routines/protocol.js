@@ -15,11 +15,10 @@ const FORBIDDEN_RE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\u2028\u2029]/u;
 const TIME_RE = /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/;
 const TIMEZONE_RE = /^[A-Za-z][A-Za-z0-9_+-]{0,31}(?:\/[A-Za-z0-9][A-Za-z0-9_+-]{0,31}){0,2}$/;
 const SCHEDULE_FIELDS = {
-  hourly: ['kind', 'every'],
   daily: ['kind', 'time'],
   weekly: ['kind', 'weekday', 'time'],
   monthly: ['kind', 'day', 'time'],
-  continuous: ['kind', 'gap', 'cap'],
+  continuous: ['kind', 'gap'],
 };
 
 function whole(value, low, high) {
@@ -30,10 +29,7 @@ function whole(value, low, high) {
 export function isSchedule(value) {
   const fields = value && typeof value === 'object' ? SCHEDULE_FIELDS[value.kind] : undefined;
   if (!fields || !exactKeys(value, fields)) return false;
-  if (value.kind === 'hourly') return whole(value.every, 1, 24);
-  if (value.kind === 'continuous') {
-    return whole(value.gap, MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS) && value.cap === continuousCap(value.gap);
-  }
+  if (value.kind === 'continuous') return whole(value.gap, MIN_CONTINUOUS_GAP_SECONDS, MAX_CONTINUOUS_GAP_SECONDS);
   return (
     typeof value.time === 'string' &&
     TIME_RE.test(value.time) &&
@@ -58,18 +54,6 @@ const CONVENTIONAL_TIMEZONE = 'UTC';
 export function isZoned(timezone, source) {
   if (!TIMEZONE_SOURCES.includes(source) || !isTimezone(timezone)) return false;
   return source !== 'none' || timezone === CONVENTIONAL_TIMEZONE;
-}
-
-/** A continuous Routine's starts in any rolling 24 hours: as many as its gap allows all day, never lowered. */
-export function continuousCap(gap) {
-  return Math.ceil(DAY_SECONDS / gap);
-}
-
-/** The most runs a Routine may start in any rolling 24 hours, as Team's `daily_cap` derives it from its schedule. */
-export function dailyCap(schedule) {
-  if (schedule.kind === 'continuous') return schedule.cap;
-  if (schedule.kind === 'hourly') return Math.ceil(24 / schedule.every);
-  return 1;
 }
 
 function isAssistants(value, minimum) {
@@ -323,24 +307,14 @@ function isRunInput(value) {
     RUN_INPUT_SOURCES.includes(value.source) && (value.value === null || plain(value.value, MAX_PREVIEW_CHARS));
 }
 
-/** Whether a value is a call's position: a replay step among `steps`, `{phase: "replay", step}`. */
+/** Whether a value is a call's position: its step's 1-based position among `steps`. */
 function isCallPosition(value, steps) {
-  if (!whole(steps, 0, MAX_ROUTINE_STEPS)) return false;
-  return exactKeys(value, ['phase', 'step']) && value.phase === 'replay' && isPosition(value.step, steps);
-}
-
-/** The position of a run page's `index`-th entry (1-based): its replay step. */
-export function runPosition(index) {
-  return { phase: 'replay', step: index };
-}
-
-function samePosition(left, right) {
-  return left.phase === right.phase && left.step === right.step;
+  return whole(steps, 0, MAX_ROUTINE_STEPS) && isPosition(value, steps);
 }
 
 /** Whether a value is one run entry at exactly `position`: what its attempt did, or only that it never ran or is gone. */
 export function isRunStep(value, position, steps) {
-  if (!exactKeys(value, RUN_STEP_KEYS) || !isCallPosition(value.position, steps) || !samePosition(value.position, position)) {
+  if (!exactKeys(value, RUN_STEP_KEYS) || !isCallPosition(value.position, steps) || value.position !== position) {
     return false;
   }
   if (RUN_STEP_GAPS.includes(value.status)) {
@@ -420,7 +394,7 @@ export async function readRunSteps(call, teamId, runId, binding, snapshot, offse
     (snapshot === 'latest' || item.snapshot === snapshot) &&
     typeof item.ended === 'boolean' &&
     item.offset === offset &&
-    isPageOf(item, (step, index) => isRunStep(step, runPosition(index), item.total)));
+    isPageOf(item, (step, index) => isRunStep(step, index, item.total)));
 }
 
 const ERROR_CODE_RE = /^[a-z][a-z0-9-]{0,63}$/;
@@ -701,7 +675,7 @@ function isCardEvidence(item) {
     isDiagnostic(item.diagnostic) &&
     item.diagnostic.assistant_id === item.assistant_id &&
     item.diagnostic.action === item.action &&
-    samePosition(item.diagnostic.position, item.position)
+    item.diagnostic.position === item.position
   );
 }
 
@@ -755,7 +729,7 @@ export async function answerRoutineCard(call, teamId, incidentId, card, choice) 
 const MAX_NAME_CHARS = 80;
 // The recording agent's plain-language description on a card (Team's MAX_ROUTINE_DESCRIPTION_CHARS).
 const MAX_DESCRIPTION_CHARS = 600;
-const PAUSE_REASONS = ['decided', 'unavailable', 'exhausted', 'policy', 'evidence'];
+const PAUSE_REASONS = ['exhausted', 'policy', 'evidence'];
 
 function closedText(value, maximum) {
   return typeof value === 'string' && value.length > 0 && [...value].length <= maximum && value.trim() === value;
@@ -1036,12 +1010,12 @@ export async function readRunDiagnostics(call, teamId, runId) {
     item.diagnostics.every((entry, index) => index === 0 || diagnosticOrder(item.diagnostics[index - 1], entry) <= 0)).diagnostics;
 }
 
-// The confirmation card of a recorded Routine (ADR-0101 section 5.2), mirroring Team's `routine.canonical_proposal`:
-// every literal complete and escaped, every source and selector described completely, the schedule, the output, every
-// permitted Action. Nothing in it is paged or cut.
+// The confirmation card of a recorded Routine (ADR-0101 section 5.2, amended 2026-10-15), mirroring Team's
+// `routine.canonical_proposal`: the recording agent's description, which states the schedule and the output, and every
+// step with its effect, every literal complete and escaped, every source and selector described completely. Nothing in
+// it is paged or cut.
 const MAX_PROPOSAL_BYTES = 160 * 1024;
 const INPUT_ORIGINS = ['request', 'assistant', 'clock', 'step', 'selector'];
-const MAX_NEXT_RUNS = 3;
 const CARD_INPUT_KEYS = ['member', 'origin', 'value', 'step', 'pointer', 'where', 'item'];
 
 function isCardInput(value, position) {
@@ -1070,50 +1044,22 @@ function isCardStep(value, position) {
     value.inputs.every((item) => isCardInput(item, position)) && sortedMembers(value.inputs);
 }
 
-function isCardPermitted(value) {
-  if (!Array.isArray(value) || value.length > MAX_PERMITTED) return false;
-  const valid = value.every((item) => exactKeys(item, ['assistant', 'action', 'read_only']) &&
-    isAssistantId(item.assistant) && isActionId(item.action) && typeof item.read_only === 'boolean');
-  const identities = value.map((item) => `${item.assistant}\u0000${item.action}`);
-  return valid && identities.every((item, index) => index === 0 || identities[index - 1] < item);
-}
-
-// The permitted Actions are exactly the card's steps' Actions, each with the same reviewed effect as its steps.
-function permitsExactly(permitted, steps) {
-  const effects = new Map(permitted.map((item) => [`${item.assistant}\u0000${item.action}`, item.read_only]));
-  const used = new Set(steps.map((step) => `${step.assistant}\u0000${step.action}`));
-  return effects.size === used.size && [...used].every((key) => effects.has(key)) &&
-    steps.every((step) => effects.get(`${step.assistant}\u0000${step.action}`) === step.read_only);
-}
-
 /**
  * The Routine card a recording turn's reply carries, admitted exactly as Team's closed form, or a thrown
  * `routine-response-invalid`. It is the one thing the person confirms.
  */
 export function parseRoutineProposal(value) {
-  const keys = [
-    'proposal_id', 'expires_at', 'replaces', 'name', 'description', 'schedule', 'timezone', 'timezone_source',
-    'next_runs', 'daily_cap', 'output', 'steps', 'permitted',
-  ];
+  const keys = ['proposal_id', 'expires_at', 'replaces', 'name', 'description', 'steps'];
   return view(value, keys, (item) => {
-    const { steps, output, next_runs: runs } = item;
-    if (!Array.isArray(steps) || steps.length > MAX_ROUTINE_STEPS || !exactKeys(output, ['mode'])) return false;
-    const shown = SHOWN_MODES.includes(output.mode) ? steps.length : null;
+    const { steps } = item;
     return (
       typeof item.proposal_id === 'string' && OPAQUE_ID_RE.test(item.proposal_id) &&
       isInstant(item.expires_at) &&
       (item.replaces === null || (typeof item.replaces === 'string' && OPAQUE_ID_RE.test(item.replaces))) &&
       isName(item.name) &&
       isName(item.description, MAX_DESCRIPTION_CHARS) &&
-      isSchedule(item.schedule) &&
-      isZoned(item.timezone, item.timezone_source) &&
-      Array.isArray(runs) && runs.length >= 1 && runs.length <= MAX_NEXT_RUNS && runs.every(isInstant) &&
-      runs.every((run, index) => index === 0 || runs[index - 1] <= run) &&
-      item.daily_cap === dailyCap(item.schedule) &&
-      isDisposition({ ...output, step: shown }, steps.length) &&
+      Array.isArray(steps) && steps.length > 0 && steps.length <= MAX_ROUTINE_STEPS &&
       steps.every((step, index) => isCardStep(step, index + 1)) &&
-      isCardPermitted(item.permitted) &&
-      permitsExactly(item.permitted, steps) &&
       encodedBytes(item) <= MAX_PROPOSAL_BYTES
     );
   });

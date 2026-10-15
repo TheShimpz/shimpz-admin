@@ -69,7 +69,7 @@
       assistant: $assistantNames[step.assistant_id] ?? humanizeId(step.assistant_id),
       action: humanizeId(step.action),
     }).replace(' · ', ' › ');
-    return fill(copy.card.stoppedAt, { n: step.position.step, total: step.steps, step: words });
+    return fill(copy.card.stoppedAt, { n: step.position, total: step.steps, step: words });
   });
   // What the person is asked to decide: a held run waits for them, a paused one says why it paused, and a frozen one
   // names the approval it waits for.

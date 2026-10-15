@@ -272,8 +272,6 @@ export default {
   },
   routine: {
     schedule: {
-      hour: '每小时',
-      hours: '每 {every} 小时',
       daily: '每天 {time}',
       weekly: '{weekday} {time}',
       weekdays: {
@@ -319,8 +317,6 @@ export default {
       recovered: '恢复后已完成',
       paused: '已暂停：{reason}',
       pauseReasons: {
-        decided: '重试无济于事。',
-        unavailable: '无法执行恢复。',
         exhausted: '恢复额度已用完。',
         policy: '某个 Action 违反了安全规则。',
         evidence: '无法读取恢复记录。',

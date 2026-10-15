@@ -272,8 +272,6 @@ export default {
   },
   routine: {
     schedule: {
-      hour: 'Cada hora',
-      hours: 'Cada {every} horas',
       daily: 'Todos los días a las {time}',
       weekly: '{weekday} a las {time}',
       weekdays: {
@@ -319,8 +317,6 @@ export default {
       recovered: 'Completada tras la recuperación',
       paused: 'En pausa: {reason}',
       pauseReasons: {
-        decided: 'reintentar no ayudaría.',
-        unavailable: 'la recuperación no pudo ejecutarse.',
         exhausted: 'se agotó el límite de recuperación.',
         policy: 'una Action infringió una regla de seguridad.',
         evidence: 'no se pudieron leer los registros de recuperación.',

@@ -272,8 +272,6 @@ export default {
   // chat turn recorded, and every run asks for the authorizations its Actions declare.
   routine: {
     schedule: {
-      hour: 'Every hour',
-      hours: 'Every {every} hours',
       daily: 'Every day at {time}',
       weekly: '{weekday} at {time}',
       weekdays: {
@@ -319,8 +317,6 @@ export default {
       recovered: 'Done after recovery',
       paused: 'Paused: {reason}',
       pauseReasons: {
-        decided: 'retrying could not help.',
-        unavailable: 'recovery could not run.',
         exhausted: 'its recovery budget is used up.',
         policy: 'an Action broke a safety rule.',
         evidence: 'its recovery records could not be read.',

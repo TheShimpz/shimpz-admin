@@ -146,9 +146,6 @@ const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
 /** A schedule in words for the viewer's locale; wall-clock times are in the Routine's own timezone. */
 export function scheduleWords(schedule, copy, locale) {
-  if (schedule.kind === 'hourly') {
-    return schedule.every === 1 ? copy.hour : fill(copy.hours, { every: schedule.every });
-  }
   if (schedule.kind === 'continuous') {
     // The gap in its largest whole unit: "Every 30 minutes", never seconds and a daily cap.
     const [unit, seconds] = CONTINUOUS_UNITS.find(([, size]) => schedule.gap % size === 0);
@@ -364,7 +361,7 @@ export function omittedWords(copy, count, locale) {
  */
 export function attemptWords(item, template, { assistant = (id) => id, action = (id) => id } = {}) {
   return fill(template, {
-    step: item.position.step,
+    step: item.position,
     assistant: assistant(item.assistant_id),
     action: action(item.action),
     attempt: item.attempt,

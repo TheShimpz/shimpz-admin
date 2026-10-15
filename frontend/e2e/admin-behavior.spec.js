@@ -4322,7 +4322,7 @@ function recoveryCard(incidentId, { nonce = 'f'.repeat(32), action = 'replace-dn
     revision: 1,
     assistant_id: 'shimpz-cloudflare',
     action,
-    position: { phase: 'replay', step: 2 },
+    position: 2,
     steps: 3,
     evidence: 'recorded',
     diagnostic: {
@@ -4330,7 +4330,7 @@ function recoveryCard(incidentId, { nonce = 'f'.repeat(32), action = 'replace-dn
       attempt: 1,
       assistant_id: 'shimpz-cloudflare',
       action,
-      position: { phase: 'replay', step: 2 },
+      position: 2,
       recorded_at: '2026-10-01T12:01:05Z',
       failure: {
         error_type: 'httpx.HTTPStatusError',
@@ -4392,7 +4392,7 @@ async function routeRoutines(
       created_at: '2026-09-30T12:01:07Z',
       assistant_id: 'shimpz-cloudflare',
       action: 'replace-dns-record',
-      position: { phase: 'replay', step: 2 },
+      position: 2,
       steps: 3,
     },
   ] : [];
@@ -5457,7 +5457,7 @@ test.describe('Team Routines', () => {
       request_kind: 'human',
       assistant_id: 'shimpz-cloudflare',
       action: 'replace-dns-record',
-      position: { phase: 'replay', step: 2 },
+      position: 2,
       steps: 3,
     }];
     let incidents = [];
@@ -5486,7 +5486,7 @@ test.describe('Team Routines', () => {
         created_at: '2026-10-01T12:01:07Z',
         assistant_id: 'shimpz-cloudflare',
         action: 'replace-dns-record',
-        position: { phase: 'replay', step: 2 },
+        position: 2,
         steps: 3,
       }];
       return ok({ team_id: 'marketing', run_id: run, status: 'held' });
@@ -5521,7 +5521,7 @@ test.describe('Team Routines', () => {
       openings.push(params.incident_id);
       // Team has not indexed the incident at the first opening; it is listed from then on.
       if (openings.length === 1) {
-        incidents = [{ incident_id: run, routine_id: ROUTINE_VIEW.routine_id, name: ROUTINE_VIEW.name, created_at: '2026-10-01T12:01:07Z', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 }];
+        incidents = [{ incident_id: run, routine_id: ROUTINE_VIEW.routine_id, name: ROUTINE_VIEW.name, created_at: '2026-10-01T12:01:07Z', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }];
         return ok({ code: 'routine-incident-unavailable' }, 404);
       }
       return ok(recoveryCard(run, { nonce: 'e'.repeat(32) }));
@@ -5587,7 +5587,7 @@ test.describe('Team Routines', () => {
     await routeReadyChat(page);
     const run = 'd'.repeat(32);
     let runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', scheduled_at: '2026-10-01T12:00:00Z', request_kind: null, assistant_id: null, action: null, position: null, steps: null }];
-    let incidents = [{ incident_id: run, routine_id: ROUTINE_VIEW.routine_id, name: ROUTINE_VIEW.name, created_at: '2026-10-01T12:01:07Z', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 }];
+    let incidents = [{ incident_id: run, routine_id: ROUTINE_VIEW.routine_id, name: ROUTINE_VIEW.name, created_at: '2026-10-01T12:01:07Z', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }];
     let release;
     const answered = new Promise((resolve) => { release = resolve; });
     const openings = [];
@@ -5599,7 +5599,7 @@ test.describe('Team Routines', () => {
     // Rodar starts a fresh run, which freezes for an approval that the Team lists before the answer itself is
     // delivered.
     await routeRead(page, 'routines.card_answer', async () => {
-      runs = [{ ...runs[0], status: 'frozen', request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 }];
+      runs = [{ ...runs[0], status: 'frozen', request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }];
       incidents = [];
       await answered;
       return ok({ team_id: 'marketing', incident_id: run, choice: 'run', status: 'requested' });
@@ -5701,7 +5701,7 @@ test.describe('Team Routines', () => {
           entry('a'.repeat(32), 'created', defined, null, '2026-10-01T11:00:00Z'),
           entry('f'.repeat(32), 'skipped', { missed: 2 }, null, '2026-10-01T11:30:00Z'),
           entry('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']], position: null, steps: null }),
-          entry('d'.repeat(32), 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 }),
+          entry('d'.repeat(32), 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }),
           entry('b'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: null }),
         ],
         before: null,
@@ -5791,7 +5791,7 @@ test.describe('Team Routines', () => {
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     // Each run's own step records: the inputs its attempt was given, as Team's redacted previews.
     const record = (position, action, inputs) => ({
-      position: { phase: 'replay', step: position }, status: 'done', assistant_id: 'shimpz-cloudflare', action, attempt: 1, duration_ms: 812,
+      position: position, status: 'done', assistant_id: 'shimpz-cloudflare', action, attempt: 1, duration_ms: 812,
       recorded_at: '2026-10-01T12:00:02Z', inputs,
     });
     const records = {
@@ -5814,7 +5814,7 @@ test.describe('Team Routines', () => {
             attempt: 1,
             assistant_id: 'shimpz-cloudflare',
             action: 'list-zones',
-            position: { phase: 'replay', step: 1 },
+            position: 1,
             recorded_at: '2026-10-01T12:00:03Z',
             failure: {
               error_type: 'httpx.HTTPStatusError',
@@ -6068,14 +6068,14 @@ test.describe('Team Routines', () => {
     // Fifty-nine steps were done, Stop cut the next one, the one after failed, one record is gone, and the run never
     // started the rest.
     const gap = (position, kind) => ({
-      position: { phase: 'replay', step: position }, status: kind, assistant_id: null, action: null, attempt: null, duration_ms: null, recorded_at: null, inputs: null,
+      position: position, status: kind, assistant_id: null, action: null, attempt: null, duration_ms: null, recorded_at: null, inputs: null,
     });
     const records = Array.from({ length: total }, (_, index) => {
       const position = index + 1;
       if (position > 62) return gap(position, 'not_run');
       if (position === 62) return gap(position, 'unavailable');
       return {
-        position: { phase: 'replay', step: position },
+        position: position,
         status: { 60: 'stopped', 61: 'failed' }[position] ?? 'done',
         assistant_id: 'shimpz-cloudflare',
         action: 'list-dns-records',
@@ -6280,7 +6280,7 @@ test.describe('Team Routines', () => {
       created_at: '2026-10-01T12:00:07Z',
       assistant_id: 'shimpz-cloudflare',
       action: 'replace-dns-record',
-      position: { phase: 'replay', step: 2 },
+      position: 2,
       steps: 3,
     };
   }
@@ -6295,7 +6295,7 @@ test.describe('Team Routines', () => {
       request_kind: requestKind,
       assistant_id: 'shimpz-cloudflare',
       action: 'replace-dns-record',
-      position: { phase: 'replay', step: 2 },
+      position: 2,
       steps: 3,
     };
   }
@@ -6310,7 +6310,7 @@ test.describe('Team Routines', () => {
     const held = 'b'.repeat(32);
     const paused = 'c'.repeat(32);
     const audit = { ...ROUTINE_VIEW, routine_id: 'e'.repeat(32), name: 'Weekly DNS audit' };
-    const step = { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 };
+    const step = { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 };
     await routeReadyChat(page, {
       history: {
         entries: [
@@ -6393,7 +6393,7 @@ test.describe('Team Routines', () => {
     const message = '<img src=x onerror=alert(1)> Insufficient account credits';
     await routeReadyChat(page, {
       history: {
-        entries: [routineRow(held, 'held', { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 }, { version: 2 })],
+        entries: [routineRow(held, 'held', { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }, { version: 2 })],
         before: null,
       },
     });
@@ -6420,7 +6420,7 @@ test.describe('Team Routines', () => {
       attempt: number,
       assistant_id: 'shimpz-cloudflare',
       action: 'replace-dns-record',
-      position: { phase: 'replay', step: 2 },
+      position: 2,
       recorded_at: '2026-10-01T12:00:03Z',
       failure,
       condition,
@@ -6476,7 +6476,7 @@ test.describe('Team Routines', () => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     const failed = 'c'.repeat(32);
     await routeReadyChat(page, {
-      history: { entries: [routineRow(failed, 'failed', { code: 'assistant-rpc-failed', actions: [], position: { phase: 'replay', step: 5 }, steps: 6 })], before: null },
+      history: { entries: [routineRow(failed, 'failed', { code: 'assistant-rpc-failed', actions: [], position: 5, steps: 6 })], before: null },
     });
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     // The same Action's first attempt failed at steps 2, 5, and 7: one operation per position.
@@ -6491,9 +6491,9 @@ test.describe('Team Routines', () => {
       condition: 'timeout',
     });
     await routeRead(page, 'routines.diagnostics', () => ok({ team_id: 'marketing', run_id: failed, diagnostics: [
-      attempt('718293a4b5c6', { phase: 'replay', step: 2 }),
-      attempt('718293a4b5c7', { phase: 'replay', step: 5 }),
-      attempt('718293a4b5c8', { phase: 'replay', step: 7 }),
+      attempt('718293a4b5c6', 2),
+      attempt('718293a4b5c7', 5),
+      attempt('718293a4b5c8', 7),
     ] }));
     await page.goto('/chat/?team=marketing');
     const navigation = await openTeamNavigation(page);
@@ -6801,7 +6801,7 @@ test.describe('Team Routines', () => {
 
   test("a continuous Routine's healthy minutes are its runs, each with its count and no execution details", async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
-    const continuous = { ...ROUTINE_VIEW, schedule: { kind: 'continuous', gap: 5, cap: 17280 } };
+    const continuous = { ...ROUTINE_VIEW, schedule: { kind: 'continuous', gap: 5 } };
     const rollup = (id, runs) => ({ ...routineRow(id, 'healthy', { runs }, { routine: continuous }), run_id: null });
     await routeReadyChat(page, { history: { entries: [rollup('c'.repeat(32), 12), rollup('d'.repeat(32), 1)], before: null } });
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [continuous], runs: [], incidents: [] }) : undefined));
@@ -6877,7 +6877,7 @@ test.describe('Team Routines', () => {
         entries: [
           routineRow(failed, 'failed', { code: 'assistant-rpc-failed', actions: [], position: null, steps: null }),
           routineRow(held, 'paused', {
-            assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3, reason: 'exhausted',
+            assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3, reason: 'exhausted',
           }, { routine: heldRoutine }),
         ],
         before: null,
@@ -6933,7 +6933,7 @@ test.describe('Team Routines', () => {
     await routeReadyChat(page, {
       history: {
         entries: [routineRow(run, 'frozen', {
-          request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3,
+          request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3,
         })],
         before: null,
       },
@@ -6978,7 +6978,7 @@ test.describe('Team Routines', () => {
     await page.clock.install({ time: new Date('2026-10-01T12:05:00Z') });
     await routeReadyChat(page, {
       history: {
-        entries: [routineRow(held, 'held', { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 }, { version: 2 })],
+        entries: [routineRow(held, 'held', { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }, { version: 2 })],
         before: null,
       },
     });
@@ -7018,7 +7018,7 @@ test.describe('Team Routines', () => {
     const waiting = 'e'.repeat(32);
     const audit = { ...ROUTINE_VIEW, routine_id: 'c'.repeat(32), name: 'Weekly DNS audit' };
     const frozenRow = (id, requestKind, routine) => routineRow(id, 'frozen', {
-      request_kind: requestKind, assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3,
+      request_kind: requestKind, assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3,
     }, { routine });
     await routeReadyChat(page, {
       history: { entries: [frozenRow(waiting, 'integrations', audit), frozenRow(run, 'human', ROUTINE_VIEW)], before: null },
@@ -7106,7 +7106,7 @@ test.describe('Team Routines', () => {
     await routeReadyChat(page, {
       history: {
         entries: [routineRow(run, 'frozen', {
-          request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3,
+          request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3,
         })],
         before: null,
       },
@@ -7169,7 +7169,7 @@ test.describe('Team Routines', () => {
     await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
     const run = 'd'.repeat(32);
     const earlier = createdRow('c'.repeat(32));
-    const frozen = routineRow(run, 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 });
+    const frozen = routineRow(run, 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 });
     let history = { entries: [], before: null };
     let runs = [];
     await routeReadyChat(page, { history });
@@ -7476,7 +7476,7 @@ test('a frozen Routine run opens in the interface language and answers with the 
         run_id: run,
         outcome: 'frozen',
         created_at: '2026-10-01T12:01:07Z',
-        detail: { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: { phase: 'replay', step: 2 }, steps: 3 },
+        detail: { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 },
         version: 1,
         ...noticeExtras('frozen'),
       }],
@@ -7494,7 +7494,7 @@ test('a frozen Routine run opens in the interface language and answers with the 
         request_kind: 'human',
         assistant_id: 'shimpz-cloudflare',
         action: 'replace-dns-record',
-        position: { phase: 'replay', step: 2 },
+        position: 2,
         steps: 3,
       }],
       incidents: [],

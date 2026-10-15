@@ -158,11 +158,11 @@ test('a list or a single value at the top is one unlabeled block', () => {
 });
 
 test('a recorded attempt joins the step whose position it names, and one beyond the run is kept apart', () => {
-  const replay = (step, number) => ({ action: 'list-zones', position: { phase: 'replay', step }, attempt: number });
+  const replay = (step, number) => ({ action: 'list-zones', position: step, attempt: number });
   // Three replay steps: step 4's attempt names no step of this run.
   const { byStep, apart } = attemptsByStep([replay(2, 1), replay(1, 1), replay(4, 1), replay(2, 2)], 3);
   assert.deepEqual([...byStep].map(([key, items]) => [key, items.map((item) => item.attempt)]), [[2, [1, 2]], [1, [1]]]);
-  assert.deepEqual(apart.map((item) => item.position.step), [4]);
+  assert.deepEqual(apart.map((item) => item.position), [4]);
 });
 
 test("a step's duration reads in the viewer's locale", () => {
@@ -204,7 +204,7 @@ test('plan inputs and attempt conditions read in words', () => {
 });
 
 test("an attempt's heading names its recorded position, so one Action's attempts at two positions read apart", () => {
-  const attempt = (step) => ({ assistant_id: 'shimpz-cloudflare', action: 'list-dns-records', position: { phase: 'replay', step }, attempt: 1 });
+  const attempt = (step) => ({ assistant_id: 'shimpz-cloudflare', action: 'list-dns-records', position: step, attempt: 1 });
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     const [second, fifth] = [attempt(2), attempt(5)].map((item) => attemptWords(item, catalog.details.attempt));
     assert.notEqual(second, fifth, locale);

@@ -164,7 +164,7 @@ const PLANS = [WATCH, [...STEPS, UPDATE], STEPS, [...STEPS, DELETE]];
 function routines(locale) {
   const { names } = textFor(locale);
   return [
-    { routine_id: id('1'), output: { mode: 'none', step: null }, schedule: { kind: 'continuous', gap: 5, cap: 17280 } },
+    { routine_id: id('1'), output: { mode: 'none', step: null }, schedule: { kind: 'continuous', gap: 5 } },
     {
       routine_id: id('2'),
       output: { mode: 'show', step: 2 },
@@ -197,7 +197,7 @@ function incident(runId, routine, held) {
 }
 
 const placed = (action, position, total) => ({
-  assistant_id: 'shimpz-cloudflare', action, position: { phase: 'replay', step: position }, steps: total,
+  assistant_id: 'shimpz-cloudflare', action, position, steps: total,
 });
 
 // What a run used: a replayed run calls no model and reports only its duration; a run whose recovery asked a model
@@ -299,7 +299,7 @@ function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now, removedName) {
     row(id('8'), PAUSED, 'done', completed(PAUSED.plan, SHOWN_ZONES), { at: yesterday(40) }),
     row(id('f'), HELD, 'user-skipped', { ...placed('update-dns-record', 3, 3), choice: 'run' }, { at: at(-180) }),
     // A run resumed after a Team restart lost the protection of its secret values, and says so.
-    row(FAILED_RUN, PAUSED, 'failed', { code: 'assistant-rpc-failed', actions: [], position: { phase: 'replay', step: 1 }, steps: 2 }, {
+    row(FAILED_RUN, PAUSED, 'failed', { code: 'assistant-rpc-failed', actions: [], position: 1, steps: 2 }, {
       at: at(-150), lost: true,
     }),
     row(HELD_RUN, HELD, 'held', placed('update-dns-record', 3, 3), { at: at(-120), version: 2 }),
@@ -392,7 +392,7 @@ function diagnostics(runId) {
     attempt: count,
     assistant_id: 'shimpz-cloudflare',
     action,
-    position: { phase: 'replay', step: POSITIONS[action] },
+    position: POSITIONS[action],
     recorded_at: `2026-10-01T11:5${count}:03Z`,
     failure,
     condition,
@@ -462,7 +462,7 @@ export const ROUTINE_RECOVERY_METHODS = Object.freeze({
 // What lifecycle runs did, step by step: their records, kept as one snapshot each.
 const SNAPSHOT = 'c'.repeat(32);
 const record = (position, status, action, { attempt = 1, duration = 640 + position * 37, inputs = [] } = {}) => ({
-  position: { phase: 'replay', step: position },
+  position,
   status,
   assistant_id: 'shimpz-cloudflare',
   action,
@@ -490,7 +490,7 @@ const RUN_RECORDS = {
   [FAILED_RUN]: [
     record(1, 'failed', 'list-zones', { attempt: 3, inputs: [{ member: 'page', source: 'literal', value: '1' }] }),
     {
-      position: { phase: 'replay', step: 2 }, status: 'not_run', assistant_id: null, action: null, attempt: null,
+      position: 2, status: 'not_run', assistant_id: null, action: null, attempt: null,
       duration_ms: null, recorded_at: null, inputs: null,
     },
   ],
@@ -576,19 +576,13 @@ export const ROUTINE_QUESTIONS = Object.freeze({
   },
 });
 
-export function cloudflareCard(proposalId, locale = 'en', now = Date.now(), mode = 'show') {
+export function cloudflareCard(proposalId, locale = 'en', now = Date.now()) {
   return {
     proposal_id: proposalId,
     expires_at: instant(now + CARD_LIFETIME_MS),
     replaces: null,
     name: textFor(locale).card,
     description: textFor(locale).cardDescription,
-    schedule: { kind: 'continuous', gap: 30, cap: 2880 },
-    timezone: 'America/Sao_Paulo',
-    timezone_source: 'browser',
-    next_runs: [30, 60, 90].map((seconds) => instant(now + seconds * 1000)),
-    daily_cap: 2880,
-    output: { mode },
     steps: [
       { position: 1, assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true, inputs: [] },
       {
@@ -598,10 +592,6 @@ export function cloudflareCard(proposalId, locale = 'en', now = Date.now(), mode
         read_only: true,
         inputs: [{ member: 'zone_id', origin: 'selector', value: null, step: 1, ...SELECTOR }],
       },
-    ],
-    permitted: [
-      { assistant: 'shimpz-cloudflare', action: 'list-dns-records', read_only: true },
-      { assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true },
     ],
   };
 }
@@ -672,7 +662,7 @@ export function recordingReply(state, message, teamName) {
     reply = { ...base, reply: text.questionReply, routine_question: structuredClone(state.question) };
   } else {
     const proposalId = `c${state.sequence.toString(16)}`.padStart(32, '0');
-    const proposal = cloudflareCard(proposalId, state.locale, Date.now(), state.mode ?? 'show');
+    const proposal = cloudflareCard(proposalId, state.locale, Date.now());
     state.proposals = { ...state.proposals, [proposalId]: proposal };
     reply = { ...base, reply: text.cardReply, routine_proposal: proposal };
   }
@@ -712,10 +702,9 @@ function confirmProposal(state, { proposal_id: proposalId }) {
     routine_id: `9${proposalId.slice(-8)}`.padStart(32, '0'),
     name: proposal.name,
     output: { mode: 'show', step: 2 },
-    schedule: proposal.schedule,
-    timezone: proposal.timezone,
-    timezone_source: proposal.timezone_source,
-    next_run_at: proposal.next_runs[0],
+    // The card's description states its schedule; an interval's first run starts right after confirmation.
+    schedule: { kind: 'continuous', gap: 30 },
+    next_run_at: instant(Date.now()),
   }, CARD_STEPS);
   state.routines = [...state.routines, routine];
   state.plans = { ...state.plans, [routine.routine_id]: CARD_STEPS };
