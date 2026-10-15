@@ -521,7 +521,7 @@ async function request(call, method, params) {
 
 // The refusal an answer names: its safe code and how long to wait before asking again, if it says so.
 function refusal(response, body) {
-  const code = typeof body.code === 'string' && /^[a-z][a-z0-9-]{0,63}$/.test(body.code) ? body.code : 'routine-request-failed';
+  const code = typeof body.code === 'string' && ERROR_CODE_RE.test(body.code) ? body.code : 'routine-request-failed';
   const retryAfter = Number.isInteger(body.retry_after) && body.retry_after > 0 && body.retry_after <= 3600 ? body.retry_after : 0;
   return new RoutineError(code, response.status, retryAfter);
 }
@@ -735,7 +735,7 @@ const NOTICE_DETAILS = {
   'user-skipped': [[...STEP_KEYS, 'choice'], (detail) => isHeldStep(detail) && CARD_CHOICES.includes(detail.choice)],
   skipped: [['missed'], (detail) => Number.isInteger(detail.missed) && detail.missed >= 1],
   healthy: [['runs'], (detail) => whole(detail.runs, 1, MAX_ROLLUP_RUNS)],
-  'scope-changed': [['assistants'], (detail) => isAssistantList(detail.assistants)],
+  'scope-changed': [['assistants'], (detail) => isAssistants(detail.assistants, 1)],
   frozen: [
     ['request_kind', ...STEP_KEYS],
     (detail) => REQUEST_KINDS.includes(detail.request_kind) && detail.assistant_id !== null && isHeldStep(detail),
@@ -766,15 +766,6 @@ function isDefinition(detail) {
   return isName(detail.name) && isSummary(detail.plan) && isDisposition(detail.output, detail.plan.steps) &&
     isSchedule(detail.schedule) && isZoned(detail.timezone, detail.timezone_source) &&
     isScope(detail);
-}
-
-function isAssistantList(value) {
-  return (
-    Array.isArray(value) &&
-    value.length > 0 &&
-    value.length <= MAX_ASSISTANTS &&
-    value.every(isAssistantId)
-  );
 }
 
 // A row's usage: every run outcome carries its run's, and the healthy rollup its runs' summed; no other Routine
