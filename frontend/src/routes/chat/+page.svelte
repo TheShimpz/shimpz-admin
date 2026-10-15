@@ -950,6 +950,198 @@
     liveTurn.pause();
   }
 
+  // Each chat frame that is not a turn's terminal answer, and its handler. A handler throws on a frame the turn does not
+  // admit, and the channel then fails as a protocol violation.
+  const FRAME_HANDLERS = new Map([
+    ['integrations-required', integrationsRequired],
+    ['human-required', humanRequired],
+    ['human-response-rejected', humanResponseRejected],
+    ['progress', progressFrame],
+    ['sync-empty', syncEmpty],
+    ['assistant-install-plan', installPlanFrame],
+    ['assistant-guidance', guidanceFrame],
+    ['assistant-uninstall', uninstallFrame],
+  ]);
+
+  // An Integration request: admitted once every Assistant it names is in the Team's inventory.
+  function integrationsRequired(challenge, active, expectedTeamId) {
+    if (knownIntegrationAssistants(challenge)) acceptIntegrationChallenge(challenge);
+    else {
+      void admitWithFreshInventory(active, expectedTeamId, integrationAssistantIds(challenge), () => (
+        acceptIntegrationChallenge(challenge)
+      ));
+    }
+  }
+
+  // A human request: admitted once its Assistant is in the Team's inventory, in the language a reconciling sync named.
+  function humanRequired(challenge, active, expectedTeamId) {
+    if (humanRelocalizing) {
+      // Admin opened the pending request in exactly the language the reconciling sync named.
+      if (challenge.locale !== humanRelocalizing) throw new Error('unexpected human request language');
+      humanRelocalizing = '';
+    }
+    if (knownHumanAssistant(challenge)) acceptHumanChallenge(challenge);
+    else {
+      void admitWithFreshInventory(active, expectedTeamId, [challenge.assistant.id], () => (
+        acceptHumanChallenge(challenge)
+      ));
+    }
+  }
+
+  // Team refused the password a human request asked for; an expired request is reconciled instead.
+  function humanResponseRejected(incoming) {
+    if (
+      !humanWorking ||
+      humanChallenge?.challenge_id !== incoming.challenge_id ||
+      humanChallenge?.request?.kind !== 'auth:password'
+    ) throw new Error('unexpected human response rejection');
+    humanWorking = false;
+    if (humanExpiredId === incoming.challenge_id) {
+      reconcileExpiredHuman(incoming.challenge_id);
+      return;
+    }
+    humanRejection = incoming;
+  }
+
+  // Team's progress of the turn; the first after a human answer ends that request.
+  function progressFrame(incoming) {
+    liveTurn.progress(incoming);
+    const completedHumanTransition = humanWorking;
+    if (completedHumanTransition) {
+      humanChallenge = undefined;
+      humanWorking = false;
+      humanExpiredId = '';
+    }
+    humanRejection = undefined;
+    if (completedHumanTransition) void focusStop();
+  }
+
+  // Admin synchronized the Team and nothing is pending: a turn this page still waited on ended without a reply.
+  function syncEmpty() {
+    liveTurn.syncing = false;
+    liveTurn.forgetSegments();
+    liveTurn.resetProgress();
+    liveTurn.clearInstalled();
+    if (humanRelocalizing) {
+      // The request ended before it could be opened in the selected language.
+      liveTurn.busy = false;
+      liveTurn.stopping = false;
+      resetChallengeState();
+      setError(humanRequestCopy.expired);
+      return;
+    }
+    if (humanExpiredId) {
+      liveTurn.busy = false;
+      liveTurn.stopping = false;
+      resetChallengeState();
+      return;
+    }
+    if (liveTurn.busy && turns.length > 0) {
+      liveTurn.busy = false;
+      liveTurn.stopping = false;
+      resetChallengeState();
+      setError(copy.turnFailed);
+    }
+  }
+
+  // An install plan of the turn; an installed plan that continues keeps the turn running.
+  function installPlanFrame(incoming) {
+    liveTurn.requireRunning('Assistant install plan event');
+    const receipt = liveTurn.receipt();
+    applyInstallPlanEvent(incoming, receipt);
+    const restoreStoppedFocus = liveTurn.stopping && document.activeElement === document.body;
+    liveTurn.stopping = false;
+    liveTurn.resetProgress();
+    if (restoreStoppedFocus) void focusStop();
+    if (incoming.state === 'planned' || incoming.state === 'installing') {
+      return;
+    }
+    if (incoming.state === 'installed') {
+      if (incoming.continuation === 'dispatch') {
+        liveTurn.addInstalled(chatTeamId, incoming.assistants.map((assistant) => assistant.id));
+      }
+      void refreshTeamInventory().catch(() => undefined);
+      if (incoming.continuation === 'none') {
+        capabilityObjective = null;
+        liveTurn.busy = false;
+        clearError();
+      }
+      return;
+    }
+    liveTurn.busy = false;
+    if (incoming.state === 'failed') {
+      setError(
+        incoming.code === ASSISTANT_LIMIT_REACHED ? words.limit : friendlyChatError(incoming.status, words),
+        `HTTP ${incoming.status}`,
+      );
+    } else {
+      clearError();
+    }
+  }
+
+  // Guidance that ends the turn with a reply of its own.
+  function guidanceFrame(incoming) {
+    liveTurn.requireRunning('Assistant guidance event');
+    capabilityObjective = null;
+    turns = [...turns, {
+      renderKey: nextRenderKey++,
+      role: 'assistant',
+      text: escapeMarkdownText(incoming.reply),
+      author: incoming.team_name,
+      receipt: liveTurn.receipt(),
+    }];
+    liveTurn.busy = false;
+    liveTurn.stopping = false;
+    liveTurn.resetProgress();
+    clearError();
+    void revealLatestExchange();
+  }
+
+  // An uninstall proposal or its outcome; only an outcome ends the turn.
+  function uninstallFrame(incoming) {
+    liveTurn.requireRunning('Assistant lifecycle event');
+    capabilityObjective = null;
+    const receipt = liveTurn.receipt();
+    // A Stop may cross a proposal or the uninstall it approved; Admin answers that Stop with nothing, so the
+    // lifecycle event is applied as it is and ends the stop.
+    const terminal = applyLifecycleEvent(incoming, receipt);
+    liveTurn.stopping = false;
+    liveTurn.resetProgress();
+    if (!terminal) {
+      void focusLifecycleTask(incoming.proposal_id);
+      return;
+    }
+    liveTurn.busy = false;
+    clearError();
+    if (incoming.state === 'uninstalled') void confirmUninstall(incoming);
+  }
+
+  // The turn's terminal answer: its reply, its stop, or its failure.
+  function endTurn(incoming) {
+    const receipt = liveTurn.receipt();
+    expireSocketLifecycles();
+    liveTurn.settle();
+    resetChallengeState();
+    liveTurn.clearInstalled();
+    if (incoming.type === 'done') {
+      turns = [...turns, {
+        renderKey: nextRenderKey++,
+        role: 'assistant',
+        text: incoming.reply,
+        author: incoming.team_name,
+        receipt,
+        ...replyFields(incoming),
+      }];
+      clearError();
+    } else if (incoming.type === 'stopped') {
+      clearError();
+    } else {
+      const projectedError = projectedChatError(incoming.status, incoming.detail, words);
+      setError(projectedError.message, projectedError.detail);
+    }
+    liveTurn.resetProgress();
+  }
+
   function connectSocket(expectedTeamId) {
     closeSocket();
     if (!mounted || !expectedTeamId || chatTeamId !== expectedTeamId) return;
@@ -979,151 +1171,9 @@
       let incoming;
       try {
         incoming = parseChatEvent(frame, expectedTeam.id, expectedTeam.name);
-        if (incoming.type === 'integrations-required') {
-          const challenge = incoming;
-          if (knownIntegrationAssistants(challenge)) acceptIntegrationChallenge(challenge);
-          else {
-            void admitWithFreshInventory(active, expectedTeamId, integrationAssistantIds(challenge), () => (
-              acceptIntegrationChallenge(challenge)
-            ));
-          }
-          return;
-        }
-        if (incoming.type === 'human-required') {
-          const challenge = incoming;
-          if (humanRelocalizing) {
-            // Admin opened the pending request in exactly the language the reconciling sync named.
-            if (challenge.locale !== humanRelocalizing) throw new Error('unexpected human request language');
-            humanRelocalizing = '';
-          }
-          if (knownHumanAssistant(challenge)) acceptHumanChallenge(challenge);
-          else {
-            void admitWithFreshInventory(active, expectedTeamId, [challenge.assistant.id], () => (
-              acceptHumanChallenge(challenge)
-            ));
-          }
-          return;
-        }
-        if (incoming.type === 'human-response-rejected') {
-          if (
-            !humanWorking ||
-            humanChallenge?.challenge_id !== incoming.challenge_id ||
-            humanChallenge?.request?.kind !== 'auth:password'
-          ) throw new Error('unexpected human response rejection');
-          humanWorking = false;
-          if (humanExpiredId === incoming.challenge_id) {
-            reconcileExpiredHuman(incoming.challenge_id);
-            return;
-          }
-          humanRejection = incoming;
-          return;
-        }
-        if (incoming.type === 'progress') {
-          liveTurn.progress(incoming);
-          const completedHumanTransition = humanWorking;
-          if (completedHumanTransition) {
-            humanChallenge = undefined;
-            humanWorking = false;
-            humanExpiredId = '';
-          }
-          humanRejection = undefined;
-          if (completedHumanTransition) void focusStop();
-          return;
-        }
-        if (incoming.type === 'sync-empty') {
-          liveTurn.syncing = false;
-          liveTurn.forgetSegments();
-          liveTurn.resetProgress();
-          liveTurn.clearInstalled();
-          if (humanRelocalizing) {
-            // The request ended before it could be opened in the selected language.
-            liveTurn.busy = false;
-            liveTurn.stopping = false;
-            resetChallengeState();
-            setError(humanRequestCopy.expired);
-            return;
-          }
-          if (humanExpiredId) {
-            liveTurn.busy = false;
-            liveTurn.stopping = false;
-            resetChallengeState();
-            return;
-          }
-          if (liveTurn.busy && turns.length > 0) {
-            liveTurn.busy = false;
-            liveTurn.stopping = false;
-            resetChallengeState();
-            setError(copy.turnFailed);
-          }
-          return;
-        }
-        if (incoming.type === 'assistant-install-plan') {
-          liveTurn.requireRunning('Assistant install plan event');
-          const receipt = liveTurn.receipt();
-          applyInstallPlanEvent(incoming, receipt);
-          const restoreStoppedFocus = liveTurn.stopping && document.activeElement === document.body;
-          liveTurn.stopping = false;
-          liveTurn.resetProgress();
-          if (restoreStoppedFocus) void focusStop();
-          if (incoming.state === 'planned' || incoming.state === 'installing') {
-            return;
-          }
-          if (incoming.state === 'installed') {
-            if (incoming.continuation === 'dispatch') {
-              liveTurn.addInstalled(chatTeamId, incoming.assistants.map((assistant) => assistant.id));
-            }
-            void refreshTeamInventory().catch(() => undefined);
-            if (incoming.continuation === 'none') {
-              capabilityObjective = null;
-              liveTurn.busy = false;
-              clearError();
-            }
-            return;
-          }
-          liveTurn.busy = false;
-          if (incoming.state === 'failed') {
-            setError(
-              incoming.code === ASSISTANT_LIMIT_REACHED ? words.limit : friendlyChatError(incoming.status, words),
-              `HTTP ${incoming.status}`,
-            );
-          } else {
-            clearError();
-          }
-          return;
-        }
-        if (incoming.type === 'assistant-guidance') {
-          liveTurn.requireRunning('Assistant guidance event');
-          capabilityObjective = null;
-          turns = [...turns, {
-            renderKey: nextRenderKey++,
-            role: 'assistant',
-            text: escapeMarkdownText(incoming.reply),
-            author: incoming.team_name,
-            receipt: liveTurn.receipt(),
-          }];
-          liveTurn.busy = false;
-          liveTurn.stopping = false;
-          liveTurn.resetProgress();
-          clearError();
-          void revealLatestExchange();
-          return;
-        }
-        if (incoming.type === 'assistant-uninstall') {
-          liveTurn.requireRunning('Assistant lifecycle event');
-          capabilityObjective = null;
-          const receipt = liveTurn.receipt();
-          // A Stop may cross a proposal or the uninstall it approved; Admin answers that Stop with nothing, so the
-          // lifecycle event is applied as it is and ends the stop.
-          const terminal = applyLifecycleEvent(incoming, receipt);
-          liveTurn.stopping = false;
-          liveTurn.resetProgress();
-          if (!terminal) {
-            void focusLifecycleTask(incoming.proposal_id);
-            return;
-          }
-          liveTurn.busy = false;
-          clearError();
-          if (incoming.state === 'uninstalled') void confirmUninstall(incoming);
+        const handle = FRAME_HANDLERS.get(incoming.type);
+        if (handle) {
+          handle(incoming, active, expectedTeamId);
           return;
         }
         liveTurn.requireTerminal();
@@ -1131,29 +1181,7 @@
         failProtocol(active);
         return;
       }
-
-      const receipt = liveTurn.receipt();
-      expireSocketLifecycles();
-      liveTurn.settle();
-      resetChallengeState();
-      liveTurn.clearInstalled();
-      if (incoming.type === 'done') {
-        turns = [...turns, {
-          renderKey: nextRenderKey++,
-          role: 'assistant',
-          text: incoming.reply,
-          author: incoming.team_name,
-          receipt,
-          ...replyFields(incoming),
-        }];
-        clearError();
-      } else if (incoming.type === 'stopped') {
-        clearError();
-      } else {
-        const projectedError = projectedChatError(incoming.status, incoming.detail, words);
-        setError(projectedError.message, projectedError.detail);
-      }
-      liveTurn.resetProgress();
+      endTurn(incoming);
     };
     // The session socket dropped: nothing of the turn stays live, and the channel attaches again when it reopens. The
     // shell alone says that Admin reconnects; only an attach Admin refused while the socket stays open is the chat's own.
