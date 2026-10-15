@@ -2617,7 +2617,7 @@ test('keeps reconnecting while Admin restarts for a release and recovers without
   // Each refused upgrade really fails in the browser; the app's own reconnect delays run on the virtual clock.
   test.slow();
   await page.clock.install();
-  // More refused upgrades than the old five-attempt budget allowed, as a Local release swap causes.
+  // Six refused upgrades in a row, as a Local release swap causes.
   // Admin's own session check is unreachable for the first half of the outage and answers once Admin is back.
   const chat = await routeReadyChat(page, {
     disconnectFirstChat: true,
