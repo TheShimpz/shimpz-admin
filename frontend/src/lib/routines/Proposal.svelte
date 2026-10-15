@@ -4,6 +4,7 @@
 
   import DialogAction from '#lib/DialogAction.svelte';
   import RoutineIcon from '#lib/routines/Icon.svelte';
+  import Inputs from '#lib/routines/Inputs.svelte';
   import Tag from '#lib/routines/Tag.svelte';
 
   import { call, commandsReady, outcomeUnknown } from '#lib/session/socket.js';
@@ -23,7 +24,8 @@
   // value. All of it is escaped text. Three buttons under the card, none preselected: Cancel revokes it, Edit turns
   // its description into the prompt that records it again, and Create confirms it. A card past its lifetime is no
   // longer shown.
-  let { teamId, proposal, copy, disabled = false, onrewrite = () => false } = $props();
+  // `answered` is how the person already answered this card, kept in the transcript, so a reload never offers it again.
+  let { teamId, proposal, copy, disabled = false, answered = '', onrewrite = () => false } = $props();
 
   // Edit turns the description into the prompt that records the Routine again: sending it revokes this card and
   // sends the edited text as the person's next message, so the Routine's ordinary flow asks for anything it lacks.
@@ -33,8 +35,10 @@
 
   let card = $derived(copy.proposal);
   let working = $state(false);
-  // `created`, `changed`, or `revoked` once the person answered; the card then gives way to one line saying so.
-  let answer = $state('');
+  // `created`, `changed`, or `revoked` once the person answered here or before. A created or changed Routine says so
+  // in its own message below, so the card leaves; a revoked card gives way to one line saying so.
+  let given = $state('');
+  let answer = $derived(answered || given);
   let error = $state('');
   let now = $state(Date.now());
   let expired = $derived(now >= Date.parse(proposal.expires_at));
@@ -56,7 +60,7 @@
     error = '';
     try {
       const result = await action(call, teamId, proposal.proposal_id);
-      answer = result.status;
+      given = result.status;
       if (result.status !== 'revoked') await refreshTeamRoutines(teamId);
     } catch (failure) {
       error = outcomeUnknown(failure) ? $t('shell.outcomeUnknown') : routineErrorMessage(failure, copy.errors);
@@ -105,27 +109,29 @@
       }
     }
     if (!shown) return;
-    if (onrewrite(text, origin)) answer = 'revoked';
+    if (onrewrite(text, origin)) given = 'revoked';
     else error = card.rewriteUnsent;
   }
 
   // Leaving the editor shows the card again, unless it was already revoked for a send that did not go out.
   function stopEditing() {
     editing = false;
-    if (revoked) answer = 'revoked';
+    if (revoked) given = 'revoked';
   }
 </script>
 
 <!-- A revoked card whose edited text has not gone out yet stays open to send it, past its lifetime too. -->
-{#if answer}
-  <p class="routine-result" role="status">{card[answer]}</p>
+{#if answer === 'revoked'}
+  <p class="routine-result" role="status">{card.revoked}</p>
+{:else if answer}
+  <!-- Its Routine was created or changed; the answer's own message says so. -->
 {:else if !expired || revoked}
 <section class="routine-proposal" aria-label={card.title}>
   <div class="sheet admin-frame">
     <header>
       <p class="kicker"><RoutineIcon name="clock" />{editing ? card.editTitle : card.title}</p>
       {#if !editing}
-        <h3 class="name">{card.newRoutine}</h3>
+        <h3 class="name">{fill(card.routineTitle, { name: proposal.name })}</h3>
         {#if proposal.replaces}<p class="note">{fill(card.replaces, { name: proposal.name })}</p>{/if}
       {/if}
       {#if editing}
@@ -159,11 +165,9 @@
                 <Tag size="xs" tone={step.read_only ? 'neutral' : 'warning'} label={changeWords(step.read_only)} />
               </div>
               {#if step.inputs.length}
-                <dl class="inputs">
-                  {#each step.inputs as input (input.member)}
-                    <div><dt>{humanizeId(input.member)}</dt><dd>{proposalInputValue(input, card, copy.plan)}</dd></div>
-                  {/each}
-                </dl>
+                <div class="inputs">
+                  <Inputs inputs={step.inputs} words={(input) => proposalInputValue(input, card, copy.plan)} />
+                </div>
               {/if}
             </li>
           {/each}
@@ -261,18 +265,16 @@
   .what :global(.assistant .shimpz-assistant-icon) { flex: none; }
   .what .joint { color: var(--shimpz-color-text-dim); }
   .what .action { color: var(--shimpz-color-text); font-weight: 600; }
+  /* A step's inputs wrap as one line of "Member: value" pairs under its Action, as a Routine's plan lists them. */
   .inputs {
-    display: grid;
-    grid-template-columns: max-content minmax(0, 1fr);
-    gap: 0.1rem var(--shimpz-space-3);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--gap-inside) var(--gap-group);
     margin-inline-start: calc(var(--index) + var(--shimpz-space-2));
-    padding-inline-start: var(--shimpz-space-2);
-    border-inline-start: 1px solid color-mix(in srgb, var(--shimpz-color-cyan) 35%, transparent);
-    font: 0.68rem/1.5 var(--shimpz-font-mono);
+    color: var(--shimpz-color-text-muted);
+    font-size: 0.76rem;
   }
-  .inputs > div { display: contents; }
-  .inputs dt { color: color-mix(in srgb, var(--shimpz-color-cyan) 70%, var(--shimpz-color-text-dim)); font: inherit; letter-spacing: 0; text-transform: none; }
-  .inputs dd { color: var(--shimpz-color-text-muted); min-width: 0; overflow-wrap: anywhere; }
   /* Cancel and Edit each carry their own tone without a border: its text and icon at rest, its fill on hover. */
   .actions :global(.tone-cancel) {
     --button-color: var(--shimpz-color-danger);
@@ -296,7 +298,6 @@
   .routine-result { color: var(--shimpz-color-text-muted); }
   .error { color: var(--shimpz-color-danger); font-size: 0.75rem; }
   @media (max-width: 420px) {
-    .inputs { grid-template-columns: minmax(0, 1fr); margin-inline-start: 0; }
-    .inputs dd { margin-block-end: var(--gap-inside); }
+    .inputs { margin-inline-start: 0; }
   }
 </style>

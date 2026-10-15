@@ -13,14 +13,14 @@
   import { refusalWords } from '#lib/routines/words.js';
   import RoutineProposal from '#lib/routines/Proposal.svelte';
   import RoutineQuestion from '#lib/routines/Question.svelte';
-  import RoutineRunEntry from '#lib/routines/run/Entry.svelte';
   import { formatTaskUsage, formatTaskUsageDetail } from '#lib/chat/usage.js';
+  import { fill } from '#lib/i18n/fill.js';
 
   // One exchange of a Team's transcript: a person's message and the reply that answered it, either of them alone. The
   // page owns the turns and every action; this shows them. `words` are the chat's (chat/turns.js); `instantOf` dates a
   // turn; `sentAnswer` is the clarification answer this message sent, `givenAnswer` the one the reply's question got;
-  // `joinAbove` and `joinBelow` join a Routine notice's rail to its neighbours; `thinking`, when given, is the turn's
-  // live progress, shown after the exchange.
+  // `cardAnswer` is how the person already answered the reply's Routine card, if they did; `thinking`, when given, is
+  // the turn's live progress, shown after the exchange.
   let {
     exchange,
     words,
@@ -31,11 +31,10 @@
     sentAnswer,
     givenAnswer,
     answerDisabled,
-    joinAbove,
-    joinBelow,
     lifecycleDisabled,
     onanswer,
     onrewrite = () => false,
+    cardAnswer = '',
     ondecide,
     thinking,
   } = $props();
@@ -57,7 +56,7 @@
   <span class="turn-at">{words.timeAt}</span>
   <time class="turn-time" datetime={instantValue(instant)}>{clockTime(instant, $locale)}</time>
 {/snippet}
-<!-- A Routine notice keeps its time on its own rail; every other reply shows when it was completed. -->
+<!-- Every reply shows when it was completed; a Routine's creation, when Team made it. -->
 {#snippet replyTime()}{@render turnTime(assistantTurn)}{/snippet}
 <section class="exchange">
   {#if userTurn}
@@ -91,12 +90,7 @@
     </Message>
   {/if}
   {#if assistantTurn}
-    <!-- A Routine notice names its Routine in its own words; the chat already is the Team's. -->
-    <Message
-      variant="assistant"
-      author={assistantTurn.routineRun ? undefined : assistantTurn.author}
-      meta={assistantTurn.routineRun ? undefined : replyTime}
-    >
+    <Message variant="assistant" author={assistantTurn.author} meta={replyTime}>
       {@const clarifiedOriginal = clarifiedRequest(exchange)}
       {#if clarifiedOriginal !== null}
         <ClarificationCard
@@ -107,13 +101,13 @@
           disabled={answerDisabled}
           {onanswer}
         />
-      {:else if assistantTurn.routineRun}
-        <RoutineRunEntry
-          entry={assistantTurn.routineRun}
-          copy={$t('routine')}
-          {joinAbove}
-          {joinBelow}
-        />
+      {:else if assistantTurn.routineRun || assistantTurn.routineAnswer}
+        <!-- A Routine's creation, or a card's confirmed change, says so at its own time, naming the Routine only in the
+             words Team froze into it. -->
+        {@const said = assistantTurn.routineRun ?? assistantTurn.routineAnswer}
+        <p class="routine-run" role="group" aria-label={said.name} tabindex="-1">
+          {fill($t('routine').proposal.answers[assistantTurn.routineRun ? 'created' : said.status], { name: said.name })}
+        </p>
       {:else if !assistantTurn.installPlan && (
         !assistantTurn.lifecycle || assistantTurn.lifecycle.state === 'proposed'
       )}
@@ -166,7 +160,7 @@
         />
       {:else if assistantTurn.routineProposal}
         <RoutineProposal teamId={selectedTeamId} proposal={assistantTurn.routineProposal}
-          copy={$t('routine')} disabled={answerDisabled} {onrewrite} />
+          copy={$t('routine')} disabled={answerDisabled} answered={cardAnswer} {onrewrite} />
       {:else if assistantTurn.routineRefusal}
         <p class="routine-refusal" role="note">{refusalWords(assistantTurn.routineRefusal, $t('routine').proposal)}</p>
       {/if}
@@ -177,13 +171,11 @@
 
 <style>
   .exchange {
-    /* A Routine notice's timeline rail reaches back across this gap to the notice before it. */
-    --routine-rail-gap: var(--gap-group);
     display: grid;
     min-width: 0;
     align-content: start;
     gap: var(--gap-item);
-    margin-block-start: var(--routine-rail-gap);
+    margin-block-start: var(--gap-group);
   }
 
   .exchange:first-child,
@@ -204,6 +196,7 @@
     letter-spacing: 0.02em;
     font-variant-numeric: tabular-nums;
   }
+  .routine-run { margin: 0; color: var(--shimpz-color-green); font-weight: 600; outline-offset: 4px; }
   .routine-refusal {
     margin: var(--gap-item) 0 0;
     color: var(--shimpz-color-text-muted);

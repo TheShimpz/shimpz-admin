@@ -69,6 +69,15 @@
   animation: admin-glitch-icon 280ms steps(1, end);
 }
 
+/* Every Admin link is never underlined and glitches on hover and keyboard focus, like a Button; a link that already
+   glitches through its own parts (a Button, a `glitch-host`) keeps only that. */
+a { text-decoration: none; }
+
+a:not(.shimpz-button, .glitch-host):is(:hover, :focus-visible) {
+  text-shadow: var(--glitch-split-text);
+  animation: admin-glitch-text 280ms steps(1, end);
+}
+
 /* A control that is not a Button (a link, a list row) opts in: mark the hovered or focused control `glitch-host`, its
    label `glitch-text` and its icon `glitch-icon`. Never add these to a Button, which already glitches. */
 .glitch-text { display: inline-block; }

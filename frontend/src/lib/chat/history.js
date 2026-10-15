@@ -8,7 +8,7 @@ import {
   MAX_REPLY_CHARS,
   parseRoutineReply,
 } from './protocol.js';
-import { parseRoutineRunEntry } from '../routines/protocol.js';
+import { isName as isRoutineName, parseRoutineRunEntry } from '../routines/protocol.js';
 import { parseTaskUsage } from './usage.js';
 import { sessionFamily } from '../session/family.js';
 import { synced } from '../session/synced.js';
@@ -25,7 +25,7 @@ import {
 } from '../ids.js';
 
 const PUBLIC_TEXT_CONTROL_RE = /[\p{C}\p{Zl}\p{Zp}]/u;
-const ENTRY_ID_RE = /^([0-9a-f]{32}):(user|reply|install|uninstall|guidance|routine)$/;
+const ENTRY_ID_RE = /^([0-9a-f]{32}):(user|reply|install|uninstall|guidance|routine|answer)$/;
 const HISTORY_CURSOR_RE = /^(?!A{11}$)[A-Za-z0-9_-]{10}[AEIMQUYcgkosw048]$/;
 const MAX_PAGE_ENTRIES = 64;
 const MAX_ASSISTANTS = 4;
@@ -241,7 +241,24 @@ function guidanceEntry(value, suffix, status) {
   };
 }
 
+// How the person answered a Routine card, kept beside it (ADR-0101): its id, the answer, and the card's Routine name.
+const CARD_ANSWERS = new Set(['created', 'changed', 'revoked']);
+
+function answerEntry(value, suffix, status) {
+  if (
+    suffix !== 'answer' ||
+    !exactKeys(value, ['id', 'kind', 'name', 'proposal_id', 'status']) ||
+    typeof value.proposal_id !== 'string' ||
+    !/^[0-9a-f]{32}$/.test(value.proposal_id) ||
+    value.id !== `${value.proposal_id}:answer` ||
+    !CARD_ANSWERS.has(value.status) ||
+    !isRoutineName(value.name)
+  ) throw invalidHistory(status);
+  return { id: value.id, kind: 'routine-answer', proposalId: value.proposal_id, status: value.status, name: value.name };
+}
+
 const ENTRY_PARSERS = {
+  'routine-answer': answerEntry,
   message: messageEntry,
   'assistant-install': installEntry,
   'assistant-uninstall': uninstallEntry,

@@ -4,6 +4,7 @@
 
   import { call } from '#lib/session/socket.js';
   import RoutineIcon from '#lib/routines/Icon.svelte';
+  import Inputs from '#lib/routines/Inputs.svelte';
   import { fill } from '#lib/i18n/fill.js';
   import { humanizeId } from '#lib/ids.js';
   import { needsPage, readPlanSteps } from '#lib/routines/protocol.js';
@@ -101,11 +102,7 @@
         {#if step.inputs.length > 0 || step.stored_inputs.length > 0}
           <div class="meta">
             {#if step.inputs.length > 0}
-              <dl class="inputs">
-                {#each step.inputs as input (input.member)}
-                  <div><dt>{humanizeId(input.member)}</dt><dd>{inputWords(input, copy.plan)}</dd></div>
-                {/each}
-              </dl>
+              <Inputs inputs={step.inputs} words={(input) => inputWords(input, copy.plan)} />
             {/if}
             {#each step.stored_inputs as name (name)}
               <p class="stored" title={fill(copy.plan.storedInput, { name })}>
@@ -141,10 +138,6 @@
   .action { color: var(--shimpz-color-text); font-weight: 600; overflow-wrap: anywhere; }
   .assistant { color: var(--shimpz-color-text-dim); font-size: 0.74rem; }
   .meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--gap-inside) var(--gap-group); color: var(--shimpz-color-text-muted); font-size: 0.76rem; }
-  .inputs { display: contents; }
-  .inputs > div { display: flex; flex-wrap: wrap; gap: 0 var(--gap-inside); min-width: 0; }
-  dt::after { content: ":"; }
-  dd { margin: 0; min-width: 0; color: var(--shimpz-color-text); font-family: var(--shimpz-font-mono); font-size: 0.74rem; overflow-wrap: anywhere; }
   .stored { display: inline-flex; align-items: center; gap: var(--gap-inside); margin: 0; font-family: var(--shimpz-font-mono); font-size: 0.74rem; }
   .stored :global(.routine-icon) { width: 0.75rem; height: 0.75rem; }
   .note { margin: var(--gap-inside) 0 0; color: var(--shimpz-color-text-dim); font-size: 0.75rem; }

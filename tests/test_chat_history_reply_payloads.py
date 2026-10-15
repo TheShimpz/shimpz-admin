@@ -187,6 +187,37 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
 
+    def test_a_card_answer_is_kept_once_beside_its_card_and_reads_back(self) -> None:
+        vectors = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())
+        card = vectors["routine_proposal"]["valid"][0]
+        turn_id = self._admitted()
+        self.assertTrue(history.append_reply("marketing", turn_id, {**done_event("Pronto."), "routine_proposal": card}))
+        answer = {
+            "team_id": "marketing",
+            "proposal_id": card["proposal_id"],
+            "routine_id": "a" * 32,
+            "status": "created",
+        }
+        self.assertTrue(history.append_proposal_answer(answer))
+        # A later answer to the same card, such as a cancel after the confirmation, changes nothing.
+        self.assertTrue(history.append_proposal_answer({**answer, "routine_id": None, "status": "revoked"}))
+        kept = history.page("marketing")["entries"][-1]
+        self.assertEqual(
+            {key: kept[key] for key in ("kind", "proposal_id", "status", "name")},
+            {"kind": "routine-answer", "proposal_id": card["proposal_id"], "status": "created", "name": card["name"]},
+        )
+        # A card the transcript does not hold writes nothing, and an answer outside the closed form is refused.
+        self.assertFalse(history.append_proposal_answer({**answer, "proposal_id": "f" * 32}))
+        with self.assertRaises(ValueError):
+            history.append_proposal_answer({**answer, "status": "pending"})
+        with self.assertRaises(ValueError):
+            history.append_proposal_answer({**answer, "status": "unknown"})
+        self._store_payload(
+            f"{card['proposal_id']}:answer", {**{k: kept[k] for k in ("kind", "proposal_id", "name")}, "status": "x"}
+        )
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.page("marketing")
+
     def test_a_reply_keeps_its_closed_turn_usage_for_reload(self) -> None:
         usage = {
             "duration_ms": 6200,

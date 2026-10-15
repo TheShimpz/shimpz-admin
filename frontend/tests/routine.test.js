@@ -648,18 +648,21 @@ test('schedules, instants, and failures read naturally in each locale', () => {
     }
   }
   assert.equal(scheduleWords({ kind: 'monthly', day: 28, time: '18:30' }, words, 'en'), 'On day 28 of every month at 18:30');
-  // A continuous Routine's pause and cap are numbers in the viewer's locale.
+  // A continuous Routine's gap reads in its largest whole unit, in the viewer's locale.
   const continuous = { kind: 'continuous', gap: 5, cap: 17280 };
-  assert.equal(scheduleWords(continuous, words, 'en'), 'Every 5 s, up to 17,280 a day');
+  assert.equal(scheduleWords(continuous, words, 'en'), 'Every 5 seconds');
+  assert.equal(scheduleWords({ kind: 'continuous', gap: 1800, cap: 48 }, routineMessages.pt.schedule, 'pt'), 'A cada 30 minutos');
   // Whole weeks or days read in that unit.
   const every = (gap) => ({ kind: 'continuous', gap, cap: continuousCap(gap) });
   assert.equal(scheduleWords(every(30 * 86400), words, 'en'), 'Every 30 days');
   assert.equal(scheduleWords(every(86400), words, 'en'), 'Every day');
   assert.equal(scheduleWords(every(14 * 86400), words, 'en'), 'Every 2 weeks');
   assert.equal(scheduleWords(every(7 * 86400), words, 'en'), 'Every week');
-  assert.equal(scheduleWords(every(108000), words, 'en'), 'Every 108,000 s, up to 1 a day');
+  assert.equal(scheduleWords(every(108000), words, 'en'), 'Every 30 hours');
+  assert.equal(scheduleWords(every(3600), words, 'en'), 'Every hour');
+  assert.equal(scheduleWords(every(90), words, 'en'), 'Every 90 seconds');
   for (const [locale, catalog] of Object.entries(routineMessages)) {
-    for (const gap of [5, 86400, 3 * 86400, 7 * 86400, 21 * 86400]) {
+    for (const gap of [5, 60, 1800, 3600, 86400, 3 * 86400, 7 * 86400, 21 * 86400]) {
       assert.doesNotMatch(scheduleWords(every(gap), catalog.schedule, locale), /\{|undefined/, locale);
     }
   }
@@ -877,13 +880,28 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
   await assert.rejects(listChatHistory(page([{ ...RUN_ENTRY, id: `${'b'.repeat(32)}:reply` }]), 'marketing', null, own));
 });
 
-test("the chat's view admits only a Routine's creation, and a Routine's view only its own history", async () => {
+test("the chat's view admits each card's answer and only a Routine's creation, and a Routine's view only its own history", async () => {
   const page = (entries) => async () => ({ ok: true, status: 200, async json() { return { entries, before: null }; } });
   const created = { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: DEFINED };
   const keyed = (letter) => ({ id: `${letter.repeat(32)}:routine`, notice_id: letter.repeat(32) });
   const missed = { ...RUN_ENTRY, ...keyed('c'), outcome: 'skipped', run_id: null, usage: null, detail: { missed: 2 } };
   const healthy = { ...RUN_ENTRY, ...keyed('d'), outcome: 'healthy', run_id: null, detail: { runs: 2 } };
   const changed = { ...created, outcome: 'changed' };
+  const answer = { id: `${'e'.repeat(32)}:answer`, kind: 'routine-answer', proposal_id: 'e'.repeat(32), status: 'created',
+    name: 'Notícias de futebol', created_at: '2026-10-15T06:54:52Z' };
+  assert.deepEqual((await listChatHistory(page([answer]), 'marketing')).entries[0], {
+    id: answer.id, kind: 'routine-answer', proposalId: answer.proposal_id, status: 'created', name: answer.name,
+    createdAt: answer.created_at,
+  });
+  for (const invalid of [
+    { ...answer, status: 'pending' },
+    { ...answer, id: `${'f'.repeat(32)}:answer` },
+    { ...answer, name: ' padded ' },
+    { ...answer, extra: 1 },
+    { ...answer, id: `${'e'.repeat(32)}:reply` },
+  ]) {
+    await assert.rejects(listChatHistory(page([invalid]), 'marketing'), LocalApiError, JSON.stringify(invalid));
+  }
   assert.equal((await listChatHistory(page([created]), 'marketing')).entries[0].outcome, 'created');
   for (const hidden of [RUN_ENTRY, missed, healthy, changed]) {
     await assert.rejects(listChatHistory(page([hidden]), 'marketing'), LocalApiError, hidden.outcome);

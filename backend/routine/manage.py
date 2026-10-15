@@ -163,8 +163,11 @@ def confirm_proposal(team_id: object, proposal_id: object) -> team.TeamResponse:
 
 
 def revoke_proposal(team_id: object, proposal_id: object) -> team.TeamResponse:
-    """Cancelar: revoke the card, so nothing it shows can ever be created; an absent card is already revoked."""
-    return _proposal(team_id, proposal_id, "DELETE", frozenset({"revoked"}))
+    """Cancelar: revoke the card, so nothing it shows can ever be created; an absent card is already revoked.
+
+    A card already confirmed answers with the Routine its confirmation created or changed instead.
+    """
+    return _proposal(team_id, proposal_id, "DELETE", frozenset({"revoked", "created", "changed"}))
 
 
 def diagnostics(team_id: object, run_id: object) -> team.TeamResponse:

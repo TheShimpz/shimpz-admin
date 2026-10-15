@@ -685,9 +685,19 @@ function remainingProposals(state, proposalId) {
 }
 
 // Cancelar: revoking a card, or a card already gone, creates nothing.
+// How the person answered a card, kept beside it in the transcript as Admin keeps it: the first answer only.
+function answered(state, proposalId, status) {
+  const id = `${proposalId}:answer`;
+  const card = state.history.find((entry) => entry.routine_proposal?.proposal_id === proposalId);
+  if (!card || state.history.some((entry) => entry.id === id)) return;
+  const answer = { id, kind: 'routine-answer', proposal_id: proposalId, status, name: card.routine_proposal.name };
+  state.history = [...state.history, { ...answer, created_at: instant(Date.now()) }];
+}
+
 function revokeProposal(state, { proposal_id: proposalId }) {
   state.proposals = remainingProposals(state, proposalId);
   state.revoked = [...(state.revoked ?? []), proposalId];
+  answered(state, proposalId, 'revoked');
   return { status: 200, json: { team_id: 'marketing', proposal_id: proposalId, routine_id: null, status: 'revoked' } };
 }
 
@@ -711,6 +721,7 @@ function confirmProposal(state, { proposal_id: proposalId }) {
   state.plans = { ...state.plans, [routine.routine_id]: CARD_STEPS };
   const noticeId = `7${proposalId.slice(-8)}`.padStart(32, '0');
   state.history = [...state.history, row(noticeId, routine, 'created', defined(routine), { at: instant(Date.now()) })];
+  answered(state, proposalId, 'created');
   return { status: 200, json: { team_id: 'marketing', proposal_id: proposalId, routine_id: routine.routine_id, status: 'created' } };
 }
 

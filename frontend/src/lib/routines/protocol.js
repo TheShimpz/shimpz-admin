@@ -807,7 +807,8 @@ const NOTICE_DETAILS = {
 // closes a Routine's timeline (ADR-0101).
 const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed', 'healthy', 'deleted'];
 
-function isName(value, maximum = MAX_NAME_CHARS) {
+/** Whether a value is a Routine name in Team's closed form: one plain NFC line of at most 80 characters. */
+export function isName(value, maximum = MAX_NAME_CHARS) {
   return closedText(value, maximum) && !FORBIDDEN_RE.test(value) && value.normalize('NFC') === value;
 }
 
@@ -887,12 +888,14 @@ export function parseRoutineRunEntry(value) {
 }
 
 /**
- * The Routine rows of a re-read history page that a transcript does not show yet at their version, in page order.
- * `shown` maps each shown Routine row id to its version; any other kind of entry is left to the conversation.
+ * The Routine rows of a re-read history page that a transcript does not show yet at their version, and the card
+ * answers it does not show yet, in page order. `shown` maps each shown row id to its version (0 for an answer); any
+ * other kind of entry is left to the conversation.
  */
 export function newerRoutineEntries(shown, entries) {
   return entries.filter((entry) => (
-    entry.kind === 'routine-run' && (!shown.has(entry.id) || shown.get(entry.id) < entry.version)
+    (entry.kind === 'routine-run' && (!shown.has(entry.id) || shown.get(entry.id) < entry.version)) ||
+    (entry.kind === 'routine-answer' && !shown.has(entry.id))
   ));
 }
 

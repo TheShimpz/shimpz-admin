@@ -10,10 +10,12 @@ share one lockout. Deleting a Routine is a confirmed operation bound to that exa
 """
 
 import asyncio
+import contextlib
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException
+from history import store as history_store
 from session import lane, stepup, topics
 from team import bridge as team
 from team import http as team_http
@@ -65,6 +67,22 @@ def _change(owner: object, operation: str, *names: str, wake: bool = False):
 
     async def method(socket: SessionSocket, params: dict[str, object]) -> Answer:
         return await lane.run(socket, change, socket, params)
+
+    return method
+
+
+def _proposal(operation: str, *, wake: bool = False):
+    """A Routine card answer, kept in the Team's transcript as soon as Team gives it, so a reload shows it answered."""
+
+    def answer(socket: SessionSocket, params: dict[str, object]) -> team.TeamResponse:
+        response = _relayed(getattr(manage, operation), params["team_id"], params["proposal_id"])
+        if response.status == 200:
+            with contextlib.suppress(history_store.HistoryUnavailableError):
+                history_store.append_proposal_answer(response.body)
+        return _settled(socket, params["team_id"], response, wake=wake)
+
+    async def method(socket: SessionSocket, params: dict[str, object]) -> Answer:
+        return await lane.run(socket, answer, socket, params)
 
     return method
 
@@ -159,7 +177,7 @@ METHODS = {
     "routines.card_answer": _change(manage, "answer_card", "team_id", "incident_id", "body", wake=True),
     "routines.challenge": _change(answer, "open_challenge", "team_id", "run_id", "body"),
     # Criar rotina: a created Routine is due soon.
-    "routines.proposal_confirm": _change(manage, "confirm_proposal", "team_id", "proposal_id", wake=True),
-    "routines.proposal_revoke": _change(manage, "revoke_proposal", "team_id", "proposal_id"),
+    "routines.proposal_confirm": _proposal("confirm_proposal", wake=True),
+    "routines.proposal_revoke": _proposal("revoke_proposal"),
 }
 LONG_METHODS = {"routines.human": human, "routines.integrations": integrations}

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  ANSWER_REPLY_TEXTS,
+  cardAnswers,
   expiredTurns,
   friendlyChatError,
   groupExchanges,
@@ -59,6 +61,37 @@ test('groups each user message with the reply that answered it, and a lone reply
     [2, 2, 3],
     [4, 4, undefined],
   ]);
+});
+
+test("the fixed replies are exactly Team's answer replies", async () => {
+  const { readFileSync } = await import('node:fs');
+  const source = readFileSync(new URL('../../backend/protocol/http/v1/routine_proposal.py', import.meta.url), 'utf8');
+  const block = source.match(/ANSWER_REPLIES = \{\n([\s\S]*?)\n\}/u)[1];
+  const replies = [...block.matchAll(/"[a-z]{2}": "((?:[^"\\]|\\.)*)"/gu)].map(([, text]) => text);
+  assert.deepEqual([...ANSWER_REPLY_TEXTS].sort(), replies.sort());
+});
+
+test("a card's answer hides Team's fixed reply once its Routine exists, and only a change shows the answer itself", () => {
+  const card = (id) => ({ proposal_id: id.repeat(32) });
+  const fixed = ANSWER_REPLY_TEXTS[6];
+  const answer = (id, status) => ({ routineAnswer: { proposalId: id.repeat(32), status, name: 'X' } });
+  const turns = [
+    { renderKey: 1, role: 'user' },
+    { renderKey: 2, role: 'assistant', text: fixed, routineProposal: card('a') },
+    { renderKey: 3, role: 'assistant', ...answer('a', 'created') },
+    { renderKey: 4, role: 'user' },
+    // A reply of the agent's own words keeps them; a cancelled card keeps its reply.
+    { renderKey: 5, role: 'assistant', text: 'Listei os jogos.', routineProposal: card('b') },
+    { renderKey: 6, role: 'assistant', ...answer('b', 'changed') },
+    { renderKey: 7, role: 'user' },
+    { renderKey: 8, role: 'assistant', text: fixed, routineProposal: card('c') },
+    { renderKey: 9, role: 'assistant', ...answer('c', 'revoked') },
+  ];
+  const answers = cardAnswers(turns);
+  assert.deepEqual([...answers.values()], ['created', 'changed', 'revoked']);
+  const shown = groupExchanges(turns, answers).map(({ user, assistant }) => [user?.renderKey, assistant?.renderKey]);
+  // A creation is said by its Routine's own creation notice; a change by the answer; a cancel by the card.
+  assert.deepEqual(shown, [[1, undefined], [4, 5], [undefined, 6], [7, 8]]);
 });
 
 test('a receipt\'s rows set the usage duration shown, never below Team\'s own', () => {

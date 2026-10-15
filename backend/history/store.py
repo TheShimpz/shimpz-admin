@@ -284,6 +284,38 @@ def append_routine_notice(notice: object) -> bool:
     return True
 
 
+_PROPOSAL_ANSWERS = frozenset({"created", "changed", "revoked"})
+_CARD_BY_PROPOSAL = (
+    "SELECT json_extract(payload, '$.routine_proposal.name') FROM transcript WHERE team_id = ? "
+    "AND substr(event_key, -6) = ':reply' AND json_extract(payload, '$.routine_proposal.proposal_id') = ?"
+)
+
+
+def append_proposal_answer(answer: object) -> bool:
+    """Write how the person answered a Routine card (ADR-0101): created, changed, or revoked, beside its name.
+
+    It is written once, at the time of the first answer Admin saw; a later answer to the same card changes nothing, so
+    a cancel after a confirmation never reads as cancelled. A card the transcript no longer holds writes nothing.
+    """
+    admitted = routine_proposal_contract.canonical_proposal_answer(answer)
+    if admitted is None or admitted["status"] not in _PROPOSAL_ANSWERS:
+        raise ValueError("Routine card answer is invalid")
+    team_id, proposal_id = _team_id(admitted["team_id"]), admitted["proposal_id"]
+    with _database() as database:
+        found = database.execute(_CARD_BY_PROPOSAL, (team_id, proposal_id)).fetchone()
+        if found is None:
+            return False
+        payload = {"kind": "routine-answer", "proposal_id": proposal_id, "status": admitted["status"], "name": found[0]}
+        cursor = database.execute(
+            "INSERT OR IGNORE INTO transcript (team_id, event_key, payload, provenance, created_at) "
+            "VALUES (?, ?, ?, 'plain', ?)",
+            (team_id, f"{proposal_id}:answer", _encoded(payload), _now()),
+        )
+    if cursor.rowcount == 1:
+        topics.team_changed(team_id, "history")
+    return True
+
+
 def _file_reference(value: object) -> dict[str, object]:
     """One file a user message carried, as the transcript shows it: its id, literal name, media type, and size."""
     if not isinstance(value, dict) or set(value) != set(FILE_REFERENCE_KEYS):
@@ -610,6 +642,7 @@ def _decoded(raw: object) -> dict[str, object]:
         "assistant-uninstall",
         "guidance",
         "routine-run",
+        "routine-answer",
     }:
         raise HistoryUnavailableError("chat history entry is invalid")
     try:
@@ -712,9 +745,21 @@ def _validate_stored_routine(payload: dict[str, object]) -> None:
         raise ValueError("invalid stored Routine notice")
 
 
+def _validate_stored_answer(payload: dict[str, object]) -> None:
+    if (
+        set(payload) != {"kind", "proposal_id", "status", "name"}
+        or not isinstance(payload["proposal_id"], str)
+        or routine_contract.ROUTINE_ID_RE.fullmatch(payload["proposal_id"]) is None
+        or payload["status"] not in _PROPOSAL_ANSWERS
+        or routine_contract.canonical_name(payload["name"]) != payload["name"]
+    ):
+        raise ValueError("invalid stored Routine card answer")
+
+
 def _validate_stored_payload(payload: dict[str, object]) -> None:
     validators = {
         "routine-run": _validate_stored_routine,
+        "routine-answer": _validate_stored_answer,
         "message": _validate_stored_message,
         "assistant-install": _validate_stored_install,
         "assistant-uninstall": _validate_stored_uninstall,
@@ -723,10 +768,11 @@ def _validate_stored_payload(payload: dict[str, object]) -> None:
     validators[payload["kind"]](payload)
 
 
-# A page reads one of two views of a Team's transcript. The chat shows the conversation and, of its Routines' notices,
-# only each Routine's creation; a Routine's own history is its runs, its healthy rollups, and the runs it missed, which
-# only its panel shows. Both filter the same rows, so a page's position cursor works alike in either. The view's first
-# parameter is the Routine id, or null for the chat; its second is that id again.
+# A page reads one of two views of a Team's transcript. The chat shows the conversation, how the person answered each
+# Routine card, and, of its Routines' notices, only each Routine's creation; a Routine's own history is its runs, its
+# healthy rollups, and the runs it missed, which only its panel shows. Both filter the same rows, so a page's position
+# cursor works alike in either. The view's first parameter is the Routine id, or null for the chat; its second is that
+# id again.
 _PAGE_SELECT = "SELECT position, event_key, payload, provenance, created_at FROM transcript WHERE team_id = ? "
 _PAGE_VIEW = (
     "AND CASE WHEN ? IS NULL "

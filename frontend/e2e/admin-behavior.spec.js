@@ -4841,7 +4841,7 @@ test.describe('Team Routines', () => {
   test('a Routine card is confirmed with its Create button, which creates the Routine its notice then names', async ({ page }) => {
     const scenario = await recordRoutine(page);
     const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
-    await expect(card.getByRole('heading', { name: messages.en.routine.proposal.newRoutine })).toBeVisible();
+    await expect(card.getByRole('heading')).toBeVisible();
     await expect(card).toContainText(ROUTINE_TEXT.en.cardDescription);
     await expect(card.getByRole('button')).toHaveCount(3);
     for (const name of ['Cancel', 'Edit', 'Create']) {
@@ -4858,16 +4858,13 @@ test.describe('Team Routines', () => {
     const [routine] = scenario.call('routines.list', { team_id: 'marketing' }).json.routines;
     expect(routine.name).toBe(ROUTINE_TEXT.en.card);
 
-    // After a reload, the created notice keeps the name Team froze into it, and the card is shown again with its reply.
-    await page.reload();
-    const created = page.locator('.routine-run').filter({ hasText: ROUTINE_TEXT.en.card });
+    // One message names the Routine it created, live and after a reload, and the answered card never returns.
+    const created = page.locator('.routine-run');
     await expect(created).toHaveAccessibleName(ROUTINE_TEXT.en.card);
-    await expect(created.getByRole('button')).toHaveCount(0);
-    const reloaded = page.getByRole('region', { name: messages.en.routine.proposal.title });
-    await expect(reloaded).toHaveCount(1);
-    // A card already used is refused, and says so.
-    await reloaded.getByRole('button', { name: 'Create', exact: true }).click();
-    await expect(reloaded.getByRole('alert')).toHaveText(messages.en.routine.errors.proposalExpired);
+    await page.reload();
+    await expect(created).toHaveAccessibleName(ROUTINE_TEXT.en.card);
+    await expect(page.getByRole('region', { name: messages.en.routine.proposal.title })).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Create', exact: true })).toHaveCount(0);
     expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toHaveLength(1);
   });
 

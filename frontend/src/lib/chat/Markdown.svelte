@@ -84,7 +84,7 @@
   tbody tr:nth-child(even) { background: rgb(255 255 255 / 0.025); }
   .align-center { text-align: center; }
   .align-right { text-align: end; }
-  .markdown :global(a) { color: var(--accent); text-decoration: underline; text-decoration-color: var(--accent-alt); text-underline-offset: 0.2em; }
+  .markdown :global(a) { color: var(--accent); }
   .markdown :global(a:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
   .markdown :global([data-slot="notice"]) { margin: var(--gap-group) 0; color: var(--text); }
   .markdown.chat > :global([data-slot="notice"]:first-child) { margin-top: 0; }

@@ -12,6 +12,7 @@
   import { snapshotIcon } from '#lib/chat/lifecycle/snapshot.js';
   import { chatHistory, listChatHistory } from '#lib/chat/history.js';
   import {
+    cardAnswers,
     expiredTurns,
     friendlyChatError,
     groupExchanges,
@@ -220,7 +221,9 @@
   let teamName = $derived(activeTeam?.name ?? copy.title);
   let placeholder = $derived($t('chatPage.placeholder', { team: teamName }));
   let thinking = $derived(copy.sending);
-  let exchanges = $derived(groupExchanges(turns));
+  // How each Routine card was answered, so a reloaded card shows its answer, never its buttons again.
+  let answers = $derived(cardAnswers(turns));
+  let exchanges = $derived(groupExchanges(turns, answers));
   // Each exchange's calendar day in the viewer's timezone (chat/days.js says which time an item carries); a header
   // opens each day, and "today" moves at the viewer's midnight.
   const instantOf = turnInstants();
@@ -486,9 +489,9 @@
       await revealLatestExchange({ instant: true });
       return;
     }
-    const shown = new Map(
-      turns.filter((turn) => turn.routineRun).map((turn) => [turn.historyId, turn.routineRun.version]),
-    );
+    const shown = new Map(turns.filter((turn) => turn.routineRun || turn.routineAnswer).map((turn) => [
+      turn.historyId, turn.routineRun?.version ?? 0,
+    ]));
     const arrived = newerRoutineEntries(shown, value.entries);
     if (arrived.length === 0) return;
     const viewport = turnsViewport;
@@ -1970,12 +1973,10 @@
               sentAnswer={clarificationAnswers.sent.get(index) ?? null}
               givenAnswer={clarificationAnswers.given.get(index) ?? null}
               answerDisabled={sendUnavailable}
-              joinAbove={!opensDay && !exchange.user && Boolean(exchanges[index - 1]?.assistant?.routineRun)}
-              joinBelow={days[index + 1] === days[index] && !exchanges[index + 1]?.user &&
-                Boolean(exchanges[index + 1]?.assistant?.routineRun)}
               lifecycleDisabled={lifecycleDecisionDisabled}
               onanswer={(answer) => answerClarification(exchange, answer)}
               onrewrite={rewriteRoutine}
+              cardAnswer={answers.get(exchange.assistant?.routineProposal?.proposal_id) ?? ''}
               ondecide={submitLifecycleDecision}
               thinking={index === exchanges.length - 1 && busy && !integrationChallenge && !humanChallenge &&
                 (exchange.assistant ? exchange.assistant.installPlan?.state === 'installed' : !lifecycleWorking)

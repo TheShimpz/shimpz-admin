@@ -140,8 +140,7 @@ export function failureCause(diagnostic) {
   return status !== null && status >= 500 ? 'provider' : 'unknown';
 }
 
-const DAY_SECONDS = 86400;
-const WEEK_SECONDS = 7 * DAY_SECONDS;
+const CONTINUOUS_UNITS = [['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60], ['second', 1]];
 // Weekday 0 is Monday in the Routine grammar.
 const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
@@ -151,17 +150,9 @@ export function scheduleWords(schedule, copy, locale) {
     return schedule.every === 1 ? copy.hour : fill(copy.hours, { every: schedule.every });
   }
   if (schedule.kind === 'continuous') {
-    // A gap of whole weeks or days reads in that unit; any other gap reads in seconds, with its daily cap.
-    for (const [seconds, one, many] of [[WEEK_SECONDS, 'continuousWeek', 'continuousWeeks'], [DAY_SECONDS, 'continuousDay', 'continuousDays']]) {
-      if (schedule.gap % seconds === 0) {
-        const count = schedule.gap / seconds;
-        return count === 1 ? copy[one] : fill(copy[many], { count: numberFormat(locale).format(count) });
-      }
-    }
-    return fill(copy.continuous, {
-      gap: numberFormat(locale).format(schedule.gap),
-      cap: numberFormat(locale).format(schedule.cap),
-    });
+    // The gap in its largest whole unit: "Every 30 minutes", never seconds and a daily cap.
+    const [unit, seconds] = CONTINUOUS_UNITS.find(([, size]) => schedule.gap % size === 0);
+    return countWords(copy.every[unit], schedule.gap / seconds, locale);
   }
   if (schedule.kind === 'daily') return fill(copy.daily, { time: schedule.time });
   if (schedule.kind === 'weekly') {

@@ -30,6 +30,10 @@ class RoutineMethodCase(SessionSocketCase):
         self.answer = __import__("routine.answer", fromlist=["answer"])
         self.routines = __import__("session.routines", fromlist=["routines"])
         self.ok = self.team.TeamResponse(200, OK)
+        # How a card was answered is kept in the transcript; these tests stand in for the history store.
+        kept = mock.patch.object(self.routines.history_store, "append_proposal_answer", return_value=True)
+        self.kept_answers = kept.start()
+        self.addCleanup(kept.stop)
 
     def results(self, *calls: tuple[str, dict], topics: tuple[str, ...] = ()) -> tuple[list[dict], set[str]]:
         """Answer each call in order on one socket, returning its results and the topics raised meanwhile."""
@@ -205,6 +209,19 @@ class RoutineTopicTests(RoutineMethodCase):
         with mock.patch.object(self.manage, "pause", return_value=self.ok):
             self.results(("routines.pause", {"team_id": "team_1", "routine_id": ROUTINE}))
         self.assertEqual(scheduler.wake.call_count, 2)
+
+    def test_a_card_answer_team_gave_is_kept_and_an_unavailable_history_never_fails_it(self) -> None:
+        answered = {"team_id": "team_1", "proposal_id": ROUTINE, "routine_id": ROUTINE, "status": "created"}
+        given = self.team.TeamResponse(200, answered)
+        refused = self.team.TeamResponse(409, {"code": "routine-proposal-expired"})
+        params = {"team_id": "team_1", "proposal_id": ROUTINE}
+        with mock.patch.object(self.manage, "confirm_proposal", side_effect=[given, refused]):
+            self.results(("routines.proposal_confirm", params), ("routines.proposal_confirm", params))
+        self.kept_answers.assert_called_once_with(answered)
+        self.kept_answers.side_effect = self.routines.history_store.HistoryUnavailableError("down")
+        with mock.patch.object(self.manage, "revoke_proposal", return_value=given):
+            (result,), _raised = self.results(("routines.proposal_revoke", params))
+        self.assertEqual((result["status"], result["body"]), (200, answered))
 
     def test_an_admin_without_a_running_scheduler_still_answers(self) -> None:
         card = {"team_id": "team_1", "incident_id": ROUTINE, "body": {"nonce": "e" * 32, "choice": "run"}}
