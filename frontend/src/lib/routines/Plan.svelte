@@ -2,7 +2,6 @@
   import { untrack } from 'svelte';
 
   import { call } from '#lib/session/socket.js';
-  import RoutineIcon from '#lib/routines/Icon.svelte';
   import Inputs from '#lib/routines/Inputs.svelte';
   import Paging from '#lib/routines/Paging.svelte';
   import { fill } from '#lib/i18n/fill.js';
@@ -72,14 +71,8 @@
         </p>
         {#if step.inputs.length > 0 || step.stored_inputs.length > 0}
           <div class="meta">
-            {#if step.inputs.length > 0}
-              <Inputs inputs={step.inputs} words={(input) => inputWords(input, copy.plan)} />
-            {/if}
-            {#each step.stored_inputs as name (name)}
-              <p class="stored" title={fill(copy.plan.storedInput, { name })}>
-                <RoutineIcon name="lock" /><span class="sr-only">{fill(copy.plan.storedInput, { name })}</span><span aria-hidden="true">{name}</span>
-              </p>
-            {/each}
+            <Inputs inputs={step.inputs} words={(input) => inputWords(input, copy.plan)}
+              locked={step.stored_inputs.map((name) => ({ name, label: fill(copy.plan.storedInput, { name }) }))} />
           </div>
         {/if}
       </div>
@@ -102,7 +95,5 @@
   .action { color: var(--shimpz-color-text); font-weight: 600; overflow-wrap: anywhere; }
   .assistant { color: var(--shimpz-color-text-dim); font-size: 0.74rem; }
   .meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--gap-inside) var(--gap-group); color: var(--shimpz-color-text-muted); font-size: 0.76rem; }
-  .stored { display: inline-flex; align-items: center; gap: var(--gap-inside); margin: 0; font-family: var(--shimpz-font-mono); font-size: 0.74rem; }
-  .stored :global(.routine-icon) { width: 0.75rem; height: 0.75rem; }
   .disposition { margin: var(--gap-inside) 0 0; color: var(--shimpz-color-text-muted); font-size: 0.78rem; }
 </style>

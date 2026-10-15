@@ -5848,8 +5848,8 @@ test.describe('Team Routines', () => {
     const steps = view.getByRole('region', { name: 'Steps' });
     await expect(steps.locator('ol > li')).toHaveCount(1);
     await expect(steps.getByRole('listitem').first()).toContainText('List zones');
-    await expect(steps.locator('dd').first()).toHaveText('1');
-    await expect(steps.locator('dd')).toHaveCount(2);
+    await expect(steps.locator('dd')).toHaveText(['1']);
+    await expect(steps.getByTitle('Token: hidden')).toBeVisible();
     await expect(steps).toContainText("Client error '429 Too Many Requests' <b>escaped</b>");
     await expect(steps.locator('b')).toHaveCount(0);
     // Shortened evidence says it was shortened.

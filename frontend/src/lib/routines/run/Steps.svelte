@@ -3,6 +3,7 @@
 
   import { call } from '#lib/session/socket.js';
   import RoutineIcon from '#lib/routines/Icon.svelte';
+  import Inputs from '#lib/routines/Inputs.svelte';
   import Paging from '#lib/routines/Paging.svelte';
   import { fill } from '#lib/i18n/fill.js';
   import { assistantName } from '#lib/assistants/names.js';
@@ -14,11 +15,12 @@
 
   // The steps of one Routine run as the run recorded them (ADR-0092 amendment, 2026-10-05, scale), numbered in order:
   // each step's Action and Assistant, what happened to it, how long its attempt took, the inputs that attempt was
-  // given as Team's redacted previews, and the failed attempts Team recorded for it. A step with no record says plainly
-  // that it did not run or that its record is unavailable. The records are read page by page for one snapshot of them,
-  // bound to the run's historical `binding` (`runBinding`): every page must match it, and the first page binds what it
-  // left unknown; a snapshot that changed meanwhile is read again from the newest. A long run reveals its steps a few at
-  // a time; `total` reports how many steps it has once that is known. Every value is escaped text.
+  // given as Team's redacted previews in the plan's own words (a hidden value as a lock chip), and the failed attempts
+  // Team recorded for it. A step with no record says plainly that it did not run or that its record is unavailable.
+  // The records are read page by page for one snapshot of them, bound to the run's historical `binding`
+  // (`runBinding`): every page must match it, and the first page binds what it left unknown; a snapshot that changed
+  // meanwhile is read again from the newest. A long run reveals its steps a few at a time; `total` reports how many
+  // steps it has once that is known. Every value is escaped text.
   let {
     teamId, runId, binding, attempts = null, copy, locale,
     total = $bindable(null),
@@ -38,6 +40,12 @@
   let list = $state();
 
   let remaining = $derived((total ?? 0) - paging.shown.length);
+
+  // An input whose value Team hid, named without it.
+  function hidden(member) {
+    const name = humanizeId(member);
+    return { name, label: `${name}: ${copy.notice.output.redacted}` };
+  }
 
   function restart() {
     paging.restart();
@@ -121,14 +129,10 @@
           {#if step.inputs === null}
             <div class="dim">{copy.result.inputsUnavailable}</div>
           {:else if step.inputs.length > 0}
-            <dl class="inputs">
-              {#each step.inputs as input (input.member)}
-                <div>
-                  <dt>{humanizeId(input.member)}</dt>
-                  <dd>{input.value === null ? copy.notice.output.redacted : literalWords(input.value)}</dd>
-                </div>
-              {/each}
-            </dl>
+            <div class="meta">
+              <Inputs inputs={step.inputs.filter((input) => input.value !== null)} words={(input) => literalWords(input.value)}
+                locked={step.inputs.filter((input) => input.value === null).map((input) => hidden(input.member))} />
+            </div>
           {:else}
             <div class="dim">{copy.result.noInputs}</div>
           {/if}
@@ -154,7 +158,7 @@
 
 <style>
   /* Numbered rows joined by one hairline rail: a mono number, the Action with its Assistant, a quiet status, then
-     the parameters as mono key and value pairs. */
+     the parameters in the plan's one wrapping line of key and value pairs. */
   .steps { display: grid; margin: 0; padding: 0; list-style: none; }
   .step {
     position: relative;
@@ -187,10 +191,7 @@
   .step--waiting .status :global(.routine-icon) { color: var(--shimpz-color-yellow); }
   .step--not_run .status :global(.routine-icon),
   .step--unavailable .status :global(.routine-icon) { color: var(--shimpz-color-text-dim); }
-  .inputs { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--gap-inside) var(--gap-item); margin: 0; font-size: 0.78rem; }
-  .inputs > div { display: contents; }
-  dt { color: var(--shimpz-color-text-dim); }
-  dd { margin: 0; min-width: 0; color: var(--shimpz-color-text); font-family: var(--shimpz-font-mono); font-size: 0.76rem; overflow-wrap: anywhere; }
+  .meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--gap-inside) var(--gap-group); color: var(--shimpz-color-text-muted); font-size: 0.76rem; }
   .dim { color: var(--shimpz-color-text-dim); font-size: 0.75rem; }
   .attempts { display: grid; gap: var(--gap-item); margin-block-start: var(--gap-inside); padding: var(--gap-item) var(--gap-group); border-inline-start: 2px solid var(--shimpz-color-border); background: rgb(255 255 255 / 0.015); }
   .attempts.apart { margin-block-start: var(--gap-item); }
