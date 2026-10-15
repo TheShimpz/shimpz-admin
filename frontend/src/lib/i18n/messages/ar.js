@@ -401,6 +401,7 @@ export default {
       pages: 'صفحات الروتين',
       runningNow: 'قيد التشغيل الآن',
       waitingApproval: 'بانتظار موافقة',
+      waitingConnection: 'بانتظار الربط',
       skipped: 'وُضع جانبًا',
     },
     status: {

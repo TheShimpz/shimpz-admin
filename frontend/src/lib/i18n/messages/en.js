@@ -402,6 +402,7 @@ export default {
       pages: 'Routine pages',
       runningNow: 'Running now',
       waitingApproval: 'Waiting for an approval',
+      waitingConnection: 'Waiting for a connection',
       skipped: 'Set aside',
     },
     status: {

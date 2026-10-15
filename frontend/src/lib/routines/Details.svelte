@@ -215,7 +215,7 @@
       'user-skipped': copy.panel.skipped,
       held: copy.status.failed,
       paused: fill(run.paused, { reason: run.pauseReasons[entry.detail.reason] }),
-      frozen: copy.panel.waitingApproval,
+      frozen: entry.detail.request_kind === 'integrations' ? copy.panel.waitingConnection : copy.panel.waitingApproval,
       healthy: countWords(copy.panel.healthyRuns, entry.detail.runs, $locale),
       skipped: countWords(copy.panel.missedRuns, entry.detail.missed, $locale),
       'streak-paused': countWords(copy.panel.streakPaused, entry.detail.failures, $locale),

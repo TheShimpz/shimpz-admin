@@ -401,6 +401,7 @@ export default {
       pages: 'Pages de la routine',
       runningNow: 'En cours d’exécution',
       waitingApproval: 'En attente d’une approbation',
+      waitingConnection: 'En attente d’une connexion',
       skipped: 'Mise de côté',
     },
     status: {

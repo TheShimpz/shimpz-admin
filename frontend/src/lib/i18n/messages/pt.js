@@ -401,6 +401,7 @@ export default {
       pages: 'Páginas da rotina',
       runningNow: 'Executando agora',
       waitingApproval: 'Aguardando uma aprovação',
+      waitingConnection: 'Aguardando uma conexão',
       skipped: 'Deixada de lado',
     },
     status: {

@@ -401,6 +401,7 @@ export default {
       pages: 'Seiten der Routine',
       runningNow: 'Läuft gerade',
       waitingApproval: 'Wartet auf eine Freigabe',
+      waitingConnection: 'Wartet auf eine Verbindung',
       skipped: 'Beiseitegelegt',
     },
     status: {

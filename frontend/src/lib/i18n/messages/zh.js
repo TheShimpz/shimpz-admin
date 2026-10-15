@@ -401,6 +401,7 @@ export default {
       pages: '例行任务页面',
       runningNow: '正在运行',
       waitingApproval: '等待批准',
+      waitingConnection: '等待连接',
       skipped: '已搁置',
     },
     status: {

@@ -401,6 +401,7 @@ export default {
       pages: 'ルーティンのページ',
       runningNow: '実行中',
       waitingApproval: '承認待ち',
+      waitingConnection: '接続待ち',
       skipped: '保留',
     },
     status: {
