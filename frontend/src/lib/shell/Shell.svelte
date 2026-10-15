@@ -275,7 +275,7 @@
   .sidebar-footer > :global(.platform-release .indicator) { display: none; }
 
   .menu-icon { width: 1.25rem; height: 1.25rem; fill: none; stroke: currentColor; stroke-width: 1.8; }
-  :global(dialog.shimpz-modal.team-drawer) { margin: 0; width: min(20rem, calc(100dvw - 3rem)); max-height: 100dvh; height: 100dvh; background: var(--shimpz-color-surface); border-inline-end: 1px solid var(--shimpz-color-border); }
+  :global(dialog.shimpz-modal.team-drawer) { margin: 0; width: min(20rem, calc(100dvw - 3rem)); max-height: 100dvh; height: 100dvh; background: var(--shimpz-color-surface); border-inline-end: 1px solid var(--shimpz-color-border); border-radius: 0; }
   .team-drawer-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; padding: var(--gap-group) var(--gap-group) 0; }
   .team-drawer-head h2 { margin: 0; color: var(--shimpz-color-text-dim); font: 700 0.72rem/1 var(--shimpz-font-mono); letter-spacing: 0.09em; text-transform: uppercase; }
   .team-sidebar-region { min-width: 0; min-height: 0; overflow: auto; }
