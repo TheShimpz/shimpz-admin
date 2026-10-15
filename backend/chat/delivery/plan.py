@@ -10,6 +10,7 @@ from typing import cast
 
 from chat.connection import Connection, Turn
 from chat.executor import ExecutorSaturatedError
+from chat.projection import error_terminal
 from fastapi import WebSocket
 from history import store as history
 
@@ -18,7 +19,6 @@ from chat import assistant_plan, assistant_proposal, lifecycle
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
 FinishTurn = Callable[[WebSocket, Connection, Turn, Mapping[str, object]], Awaitable[None]]
 ContinueTurn = Callable[[WebSocket, Connection, Turn, str, dict[str, object]], Awaitable[None]]
-ErrorTerminal = Callable[[object, str], dict[str, object]]
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,7 +26,6 @@ class Operations:
     send_event: SendEvent
     finish_turn: FinishTurn
     continue_turn: ContinueTurn
-    error_terminal: ErrorTerminal
 
 
 def _remember_single_install(
@@ -143,7 +142,7 @@ async def _deliver_admitted(
             websocket,
             connection,
             turn,
-            operations.error_terminal(503, "Admin chat history is unavailable"),
+            error_terminal(503, "Admin chat history is unavailable"),
         )
         return
     if result.state == "installed" and continuation == "none" and plan.terminal:
@@ -193,7 +192,7 @@ async def _deliver_already_installed(
     if not await _commit_install(team_id, turn, terminal):
         connection.assistant_reference = None
         await operations.finish_turn(
-            websocket, connection, turn, operations.error_terminal(503, "Admin chat history is unavailable")
+            websocket, connection, turn, error_terminal(503, "Admin chat history is unavailable")
         )
         return
     if not result.dispatch_ids:
@@ -234,7 +233,7 @@ async def deliver_result(
             websocket,
             connection,
             turn,
-            operations.error_terminal(preparation.error_status, detail),
+            error_terminal(preparation.error_status, detail),
         )
     elif turn.stop_requested:
         connection.assistant_reference = None

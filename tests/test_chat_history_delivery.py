@@ -454,12 +454,10 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
     def test_projection_layers_fail_closed_when_history_is_unavailable(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            error = {"type": "error", "status": 503}
 
             challenge_operations = challenge_delivery.Operations(
                 send_event=mock.AsyncMock(return_value=True),
                 send_terminal=mock.AsyncMock(return_value=True),
-                error_terminal=mock.Mock(return_value=error),
             )
             with mock.patch.object(
                 challenge_delivery.history_delivery,
@@ -476,12 +474,12 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
                     challenge_operations,
                 )
             challenge_operations.send_terminal.assert_awaited_once()
+            self.assertEqual(challenge_operations.send_terminal.await_args.args[3]["status"], 503)
             challenge_operations.send_event.assert_not_awaited()
 
             sync_operations = sync_delivery.Operations(
                 send_event=mock.AsyncMock(return_value=True),
                 send_terminal=mock.AsyncMock(return_value=True),
-                error_terminal=mock.Mock(return_value=error),
             )
             connection = socket.Connection(pending_history_id="a" * 32)
             with mock.patch.object(

@@ -5,13 +5,13 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 
 from chat.connection import Connection, Turn, remember_challenge
+from chat.projection import error_terminal
 from fastapi import WebSocket
 from history import delivery as history_delivery
 from history import store as history
 
 SendEvent = Callable[[WebSocket, Mapping[str, object]], Awaitable[bool]]
 SendTerminal = Callable[[WebSocket, Connection, Turn, Mapping[str, object]], Awaitable[bool]]
-ErrorTerminal = Callable[[object, str], dict[str, object]]
 
 log = logging.getLogger("shimpz-admin")
 
@@ -20,7 +20,6 @@ log = logging.getLogger("shimpz-admin")
 class Operations:
     send_event: SendEvent
     send_terminal: SendTerminal
-    error_terminal: ErrorTerminal
 
 
 async def deliver(
@@ -40,7 +39,7 @@ async def deliver(
             websocket,
             connection,
             turn,
-            operations.error_terminal(503, "Admin chat history is unavailable"),
+            error_terminal(503, "Admin chat history is unavailable"),
         )
         return
     connection.pending_history_id = turn.history_id

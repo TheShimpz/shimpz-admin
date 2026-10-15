@@ -13,6 +13,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from chat.connection import Connection, Turn
 from chat.delivery import plan as plan_delivery
 from chat.delivery import route as route_delivery
+from chat.projection import error_terminal
 from team import transport
 from tests.chat_socket_case import resolved_future
 
@@ -28,7 +29,6 @@ def _operations(**changes) -> plan_delivery.Operations:
         "send_event": mock.AsyncMock(return_value=True),
         "finish_turn": mock.AsyncMock(),
         "continue_turn": mock.AsyncMock(),
-        "error_terminal": mock.Mock(return_value={"type": "error"}),
     }
     values.update(changes)
     return plan_delivery.Operations(**values)
@@ -158,12 +158,11 @@ class PlanDeliveryEdges(unittest.TestCase):
                     result,
                     operations,
                 )
-            operations.error_terminal.assert_called_once_with(503, "Admin chat history is unavailable")
             operations.finish_turn.assert_awaited_once_with(
                 mock.sentinel.websocket,
                 mock.ANY,
                 mock.ANY,
-                {"type": "error"},
+                error_terminal(503, "Admin chat history is unavailable"),
             )
 
         asyncio.run(scenario())
@@ -515,12 +514,14 @@ class PlanDeliveryEdges(unittest.TestCase):
             )
 
             error = await deliver(assistant_plan.Preparation(error_status=503))
-            error.error_terminal.assert_called_once()
             error.finish_turn.assert_awaited_once()
+            self.assertEqual(error.finish_turn.await_args.args[3]["type"], "error")
 
             # Admin's own Assistant-limit refusal names Team's closed code as its detail.
             limited = await deliver(assistant_plan.LIMIT_REACHED)
-            limited.error_terminal.assert_called_once_with(409, "assistant_limit_reached")
+            limited.finish_turn.assert_awaited_once_with(
+                mock.sentinel.websocket, mock.ANY, mock.ANY, error_terminal(409, "assistant_limit_reached")
+            )
 
             stopped = await deliver(assistant_plan.Preparation(plan=_plan()), stop_requested=True)
             stopped.finish_turn.assert_awaited_once_with(

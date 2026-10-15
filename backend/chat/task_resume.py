@@ -6,6 +6,7 @@ from chat.connection import Connection, request_identity
 from chat.delivery import plan as plan_delivery
 from chat.delivery import route as route_delivery
 from chat.executor import ExecutorSaturatedError
+from chat.projection import error_terminal
 from fastapi import WebSocket
 from history import delivery as history_delivery
 from history import store as history
@@ -64,15 +65,15 @@ async def admit(
     try:
         canonical = _canonical_payloads(frame)
     except transport.TeamRequestError:
-        await operations.send_event(websocket, operations.error_terminal(400, "invalid task resume request"))
+        await operations.send_event(websocket, error_terminal(400, "invalid task resume request"))
         return None
     if connection.active is not None or connection.sync_task is not None or connection.lifecycle is not None:
-        await operations.send_event(websocket, operations.error_terminal(409, "a chat turn is already active"))
+        await operations.send_event(websocket, error_terminal(409, "a chat turn is already active"))
         return None
     if connection.pending_challenge_id is not None:
         await operations.send_event(
             websocket,
-            operations.error_terminal(409, "an Assistant challenge must be resolved before another turn"),
+            error_terminal(409, "an Assistant challenge must be resolved before another turn"),
         )
         return None
     return (*canonical, request_identity())
@@ -96,16 +97,16 @@ async def dispatch(
         # asked for a capability; the objective itself runs once, as this turn's message.
         conversation = await history_delivery.conversation(team_id, history_id)
     except ExecutorSaturatedError:
-        await operations.send_event(websocket, operations.error_terminal(429, "Admin chat history capacity reached"))
+        await operations.send_event(websocket, error_terminal(429, "Admin chat history capacity reached"))
         return
     except history.HistoryUnavailableError, ValueError:
-        await operations.send_event(websocket, operations.error_terminal(503, "Admin chat history is unavailable"))
+        await operations.send_event(websocket, error_terminal(503, "Admin chat history is unavailable"))
         return
     connection.admitted_history_id = history_id
     try:
         preparation = lifecycle.submit_resume(team_id, objective)
     except ExecutorSaturatedError:
-        await operations.send_event(websocket, operations.error_terminal(429, "Assistant routing capacity reached"))
+        await operations.send_event(websocket, error_terminal(429, "Assistant routing capacity reached"))
         return
     turn = route_delivery.begin(connection, preparation, objective["locale"], conversation, identity)
     turn.delivery = asyncio.create_task(

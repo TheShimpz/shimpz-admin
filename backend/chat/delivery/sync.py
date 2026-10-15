@@ -18,7 +18,6 @@ from history import store as history
 from team import transport
 
 SendEvent = Callable[[WebSocket, Connection, Mapping[str, object]], Awaitable[bool]]
-ErrorTerminal = Callable[[object, str], dict[str, object]]
 
 
 class SendTerminal(Protocol):
@@ -36,7 +35,6 @@ class SendTerminal(Protocol):
 class Operations:
     send_event: SendEvent
     send_terminal: SendTerminal
-    error_terminal: ErrorTerminal
 
 
 def is_empty_pending(response: object, team_id: str) -> bool:
@@ -76,7 +74,7 @@ async def _restore_history(
         await operations.send_terminal(
             websocket,
             connection,
-            operations.error_terminal(503, "Admin chat history is unavailable"),
+            error_terminal(503, "Admin chat history is unavailable"),
         )
         return False
     return True
@@ -93,7 +91,7 @@ async def empty(
         await operations.send_terminal(
             websocket,
             connection,
-            operations.error_terminal(503, "Admin chat history is unavailable"),
+            error_terminal(503, "Admin chat history is unavailable"),
         )
         return
     connection.pending_history_id = None
@@ -121,7 +119,7 @@ async def integration_terminal(
         await operations.send_terminal(
             websocket,
             connection,
-            operations.error_terminal(502, "the Assistant integration challenge was invalid"),
+            error_terminal(502, "the Assistant integration challenge was invalid"),
         )
         return
     if not await _restore_history(websocket, connection, team_id, operations):
@@ -164,7 +162,7 @@ async def integration(
         await operations.send_terminal(
             websocket,
             connection,
-            operations.error_terminal(502, "the Assistant integration challenge was invalid"),
+            error_terminal(502, "the Assistant integration challenge was invalid"),
         )
         return
 
@@ -176,7 +174,7 @@ async def integration(
             await operations.send_terminal(
                 websocket,
                 connection,
-                operations.error_terminal(502, "the Assistant integration challenge was invalid"),
+                error_terminal(502, "the Assistant integration challenge was invalid"),
             )
             return
         if not await _restore_history(websocket, connection, team_id, operations):

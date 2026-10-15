@@ -65,7 +65,6 @@ async def _send_sync_event(
 _SYNC_OPERATIONS = sync_delivery.Operations(
     send_event=_send_sync_event,
     send_terminal=_send_sync_terminal_once,
-    error_terminal=error_terminal,
 )
 
 
@@ -149,7 +148,6 @@ async def _deliver_turn(websocket: WebSocket, connection: Connection, turn: Turn
                 challenge_delivery.Operations(
                     send_event=_send_event,
                     send_terminal=_send_terminal_once,
-                    error_terminal=error_terminal,
                 ),
             )
             return
@@ -594,7 +592,6 @@ def _plan_operations() -> plan_delivery.Operations:
         send_event=_send_event,
         finish_turn=_finish_active_turn,
         continue_turn=_continue_team_turn,
-        error_terminal=error_terminal,
     )
 
 

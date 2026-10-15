@@ -8,6 +8,7 @@ from chat.connection import Connection, Turn
 from chat.delivery import plan as plan_delivery
 from chat.delivery import terminal as terminal_delivery
 from chat.delivery import uninstall as uninstall_delivery
+from chat.projection import error_terminal
 from fastapi import WebSocket
 from history import context as history_context
 from history import delivery as history_delivery
@@ -28,7 +29,7 @@ async def _deliver_guidance(
     try:
         await history_delivery.guidance(team_id, turn.history_id, guidance.code, guidance.reply)
     except history.HistoryUnavailableError, ValueError:
-        event = operations.error_terminal(503, "Admin chat history is unavailable")
+        event = error_terminal(503, "Admin chat history is unavailable")
     else:
         connection.assistant_reference = None
         event = {
@@ -79,7 +80,7 @@ async def _deliver_result(
             websocket,
             connection,
             turn,
-            operations.error_terminal(result.error_status or 422, "Assistant request could not be resolved"),
+            error_terminal(result.error_status or 422, "Assistant request could not be resolved"),
         )
         return
     if result.intent == "assistant-uninstall":
@@ -147,7 +148,7 @@ async def deliver(
                 websocket,
                 connection,
                 turn,
-                operations.error_terminal(exc.status, "Assistant routing is unavailable; retry the message"),
+                error_terminal(exc.status, "Assistant routing is unavailable; retry the message"),
             )
     finally:
         if connection.active is turn and turn.operation == "assistant-route":
