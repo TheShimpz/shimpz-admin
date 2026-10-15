@@ -670,6 +670,7 @@
     padding: var(--gap-panel) var(--shimpz-page-padding) var(--gap-section);
     background: linear-gradient(180deg, color-mix(in oklab, var(--shimpz-color-cyan) 6%, var(--shimpz-color-surface)), var(--shimpz-color-bg));
     border-block-end: var(--rule);
+    border-radius: 0;
   }
 
   .hero :global(a.shimpz-text-link.back) {

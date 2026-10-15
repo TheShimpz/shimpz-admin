@@ -1246,6 +1246,7 @@
     border: 0;
     border-inline-end: 1px solid var(--admin-divider);
     border-bottom: 1px solid var(--admin-divider);
+    border-radius: 0;
     background: var(--surface-1);
     overflow: hidden;
   }
@@ -1358,6 +1359,7 @@
     border: 0;
     border-inline-end: 1px solid var(--admin-divider);
     border-bottom: 1px solid var(--admin-divider);
+    border-radius: 0;
     color: var(--text-faint);
     overflow: auto;
   }

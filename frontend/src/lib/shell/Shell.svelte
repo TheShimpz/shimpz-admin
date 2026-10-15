@@ -316,6 +316,7 @@
       gap: var(--gap-item);
       padding-inline-end: var(--gap-group);
       border-block-start: 1px solid var(--shimpz-color-border);
+      border-radius: 0;
       background: var(--shimpz-color-surface);
     }
     .mobile-footer > :global(:last-child) { margin-inline-start: auto; }

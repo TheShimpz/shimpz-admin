@@ -258,6 +258,7 @@
     inset-inline-start: -1px;
     width: 1.1rem;
     height: 1px;
+    border-radius: 0;
     background: var(--shimpz-color-cyan);
     opacity: 0.45;
     content: "";

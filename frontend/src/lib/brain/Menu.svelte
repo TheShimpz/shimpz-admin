@@ -164,7 +164,7 @@
   .panel:not(:popover-open) { display: none; }
   .models { display: grid; gap: 1px; } /* a hairline seam between the rows' own tints, not rhythm */
   .provider { display: flex; align-items: center; gap: var(--gap-item); margin: var(--gap-item) 0 var(--gap-inside); padding-inline: var(--gap-item); color: var(--shimpz-color-cyan); font: 600 0.58rem/1 var(--shimpz-font-mono); letter-spacing: 0.14em; text-transform: uppercase; opacity: 0.7; }
-  .provider::after { flex: 1; height: 1px; background: var(--shimpz-color-border); content: ""; }
+  .provider::after { flex: 1; height: 1px; border-radius: 0; background: var(--shimpz-color-border); content: ""; }
   .models :global(.model) { position: relative; isolation: isolate; min-height: 2.35rem; gap: var(--gap-inside); padding: var(--gap-inside) var(--gap-item); color: var(--shimpz-color-text-muted); background: transparent; border: 0; clip-path: none; box-shadow: none; }
   .models :global(.model::before) { position: absolute; z-index: -1; inset: 0; clip-path: var(--shimpz-control-shape); content: ""; pointer-events: none; }
   .models :global(.model:hover:not(:disabled)), .models :global(.model.is-selected) { color: var(--shimpz-color-text); background: transparent; border: 0; box-shadow: none; }

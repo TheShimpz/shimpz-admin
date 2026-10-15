@@ -339,9 +339,9 @@
   :global(.pending) { display: grid; gap: var(--gap-item); margin-bottom: var(--gap-group); }
   :global(.pending strong) { color: var(--warn); font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase; }
   :global(.pending p) { margin: 0; color: var(--text-dim); font-size: 0.68rem; line-height: 1.5; }
-  .pending-requirement { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--gap-item); border-top: 1px solid var(--border); padding-top: var(--gap-item); }
+  .pending-requirement { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--gap-item); border-top: 1px solid var(--border); border-radius: 0; padding-top: var(--gap-item); }
   .assistant-groups { display: grid; gap: var(--gap-group); }
-  :global(.assistant-group > [data-slot="card-header"]) { position: relative; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+  :global(.assistant-group > [data-slot="card-header"]) { position: relative; border-bottom: 1px solid var(--border); border-radius: 0; background: var(--surface-2); }
   /* The heading is presentation under the full-row toggle, so a click on the icon or name still reaches the toggle. */
   .assistant-heading { display: flex; min-width: 0; align-items: center; gap: var(--gap-item); pointer-events: none; }
   .assistant-heading > div { display: grid; min-width: 0; gap: var(--gap-inside); }

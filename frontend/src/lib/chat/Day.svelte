@@ -36,6 +36,7 @@
   .chat-day::after {
     flex: 1;
     height: 1px;
+    border-radius: 0;
     background: var(--shimpz-color-border);
     content: '';
   }

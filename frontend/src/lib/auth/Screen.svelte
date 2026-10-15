@@ -166,10 +166,10 @@
   .totp-enrollment p { margin: 0 0 var(--gap-item); color: var(--text-dim); }
   .totp-enrollment code { display: block; font-size: 0.72rem; }
   .alternative { display: flex; align-items: center; gap: var(--gap-item); color: var(--text-dim); font-size: 0.75rem; }
-  .alternative::before, .alternative::after { height: 1px; flex: 1; background: var(--border); content: ''; }
+  .alternative::before, .alternative::after { height: 1px; flex: 1; border-radius: 0; background: var(--border); content: ''; }
   .checking { min-height: 14rem; display: flex; justify-content: center; flex-direction: column; }
   .scanner { position: relative; width: 3rem; height: 3rem; margin-bottom: var(--gap-panel); border: 1px solid var(--border-strong); clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px); overflow: hidden; }
-  .scanner::before, .scanner::after { position: absolute; background: var(--accent); content: ''; }
+  .scanner::before, .scanner::after { position: absolute; border-radius: 0; background: var(--accent); content: ''; }
   /* The crosshair's 0.5rem insets are the scanner glyph's own geometry, not rhythm. */
   .scanner::before { top: 50%; right: 0.5rem; left: 0.5rem; height: 1px; }
   .scanner::after { top: 0.5rem; bottom: 0.5rem; left: 50%; width: 1px; }

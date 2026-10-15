@@ -160,7 +160,7 @@
 
 <style>
   .frame { display: grid; background: var(--shimpz-color-surface); border: 1px solid var(--shimpz-color-border); }
-  .head { display: flex; align-items: center; justify-content: space-between; gap: var(--gap-group); padding: var(--gap-group) var(--gap-panel); border-block-end: 1px solid var(--shimpz-color-border); }
+  .head { display: flex; align-items: center; justify-content: space-between; gap: var(--gap-group); padding: var(--gap-group) var(--gap-panel); border-block-end: 1px solid var(--shimpz-color-border); border-radius: 0; }
   h2 { margin: 0; font-size: 1rem; }
   h3 { margin: 0; color: var(--text-dim); font: 700 0.72rem/1 var(--shimpz-font-mono); letter-spacing: 0.09em; text-transform: uppercase; }
   .body { display: grid; gap: var(--gap-group); padding: var(--gap-panel); }

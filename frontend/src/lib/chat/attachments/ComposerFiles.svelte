@@ -53,6 +53,7 @@
     gap: var(--gap-item);
     padding: var(--gap-item) var(--gap-group);
     border-block-end: 1px solid var(--shimpz-color-border);
+    border-radius: 0;
     background: color-mix(in srgb, var(--shimpz-color-text) 7%, var(--shimpz-color-bg));
   }
 
