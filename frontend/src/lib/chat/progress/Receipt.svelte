@@ -1,5 +1,6 @@
 <script>
   import { Disclosure } from '@shimpz/frontend';
+  import { assistantName } from '#lib/assistants/names.js';
   import { fill } from '#lib/i18n/fill.js';
   import { formatExecutionDuration, localizedStepLabel } from './projection.js';
 
@@ -10,7 +11,6 @@
     label,
     progressLabels,
     teamName,
-    assistantNames,
     // The reply's usage line, the visible summary; the step count is announced after it.
     line,
   } = $props();
@@ -26,7 +26,7 @@
       {#each steps as step (step.key)}
         <li>
           <span class="tip">
-            <span class="step-copy">{localizedStepLabel(step, progressLabels, { teamName, assistantNames })}</span>
+            <span class="step-copy">{localizedStepLabel(step, progressLabels, { teamName, assistantName: $assistantName })}</span>
             <time>{formatExecutionDuration(step.elapsed_ms)}</time>
           </span>
         </li>

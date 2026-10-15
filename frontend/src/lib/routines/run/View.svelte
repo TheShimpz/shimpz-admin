@@ -1,6 +1,5 @@
 <script>
   import { call } from '#lib/session/socket.js';
-  import { assistantNames } from '#lib/assistants/names.js';
   import { locale } from '#lib/i18n/index.js';
   import RoutineModal from '#lib/routines/Modal.svelte';
   import RoutineResult from '#lib/routines/result/View.svelte';
@@ -101,7 +100,7 @@
         <section class="steps" aria-labelledby={`${id}-steps`}>
           <h3 id={`${id}-steps`}>{copy.result.steps}</h3>
           <div class="note">{copy.result.recordsNote}</div>
-          <RoutineRunSteps {teamId} runId={entry.runId} {binding} {attempts} {copy} names={$assistantNames}
+          <RoutineRunSteps {teamId} runId={entry.runId} {binding} {attempts} {copy}
             locale={$locale} bind:total />
           {#if unavailable}
             <div class="note">{copy.result.attemptsUnavailable}</div>

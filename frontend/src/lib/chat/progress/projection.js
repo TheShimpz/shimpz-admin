@@ -104,9 +104,7 @@ function fillNarrative(template, values) {
 }
 
 function displayAssistant(step, context) {
-  const names = context.assistantNames;
-  const reviewed = names instanceof Map ? names.get(step.assistant_id) : undefined;
-  return reviewed ?? humanizeId(step.assistant_id);
+  return (context.assistantName ?? humanizeId)(step.assistant_id);
 }
 
 function narrativeKey(step) {

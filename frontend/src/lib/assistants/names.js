@@ -4,10 +4,17 @@
 // never authority.
 import { derived } from 'svelte/store';
 
+import { humanizeId } from '../ids.js';
 import { teamContext } from '../teams/context.js';
 
 /** Assistant id -> display name; empty until the catalog is read. */
 export const assistantNames = derived(
   teamContext,
   ($context) => Object.fromEntries($context.catalog.map((item) => [item.id, item.name])),
+);
+
+/** One Assistant's display name: its catalog title, or its humanized id while the catalog does not name it. */
+export const assistantName = derived(
+  assistantNames,
+  ($names) => (id) => (Object.hasOwn($names, id) ? $names[id] : humanizeId(id)),
 );

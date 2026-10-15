@@ -9,7 +9,7 @@
 
   import { call, commandsReady } from '#lib/session/socket.js';
   import { installedIconUrl } from '#lib/assistants/icons.js';
-  import { assistantNames } from '#lib/assistants/names.js';
+  import { assistantName } from '#lib/assistants/names.js';
   import { t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
   import { refreshTeamRoutines } from '#lib/routines/context.js';
@@ -45,7 +45,6 @@
   let now = $state(Date.now());
   let expired = $derived(now >= Date.parse(proposal.expires_at));
 
-  const assistantName = (id) => $assistantNames[id] ?? humanizeId(id);
   // A step's Assistant opens its own page for the Team the card belongs to.
   const assistantHref = (id) => `/assistants/${encodeURIComponent(id)}?team=${encodeURIComponent(teamId)}`;
 
@@ -159,7 +158,7 @@
                 <span class="index" aria-hidden="true">{String(step.position).padStart(2, '0')}</span>
                 <span class="what">
                   {#each fillParts(card.stepLine, {
-                    assistant: assistantName(step.assistant), action: humanizeId(step.action),
+                    assistant: $assistantName(step.assistant), action: humanizeId(step.action),
                   }) as part, index (index)}
                     {#if part.key === 'assistant'}<TextLink class="assistant glitch-host" href={assistantHref(step.assistant)}><AssistantIcon
                         class="glitch-icon" assistant={step.assistant} src={installedIconUrl(teamId, step.assistant)} size={18}

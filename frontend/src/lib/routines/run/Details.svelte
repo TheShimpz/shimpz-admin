@@ -13,7 +13,7 @@
   // historical revision (ADR-0092 amendment, 2026-10-05, scale), then Team's sanitized record of each failed attempt.
   // Every text member is literal evidence shown as escaped text, never Markdown or HTML, and never proof of what
   // changed. `copy` is the whole Routine copy; the run is the history `entry` of one run.
-  let { teamId, entry, copy: routineCopy, names = {}, onclose } = $props();
+  let { teamId, entry, copy: routineCopy, onclose } = $props();
 
   let copy = $derived(routineCopy.details);
   let errors = $derived(routineCopy.errors);
@@ -50,7 +50,7 @@
   <DialogFrame title={copy.open} titleId={`${id}-title`} lead={copy.lead}>
     <section class="records" aria-labelledby={`${id}-steps`}>
       <h3 id={`${id}-steps`}>{routineCopy.result.steps}</h3>
-      <RoutineRunSteps {teamId} {runId} {binding} copy={routineCopy} {names} locale={$locale} />
+      <RoutineRunSteps {teamId} {runId} {binding} copy={routineCopy} locale={$locale} />
     </section>
     {#if error}
       <Notice variant="error">{error}</Notice>

@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import { get } from 'svelte/store';
 
-import { assistantNames } from '../src/lib/assistants/names.js';
+import { assistantName, assistantNames } from '../src/lib/assistants/names.js';
 import { clearTeamContext, loadTeamContext, refreshTeamInventory } from '../src/lib/teams/context.js';
 import { socketReads } from '../src/lib/session/socket.js';
 import { response, via } from './socketStub.js';
@@ -30,6 +30,11 @@ test('Assistant names follow the catalog the Team context reads, and a cleared c
   clearTeamContext();
   await via(spaceWith([{ id: 'hello-pulse', title: 'Hello Pulse' }]), () => loadTeamContext('marketing'));
   assert.deepEqual(get(assistantNames), { 'hello-pulse': 'Hello Pulse' });
+  // An id the catalog does not name, an inherited object key included, reads as its humanized id.
+  assert.deepEqual(
+    ['hello-pulse', 'salesnator', 'constructor'].map(get(assistantName)),
+    ['Hello Pulse', 'Salesnator', 'Constructor'],
+  );
 
   // An Assistant published since the first read is named once the catalog is read again, after an install.
   await via(spaceWith([

@@ -10,7 +10,6 @@
   } from '#lib/chat/history.js';
   import { locale, t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
-  import { assistantNames } from '#lib/assistants/names.js';
   import { pauseRoutine, resumeRoutine } from '#lib/routines/protocol.js';
   import {
     ATTENTION_STATUSES,
@@ -366,7 +365,7 @@
           </p>
         {/if}
       {:else if page === 'steps'}
-        <RoutinePlan {teamId} {routine} {copy} names={$assistantNames} locale={$locale}
+        <RoutinePlan {teamId} {routine} {copy} locale={$locale}
           onchanged={() => refreshTeamRoutines(teamId)} />
       {:else}
         <ul class="runs" aria-label={copy.panel.runs}>
@@ -427,7 +426,7 @@
 {/if}
 
 {#if detailsRun}
-  <RoutineRunDetails {teamId} entry={detailsRun} {copy} names={$assistantNames} onclose={() => (detailsRun = null)} />
+  <RoutineRunDetails {teamId} entry={detailsRun} {copy} onclose={() => (detailsRun = null)} />
 {/if}
 
 <style>

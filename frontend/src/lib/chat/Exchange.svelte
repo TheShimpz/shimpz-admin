@@ -27,7 +27,6 @@
     instantOf,
     teamId,
     selectedTeamId,
-    assistantNames,
     sentAnswer,
     givenAnswer,
     answerDisabled,
@@ -142,7 +141,6 @@
             label={words.progressStagesExecuted}
             progressLabels={words.progress}
             teamName={assistantTurn.author}
-            {assistantNames}
           />
         {:else}
           <p class="task-usage" title={formatTaskUsageDetail(shown.usage, $locale, words.usage)}>

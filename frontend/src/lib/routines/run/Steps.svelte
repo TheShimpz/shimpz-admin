@@ -5,6 +5,7 @@
   import { call } from '#lib/session/socket.js';
   import RoutineIcon from '#lib/routines/Icon.svelte';
   import { fill } from '#lib/i18n/fill.js';
+  import { assistantName } from '#lib/assistants/names.js';
   import { humanizeId } from '#lib/ids.js';
   import { PagedSteps } from '#lib/routines/paging.svelte.js';
   import { pageBinding, readRunSteps } from '#lib/routines/protocol.js';
@@ -19,7 +20,7 @@
   // left unknown; a snapshot that changed meanwhile is read again from the newest. A long run reveals its steps a few at
   // a time; `total` reports how many steps it has once that is known. Every value is escaped text.
   let {
-    teamId, runId, binding, attempts = null, copy, names = {}, locale, pageSize = 10,
+    teamId, runId, binding, attempts = null, copy, locale, pageSize = 10,
     total = $bindable(null),
   } = $props();
 
@@ -37,8 +38,6 @@
   let list = $state();
 
   let remaining = $derived((total ?? 0) - paging.shown.length);
-
-  const assistantName = (assistant) => names[assistant] ?? humanizeId(assistant);
 
   function restart() {
     paging.restart();
@@ -87,7 +86,7 @@
   <li class="attempt">
     <div class="attempt-head">
       <span class="mono">{named
-        ? attemptWords(item, copy.details.attempt, { assistant: assistantName, action: humanizeId })
+        ? attemptWords(item, copy.details.attempt, { assistant: $assistantName, action: humanizeId })
         : fill(copy.result.attempt, { attempt: item.attempt })}</span>
       {#if item.failure?.http_status}<span class="mono">HTTP {item.failure.http_status}</span>{/if}
       {#if item.failure}<code>{item.failure.error_type}</code>{/if}
@@ -110,7 +109,7 @@
         {#if step.action}
           <div class="head">
             <span class="action">{humanizeId(step.action)}</span>
-            <span class="assistant">{assistantName(step.assistant_id)}</span>
+            <span class="assistant">{$assistantName(step.assistant_id)}</span>
           </div>
         {/if}
         <div class="status">

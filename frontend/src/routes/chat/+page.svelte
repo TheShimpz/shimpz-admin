@@ -45,6 +45,7 @@
   import ShimpzThinking from '#lib/chat/progress/Thinking.svelte';
   import PageLoading from '#lib/shell/Loading.svelte';
   import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teams/context.js';
+  import { assistantName } from '#lib/assistants/names.js';
   import { ASSISTANT_LIMIT_REACHED } from '#lib/api.js';
   import {
     authorizeAssistantIntegration,
@@ -238,14 +239,13 @@
   let keySelection = $derived(`${chatTeamId}\u0000${$modelContext.provider}`);
   let providerKey = $state('');
   let currentProgress = $derived(liveTurn.events.at(-1));
-  let assistantNames = $derived(new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant.name])));
   let liveStatus = $derived(
     lifecycleWorking
       ? installPlanWorking
         ? copy.install.working
         : copy.uninstall.working
       : currentProgress
-      ? `${thinking} ${localizedEventLabel(currentProgress, copy.progress, { teamName, assistantNames })}`
+      ? `${thinking} ${localizedEventLabel(currentProgress, copy.progress, { teamName, assistantName: $assistantName })}`
       : liveTurn.busy ? thinking : '',
   );
   let contextFailed = $derived($teamContext.phase === 'error');
@@ -1805,7 +1805,6 @@
               elapsedText={copy.elapsed}
               progressLabels={copy.progress}
               {teamName}
-              {assistantNames}
               startedAt={liveTurn.startedAt}
             />
           {/snippet}
@@ -1821,7 +1820,6 @@
               {instantOf}
               teamId={chatTeamId}
               {selectedTeamId}
-              {assistantNames}
               sentAnswer={clarificationAnswers.sent.get(index) ?? null}
               givenAnswer={clarificationAnswers.given.get(index) ?? null}
               answerDisabled={sendUnavailable}
@@ -1899,7 +1897,6 @@
         <AssistantIntegrationsDrawer
           open={integrationsOpen}
           teamId={chatTeamId}
-          {assistantNames}
           pending={integrationChallenge}
           authorizing={integrationWorking}
           onclose={closeIntegrations}

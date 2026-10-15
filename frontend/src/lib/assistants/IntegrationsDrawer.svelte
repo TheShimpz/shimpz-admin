@@ -12,6 +12,7 @@
   import { untrack } from 'svelte';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import { installedIconUrl } from '#lib/assistants/icons.js';
+  import { assistantName } from '#lib/assistants/names.js';
   import { installedSummary } from '#lib/assistants/sources.js';
   import { locale, t } from '#lib/i18n/index.js';
   import {
@@ -24,7 +25,6 @@
   let {
     open = false,
     teamId = '',
-    assistantNames = new Map(),
     pending = undefined,
     // The Integration authorization the page has in flight, named `assistant/integration`.
     authorizing = '',
@@ -306,7 +306,7 @@
           <div class="stored-input-row">
             <AssistantIcon assistant={item.assistant_id} src={iconSource(item.assistant_id)} size={28} loading="lazy" />
             <div>
-              <strong>{assistantNames.get(item.assistant_id) ?? item.assistant_id}</strong>
+              <strong>{$assistantName(item.assistant_id)}</strong>
               <code>{item.stored_input_id}</code>
               <span>{item.status === 'stored' ? copy.storedInputStored : copy.storedInputMissing}</span>
             </div>

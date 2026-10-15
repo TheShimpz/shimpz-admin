@@ -6,6 +6,7 @@
   import RoutineIcon from '#lib/routines/Icon.svelte';
   import Inputs from '#lib/routines/Inputs.svelte';
   import { fill } from '#lib/i18n/fill.js';
+  import { assistantName } from '#lib/assistants/names.js';
   import { humanizeId } from '#lib/ids.js';
   import { PagedSteps } from '#lib/routines/paging.svelte.js';
   import { readPlanSteps } from '#lib/routines/protocol.js';
@@ -18,16 +19,15 @@
   // and the saved keys an Action uses by name only. A revision that changed while it was read is never mixed with the
   // new one: `onchanged` reads the Routine again, which brings its new summary. Every value is Team's escaped preview,
   // rendered as text, never as Markdown or HTML.
-  let { teamId, routine, copy, names = {}, locale, onchanged = () => {}, pageSize = 10 } = $props();
+  let { teamId, routine, copy, locale, onchanged = () => {}, pageSize = 10 } = $props();
 
   // Only the newest read of the newest revision may apply.
   const paging = new PagedSteps(untrack(() => pageSize));
   let list = $state();
 
-  const assistantName = (id) => names[id] ?? humanizeId(id);
   let plan = $derived(routine.plan);
   let remaining = $derived(plan.steps - paging.shown.length);
-  let summary = $derived(summaryChain(plan, assistantName, copy.notice, locale));
+  let summary = $derived(summaryChain(plan, $assistantName, copy.notice, locale));
 
   // Read pages until `wanted` steps are loaded or the plan has no more.
   function load(wanted) {
@@ -68,7 +68,7 @@
       <div class="step">
         <p class="head">
           <span class="action">{humanizeId(step.action)}</span>
-          <span class="assistant">{assistantName(step.assistant)}</span>
+          <span class="assistant">{$assistantName(step.assistant)}</span>
         </p>
         {#if step.inputs.length > 0 || step.stored_inputs.length > 0}
           <div class="meta">

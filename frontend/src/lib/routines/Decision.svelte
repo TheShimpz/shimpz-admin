@@ -2,7 +2,7 @@
   import { Button, Disclosure } from '@shimpz/frontend';
 
   import AssistantHumanRequestDialog from '#lib/assistants/HumanRequestDialog.svelte';
-  import { assistantNames } from '#lib/assistants/names.js';
+  import { assistantName } from '#lib/assistants/names.js';
   import ChoiceList from '#lib/choice/List.svelte';
   import { call, commandsReady } from '#lib/session/socket.js';
   import { locale, t } from '#lib/i18n/index.js';
@@ -66,7 +66,7 @@
     const step = card ?? detail;
     if (step.assistant_id === null) return copy.run.stoppedUnknown;
     const words = fill(copy.plan.step, {
-      assistant: $assistantNames[step.assistant_id] ?? humanizeId(step.assistant_id),
+      assistant: $assistantName(step.assistant_id),
       action: humanizeId(step.action),
     }).replace(' · ', ' › ');
     return fill(copy.card.stoppedAt, { n: step.position, total: step.steps, step: words });
@@ -78,7 +78,7 @@
     if (outcome === 'paused') return fill(copy.run.paused, { reason: copy.run.pauseReasons[detail.reason] ?? '' });
     const frozen = { human: copy.run.frozenHuman, integrations: copy.run.frozenIntegrations };
     return fill(frozen[detail.request_kind], {
-      assistant: $assistantNames[detail.assistant_id] ?? humanizeId(detail.assistant_id),
+      assistant: $assistantName(detail.assistant_id),
       action: humanizeId(detail.action),
     });
   });
@@ -333,7 +333,7 @@
   {:else if recovery || ended}
     <!-- The run is no longer waiting here; its next outcome replaces this decision when it is delivered. -->
   {:else if waitingIntegration}
-    <p class="line muted">{fill(copy.run.connect, { assistant: $assistantNames[detail.assistant_id] ?? humanizeId(detail.assistant_id) })}</p>
+    <p class="line muted">{fill(copy.run.connect, { assistant: $assistantName(detail.assistant_id) })}</p>
     <div class="actions">
       <Button
         size="sm"

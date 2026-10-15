@@ -116,7 +116,7 @@ test('humanizes every observed phase in every supported Admin locale', () => {
       };
       const label = localizedStepLabel(step, copy.chatPage.progress, {
         teamName: 'Marketing',
-        assistantNames: new Map([['shimpz-cloudflare', 'Shimpz Cloudflare']]),
+        assistantName: (id) => (id === 'shimpz-cloudflare' ? 'Shimpz Cloudflare' : id),
       });
       assert.doesNotMatch(label, /admin-preparation|reply-validation|team-context|action-preparation/);
       assert.doesNotMatch(label, /\{index\}|\{total\}/);
@@ -185,7 +185,7 @@ test('turns repeated Action calls into one truthful contextual narrative', () =>
   ];
   const context = {
     teamName: 'Marketing',
-    assistantNames: new Map([['shimpz-cloudflare', 'Shimpz Cloudflare']]),
+    assistantName: (id) => (id === 'shimpz-cloudflare' ? 'Shimpz Cloudflare' : id),
   };
   const narrative = projected(events).map((step) => localizedStepLabel(step, TEST_NARRATIVE, context));
 
@@ -222,10 +222,10 @@ test('a narrative shows an Assistant name exactly as written, isolated, whatever
     seq: 1, origin: 'team', phase: 'action', state: 'started', assistant_id: 'helper',
     action: 'lookup', index: 1, total: 1,
   }]);
-  const assistantNames = new Map([['helper', 'Cash $& {action} $1 Co']]);
+  const assistantName = (id) => (id === 'helper' ? 'Cash $& {action} $1 Co' : id);
 
   assert.equal(
-    localizedStepLabel(step, TEST_NARRATIVE, { teamName: 'Research', assistantNames }),
+    localizedStepLabel(step, TEST_NARRATIVE, { teamName: 'Research', assistantName }),
     'action \u2068Cash $& {action} $1 Co\u2069/\u2068Lookup\u2069',
   );
 });
@@ -263,7 +263,7 @@ test('every locale resolves every narrative variant without placeholder remnants
   ];
   const context = {
     teamName: 'Marketing',
-    assistantNames: new Map([['shimpz-cloudflare', 'Shimpz Cloudflare']]),
+    assistantName: (id) => (id === 'shimpz-cloudflare' ? 'Shimpz Cloudflare' : id),
   };
 
   for (const [locale, copy] of Object.entries(messages)) {

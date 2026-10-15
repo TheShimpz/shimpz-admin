@@ -1,5 +1,6 @@
 <script>
   import { onMount } from 'svelte';
+  import { assistantName } from '#lib/assistants/names.js';
   import { localizedStepLabel } from './projection.js';
 
   let {
@@ -9,7 +10,6 @@
     elapsedText,
     progressLabels,
     teamName,
-    assistantNames,
     // When the turn started (ms since the epoch): the turn owns it, so the count survives this view being shown again.
     startedAt,
   } = $props();
@@ -31,7 +31,7 @@
   <div class="summary">
     <span class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
     <span class="elapsed" title={elapsedText} aria-hidden="true">{formattedElapsed} ·</span>
-    <span class="step-copy">{current ? localizedStepLabel(current, progressLabels, { teamName, assistantNames }) : (progressLabels.awaiting ?? label)}</span>
+    <span class="step-copy">{current ? localizedStepLabel(current, progressLabels, { teamName, assistantName: $assistantName }) : (progressLabels.awaiting ?? label)}</span>
   </div>
 </div>
 
