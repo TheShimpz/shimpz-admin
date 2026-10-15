@@ -184,7 +184,7 @@ def _resumed(response: transport.TeamResponse, canonical: str, run: str) -> tran
         valid = (
             set(value) == {"team_id", "run_id", "status"}
             and (value["team_id"], value["run_id"]) == (canonical, run)
-            and value["status"] in routine_team.RUN_STATUSES
+            and value["status"] in routine_run_contract.SEGMENT_STATUSES
         )
         return value if valid else None
 

@@ -25,6 +25,7 @@ from history import store as history
 from team import transport
 from tests.chat_history_case import ChatHistoryCase
 
+from protocol.http.v1 import routine_run as routine_run_contract
 from protocol.http.v1 import supervisor as contract
 from routine import delivery, scheduler, team
 
@@ -339,7 +340,7 @@ class RoutineTeamCallTests(unittest.TestCase):
         bodies = [request.args[2] for request in call.call_args_list]
         self.assertGreater(len(bodies), 1)
         for body in bodies:
-            self.assertLessEqual(len(body["deliveries"]), team.MAX_ACK_DELIVERIES)
+            self.assertLessEqual(len(body["deliveries"]), routine_run_contract.MAX_ACK_DELIVERIES)
             self.assertLessEqual(len(transport._encode_payload(body)), transport.MAX_JSON_BODY_BYTES)
         self.assertEqual([item for body in bodies for item in body["deliveries"]], delivered)
         # Deliveries small enough to reach Team's count bound before the byte bound are split by count.

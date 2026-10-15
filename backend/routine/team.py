@@ -17,10 +17,6 @@ MIN_RUN_TIMEOUT_SECONDS = 15 * 60
 RUN_TIMEOUT_MARGIN_SECONDS = 5 * 60
 # A person's answer resumes a run whose active time Admin was never told, so it waits as long as any run may spend.
 RESUME_TIMEOUT_SECONDS = routine_run_contract.MAX_ACTIVE_SECONDS + RUN_TIMEOUT_MARGIN_SECONDS
-# "held": a replayed run Team holds as an incident for recovery; "recovered": one its recovery completed (ADR-0092).
-RUN_STATUSES = frozenset({"done", "recovered", "failed", "denied", "stopped", "frozen", "held"})
-# Team admits at most this many deliveries in one notice acknowledgment.
-MAX_ACK_DELIVERIES = 256
 
 
 class RoutineTeamError(RuntimeError):
@@ -77,7 +73,7 @@ def run(claimed: dict[str, object], identity: supervisor.LocalIdentity) -> str:
     body = _answer(response)
     if set(body) != {"team_id", "run_id", "status"} or (body["team_id"], body["run_id"]) != (team_id, run_id):
         raise RoutineTeamError("Routine run answer is invalid")
-    if body["status"] not in RUN_STATUSES:
+    if body["status"] not in routine_run_contract.SEGMENT_STATUSES:
         raise RoutineTeamError("Routine run status is invalid")
     return body["status"]
 
@@ -103,7 +99,9 @@ def _acknowledgments(deliveries: list[dict[str, object]]) -> list[list[dict[str,
     size = empty
     for item in deliveries:
         cost = _encoded_bytes(item)
-        if chunk and (len(chunk) == MAX_ACK_DELIVERIES or size + 1 + cost > transport.MAX_JSON_BODY_BYTES):
+        if chunk and (
+            len(chunk) == routine_run_contract.MAX_ACK_DELIVERIES or size + 1 + cost > transport.MAX_JSON_BODY_BYTES
+        ):
             chunks.append(chunk)
             chunk, size = [], empty
         size += cost + (1 if chunk else 0)
