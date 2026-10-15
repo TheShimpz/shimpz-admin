@@ -38,7 +38,7 @@
                   {#if cell.items.length === 0 && !cell.omitted}<span class="blank">{copy.empty}</span>{/if}
                 </span>
               {:else}
-                <div class="nested"><RoutineOutput node={cell} {copy} {locale} depth={1} /></div>
+                <div class="nested"><RoutineOutput node={cell} {copy} {locale} /></div>
               {/if}
             </td>
           {/each}

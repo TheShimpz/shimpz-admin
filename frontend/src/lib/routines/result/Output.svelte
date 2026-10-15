@@ -7,7 +7,7 @@
   // projection of an Action's validated result, never a model's summary. Every label and value is plain text, never
   // Markdown or HTML. A list of field sets reads as a table, other field sets as label and value rows, other lists as
   // a list; what Team left out reads as how many more. A nested table keeps to eight columns.
-  let { node, copy, locale, depth = 0 } = $props();
+  let { node, copy, locale } = $props();
 
   let table = $derived(resultTable(node, 8));
   let headers = $derived(table ? table.columns.map((column) => column.label) : []);
@@ -25,7 +25,7 @@
         {#each table.rows as row, index (index)}
           <tr>
             {#each row as cell, column (column)}
-              <td>{#if cell}<RoutineOutput node={cell} {copy} {locale} depth={depth + 1} />{/if}</td>
+              <td>{#if cell}<RoutineOutput node={cell} {copy} {locale} />{/if}</td>
             {/each}
           </tr>
         {/each}
@@ -37,7 +37,7 @@
   {#if node.items.length}
     <ul class="items">
       {#each node.items as item, index (index)}
-        <li><RoutineOutput node={item} {copy} {locale} depth={depth + 1} /></li>
+        <li><RoutineOutput node={item} {copy} {locale} /></li>
       {/each}
     </ul>
   {:else if !more}
@@ -48,7 +48,7 @@
   {#if node.fields.length}
     <dl class="fields">
       {#each node.fields as [label, value], index (label)}
-        <div><dt>{labels[index]}</dt><dd><RoutineOutput node={value} {copy} {locale} depth={depth + 1} /></dd></div>
+        <div><dt>{labels[index]}</dt><dd><RoutineOutput node={value} {copy} {locale} /></dd></div>
       {/each}
     </dl>
   {:else if !more}
