@@ -22,7 +22,6 @@ from routine import answer, manage
 RUN = "d" * 32
 CHALLENGE = "b" * 32
 TRACE = "a" * 32
-CREDENTIAL = ("openai", "sk-test-0123456789")
 
 
 def frozen(kind: str = "approval", **overrides: object) -> transport.TeamResponse:

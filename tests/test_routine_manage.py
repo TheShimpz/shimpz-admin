@@ -108,11 +108,11 @@ class RoutineManageTests(unittest.TestCase):
         with self.call(answer(CARD)) as call:
             self.assertEqual(manage.open_card("team_1", ID).body, CARD)
         call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/incidents/{ID}/card", {})
-        for foreign in ({**CARD, "incident_id": "d" * 32}, {**CARD, "team_id": "team_2"}, {**CARD, "choices": []}):
+        for foreign in ({**CARD, "incident_id": "d" * 32}, {**CARD, "team_id": "team_2"}, {**CARD, "tag": "0" * 32}):
             with self.subTest(card=foreign), self.call(answer(foreign)):
                 self.assertEqual(manage.open_card("team_1", ID).status, 502)
         # Rodar runs no model, so it never carries the model credential.
-        chosen = {"nonce": CARD["nonce"], "choice": "run"}
+        chosen = {"tag": CARD["tag"], "choice": "run"}
         with self.call(answer(ANSWERED)) as call:
             self.assertEqual(manage.answer_card("team_1", ID, chosen).body, ANSWERED)
         call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/incidents/{ID}/answer", chosen)

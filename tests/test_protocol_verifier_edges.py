@@ -321,10 +321,7 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
 
             return mutate
 
-        zh = (
-            '    "zh": {"show": "每次运行都显示", "changes": "仅在变化时显示", "none": "不显示", '
-            '"chain": "用于其他操作"},\n'
-        )
+        zh = '    "zh": {"show": "每次运行都显示", "changes": "仅在变化时显示", "none": "不显示"},\n'
         for mutate in (
             edit(zh, ""),
             edit('        "none": "Don\'t show",\n', '        "none": "show every run",\n'),
