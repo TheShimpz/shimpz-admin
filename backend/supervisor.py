@@ -11,6 +11,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import private_file
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from cryptography.hazmat.primitives.serialization import (
     Encoding,
@@ -140,15 +141,6 @@ def _safe_public_file(path: Path, expected_gid: int) -> bytes | None:
     return raw
 
 
-def _write_all(descriptor: int, raw: bytes) -> None:
-    offset = 0
-    while offset < len(raw):
-        written = os.write(descriptor, raw[offset:])
-        if written < 1:
-            raise SupervisorAuthorityError("Local Supervisor public key write was incomplete")
-        offset += written
-
-
 def materialize_public_key(identity: LocalIdentity) -> None:
     """Atomically publish only the Supervisor's verification key into the shared runtime volume."""
     _materialize(PUBLIC_KEY_FILE, identity)
@@ -188,18 +180,14 @@ def _materialize(path: Path, identity: LocalIdentity) -> None:
         metadata = os.fstat(descriptor)
         if metadata.st_gid != expected_gid or not stat.S_ISREG(metadata.st_mode):
             raise SupervisorAuthorityError("Local Supervisor public key target is unsafe")
-        _write_all(descriptor, expected)
+        private_file.write_all(descriptor, expected)
         os.fsync(descriptor)
         os.close(descriptor)
         descriptor = None
         temporary.replace(path)
         if _safe_public_file(path, expected_gid) != expected:
             raise SupervisorAuthorityError("Local Supervisor public key could not be verified")
-        directory = os.open(parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
-        try:
-            os.fsync(directory)
-        finally:
-            os.close(directory)
+        private_file.sync_directory(parent)
     except OSError as exc:
         raise SupervisorAuthorityError("Local Supervisor public key could not be materialized") from exc
     finally:

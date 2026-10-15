@@ -1,12 +1,11 @@
 """Read the bounded Local platform-release status projected by the release-bound CLI."""
 
 import json
-import os
 import re
-import stat
 from datetime import UTC, datetime
 from pathlib import Path
 
+import private_file
 from fastapi import HTTPException
 
 STATUS_PATH = Path("/run/shimpz-local-release/status.json")
@@ -23,38 +22,14 @@ class PlatformReleaseUnavailableError(RuntimeError):
     """The CLI status is absent or fails its closed projection contract."""
 
 
-def _read_bounded(path: Path) -> bytes:
-    flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
-    try:
-        descriptor = os.open(path, flags)
-    except OSError as exc:
-        raise PlatformReleaseUnavailableError from exc
-    try:
-        record = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(record.st_mode)
-            or stat.S_IMODE(record.st_mode) != 0o600
-            or record.st_uid != os.geteuid()
-            or record.st_size <= 0
-            or record.st_size > MAX_STATUS_BYTES
-        ):
-            raise PlatformReleaseUnavailableError
-        payload = os.read(descriptor, MAX_STATUS_BYTES + 1)
-        if len(payload) != record.st_size:
-            raise PlatformReleaseUnavailableError
-        return payload
-    finally:
-        os.close(descriptor)
-
-
 def _valid_timestamp(value: object) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and 0 < value <= MAX_CHECKED_AT
 
 
 def read_status(path: Path = STATUS_PATH) -> dict[str, object]:
     try:
-        document = json.loads(_read_bounded(path))
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        document = json.loads(private_file.read_private(path, MAX_STATUS_BYTES))
+    except (OSError, ValueError) as exc:
         raise PlatformReleaseUnavailableError from exc
     if not isinstance(document, dict) or set(document) != FIELDS:
         raise PlatformReleaseUnavailableError

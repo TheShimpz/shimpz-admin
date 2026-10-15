@@ -12,7 +12,6 @@ password.
 import copy
 import json
 import os
-import tempfile
 import threading
 import time
 from collections.abc import Callable
@@ -20,6 +19,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+import private_file
 import supervisor
 from mfa import passkeys as webauthn
 from mfa import recovery, totp
@@ -86,21 +86,11 @@ def _read():
         return data
 
 
-def _fsync_directory(path: Path) -> None:
-    directory = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
-    try:
-        os.fsync(directory)
-    finally:
-        os.close(directory)
-
-
 def _write(data):
-    """Atomically and durably write admin.json 0600 (tmp created 0600 from birth, then renamed on same fs).
+    """Atomically and durably write admin.json 0600 on its own volume.
 
-    The temporary name is random and exclusively created, so a leftover from a killed process (the
-    container restarts as the same PID) can never block a later write. The file is fsynced before the
-    rename and the directory after it, so an acknowledged security update (session-secret rotation,
-    TOTP replay evidence, passkey counters) survives power loss; the cache updates only after both.
+    An acknowledged security update (session-secret rotation, TOTP replay evidence, passkey counters) survives power
+    loss: the cache updates only after the file and its directory are durable.
     """
     global _store_cache
     with _STORE_LOCK:
@@ -108,22 +98,7 @@ def _write(data):
             raise RuntimeError(f"admin store {STORE_PATH} is not a JSON object")
         payload = json.dumps(data, indent=2, sort_keys=True).encode("utf-8")
         STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        fd, name = tempfile.mkstemp(prefix=f".{STORE_PATH.name}.", suffix=".tmp", dir=STORE_PATH.parent)
-        tmp = Path(name)
-        try:
-            try:
-                # os.write may write fewer bytes than asked; only a complete payload may replace the store.
-                view = memoryview(payload)
-                while view:
-                    view = view[os.write(fd, view) :]
-                os.fsync(fd)
-            finally:
-                os.close(fd)
-            tmp.replace(STORE_PATH)  # same filesystem (the /data volume) → atomic
-            _fsync_directory(STORE_PATH.parent)
-        except BaseException:
-            tmp.unlink(missing_ok=True)
-            raise
+        private_file.replace_atomically(STORE_PATH, payload)
         _store_cache = _StoreCache(STORE_PATH, _store_identity(STORE_PATH), payload.decode("utf-8"))
 
 

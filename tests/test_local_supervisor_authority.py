@@ -200,9 +200,9 @@ class LocalSupervisorAuthorityTests(unittest.TestCase):
 
         with (
             mock.patch.object(supervisor.os, "write", return_value=0),
-            self.assertRaisesRegex(supervisor.SupervisorAuthorityError, "write was incomplete"),
+            self.assertRaisesRegex(OSError, "incomplete write"),
         ):
-            supervisor._write_all(1, b"key")
+            supervisor.private_file.write_all(1, b"key")
 
     def test_public_key_materialization_rejects_each_custody_failure(self) -> None:
         identity = supervisor.new_identity()
@@ -239,11 +239,7 @@ class LocalSupervisorAuthorityTests(unittest.TestCase):
             supervisor.materialize_public_key(supervisor.new_identity())
 
         with (
-            mock.patch.object(
-                supervisor,
-                "_write_all",
-                side_effect=supervisor.SupervisorAuthorityError("incomplete"),
-            ),
+            mock.patch.object(supervisor.private_file, "write_all", side_effect=OSError("incomplete write")),
             self.assertRaisesRegex(supervisor.SupervisorAuthorityError, "could not be materialized"),
         ):
             supervisor.materialize_public_key(supervisor.new_identity())

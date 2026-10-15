@@ -121,12 +121,12 @@ class PlatformReleaseStatusTests(unittest.TestCase):
 
         status = self._status()
         with (
-            mock.patch.object(platform_release.os, "geteuid", return_value=os.geteuid() + 1),
+            mock.patch.object(os, "geteuid", return_value=os.geteuid() + 1),
             self.assertRaises(platform_release.PlatformReleaseUnavailableError),
         ):
             platform_release.read_status(status)
         with (
-            mock.patch.object(platform_release.os, "read", return_value=b"{}"),
+            mock.patch.object(os, "read", return_value=b"{}"),
             self.assertRaises(platform_release.PlatformReleaseUnavailableError),
         ):
             platform_release.read_status(status)

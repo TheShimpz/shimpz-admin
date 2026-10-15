@@ -16,6 +16,7 @@ import threading
 import time
 from pathlib import Path
 
+import private_file
 import state
 from session import topics
 
@@ -93,14 +94,6 @@ def _safe(metadata: os.stat_result) -> bool:
     )
 
 
-def _sync_directory(directory: Path) -> None:
-    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
-    try:
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
-
-
 def _rotate(journal: Path) -> None:
     """Keep the newest `BACKUPS` full journals beside the current one, refusing any unsafe file among them."""
     for index in range(BACKUPS, 0, -1):
@@ -109,7 +102,7 @@ def _rotate(journal: Path) -> None:
             if not _safe(source.lstat()):
                 raise AuditUnavailableError("the authentication journal has unsafe metadata")
             source.replace(journal.with_name(f"{journal.name}.{index}"))
-    _sync_directory(journal.parent)
+    private_file.sync_directory(journal.parent)
 
 
 def _append(journal: Path, line: bytes) -> None:
@@ -121,14 +114,12 @@ def _append(journal: Path, line: bytes) -> None:
     try:
         if not _safe(os.fstat(descriptor)):
             raise AuditUnavailableError("the authentication journal has unsafe metadata")
-        view = memoryview(line)
-        while view:
-            view = view[os.write(descriptor, view) :]
+        private_file.write_all(descriptor, line)
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
     if created:
-        _sync_directory(journal.parent)
+        private_file.sync_directory(journal.parent)
 
 
 def record(event: str, *, outcome: str, origin: str | None = None, method: str | None = None) -> None:

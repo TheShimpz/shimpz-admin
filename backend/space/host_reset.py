@@ -6,11 +6,11 @@ import json
 import logging
 import os
 import re
-import stat
 import time
 from functools import partial
 from pathlib import Path
 
+import private_file
 import state
 import supervisor
 from fastapi import HTTPException, Request
@@ -31,31 +31,6 @@ class HostResetCapabilityError(RuntimeError):
     """The projected host reset capability is absent, unsafe, invalid, expired, or consumed."""
 
 
-def _read_bounded(path: Path) -> bytes:
-    flags = os.O_RDONLY | os.O_CLOEXEC | getattr(os, "O_NOFOLLOW", 0)
-    try:
-        descriptor = os.open(path, flags)
-    except OSError as exc:
-        raise HostResetCapabilityError("host reset capability is unavailable") from exc
-    try:
-        record = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(record.st_mode)
-            or record.st_nlink != 1
-            or stat.S_IMODE(record.st_mode) != 0o600
-            or record.st_uid != os.geteuid()
-            or record.st_gid != os.getegid()
-            or not 0 < record.st_size <= MAX_CAPABILITY_BYTES
-        ):
-            raise HostResetCapabilityError("host reset capability is unavailable")
-        payload = os.read(descriptor, MAX_CAPABILITY_BYTES + 1)
-        if len(payload) != record.st_size:
-            raise HostResetCapabilityError("host reset capability is unavailable")
-        return payload
-    finally:
-        os.close(descriptor)
-
-
 def _space_id() -> str:
     value = os.environ.get("SHIMPZ_SPACE_ID", "")
     if SPACE_ID_RE.fullmatch(value) is None:
@@ -71,8 +46,11 @@ def verify_capability(capability: object, *, now: int | None = None) -> tuple[st
     if isinstance(timestamp, bool) or not isinstance(timestamp, int) or timestamp < 1:
         raise ValueError("invalid host reset timestamp")
     try:
-        document = json.loads(_read_bounded(CAPABILITY_PATH))
-    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        payload = private_file.read_private(
+            CAPABILITY_PATH, MAX_CAPABILITY_BYTES, require_group=os.getegid(), single_link=True
+        )
+        document = json.loads(payload)
+    except (OSError, ValueError) as exc:
         raise HostResetCapabilityError("host reset capability is unavailable") from exc
     if not isinstance(document, dict) or set(document) != FIELDS:
         raise HostResetCapabilityError("host reset capability is unavailable")

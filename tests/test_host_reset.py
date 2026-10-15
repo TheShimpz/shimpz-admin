@@ -112,7 +112,7 @@ class HostResetTests(unittest.TestCase):
 
     def test_file_verifier_rejects_truncation_invalid_inputs_and_malformed_json(self) -> None:
         with (
-            mock.patch.object(host_reset.os, "read", return_value=b"{}"),
+            mock.patch.object(os, "read", return_value=b"{}"),
             self.assertRaises(host_reset.HostResetCapabilityError),
         ):
             host_reset.verify_capability(CAPABILITY)

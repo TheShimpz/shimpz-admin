@@ -14,11 +14,11 @@ import json
 import logging
 import os
 import stat
-import tempfile
 import threading
 from collections.abc import Callable
 from pathlib import Path
 
+import private_file
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 from session import topics
@@ -99,41 +99,20 @@ def _sync_parent() -> None:
     its own barrier failed. A missing directory holds no order, so it has nothing to make durable.
     """
     try:
-        directory = os.open(ORDER_PATH.parent, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        private_file.sync_directory(ORDER_PATH.parent)
     except FileNotFoundError:
         return
     except OSError as exc:
-        raise OrderUnavailableError("Team order directory cannot be opened") from exc
-    try:
-        os.fsync(directory)
-    except OSError as exc:
         raise OrderUnavailableError("Team order directory cannot be synchronized") from exc
-    finally:
-        os.close(directory)
 
 
 def _save(team_ids: list[str]) -> None:
     """Atomically and durably replace the order: a 0600 temporary file is fsynced, renamed, then its directory."""
     payload = json.dumps({"team_ids": team_ids}, separators=(",", ":")).encode("ascii")
     try:
-        descriptor, name = tempfile.mkstemp(prefix=f".{ORDER_PATH.name}.", suffix=".tmp", dir=ORDER_PATH.parent)
+        private_file.replace_atomically(ORDER_PATH, payload)
     except OSError as exc:
         raise OrderUnavailableError("Team order cannot be written") from exc
-    temporary = Path(name)
-    try:
-        try:
-            # os.write may write fewer bytes than asked; only a complete payload may replace the order.
-            view = memoryview(payload)
-            while view:
-                view = view[os.write(descriptor, view) :]
-            os.fsync(descriptor)
-        finally:
-            os.close(descriptor)
-        temporary.replace(ORDER_PATH)
-    except OSError as exc:
-        temporary.unlink(missing_ok=True)
-        raise OrderUnavailableError("Team order cannot be written") from exc
-    _sync_parent()
 
 
 def _unlink_owned(path: Path) -> None:
