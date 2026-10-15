@@ -82,5 +82,5 @@
 <style>
   form { margin: 0; }
   .dialog-progress { margin: var(--gap-group) 0 0; color: var(--accent); font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
-  .dialog-route-hint { margin: var(--gap-group) 0 0; border-inline-start: 2px solid var(--accent); padding: var(--gap-item) var(--gap-group); color: var(--text-dim); font-size: 0.72rem; line-height: 1.5; }
+  .dialog-route-hint { margin: var(--gap-group) 0 0; border-inline-start: 2px solid var(--accent); border-radius: 0; padding: var(--gap-item) var(--gap-group); color: var(--text-dim); font-size: 0.72rem; line-height: 1.5; }
 </style>

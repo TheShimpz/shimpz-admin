@@ -231,6 +231,7 @@
     margin-bottom: var(--gap-item);
     padding-left: var(--gap-group);
     border-left: 2px solid currentColor;
+    border-radius: 0;
     color: var(--text-faint);
     line-height: 1.45;
   }
