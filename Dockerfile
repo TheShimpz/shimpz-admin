@@ -79,7 +79,7 @@ RUN mkdir -p /data /run/shimpz-local-release /run/shimpz-local-reset /run/shimpz
 WORKDIR /app/backend
 COPY --link backend/app.py backend/authentication_state.py backend/browser.py backend/decision.py backend/models.py \
     backend/model_catalog.json \
-    backend/state.py backend/supervisor.py ./
+    backend/private_file.py backend/request_body.py backend/state.py backend/supervisor.py ./
 COPY --link backend/signin/audit.py backend/signin/auth.py backend/signin/local_auth.py backend/signin/security.py \
     ./signin/
 COPY --link backend/signin/blocklist/passwords.txt ./signin/blocklist/

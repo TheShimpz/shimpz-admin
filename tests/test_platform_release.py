@@ -1,11 +1,15 @@
 import json
 import os
+import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-from backend.space import release as platform_release
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "backend"))
+
+from space import release as platform_release
 
 
 class PlatformReleaseStatusTests(unittest.TestCase):
