@@ -77,11 +77,6 @@
     transition: box-shadow 0.16s ease;
   }
 
-  /* An icon still loading or unavailable fills the whole frame with its face, without a frame of its own. */
-  .icon-frame :global(span:not(.has-image)) { width: 100% !important; height: 100% !important; background: transparent; clip-path: none; }
-  .icon-frame :global(span:not(.has-image)::before),
-  .icon-frame :global(span:not(.has-image)::after) { inset: 0; clip-path: none; }
-
   :global(.is-installed) .icon-frame {
     box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--shimpz-color-green) 45%, var(--shimpz-color-border));
   }

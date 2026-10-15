@@ -258,6 +258,12 @@ input, textarea, select { border-radius: 5px !important; }
   clip-path: var(--shimpz-control-shape);
 }
 
+/* An Assistant icon framed by an `.icon-frame` (an Assistant row, an Assistant page): an icon still loading or
+   unavailable fills the whole frame with its face, without a frame of its own. */
+.icon-frame > .shimpz-assistant-icon:not(.has-image) { width: 100% !important; height: 100% !important; background: transparent; clip-path: none; }
+.icon-frame > .shimpz-assistant-icon:not(.has-image)::before,
+.icon-frame > .shimpz-assistant-icon:not(.has-image)::after { inset: 0; clip-path: none; }
+
 :root { --shimpz-radius: 5px; }
 /* One sober accent line for outline buttons, dialog cards, and focused fields. */
 :root { --shimpz-color-cyan-line: color-mix(in srgb, var(--shimpz-color-cyan) 42%, var(--shimpz-color-border)); }

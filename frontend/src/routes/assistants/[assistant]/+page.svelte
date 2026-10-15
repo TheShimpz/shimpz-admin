@@ -711,11 +711,6 @@
     box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--shimpz-color-cyan) 30%, var(--shimpz-color-border)), var(--shimpz-glow-cyan);
   }
 
-  /* An icon still loading or unavailable fills the whole frame with its face, without a frame of its own. */
-  .icon-frame :global(span:not(.has-image)) { width: 100% !important; height: 100% !important; background: transparent; clip-path: none; }
-  .icon-frame :global(span:not(.has-image)::before),
-  .icon-frame :global(span:not(.has-image)::after) { inset: 0; clip-path: none; }
-
   .icon-frame.is-installed { box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--shimpz-color-green) 50%, var(--shimpz-color-border)); }
 
   h1 {
