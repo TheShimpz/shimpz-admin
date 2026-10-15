@@ -21,7 +21,7 @@ import {
   waitForRead,
 } from './scenarioRoutes.js';
 import { planPage, planSummary, ROUTINE_TEXT, routineLifecycleStart, runStepsPage } from './routineScenarios.js';
-import { historyView, CLARIFICATION as SCENARIO_CLARIFICATION, ROUTINE_PLAN, ROUTINE_VIEW, TEAMS } from './scenarios.js';
+import { historyView, CLARIFICATION as SCENARIO_CLARIFICATION, ROUTINE_PLAN, ROUTINE_VIEW } from './scenarios.js';
 
 const ok = (json, status = 200) => ({ status, json });
 

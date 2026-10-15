@@ -5,7 +5,6 @@ import { localizedChallenge } from '../e2e/localizedRequest.js';
 import { browserTimezone } from '../src/lib/routines/protocol.js';
 
 import * as integrations from '../src/lib/assistants/integrations.js';
-import { oauthReturnFailure } from '../src/lib/assistants/integrations.js';
 import {
   capabilityContinuation,
   createChatFrame,
@@ -32,15 +31,15 @@ const ASSISTANT_ID = 'shimpz-cloudflare';
 const INTEGRATION_ID = 'cloudflare';
 
 test('recognizes only the closed OAuth failure return marker', () => {
-  assert.equal(oauthReturnFailure('https://local.shimpz.com/chat?oauth=start-failed'), true);
-  assert.equal(oauthReturnFailure('http://127.0.0.1:7777/chat?oauth=callback-failed'), true);
+  assert.equal(integrations.oauthReturnFailure('https://local.shimpz.com/chat?oauth=start-failed'), true);
+  assert.equal(integrations.oauthReturnFailure('http://127.0.0.1:7777/chat?oauth=callback-failed'), true);
   for (const value of [
     'https://local.shimpz.com/chat',
     'https://local.shimpz.com/chat?oauth=unknown',
     'https://local.shimpz.com/chat?oauth=start-failed&claim=must-not-cross',
     'https://local.shimpz.com/chat?oauth=start-failed#token=must-not-cross',
     'not a URL',
-  ]) assert.equal(oauthReturnFailure(value), false);
+  ]) assert.equal(integrations.oauthReturnFailure(value), false);
 });
 function integrationRequirement() {
   return {

@@ -8,7 +8,6 @@ import {
   canonicalHelpUrl,
   canonicalPurpose,
   displayedHumanRequest,
-  HELP_URL_PATTERN,
   parseChatEvent,
 } from '../src/lib/chat/protocol.js';
 

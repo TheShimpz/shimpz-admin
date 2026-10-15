@@ -1,5 +1,5 @@
 <script>
-  import { flushSync, getContext, onMount, tick } from 'svelte';
+  import { getContext, onMount, tick } from 'svelte';
   import { afterNavigate } from '$app/navigation';
   import { readable } from 'svelte/store';
   import { Button, EmptyState, Notice, ScrollArea } from '@shimpz/frontend';
@@ -23,7 +23,7 @@
   import ChatDay from '#lib/chat/Day.svelte';
   import { calendarDay, exchangeDays, turnInstants, untilNextDay } from '#lib/chat/days.js';
   import { questionWords } from '#lib/routines/words.js';
-  import { adminSocket, call, commandsReady, openChatChannel, outcomeUnknown } from '#lib/session/socket.js';
+  import { adminSocket, commandsReady, openChatChannel, outcomeUnknown } from '#lib/session/socket.js';
   import {
     localizedEventLabel,
   } from '#lib/chat/progress/projection.js';
