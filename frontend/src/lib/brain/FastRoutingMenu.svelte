@@ -37,8 +37,8 @@
     masked: $decisionProvider.value?.masked ?? null,
     error,
   });
-  // A change is offered only while Admin is connected.
-  let saving = $derived(changing || !$commandsReady);
+  // A change is offered only while Admin is connected and no other change is in flight.
+  let blocked = $derived(changing || !$commandsReady);
   let status = $derived(fast.configured ? $t('brainMenu.fast.on', { masked: fast.masked }) : copy.off);
   let triggerLabel = $derived(fast.phase === 'ready' ? `${copy.label}: ${status}` : copy.label);
 
@@ -90,13 +90,13 @@
 
   function saveFast(event) {
     event.preventDefault();
-    if (fast.phase !== 'ready' || saving || !fastKey.trim()) return;
+    if (fast.phase !== 'ready' || blocked || !fastKey.trim()) return;
     const key = fastKey;
     void changeKey(() => saveDecisionKey(key), (failed) => (failed?.status === 400 ? copy.rejected : copy.failed), '.fast-remove');
   }
 
   function removeFast() {
-    if (fast.phase !== 'ready' || saving) return;
+    if (fast.phase !== 'ready' || blocked) return;
     void changeKey(removeDecisionKey, () => copy.removeFailed, 'input');
   }
 </script>
@@ -131,7 +131,7 @@
     class="panel admin-overlay"
     role="dialog"
     aria-labelledby={`${panelId}-title`}
-    aria-busy={fast.phase === 'loading' || saving}
+    aria-busy={fast.phase === 'loading' || blocked}
     popover="manual"
   >
     <!-- Mounted only while open, so no key field or disclosure exists behind a closed panel. -->
@@ -153,12 +153,12 @@
     </p>
     {#if fast.phase === 'unavailable'}
       <p class="status" role="status">{copy.unavailable}</p>
-    {:else if fast.phase === 'idle' || fast.phase === 'loading'}
+    {:else if fast.phase === 'loading'}
       <p class="status">…</p>
     {:else if fast.configured}
       <div class="row">
         <p class="status">{status}</p>
-        <Button class="fast-remove" type="button" variant="ghost" size="sm" disabled={saving} onclick={removeFast}>
+        <Button class="fast-remove" type="button" variant="ghost" size="sm" disabled={blocked} onclick={removeFast}>
           {copy.remove}
         </Button>
       </div>
@@ -179,11 +179,11 @@
           data-bwignore="true"
           spellcheck="false"
           required
-          disabled={saving}
+          disabled={blocked}
         />
         <div class="actions">
-          <Button type="submit" size="sm" disabled={saving || fastKey.trim().length < 16}>
-            {saving ? copy.validating : copy.save}
+          <Button type="submit" size="sm" disabled={blocked || fastKey.trim().length < 16}>
+            {changing ? copy.validating : copy.save}
           </Button>
         </div>
       </form>
