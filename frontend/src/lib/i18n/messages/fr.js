@@ -306,7 +306,6 @@ export default {
       needsReconfirm: 'En pause : ses Assistants ont changé. Redemandez-la dans le chat pour la mettre à jour.',
       delete: 'Supprimer',
       resume: 'Reprendre',
-      cancel: 'Annuler',
       close: 'Fermer',
       retry: 'Réessayer',
     },

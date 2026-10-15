@@ -306,7 +306,6 @@ export default {
       needsReconfirm: 'متوقف مؤقتًا: تغيّرت Assistants الخاصة به. اطلبه مجددًا في المحادثة لتحديثه.',
       delete: 'حذف',
       resume: 'استئناف',
-      cancel: 'إلغاء',
       close: 'إغلاق',
       retry: 'إعادة المحاولة',
     },

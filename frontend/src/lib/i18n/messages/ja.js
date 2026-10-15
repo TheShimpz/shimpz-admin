@@ -306,7 +306,6 @@ export default {
       needsReconfirm: '一時停止中：Assistants が変更されました。チャットで再度依頼して更新してください。',
       delete: '削除',
       resume: '再開',
-      cancel: 'キャンセル',
       close: '閉じる',
       retry: '再試行',
     },

@@ -306,7 +306,6 @@ export default {
       needsReconfirm: '已暂停：其 Assistants 已更改。请在聊天中再次请求以更新。',
       delete: '删除',
       resume: '恢复运行',
-      cancel: '取消',
       close: '关闭',
       retry: '重试',
     },

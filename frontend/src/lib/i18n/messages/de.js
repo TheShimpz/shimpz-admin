@@ -306,7 +306,6 @@ export default {
       needsReconfirm: 'Pausiert: Ihre Assistants haben sich geändert. Bitten Sie im Chat erneut, um sie zu aktualisieren.',
       delete: 'Löschen',
       resume: 'Fortsetzen',
-      cancel: 'Abbrechen',
       close: 'Schließen',
       retry: 'Erneut versuchen',
     },
