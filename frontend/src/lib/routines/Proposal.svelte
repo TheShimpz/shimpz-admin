@@ -19,10 +19,10 @@
 
   // The card of a Routine a recording turn recorded (ADR-0101 section 5.2), under its reply, kept short for a person
   // who is not technical: the recording agent's plain description of the work and a warning when a step changes
-  // something. A collapsed footer lists
-  // each step's Assistant, linked to its page, its Action, whether it changes something, and every input's complete
-  // value. All of it is escaped text. Three buttons under the card, none preselected: Cancel revokes it, Edit turns
-  // its description into the prompt that records it again, and Create confirms it. A card past its lifetime is no
+  // something. Its footer row holds a closed disclosure that, once the person opens it, lists each step's Assistant,
+  // linked to its page, its Action, whether it changes something, and every input's complete value, and at its end
+  // three buttons, none preselected: Cancel revokes the card, Edit turns its description into the prompt that records it
+  // again, and Create confirms it. All of it is escaped text. A card past its lifetime is no
   // longer shown.
   // `answered` is how the person already answered this card, kept in the transcript, so a reload never offers it again.
   let { teamId, proposal, copy, disabled = false, answered = '', onrewrite = () => false } = $props();
@@ -30,6 +30,8 @@
   // Edit turns the description into the prompt that records the Routine again: sending it revokes this card and
   // sends the edited text as the person's next message, so the Routine's ordinary flow asks for anything it lacks.
   let editing = $state(false);
+  // The steps stay closed until the person opens them.
+  let stepsOpen = $state(false);
   let draft = $state('');
   let prompt = $state();
 
@@ -148,9 +150,33 @@
       {#if changes}<p class="warning"><RoutineIcon name="warning" />{card.changes}</p>{/if}
     </header>
 
-    {#if !editing}
-      <Disclosure class="details">
-        {#snippet summary()}{card.steps}{/snippet}
+    <!-- The footer row: the steps' disclosure at its start and the card's buttons at its end; the steps open below it
+         only when the person opens the disclosure. -->
+    <div class="footer">
+      <div class="bar">
+        {#if !editing}
+          <Disclosure class="details" bind:open={stepsOpen}>
+            {#snippet summary()}{card.steps}{/snippet}
+            {#snippet children()}{/snippet}
+          </Disclosure>
+        {/if}
+        <div class="actions">
+          {#if editing}
+            <DialogAction kind="cancel" class="tone-cancel" size="sm" type="button" disabled={working} onclick={stopEditing}>
+              {card.cancel}</DialogAction>
+            <DialogAction kind="confirm" size="sm" type="button" disabled={working || disabled || !$commandsReady || !draft.trim()}
+              onclick={rewrite}>{card.send}</DialogAction>
+          {:else}
+            <DialogAction kind="cancel" class="tone-cancel" size="sm" type="button" disabled={working || !$commandsReady}
+              onclick={() => settle(revokeRoutineProposal)}>{card.cancel}</DialogAction>
+            <DialogAction kind="edit" class="tone-edit" size="sm" type="button" disabled={working || disabled || !$commandsReady}
+              onclick={edit}>{card.edit}</DialogAction>
+            <DialogAction kind="confirm" size="sm" type="button" disabled={working || !$commandsReady}
+              onclick={() => settle(confirmRoutineProposal)}>{card.confirm}</DialogAction>
+          {/if}
+        </div>
+      </div>
+      {#if !editing && stepsOpen}
         <ol class="rows" aria-label={card.steps}>
           {#each proposal.steps as step (step.position)}
             <li>
@@ -177,33 +203,18 @@
             </li>
           {/each}
         </ol>
-      </Disclosure>
-    {/if}
+      {/if}
+    </div>
   </div>
 
-  <div class="actions">
-    {#if editing}
-      <DialogAction kind="cancel" class="tone-cancel" size="sm" type="button" disabled={working} onclick={stopEditing}>
-        {card.cancel}</DialogAction>
-      <DialogAction kind="confirm" size="sm" type="button" disabled={working || disabled || !$commandsReady || !draft.trim()}
-        onclick={rewrite}>{card.send}</DialogAction>
-    {:else}
-      <DialogAction kind="cancel" class="tone-cancel" size="sm" type="button" disabled={working || !$commandsReady}
-        onclick={() => settle(revokeRoutineProposal)}>{card.cancel}</DialogAction>
-      <DialogAction kind="edit" class="tone-edit" size="sm" type="button" disabled={working || disabled || !$commandsReady}
-        onclick={edit}>{card.edit}</DialogAction>
-      <DialogAction kind="confirm" size="sm" type="button" disabled={working || !$commandsReady}
-        onclick={() => settle(confirmRoutineProposal)}>{card.confirm}</DialogAction>
-    {/if}
-  </div>
   {#if working}<p class="note notice" role="status">{card.working}</p>{/if}
   {#if error}<p class="error notice" role="alert">{error}</p>{/if}
 </section>
 {/if}
 
 <style>
-  /* One cut-corner sheet: the heading, the agent's plain description, and any warning on top; every step in a footer
-     disclosure on a raised surface, its title centered. The buttons sit under the sheet. */
+  /* One cut-corner sheet: the heading, the agent's plain description, and any warning on top; a raised footer row with
+     the steps' disclosure at its start and the buttons at its end, the steps opening below it. */
   .routine-proposal {
     --label: 600 0.6rem/1.5 var(--shimpz-font-mono);
     /* The step number's column: just wide enough for two digits. */
@@ -240,15 +251,19 @@
   /* Scoped under the card, so the chat's own paragraph color never overrides these gray notes. */
   .routine-proposal .note { color: var(--shimpz-color-text-dim); font-size: 0.7rem; }
   header :global(.prompt textarea) { min-height: 6rem; font: 0.86rem/1.6 var(--shimpz-font-sans); resize: vertical; }
-  /* The footer: a raised band whose disclosure title is centered across it. */
-  .sheet > :global(.details) {
-    border-radius: 0;
+  /* The footer: a raised band whose row starts with the disclosure toggle and ends with the buttons. */
+  .footer {
+    display: grid;
+    gap: var(--shimpz-space-2);
     padding: var(--shimpz-space-2) var(--shimpz-space-4);
     border-block-start: 1px solid var(--shimpz-color-border-subtle);
     background: var(--shimpz-color-surface-high);
   }
-  .sheet > :global(.details > summary) { width: 100%; text-align: center; padding-block: var(--shimpz-space-1); }
-  .sheet > :global(.details > .content) { display: grid; gap: var(--shimpz-space-3); margin-block: var(--shimpz-space-2); }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-item); }
+  .bar :global(.details) { border: 0; border-radius: 0; padding: 0; }
+  .bar :global(.details > summary) { padding-block: var(--shimpz-space-1); }
+  /* The steps render below the row, so the disclosure's own content box holds nothing. */
+  .bar :global(.details > .content) { display: none; }
   .rows { display: grid; padding: 0; list-style: none; }
   .rows > li { display: grid; gap: var(--gap-inside); padding-block: var(--shimpz-space-2); }
   .rows > li + li { border-block-start: 1px dashed var(--shimpz-color-border-subtle); border-radius: 0; }
@@ -297,7 +312,7 @@
     --button-hover-bg: var(--edit-tone);
     --button-hover-color: var(--shimpz-color-bg);
   }
-  .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--gap-item); }
+  .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--gap-item); margin-inline-start: auto; }
   .notice { justify-self: end; }
   .routine-result { color: var(--shimpz-color-text-muted); }
   .error { color: var(--shimpz-color-danger); font-size: 0.75rem; }

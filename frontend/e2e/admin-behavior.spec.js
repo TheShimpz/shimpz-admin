@@ -4984,9 +4984,14 @@ test.describe('Team Routines', () => {
   test('each step of a Routine card names its Assistant with a link to that Assistant’s page', async ({ page }) => {
     await recordRoutine(page);
     const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
-    await card.getByText(messages.en.routine.proposal.steps).click();
     const links = card.getByRole('link', { name: 'Cloudflare', exact: true });
+    // The steps stay closed until the person opens them; the card's buttons work either way.
+    await expect(links).toHaveCount(0);
+    await card.getByText(messages.en.routine.proposal.steps).click();
     await expect(links).toHaveCount(2);
+    for (const name of ['Cancel', 'Edit', 'Create']) {
+      await expect(card.getByRole('button', { name, exact: true })).toBeEnabled();
+    }
     await links.first().click();
     await expect(page).toHaveURL(/\/assistants\/shimpz-cloudflare\?team=marketing$/u);
   });
