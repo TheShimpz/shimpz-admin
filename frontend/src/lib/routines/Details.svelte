@@ -15,7 +15,6 @@
   import {
     ATTENTION_STATUSES,
     clockWords,
-    displayZone,
     fillParts,
     instantWords,
     routineFailureWords,
@@ -126,7 +125,7 @@
     {
       schedule: scheduleWords(routine.schedule, copy.schedule, $locale),
       timezone: routine.timezone,
-      now: clockWords(now, $locale, displayZone(routine)),
+      now: clockWords(now, $locale, routine.timezone),
     },
   ));
   let until = $derived(untilWords(routine.next_run_at, now, $locale));
@@ -362,7 +361,7 @@
         {#if !ATTENTION_STATUSES.includes(status)}
           <p class="next">
             <span class="next-label">{copy.panel.next}</span>
-            <span><time datetime={routine.next_run_at}>{clockWords(routine.next_run_at, $locale, displayZone(routine))}</time>
+            <span><time datetime={routine.next_run_at}>{clockWords(routine.next_run_at, $locale, routine.timezone)}</time>
               {#if until}<span class="until">[{until}]</span>{/if}</span>
           </p>
         {/if}
@@ -400,7 +399,7 @@
                     <span class="usage" title={usage.detail.length ? formatTaskUsageDetail(usage, $locale, usageCopy) : undefined}
                       >{formatTaskUsage(usage, $locale, usageCopy)}</span>
                   {/if}
-                  <time class="when" datetime={entry.createdAt}>{instantWords(entry.createdAt, $locale, displayZone(routine))}</time>
+                  <time class="when" datetime={entry.createdAt}>{instantWords(entry.createdAt, $locale, routine.timezone)}</time>
                   {#if entry.runId}
                     <Button class="run-details" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.details.open} title={copy.details.open}
                       onclick={() => (detailsRun = entry)}><RoutineIcon name="terminal" /></Button>

@@ -49,7 +49,6 @@ import {
 import {
   attemptWords,
   clockWords,
-  displayZone,
   dispositionWords,
   failureCause,
   fillParts,
@@ -278,16 +277,13 @@ test('a Routine question is admitted only in its closed form and reads as facts 
   assert.deepEqual(budget.answers, [{ label: 'Every 9 seconds', text: 'Every 9 seconds' }]);
 });
 
-test('UTC stands in when no timezone was given', () => {
+test('a timezone and its source are each in their closed forms', () => {
   assert.equal(isZoned('America/Sao_Paulo', 'browser'), true);
   assert.equal(isZoned('Europe/Paris', 'person'), true);
   assert.equal(isZoned('UTC', 'none'), true);
   for (const [zone, source] of [['UTC', 'guess'], ['../etc', 'browser']]) {
     assert.equal(isZoned(zone, source), false);
   }
-  // With no timezone given, instants show in the UTC the Routine actually runs in.
-  assert.equal(displayZone({ timezone: 'UTC', timezone_source: 'none' }), 'UTC');
-  assert.equal(displayZone({ timezone: 'America/Sao_Paulo', timezone_source: 'browser' }), 'America/Sao_Paulo');
 });
 
 function withInput(value) {

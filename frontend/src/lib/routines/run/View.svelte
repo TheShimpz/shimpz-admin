@@ -7,7 +7,7 @@
   import RoutineRunSteps from '#lib/routines/run/Steps.svelte';
   import RoutineTag from '#lib/routines/Tag.svelte';
   import { MAX_ROUTINE_STEPS, readRunDiagnostics, runBinding } from '#lib/routines/protocol.js';
-  import { countWords, displayZone, instantWords } from '#lib/routines/words.js';
+  import { countWords, instantWords } from '#lib/routines/words.js';
   import { attemptsByStep, resultView } from '#lib/routines/reading.js';
 
   // One Routine run in full, over the whole screen (ADR-0092 amendment, 2026-10-05, output and scale): how it stands
@@ -41,7 +41,7 @@
   let total = $state(null);
   let steps = $derived(entry.detail.plan?.steps ?? total);
   let attempts = $derived(diagnostics ? attemptsByStep(diagnostics, steps ?? MAX_ROUTINE_STEPS) : null);
-  let finished = $derived(instantWords(entry.createdAt, $locale, routine ? displayZone(routine) : undefined));
+  let finished = $derived(instantWords(entry.createdAt, $locale, routine?.timezone));
   let count = $derived(steps === null ? '' : countWords(copy.result.stepCount, steps, $locale));
   let badge = $derived(TAGS[tone] ?? TAGS.neutral);
   let label = $derived(status.charAt(0).toLocaleUpperCase($locale) + status.slice(1));

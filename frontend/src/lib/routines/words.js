@@ -9,11 +9,6 @@ import { humanizeId } from '../ids.js';
 import { outcomeUnknown } from '../session/socket.js';
 import { escapedText, questionTarget, RoutineError } from './protocol.js';
 
-/** The timezone Admin shows a Routine's instants in: the one it runs in, UTC when no timezone was given. */
-export function displayZone(value) {
-  return value.timezone;
-}
-
 /**
  * How a listed Routine stands for the person, most urgent first: being deleted, held for recovery, waiting to be asked
  * again, paused, waiting for an approval, running now, or idle between runs (continuous or
