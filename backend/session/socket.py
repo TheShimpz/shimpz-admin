@@ -228,7 +228,7 @@ class SessionSocket:
     # Chat channels
 
     def attach(self, team_id: object, locale: object) -> tuple[int, object]:
-        """Make the socket a chat connection for one more Team, which then synchronizes it as a v7 socket did."""
+        """Make the socket a chat connection for one more Team, which then synchronizes its chat."""
         if not frames.is_team_id(team_id):
             return 400, {"detail": "Team id is invalid"}
         canonical_locale = team_contract.canonical_locale(locale)
@@ -256,7 +256,7 @@ class SessionSocket:
         return 200, {"team_id": team_id}
 
     def detach(self, team_id: object) -> tuple[int, object]:
-        """End one Team's chat connection; its active work stops exactly as when a v7 socket closed."""
+        """End one Team's chat connection; its channel closes and its active work stops."""
         channel = self.channels.pop(team_id, None) if isinstance(team_id, str) else None
         if channel is None:
             return 409, {"detail": "the Team's chat is not attached"}
@@ -387,7 +387,7 @@ class SessionSocket:
             await self._shutdown(workers)
 
     async def _shutdown(self, workers: list[asyncio.Task]) -> None:
-        """End the socket's authority at once, tell the browser, then stop its work as a closed v7 socket did.
+        """End the socket's authority at once, tell the browser, then stop its work and close each chat channel.
 
         The registry binding and every step-up ticket of the socket end before anything waits, and the close reaches
         the browser before a slow Stop of a chat channel can delay it.

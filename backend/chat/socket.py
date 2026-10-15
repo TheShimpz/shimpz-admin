@@ -757,7 +757,8 @@ async def _close_connection(
 class Transport:
     """One attached Team's chat channel on its session socket, as the `shimpz.chat.v7` delivery code writes to it.
 
-    Every frame sent carries the Team's `team_id`. Where a v7 socket closed itself, the whole session socket closes.
+    Every frame sent carries the Team's `team_id`. When the delivery code closes its connection, the whole session
+    socket closes.
     """
 
     def __init__(self, team_id: str, send: Callable[[dict[str, object]], None], close: Callable[[int], None]) -> None:
@@ -778,7 +779,7 @@ class Channel:
     Frames run in arrival order, one at a time, under the current Supervisor authority bound again for each frame, so
     a long dispatch never holds the session socket's receive loop. A waiting frame runs only if its socket's bound
     Origin and session are still current when its turn comes; otherwise the socket closes and nothing more runs.
-    Closing the channel stops its active work exactly as a closed v7 socket did.
+    Closing the channel asks Team to stop its active turn and ends every local operation it runs.
     """
 
     def __init__(
@@ -800,7 +801,7 @@ class Channel:
         self._task = asyncio.create_task(self._run())
 
     def submit(self, frame: dict[str, object]) -> bool:
-        """Queue one admitted v7 frame for this Team in arrival order; refuse one beyond the waiting bound."""
+        """Queue one admitted chat frame for this Team in arrival order; refuse one beyond the waiting bound."""
         if self.connection.closed:
             return True
         if self._frames.qsize() >= MAX_WAITING_FRAMES:
@@ -832,7 +833,7 @@ class Channel:
         self._task.cancel()
 
     async def close(self) -> None:
-        """Stop the channel and every operation it runs, as a closed v7 socket did."""
+        """Stop the channel: Team stops its active turn and every local operation it runs ends."""
         self.halt()
         await asyncio.gather(self._task, return_exceptions=True)
         try:
