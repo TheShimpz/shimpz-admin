@@ -74,8 +74,6 @@ const WEEKLY_ROUTINE = {
 const HELD_INCIDENT = {
   run_id: 'b'.repeat(32),
   routine_id: ROUTINE_VIEW.routine_id,
-  name: ROUTINE_VIEW.name,
-  created_at: '2026-09-30T12:01:07Z',
   assistant_id: 'shimpz-cloudflare',
   action: 'replace-dns-record',
   position: 1,
@@ -86,12 +84,9 @@ const FROZEN_RUN = {
   run_id: 'f'.repeat(32),
   routine_id: WEEKLY_ROUTINE.routine_id,
   status: 'frozen',
-  scheduled_at: '2026-09-29T11:00:00Z',
   request_kind: 'human',
   assistant_id: 'shimpz-cloudflare',
   action: 'list-zones',
-  position: 1,
-  steps: 1,
 };
 
 /** Admin's session answer before any sign-in; `overrides` sets the fields a test changes. */

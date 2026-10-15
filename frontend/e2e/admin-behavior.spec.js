@@ -4369,8 +4369,6 @@ async function routeRoutines(
     {
       run_id: 'b'.repeat(32),
       routine_id: ROUTINE_VIEW.routine_id,
-      name: ROUTINE_VIEW.name,
-      created_at: '2026-09-30T12:01:07Z',
       assistant_id: 'shimpz-cloudflare',
       action: 'replace-dns-record',
       position: 2,
@@ -5439,12 +5437,9 @@ test.describe('Team Routines', () => {
       run_id: run,
       routine_id: ROUTINE_VIEW.routine_id,
       status: 'frozen',
-      scheduled_at: '2026-10-01T12:00:00Z',
       request_kind: 'human',
       assistant_id: 'shimpz-cloudflare',
       action: 'replace-dns-record',
-      position: 2,
-      steps: 3,
     }];
     let incidents = [];
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
@@ -5464,12 +5459,10 @@ test.describe('Team Routines', () => {
     // Approving resumes the run, which Team then holds at a step whose effect is unknown.
     await routeRead(page, 'routines.human', (params) => {
       if (params.run_id !== run) return undefined;
-      runs = [{ ...runs[0], status: 'held', request_kind: null, assistant_id: null, action: null, position: null, steps: null }];
+      runs = [{ ...runs[0], status: 'held', request_kind: null, assistant_id: null, action: null }];
       incidents = [{
         run_id: run,
         routine_id: ROUTINE_VIEW.routine_id,
-        name: ROUTINE_VIEW.name,
-        created_at: '2026-10-01T12:01:07Z',
         assistant_id: 'shimpz-cloudflare',
         action: 'replace-dns-record',
         position: 2,
@@ -5499,7 +5492,7 @@ test.describe('Team Routines', () => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await routeReadyChat(page);
     const run = 'd'.repeat(32);
-    const runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', scheduled_at: '2026-10-01T12:00:00Z', request_kind: null, assistant_id: null, action: null, position: null, steps: null }];
+    const runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', request_kind: null, assistant_id: null, action: null }];
     let incidents = [];
     const openings = [];
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
@@ -5507,7 +5500,7 @@ test.describe('Team Routines', () => {
       openings.push(params.run_id);
       // Team has not indexed the incident at the first opening; it is listed from then on.
       if (openings.length === 1) {
-        incidents = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, name: ROUTINE_VIEW.name, created_at: '2026-10-01T12:01:07Z', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }];
+        incidents = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }];
         return ok({ code: 'routine-incident-unavailable' }, 404);
       }
       return ok(recoveryCard(run, { tag: 'e'.repeat(64) }));
@@ -5556,7 +5549,7 @@ test.describe('Team Routines', () => {
     await page.clock.fastForward(61_000);
 
     // A run is held while nobody watches: the panel opens its decision on its own.
-    runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', scheduled_at: '2026-10-01T12:00:00Z', request_kind: null, assistant_id: null, action: null, position: null, steps: null }];
+    runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', request_kind: null, assistant_id: null, action: null }];
     await routineNotice(page);
     await expect.poll(() => cards.length).toBeGreaterThan(0);
     // The run ended on its own as well: the plan the person was reading shows again.
@@ -5572,8 +5565,8 @@ test.describe('Team Routines', () => {
     await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
     await routeReadyChat(page);
     const run = 'd'.repeat(32);
-    let runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', scheduled_at: '2026-10-01T12:00:00Z', request_kind: null, assistant_id: null, action: null, position: null, steps: null }];
-    let incidents = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, name: ROUTINE_VIEW.name, created_at: '2026-10-01T12:01:07Z', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }];
+    let runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', request_kind: null, assistant_id: null, action: null }];
+    let incidents = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }];
     let release;
     const answered = new Promise((resolve) => { release = resolve; });
     const openings = [];
@@ -5585,7 +5578,7 @@ test.describe('Team Routines', () => {
     // Rodar starts a fresh run, which freezes for an approval that the Team lists before the answer itself is
     // delivered.
     await routeRead(page, 'routines.card_answer', async () => {
-      runs = [{ ...runs[0], status: 'frozen', request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }];
+      runs = [{ ...runs[0], status: 'frozen', request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }];
       incidents = [];
       await answered;
       return ok({ team_id: 'marketing', run_id: run });
@@ -6254,8 +6247,6 @@ test.describe('Team Routines', () => {
     return {
       run_id: id,
       routine_id: routine.routine_id,
-      name: routine.name,
-      created_at: '2026-10-01T12:00:07Z',
       assistant_id: 'shimpz-cloudflare',
       action: 'replace-dns-record',
       position: 2,
@@ -6269,12 +6260,9 @@ test.describe('Team Routines', () => {
       run_id: id,
       routine_id: routine.routine_id,
       status: 'frozen',
-      scheduled_at: '2026-10-01T12:00:00Z',
       request_kind: requestKind,
       assistant_id: 'shimpz-cloudflare',
       action: 'replace-dns-record',
-      position: 2,
-      steps: 3,
     };
   }
 
@@ -6568,12 +6556,9 @@ test.describe('Team Routines', () => {
       run_id: 'e'.repeat(32),
       routine_id: ROUTINE_VIEW.routine_id,
       status: 'leased',
-      scheduled_at: '2026-10-02T09:00:00Z',
       request_kind: null,
       assistant_id: null,
       action: null,
-      position: null,
-      steps: null,
     }];
     await routeRead(page, 'routines.list', (read) => {
       if (read.team_id !== 'marketing') return undefined;
@@ -7460,12 +7445,9 @@ test('a frozen Routine run opens in the interface language and answers with the 
         run_id: run,
         routine_id: ROUTINE_VIEW.routine_id,
         status: 'frozen',
-        scheduled_at: '2026-10-01T12:00:00Z',
         request_kind: 'human',
         assistant_id: 'shimpz-cloudflare',
         action: 'replace-dns-record',
-        position: 2,
-        steps: 3,
       }],
       incidents: [],
     }) : undefined));

@@ -37,18 +37,13 @@ const RUN = {
   run_id: 'b'.repeat(32),
   routine_id: ROUTINE.routine_id,
   status: 'leased',
-  scheduled_at: '2026-10-05T12:00:00Z',
   request_kind: null,
   assistant_id: null,
   action: null,
-  position: null,
-  steps: null,
 };
 const INCIDENT = {
   run_id: 'd'.repeat(32),
   routine_id: ROUTINE.routine_id,
-  name: ROUTINE.name,
-  created_at: '2026-10-05T12:01:07Z',
   assistant_id: null,
   action: null,
   position: null,

@@ -417,17 +417,11 @@ const LEASED = {
   run_id: 'b'.repeat(32),
   routine_id: ROUTINE.routine_id,
   status: 'leased',
-  scheduled_at: '2026-10-05T12:00:00Z',
   request_kind: null,
   assistant_id: null,
   action: null,
-  position: null,
-  steps: null,
 };
-const FROZEN = {
-  ...LEASED, status: 'frozen', request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'list-zones',
-  position: 1, steps: 1,
-};
+const FROZEN = { ...LEASED, status: 'frozen', request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'list-zones' };
 const HELD = { ...LEASED, status: 'held' };
 // One recorded handled failure of a held step, in Team's sanitized diagnostic view (ADR-0092 section 8).
 const ATTEMPT_FAILURE = Object.freeze({
@@ -452,8 +446,6 @@ const ATTEMPT_FAILURE = Object.freeze({
 const INCIDENT = {
   run_id: 'b'.repeat(32),
   routine_id: ROUTINE.routine_id,
-  name: 'DNS semanal',
-  created_at: '2026-10-05T12:01:07Z',
   assistant_id: 'shimpz-cloudflare',
   action: 'replace-dns-record',
   position: 2,
@@ -487,8 +479,7 @@ test('Routines and runs are admitted only in their closed views', () => {
     { ...LEASED, request_kind: 'human' },
     { ...HELD, assistant_id: 'shimpz-cloudflare' },
     { ...FROZEN, action: null },
-    { ...FROZEN, position: null },
-    { ...FROZEN, position: '1' },
+    { ...FROZEN, position: 1 },
     { ...FROZEN, request_kind: 'email' },
   ]) {
     assert.throws(() => parseRunView(invalid), RoutineError, JSON.stringify(invalid));
@@ -503,9 +494,8 @@ test('Routines and runs are admitted only in their closed views', () => {
     { ...INCIDENT, step: 2 },
     { ...INCIDENT, ...UNPLACED, steps: 3 },
     { ...INCIDENT, steps: 257, position: 1 },
-    { ...INCIDENT, name: '' },
     { ...INCIDENT, extra: 'x' },
-    { ...INCIDENT, created_at: '2026-10-05' },
+    { ...INCIDENT, run_id: 'B'.repeat(32) },
     { ...INCIDENT, status: 'unresolved' },
   ]) {
     assert.throws(() => parseIncidentView(invalid), RoutineError, JSON.stringify(invalid));

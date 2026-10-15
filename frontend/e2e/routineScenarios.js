@@ -185,7 +185,7 @@ const STREAK_PAUSE = `${'d'.repeat(31)}0`;
 
 // A held run's incident names the call it was held at by its position among its plan's steps.
 function incident(runId, routine, held) {
-  return { run_id: runId, routine_id: routine.routine_id, name: routine.name, created_at: '2026-10-01T11:00:07Z', ...held };
+  return { run_id: runId, routine_id: routine.routine_id, ...held };
 }
 
 const placed = (action, position, total) => ({

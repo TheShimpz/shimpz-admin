@@ -441,22 +441,18 @@ export function isOutput(value) {
 // What a frozen run waits for: a person's answer or an Integration.
 const REQUEST_KINDS = ['human', 'integrations'];
 
-/** One live run: a frozen run names its request and its call's position; a leased or held one only that it is live. */
+/** One live run: a frozen run names its request and its call; a leased or held one only that it is live. */
 export function parseRunView(value) {
-  const keys = ['run_id', 'routine_id', 'status', 'scheduled_at', 'request_kind', 'assistant_id', 'action', 'position', 'steps'];
+  const keys = ['run_id', 'routine_id', 'status', 'request_kind', 'assistant_id', 'action'];
   return view(value, keys, (item) => {
-    const request = [item.request_kind, item.assistant_id, item.action, item.position, item.steps];
+    const request = [item.request_kind, item.assistant_id, item.action];
     const frozen =
-      REQUEST_KINDS.includes(item.request_kind) &&
-      isAssistantId(item.assistant_id) &&
-      isActionId(item.action) &&
-      isCallPosition(item.position, item.steps);
+      REQUEST_KINDS.includes(item.request_kind) && isAssistantId(item.assistant_id) && isActionId(item.action);
     return (
       typeof item.run_id === 'string' &&
       OPAQUE_ID_RE.test(item.run_id) &&
       typeof item.routine_id === 'string' &&
       OPAQUE_ID_RE.test(item.routine_id) &&
-      isInstant(item.scheduled_at) &&
       ['leased', 'frozen', 'held'].includes(item.status) &&
       (item.status === 'frozen' ? frozen : request.every((part) => part === null))
     );
@@ -469,16 +465,14 @@ function isHeldStep(detail) {
   return isAssistantId(detail.assistant_id) && isActionId(detail.action) && isCallPosition(detail.position, detail.steps);
 }
 
-/** One unresolved incident of a held run (ADR-0092): its Routine's name and the call whose effect is unknown. */
+/** One unresolved incident of a held run (ADR-0092): its Routine and the call whose effect is unknown. */
 export function parseIncidentView(value) {
-  const keys = ['run_id', 'routine_id', 'name', 'created_at', 'assistant_id', 'action', 'position', 'steps'];
+  const keys = ['run_id', 'routine_id', 'assistant_id', 'action', 'position', 'steps'];
   return view(value, keys, (item) =>
     typeof item.run_id === 'string' &&
     OPAQUE_ID_RE.test(item.run_id) &&
     typeof item.routine_id === 'string' &&
     OPAQUE_ID_RE.test(item.routine_id) &&
-    isName(item.name) &&
-    isInstant(item.created_at) &&
     isHeldStep(item));
 }
 
