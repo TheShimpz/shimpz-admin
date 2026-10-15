@@ -1,13 +1,13 @@
 <script>
-  import { Button } from '@shimpz/frontend';
   import { untrack } from 'svelte';
 
   import { call } from '#lib/session/socket.js';
   import RoutineIcon from '#lib/routines/Icon.svelte';
+  import Paging from '#lib/routines/Paging.svelte';
   import { fill } from '#lib/i18n/fill.js';
   import { assistantName } from '#lib/assistants/names.js';
   import { humanizeId } from '#lib/ids.js';
-  import { PagedSteps } from '#lib/routines/paging.svelte.js';
+  import { PAGE_SIZE, PagedSteps } from '#lib/routines/paging.svelte.js';
   import { pageBinding, readRunSteps } from '#lib/routines/protocol.js';
   import { attemptWords, conditionWords, countWords, literalWords } from '#lib/routines/words.js';
   import { durationWords } from '#lib/routines/reading.js';
@@ -20,7 +20,7 @@
   // left unknown; a snapshot that changed meanwhile is read again from the newest. A long run reveals its steps a few at
   // a time; `total` reports how many steps it has once that is known. Every value is escaped text.
   let {
-    teamId, runId, binding, attempts = null, copy, locale, pageSize = 10,
+    teamId, runId, binding, attempts = null, copy, locale,
     total = $bindable(null),
   } = $props();
 
@@ -32,7 +32,7 @@
   const RESTARTS = 2;
 
   // Only the newest read of this run may apply.
-  const paging = new PagedSteps(untrack(() => pageSize));
+  const paging = new PagedSteps();
   let bound = $state(null);
   let snapshot = 'latest';
   let list = $state();
@@ -77,7 +77,7 @@
       bound = binding;
       total = null;
       snapshot = 'latest';
-      void load(pageSize);
+      void load(PAGE_SIZE);
     });
   });
 </script>
@@ -143,15 +143,8 @@
     </li>
   {/each}
 </ol>
-{#if paging.failed}
-  <div class="dim">{copy.result.stepsUnavailable}</div>
-{:else if paging.loading}
-  <div class="dim" role="status">{copy.result.stepsLoading}</div>
-{:else if remaining > 0}
-  <Button class="more" variant="ghost" size="sm" type="button" onclick={() => paging.more(list, load)}>
-    {countWords(copy.result.more, Math.min(pageSize, remaining), locale)}
-  </Button>
-{/if}
+<Paging {paging} {remaining} unavailable={copy.result.stepsUnavailable} loading={copy.result.stepsLoading}
+  more={copy.result.more} {locale} onmore={() => paging.more(list, load)} />
 {#if attempts?.apart.length}
   <div class="attempts apart">
     <div class="attempts-title">{copy.result.attemptsApart}</div>
@@ -208,5 +201,4 @@
   .mono, code { font: 0.72rem/1.5 var(--shimpz-font-mono); }
   code { color: var(--shimpz-color-text-dim); }
   .message { color: var(--shimpz-color-text-muted); white-space: pre-wrap; overflow-wrap: anywhere; }
-  :global(.shimpz-button.more) { justify-self: start; }
 </style>

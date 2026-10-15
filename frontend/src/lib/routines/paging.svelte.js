@@ -3,8 +3,11 @@ import { tick } from 'svelte';
 import { needsPage } from './protocol.js';
 import { visibleSteps } from './reading.js';
 
+/** How many steps of a Routine list one press reveals. */
+export const PAGE_SIZE = 10;
+
 /**
- * A Routine list read page by page and revealed `pageSize` steps at a time: the steps loaded so far, where the next
+ * A Routine list read page by page and revealed PAGE_SIZE steps at a time: the steps loaded so far, where the next
  * page starts, how many pages are revealed, and whether a read is going or failed. Only the newest read applies: a
  * reset makes every read already going stale, so its pages and its failure are dropped.
  */
@@ -14,12 +17,8 @@ export class PagedSteps {
   pages = $state(1);
   loading = $state(false);
   failed = $state(false);
-  shown = $derived(visibleSteps(this.steps, this.pages, this.pageSize));
+  shown = $derived(visibleSteps(this.steps, this.pages, PAGE_SIZE));
   #reading = 0;
-
-  constructor(pageSize) {
-    this.pageSize = pageSize;
-  }
 
   /** Start again from the first page, revealing one page; every read already going is stale. */
   reset() {
@@ -66,7 +65,7 @@ export class PagedSteps {
   async more(list, load) {
     const first = this.shown.length;
     this.pages += 1;
-    await load(this.pages * this.pageSize);
+    await load(this.pages * PAGE_SIZE);
     await tick();
     list?.querySelectorAll(':scope > li')[first]?.focus();
   }

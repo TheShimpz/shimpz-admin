@@ -1,14 +1,14 @@
 <script>
-  import { Button } from '@shimpz/frontend';
   import { untrack } from 'svelte';
 
   import { call } from '#lib/session/socket.js';
   import RoutineIcon from '#lib/routines/Icon.svelte';
   import Inputs from '#lib/routines/Inputs.svelte';
+  import Paging from '#lib/routines/Paging.svelte';
   import { fill } from '#lib/i18n/fill.js';
   import { assistantName } from '#lib/assistants/names.js';
   import { humanizeId } from '#lib/ids.js';
-  import { PagedSteps } from '#lib/routines/paging.svelte.js';
+  import { PAGE_SIZE, PagedSteps } from '#lib/routines/paging.svelte.js';
   import { readPlanSteps } from '#lib/routines/protocol.js';
   import { countWords, dispositionWords, inputWords, summaryChain } from '#lib/routines/words.js';
 
@@ -19,10 +19,10 @@
   // and the saved keys an Action uses by name only. A revision that changed while it was read is never mixed with the
   // new one: `onchanged` reads the Routine again, which brings its new summary. Every value is Team's escaped preview,
   // rendered as text, never as Markdown or HTML.
-  let { teamId, routine, copy, locale, onchanged = () => {}, pageSize = 10 } = $props();
+  let { teamId, routine, copy, locale, onchanged = () => {} } = $props();
 
   // Only the newest read of the newest revision may apply.
-  const paging = new PagedSteps(untrack(() => pageSize));
+  const paging = new PagedSteps();
   let list = $state();
 
   let plan = $derived(routine.plan);
@@ -49,13 +49,13 @@
       if (revision === readFor) {
         if (paging.failed && !paging.loading) {
           paging.failed = false;
-          void load(paging.pages * pageSize);
+          void load(paging.pages * PAGE_SIZE);
         }
         return;
       }
       readFor = revision;
       paging.reset();
-      void load(pageSize);
+      void load(PAGE_SIZE);
     });
   });
 </script>
@@ -86,15 +86,8 @@
     </li>
   {/each}
 </ol>
-{#if paging.failed}
-  <p class="note">{copy.plan.unavailable}</p>
-{:else if paging.loading}
-  <p class="note" role="status">{copy.plan.loading}</p>
-{:else if remaining > 0}
-  <Button class="more" variant="ghost" size="sm" type="button" onclick={() => paging.more(list, load)}>
-    {countWords(copy.result.more, Math.min(pageSize, remaining), locale)}
-  </Button>
-{/if}
+<Paging {paging} {remaining} unavailable={copy.plan.unavailable} loading={copy.plan.loading} more={copy.result.more} {locale}
+  onmore={() => paging.more(list, load)} />
 <p class="disposition">{dispositionWords(routine.output, copy.plan)}</p>
 
 <style>
@@ -111,7 +104,5 @@
   .meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--gap-inside) var(--gap-group); color: var(--shimpz-color-text-muted); font-size: 0.76rem; }
   .stored { display: inline-flex; align-items: center; gap: var(--gap-inside); margin: 0; font-family: var(--shimpz-font-mono); font-size: 0.74rem; }
   .stored :global(.routine-icon) { width: 0.75rem; height: 0.75rem; }
-  .note { margin: var(--gap-inside) 0 0; color: var(--shimpz-color-text-dim); font-size: 0.75rem; }
   .disposition { margin: var(--gap-inside) 0 0; color: var(--shimpz-color-text-muted); font-size: 0.78rem; }
-  :global(.shimpz-button.more) { justify-self: start; }
 </style>
