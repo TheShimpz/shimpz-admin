@@ -6504,6 +6504,22 @@ test.describe('Team Routines', () => {
     expect(headings[2]).toContain('7');
   });
 
+  // The footer of a Routine's history, which reveals its next runs ten at a time.
+  const moreRuns = (panel) => panel.getByRole('button', { name: /^Show \d+ more runs?$/u });
+
+  // Reveals a Routine's whole history, one press at a time, each once the runs it reads are listed.
+  async function revealEveryRun(panel, listed) {
+    const more = moreRuns(panel);
+    const loading = panel.getByText(messages.en.routine.list.loading, { exact: true });
+    for (;;) {
+      await expect(loading).toHaveCount(0);
+      if (!(await more.count())) return;
+      const shown = (await listed()).length;
+      await more.click();
+      await expect.poll(async () => (await listed()).length).toBeGreaterThan(shown);
+    }
+  }
+
   test("a Routine's panel reads its own history, never the chat's, however much the chat holds", async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const done = { plan: ROUTINE_VIEW.plan, output: null };
@@ -6534,13 +6550,13 @@ test.describe('Team Routines', () => {
     // Both runs sit behind the newest chat; the panel's own view of the history holds just them, newest first.
     await expect(runs.getByRole('button', { name: 'Execution details' })).toHaveCount(2);
     await expect(runs.getByRole('listitem').first()).toContainText('Done');
-    await expect(runs.getByRole('button', { name: 'Look for older runs' })).toHaveCount(0);
+    await expect(moreRuns(panel)).toHaveCount(0);
     await expect.poll(views).toContain(ROUTINE_VIEW.routine_id);
     expect((await views()).every((routine) => routine === null || routine === ROUTINE_VIEW.routine_id)).toBe(true);
     expect(chatHistory.historyRequests().every((before) => before === null)).toBe(true);
   });
 
-  test("a Routine's older runs are reached by continuing its history, and a run that ends joins them", async ({ page }, testInfo) => {
+  test("a Routine's runs are revealed ten at a time, its older runs read as the list reaches them, and a run that ends joins them", async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const done = { plan: ROUTINE_VIEW.plan, output: null };
     const run = (index) => routineRow((index + 1).toString(16).padStart(32, '0'), 'done', done);
@@ -6583,33 +6599,38 @@ test.describe('Team Routines', () => {
     await panel.getByRole('tab', { name: 'Runs' }).click();
     const runs = panel.getByRole('list', { name: 'Runs' });
     const details = runs.getByRole('button', { name: 'Execution details' });
-    const older = runs.getByRole('button', { name: 'Look for older runs' });
-    await expect(details).toHaveCount(64);
-    await expect(older).toBeVisible();
+    const more = moreRuns(panel);
+    const older = () => searched.filter((cursor) => cursor !== null);
+    // The newest page holds 64 runs; ten show, and the footer says how many one press reveals.
+    await expect(details).toHaveCount(10);
+    await expect(more).toHaveText('Show 10 more runs');
     await expect(runs).toContainText('Running now');
     // The running run ends while the panel stays open: the next refresh lists it at the top, reading only the newest
-    // page, and the search for older runs keeps its place.
-    const before = searched.length;
+    // page, and the list keeps its place.
     delivered = routineRow('e'.repeat(32), 'done', done);
     running = [];
     await routineNotice(page);
     await expect(runs).not.toContainText('Running now');
     await expect(runs.getByRole('listitem').first()).toContainText('Done');
     await expect(runs.getByRole('listitem').first().getByRole('button', { name: 'Execution details' })).toBeVisible();
-    await expect(older).toBeVisible();
-    expect(searched.slice(before).filter((cursor) => cursor !== null)).toEqual([]);
-    const listed = await details.count();
-    await older.click();
-    await expect(details).toHaveCount(listed + 1);
-    await expect(older).toHaveCount(0);
+    await expect(details).toHaveCount(10);
+    expect(older()).toEqual([]);
+    // Each press reveals ten more, and moves focus to the first run it revealed; the older page is read only once the
+    // list comes within a page of its end.
+    await more.click();
+    await expect(details).toHaveCount(20);
+    await expect(runs.getByRole('listitem').nth(10)).toBeFocused();
+    expect(older()).toEqual([]);
+    await revealEveryRun(panel, () => details.all());
+    await expect(details).toHaveCount(66);
+    expect(older()).toEqual(['AAAAAAAAAMg']);
     // The chat's periodic refresh replaces the Routine's details; the runs found so far stay.
     const reads = routineReads;
-    const searches = searched.length;
     await routineNotice(page);
     await expect.poll(() => routineReads).toBeGreaterThan(reads);
-    await expect(details).toHaveCount(listed + 1);
-    await expect(older).toHaveCount(0);
-    expect(searched.slice(searches).filter((cursor) => cursor !== null)).toEqual([]);
+    await expect(details).toHaveCount(66);
+    await expect(more).toHaveCount(0);
+    expect(older()).toEqual(['AAAAAAAAAMg']);
   });
 
   test("a Routine's panel that stays open lists every run that ends, and every older run stays reachable", async ({ page }, testInfo) => {
@@ -6656,7 +6677,6 @@ test.describe('Team Routines', () => {
     const panel = await openRoutinePanel(page);
     await panel.getByRole('tab', { name: 'Runs' }).click();
     const runs = panel.getByRole('list', { name: 'Runs' });
-    const older = runs.getByRole('button', { name: 'Look for older runs' });
     const listed = () => runs.locator('time').evaluateAll((times) => times.map((time) => time.getAttribute('datetime')));
     await expect.poll(listed).toEqual(everyRun());
     const refresh = async () => {
@@ -6670,6 +6690,7 @@ test.describe('Team Routines', () => {
       write(1, failed);
       await refresh();
       await expect(runs.getByRole('listitem').first()).toContainText('assistant-rpc-failed');
+      await revealEveryRun(panel, listed);
       await expect.poll(listed).toEqual(everyRun());
     }
     // More end than the list takes, then more than one refresh reads: each time the list starts again from the newest
@@ -6677,19 +6698,13 @@ test.describe('Team Routines', () => {
     for (const count of [65, 520]) {
       write(count);
       await refresh();
-      await expect.poll(async () => (await listed()).length).toBe(64);
-      await expect.poll(listed).toEqual(everyRun().slice(0, 64));
-      await expect(older).toBeVisible();
-      while (await older.count()) {
-        const shown = (await listed()).length;
-        await older.click();
-        await expect.poll(async () => (await listed()).length).toBeGreaterThan(shown);
-      }
+      await expect.poll(listed).toEqual(everyRun().slice(0, 10));
+      await revealEveryRun(panel, listed);
       await expect.poll(listed).toEqual(everyRun());
     }
   });
 
-  test("an older search that a newer reading of the panel's history overtook never hides that reading", async ({ page }, testInfo) => {
+  test("an older read that a newer reading of the panel's history overtook never hides that reading", async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const done = { plan: ROUTINE_VIEW.plan, output: null };
     const stored = [];
@@ -6707,12 +6722,14 @@ test.describe('Team Routines', () => {
       return raw.toString('base64url');
     };
     const position = (value) => Number(Buffer.from(value, 'base64url').readBigUInt64BE());
-    // The test holds the newest-page reading a refresh starts again from, and fails the person's older search, the one
-    // that continues from the cursor of the panel's own last newest-page reading, while holding it.
+    // The test holds the newest-page reading a refresh starts again from, and fails the older read the list makes as
+    // the person reveals its runs, while holding it: a read that continues from a cursor the list was given before the
+    // refresh, never one the refresh itself reads on with.
     let holdNewest = null;
     let newestReads = 0;
-    const newestCursors = [];
+    let olderReads = 0;
     let holdOlder = null;
+    const given = new Set();
     await routeReadyChat(page);
     await routeRead(page, 'history.page', async (read) => {
       if (read.team_id !== 'marketing') return undefined;
@@ -6720,14 +6737,15 @@ test.describe('Team Routines', () => {
       if (params.get('routine') === null) return ok({ entries: [], before: null });
       const reading = params.get('before') === null ? ++newestReads : 0;
       if (reading && holdNewest && reading === holdNewest.at) await holdNewest.released;
-      if (!reading && holdOlder && params.get('before') === holdOlder.cursor) {
+      if (!reading && holdOlder?.cursors.has(params.get('before'))) {
+        olderReads += 1;
         await holdOlder.released;
         return ok({ detail: 'Synthetic history failure.' }, 503);
       }
       const below = reading ? stored.length + 1 : position(params.get('before'));
       const start = Math.max(0, below - 1 - 64);
       const before = start > 0 ? cursor(start + 1) : null;
-      if (reading) newestCursors[reading] = before;
+      given.add(before);
       return ok({ entries: stored.slice(start, below - 1), before });
     });
     let routineReads = 0;
@@ -6741,51 +6759,54 @@ test.describe('Team Routines', () => {
       const released = new Promise((resolve) => { release = resolve; });
       return { released, release };
     };
-    write(70);
+    write(200);
     await page.clock.install();
     await page.goto('/chat/?team=marketing');
     const panel = await openRoutinePanel(page);
     await panel.getByRole('tab', { name: 'Runs' }).click();
     const runs = panel.getByRole('list', { name: 'Runs' });
-    const older = runs.getByRole('button', { name: 'Look for older runs' });
+    const more = moreRuns(panel);
+    const unavailable = panel.getByText(messages.en.routine.panel.runsUnavailable, { exact: true });
     const listed = () => runs.locator('time').evaluateAll((times) => times.map((time) => time.getAttribute('datetime')));
-    await expect.poll(listed).toEqual(everyRun().slice(0, 64));
-    let panelReading = 1;
+    await expect.poll(listed).toEqual(everyRun().slice(0, 10));
+    // Each press reveals ten more; the one that comes within a page of what was read makes the list read older runs.
+    const revealUntilOlderRead = async () => {
+      const reads = olderReads;
+      while (olderReads === reads) {
+        await more.click();
+        await expect.poll(async () => olderReads > reads || await more.isVisible()).toBe(true);
+      }
+    };
     for (const order of ['newest first', 'older first']) {
       // More runs end than the list takes, so the next refresh reads the newest page again; it is held, and meanwhile
-      // the person looks for older runs, which fails.
+      // the person reveals more runs, whose older read fails.
       write(65);
       const newest = gate();
       const search = gate();
       holdNewest = { at: newestReads + 2, released: newest.released };
-      holdOlder = { cursor: newestCursors[panelReading], released: search.released };
+      holdOlder = { cursors: new Set(given), released: search.released };
       const reads = routineReads;
       await routineNotice(page);
       await expect.poll(() => routineReads).toBeGreaterThan(reads);
       await expect.poll(() => newestReads).toBe(holdNewest.at);
-      await older.click();
+      await revealUntilOlderRead();
       if (order === 'newest first') {
         newest.release();
-        await expect.poll(listed).toEqual(everyRun().slice(0, 64));
+        await expect.poll(listed).toEqual(everyRun().slice(0, 10));
         search.release();
       } else {
         search.release();
-        await expect(runs).toContainText(messages.en.routine.panel.runsUnavailable);
+        await expect(unavailable).toBeVisible();
         newest.release();
       }
       // Either way the newer reading stands, and its cursor still reaches every older run.
-      await expect.poll(listed).toEqual(everyRun().slice(0, 64));
-      await expect(runs).not.toContainText(messages.en.routine.panel.runsUnavailable);
-      panelReading = holdNewest.at;
+      await expect.poll(listed).toEqual(everyRun().slice(0, 10));
+      await expect(unavailable).toHaveCount(0);
       holdNewest = null;
       holdOlder = null;
-      await expect(older).toBeEnabled();
+      await expect(more).toBeEnabled();
     }
-    while (await older.count()) {
-      const shown = (await listed()).length;
-      await older.click();
-      await expect.poll(async () => (await listed()).length).toBeGreaterThan(shown);
-    }
+    await revealEveryRun(panel, listed);
     await expect.poll(listed).toEqual(everyRun());
   });
 

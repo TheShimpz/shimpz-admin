@@ -380,7 +380,10 @@ export default {
       runs: 'Runs',
       noRuns: 'No runs yet.',
       runsUnavailable: 'Recent runs could not be loaded.',
-      olderRuns: 'Look for older runs',
+      moreRuns: {
+        one: 'Show {count} more run',
+        other: 'Show {count} more runs',
+      },
       healthyRuns: {
         one: '{count} run finished',
         other: '{count} runs finished',

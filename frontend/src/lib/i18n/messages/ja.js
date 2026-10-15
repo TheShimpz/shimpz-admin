@@ -379,7 +379,10 @@ export default {
       runs: '実行履歴',
       noRuns: 'まだ実行はありません。',
       runsUnavailable: '最近の実行を読み込めませんでした。',
-      olderRuns: '以前の実行を探す',
+      moreRuns: {
+        one: 'さらに {count} 回の実行を表示',
+        other: 'さらに {count} 回の実行を表示',
+      },
       healthyRuns: {
         one: '{count} 回の実行が完了',
         other: '{count} 回の実行が完了',

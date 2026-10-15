@@ -379,7 +379,10 @@ export default {
       runs: 'Ejecuciones',
       noRuns: 'Aún no hay ejecuciones.',
       runsUnavailable: 'No se pudieron cargar las ejecuciones recientes.',
-      olderRuns: 'Buscar ejecuciones anteriores',
+      moreRuns: {
+        one: 'Mostrar {count} ejecución más',
+        other: 'Mostrar {count} ejecuciones más',
+      },
       healthyRuns: {
         one: '{count} ejecución completada',
         other: '{count} ejecuciones completadas',

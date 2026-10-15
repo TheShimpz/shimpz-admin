@@ -61,12 +61,15 @@ export class PagedSteps {
     }
   }
 
-  /** Reveal one more page, reading what it needs with `load(wanted)`, then focus the first step revealed in `list`. */
+  /**
+   * Reveal one more page, reading what it needs with `load(wanted)`, then focus the first step revealed in `list`: its
+   * focusable items are its steps, after any other items it lists first.
+   */
   async more(list, load) {
     const first = this.shown.length;
     this.pages += 1;
     await load(this.pages * PAGE_SIZE);
     await tick();
-    list?.querySelectorAll(':scope > li')[first]?.focus();
+    list?.querySelectorAll(':scope > li[tabindex]')[first]?.focus();
   }
 }

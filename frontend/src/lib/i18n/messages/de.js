@@ -379,7 +379,10 @@ export default {
       runs: 'Ausführungen',
       noRuns: 'Noch keine Ausführungen.',
       runsUnavailable: 'Die letzten Ausführungen konnten nicht geladen werden.',
-      olderRuns: 'Nach älteren Ausführungen suchen',
+      moreRuns: {
+        one: '{count} weitere Ausführung anzeigen',
+        other: '{count} weitere Ausführungen anzeigen',
+      },
       healthyRuns: {
         one: '{count} Ausführung abgeschlossen',
         other: '{count} Ausführungen abgeschlossen',

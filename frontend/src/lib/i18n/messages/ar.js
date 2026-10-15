@@ -379,7 +379,10 @@ export default {
       runs: 'عمليات التشغيل',
       noRuns: 'لا توجد عمليات تشغيل بعد.',
       runsUnavailable: 'تعذّر تحميل عمليات التشغيل الأخيرة.',
-      olderRuns: 'البحث عن عمليات تشغيل أقدم',
+      moreRuns: {
+        one: 'عرض {count} عملية تشغيل أخرى',
+        other: 'عرض {count} عمليات تشغيل أخرى',
+      },
       healthyRuns: {
         one: 'عمليات التشغيل المكتملة: {count}',
         other: 'عمليات التشغيل المكتملة: {count}',

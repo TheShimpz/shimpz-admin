@@ -34,6 +34,8 @@
   import RoutineRunView from '#lib/routines/run/View.svelte';
   import RoutineIcon from '#lib/routines/Icon.svelte';
   import RoutineModal from '#lib/routines/Modal.svelte';
+  import Paging from '#lib/routines/Paging.svelte';
+  import { PAGE_SIZE, PagedSteps } from '#lib/routines/paging.svelte.js';
   import RoutineTag from '#lib/routines/Tag.svelte';
   import { formatRunUsage } from '#lib/chat/usage.js';
 
@@ -56,11 +58,11 @@
   let confirming = $state(false);
   let deleting = $state(false);
   let deleteButton = $state();
-  let recent = $state(null);
-  let recentFailed = $state(false);
-  // Where the Routine's history read so far ends, so the person can read older runs; null once it is exhausted.
-  let olderRuns = $state(null);
-  let searchingOlder = $state(false);
+  // The Routine's history, revealed PAGE_SIZE entries at a time: its newest page once read, then its older pages from
+  // the cursor where it ends (`next`, null once there are none). Only the newest reading's older reads apply.
+  const runPages = new PagedSteps();
+  let runsRead = $state(false);
+  let runList = $state();
   let detailsRun = $state(null);
   // The run open in full, and the outcome that opened it, which takes focus back when it closes.
   let viewedRun = $state(null);
@@ -133,61 +135,57 @@
   // The Routine's id alone: a refresh that replaces the Routine's details neither restarts nor discards its runs.
   let routineId = $derived(routine.routine_id);
 
-  // How many runs that ended while the panel was open joined the list since it last read its newest page, and which
-  // reading of the newest page the list comes from, so an older search begun before another reading is discarded.
+  // How many runs that ended while the panel was open joined the list since it last read its newest page.
   let arrived = 0;
-  let reading = 0;
 
   // This Routine's own history head (`historyHead`) reads its newest page when the panel opens, then the runs written
-  // since whenever Admin says the Team's history changed: they join the list at the top, and the search for older runs
+  // since whenever Admin says the Team's history changed: they join the list at the top, and the cursor to older runs
   // keeps its place. When more ended than the list takes, or more was written than one refresh reads, the list starts
   // again from the newest page instead, so no run is ever left between the list and the cursor to older runs. The runs
-  // are never required: a refusal says the list is unavailable.
+  // are never required: a refusal says the list is unavailable, and the next change Admin announces tries again.
   function applyRuns(head, value) {
     if (value.restart) {
-      reading += 1;
-      recent = [...value.entries].reverse();
-      olderRuns = value.before;
+      runPages.reset();
+      runPages.steps = [...value.entries].reverse();
+      runPages.next = value.before;
+      runsRead = true;
       arrived = 0;
-      recentFailed = false;
+      void loadRuns();
       return;
     }
-    if (recent === null) return;
-    const merged = mergedRoutineRuns(recent, value.entries, routineId);
-    const added = merged.length - recent.length;
+    if (!runsRead) return;
+    const merged = mergedRoutineRuns(runPages.steps, value.entries, routineId);
+    const added = merged.length - runPages.steps.length;
     if (arrived + added > MAX_ARRIVED_RUNS) {
       void head.restart();
       return;
     }
-    recent = merged;
+    runPages.steps = merged;
     arrived += added;
+    if (runPages.failed && !runPages.loading) {
+      runPages.failed = false;
+      void loadRuns();
+    }
   }
 
   $effect(() => {
     const head = historyHead(teamId, { routine: routineId });
     let applied = null;
     return head.subscribe((state) => untrack(() => {
-      if (state.status === 'error' && recent === null) recentFailed = true;
+      if (state.status === 'error' && !runsRead) runPages.failed = true;
       if (state.status !== 'ready' || state.value === applied) return;
       applied = state.value;
       applyRuns(head, state.value);
     }));
   });
 
-  // An older search that a new reading of the newest page overtook is discarded; that reading's cursor reaches its runs.
-  async function searchOlderRuns() {
-    searchingOlder = true;
-    const from = reading;
-    try {
-      const found = await routineRuns(call, teamId, routineId, { before: olderRuns });
-      if (from !== reading) return;
-      recent = [...recent, ...found.runs];
-      olderRuns = found.before;
-    } catch {
-      if (from === reading) recentFailed = true;
-    } finally {
-      searchingOlder = false;
-    }
+  // Older pages are read one page ahead of what the list reveals, so its footer counts exactly how many more one press
+  // shows. A new reading of the newest page discards an older read it overtook; that reading's cursor reaches its runs.
+  function loadRuns() {
+    return runPages.load((runPages.pages + 1) * PAGE_SIZE, async () => {
+      const found = await routineRuns(call, teamId, routineId, { before: runPages.next });
+      return { steps: found.runs, next: found.before };
+    }, { onError: () => (runPages.failed = true) });
   }
 
   const RUN_ICONS = {
@@ -369,22 +367,20 @@
         <RoutinePlan {teamId} {routine} {copy} locale={$locale}
           onchanged={() => refreshTeamRoutines(teamId)} />
       {:else}
-        <ul class="runs" aria-label={copy.panel.runs}>
+        <ul class="runs" aria-label={copy.panel.runs} bind:this={runList}>
           {#each live as run (run.run_id)}
             <li>
               <RoutineIcon name={run.status === 'held' ? 'warning' : run.status === 'frozen' ? 'approval' : 'spinner'} />
               <span class="run-what">{run.status === 'frozen' ? copy.panel.waitingApproval : run.status === 'held' ? copy.status.failed : copy.panel.runningNow}</span>
             </li>
           {/each}
-          {#if recentFailed}
-            <li class="sub">{copy.panel.runsUnavailable}</li>
-          {:else if recent === null}
-            <li class="sub" role="status">{copy.list.loading}</li>
-          {:else if recent.length === 0 && live.length === 0 && olderRuns === null}
+          {#if !runsRead}
+            {#if !runPages.failed}<li class="sub" role="status">{copy.list.loading}</li>{/if}
+          {:else if runPages.steps.length === 0 && live.length === 0 && runPages.next === null}
             <li class="sub">{copy.panel.noRuns}</li>
           {:else}
-            {#each recent as entry (entry.id)}
-              <li class="run">
+            {#each runPages.shown as entry (entry.id)}
+              <li class="run" tabindex="-1">
                 <div class="run-line">
                   <RoutineIcon name={RUN_ICONS[entry.outcome]} />
                   <!-- A rollup of healthy runs or of missed runs is no run of its own, so it opens nothing. -->
@@ -404,15 +400,11 @@
                 {#if entry.protectionLost}<p class="run-note run-note--lost">{copy.notice.protectionLost}</p>{/if}
               </li>
             {/each}
-            {#if olderRuns !== null}
-              <li>
-                <Button variant="ghost" size="sm" type="button" disabled={searchingOlder} onclick={searchOlderRuns}>
-                  {#snippet icon()}<RoutineIcon name="clock" />{/snippet}{copy.panel.olderRuns}
-                </Button>
-              </li>
-            {/if}
           {/if}
         </ul>
+        <Paging paging={runPages} remaining={runPages.steps.length - runPages.shown.length}
+          unavailable={copy.panel.runsUnavailable} loading={copy.list.loading} more={copy.panel.moreRuns} locale={$locale}
+          onmore={() => runPages.more(runList, loadRuns)} />
       {/if}
 
       {#if error}<Notice variant="error">{error}</Notice>{/if}

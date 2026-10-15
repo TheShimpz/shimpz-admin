@@ -379,7 +379,10 @@ export default {
       runs: '运行记录',
       noRuns: '还没有运行。',
       runsUnavailable: '无法加载最近的运行。',
-      olderRuns: '查找更早的运行',
+      moreRuns: {
+        one: '再显示 {count} 次运行',
+        other: '再显示 {count} 次运行',
+      },
       healthyRuns: {
         one: '完成了 {count} 次运行',
         other: '完成了 {count} 次运行',
