@@ -1,7 +1,7 @@
 import { routineQuestionMessages } from '../src/lib/routines/questionMessages.js';
 
 // Routine scenarios for the owner's preview and the browser tests (ADR-0087, ADR-0092, ADR-0101): every Routine notice
-// titled by the name Team froze into it, a deleted Routine's last notice, runs' usage with and without a model, a held
+// titled by the name Team froze into it, a deleted Routine's last notice, each run's active duration, a held
 // run's recovery card with the error its step returned (a Cloudflare account out of credits), a paused Routine, a
 // minute rollup, a run's execution details and step records, a 120-step plan read page by page, the confirmation card
 // of the owner's recorded Cloudflare watch, and a recording turn's refusal. Pure data and state transitions; nothing
@@ -200,9 +200,9 @@ const placed = (action, position, total) => ({
   assistant_id: 'shimpz-cloudflare', action, position, steps: total,
 });
 
-// What a run used: a replayed run calls no model and reports only its duration; a run whose recovery asked a model
-// reports that model's tokens as a chat reply does.
-const REPLAY_USAGE = Object.freeze({ duration_ms: 4120, models: [] });
+// What a run used: its active duration alone, since a run asks no model. A recording turn's reply reports its model's
+// tokens as any chat reply does.
+const RUN_USAGE = Object.freeze({ duration_ms: 4120 });
 const MODEL_USAGE = Object.freeze({
   duration_ms: 9800,
   models: [{ provider: 'openai', model: 'gpt-6-luna', input_tokens: 6500, output_tokens: 300 }],
@@ -223,7 +223,7 @@ function row(noticeId, routine, outcome, detail, { at = '2026-10-01T12:00:00Z', 
     created_at: at,
     detail,
     version,
-    usage: usage ?? (run || outcome === 'healthy' ? structuredClone(REPLAY_USAGE) : null),
+    usage: usage ?? (run || outcome === 'healthy' ? structuredClone(RUN_USAGE) : null),
     protection_lost: lost,
   };
 }
@@ -294,8 +294,8 @@ function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now, removedName) {
     row(id('a'), CONTINUOUS, 'created', defined(CONTINUOUS), { at: yesterday(-120) }),
     row(id('b'), HELD, 'changed', defined(HELD), { at: yesterday(-90) }),
     row(id('c'), CONTINUOUS, 'done', completed(CONTINUOUS.plan, null), { at: yesterday(-50) }),
-    row(id('d'), CONTINUOUS, 'healthy', { runs: 9 }, { at: yesterday(0), version: 9, usage: { duration_ms: 37_080, models: [] } }),
-    row(id('e'), HELD, 'recovered', completed(HELD.plan, SHOWN_RECORDS), { at: yesterday(20), usage: MODEL_USAGE }),
+    row(id('d'), CONTINUOUS, 'healthy', { runs: 9 }, { at: yesterday(0), version: 9, usage: { duration_ms: 37_080 } }),
+    row(id('e'), HELD, 'recovered', completed(HELD.plan, SHOWN_RECORDS), { at: yesterday(20), usage: { duration_ms: 9800 } }),
     row(id('8'), PAUSED, 'done', completed(PAUSED.plan, SHOWN_ZONES), { at: yesterday(40) }),
     row(id('f'), HELD, 'user-skipped', { ...placed('update-dns-record', 3, 3), choice: 'run' }, { at: at(-180) }),
     // A run resumed after a Team restart lost the protection of its secret values, and says so.

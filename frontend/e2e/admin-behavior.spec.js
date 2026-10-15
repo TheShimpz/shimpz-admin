@@ -4302,12 +4302,12 @@ test('holds Send while a Brain change is saving so the turn uses the saved selec
 });
 
 
-// A Routine notice's usage and protection as Team writes them (ADR-0101): a run's notice carries its usage, here a
-// replay that called no model; a Routine's notice carries none, except the healthy rollup's summed usage.
+// A Routine notice's usage and protection as Team writes them (ADR-0101): a run's notice carries its active duration;
+// a Routine's notice carries none, except the healthy rollup's summed duration.
 const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed', 'healthy', 'deleted'];
 function noticeExtras(outcome) {
   const used = !ROUTINE_OUTCOMES.includes(outcome) || outcome === 'healthy';
-  return { usage: used ? { duration_ms: 4120, models: [] } : null, protection_lost: false };
+  return { usage: used ? { duration_ms: 4120 } : null, protection_lost: false };
 }
 
 // A held run's card as Team opens it (ADR-0092 section 7, ADR-0101): the call, its recorded failure (a Cloudflare
@@ -6831,7 +6831,7 @@ test.describe('Team Routines', () => {
     };
     const done = {
       ...at(routineRow('d'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: shown }), '2026-10-01T12:01:07Z'),
-      usage: { duration_ms: 7400, models: [] },
+      usage: { duration_ms: 7400 },
     };
     await routeReadyChat(page, { history: { entries: [missed, lost, done], before: null } });
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));

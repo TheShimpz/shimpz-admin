@@ -326,9 +326,8 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
   // Every row is titled by the name Team froze into it; the deleted Routine's notice is the last row and still names it.
   const notices = entries.map(parseRoutineRunEntry);
   assert.deepEqual([notices.at(-1).outcome, notices.at(-1).name], ['deleted', ROUTINE_TEXT.en.names[4]]);
-  // Runs report their usage with and without a model, and one run says it lost its secret-value protection.
-  assert.ok(notices.some((notice) => notice.usage?.models.length === 0));
-  assert.ok(notices.some((notice) => notice.usage?.models.length > 0));
+  // Runs report their active duration, and one run says it lost its secret-value protection.
+  assert.ok(notices.some((notice) => notice.usage?.duration_ms > 0));
   assert.ok(notices.some((notice) => notice.protectionLost));
   const listed = await listRoutines(reader(scenario), 'marketing');
   assert.ok(listed.routines.some((routine) => routine.schedule.kind === 'continuous'));

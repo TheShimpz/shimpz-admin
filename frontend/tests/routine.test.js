@@ -655,8 +655,8 @@ const DEFINED = {
   state: 'active',
   permitted: { total: 1, changes: 0 },
 };
-// A run that called no model reports only its duration; one whose recovery called a model reports its tokens.
-const REPLAY_USAGE = Object.freeze({ duration_ms: 4120, models: [] });
+// A run reports its active duration alone: it asks no model.
+const REPLAY_USAGE = Object.freeze({ duration_ms: 4120 });
 const RUN_ENTRY = {
   id: `${'b'.repeat(32)}:routine`,
   kind: 'routine-run',
@@ -719,10 +719,7 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
   const valid = [
     { ...RUN_ENTRY, outcome: 'recovered', detail: { plan: LONG, output: { ...UNSHOWN, step: 120 } } },
     { ...RUN_ENTRY, protection_lost: true },
-    {
-      ...RUN_ENTRY,
-      usage: { duration_ms: 9800, models: [{ provider: 'openai', model: 'gpt-6-luna', input_tokens: 6500, output_tokens: 300 }] },
-    },
+    { ...RUN_ENTRY, usage: { duration_ms: 9800 } },
     { ...RUN_ENTRY, outcome: 'deleted', run_id: null, usage: null, detail: {} },
     { ...RUN_ENTRY, outcome: 'held', detail: STEP },
     { ...RUN_ENTRY, outcome: 'held', detail: UNPLACED },
@@ -755,7 +752,7 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, name: ' padded ' },
     { ...RUN_ENTRY, name: null },
     { ...RUN_ENTRY, usage: null },
-    { ...RUN_ENTRY, usage: { duration_ms: 1, models: [], extra: 1 } },
+    { ...RUN_ENTRY, usage: { duration_ms: 1, extra: 1 } },
     { ...RUN_ENTRY, protection_lost: 'no' },
     { ...RUN_ENTRY, detail: { ...RUN_ENTRY.detail, extra: null } },
     { ...RUN_ENTRY, outcome: 'held', detail: { ...STEP, position: '2' } },

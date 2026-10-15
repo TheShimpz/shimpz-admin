@@ -41,7 +41,7 @@ function run(index, routine = 'c'.repeat(32)) {
       output: null,
     },
     version: 1,
-    usage: { duration_ms: 812, models: [] },
+    usage: { duration_ms: 812 },
     protection_lost: false,
   };
 }

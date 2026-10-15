@@ -33,23 +33,12 @@ function invalid() {
  * throws, so the whole frame is refused.
  */
 export function parseTaskUsage(value) {
-  return value === undefined ? null : parseUsage(value, 1);
-}
-
-/**
- * The exact usage of a Routine run's notice (ADR-0101): a chat turn's shape whose models may be none, for a run that
- * called no model. Any other value throws, so the whole notice row is refused.
- */
-export function parseRunUsage(value) {
-  return parseUsage(value, 0);
-}
-
-function parseUsage(value, minimum) {
+  if (value === undefined) return null;
   if (
     !exactKeys(value, USAGE_KEYS) ||
     !isCount(value.duration_ms, MAX_DURATION_MS) ||
     !Array.isArray(value.models) ||
-    value.models.length < minimum ||
+    value.models.length < 1 ||
     value.models.length > MAX_MODELS
   ) throw invalid();
   let previous = null;
@@ -72,6 +61,20 @@ function parseUsage(value, minimum) {
   return { duration_ms: value.duration_ms, models };
 }
 
+/**
+ * The exact usage of a Routine run's notice (ADR-0101): its active duration alone, since a run asks no model. Any
+ * other value throws, so the whole notice row is refused.
+ */
+export function parseRunUsage(value) {
+  if (!exactKeys(value, ['duration_ms']) || !isCount(value.duration_ms, MAX_DURATION_MS)) throw invalid();
+  return { duration_ms: value.duration_ms };
+}
+
+/** A Routine run's usage line, its active duration: "10.5 s". */
+export function formatRunUsage(usage, locale) {
+  return `${numberFormat(locale, { maximumFractionDigits: 1 }).format(usage.duration_ms / 1000)} s`;
+}
+
 /** Totals for display: tokens, estimated USD (null when no used model is priced), duration, and per-model detail. */
 export function taskUsageSummary(usage) {
   let tokens = 0;
@@ -89,14 +92,10 @@ export function taskUsageSummary(usage) {
   return { tokens, usd: priced ? cents / 100 : null, seconds: usage.duration_ms / 1000, durationMs: usage.duration_ms, detail };
 }
 
-/**
- * The one-line, locale-formatted label: "≈ US$ 0.0019 · 12,480 tokens · 6.2 s". A Routine run that called no model
- * reads only its duration: "10.5 s".
- */
+/** The one-line, locale-formatted label: "≈ US$ 0.0019 · 12,480 tokens · 6.2 s". */
 export function formatTaskUsage(summary, locale, copy) {
   const number = numberFormat(locale);
   const seconds = numberFormat(locale, { maximumFractionDigits: 1 });
-  if (summary.detail.length === 0) return `${seconds.format(summary.seconds)} s`;
   const parts = [];
   if (summary.usd !== null) {
     const money = numberFormat(locale, {

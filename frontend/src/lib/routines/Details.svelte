@@ -36,7 +36,7 @@
   import RoutineIcon from '#lib/routines/Icon.svelte';
   import RoutineModal from '#lib/routines/Modal.svelte';
   import RoutineTag from '#lib/routines/Tag.svelte';
-  import { formatTaskUsage, formatTaskUsageDetail, taskUsageSummary } from '#lib/chat/usage.js';
+  import { formatRunUsage } from '#lib/chat/usage.js';
 
   // One Routine in full (ADR-0086, ADR-0092). While a run waits for the person, the whole panel is that decision and
   // nothing else: a held run's recovery choices or a frozen run's approval, with what it needs to decide. Once it is
@@ -195,7 +195,6 @@
     done: 'check', recovered: 'check', healthy: 'check', failed: 'failed', denied: 'stop', stopped: 'stop', 'user-skipped': 'skip',
     held: 'warning', paused: 'pause', frozen: 'approval', skipped: 'skip',
   };
-  let usageCopy = $derived($t('chatPage.usage'));
 
   function viewRun(entry, opener) {
     viewOpener = opener;
@@ -385,7 +384,6 @@
             <li class="sub">{copy.panel.noRuns}</li>
           {:else}
             {#each recent as entry (entry.id)}
-              {@const usage = entry.usage ? taskUsageSummary(entry.usage) : null}
               <li class="run">
                 <div class="run-line">
                   <RoutineIcon name={RUN_ICONS[entry.outcome]} />
@@ -396,10 +394,7 @@
                   {:else}
                     <span class="run-what">{outcomeWords(entry)}</span>
                   {/if}
-                  {#if usage}
-                    <span class="usage" title={usage.detail.length ? formatTaskUsageDetail(usage, $locale, usageCopy) : undefined}
-                      >{formatTaskUsage(usage, $locale, usageCopy)}</span>
-                  {/if}
+                  {#if entry.usage}<span class="usage">{formatRunUsage(entry.usage, $locale)}</span>{/if}
                   <time class="when" datetime={entry.createdAt}>{instantWords(entry.createdAt, $locale, routine.timezone)}</time>
                   {#if entry.runId}
                     <Button class="run-details" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.details.open} title={copy.details.open}
