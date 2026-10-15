@@ -64,11 +64,6 @@
     open = routineId;
   }
 
-  function close(event) {
-    event?.preventDefault();
-    dialog?.close();
-    onclose();
-  }
 </script>
 
 {#if opened}
@@ -85,7 +80,7 @@
   />
 {:else}
   <RoutineModal bind:dialog class="routine-list" size="md" open title={fill(copy.list.title, { team: teamName })}
-    oncancel={close} onclose={close} onopen={focusList}>
+    {onclose} onopen={focusList}>
     <div class="body">
       {#if failed}
         <div class="failed">

@@ -22,7 +22,6 @@
   let binding = $derived(runBinding(entry.routineId, entry.detail.plan ?? null));
 
   const id = $props.id();
-  let dialog = $state();
   let diagnostics = $state(null);
   let error = $state('');
 
@@ -36,14 +35,9 @@
     return () => { current = false; };
   });
 
-  function close(event) {
-    event?.preventDefault();
-    dialog?.close();
-    onclose();
-  }
 </script>
 
-<RoutineModal bind:dialog class="routine-run-details" size="md" title={copy.open} oncancel={close} onclose={close}>
+<RoutineModal class="routine-run-details" size="md" title={copy.open} {onclose}>
   <div class="content">
     <p class="muted">{copy.lead}</p>
     <section class="records" aria-labelledby={`${id}-steps`}>

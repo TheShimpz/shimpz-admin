@@ -8,6 +8,7 @@
   // `onback` adds a Back control before the title; `tag` renders beside it; `closable` keeps the Close control. `open`
   // leaves the frame open below its header: no side or bottom edges, so the content draws its own. The modal opens as
   // soon as it mounts, then `onopen` may place focus. `full` fills the whole viewport, for content read at length.
+  // Close and, unless `oncancel` handles it, Escape close the modal, then `onclose` hears that it closed.
   let {
     dialog = $bindable(),
     class: className = '',
@@ -18,7 +19,7 @@
     full = false,
     closable = true,
     onback = null,
-    oncancel,
+    oncancel = close,
     onclose,
     onopen = null,
     tag,
@@ -27,6 +28,12 @@
 
   const id = $props.id();
   let copy = $derived($t('routine.list'));
+
+  function close(event) {
+    event?.preventDefault();
+    dialog?.close();
+    onclose();
+  }
 
   $effect(() => {
     if (dialog && !dialog.open) {
@@ -51,7 +58,7 @@
         {@render tag?.()}
       </div>
       {#if closable}
-        <Button class="close" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.close} title={copy.close} onclick={onclose}>
+        <Button class="close" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.close} title={copy.close} onclick={close}>
           <RoutineIcon name="close" />
         </Button>
       {/if}

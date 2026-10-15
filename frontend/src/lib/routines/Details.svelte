@@ -257,8 +257,7 @@
 
   // Escape leaves the confirmation for the panel, and does nothing while the deletion is being confirmed; from the
   // panel it goes back to the list it was opened from, if any, or closes it.
-  function cancel(event) {
-    if (!confirming) return onback ? back(event) : close(event);
+  function stay(event) {
     event?.preventDefault();
     if (!deleting) void keep();
   }
@@ -280,12 +279,6 @@
     document.getElementById(`${id}-tab-${page}`)?.focus();
   }
 
-  function close(event) {
-    event?.preventDefault();
-    dialog?.close();
-    onclose();
-  }
-
   function back(event) {
     event?.preventDefault();
     dialog?.close();
@@ -297,7 +290,8 @@
   title={confirming ? fill(copy.deletion.title, { name: routine.name }) : routine.name}
   frameClass={[confirming && 'frame--deletion', Boolean(pending) && !confirming && 'frame--deciding']}
   open={Boolean(pending) && !confirming}
-  closable={!confirming} onback={onback && !confirming ? back : null} oncancel={cancel} onclose={close}>
+  closable={!confirming} onback={onback && !confirming ? back : null}
+  oncancel={confirming ? stay : onback ? back : undefined} {onclose}>
     {#snippet tag()}
       {#if !confirming && word}<RoutineTag label={copy.status[word]} icon={STATUS_TAGS[word].icon} tone={STATUS_TAGS[word].tone} />{/if}
     {/snippet}

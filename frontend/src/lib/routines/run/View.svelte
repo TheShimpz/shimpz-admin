@@ -27,7 +27,6 @@
   const WAITING = ['held', 'paused', 'frozen'];
 
   const id = $props.id();
-  let dialog = $state();
   let diagnostics = $state(null);
   let unavailable = $state(false);
   let copied = $state('');
@@ -67,14 +66,9 @@
     copiedTimer = setTimeout(() => (copied = ''), 2_000);
   }
 
-  function close(event) {
-    event?.preventDefault();
-    dialog?.close();
-    onclose();
-  }
 </script>
 
-<RoutineModal bind:dialog class="routine-run-view" full title={entry.name} oncancel={close} onclose={close}>
+<RoutineModal class="routine-run-view" full title={entry.name} {onclose}>
   {#snippet tag()}
     <RoutineTag {label} tone={badge.tone} icon={badge.icon} />
   {/snippet}
