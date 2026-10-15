@@ -131,17 +131,17 @@ class RoutineAnswerTests(unittest.TestCase):
             "file": disclosed,
         }
         with mock.patch.object(transport, "call", return_value=transport.TeamResponse(200, filed)):
-            self.assertEqual(answer.open_challenge("team_1", RUN, {"locale": "pt"}), manage._INVALID)
+            self.assertEqual(answer.open_challenge("team_1", RUN, {"locale": "pt"}), manage.INVALID)
 
         # A run's card shows no input rows (ADR-0101 §6).
         refused = {**_response(approval, input=INPUT, **localization(rendered_for(approval), "pt")), "run_id": RUN}
         with mock.patch.object(transport, "call", return_value=transport.TeamResponse(200, refused)):
-            self.assertEqual(answer.open_challenge("team_1", RUN, {"locale": "pt"}), manage._INVALID)
+            self.assertEqual(answer.open_challenge("team_1", RUN, {"locale": "pt"}), manage.INVALID)
 
         # A challenge rendered in another language than the opening named is refused and never remembered.
         with mock.patch.object(transport, "call", return_value=transport.TeamResponse(200, body)):
             refused = answer.open_challenge("team_1", RUN, {"locale": "de"})
-        self.assertEqual(refused, manage._INVALID)
+        self.assertEqual(refused, manage.INVALID)
 
     def test_a_denial_ends_the_run_and_a_password_is_verified_here(self) -> None:
         self.open()

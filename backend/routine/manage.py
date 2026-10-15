@@ -16,12 +16,12 @@ from protocol.http.v1 import routine_notice as routine_notice_contract
 from protocol.http.v1 import routine_proposal as routine_proposal_contract
 from protocol.http.v1 import routine_run as routine_run_contract
 
-_INVALID = transport.TeamResponse(HTTPStatus.BAD_GATEWAY, {"code": "routine-response-invalid"})
+INVALID = transport.TeamResponse(HTTPStatus.BAD_GATEWAY, {"code": "routine-response-invalid"})
 # A path count in its one canonical decimal form, as Team reads it.
 _COUNT_RE = re.compile(r"(?:0|[1-9][0-9]{0,9})\Z")
 
 
-def _id(value: object, name: str) -> str:
+def canonical_id(value: object, name: str) -> str:
     if not isinstance(value, str) or routine_contract.ROUTINE_ID_RE.fullmatch(value) is None:
         raise transport.TeamRequestError(f"{name} is invalid")
     return value
@@ -34,7 +34,7 @@ def _count(value: object, name: str, minimum: int, bound: int) -> int:
     return int(value)
 
 
-def _projected(
+def projected(
     response: transport.TeamResponse, admit: Callable[[dict[str, object]], dict[str, object] | None]
 ) -> transport.TeamResponse:
     """Team's answer in its closed view, or an error that carries only a safe code."""
@@ -46,9 +46,9 @@ def _projected(
         return transport.TeamResponse(status, {"code": code if safe else "routine-request-failed"})
     trace_id = body.pop("trace_id", None)
     if not transport.is_trace_id(trace_id):
-        return _INVALID
+        return INVALID
     admitted = admit(body)
-    return _INVALID if admitted is None else transport.TeamResponse(response.status, admitted)
+    return INVALID if admitted is None else transport.TeamResponse(response.status, admitted)
 
 
 def _exact(fields: dict[str, Callable[[object], bool]]) -> Callable[[dict[str, object]], dict[str, object] | None]:
@@ -91,19 +91,19 @@ def list_routines(team_id: object) -> transport.TeamResponse:
             routine_notice_contract.canonical_incident_view, routine_notice_contract.MAX_UNRESOLVED_INCIDENTS
         ),
     }
-    return _projected(response, _exact(fields))
+    return projected(response, _exact(fields))
 
 
 def deletion_subject(team_id: object, routine_id: object) -> str:
     """The one exact operation a Supervisor confirms before Admin asks Team to delete this Routine (ADR-0051)."""
-    return f"routine-delete:{payloads.canonical_team_id(team_id)}:{_id(routine_id, 'Routine')}"
+    return f"routine-delete:{payloads.canonical_team_id(team_id)}:{canonical_id(routine_id, 'Routine')}"
 
 
 def delete(team_id: object, routine_id: object) -> transport.TeamResponse:
     canonical = payloads.canonical_team_id(team_id)
-    routine = _id(routine_id, "Routine")
+    routine = canonical_id(routine_id, "Routine")
     response = transport.call("DELETE", f"/v1/teams/{canonical}/routines/{routine}")
-    return _projected(response, _deleted(canonical, routine))
+    return projected(response, _deleted(canonical, routine))
 
 
 def _bound(admit: Callable[[object], dict[str, object] | None], **expected: object):
@@ -118,32 +118,31 @@ def _bound(admit: Callable[[object], dict[str, object] | None], **expected: obje
     return bound
 
 
-def open_card(team_id: object, incident_id: object) -> transport.TeamResponse:
+def open_card(team_id: object, run_id: object) -> transport.TeamResponse:
     """Open a held run's recovery card for the authenticated person (ADR-0092 section 7)."""
     canonical = payloads.canonical_team_id(team_id)
-    incident = _id(incident_id, "Routine incident")
-    response = transport.call("POST", f"/v1/teams/{canonical}/routines/incidents/{incident}/card", {})
-    return _projected(response, _bound(routine_run_contract.canonical_card, team_id=canonical, incident_id=incident))
+    run = canonical_id(run_id, "Routine run")
+    response = transport.call("POST", f"/v1/teams/{canonical}/routines/incidents/{run}/card", {})
+    return projected(response, _bound(routine_run_contract.canonical_card, team_id=canonical, run_id=run))
 
 
-def answer_card(team_id: object, incident_id: object, body: object) -> transport.TeamResponse:
-    """Answer one open recovery card once with Rodar; Excluir is the Routine's confirmed deletion.
+def answer_card(team_id: object, run_id: object, body: object) -> transport.TeamResponse:
+    """Answer one open recovery card once with Rodar, its tag alone; Excluir is the Routine's confirmed deletion.
 
     Rodar runs no model, so it carries no model credential.
     """
     canonical = payloads.canonical_team_id(team_id)
-    incident = _id(incident_id, "Routine incident")
+    run = canonical_id(run_id, "Routine run")
     answer = routine_run_contract.canonical_card_answer_request(body)
     if answer is None:
         raise transport.TeamRequestError("Routine card answer is invalid")
-    response = transport.call("POST", f"/v1/teams/{canonical}/routines/incidents/{incident}/answer", answer)
-    admit = _bound(routine_run_contract.canonical_card_answer, team_id=canonical, incident_id=incident)
-    return _projected(response, admit)
+    response = transport.call("POST", f"/v1/teams/{canonical}/routines/incidents/{run}/answer", answer)
+    return projected(response, _bound(routine_run_contract.canonical_card_answer, team_id=canonical, run_id=run))
 
 
 def _proposal(team_id: object, proposal_id: object, method: str, statuses: frozenset[str]) -> transport.TeamResponse:
     canonical = payloads.canonical_team_id(team_id)
-    proposal = _id(proposal_id, "Routine proposal")
+    proposal = canonical_id(proposal_id, "Routine proposal")
     # Confirm sends an empty object; revoke, like a deletion, sends no body.
     body = {} if method == "POST" else None
     response = transport.call(method, f"/v1/teams/{canonical}/routines/proposals/{proposal}", body)
@@ -154,7 +153,7 @@ def _proposal(team_id: object, proposal_id: object, method: str, statuses: froze
         admitted = bound(body)
         return admitted if admitted is not None and admitted["status"] in statuses else None
 
-    return _projected(response, admit)
+    return projected(response, admit)
 
 
 def confirm_proposal(team_id: object, proposal_id: object) -> transport.TeamResponse:
@@ -173,9 +172,9 @@ def revoke_proposal(team_id: object, proposal_id: object) -> transport.TeamRespo
 def diagnostics(team_id: object, run_id: object) -> transport.TeamResponse:
     """One run's execution details (ADR-0092): Team's sanitized diagnostics, which the browser renders only as text."""
     canonical = payloads.canonical_team_id(team_id)
-    run = _id(run_id, "Routine run")
+    run = canonical_id(run_id, "Routine run")
     response = transport.call("GET", f"/v1/teams/{canonical}/routines/runs/{run}/diagnostics")
-    return _projected(response, _bound(routine_run_contract.canonical_diagnostics, team_id=canonical, run_id=run))
+    return projected(response, _bound(routine_run_contract.canonical_diagnostics, team_id=canonical, run_id=run))
 
 
 def plan_steps(team_id: object, routine_id: object, revision: object, offset: object) -> transport.TeamResponse:
@@ -184,12 +183,12 @@ def plan_steps(team_id: object, routine_id: object, revision: object, offset: ob
     Team refuses a revision that is no longer current, so the browser never combines two revisions' steps.
     """
     canonical = payloads.canonical_team_id(team_id)
-    routine = _id(routine_id, "Routine")
+    routine = canonical_id(routine_id, "Routine")
     number = _count(revision, "Routine revision", 1, 2**31)
     start = _count(offset, "Routine step offset", 0, routine_contract.MAX_ROUTINE_STEPS)
     response = transport.call("GET", f"/v1/teams/{canonical}/routines/{routine}/revisions/{number}/steps/{start}")
     admit = _bound(routine_contract.canonical_page, routine_id=routine, revision=number, offset=start)
-    return _projected(response, admit)
+    return projected(response, admit)
 
 
 def run_steps(team_id: object, run_id: object, snapshot: object, offset: object) -> transport.TeamResponse:
@@ -199,7 +198,7 @@ def run_steps(team_id: object, run_id: object, snapshot: object, offset: object)
     the snapshot asked for, and Team refuses one whose records changed since.
     """
     canonical = payloads.canonical_team_id(team_id)
-    run = _id(run_id, "Routine run")
+    run = canonical_id(run_id, "Routine run")
     if snapshot != "latest" and (
         not isinstance(snapshot, str) or routine_run_contract.SNAPSHOT_RE.fullmatch(snapshot) is None
     ):
@@ -214,12 +213,12 @@ def run_steps(team_id: object, run_id: object, snapshot: object, offset: object)
         page = bound(body)
         return page if page is not None and snapshot in ("latest", page["snapshot"]) else None
 
-    return _projected(response, admit)
+    return projected(response, admit)
 
 
 def _set_paused(team_id: object, routine_id: object, paused: bool) -> transport.TeamResponse:
     canonical = payloads.canonical_team_id(team_id)
-    routine = _id(routine_id, "Routine")
+    routine = canonical_id(routine_id, "Routine")
     action = "pause" if paused else "resume"
     response = transport.call("POST", f"/v1/teams/{canonical}/routines/{routine}/{action}", {})
     fields = {
@@ -227,7 +226,7 @@ def _set_paused(team_id: object, routine_id: object, paused: bool) -> transport.
         "routine_id": lambda value: value == routine,
         "paused": lambda value: value is paused,
     }
-    return _projected(response, _exact(fields))
+    return projected(response, _exact(fields))
 
 
 def resume(team_id: object, routine_id: object) -> transport.TeamResponse:

@@ -84,8 +84,8 @@ SAMPLES = {
     "routines.plan_steps": {"team_id": "team_1", "routine_id": ROUTINE, "revision": "2", "offset": "0"},
     "routines.run_steps": {"team_id": "team_1", "run_id": RUN, "snapshot": "latest", "offset": "0"},
     "routines.diagnostics": {"team_id": "team_1", "run_id": RUN},
-    "routines.card": {"team_id": "team_1", "incident_id": ROUTINE},
-    "routines.card_answer": {"team_id": "team_1", "incident_id": ROUTINE, "body": {"nonce": NONCE, "choice": "run"}},
+    "routines.card": {"team_id": "team_1", "run_id": ROUTINE},
+    "routines.card_answer": {"team_id": "team_1", "run_id": ROUTINE, "body": {"tag": "e" * 64}},
     "routines.challenge": {"team_id": "team_1", "run_id": RUN, "body": {"locale": "en"}},
     "routines.human": {
         "team_id": "team_1",

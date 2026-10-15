@@ -19,8 +19,8 @@ VECTORS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text(
 ROUTINE = VECTORS["routine"]["valid"][0]
 RUN = VECTORS["run"]["valid"][1]
 INCIDENT = VECTORS["incident"]["valid"][0]
-CARD = {**VECTORS["card"]["valid"][0], "incident_id": "c" * 32}
-ANSWERED = {**VECTORS["card_answer"]["valid"][0], "incident_id": "c" * 32}
+CARD = {**VECTORS["card"]["valid"][0], "run_id": "c" * 32}
+ANSWERED = {**VECTORS["card_answer"]["valid"][0], "run_id": "c" * 32}
 PAGE = VECTORS["page"]["valid"][2]
 RUN_STEPS = VECTORS["run_steps"]["valid"][0]
 DIAGNOSTICS = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["routine_diagnostics"]["valid"]
@@ -103,21 +103,21 @@ class RoutineManageTests(unittest.TestCase):
                 response = manage.delete("team_1", ID)
                 self.assertEqual((response.status, response.body), (expected[0], {"code": expected[1]}))
 
-    def test_a_card_and_its_answer_are_admitted_only_for_the_team_and_incident_asked_for(self) -> None:
-        # A recovery card and its answer are admitted only for exactly the Team and incident asked for.
+    def test_a_card_and_its_answer_are_admitted_only_for_the_team_and_run_asked_for(self) -> None:
+        # A recovery card and its answer are admitted only for exactly the Team and held run asked for.
         with self.call(answer(CARD)) as call:
             self.assertEqual(manage.open_card("team_1", ID).body, CARD)
         call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/incidents/{ID}/card", {})
-        for foreign in ({**CARD, "incident_id": "d" * 32}, {**CARD, "team_id": "team_2"}, {**CARD, "tag": "0" * 32}):
+        for foreign in ({**CARD, "run_id": "d" * 32}, {**CARD, "team_id": "team_2"}, {**CARD, "tag": "0" * 32}):
             with self.subTest(card=foreign), self.call(answer(foreign)):
                 self.assertEqual(manage.open_card("team_1", ID).status, 502)
         # Rodar runs no model, so it never carries the model credential.
-        chosen = {"tag": CARD["tag"], "choice": "run"}
+        chosen = {"tag": CARD["tag"]}
         with self.call(answer(ANSWERED)) as call:
             self.assertEqual(manage.answer_card("team_1", ID, chosen).body, ANSWERED)
         call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/incidents/{ID}/answer", chosen)
-        # An answer whose status does not match its choice is never admitted.
-        with self.call(answer({**ANSWERED, "status": "other"})):
+        # An answer for another held run is never admitted.
+        with self.call(answer({**ANSWERED, "run_id": "d" * 32})):
             self.assertEqual(manage.answer_card("team_1", ID, chosen).status, 502)
 
     def test_a_card_proposal_is_confirmed_or_revoked_only_for_exactly_itself(self) -> None:

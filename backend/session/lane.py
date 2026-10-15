@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 LANE = BoundedThreadPoolExecutor(max_workers=4, max_outstanding=32, thread_name_prefix="shimpz-session-call")
 # Assistant installs run for minutes; their own lane keeps them from holding every read behind them.
 INSTALL_LANE = BoundedThreadPoolExecutor(max_workers=2, max_outstanding=4, thread_name_prefix="shimpz-session-install")
-# A held Routine run resumes for up to its active time; its own lane keeps it from holding reads or installs.
+# A frozen Routine run resumes for up to its active time; its own lane keeps it from holding reads or installs.
 RESUME_LANE = BoundedThreadPoolExecutor(max_workers=4, max_outstanding=8, thread_name_prefix="shimpz-session-resume")
 FULL = (429, {"detail": "Admin session call capacity reached"})
 SOCKET_UNAVAILABLE = 1013

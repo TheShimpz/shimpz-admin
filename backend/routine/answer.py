@@ -43,7 +43,7 @@ Authenticate = Callable[[str, str], Awaitable[human.AuthenticationResult]]
 
 def _run(team_id: object, run_id: object) -> tuple[str, str]:
     canonical = payloads.canonical_team_id(team_id)
-    return canonical, manage._id(run_id, "Routine run")
+    return canonical, manage.canonical_id(run_id, "Routine run")
 
 
 def _store(key: tuple[str, str, str], deadline: float, request: dict[str, object]) -> None:
@@ -135,23 +135,23 @@ def open_challenge(team_id: object, run_id: object, body: object) -> transport.T
 def _open(canonical: str, run: str, opening: dict[str, str]) -> transport.TeamResponse:
     response = transport.call("POST", f"/v1/teams/{canonical}/routines/runs/{run}/challenge", opening)
     if response.status != 200 or not isinstance(response.body, dict):
-        return manage._projected(response, lambda _body: None)
+        return manage.projected(response, lambda _body: None)
     body = dict(response.body)
     if set(body) == {"team_id", "run_id", "status", "trace_id"} and body["status"] == "integrations-required":
-        return manage._projected(
+        return manage.projected(
             response, lambda value: value if (value["team_id"], value["run_id"]) == (canonical, run) else None
         )
     if body.pop("run_id", None) != run:
-        return manage._INVALID
+        return manage.INVALID
     try:
         projected = human.project(body, canonical)
     except human.HumanChallengeError:
-        return manage._INVALID
+        return manage.INVALID
     # A Routine holds no file grant, so its challenge never discloses one (ADR-0093); a run's card carries no input rows
     # (ADR-0101 §6).
     if "file" in projected or "input" in projected or projected["locale"] != opening["locale"]:
         # Team renders the opening in exactly the language it names (ADR-0091); any other copy is not this opening.
-        return manage._INVALID
+        return manage.INVALID
     deadline = time.monotonic() + projected["expires_in"]
     _remember((canonical, run, projected["challenge_id"]), deadline, projected["request"])
     challenge = {
@@ -188,7 +188,7 @@ def _resumed(response: transport.TeamResponse, canonical: str, run: str) -> tran
         )
         return value if valid else None
 
-    return manage._projected(response, admit)
+    return manage.projected(response, admit)
 
 
 def _resume(canonical: str, run: str, action: str, payload: dict[str, object], assurance) -> transport.TeamResponse:

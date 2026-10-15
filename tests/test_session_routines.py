@@ -64,7 +64,7 @@ class RoutineMethodCase(SessionSocketCase):
 
 class RoutineOperationTests(RoutineMethodCase):
     def test_each_method_reaches_its_routine_operation_with_its_arguments(self) -> None:
-        chosen = {"nonce": "e" * 32, "choice": "run"}
+        chosen = {"tag": "e" * 64}
         cases = (
             ("routines.list", {"team_id": "team_1"}, "list_routines", ("team_1",)),
             ("routines.pause", {"team_id": "team_1", "routine_id": ROUTINE}, "pause", ("team_1", ROUTINE)),
@@ -82,10 +82,10 @@ class RoutineOperationTests(RoutineMethodCase):
                 "run_steps",
                 ("team_1", RUN, "latest", "0"),
             ),
-            ("routines.card", {"team_id": "team_1", "incident_id": ROUTINE}, "open_card", ("team_1", ROUTINE)),
+            ("routines.card", {"team_id": "team_1", "run_id": ROUTINE}, "open_card", ("team_1", ROUTINE)),
             (
                 "routines.card_answer",
-                {"team_id": "team_1", "incident_id": ROUTINE, "body": chosen},
+                {"team_id": "team_1", "run_id": ROUTINE, "body": chosen},
                 "answer_card",
                 ("team_1", ROUTINE, chosen),
             ),
@@ -120,7 +120,7 @@ class RoutineOperationTests(RoutineMethodCase):
                 ("routines.pause", {"team_id": "team_1", "routine_id": "x"}),
                 ("routines.plan_steps", {"team_id": "team_1", "routine_id": ROUTINE, "revision": "02", "offset": "0"}),
                 ("routines.run_steps", {"team_id": "team_1", "run_id": RUN, "snapshot": "x", "offset": "0"}),
-                ("routines.card_answer", {"team_id": "team_1", "incident_id": ROUTINE, "body": {"choice": "x"}}),
+                ("routines.card_answer", {"team_id": "team_1", "run_id": ROUTINE, "body": {"tag": "x"}}),
                 ("routines.challenge", {"team_id": "team_1", "run_id": RUN, "body": {"locale": "it"}}),
                 ("routines.human", {"team_id": "team_1", "run_id": RUN, "body": {"type": "human-response"}}),
             )
@@ -143,10 +143,9 @@ class RoutineTopicTests(RoutineMethodCase):
         changes = {
             "routines.pause": ("pause", {"team_id": "team_1", "routine_id": ROUTINE}),
             "routines.resume": ("resume", {"team_id": "team_1", "routine_id": ROUTINE}),
-            "routines.card": ("open_card", {"team_id": "team_1", "incident_id": ROUTINE}),
             "routines.card_answer": (
                 "answer_card",
-                {"team_id": "team_1", "incident_id": ROUTINE, "body": {"nonce": "e" * 32, "choice": "run"}},
+                {"team_id": "team_1", "run_id": ROUTINE, "body": {"tag": "e" * 64}},
             ),
             "routines.proposal_confirm": ("confirm_proposal", {"team_id": "team_1", "proposal_id": ROUTINE}),
             "routines.proposal_revoke": ("revoke_proposal", {"team_id": "team_1", "proposal_id": ROUTINE}),
@@ -160,11 +159,14 @@ class RoutineTopicTests(RoutineMethodCase):
                 ("routines.integrations", {"team_id": "team_1", "run_id": RUN}), topics=(topic,)
             )
         self.assertEqual(raised, {topic})
-        with mock.patch.object(self.manage, "diagnostics", return_value=self.ok):
-            _results, raised = self.results(
-                ("routines.diagnostics", {"team_id": "team_1", "run_id": RUN}), topics=(topic,)
-            )
-        self.assertEqual(raised, set())
+        # Reads, opening a recovery card included, raise nothing.
+        for method, operation, params in (
+            ("routines.diagnostics", "diagnostics", {"team_id": "team_1", "run_id": RUN}),
+            ("routines.card", "open_card", {"team_id": "team_1", "run_id": ROUTINE}),
+        ):
+            with self.subTest(method=method), mock.patch.object(self.manage, operation, return_value=self.ok):
+                _results, raised = self.results((method, params), topics=(topic,))
+            self.assertEqual(raised, set())
 
     def test_a_change_that_completes_after_its_socket_closed_still_tells_the_reopened_page(self) -> None:
         started, release = threading.Event(), threading.Event()
@@ -194,7 +196,7 @@ class RoutineTopicTests(RoutineMethodCase):
         scheduler = mock.Mock()
         self.admin_app.app.state.routine_scheduler = scheduler
         self.addCleanup(delattr, self.admin_app.app.state, "routine_scheduler")
-        card = {"team_id": "team_1", "incident_id": ROUTINE, "body": {"nonce": "e" * 32, "choice": "run"}}
+        card = {"team_id": "team_1", "run_id": ROUTINE, "body": {"tag": "e" * 64}}
         confirm = {"team_id": "team_1", "proposal_id": ROUTINE}
         stale = self.transport.TeamResponse(409, {"code": "routine-card-stale"})
         with (
@@ -224,7 +226,7 @@ class RoutineTopicTests(RoutineMethodCase):
         self.assertEqual((result["status"], result["body"]), (200, answered))
 
     def test_an_admin_without_a_running_scheduler_still_answers(self) -> None:
-        card = {"team_id": "team_1", "incident_id": ROUTINE, "body": {"nonce": "e" * 32, "choice": "run"}}
+        card = {"team_id": "team_1", "run_id": ROUTINE, "body": {"tag": "e" * 64}}
         with mock.patch.object(self.manage, "answer_card", return_value=self.ok):
             (result,), _raised = self.results(("routines.card_answer", card))
         self.assertEqual(result["status"], 200)

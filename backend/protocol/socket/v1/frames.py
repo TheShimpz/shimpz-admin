@@ -81,8 +81,8 @@ METHODS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "routines.plan_steps": (frozenset({"team_id", "routine_id", "revision", "offset"}), _NONE),
     "routines.run_steps": (frozenset({"team_id", "run_id", "snapshot", "offset"}), _NONE),
     "routines.diagnostics": (frozenset({"team_id", "run_id"}), _NONE),
-    "routines.card": (frozenset({"team_id", "incident_id"}), _NONE),
-    "routines.card_answer": (frozenset({"team_id", "incident_id", "body"}), _NONE),
+    "routines.card": (frozenset({"team_id", "run_id"}), _NONE),
+    "routines.card_answer": (frozenset({"team_id", "run_id", "body"}), _NONE),
     "routines.challenge": (frozenset({"team_id", "run_id", "body"}), _NONE),
     "routines.human": (frozenset({"team_id", "run_id", "body"}), _NONE),
     "routines.integrations": (frozenset({"team_id", "run_id"}), _NONE),
@@ -126,7 +126,7 @@ BODY_BYTES = {
     "supervisor_key.rotate": 8 * KIB,
 }
 # A long call keeps its result pending while it runs and says once, with `progress`, that it started: an Assistant
-# install, and a held Routine run resuming after a human answer or a connected Integration.
+# install, and a frozen Routine run resuming after a human answer or a connected Integration.
 LONG_METHODS = frozenset({"assistants.install", "assistants.install_local", "routines.human", "routines.integrations"})
 
 

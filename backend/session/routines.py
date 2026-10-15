@@ -3,7 +3,7 @@
 Each method is the backend function its route ran, with the same validation, Team identity checks, and answers, on a
 lane worker that checks the socket's Origin and session again when its turn comes.
 
-Every Routine change Admin completes raises the Team's `routines` topic. A held run that resumes after a human answer
+Every Routine change Admin completes raises the Team's `routines` topic. A frozen run that resumes after a human answer
 or a connected Integration is a long call on its own lane: it says once that it started and answers when Team does,
 and a lost socket loses its result. A human answer is authenticated by chat's own Action-password authority, so both
 share one lockout. Deleting a Routine is a confirmed operation bound to that exact Routine.
@@ -118,7 +118,7 @@ async def _delete(socket: SessionSocket, params: dict[str, object]) -> Answer:
     return await stepup.complete(socket, subject, params["body"], delete)
 
 
-# A held run resuming: a long call on the Routine resume lane, never replayed.
+# A frozen run resuming: a long call on the Routine resume lane, never replayed.
 
 
 def _started(socket: SessionSocket, call_id: str) -> Callable[[], None]:
@@ -148,7 +148,7 @@ def _answered(socket: SessionSocket, call_id: str, params: dict[str, object]) ->
 
 
 async def human(socket: SessionSocket, call_id: str, params: dict[str, object]) -> Answer:
-    """Answer a held run's open challenge with chat's exact human-response frame; the run then resumes or ends."""
+    """Answer a frozen run's open challenge with chat's exact human-response frame; the run then resumes or ends."""
     return await lane.run(socket, _answered, socket, call_id, params, executor=lane.RESUME_LANE)
 
 
@@ -158,7 +158,7 @@ def _resumed(socket: SessionSocket, params: dict[str, object]) -> transport.Team
 
 
 async def integrations(socket: SessionSocket, call_id: str, params: dict[str, object]) -> Answer:
-    """After the Integration is connected, the held run continues from where it froze."""
+    """After the Integration is connected, the frozen run continues from where it froze."""
     started = _started(socket, call_id)
     return await lane.run(socket, _resumed, socket, params, executor=lane.RESUME_LANE, started=started)
 
@@ -172,9 +172,10 @@ METHODS = {
     "routines.resume": _change(manage, "resume", "team_id", "routine_id"),
     "routines.deletion": _deletion,
     "routines.delete": _delete,
-    "routines.card": _change(manage, "open_card", "team_id", "incident_id"),
+    # Opening a recovery card only reads the held run's state.
+    "routines.card": _read("open_card", "team_id", "run_id"),
     # Rodar makes the Routine due again.
-    "routines.card_answer": _change(manage, "answer_card", "team_id", "incident_id", "body", wake=True),
+    "routines.card_answer": _change(manage, "answer_card", "team_id", "run_id", "body", wake=True),
     "routines.challenge": _change(answer, "open_challenge", "team_id", "run_id", "body"),
     # Criar rotina: a created Routine is due soon.
     "routines.proposal_confirm": _proposal("confirm_proposal", wake=True),
