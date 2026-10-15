@@ -151,19 +151,6 @@ export default {
     progressStagesExecuted: 'المراحل المسجّلة: {count}',
     progress: {
       awaiting: 'في انتظار التنفيذ',
-      origins: {
-        admin: 'Admin',
-        team: 'الفريق',
-      },
-      phases: {
-        'admin-preparation': 'إعداد الدور',
-        'reply-validation': 'التحقق من الرد',
-        'team-context': 'سياق الفريق',
-        model: 'استدلال النموذج',
-        'action-preparation': 'إعداد Actions',
-        action: 'Action {index} من {total}',
-        'action-delivery': 'تأكيد تسليم Actions',
-      },
       narrative: {
         adminPreparation: 'يُجهّز Admin طلبك لإرساله إليّ',
         replyValidation: 'يراجع Admin ردّي قبل عرضه عليك',

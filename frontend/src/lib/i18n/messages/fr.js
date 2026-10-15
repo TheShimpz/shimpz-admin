@@ -151,19 +151,6 @@ export default {
     progressStagesExecuted: 'Étapes enregistrées : {count}',
     progress: {
       awaiting: 'En attente de l’exécution',
-      origins: {
-        admin: 'Admin',
-        team: 'Équipe',
-      },
-      phases: {
-        'admin-preparation': 'Préparation du tour',
-        'reply-validation': 'Validation de la réponse',
-        'team-context': 'Contexte de l’équipe',
-        model: 'Raisonnement du modèle',
-        'action-preparation': 'Préparation des Actions',
-        action: 'Action {index} sur {total}',
-        'action-delivery': 'Confirmation de livraison des Actions',
-      },
       narrative: {
         adminPreparation: 'L’Admin prépare votre demande pour me l’envoyer',
         replyValidation: 'L’Admin vérifie ma réponse avant de vous l’afficher',

@@ -151,19 +151,6 @@ export default {
     progressStagesExecuted: '已记录的执行阶段：{count}',
     progress: {
       awaiting: '等待执行',
-      origins: {
-        admin: 'Admin',
-        team: '团队',
-      },
-      phases: {
-        'admin-preparation': '回合准备',
-        'reply-validation': '响应验证',
-        'team-context': '团队上下文',
-        model: '模型推理',
-        'action-preparation': 'Action 准备',
-        action: 'Action {index}/{total}',
-        'action-delivery': 'Action 交付确认',
-      },
       narrative: {
         adminPreparation: 'Admin 准备要发给我的请求',
         replyValidation: 'Admin 在向你展示前检查我的回复',

@@ -151,19 +151,6 @@ export default {
     progressStagesExecuted: '記録された実行ステップ：{count}',
     progress: {
       awaiting: '実行を待機中',
-      origins: {
-        admin: 'Admin',
-        team: 'チーム',
-      },
-      phases: {
-        'admin-preparation': 'ターンの準備',
-        'reply-validation': '応答の検証',
-        'team-context': 'チームコンテキスト',
-        model: 'モデル推論',
-        'action-preparation': 'Action の準備',
-        action: 'Action {index}/{total}',
-        'action-delivery': 'Action 配信の確認',
-      },
       narrative: {
         adminPreparation: 'Admin があなたの依頼を私に送る準備をします',
         replyValidation: '表示する前に Admin が私の回答を確認します',
