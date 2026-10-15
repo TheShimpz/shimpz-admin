@@ -1,16 +1,15 @@
 <script>
   import { get } from 'svelte/store';
 
-  import { call, commandsReady, outcomeUnknown } from '#lib/session/socket.js';
+  import { call, commandsReady } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n/index.js';
-  import { fill } from '#lib/i18n/fill.js';
-  import { authenticateWithPasskey, passkeyFailure } from '#lib/auth/passkey.js';
+  import { authenticateWithPasskey } from '#lib/auth/passkey.js';
+  import { secondFactorRefusal } from '#lib/auth/refusal.js';
   import SecondFactor from '#lib/auth/SecondFactor.svelte';
   import { beginRoutineDeletion, deleteRoutine, RoutineError } from '#lib/routines/protocol.js';
   import { routineErrorMessage } from '#lib/routines/words.js';
   import { sessionContext } from '#lib/session/context.js';
-  import { LocalApiError } from '#lib/api.js';
 
   // Deleting one Routine (ADR-0051, ADR-0086): the whole panel is this confirmation. Admin checks the Supervisor
   // password, then one second factor bound to this Routine, and only then asks Team to delete it. A code is the
@@ -47,35 +46,18 @@
   // Each refusal says what to fix where it is fixed; nothing typed is ever echoed back.
   function refused(failure) {
     const reason = failure instanceof RoutineError ? failure.code : '';
-    if (reason === 'password-incorrect') {
-      password = '';
-      passwordError = words.passwordIncorrect;
-      focus('password');
-    } else if (reason === 'code-incorrect') {
-      code = '';
-      codeError = words.codeIncorrect;
-      focus('code');
-    } else if (reason === 'authentication-locked') {
-      error = fill(words.locked, { seconds: failure.retryAfter || 60 });
-    } else if (reason === 'code-locked') {
-      code = '';
-      error = words.codeLocked;
-    } else if (reason === 'authentication-expired') {
-      error = words.expired;
-    } else if (reason === 'passkey-failed' || reason === 'passkey-suspended') {
-      error = words.passkeyFailed;
-    } else if (reason === 'authentication-unavailable' || reason === 'authentication-origin-refused') {
-      error = words.unavailable;
-    } else if (failure instanceof RoutineError) {
-      error = routineErrorMessage(failure, errors);
-    } else if (outcomeUnknown(failure)) {
-      error = $t('shell.outcomeUnknown');
-    } else if (failure instanceof LocalApiError) {
-      // The socket dropped before the request left: nothing was asked, and the panel stays for another try.
-      error = words.unavailable;
-    } else {
-      error = words[passkeyFailure(failure) === 'canceled' ? 'passkeyCanceled' : 'passkeyFailed'];
-    }
+    const shown = secondFactorRefusal(
+      failure,
+      reason,
+      { ...words, outcomeUnknown: $t('shell.outcomeUnknown') },
+      (other) => (other instanceof RoutineError ? routineErrorMessage(other, errors) : null),
+    );
+    if (shown.clear === 'password') password = '';
+    if (shown.clear === 'code') code = '';
+    passwordError = shown.passwordError ?? '';
+    codeError = shown.codeError ?? '';
+    error = shown.error ?? '';
+    if (shown.focus) focus(shown.focus);
   }
 
   async function proof(offer) {

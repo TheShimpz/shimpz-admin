@@ -1,14 +1,14 @@
 <script>
   import { get } from 'svelte/store';
 
-  import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
+  import { commandsReady } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n/index.js';
-  import { authenticateWithPasskey, passkeyFailure } from '#lib/auth/passkey.js';
+  import { authenticateWithPasskey } from '#lib/auth/passkey.js';
+  import { secondFactorRefusal } from '#lib/auth/refusal.js';
   import SecondFactor from '#lib/auth/SecondFactor.svelte';
   import { SecurityError } from '#lib/auth/security.js';
   import { sessionContext } from '#lib/session/context.js';
-  import { LocalApiError } from '#lib/api.js';
 
   // A confirmed Supervisor operation (ADR-0051), such as replacing the recovery codes or the signing key: the Supervisor
   // password, then one second factor bound to it. A code is the default; a passkey is offered beside it only where this
@@ -53,34 +53,21 @@
   // Each refusal says what to fix where it is fixed; nothing typed is ever echoed back.
   function refused(failure) {
     const reason = failure instanceof SecurityError ? failure.code : '';
-    if (reason === 'password-incorrect') {
-      password = '';
-      passwordError = $t('security.passwordIncorrect');
-      focus('password');
-    } else if (reason === 'code-incorrect') {
-      code = '';
-      codeError = $t('security.codeIncorrect');
-      focus('code');
-    } else if (reason === 'authentication-locked') {
-      error = $t('security.locked', { seconds: failure.retryAfter || 60 });
-    } else if (reason === 'code-locked') {
-      code = '';
-      error = $t('security.codeLocked');
-    } else if (reason === 'authentication-expired') {
-      error = expired;
-    } else if (Object.hasOwn(failures, reason)) {
-      error = failures[reason];
-    } else if (reason === 'passkey-failed' || reason === 'passkey-suspended') {
-      error = $t('security.passkeyFailed');
-    } else if (failure instanceof SecurityError) {
-      error = $t('security.unavailable');
-    } else if (outcomeUnknown(failure)) {
-      error = $t('shell.outcomeUnknown');
-    } else if (failure instanceof LocalApiError) {
-      error = $t('security.unavailable');
-    } else {
-      error = $t(passkeyFailure(failure) === 'canceled' ? 'security.passkeyCanceled' : 'security.passkeyFailed');
-    }
+    const shown = secondFactorRefusal(
+      failure,
+      reason,
+      { ...$t('security'), expired, outcomeUnknown: $t('shell.outcomeUnknown') },
+      (other) => {
+        if (!(other instanceof SecurityError)) return null;
+        return Object.hasOwn(failures, other.code) ? failures[other.code] : $t('security.unavailable');
+      },
+    );
+    if (shown.clear === 'password') password = '';
+    if (shown.clear === 'code') code = '';
+    passwordError = shown.passwordError ?? '';
+    codeError = shown.codeError ?? '';
+    error = shown.error ?? '';
+    if (shown.focus) focus(shown.focus);
   }
 
   async function proof(offer) {
