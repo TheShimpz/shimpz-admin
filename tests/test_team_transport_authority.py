@@ -89,9 +89,9 @@ class TeamTransportAuthorityTest(unittest.TestCase):
 
     def test_session_is_request_scoped(self) -> None:
         session = "v1:9999999999:0123456789abcdef:" + "a" * 64
-        transport._call("GET", "/v1/teams")
+        transport.call("GET", "/v1/teams")
         with transport.supervisor_session(session, local_identity=self.local_identity):
-            transport._call("GET", "/v1/teams")
+            transport.call("GET", "/v1/teams")
 
         self.assertNotIn(contract.ASSERTION_HEADER, _Connection.requests[0]["headers"])
         self.assertIn(contract.ASSERTION_HEADER, _Connection.requests[1]["headers"])
@@ -124,7 +124,7 @@ class TeamTransportAuthorityTest(unittest.TestCase):
             session,
             local_identity=self.local_identity,
         ):
-            transport._call(
+            transport.call(
                 "POST",
                 "/v1/teams/team_1/chat",
                 {"message": "hello"},
@@ -189,7 +189,7 @@ class TeamTransportAuthorityTest(unittest.TestCase):
             local_identity=self.local_identity,
             authority_kind="host-reset",
         ):
-            transport._call("DELETE", "/v1/space")
+            transport.call("DELETE", "/v1/space")
 
         claims = _claims(_Connection.requests[0])
         self.assertEqual(claims["authority"], "host-reset")
@@ -205,7 +205,7 @@ class TeamTransportAuthorityTest(unittest.TestCase):
             session,
             local_identity=self.local_identity,
         ):
-            transport._call_raw(
+            transport.call_raw(
                 "POST",
                 "/v1/teams/team_1/files",
                 content,
@@ -229,7 +229,7 @@ class TeamTransportAuthorityTest(unittest.TestCase):
         _Response.status = 204
         _Response.body = b""
 
-        response = transport._call(
+        response = transport.call(
             "DELETE",
             "/v1/teams/team_1/assistant-integrations/social-publisher/x-integration",
         )

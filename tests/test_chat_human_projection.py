@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from team import bridge as team
+from team import transport
 from tests.localized_request import localization, localize, reference, rendered_for
 
 from chat import human, local
@@ -180,7 +181,7 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         for kind in sorted(kinds):
             with self.subTest(kind=kind):
                 projected = local._project_pending_challenge(
-                    team.TeamResponse(428, _response(_request(kind))),
+                    transport.TeamResponse(428, _response(_request(kind))),
                     "team_1",
                 )
 
@@ -190,8 +191,8 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         for kind in sorted(TEAM_REFUSED_AUTH_KINDS):
             with self.subTest(kind=kind):
                 self.assertEqual(
-                    local._project_pending_challenge(team.TeamResponse(428, _response(_request(kind))), "team_1"),
-                    team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+                    local._project_pending_challenge(transport.TeamResponse(428, _response(_request(kind))), "team_1"),
+                    transport.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
                 )
                 self.assertNotIn("trace_id", projected.body)
                 self.assertEqual(
@@ -202,13 +203,13 @@ class HumanChallengeProjectionTests(unittest.TestCase):
     def test_a_stored_input_password_request_projects_its_identifier(self) -> None:
         request = _canonical(_request("input:password"))
         stored = _fingerprinted({**request, "stored_input": "exa-api-key"})
-        projected = local._project_pending_challenge(team.TeamResponse(428, _response(stored)), "team_1")
+        projected = local._project_pending_challenge(transport.TeamResponse(428, _response(stored)), "team_1")
         self.assertEqual(projected.status, 428)
         self.assertEqual(projected.body["request"]["stored_input"], "exa-api-key")
         self.assertEqual((projected.body["help"], projected.body["help_url"]), (HELP, HELP_URL))
         self.assertEqual(projected.websocket_event("team_1")["type"], "human-required")
         rejected = local._project_pending_challenge(
-            team.TeamResponse(428, _response({**stored, "stored_input": "Exa_Key"})), "team_1"
+            transport.TeamResponse(428, _response({**stored, "stored_input": "Exa_Key"})), "team_1"
         )
         self.assertEqual(
             rejected.websocket_event("team_1")["detail"],
@@ -223,8 +224,8 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         ):
             with self.subTest(request=invalid):
                 self.assertEqual(
-                    local._project_pending_challenge(team.TeamResponse(428, _response(invalid)), "team_1"),
-                    team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+                    local._project_pending_challenge(transport.TeamResponse(428, _response(invalid)), "team_1"),
+                    transport.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
                 )
 
     def test_purpose_and_a_stored_input_help_project_beside_the_fingerprinted_request(self) -> None:
@@ -233,19 +234,19 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         purpose = "Para trazer as notícias de IA de hoje, preciso pesquisar na web com o Exa."
         help_url = HELP_URL
         projected = local._project_pending_challenge(
-            team.TeamResponse(428, _response(stored, purpose=purpose)),
+            transport.TeamResponse(428, _response(stored, purpose=purpose)),
             "team_1",
         )
         self.assertEqual(projected.status, 428)
         event = projected.websocket_event("team_1")
         self.assertEqual((event["purpose"], event["help"], event["help_url"]), (purpose, HELP, help_url))
         self.assertEqual(event["request"], stored)
-        plain = local._project_pending_challenge(team.TeamResponse(428, _response(_request("approval"))), "team_1")
+        plain = local._project_pending_challenge(transport.TeamResponse(428, _response(_request("approval"))), "team_1")
         self.assertNotIn("purpose", plain.body)
         self.assertNotIn("help_url", plain.body)
         self.assertNotIn("help", plain.body)
         approval = local._project_pending_challenge(
-            team.TeamResponse(428, _response(_request("approval"), purpose=purpose)), "team_1"
+            transport.TeamResponse(428, _response(_request("approval"), purpose=purpose)), "team_1"
         )
         self.assertEqual(approval.body["purpose"], purpose)
         self.assertNotIn("help_url", approval.body)
@@ -270,8 +271,8 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         for body in invalid:
             with self.subTest(body=body):
                 self.assertEqual(
-                    local._project_pending_challenge(team.TeamResponse(428, body), "team_1"),
-                    team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+                    local._project_pending_challenge(transport.TeamResponse(428, body), "team_1"),
+                    transport.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
                 )
 
     def test_an_authorization_projects_the_file_its_approval_delivers_and_nothing_else_does(self) -> None:
@@ -284,10 +285,10 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         }
         for kind in ("approval", "auth:password"):
             projected = local._project_pending_challenge(
-                team.TeamResponse(428, _response(_request(kind), file=disclosed)), "team_1"
+                transport.TeamResponse(428, _response(_request(kind), file=disclosed)), "team_1"
             )
             self.assertEqual(projected.websocket_event("team_1")["file"], disclosed)
-        plain = local._project_pending_challenge(team.TeamResponse(428, _response(_request("approval"))), "team_1")
+        plain = local._project_pending_challenge(transport.TeamResponse(428, _response(_request("approval"))), "team_1")
         self.assertNotIn("file", plain.body)
         for body in (
             _response(_request("approval"), file={**disclosed, "size": 8 * 1024 * 1024 + 1}),
@@ -298,15 +299,15 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         ):
             with self.subTest(body=body):
                 self.assertEqual(
-                    local._project_pending_challenge(team.TeamResponse(428, body), "team_1"),
-                    team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+                    local._project_pending_challenge(transport.TeamResponse(428, body), "team_1"),
+                    transport.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
                 )
 
     def test_a_declared_authorization_may_show_its_input_rows(self) -> None:
         for kind in ("approval", "auth:password"):
             with self.subTest(kind=kind):
                 projected = local._project_pending_challenge(
-                    team.TeamResponse(428, _response(_request(kind), input=INPUT)), "team_1"
+                    transport.TeamResponse(428, _response(_request(kind), input=INPUT)), "team_1"
                 )
                 self.assertEqual(projected.websocket_event("team_1")["input"], INPUT)
         approval = _request("approval")
@@ -321,8 +322,8 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         for body in invalid:
             with self.subTest(body=body):
                 self.assertEqual(
-                    local._project_pending_challenge(team.TeamResponse(428, body), "team_1"),
-                    team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+                    local._project_pending_challenge(transport.TeamResponse(428, body), "team_1"),
+                    transport.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
                 )
 
     def test_rendered_copy_locale_and_pack_project_beside_the_canonical_request(self) -> None:
@@ -350,7 +351,7 @@ class HumanChallengeProjectionTests(unittest.TestCase):
             ],
         }
         body = _response(request, **localization(rendered, "pt"))
-        projected = local._project_pending_challenge(team.TeamResponse(428, body), "team_1")
+        projected = local._project_pending_challenge(transport.TeamResponse(428, body), "team_1")
         event = projected.websocket_event("team_1")
         self.assertEqual(event["request"], request)
         self.assertEqual(event["rendered"], rendered)
@@ -375,8 +376,8 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         for value in invalid:
             with self.subTest(body=value):
                 self.assertEqual(
-                    local._project_pending_challenge(team.TeamResponse(428, value), "team_1"),
-                    team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+                    local._project_pending_challenge(transport.TeamResponse(428, value), "team_1"),
+                    transport.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
                 )
 
     def test_copy_references_admit_only_their_closed_shape_and_parameter_grammar(self) -> None:
@@ -425,7 +426,7 @@ class HumanChallengeProjectionTests(unittest.TestCase):
             ("team-context-changed", "the Team capabilities changed; retry"),
         ):
             with self.subTest(code=code):
-                refused = local._safe_error(team.TeamResponse(409, {"code": code, "detail": "must-not-cross"}))
+                refused = local._safe_error(transport.TeamResponse(409, {"code": code, "detail": "must-not-cross"}))
                 event = refused.websocket_event("team_1")
                 self.assertEqual(event, {"type": "error", "status": 409, "detail": f"{code}: {detail}"})
 
@@ -453,12 +454,12 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         for body in invalid:
             with self.subTest(body=body):
                 projected = local._project_pending_challenge(
-                    team.TeamResponse(428, body),
+                    transport.TeamResponse(428, body),
                     "team_1",
                 )
             self.assertEqual(
                 projected,
-                team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+                transport.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
             )
             self.assertNotIn("must-not-cross", json.dumps(projected.body))
 
@@ -503,9 +504,9 @@ class HumanChallengeProjectionTests(unittest.TestCase):
                     human.project(_response({**request, "fingerprint": fingerprint}), "team_1")
                 self.assertEqual(
                     local._project_pending_challenge(
-                        team.TeamResponse(428, _response({**request, "fingerprint": fingerprint})), "team_1"
+                        transport.TeamResponse(428, _response({**request, "fingerprint": fingerprint})), "team_1"
                     ),
-                    team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+                    transport.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
                 )
         self.assertTrue(human._fingerprint(request, canonical))
 
@@ -522,7 +523,7 @@ class HumanChallengeProjectionTests(unittest.TestCase):
 
     def test_opened_human_is_team_bound_in_the_requested_language_and_none_is_closed(self) -> None:
         request = _request("approval")
-        pending = team.TeamResponse(200, _response(request, **localization(rendered_for(request), "pt")))
+        pending = transport.TeamResponse(200, _response(request, **localization(rendered_for(request), "pt")))
         with mock.patch.object(team, "open_chat_human", return_value=pending) as opened:
             projected = local.open_human("team_1", "pt")
         self.assertEqual((projected.body["status"], projected.body["locale"]), ("human-required", "pt"))
@@ -532,19 +533,19 @@ class HumanChallengeProjectionTests(unittest.TestCase):
         with mock.patch.object(team, "open_chat_human", return_value=pending):
             self.assertEqual(
                 local.open_human("team_1", "de"),
-                team.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
+                transport.TeamResponse(502, {"code": "human-challenge-response-invalid"}),
             )
 
-        none = team.TeamResponse(200, {"team_id": "team_1", "status": "none", "trace_id": TRACE_ID})
+        none = transport.TeamResponse(200, {"team_id": "team_1", "status": "none", "trace_id": TRACE_ID})
         with mock.patch.object(team, "open_chat_human", return_value=none):
             self.assertEqual(
                 local.open_human("team_1", "pt"),
-                team.TeamResponse(200, {"team_id": "team_1", "status": "none"}),
+                transport.TeamResponse(200, {"team_id": "team_1", "status": "none"}),
             )
 
     def test_a_chat_turn_admits_only_a_human_challenge_in_its_interface_language(self) -> None:
         request = _request("approval")
-        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        inference = transport.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
         payload = {
             "message": "Publish",
             "files": [],
@@ -553,7 +554,7 @@ class HumanChallengeProjectionTests(unittest.TestCase):
             "timezone": None,
         }
         for locale, expected in (("pt", 428), ("en", 502)):
-            controller = team.TeamResponse(428, _response(request, **localization(rendered_for(request), locale)))
+            controller = transport.TeamResponse(428, _response(request, **localization(rendered_for(request), locale)))
             with (
                 self.subTest(locale=locale),
                 mock.patch.object(team, "get_inference", return_value=inference),

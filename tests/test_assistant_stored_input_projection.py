@@ -27,7 +27,7 @@ class AssistantStoredInputProjectionTest(unittest.TestCase):
                 "trace_id": "f" * 32,
             },
         )
-        with mock.patch.object(stored_input.transport, "_call", return_value=inventory) as call:
+        with mock.patch.object(stored_input.transport, "call", return_value=inventory) as call:
             listed = stored_input.list_assistant_stored_inputs("team_1")
 
         self.assertEqual(listed, stored_input.transport.TeamResponse(200, {"stored_inputs": [metadata]}))
@@ -44,7 +44,7 @@ class AssistantStoredInputProjectionTest(unittest.TestCase):
                 "trace_id": "e" * 32,
             },
         )
-        with mock.patch.object(stored_input.transport, "_call", return_value=cleared_response) as call:
+        with mock.patch.object(stored_input.transport, "call", return_value=cleared_response) as call:
             cleared = stored_input.clear_assistant_stored_input(
                 "team_1",
                 "whatsapp",

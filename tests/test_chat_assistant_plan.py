@@ -10,6 +10,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from team import transport
+
 from chat import assistant_install, assistant_inventory, assistant_plan, local_catalog, store_catalog
 
 
@@ -41,7 +43,7 @@ ENGLISH_ONLY.get.side_effect = AssertionError("an English turn reads no localize
 
 
 def _installed(*items: tuple[str, str]):
-    return assistant_plan.team.TeamResponse(
+    return transport.TeamResponse(
         200,
         {
             "assistants": [
@@ -58,7 +60,7 @@ def _installed(*items: tuple[str, str]):
 
 
 def _registry(*items: tuple[str, tuple[str, ...]]):
-    return assistant_plan.team.TeamResponse(
+    return transport.TeamResponse(
         200,
         {
             "assistants": [
@@ -74,9 +76,9 @@ def _registry(*items: tuple[str, tuple[str, ...]]):
     )
 
 
-def _install_required(*assistant_ids: str) -> assistant_plan.team.TeamResponse:
+def _install_required(*assistant_ids: str) -> transport.TeamResponse:
     """Team's capability plan that requires installing exactly these Assistants."""
-    return assistant_plan.team.TeamResponse(
+    return transport.TeamResponse(
         200, {"team_id": "team_1", "status": "install-required", "assistant_ids": list(assistant_ids)}
     )
 
@@ -102,8 +104,8 @@ def _local_inventory(
     created_at: str = "2026-09-15T09:00:00Z",
     admission: str = "admissible",
     reason: str | None = None,
-) -> assistant_plan.team.TeamResponse:
-    return assistant_plan.team.TeamResponse(
+) -> transport.TeamResponse:
+    return transport.TeamResponse(
         200,
         {
             "assistants": [
@@ -139,7 +141,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         self,
         message: str,
         catalog: tuple[store_catalog.CatalogAssistant, ...],
-        planner: assistant_plan.team.TeamResponse,
+        planner: transport.TeamResponse,
         *,
         installed=None,
         registry=None,
@@ -149,9 +151,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         store = mock.Mock()
         store.get.return_value = catalog
         local_response = (
-            local_inventory
-            if local_inventory is not None
-            else assistant_plan.team.TeamResponse(200, {"assistants": []})
+            local_inventory if local_inventory is not None else transport.TeamResponse(200, {"assistants": []})
         )
         with (
             mock.patch.object(
@@ -207,7 +207,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         result, planner = self._prepare(
             "Olá, tudo bem?",
             (CLOUDFLARE,),
-            assistant_plan.team.TeamResponse(200, {"team_id": "team_1", "status": "sufficient", "assistant_ids": []}),
+            transport.TeamResponse(200, {"team_id": "team_1", "status": "sufficient", "assistant_ids": []}),
         )
 
         self.assertEqual(result, assistant_plan.Preparation())
@@ -251,7 +251,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         result, planner = self._prepare(
             "Use Cloudflare",
             (CLOUDFLARE,),
-            assistant_plan.team.TeamResponse(500, {}),
+            transport.TeamResponse(500, {}),
             installed=_installed(("cloudflare", "running")),
             registry=_registry(("cloudflare", ("configure-domain",))),
             assistant_ids=("cloudflare",),
@@ -290,7 +290,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
             mock.patch.object(
                 assistant_plan.team,
                 "list_local_assistants",
-                return_value=assistant_plan.team.TeamResponse(200, {"assistants": []}),
+                return_value=transport.TeamResponse(200, {"assistants": []}),
             ) as local_snapshots,
             mock.patch.object(
                 assistant_plan.local,
@@ -314,7 +314,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
             mock.patch.object(
                 assistant_plan.team,
                 "list_installed_assistants",
-                return_value=assistant_plan.team.TeamResponse(503, {}),
+                return_value=transport.TeamResponse(503, {}),
             ) as installed,
             mock.patch.object(assistant_plan.team, "team_assistant_registry", return_value=_registry()) as registry,
             mock.patch.object(assistant_plan.team, "list_local_assistants"),
@@ -418,8 +418,8 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         result, planner = self._prepare(
             "Configure Cloudflare",
             (CLOUDFLARE,),
-            assistant_plan.team.TeamResponse(200, {}),
-            local_inventory=assistant_plan.team.TeamResponse(503, {"detail": "unavailable"}),
+            transport.TeamResponse(200, {}),
+            local_inventory=transport.TeamResponse(503, {"detail": "unavailable"}),
         )
 
         self.assertEqual(result, assistant_plan.Preparation())
@@ -429,7 +429,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
         result, planner = self._prepare(
             "Configure Cloudflare",
             (CLOUDFLARE,),
-            assistant_plan.team.TeamResponse(500, {}),
+            transport.TeamResponse(500, {}),
             installed=_installed(("enabled", "stopped")),
             registry=_registry(("enabled", ("other-action",))),
             assistant_ids=("enabled",),
@@ -483,7 +483,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
             mock.patch.object(
                 assistant_plan.team,
                 "list_local_assistants",
-                return_value=assistant_plan.team.TeamResponse(200, {"assistants": []}),
+                return_value=transport.TeamResponse(200, {"assistants": []}),
             ) as local_call,
             mock.patch.object(
                 assistant_plan.local,
@@ -518,7 +518,7 @@ class AssistantPlanPreparationTests(unittest.TestCase):
                 result, _planner = self._prepare(
                     "Configure Cloudflare",
                     (CLOUDFLARE,),
-                    assistant_plan.team.TeamResponse(200, body),
+                    transport.TeamResponse(200, body),
                 )
                 self.assertEqual(result, assistant_plan.Preparation())
 
@@ -688,7 +688,7 @@ class LocalizedPlanSummaryTests(unittest.TestCase):
             mock.patch.object(
                 assistant_plan.team,
                 "list_local_assistants",
-                return_value=assistant_plan.team.TeamResponse(200, {"assistants": []}),
+                return_value=transport.TeamResponse(200, {"assistants": []}),
             ),
             mock.patch.object(assistant_plan.local, "capability_plan", return_value=planned) as planner,
         ):
@@ -745,7 +745,7 @@ class LocalizedPlanSummaryTests(unittest.TestCase):
     def test_a_staged_snapshot_shows_its_own_pack_summary_in_the_turn_language(self) -> None:
         snapshot = local_catalog.primary(_local_inventory()).offerable[0]
         payload = _payload("Instale o Cloudflare", locale="pt")
-        translated = assistant_plan.team.TeamResponse(
+        translated = transport.TeamResponse(
             200, {"locale": "pt", "summary": "Automação local do Cloudflare.", "trace_id": "a" * 32}
         )
         with mock.patch.object(assistant_plan.team, "local_assistant_summary", return_value=translated) as summary:
@@ -759,11 +759,11 @@ class LocalizedPlanSummaryTests(unittest.TestCase):
         self.assertEqual(fresh.plan.assistants, (replace(snapshot, summary="Automação local do Cloudflare."),))
         self.assertEqual(english.plan.assistants, (snapshot,))
         refusals = (
-            assistant_plan.team.TeamResponse(503, {"retry_after": 1}),
-            assistant_plan.team.TeamResponse(200, {"locale": "fr", "summary": "Résumé."}),
-            assistant_plan.team.TeamResponse(200, {"locale": "pt", "summary": " "}),
-            assistant_plan.team.TeamResponse(200, []),
-            assistant_plan.team.TeamRequestError("Team is unavailable"),
+            transport.TeamResponse(503, {"retry_after": 1}),
+            transport.TeamResponse(200, {"locale": "fr", "summary": "Résumé."}),
+            transport.TeamResponse(200, {"locale": "pt", "summary": " "}),
+            transport.TeamResponse(200, []),
+            transport.TeamRequestError("Team is unavailable"),
         )
         for refusal in refusals:
             effect = {"side_effect": refusal} if isinstance(refusal, Exception) else {"return_value": refusal}
@@ -919,7 +919,7 @@ class AssistantPlanExecutionTests(unittest.TestCase):
         with mock.patch.object(
             assistant_plan.assistant_install,
             "install_publication",
-            side_effect=assistant_plan.team.TeamRequestError("private failure"),
+            side_effect=transport.TeamRequestError("private failure"),
         ):
             result = _execute(self._plan(CLOUDFLARE, WHATSAPP))
 

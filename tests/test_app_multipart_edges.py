@@ -16,6 +16,8 @@ from starlette.requests import Request
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from team import transport
+
 
 def _request(
     headers: list[tuple[bytes, bytes]],
@@ -169,7 +171,7 @@ class AppMultipartEdgeTests(app_import.RouteStatusAssertions):
             mock.patch.object(
                 self.admin_app.team,
                 "canonical_filename",
-                side_effect=self.admin_app.team.TeamRequestError("invalid filename"),
+                side_effect=transport.TeamRequestError("invalid filename"),
             ),
         ):
             self.assert_status(

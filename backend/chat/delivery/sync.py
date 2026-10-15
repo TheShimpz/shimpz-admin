@@ -15,7 +15,7 @@ from chat.projection import (
 from fastapi import WebSocket
 from history import delivery as history_delivery
 from history import store as history
-from team import bridge as team
+from team import transport
 
 SendEvent = Callable[[WebSocket, Connection, Mapping[str, object]], Awaitable[bool]]
 ErrorTerminal = Callable[[object, str], dict[str, object]]
@@ -41,7 +41,7 @@ class Operations:
 
 def is_empty_pending(response: object, team_id: str) -> bool:
     return (
-        isinstance(response, team.TeamResponse)
+        isinstance(response, transport.TeamResponse)
         and isinstance(response.status, int)
         and not isinstance(response.status, bool)
         and 200 <= response.status < 300
@@ -52,7 +52,7 @@ def is_empty_pending(response: object, team_id: str) -> bool:
 
 def pending_error(response: object, team_id: str, challenge_type: str) -> dict[str, object]:
     if (
-        isinstance(response, team.TeamResponse)
+        isinstance(response, transport.TeamResponse)
         and isinstance(response.status, int)
         and not isinstance(response.status, bool)
         and not 200 <= response.status < 300
@@ -109,7 +109,7 @@ async def integration_terminal(
     response: object,
     operations: Operations,
 ) -> None:
-    invalid_challenge = isinstance(response, team.TeamResponse) and (
+    invalid_challenge = isinstance(response, transport.TeamResponse) and (
         response.status == 428
         or (
             isinstance(response.body, dict)

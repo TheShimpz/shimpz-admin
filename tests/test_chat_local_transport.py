@@ -202,6 +202,6 @@ class PrivateChatTransportTests(unittest.TestCase):
                     api_key="sk-test-0123456789",
                     progress=events.append,
                 )
-                self.assertEqual(response, team.TeamResponse(502, {"detail": "team unavailable"}))
+                self.assertEqual(response, transport.TeamResponse(502, {"detail": "team unavailable"}))
                 if mode == "sequence-gap":
                     self.assertEqual(events, [])

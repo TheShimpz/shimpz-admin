@@ -23,7 +23,7 @@ import request_body
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 from session import topics
-from team import bridge
+from team import bridge, transport
 from team import http as team_http
 
 from protocol.http.v1 import payload as team_contract
@@ -181,42 +181,42 @@ def arrange(teams: list[dict[str, str]], saved: list[str] | None) -> list[dict[s
     ]
 
 
-def _unavailable(detail: str) -> bridge.TeamResponse:
-    return bridge.TeamResponse(503, {"code": "team-order-unavailable", "detail": detail})
+def _unavailable(detail: str) -> transport.TeamResponse:
+    return transport.TeamResponse(503, {"code": "team-order-unavailable", "detail": detail})
 
 
-def _fresh_inventory() -> bridge.TeamResponse | list[dict[str, str]]:
+def _fresh_inventory() -> transport.TeamResponse | list[dict[str, str]]:
     """Team's authoritative inventory, read now; an unavailable or invalid one is never replaced by a guess."""
     inventory = bridge.team_inventory(bridge.list_teams())
-    if isinstance(inventory, bridge.TeamResponse) and inventory.status >= 500:
-        return bridge.TeamResponse(
+    if isinstance(inventory, transport.TeamResponse) and inventory.status >= 500:
+        return transport.TeamResponse(
             503, {"code": "team-inventory-unavailable", "detail": "The Team list is unavailable; try again"}
         )
     return inventory
 
 
-def _listing() -> bridge.TeamResponse:
+def _listing() -> transport.TeamResponse:
     """The Team list in the Supervisor's order."""
     response = bridge.list_teams()
     teams = bridge.team_inventory(response)
-    if isinstance(teams, bridge.TeamResponse):
+    if isinstance(teams, transport.TeamResponse):
         return teams
     try:
         saved = load()
     except OrderUnavailableError as exc:
         log.warning("Admin Team order is unavailable (%s); listing Teams newest first", type(exc).__name__)
         saved = None
-    return bridge.TeamResponse(response.status, {**response.body, "teams": arrange(teams, saved)})
+    return transport.TeamResponse(response.status, {**response.body, "teams": arrange(teams, saved)})
 
 
-def reorder(team_ids: list[str]) -> bridge.TeamResponse:
+def reorder(team_ids: list[str]) -> transport.TeamResponse:
     """Save an exact permutation of the current Teams as their list order."""
     with LOCK:
         teams = _fresh_inventory()
-        if isinstance(teams, bridge.TeamResponse):
+        if isinstance(teams, transport.TeamResponse):
             return teams
         if set(team_ids) != {team["team_id"] for team in teams}:
-            return bridge.TeamResponse(
+            return transport.TeamResponse(
                 409, {"code": "team-order-stale", "detail": "The Team list changed; reload it and reorder again"}
             )
         try:
@@ -224,10 +224,10 @@ def reorder(team_ids: list[str]) -> bridge.TeamResponse:
         except OrderUnavailableError:
             log.exception("Admin Team order could not be saved")
             return _unavailable("The Team order could not be saved; try again")
-        return bridge.TeamResponse(200, {"teams": arrange(teams, team_ids)})
+        return transport.TeamResponse(200, {"teams": arrange(teams, team_ids)})
 
 
-def release_for_create(team_id: str) -> bridge.TeamResponse | None:
+def release_for_create(team_id: str) -> transport.TeamResponse | None:
     """Before Admin creates a Team id, durably drop a saved position the id kept from a Team that no longer exists.
 
     The caller holds LOCK across this release and its creation. A refusal is returned before anything is created.
@@ -238,7 +238,7 @@ def release_for_create(team_id: str) -> bridge.TeamResponse | None:
             _sync_parent()
             return None
         teams = _fresh_inventory()
-        if isinstance(teams, bridge.TeamResponse):
+        if isinstance(teams, transport.TeamResponse):
             return teams
         if all(team["team_id"] != team_id for team in teams):
             _save([item for item in saved if item != team_id])
@@ -248,18 +248,18 @@ def release_for_create(team_id: str) -> bridge.TeamResponse | None:
     return None
 
 
-def _cleanup(response: bridge.TeamResponse, action: Callable[[], None], detail: str) -> bridge.TeamResponse:
+def _cleanup(response: transport.TeamResponse, action: Callable[[], None], detail: str) -> transport.TeamResponse:
     if not 200 <= response.status < 300:
         return response
     try:
         action()
     except OrderUnavailableError:
         log.exception("Admin Team order cleanup is unavailable")
-        return bridge.TeamResponse(503, {"code": "team-order-cleanup-incomplete", "detail": detail})
+        return transport.TeamResponse(503, {"code": "team-order-cleanup-incomplete", "detail": detail})
     return response
 
 
-def team_deleted(team_id: str, response: bridge.TeamResponse) -> bridge.TeamResponse:
+def team_deleted(team_id: str, response: transport.TeamResponse) -> transport.TeamResponse:
     """After a successful Team deletion, which the caller holds LOCK across, remove the Team's saved position."""
     return _cleanup(
         response,
@@ -268,7 +268,7 @@ def team_deleted(team_id: str, response: bridge.TeamResponse) -> bridge.TeamResp
     )
 
 
-def space_reset(response: bridge.TeamResponse) -> bridge.TeamResponse:
+def space_reset(response: transport.TeamResponse) -> transport.TeamResponse:
     """After a successful Space reset, which the caller holds LOCK across, remove the saved order."""
     return _cleanup(
         response,

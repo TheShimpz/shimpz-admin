@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from history import store as history
+from team import transport
 from tests.chat_history_case import ChatHistoryCase, done_event
 
 from chat import local
@@ -32,7 +33,7 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
         reply = "Com que frequência?\n\n1. A cada hora\n2. Todo dia"
         body = {"team_id": "marketing", "team_name": "Marketing", "reply": reply, "clarification": asked}
         projected = local._project_turn(
-            local.team.TeamResponse(200, {**body, "trace_id": "a" * 32}), "marketing", forbidden_values=("not-a-key",)
+            transport.TeamResponse(200, {**body, "trace_id": "a" * 32}), "marketing", forbidden_values=("not-a-key",)
         )
         self.assertEqual((projected.status, projected.body["clarification"]), (200, asked))
         turn_id = history.new_turn_id()

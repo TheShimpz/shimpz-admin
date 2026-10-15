@@ -9,6 +9,7 @@ from typing import Literal
 
 from chat.executor import submit_in_context
 from team import bridge as team
+from team import transport
 
 from chat import assistant_install, assistant_inventory, assistant_proposal, local, local_catalog, store_catalog
 from protocol.http.v1 import payload as team_contract
@@ -107,7 +108,7 @@ def _enabled_capabilities(
     return tuple(registry[assistant_id] for assistant_id in enabled_ids)
 
 
-def _selected_ids(response: team.TeamResponse, team_id: str, expected_ids: frozenset[str]) -> tuple[str, ...]:
+def _selected_ids(response: transport.TeamResponse, team_id: str, expected_ids: frozenset[str]) -> tuple[str, ...]:
     body = response.body
     if not isinstance(body, dict) or not isinstance(body.get("assistant_ids"), list):
         raise ValueError("capability plan response is invalid")
@@ -180,7 +181,7 @@ def _shown_or_none(
 ) -> tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...] | None:
     try:
         return _shown_assistants(assistants, catalog, locale)
-    except OSError, ValueError, team.TeamRequestError:
+    except OSError, ValueError, transport.TeamRequestError:
         return None
 
 
@@ -305,7 +306,7 @@ def capability_gap(
             return None
         try:
             available = available_future.result()
-        except OSError, ValueError, team.TeamRequestError:
+        except OSError, ValueError, transport.TeamRequestError:
             return None
     kept_enabled, shortlist = assistant_proposal.capability_candidates(
         payload["message"],
@@ -333,7 +334,7 @@ def plan_gap(
         key=lambda candidate: str(candidate["id"]),
     )
     response = local.capability_plan(team_id, payload["message"], candidates)
-    if not isinstance(response, team.TeamResponse) or not 200 <= response.status < 300:
+    if not isinstance(response, transport.TeamResponse) or not 200 <= response.status < 300:
         return Preparation()
     try:
         selected = _selected_ids(
@@ -383,7 +384,7 @@ def _already_installed(
             )
             for assistant in shown
         }
-    except ValueError, team.TeamRequestError:
+    except ValueError, transport.TeamRequestError:
         return Preparation(error_status=502)
     return Preparation(
         already_installed=AlreadyInstalled(
@@ -531,13 +532,13 @@ def _install_and_prove_running(
             if isinstance(assistant, local_catalog.LocalAssistant)
             else assistant_install.install_publication(team_id, assistant)
         )
-    except OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError:
+    except OSError, RuntimeError, TypeError, ValueError, transport.TeamRequestError:
         return 502, None
     if result.installed is None or not 200 <= result.status < 300:
         return (result.status, result.code) if 400 <= result.status <= 599 else (502, None)
     try:
         installed = assistant_inventory.installed(team.list_installed_assistants(team_id))
-    except TypeError, ValueError, team.TeamRequestError:
+    except TypeError, ValueError, transport.TeamRequestError:
         return 502, None
     current = installed.get(assistant.assistant_id)
     return None if current is not None and current.status == "running" else (502, None)

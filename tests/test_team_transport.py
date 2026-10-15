@@ -88,12 +88,12 @@ class TeamClientCacheTests(unittest.TestCase):
                     side_effect=connection_factory,
                 ) as open_connection,
             ):
-                self.assertEqual(transport._call("GET", "/v1/teams").status, 200)
-                self.assertEqual(transport._call("GET", "/v1/teams").status, 200)
+                self.assertEqual(transport.call("GET", "/v1/teams").status, 200)
+                self.assertEqual(transport.call("GET", "/v1/teams").status, 200)
                 self.assertEqual(read_token.call_count, 1)
 
                 token_file.write_text("rotated-controller-token-value", encoding="utf-8")
-                self.assertEqual(transport._call("GET", "/v1/teams").status, 200)
+                self.assertEqual(transport.call("GET", "/v1/teams").status, 200)
 
         self.assertEqual(read_token.call_count, 2)
         self.assertEqual(open_connection.call_count, 3)
@@ -145,7 +145,7 @@ class TeamBearerRotationTests(unittest.TestCase):
     def test_a_refused_bearer_is_re_read_and_the_same_request_is_sent_once_more(self) -> None:
         refusal = self._restart_team(_Refusal())
         with self._team(refusal, _Response()), self.assertLogs("shimpz-admin", level="INFO") as logs:
-            response = transport._call("PUT", "/v1/teams/team/inference", {"model": "m"})
+            response = transport.call("PUT", "/v1/teams/team/inference", {"model": "m"})
         self.assertEqual(response, transport.TeamResponse(200, {}))
         self.assertEqual([item[3]["Authorization"] for item in self.sent], ["Bearer first-token", "Bearer fresh-token"])
         self.assertEqual(
@@ -157,21 +157,21 @@ class TeamBearerRotationTests(unittest.TestCase):
     def test_a_second_refusal_answers_unavailable_without_a_third_request(self) -> None:
         refusal = self._restart_team(_Refusal())
         with self._team(refusal, _Refusal()), self.assertLogs("shimpz-admin", level="WARNING") as logs:
-            response = transport._call("DELETE", "/v1/teams/team")
+            response = transport.call("DELETE", "/v1/teams/team")
         self.assertEqual(response, transport.TeamResponse(502, {"detail": "team unavailable"}))
         self.assertEqual(len(self.sent), 2)
         self.assertFalse(any("token" in line for line in logs.output))
 
     def test_any_other_unauthorized_answer_is_invalid_and_never_resent(self) -> None:
         with self._team(_Refusal(b'{"error":"other"}')), self.assertLogs("shimpz-admin", level="WARNING"):
-            response = transport._call("GET", "/v1/teams")
+            response = transport.call("GET", "/v1/teams")
         self.assertEqual(response.status, 502)
         self.assertEqual(len(self.sent), 1)
 
     def test_a_streamed_request_is_resent_with_the_fresh_bearer(self) -> None:
         refusal = self._restart_team(_Refusal())
         with self._team(refusal, _Stream()):
-            response = transport._call_stream(
+            response = transport.call_stream(
                 "POST",
                 "/v1/teams/team/chat",
                 {"message": "hello"},
@@ -190,7 +190,7 @@ class TeamBearerRotationTests(unittest.TestCase):
             self._team(refusal, _Response()),
             transport.supervisor_session("session", local_identity=identity),
         ):
-            transport._call("GET", "/v1/teams")
+            transport.call("GET", "/v1/teams")
         assertions = [item[3][transport.supervisor_contract.ASSERTION_HEADER] for item in self.sent]
         self.assertEqual(len(set(assertions)), 2)
 

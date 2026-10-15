@@ -98,7 +98,8 @@ class DecisionHandOffTests(unittest.TestCase):
     def test_only_classification_carries_the_decision_key(self) -> None:
         local = importlib.import_module("chat.local")
         team = importlib.import_module("team.bridge")
-        ordinary = team.TeamResponse(
+        transport = importlib.import_module("team.transport")
+        ordinary = transport.TeamResponse(
             200,
             {
                 "team_id": "team_1",

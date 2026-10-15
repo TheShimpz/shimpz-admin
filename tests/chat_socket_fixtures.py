@@ -218,7 +218,8 @@ class Socket:
             return
         socket_module = importlib.import_module("chat.socket")
         empty = socket_module._SyncSnapshot(
-            "integration", socket_module.team.TeamResponse(200, {"team_id": self.team_id, "status": "none"})
+            "integration",
+            importlib.import_module("team.transport").TeamResponse(200, {"team_id": self.team_id, "status": "none"}),
         )
         with mock.patch.object(socket_module, "_sync_snapshot", return_value=empty):
             result = await self.result("chat.attach", {"team_id": self.team_id, "locale": locale})

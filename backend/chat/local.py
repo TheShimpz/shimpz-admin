@@ -222,14 +222,14 @@ def _freeze(value: object) -> object:
 
 
 @dataclass(frozen=True, eq=False)
-class PublicResponse(team.TeamResponse):
+class PublicResponse(transport.TeamResponse):
     """A fully projected response whose nested public payload cannot be mutated."""
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "body", _freeze(self.body))
 
     def __eq__(self, other: object) -> bool:
-        return isinstance(other, team.TeamResponse) and self.status == other.status and self.body == other.body
+        return isinstance(other, transport.TeamResponse) and self.status == other.status and self.body == other.body
 
     def websocket_event(self, team_id: str) -> dict[str, object] | None:
         body = self.body
@@ -263,14 +263,14 @@ class PublicResponse(team.TeamResponse):
         return event
 
 
-def _unavailable() -> team.TeamResponse:
+def _unavailable() -> transport.TeamResponse:
     return PublicResponse(
         HTTPStatus.SERVICE_UNAVAILABLE,
         {"code": "runtime-unavailable"},
     )
 
 
-def _safe_error(response: team.TeamResponse) -> team.TeamResponse:
+def _safe_error(response: transport.TeamResponse) -> transport.TeamResponse:
     """Reduce one authenticated controller failure to a bounded, non-secret machine code."""
     code = response.body.get("code")
     if not isinstance(code, str) or len(code) > 80 or _ERROR_CODE_RE.fullmatch(code) is None:
@@ -278,7 +278,7 @@ def _safe_error(response: team.TeamResponse) -> team.TeamResponse:
     return PublicResponse(response.status, {"code": code})
 
 
-def _inference(team_id: str) -> tuple[str, str] | team.TeamResponse:
+def _inference(team_id: str) -> tuple[str, str] | transport.TeamResponse:
     response = team.get_inference(team_id)
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
@@ -296,9 +296,9 @@ def _inference(team_id: str) -> tuple[str, str] | team.TeamResponse:
     return selected_provider, selected_model
 
 
-def model_credential(team_id: str) -> tuple[str, str] | team.TeamResponse:
+def model_credential(team_id: str) -> tuple[str, str] | transport.TeamResponse:
     inference = _inference(team_id)
-    if isinstance(inference, team.TeamResponse):
+    if isinstance(inference, transport.TeamResponse):
         return inference
     provider, _model = inference
     try:
@@ -319,11 +319,11 @@ def capability_plan(
     team_id: object,
     objective: object,
     candidates: list[dict[str, object]],
-) -> team.TeamResponse:
+) -> transport.TeamResponse:
     """Project one credential-bound stateless planner result without lifecycle authority."""
-    canonical_id = team.canonical_team_id(team_id)
+    canonical_id = payloads.canonical_team_id(team_id)
     credential = model_credential(canonical_id)
-    if isinstance(credential, team.TeamResponse):
+    if isinstance(credential, transport.TeamResponse):
         return credential
     provider, api_key = credential
     response = team.capability_plan(
@@ -349,7 +349,7 @@ def capability_plan(
         assistant_ids = [payloads.canonical_assistant_id(value) for value in raw_ids]
         if assistant_ids != sorted(set(assistant_ids)) or (status == "sufficient") != (not assistant_ids):
             raise ValueError("invalid capability plan selection")
-    except KeyError, TypeError, ValueError, team.TeamRequestError:
+    except KeyError, TypeError, ValueError, transport.TeamRequestError:
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
     return PublicResponse(
         response.status,
@@ -362,13 +362,13 @@ def _intent_route_directory(
     candidates: object,
 ) -> tuple[str | None, list[dict[str, object]], list[str]]:
     if expected_intent not in {None, "assistant-install", "assistant-uninstall"}:
-        raise team.TeamRequestError("invalid expected Assistant lifecycle intent")
+        raise transport.TeamRequestError("invalid expected Assistant lifecycle intent")
     if not isinstance(candidates, list) or len(candidates) > MAX_INTENT_ROUTE_CANDIDATES:
-        raise team.TeamRequestError("invalid Assistant directory")
+        raise transport.TeamRequestError("invalid Assistant directory")
     expected_ids: list[str] = []
     for candidate in candidates:
         if not isinstance(candidate, dict) or set(candidate) != {"id", "name", "summary"}:
-            raise team.TeamRequestError("invalid Assistant directory")
+            raise transport.TeamRequestError("invalid Assistant directory")
         assistant_id = payloads.canonical_assistant_id(candidate["id"])
         name = candidate["name"]
         summary = candidate["summary"]
@@ -381,13 +381,13 @@ def _intent_route_directory(
             or len(summary) > MAX_INTENT_ROUTE_SUMMARY_CHARS
             or (expected_intent == "assistant-uninstall" and summary)
         ):
-            raise team.TeamRequestError("invalid Assistant directory")
+            raise transport.TeamRequestError("invalid Assistant directory")
         expected_ids.append(assistant_id)
     if expected_intent is None:
         if candidates:
-            raise team.TeamRequestError("classification cannot include an Assistant directory")
+            raise transport.TeamRequestError("classification cannot include an Assistant directory")
     elif expected_ids != sorted(set(expected_ids)):
-        raise team.TeamRequestError("Assistant directory must be unique and sorted")
+        raise transport.TeamRequestError("Assistant directory must be unique and sorted")
     return expected_intent, candidates, expected_ids
 
 
@@ -398,7 +398,7 @@ def _intent_route_reference(
     if reference is None:
         return None
     if expected_intent is not None or not isinstance(reference, assistant_proposal.AssistantReference):
-        raise team.TeamRequestError("Assistant lifecycle reference is classification-only")
+        raise transport.TeamRequestError("Assistant lifecycle reference is classification-only")
     return {
         "id": payloads.canonical_assistant_id(reference.assistant_id),
         "name": chat_ws_common.public_text(reference.name, MAX_INTENT_ROUTE_NAME_CHARS),
@@ -410,14 +410,14 @@ def _intent_route_context(
     context: IntentRouteContext | None,
 ) -> tuple[dict[str, str] | None, list[dict[str, object]], str | None]:
     if not isinstance(context, IntentRouteContext) or team_contract.canonical_locale(context.locale) is None:
-        raise team.TeamRequestError("Assistant lifecycle context is invalid")
+        raise transport.TeamRequestError("Assistant lifecycle context is invalid")
     reference = _intent_route_reference(expected_intent, context.reference)
     try:
         admitted_conversation = conversation_context.admit(context.conversation)
     except ValueError as exc:
-        raise team.TeamRequestError("Assistant conversation context is invalid") from exc
+        raise transport.TeamRequestError("Assistant conversation context is invalid") from exc
     if expected_intent is not None and (reference is not None or admitted_conversation):
-        raise team.TeamRequestError("Assistant lifecycle context is selection-incompatible")
+        raise transport.TeamRequestError("Assistant lifecycle context is selection-incompatible")
     projected = [
         {"role": entry.role, "text": entry.text, "truncated": entry.truncated} for entry in admitted_conversation
     ]
@@ -425,13 +425,13 @@ def _intent_route_context(
 
 
 def _project_intent_route(
-    response: team.TeamResponse,
+    response: transport.TeamResponse,
     canonical_id: str,
     expected_intent: str | None,
     expected_ids: list[str],
     *,
     capability_asked: bool = False,
-) -> team.TeamResponse:
+) -> transport.TeamResponse:
     body = dict(response.body)
     capability = body.pop("capability", None) if capability_asked else None
     if set(body) != {"team_id", "intent", "query", "assistant_ids", "reply", "task_follows", "trace_id"}:
@@ -505,17 +505,17 @@ def intent_route(
     candidates: list[dict[str, object]],
     context: IntentRouteContext | None = None,
     installable: list[dict[str, str]] | None = None,
-) -> team.TeamResponse:
+) -> transport.TeamResponse:
     """Project one credential-bound structured route without lifecycle authority.
 
     A classification sent with the decision key may describe the installable Assistants, and its answer then says
     whether the task needs a capability (ADR-0077 amendment); without the key nothing is described.
     """
-    canonical_id = team.canonical_team_id(team_id)
+    canonical_id = payloads.canonical_team_id(team_id)
     expected, directory, expected_ids = _intent_route_directory(expected_intent, candidates)
     projected_reference, conversation, locale = _intent_route_context(expected, context)
     credential = model_credential(canonical_id)
-    if isinstance(credential, team.TeamResponse):
+    if isinstance(credential, transport.TeamResponse):
         return credential
     provider, api_key = credential
     # Only classification may try the Jev fast path; selection always runs the LLM route (ADR-0077).
@@ -540,12 +540,12 @@ def intent_route(
         return _safe_error(response)
     try:
         return _project_intent_route(response, canonical_id, expected, expected_ids, capability_asked=bool(described))
-    except KeyError, TypeError, ValueError, team.TeamRequestError:
+    except KeyError, TypeError, ValueError, transport.TeamRequestError:
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
 
 
 def _challenge_envelope(
-    response: team.TeamResponse,
+    response: transport.TeamResponse,
     team_id: str,
     status: str,
     fields: frozenset[str],
@@ -608,7 +608,7 @@ def _integration_requirement(raw: object) -> dict[str, object]:
     }
 
 
-def _project_integration_challenge(response: team.TeamResponse, team_id: str) -> team.TeamResponse:
+def _project_integration_challenge(response: transport.TeamResponse, team_id: str) -> transport.TeamResponse:
     """Project an OAuth consent gate without exposing any authorization material."""
     try:
         challenge_id, turn_id = _challenge_envelope(
@@ -631,7 +631,7 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
         identities = {(item["assistant_id"], item["integration_id"]) for item in requirements}
         if len(identities) != len(requirements):
             raise ValueError("duplicate integration")
-    except KeyError, TypeError, ValueError, team.TeamRequestError:
+    except KeyError, TypeError, ValueError, transport.TeamRequestError:
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "integration-challenge-response-invalid"})
     return PublicResponse(
         response.status,
@@ -647,10 +647,10 @@ def _project_integration_challenge(response: team.TeamResponse, team_id: str) ->
 
 
 def _project_pending_challenge(
-    response: team.TeamResponse,
+    response: transport.TeamResponse,
     team_id: str,
     locale: str | None = None,
-) -> team.TeamResponse:
+) -> transport.TeamResponse:
     """Project a Team challenge; a human one requested in an interface language must be rendered in exactly it."""
     if response.body.get("status") == "integrations-required":
         return _project_integration_challenge(response, team_id)
@@ -665,7 +665,7 @@ def _project_pending_challenge(
     return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-challenge-response-invalid"})
 
 
-def _project_human_denial(response: team.TeamResponse, team_id: str) -> team.TeamResponse:
+def _project_human_denial(response: transport.TeamResponse, team_id: str) -> transport.TeamResponse:
     if (
         not transport.is_closed_traced(response.body, {"team_id", "status", "reason"}, team_id=team_id)
         or response.body["status"] != "human-denied"
@@ -680,11 +680,11 @@ def _project_human_denial(response: team.TeamResponse, team_id: str) -> team.Tea
 
 
 def _project_turn(
-    response: team.TeamResponse,
+    response: transport.TeamResponse,
     team_id: str,
     *,
     forbidden_values: tuple[str, ...],
-) -> team.TeamResponse:
+) -> transport.TeamResponse:
     response_team_id = response.body.get("team_id")
     team_name = response.body.get("team_name")
     reply = response.body.get("reply")
@@ -757,16 +757,16 @@ def _submit(
     team_id: object,
     payload: object,
     canonicalize: Callable[[object], dict[str, object]],
-    request: Callable[..., team.TeamResponse],
+    request: Callable[..., transport.TeamResponse],
     progress: Callable[[dict[str, object]], None],
     assurance: dict[str, str] | None = None,
     locale: str | None = None,
-) -> team.TeamResponse:
+) -> transport.TeamResponse:
     with _admin_span(progress, "admin-preparation"):
-        canonical_id = team.canonical_team_id(team_id)
+        canonical_id = payloads.canonical_team_id(team_id)
         body = canonicalize(payload)
         credential = model_credential(canonical_id)
-    if isinstance(credential, team.TeamResponse):
+    if isinstance(credential, transport.TeamResponse):
         return credential
     provider, api_key = credential
 
@@ -801,7 +801,7 @@ def turn(
     conversation: tuple[conversation_context.Entry, ...],
     request: dict[str, object],
     progress: Callable[[dict[str, object]], None] = _ignore_progress,
-) -> team.TeamResponse:
+) -> transport.TeamResponse:
     """Start one Team turn with the committed history before its user row and the message's request identity."""
     wire = [{"role": entry.role, "text": entry.text, "truncated": entry.truncated} for entry in conversation]
 
@@ -819,7 +819,7 @@ def resume_integrations(
     team_id: object,
     challenge_id: object,
     progress: Callable[[dict[str, object]], None] = _ignore_progress,
-) -> team.TeamResponse:
+) -> transport.TeamResponse:
     return _submit(
         team_id,
         {"challenge_id": challenge_id},
@@ -835,7 +835,7 @@ def resume_human(
     progress: Callable[[dict[str, object]], None] = _ignore_progress,
     *,
     assurance: dict[str, str] | None = None,
-) -> team.TeamResponse:
+) -> transport.TeamResponse:
     return _submit(
         team_id,
         payload,
@@ -848,11 +848,11 @@ def resume_human(
 
 def _pending(
     team_id: object,
-    request: Callable[[str], team.TeamResponse],
-    project: Callable[[team.TeamResponse, str], team.TeamResponse],
+    request: Callable[[str], transport.TeamResponse],
+    project: Callable[[transport.TeamResponse, str], transport.TeamResponse],
     invalid_code: str,
-) -> team.TeamResponse:
-    canonical_id = team.canonical_team_id(team_id)
+) -> transport.TeamResponse:
+    canonical_id = payloads.canonical_team_id(team_id)
     response = request(canonical_id)
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()
@@ -869,7 +869,7 @@ def _pending(
     return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": invalid_code})
 
 
-def pending_integrations(team_id: object) -> team.TeamResponse:
+def pending_integrations(team_id: object) -> transport.TeamResponse:
     return _pending(
         team_id,
         team.pending_chat_integrations,
@@ -878,7 +878,7 @@ def pending_integrations(team_id: object) -> team.TeamResponse:
     )
 
 
-def open_human(team_id: object, locale: str) -> team.TeamResponse:
+def open_human(team_id: object, locale: str) -> transport.TeamResponse:
     """The Team's pending human challenge rendered in the selected interface language, or that none is pending."""
     return _pending(
         team_id,
@@ -888,8 +888,8 @@ def open_human(team_id: object, locale: str) -> team.TeamResponse:
     )
 
 
-def stop(team_id: object) -> team.TeamResponse:
-    canonical_id = team.canonical_team_id(team_id)
+def stop(team_id: object) -> transport.TeamResponse:
+    canonical_id = payloads.canonical_team_id(team_id)
     response = team.stop_chat(canonical_id)
     if response.status in _MISSING_RUNTIME_STATUSES:
         return _unavailable()

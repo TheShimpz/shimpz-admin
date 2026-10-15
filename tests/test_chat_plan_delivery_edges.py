@@ -13,7 +13,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 from chat.connection import Connection, Turn
 from chat.delivery import plan as plan_delivery
 from chat.delivery import route as route_delivery
-from team import bridge as team
+from team import transport
 from tests.chat_socket_case import resolved_future
 
 from chat import assistant_plan, assistant_proposal, assistant_route
@@ -185,7 +185,7 @@ class PlanDeliveryEdges(unittest.TestCase):
             with self.assertRaises(assistant_route.RouteError):
                 await route_delivery._result(invalid)
 
-            for error in (OSError("offline"), team.TeamRequestError("invalid")):
+            for error in (OSError("offline"), transport.TeamRequestError("invalid")):
                 future: concurrent.futures.Future[object] = concurrent.futures.Future()
                 future.set_exception(error)
                 with self.subTest(error=error), self.assertRaises(assistant_route.RouteError):

@@ -314,7 +314,7 @@ async def _gate(scope: Scope, receive: Receive, send: Send, application: ASGIApp
     try:
         with _team_session_scope(request.cookies):
             await application(scope, receive, _secured_send(sending, {}))
-    except supervisor.SupervisorAuthorityError, team.TeamRequestError:
+    except supervisor.SupervisorAuthorityError, transport.TeamRequestError:
         # A response already under way cannot be replaced; it fails as the server error it is.
         if started:
             raise
@@ -456,7 +456,7 @@ async def _host_reset_password(password: object) -> None:
     await local_auth._verify_password(password, _LOCAL_AUTH_CONTEXT)
 
 
-def _space_reset_with_history(action) -> team.TeamResponse:
+def _space_reset_with_history(action) -> transport.TeamResponse:
     # Admin owns the saved Team order, so a Space reset clears it with the history.
     with team_order.LOCK:
         response = team_order.space_reset(chat_history_http.space_reset(action))
@@ -564,7 +564,7 @@ async def oauth_cloudflare_callback(request: Request):
             claim=query["claim"],
             session_binding=binding,
         )
-    except team.TeamRequestError:
+    except transport.TeamRequestError:
         return _OAUTH_CHAT_REDIRECT("callback-failed")
     if result.status != 200:
         log.info("OAuth callback rejected (HTTP %s)", result.status)

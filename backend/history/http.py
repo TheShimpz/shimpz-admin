@@ -8,39 +8,40 @@ from fastapi.responses import JSONResponse
 from history import store
 from team import bridge as team
 from team import http as team_http
+from team import transport
 
 log = logging.getLogger("shimpz-admin")
 
 
-def cleanup(response: team.TeamResponse, action: Callable[[], object]) -> team.TeamResponse:
+def cleanup(response: transport.TeamResponse, action: Callable[[], object]) -> transport.TeamResponse:
     if not 200 <= response.status < 300:
         return response
     try:
         action()
     except store.HistoryUnavailableError:
         log.exception("Admin chat history cleanup is unavailable")
-        return team.TeamResponse(
+        return transport.TeamResponse(
             503,
             {"detail": "Team state changed, but Admin chat history cleanup did not complete"},
         )
     return response
 
 
-def team_created(team_id: str, response: team.TeamResponse) -> team.TeamResponse:
+def team_created(team_id: str, response: transport.TeamResponse) -> transport.TeamResponse:
     if not isinstance(response.body, dict) or response.body.get("created") is not True:
         return response
     return cleanup(response, lambda: store.clear_team(team_id))
 
 
-def team_delete(team_id: str, action: Callable[[], team.TeamResponse]) -> team.TeamResponse:
+def team_delete(team_id: str, action: Callable[[], transport.TeamResponse]) -> transport.TeamResponse:
     with store.LIFECYCLE_LOCK:
         response = action()
-        if response == team.TeamResponse(404, {"detail": "Team not found"}):
-            response = team.TeamResponse(200, {"deleted": False})
+        if response == transport.TeamResponse(404, {"detail": "Team not found"}):
+            response = transport.TeamResponse(200, {"deleted": False})
         return cleanup(response, lambda: store.clear_team(team_id))
 
 
-def space_reset(action: Callable[[], team.TeamResponse]) -> team.TeamResponse:
+def space_reset(action: Callable[[], transport.TeamResponse]) -> transport.TeamResponse:
     with store.LIFECYCLE_LOCK:
         return cleanup(action(), store.clear_all)
 
@@ -49,7 +50,7 @@ def page(team_id: str, before: str | None = None, routine: str | None = None) ->
     """One page of the chat's view of a Team's transcript, or with ``routine`` of that Routine's own history."""
     with team_http.refused_as_bad_request():
         resolved = team.resolve_team_name(team_id)
-    if isinstance(resolved, team.TeamResponse):
+    if isinstance(resolved, transport.TeamResponse):
         return team_http.response(lambda: resolved)
     try:
         response = JSONResponse(store.page(team_id, before=before, routine=routine))

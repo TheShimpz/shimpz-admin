@@ -13,7 +13,6 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 
 from signin import auth
-from team import bridge as team
 from team import transport
 
 from chat import payloads
@@ -302,7 +301,7 @@ def _assistant(value: object) -> dict[str, str]:
         assistant_id = payloads.canonical_assistant_id(value["id"])
         name = chat_ws_common.public_text(value["name"], 80)
         version = chat_ws_common.public_text(value["version"], 40, field="Assistant version")
-    except (ValueError, team.TeamRequestError) as exc:
+    except (ValueError, transport.TeamRequestError) as exc:
         raise HumanChallengeError("invalid human challenge Assistant") from exc
     return {"id": assistant_id, "name": name, "version": version}
 
@@ -313,7 +312,7 @@ def _action(value: object) -> dict[str, str]:
     try:
         action_id = payloads.canonical_action_id(value["id"])
         summary = chat_ws_common.public_text(value["summary"], 160)
-    except (ValueError, team.TeamRequestError) as exc:
+    except (ValueError, transport.TeamRequestError) as exc:
         raise HumanChallengeError("invalid human challenge Action") from exc
     return {"id": action_id, "summary": summary}
 

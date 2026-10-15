@@ -43,7 +43,7 @@ class ChatWebSocketRuntimeTests(ChatWebSocketCase):
             headers = {"Cookie": f"shimpz_admin={self.token}"}
             response = completed_turn("hello from the Team")
             empty = self.chat_socket._SyncSnapshot(
-                "integration", self.chat_socket.team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
+                "integration", self.transport.TeamResponse(200, {"team_id": "team_1", "status": "none"})
             )
             try:
                 with self.assertRaises(InvalidStatus):

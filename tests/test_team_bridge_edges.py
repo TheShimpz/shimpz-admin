@@ -8,15 +8,15 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from team import bridge
+from team import bridge, transport
 
 
 def _team(team_id: str = "team_1", team_name: str = "Marketing") -> dict[str, str]:
     return {"team_id": team_id, "team_name": team_name, "status": "running"}
 
 
-def _inference() -> bridge.TeamResponse:
-    return bridge.TeamResponse(
+def _inference() -> transport.TeamResponse:
+    return transport.TeamResponse(
         200,
         {
             "team_id": "team_1",
@@ -35,12 +35,12 @@ class TeamBridgeEdgeTests(unittest.TestCase):
             lambda: bridge.canonical_media_type("invalid"),
         )
         for operation in operations:
-            with self.assertRaises(bridge.TeamRequestError):
+            with self.assertRaises(transport.TeamRequestError):
                 operation()
 
     def test_simple_lifecycle_routes_use_canonical_paths(self) -> None:
-        expected = bridge.TeamResponse(200, {})
-        with mock.patch.object(bridge, "_call", return_value=expected) as call:
+        expected = transport.TeamResponse(200, {})
+        with mock.patch.object(transport, "call", return_value=expected) as call:
             self.assertEqual(bridge.create("team_1", " Marketing "), expected)
             self.assertEqual(bridge.stop_chat("team_1"), expected)
             self.assertEqual(bridge.pending_chat_integrations("team_1"), expected)
@@ -54,14 +54,14 @@ class TeamBridgeEdgeTests(unittest.TestCase):
                 mock.call("POST", "/v1/teams/team_1/chat/human/challenge", {"locale": "pt"}),
             ],
         )
-        with self.assertRaisesRegex(bridge.TeamRequestError, "team name"):
+        with self.assertRaisesRegex(transport.TeamRequestError, "team name"):
             bridge.create("team_1", " ")
         for locale in (None, "xx"):
-            with self.assertRaisesRegex(bridge.TeamRequestError, "interface language"):
+            with self.assertRaisesRegex(transport.TeamRequestError, "interface language"):
                 bridge.open_chat_human("team_1", locale)
 
     def test_space_reset_projects_only_the_admin_confirmation(self) -> None:
-        response = bridge.TeamResponse(
+        response = transport.TeamResponse(
             200,
             {
                 "reset": True,
@@ -71,62 +71,62 @@ class TeamBridgeEdgeTests(unittest.TestCase):
                 "residue_absent": ["assistant_containers", "team_storage"],
             },
         )
-        with mock.patch.object(bridge, "_call", return_value=response) as call:
+        with mock.patch.object(transport, "call", return_value=response) as call:
             projected = bridge.reset_space()
-        self.assertEqual(projected, bridge.TeamResponse(200, {"reset": True}))
+        self.assertEqual(projected, transport.TeamResponse(200, {"reset": True}))
         call.assert_called_once_with("DELETE", "/v1/space")
 
-        response = bridge.TeamResponse(200, {"reset": True, "producer_metadata": {"version": 2}})
-        with mock.patch.object(bridge, "_call", return_value=response):
-            self.assertEqual(bridge.reset_space(), bridge.TeamResponse(200, {"reset": True}))
+        response = transport.TeamResponse(200, {"reset": True, "producer_metadata": {"version": 2}})
+        with mock.patch.object(transport, "call", return_value=response):
+            self.assertEqual(bridge.reset_space(), transport.TeamResponse(200, {"reset": True}))
 
     def test_space_reset_rejects_invalid_success_and_preserves_failures(self) -> None:
         for body in ({}, {"reset": False}, {"reset": 1}, [], "reset", None):
             with (
                 self.subTest(body=body),
                 mock.patch.object(
-                    bridge,
-                    "_call",
-                    return_value=bridge.TeamResponse(200, body),
+                    transport,
+                    "call",
+                    return_value=transport.TeamResponse(200, body),
                 ),
             ):
                 self.assertEqual(
                     bridge.reset_space(),
-                    bridge.TeamResponse(502, {"detail": "Team returned an invalid Space reset response"}),
+                    transport.TeamResponse(502, {"detail": "Team returned an invalid Space reset response"}),
                 )
 
         for response in (
-            bridge.TeamResponse(500, {"detail": "incomplete", "code": "teardown-incomplete"}),
-            bridge.TeamResponse(503, {"detail": "unavailable", "code": "docker-reset-failed"}),
+            transport.TeamResponse(500, {"detail": "incomplete", "code": "teardown-incomplete"}),
+            transport.TeamResponse(503, {"detail": "unavailable", "code": "docker-reset-failed"}),
         ):
-            with self.subTest(status=response.status), mock.patch.object(bridge, "_call", return_value=response):
+            with self.subTest(status=response.status), mock.patch.object(transport, "call", return_value=response):
                 self.assertEqual(bridge.reset_space(), response)
 
     def test_bootstrap_reset_reauthors_team_failures_and_projects_success(self) -> None:
-        success = bridge.TeamResponse(200, {"reset": True, "residue_absent": ["teams"]})
-        with mock.patch.object(bridge, "_call", return_value=success) as call:
-            self.assertEqual(bridge.bootstrap_reset_space(), bridge.TeamResponse(200, {"reset": True}))
+        success = transport.TeamResponse(200, {"reset": True, "residue_absent": ["teams"]})
+        with mock.patch.object(transport, "call", return_value=success) as call:
+            self.assertEqual(bridge.bootstrap_reset_space(), transport.TeamResponse(200, {"reset": True}))
         call.assert_called_once_with("DELETE", "/v1/space/bootstrap")
 
         cases = (
             (
-                bridge.TeamResponse(409, {"code": "supervisor-established", "detail": "internal"}),
+                transport.TeamResponse(409, {"code": "supervisor-established", "detail": "internal"}),
                 409,
                 "bootstrap-reset-refused",
             ),
             (
-                bridge.TeamResponse(503, {"code": "supervisor-unavailable", "detail": "internal"}),
+                transport.TeamResponse(503, {"code": "supervisor-unavailable", "detail": "internal"}),
                 503,
                 "bootstrap-reset-unavailable",
             ),
             (
-                bridge.TeamResponse(200, {"reset": False}),
+                transport.TeamResponse(200, {"reset": False}),
                 502,
                 "bootstrap-reset-unavailable",
             ),
         )
         for response, status, code in cases:
-            with self.subTest(status=response.status), mock.patch.object(bridge, "_call", return_value=response):
+            with self.subTest(status=response.status), mock.patch.object(transport, "call", return_value=response):
                 projected = bridge.bootstrap_reset_space()
             self.assertEqual(projected.status, status)
             self.assertEqual(projected.body["code"], code)
@@ -137,7 +137,7 @@ class TeamBridgeEdgeTests(unittest.TestCase):
             self.assertNotIn(response.body.get("code"), projected.body.values())
 
     def test_authoritative_team_lookup_rejects_invalid_envelopes_and_identity(self) -> None:
-        unavailable = bridge.TeamResponse(503, {"detail": "offline"})
+        unavailable = transport.TeamResponse(503, {"detail": "offline"})
         self.assertEqual(bridge._authoritative_team_name(unavailable, "team_1"), unavailable)
 
         invalid = (
@@ -150,11 +150,11 @@ class TeamBridgeEdgeTests(unittest.TestCase):
         )
         for body in invalid:
             with self.subTest(body=body):
-                projected = bridge._authoritative_team_name(bridge.TeamResponse(200, body), "team_1")
+                projected = bridge._authoritative_team_name(transport.TeamResponse(200, body), "team_1")
             self.assertEqual(projected.status, 502)
 
-        missing = bridge._authoritative_team_name(bridge.TeamResponse(200, {"teams": [_team("team_2")]}), "team_1")
-        self.assertEqual(missing, bridge.TeamResponse(404, {"detail": "Team not found"}))
+        missing = bridge._authoritative_team_name(transport.TeamResponse(200, {"teams": [_team("team_2")]}), "team_1")
+        self.assertEqual(missing, transport.TeamResponse(404, {"detail": "Team not found"}))
 
     def test_inference_projection_rejects_a_mismatch_with_the_requested_update(self) -> None:
         projected = bridge._project_inference_response(
@@ -166,20 +166,20 @@ class TeamBridgeEdgeTests(unittest.TestCase):
 
     def test_storage_projection_limits_errors_and_invalid_success(self) -> None:
         projected = bridge._project_storage_response(
-            bridge.TeamResponse(507, {"private": "value"}),
+            transport.TeamResponse(507, {"private": "value"}),
             team_id="team_1",
             kind="upload",
         )
-        self.assertEqual(projected, bridge.TeamResponse(507, {"detail": "team request failed"}))
+        self.assertEqual(projected, transport.TeamResponse(507, {"detail": "team request failed"}))
 
         projected = bridge._project_storage_response(
-            bridge.TeamResponse(200, {"invalid": True}),
+            transport.TeamResponse(200, {"invalid": True}),
             team_id="team_1",
             kind="list",
         )
-        self.assertEqual(projected, bridge.TeamResponse(502, {"detail": "team unavailable"}))
+        self.assertEqual(projected, transport.TeamResponse(502, {"detail": "team unavailable"}))
 
-        with self.assertRaisesRegex(bridge.TeamRequestError, "file exceeds"):
+        with self.assertRaisesRegex(transport.TeamRequestError, "file exceeds"):
             bridge.upload_file(
                 "team_1",
                 "large.txt",

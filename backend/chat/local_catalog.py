@@ -111,7 +111,11 @@ def localized_summary(assistant: LocalAssistant, locale: str) -> str:
     The summary is only what Team returns for exactly that language, never the English summary in its place.
     """
     response = team.local_assistant_summary(assistant.image_id, locale)
-    if not isinstance(response, team.TeamResponse) or response.status != 200 or not isinstance(response.body, dict):
+    if (
+        not isinstance(response, transport.TeamResponse)
+        or response.status != 200
+        or not isinstance(response.body, dict)
+    ):
         raise ValueError("Local Assistant summary is unavailable")
     body = {key: value for key, value in response.body.items() if key != "trace_id"}
     summary = team_contract.canonical_snapshot_summary(body)

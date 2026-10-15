@@ -16,6 +16,7 @@ class ChatWebSocketProjectionTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.chat_socket = importlib.import_module("chat.socket")
         cls.team = importlib.import_module("team.bridge")
+        cls.transport = importlib.import_module("team.transport")
 
     def test_integration_events_are_exact_and_never_project_oauth_material(self) -> None:
         expected = {

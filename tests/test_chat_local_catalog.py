@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from team import bridge as team
+from team import transport
 
 from chat import local_catalog
 
@@ -40,7 +40,7 @@ def _snapshot(
 
 class LocalCatalogTests(unittest.TestCase):
     def test_selects_one_newest_exact_snapshot_per_identity(self) -> None:
-        response = team.TeamResponse(
+        response = transport.TeamResponse(
             200,
             {
                 "assistants": [
@@ -63,7 +63,7 @@ class LocalCatalogTests(unittest.TestCase):
         self.assertEqual((candidates[0].creator, candidates[0].assistant_version), ("@shimpz", "0.4.5"))
 
     def test_equal_creation_time_uses_image_id_as_the_tie_breaker(self) -> None:
-        response = team.TeamResponse(
+        response = transport.TeamResponse(
             200,
             {
                 "assistants": [
@@ -78,7 +78,7 @@ class LocalCatalogTests(unittest.TestCase):
         self.assertEqual(candidates[0].image_id, "sha256:" + ("b" * 64))
 
     def test_only_an_admitted_identity_is_offerable_and_every_staged_identity_shadows(self) -> None:
-        response = team.TeamResponse(
+        response = transport.TeamResponse(
             200,
             {
                 "assistants": [
@@ -118,7 +118,7 @@ class LocalCatalogTests(unittest.TestCase):
             "admission": "inadmissible",
             "reason": "labels-invalid",
         }
-        response = team.TeamResponse(
+        response = transport.TeamResponse(
             200,
             {
                 "assistants": [
@@ -134,7 +134,7 @@ class LocalCatalogTests(unittest.TestCase):
 
         self.assertEqual([assistant.assistant_id for assistant in inventory.offerable], ["admitted"])
         self.assertEqual(inventory.staged_ids, {"admitted", "broken-labels"})
-        unlabeled_only = team.TeamResponse(200, {"assistants": [unlabeled]})
+        unlabeled_only = transport.TeamResponse(200, {"assistants": [unlabeled]})
         self.assertEqual(
             local_catalog.primary(unlabeled_only), local_catalog.LocalInventory((), frozenset({"broken-labels"}))
         )
@@ -142,23 +142,25 @@ class LocalCatalogTests(unittest.TestCase):
     def test_rejects_widened_duplicate_or_malformed_inventory(self) -> None:
         valid = _snapshot("a", "2026-09-15T09:00:00Z")
         cases = (
-            team.TeamResponse(200, {"assistants": [{**valid, "source_digest": "sha256:" + ("f" * 64)}]}),
-            team.TeamResponse(200, {"assistants": [valid, valid]}),
-            team.TeamResponse(200, {"assistants": [{**valid, "actions": ["List-Zones"]}]}),
-            team.TeamResponse(200, {"assistants": [{**valid, "actions": []}]}),
-            team.TeamResponse(200, {"assistants": [{**valid, "actions": ["z-action", "a-action"]}]}),
-            team.TeamResponse(200, {"assistants": [{**valid, "name": " Shimpz Cloudflare"}]}),
-            team.TeamResponse(200, {"assistants": [{**valid, "assistant_version": "01.2.3"}]}),
-            team.TeamResponse(200, {"assistants": [{**valid, "created_at": "tomorrow"}]}),
-            team.TeamResponse(200, {"assistants": [{**valid, "created_at": "2026-99-15T09:00:00Z"}]}),
-            team.TeamResponse(200, {"assistants": [{**valid, "created_at": "2026-09-15T09:00:00.0"}]}),
-            team.TeamResponse(200, {"assistants": [{**valid, "admission": "inadmissible"}]}),
-            team.TeamResponse(200, {"assistants": [{**valid, "reason": "declaration-invalid"}]}),
-            team.TeamResponse(200, {"assistants": [{key: item for key, item in valid.items() if key != "admission"}]}),
-            team.TeamResponse(200, {"assistants": [{**valid, "name": "Shimpz\tCloudflare"}]}),
-            team.TeamResponse(200, {"assistants": [], "trace_id": "bad"}),
-            team.TeamResponse(200, {"assistants": [], "extra": True}),
-            team.TeamResponse(503, {"detail": "private"}),
+            transport.TeamResponse(200, {"assistants": [{**valid, "source_digest": "sha256:" + ("f" * 64)}]}),
+            transport.TeamResponse(200, {"assistants": [valid, valid]}),
+            transport.TeamResponse(200, {"assistants": [{**valid, "actions": ["List-Zones"]}]}),
+            transport.TeamResponse(200, {"assistants": [{**valid, "actions": []}]}),
+            transport.TeamResponse(200, {"assistants": [{**valid, "actions": ["z-action", "a-action"]}]}),
+            transport.TeamResponse(200, {"assistants": [{**valid, "name": " Shimpz Cloudflare"}]}),
+            transport.TeamResponse(200, {"assistants": [{**valid, "assistant_version": "01.2.3"}]}),
+            transport.TeamResponse(200, {"assistants": [{**valid, "created_at": "tomorrow"}]}),
+            transport.TeamResponse(200, {"assistants": [{**valid, "created_at": "2026-99-15T09:00:00Z"}]}),
+            transport.TeamResponse(200, {"assistants": [{**valid, "created_at": "2026-09-15T09:00:00.0"}]}),
+            transport.TeamResponse(200, {"assistants": [{**valid, "admission": "inadmissible"}]}),
+            transport.TeamResponse(200, {"assistants": [{**valid, "reason": "declaration-invalid"}]}),
+            transport.TeamResponse(
+                200, {"assistants": [{key: item for key, item in valid.items() if key != "admission"}]}
+            ),
+            transport.TeamResponse(200, {"assistants": [{**valid, "name": "Shimpz\tCloudflare"}]}),
+            transport.TeamResponse(200, {"assistants": [], "trace_id": "bad"}),
+            transport.TeamResponse(200, {"assistants": [], "extra": True}),
+            transport.TeamResponse(503, {"detail": "private"}),
         )
         for response in cases:
             with self.subTest(response=response), self.assertRaises(ValueError):

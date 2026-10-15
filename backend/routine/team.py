@@ -7,7 +7,6 @@ lease. Every answer is admitted only in its canonical protocol view.
 import json
 
 import supervisor
-from team import bridge as team
 from team import transport
 
 from protocol.http.v1 import routine_notice as routine_notice_contract
@@ -28,7 +27,7 @@ class RoutineTeamError(RuntimeError):
     """Team did not answer a Routine call in its closed form; the caller retries on its next tick."""
 
 
-def _answer(response: team.TeamResponse) -> dict[str, object]:
+def _answer(response: transport.TeamResponse) -> dict[str, object]:
     if response.status != 200 or not isinstance(response.body, dict):
         raise RoutineTeamError(f"Team answered {response.status}")
     body = dict(response.body)
@@ -44,7 +43,7 @@ def claim(long: bool) -> dict[str, object]:
     ``long`` says whether Admin can take a long run now. A run asks no model, so a claim is never gated on a key
     (ADR-0092).
     """
-    body = routine_run_contract.canonical_claim(_answer(transport._call("POST", "/v1/routines/claim", {"long": long})))
+    body = routine_run_contract.canonical_claim(_answer(transport.call("POST", "/v1/routines/claim", {"long": long})))
     if body is None:
         raise RoutineTeamError("Routine claim is invalid")
     return body
@@ -66,7 +65,7 @@ def run(claimed: dict[str, object], identity: supervisor.LocalIdentity) -> str:
     A run asks no model, so no model key travels with it (ADR-0092).
     """
     team_id, run_id = claimed["team_id"], claimed["run_id"]
-    response = transport._call_stream(
+    response = transport.call_stream(
         "POST",
         f"/v1/teams/{team_id}/routines/runs/{run_id}/segment",
         # The signed segment names exactly the revision and plan its claim leased (ADR-0092).
@@ -85,7 +84,7 @@ def run(claimed: dict[str, object], identity: supervisor.LocalIdentity) -> str:
 
 def notices() -> dict[str, object]:
     """One bounded batch of every Team's undelivered notices."""
-    batch = routine_notice_contract.canonical_notice_batch(_answer(transport._call("GET", "/v1/routines/notices")))
+    batch = routine_notice_contract.canonical_notice_batch(_answer(transport.call("GET", "/v1/routines/notices")))
     if batch is None:
         raise RoutineTeamError("Routine notices are invalid")
     return batch
@@ -122,6 +121,6 @@ def acknowledge(delivered: list[dict[str, object]]) -> None:
     """
     deliveries = [{name: item[name] for name in ("team_id", "notice_id", "version")} for item in delivered]
     for chunk in _acknowledgments(deliveries):
-        answer = _answer(transport._call("POST", "/v1/routines/notices/ack", {"deliveries": chunk}))
+        answer = _answer(transport.call("POST", "/v1/routines/notices/ack", {"deliveries": chunk}))
         if answer != {"acknowledged": True}:
             raise RoutineTeamError("Routine acknowledgment is invalid")

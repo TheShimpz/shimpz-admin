@@ -12,7 +12,7 @@ from urllib.parse import urlencode
 import request_body
 import state
 from fastapi import HTTPException
-from team import bridge as team
+from team import transport
 
 from chat import payloads
 from integrations import assistants as integrations
@@ -43,7 +43,7 @@ def _refused(exc: Exception, status: int) -> HTTPException:
     return HTTPException(status_code=status, detail=str(exc))
 
 
-def _started(mode: str, preparation: handoff_store.OAuthPreparation, result: team.TeamResponse) -> dict[str, str]:
+def _started(mode: str, preparation: handoff_store.OAuthPreparation, result: transport.TeamResponse) -> dict[str, str]:
     if mode == "out-of-band":
         return {"authorization_url": result.body["authorization_url"], "completion_mode": "code"}
     url = OAUTH_ORIGINS[mode] + OAUTH_START_PATH + "?" + urlencode({"handoff": preparation.token})
@@ -62,7 +62,7 @@ def authorize(
     preparation = None
     authorized = False
     try:
-        canonical_team = team.canonical_team_id(team_id)
+        canonical_team = payloads.canonical_team_id(team_id)
         canonical_challenge = payloads.canonical_challenge_id(challenge_id)
         preparation = HANDOFFS.issue(
             team_id=canonical_team, challenge_id=canonical_challenge, admin_session=session, callback_mode=mode
@@ -79,7 +79,7 @@ def authorize(
             return result
         HANDOFFS.authorize(preparation.token, result.body.get("authorization_url"))
         authorized = True
-    except team.TeamRequestError as exc:
+    except transport.TeamRequestError as exc:
         raise _refused(exc, 400) from None
     except handoff_store.OAuthHandoffError as exc:
         raise _refused(exc, 409) from None
@@ -89,12 +89,12 @@ def authorize(
     return _started(mode, preparation, result)
 
 
-def complete(team_id: str, challenge_id: str, payload: dict, session: str) -> team.TeamResponse:
+def complete(team_id: str, challenge_id: str, payload: dict, session: str) -> transport.TeamResponse:
     """Finish an out-of-band authorization with the completion code the person pasted back."""
     request_body.exact_fields(payload, "completion_code")
     try:
         completion = HANDOFFS.complete(
-            team_id=team.canonical_team_id(team_id),
+            team_id=payloads.canonical_team_id(team_id),
             challenge_id=payloads.canonical_challenge_id(challenge_id),
             admin_session=session,
             completion_code=payload["completion_code"],
@@ -102,7 +102,7 @@ def complete(team_id: str, challenge_id: str, payload: dict, session: str) -> te
         return integrations.complete_cloudflare_oauth_callback(
             state=completion.state, claim=completion.claim, session_binding=completion.session_binding
         )
-    except team.TeamRequestError as exc:
+    except transport.TeamRequestError as exc:
         raise _refused(exc, 400) from None
     except handoff_store.OAuthHandoffError as exc:
         raise _refused(exc, 409) from None
@@ -111,7 +111,7 @@ def complete(team_id: str, challenge_id: str, payload: dict, session: str) -> te
 def cancel(team_id: str, challenge_id: str, session: str) -> object:
     """Cancel the session's pending authorization of one challenge; nothing pending is already cancelled (204)."""
     try:
-        canonical_team = team.canonical_team_id(team_id)
+        canonical_team = payloads.canonical_team_id(team_id)
         canonical_challenge = payloads.canonical_challenge_id(challenge_id)
         binding = HANDOFFS.cancel(team_id=canonical_team, challenge_id=canonical_challenge, admin_session=session)
         if binding is None:
@@ -119,7 +119,7 @@ def cancel(team_id: str, challenge_id: str, session: str) -> object:
         result = integrations.cancel_local_assistant_integration_authorization(
             canonical_team, canonical_challenge, binding
         )
-    except team.TeamRequestError as exc:
+    except transport.TeamRequestError as exc:
         raise _refused(exc, 400) from None
     except handoff_store.OAuthHandoffError as exc:
         raise _refused(exc, 409) from None

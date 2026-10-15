@@ -51,7 +51,7 @@ def _project_inventory(response: transport.TeamResponse, team_id: str) -> transp
 def list_assistant_stored_inputs(team_id: object) -> transport.TeamResponse:
     canonical = payloads.canonical_team_id(team_id)
     return _project_inventory(
-        transport._call("GET", f"/v1/teams/{canonical}/assistant-stored-inputs"),
+        transport.call("GET", f"/v1/teams/{canonical}/assistant-stored-inputs"),
         canonical,
     )
 
@@ -64,7 +64,7 @@ def clear_assistant_stored_input(
     canonical = payloads.canonical_team_id(team_id)
     assistant = payloads.canonical_assistant_id(assistant_id)
     stored_input = payloads.canonical_identifier(stored_input_id)
-    response = transport._call(
+    response = transport.call(
         "DELETE",
         f"/v1/teams/{canonical}/assistant-stored-inputs/{assistant}/{stored_input}",
     )

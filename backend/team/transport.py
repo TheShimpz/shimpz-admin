@@ -658,7 +658,7 @@ def _stream_request(
     )
 
 
-def _call(
+def call(
     method: str,
     path: str,
     payload: object | None = None,
@@ -679,23 +679,23 @@ def _call(
     )
 
 
-def _call_asset(path: str) -> TeamAssetResponse:
+def call_asset(path: str) -> TeamAssetResponse:
     return _request_asset("GET", path)
 
 
-def _call_preview(path: str) -> TeamAssetResponse:
+def call_preview(path: str) -> TeamAssetResponse:
     return _request_asset("GET", path, _PREVIEW_READING)
 
 
-def _call_page_preview(path: str) -> TeamAssetResponse:
+def call_page_preview(path: str) -> TeamAssetResponse:
     return _request_asset("GET", path, _PAGE_PREVIEW_READING)
 
 
-def _call_content(path: str) -> TeamAssetResponse:
+def call_content(path: str) -> TeamAssetResponse:
     return _request_asset("GET", path, _CONTENT_READING)
 
 
-def _call_stream(
+def call_stream(
     method: str,
     path: str,
     payload: object,
@@ -718,7 +718,7 @@ def _call_stream(
     )
 
 
-def _call_raw(
+def call_raw(
     method: str,
     path: str,
     body: bytes,

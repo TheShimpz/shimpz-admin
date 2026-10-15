@@ -54,9 +54,9 @@ class Boundary:
     """Closed Team HTTP responses and lock-protected operation counts."""
 
     def __init__(
-        self, team, max_context_entries: int, snapshot_delay_ms: int | None, catalog_delay_ms: int | None
+        self, transport, max_context_entries: int, snapshot_delay_ms: int | None, catalog_delay_ms: int | None
     ) -> None:
-        self.team = team
+        self.transport = transport
         self.max_context_entries = max_context_entries
         self.lock = threading.Lock()
         self.calls: Counter[str] = Counter()
@@ -108,7 +108,7 @@ class Boundary:
         if method == "GET" and path == "/v1/local-assistants" and self.snapshot_delay_ms is not None:
             time.sleep(self.snapshot_delay_ms / 1000)
         if method == "GET" and path == f"/v1/teams/{TEAM_ID}/inference":
-            return self.team.TeamResponse(
+            return self.transport.TeamResponse(
                 200,
                 {"team_id": TEAM_ID, "provider": "openai", "model": "gpt-6.1-sol", "trace_id": TRACE_ID},
             )
@@ -118,9 +118,9 @@ class Boundary:
             f"/v1/teams/{TEAM_ID}/chat/integrations",
             f"/v1/teams/{TEAM_ID}/chat/human",
         }:
-            return self.team.TeamResponse(200, {"team_id": TEAM_ID, "status": "none", "trace_id": TRACE_ID})
+            return self.transport.TeamResponse(200, {"team_id": TEAM_ID, "status": "none", "trace_id": TRACE_ID})
         if method == "GET" and path in {f"/v1/teams/{TEAM_ID}/assistants", "/v1/local-assistants"}:
-            return self.team.TeamResponse(200, {"assistants": [], "trace_id": TRACE_ID})
+            return self.transport.TeamResponse(200, {"assistants": [], "trace_id": TRACE_ID})
         raise MeasurementError(f"unexpected Team HTTP operation: {method} {path}")
 
     def _route(self, payload, options):
@@ -154,7 +154,7 @@ class Boundary:
             reply = ""
         else:
             raise MeasurementError("unexpected synthetic objective")
-        return self.team.TeamResponse(
+        return self.transport.TeamResponse(
             200,
             {
                 "team_id": TEAM_ID,
@@ -186,7 +186,7 @@ class Boundary:
             or getattr(bindings, "model_credential", None) != ("openai", MODEL_KEY)
         ):
             raise MeasurementError("unexpected Team chat operation")
-        return self.team.TeamResponse(
+        return self.transport.TeamResponse(
             200,
             {"team_id": TEAM_ID, "team_name": "Marketing", "reply": "Measured reply.", "trace_id": TRACE_ID},
         )
@@ -422,12 +422,12 @@ def main() -> int:
                 secret = configure_supervisor(app.state, "violet otter lantern quartz 92")
                 token = app.auth.issue_session(secret, "totp")
                 app.state.set_model_api_key("openai", MODEL_KEY)
-                boundary = Boundary(app.team, history_context.MAX_ENTRIES, snapshot_delay_ms, catalog_delay_ms)
+                boundary = Boundary(app.transport, history_context.MAX_ENTRIES, snapshot_delay_ms, catalog_delay_ms)
                 with ExitStack() as stack:
-                    stack.enter_context(mock.patch.object(app.team, "_call", side_effect=boundary.call))
-                    stack.enter_context(mock.patch.object(app.team, "_call_stream", side_effect=boundary.stream))
-                    stack.enter_context(mock.patch.object(app.team, "_call_raw", side_effect=_forbid_network))
-                    stack.enter_context(mock.patch.object(app.team, "_call_asset", side_effect=_forbid_network))
+                    stack.enter_context(mock.patch.object(app.transport, "call", side_effect=boundary.call))
+                    stack.enter_context(mock.patch.object(app.transport, "call_stream", side_effect=boundary.stream))
+                    stack.enter_context(mock.patch.object(app.transport, "call_raw", side_effect=_forbid_network))
+                    stack.enter_context(mock.patch.object(app.transport, "call_asset", side_effect=_forbid_network))
                     stack.enter_context(
                         mock.patch.object(app.chat_socket.lifecycle._STORE_CATALOG, "get", side_effect=boundary.catalog)
                     )

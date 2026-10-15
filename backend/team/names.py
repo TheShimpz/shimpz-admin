@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse
 from history import http as chat_history_http
 from session import topics
 from signin import auth
-from team import bridge
+from team import bridge, transport
 from team import http as team_http
 from team import order as team_order
 
@@ -38,7 +38,7 @@ def _candidate_ids(team_name: str) -> list[str]:
     return [base, *(f"{stem}_{suffix}" for suffix in range(2, MAX_ID_SUFFIX + 1))]
 
 
-def _create(team_name: str) -> tuple[str, bridge.TeamResponse]:
+def _create(team_name: str) -> tuple[str, transport.TeamResponse]:
     """Try the name's id, then its suffixes, only while each is held by a Team with another current name.
 
     Creation holds the Team order lock, and an id that no Team holds first loses any position it kept saved.
@@ -84,7 +84,7 @@ def deletion(payload: dict) -> tuple[str, str]:
     return team_name, password
 
 
-def _deleted_with_history(team_id: str, team_name: str) -> bridge.TeamResponse:
+def _deleted_with_history(team_id: str, team_name: str) -> transport.TeamResponse:
     with team_order.LOCK:
         response = chat_history_http.team_delete(team_id, lambda: bridge.destroy_confirmed(team_id, team_name))
         return team_order.team_deleted(team_id, response)

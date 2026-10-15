@@ -79,7 +79,7 @@ def _project_result(response: object, assistant_id: str) -> UninstallResult:
     return UninstallResult(response.status, projected)
 
 
-def _uninstall_body(response: team.TeamResponse, assistant_id: str) -> bool:
+def _uninstall_body(response: transport.TeamResponse, assistant_id: str) -> bool:
     if not isinstance(response.body, dict):
         raise ValueError("Assistant uninstall result is invalid")
     allowed = transport.trace_envelope(response.body, {"assistant", "uninstalled"})

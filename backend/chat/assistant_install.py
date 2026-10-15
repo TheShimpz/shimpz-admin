@@ -44,7 +44,7 @@ def install_local_snapshot(team_id: str, assistant: local_catalog.LocalAssistant
     return _result(response, lambda admitted: _local_install_body(admitted, assistant))
 
 
-def _result(response: object, installed: Callable[[team.TeamResponse], bool]) -> InstallResult:
+def _result(response: object, installed: Callable[[transport.TeamResponse], bool]) -> InstallResult:
     if not transport.is_team_response(response):
         return InstallResult(502)
     if not 200 <= response.status < 300:
@@ -55,7 +55,7 @@ def _result(response: object, installed: Callable[[team.TeamResponse], bool]) ->
         return InstallResult(502)
 
 
-def _install_body(response: team.TeamResponse, assistant_id: str) -> bool:
+def _install_body(response: transport.TeamResponse, assistant_id: str) -> bool:
     if not isinstance(response.body, dict):
         raise ValueError("Assistant install result is invalid")
     allowed = transport.trace_envelope(response.body, {"assistant", "installed"})
@@ -69,7 +69,7 @@ def _install_body(response: team.TeamResponse, assistant_id: str) -> bool:
     return installed
 
 
-def _local_install_body(response: team.TeamResponse, assistant: local_catalog.LocalAssistant) -> bool:
+def _local_install_body(response: transport.TeamResponse, assistant: local_catalog.LocalAssistant) -> bool:
     if not isinstance(response.body, dict):
         raise ValueError("Local Assistant install result is invalid")
     allowed = transport.trace_envelope(

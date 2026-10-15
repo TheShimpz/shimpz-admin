@@ -10,7 +10,7 @@ from chat.delivery import uninstall as uninstall_delivery
 from fastapi import WebSocket
 from history import delivery as history_delivery
 from history import store as history
-from team import bridge as team
+from team import transport
 
 from chat import assistant_route
 
@@ -54,7 +54,7 @@ async def _result(turn: Turn) -> assistant_route.Result:
         raise
     except assistant_route.RouteError:
         raise
-    except (OSError, RuntimeError, TypeError, ValueError, team.TeamRequestError) as exc:
+    except (OSError, RuntimeError, TypeError, ValueError, transport.TeamRequestError) as exc:
         raise assistant_route.RouteError(503) from exc
     if not isinstance(result, assistant_route.Result):
         raise assistant_route.RouteError(503)

@@ -99,7 +99,7 @@ class StateEdgeTests(unittest.TestCase):
 class AssetProjectionEdgeTests(unittest.TestCase):
     def test_asset_errors_json_and_binary_results_are_projected(self) -> None:
         with self.assertRaisesRegex(assets.team_http.HTTPException, "invalid") as caught:
-            assets._response(lambda: (_ for _ in ()).throw(bridge.TeamRequestError("invalid")))
+            assets._response(lambda: (_ for _ in ()).throw(transport.TeamRequestError("invalid")))
         self.assertEqual(caught.exception.status_code, 400)
 
         error = assets._response(lambda: transport.TeamAssetResponse(404, None, {"code": "not-found"}))

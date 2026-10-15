@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from team import bridge as team
+from team import transport
 
 API_KEY = "sk-test-0123456789"
 
@@ -27,8 +28,8 @@ class TeamCapabilityPlanBridgeTests(unittest.TestCase):
                 }
             ],
         }
-        expected = team.TeamResponse(200, {"status": "sufficient"})
-        with mock.patch.object(team, "_call", return_value=expected) as call:
+        expected = transport.TeamResponse(200, {"status": "sufficient"})
+        with mock.patch.object(transport, "call", return_value=expected) as call:
             response = team.capability_plan(
                 "team_1",
                 payload,
@@ -56,8 +57,8 @@ class TeamCapabilityPlanBridgeTests(unittest.TestCase):
         for payload in invalid:
             with (
                 self.subTest(payload=payload),
-                mock.patch.object(team, "_call") as call,
-                self.assertRaises(team.TeamRequestError),
+                mock.patch.object(transport, "call") as call,
+                self.assertRaises(transport.TeamRequestError),
             ):
                 team.capability_plan(
                     "team_1",
@@ -76,8 +77,8 @@ class TeamCapabilityPlanBridgeTests(unittest.TestCase):
             "conversation": [],
             "locale": "pt",
         }
-        expected = team.TeamResponse(200, {"intent": "assistant-uninstall"})
-        with mock.patch.object(team, "_call", return_value=expected) as call:
+        expected = transport.TeamResponse(200, {"intent": "assistant-uninstall"})
+        with mock.patch.object(transport, "call", return_value=expected) as call:
             response = team.intent_route(
                 "team_1",
                 payload,
@@ -108,7 +109,7 @@ class TeamCapabilityPlanBridgeTests(unittest.TestCase):
             "conversation": [],
             "locale": "pt",
         }
-        expected = team.TeamResponse(200, {"intent": "ordinary-task"})
+        expected = transport.TeamResponse(200, {"intent": "ordinary-task"})
         with mock.patch.object(team.transport, "_request", return_value=expected) as request:
             self.assertIs(team.intent_route("team_1", route, provider="openai", api_key=API_KEY), expected)
             plan = {"objective": objective, "candidates": []}
@@ -134,8 +135,8 @@ class TeamCapabilityPlanBridgeTests(unittest.TestCase):
         for payload in invalid:
             with (
                 self.subTest(payload=payload),
-                mock.patch.object(team, "_call") as call,
-                self.assertRaises(team.TeamRequestError),
+                mock.patch.object(transport, "call") as call,
+                self.assertRaises(transport.TeamRequestError),
             ):
                 team.intent_route(
                     "team_1",

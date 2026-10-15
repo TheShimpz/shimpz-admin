@@ -16,7 +16,7 @@ from http import HTTPStatus
 from team import bridge as team
 from team import transport
 
-from chat import human
+from chat import human, payloads
 from protocol.http.v1 import routine_run as routine_run_contract
 from protocol.http.v1 import websocket as chat_ws_common
 from routine import manage
@@ -37,12 +37,12 @@ MAX_OPENING_TEAMS = MAX_OPEN_CHALLENGES
 OPENING_WAIT_SECONDS = 30.0
 _OPENINGS: dict[str, _Opening] = {}
 _OPENINGS_LOCK = threading.Lock()
-_OPENING_BUSY = team.TeamResponse(HTTPStatus.CONFLICT, {"code": "routine-challenge-busy"})
+_OPENING_BUSY = transport.TeamResponse(HTTPStatus.CONFLICT, {"code": "routine-challenge-busy"})
 Authenticate = Callable[[str, str], Awaitable[human.AuthenticationResult]]
 
 
 def _run(team_id: object, run_id: object) -> tuple[str, str]:
-    canonical = team.canonical_team_id(team_id)
+    canonical = payloads.canonical_team_id(team_id)
     return canonical, manage._id(run_id, "Routine run")
 
 
@@ -119,7 +119,7 @@ def _opening(canonical: str) -> Iterator[bool]:
                 del _OPENINGS[canonical]
 
 
-def open_challenge(team_id: object, run_id: object, body: object) -> team.TeamResponse:
+def open_challenge(team_id: object, run_id: object, body: object) -> transport.TeamResponse:
     """A person opened a frozen run's notice: its fresh challenge, or that it waits for an Integration.
 
     The browser names the Admin interface language, and Team renders the request copy in it (ADR-0091).
@@ -127,13 +127,13 @@ def open_challenge(team_id: object, run_id: object, body: object) -> team.TeamRe
     canonical, run = _run(team_id, run_id)
     opening = routine_run_contract.canonical_challenge_open(body)
     if opening is None:
-        raise team.TeamRequestError("Routine challenge opening is invalid")
+        raise transport.TeamRequestError("Routine challenge opening is invalid")
     with _opening(canonical) as admitted:
         return _open(canonical, run, opening) if admitted else _OPENING_BUSY
 
 
-def _open(canonical: str, run: str, opening: dict[str, str]) -> team.TeamResponse:
-    response = transport._call("POST", f"/v1/teams/{canonical}/routines/runs/{run}/challenge", opening)
+def _open(canonical: str, run: str, opening: dict[str, str]) -> transport.TeamResponse:
+    response = transport.call("POST", f"/v1/teams/{canonical}/routines/runs/{run}/challenge", opening)
     if response.status != 200 or not isinstance(response.body, dict):
         return manage._projected(response, lambda _body: None)
     body = dict(response.body)
@@ -174,12 +174,12 @@ def _open(canonical: str, run: str, opening: dict[str, str]) -> team.TeamRespons
             if name in projected
         },
     }
-    return team.TeamResponse(
+    return transport.TeamResponse(
         HTTPStatus.OK, {"team_id": canonical, "run_id": run, "status": "human-required", "challenge": challenge}
     )
 
 
-def _resumed(response: team.TeamResponse, canonical: str, run: str) -> team.TeamResponse:
+def _resumed(response: transport.TeamResponse, canonical: str, run: str) -> transport.TeamResponse:
     def admit(value: dict[str, object]) -> dict[str, object] | None:
         valid = (
             set(value) == {"team_id", "run_id", "status"}
@@ -191,8 +191,8 @@ def _resumed(response: team.TeamResponse, canonical: str, run: str) -> team.Team
     return manage._projected(response, admit)
 
 
-def _resume(canonical: str, run: str, action: str, payload: dict[str, object], assurance) -> team.TeamResponse:
-    response = transport._call_stream(
+def _resume(canonical: str, run: str, action: str, payload: dict[str, object], assurance) -> transport.TeamResponse:
+    response = transport.call_stream(
         "POST",
         f"/v1/teams/{canonical}/routines/runs/{run}/{action}",
         payload,
@@ -218,24 +218,24 @@ class Answered:
 
 async def authenticated(
     team_id: object, run_id: object, frame: object, authenticate: Authenticate
-) -> team.TeamResponse | Answered:
+) -> transport.TeamResponse | Answered:
     """One exact answer to the run's open challenge, authenticated as in chat, or why it cannot resume the run."""
     canonical, run = _run(team_id, run_id)
     canonical_frame = chat_ws_common.canonical_human_response(frame)
     key = (canonical, run, canonical_frame["challenge_id"])
     opened = _take(key)
     if opened is None:
-        return team.TeamResponse(HTTPStatus.CONFLICT, {"code": "human-request-expired"})
+        return transport.TeamResponse(HTTPStatus.CONFLICT, {"code": "human-request-expired"})
     deadline, request, generation = opened
     payload, assurance, rejection, failure = await human.response_payload(dict(frame), request, authenticate)
     if rejection is not None:
         # A wrong password keeps the challenge open until its own expiry for another attempt, as in chat.
         _restore(key, deadline, request, generation)
-        return team.TeamResponse(HTTPStatus.CONFLICT, {"code": rejection["reason"], **rejection})
+        return transport.TeamResponse(HTTPStatus.CONFLICT, {"code": rejection["reason"], **rejection})
     return Answered(canonical, run, payload, assurance, failure)
 
 
-def resume_answered(answered: Answered) -> team.TeamResponse:
+def resume_answered(answered: Answered) -> transport.TeamResponse:
     """Team's answer as the run resumes, or ends denied; it replays for up to its active time, so this runs on a worker.
 
     The Supervisor's session binding travels with the worker thread.
@@ -243,14 +243,14 @@ def resume_answered(answered: Answered) -> team.TeamResponse:
     return _resume(answered.team_id, answered.run_id, "human", answered.payload, answered.assurance)
 
 
-def answered_outcome(answered: Answered, resumed: team.TeamResponse) -> team.TeamResponse:
+def answered_outcome(answered: Answered, resumed: transport.TeamResponse) -> transport.TeamResponse:
     """What the person learns: an Action password Admin could not check denied the run, which says so as a failure."""
     if answered.failure is not None:
-        return team.TeamResponse(answered.failure[0], {"code": "human-authentication-unavailable"})
+        return transport.TeamResponse(answered.failure[0], {"code": "human-authentication-unavailable"})
     return resumed
 
 
-def resume_integrations(team_id: object, run_id: object) -> team.TeamResponse:
+def resume_integrations(team_id: object, run_id: object) -> transport.TeamResponse:
     """After the Integration is connected, the run continues from where it froze."""
     canonical, run = _run(team_id, run_id)
     return _resume(canonical, run, "integrations", {}, None)

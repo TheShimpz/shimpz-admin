@@ -58,7 +58,7 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
             200,
             {"team_id": "team_1", "integrations": [integration], "trace_id": "f" * 32},
         )
-        with mock.patch.object(assistants.transport, "_call", return_value=response) as call:
+        with mock.patch.object(assistants.transport, "call", return_value=response) as call:
             projected = assistants.list_assistant_integrations("team_1")
 
         # Team's English summaries are validated but never reach the browser, which reads the Assistant summary per
@@ -194,7 +194,7 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
         )
         with mock.patch.object(
             assistants.transport,
-            "_call",
+            "call",
             side_effect=[upstream_error, invalid],
         ):
             self.assertEqual(
@@ -216,7 +216,7 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
 
         with mock.patch.object(
             assistants.transport,
-            "_call",
+            "call",
             side_effect=[upstream_error, invalid],
         ):
             self.assertEqual(
@@ -233,7 +233,7 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
         )
         with mock.patch.object(
             assistants.transport,
-            "_call",
+            "call",
             side_effect=[upstream_error, invalid, invalid_connected],
         ):
             self.assertEqual(

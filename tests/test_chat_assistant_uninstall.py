@@ -8,11 +8,13 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from team import transport
+
 from chat import assistant_proposal, assistant_uninstall
 
 
 def _installed(*items: tuple[str, str]):
-    return assistant_uninstall.team.TeamResponse(
+    return transport.TeamResponse(
         200,
         {
             "assistants": [
@@ -35,7 +37,7 @@ def _inventory(*items: tuple[str, str]):
 
 
 def _registry(*assistant_ids: str):
-    return assistant_uninstall.team.TeamResponse(
+    return transport.TeamResponse(
         200,
         {
             "assistants": [
@@ -143,7 +145,7 @@ class AssistantUninstallExecutionTests(unittest.TestCase):
                 uninstall.assert_not_called()
 
     def test_revalidated_target_uses_only_the_team_delete_route(self) -> None:
-        response = assistant_uninstall.team.TeamResponse(
+        response = transport.TeamResponse(
             200,
             {"assistant": "shimpz-cloudflare", "uninstalled": True, "trace_id": "c" * 32},
         )
@@ -161,11 +163,11 @@ class AssistantUninstallExecutionTests(unittest.TestCase):
         uninstall.assert_called_once_with("team_1", "shimpz-cloudflare")
 
     def test_team_confirmed_absence_race_is_idempotent_success_and_a_404_is_not(self) -> None:
-        absent = assistant_uninstall.team.TeamResponse(
+        absent = transport.TeamResponse(
             200,
             {"assistant": "shimpz-cloudflare", "uninstalled": False, "trace_id": "c" * 32},
         )
-        refused = assistant_uninstall.team.TeamResponse(
+        refused = transport.TeamResponse(
             404,
             {
                 "code": "assistant-not-allowlisted",
@@ -185,11 +187,11 @@ class AssistantUninstallExecutionTests(unittest.TestCase):
                 self.assertEqual(assistant_uninstall.uninstall(_proposal()), expected)
 
     def test_local_uninstall_rejects_an_unknown_field(self) -> None:
-        valid = assistant_uninstall.team.TeamResponse(
+        valid = transport.TeamResponse(
             200,
             {"assistant": "shimpz-cloudflare", "uninstalled": True},
         )
-        extra = assistant_uninstall.team.TeamResponse(
+        extra = transport.TeamResponse(
             200,
             {"assistant": "shimpz-cloudflare", "uninstalled": True, "unexpected": True},
         )
@@ -207,8 +209,8 @@ class AssistantUninstallExecutionTests(unittest.TestCase):
 
     def test_malformed_absence_or_success_never_claims_removal(self) -> None:
         responses = (
-            assistant_uninstall.team.TeamResponse(404, {"code": "assistant-not-allowlisted"}),
-            assistant_uninstall.team.TeamResponse(
+            transport.TeamResponse(404, {"code": "assistant-not-allowlisted"}),
+            transport.TeamResponse(
                 200,
                 {"assistant": "other", "uninstalled": True},
             ),

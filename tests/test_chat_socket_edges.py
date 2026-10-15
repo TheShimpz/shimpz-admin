@@ -14,7 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from chat.delivery import sync as sync_delivery
-from team import bridge as team
+from team import transport
 from tests.chat_socket_case import ChatDeliveryCase, resume_operations
 from tests.chat_socket_fixtures import human_challenge, human_response
 
@@ -340,10 +340,12 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
             websocket = mock.AsyncMock()
             connection = socket._Connection()
             turn = socket._Turn(None, "chat")
-            self.assertEqual(await socket._await_turn_response(websocket, connection, turn), team.TeamResponse(502, {}))
+            self.assertEqual(
+                await socket._await_turn_response(websocket, connection, turn), transport.TeamResponse(502, {})
+            )
 
             future: concurrent.futures.Future[object] = concurrent.futures.Future()
-            future.set_exception(team.TeamRequestError("invalid"))
+            future.set_exception(transport.TeamRequestError("invalid"))
             turn = socket._Turn(future, "chat", asyncio.Queue())
             connection.active = turn
             await socket._deliver_turn(websocket, connection, turn, "team_1")
@@ -363,7 +365,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
     def test_sync_delivery_covers_empty_invalid_and_missing_resume(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            empty = team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
+            empty = transport.TeamResponse(200, {"team_id": "team_1", "status": "none"})
 
             connection = socket._Connection(pending_challenge_id="a" * 32)
             await sync_delivery.integration(websocket, connection, "team_1", empty, None, socket._SYNC_OPERATIONS)
@@ -524,7 +526,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
             self.assertEqual(sync_delivery.pending_error(failure, "team_1", "human")["status"], 503)
 
             pending = _empty_integration_challenge()
-            invalid_resumed = team.TeamResponse(428, {"status": "integrations-required"})
+            invalid_resumed = transport.TeamResponse(428, {"status": "integrations-required"})
             await sync_delivery.integration(
                 websocket,
                 socket._Connection(),

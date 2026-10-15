@@ -29,7 +29,7 @@ class RoutineMethodCase(SessionSocketCase):
         self.manage = __import__("routine.manage", fromlist=["manage"])
         self.answer = __import__("routine.answer", fromlist=["answer"])
         self.routines = __import__("session.routines", fromlist=["routines"])
-        self.ok = self.team.TeamResponse(200, OK)
+        self.ok = self.transport.TeamResponse(200, OK)
         # How a card was answered is kept in the transcript; these tests stand in for the history store.
         kept = mock.patch.object(self.routines.history_store, "append_proposal_answer", return_value=True)
         self.kept_answers = kept.start()
@@ -115,7 +115,7 @@ class RoutineOperationTests(RoutineMethodCase):
         self.assertEqual(result["status"], 200)
 
     def test_a_request_admin_refuses_before_team_is_the_pages_own_400(self) -> None:
-        with mock.patch.object(self.team, "_call") as call:
+        with mock.patch.object(self.transport, "call") as call:
             results, _raised = self.results(
                 ("routines.pause", {"team_id": "team_1", "routine_id": "x"}),
                 ("routines.plan_steps", {"team_id": "team_1", "routine_id": ROUTINE, "revision": "02", "offset": "0"}),
@@ -129,7 +129,7 @@ class RoutineOperationTests(RoutineMethodCase):
         call.assert_not_called()
 
     def test_team_refusals_keep_their_safe_code(self) -> None:
-        busy = self.team.TeamResponse(409, {"code": "routine-busy"})
+        busy = self.transport.TeamResponse(409, {"code": "routine-busy"})
         with mock.patch.object(self.manage, "pause", return_value=busy):
             (result,), raised = self.results(
                 ("routines.pause", {"team_id": "team_1", "routine_id": ROUTINE}), topics=("team/team_1/routines",)
@@ -196,7 +196,7 @@ class RoutineTopicTests(RoutineMethodCase):
         self.addCleanup(delattr, self.admin_app.app.state, "routine_scheduler")
         card = {"team_id": "team_1", "incident_id": ROUTINE, "body": {"nonce": "e" * 32, "choice": "run"}}
         confirm = {"team_id": "team_1", "proposal_id": ROUTINE}
-        stale = self.team.TeamResponse(409, {"code": "routine-card-stale"})
+        stale = self.transport.TeamResponse(409, {"code": "routine-card-stale"})
         with (
             mock.patch.object(self.manage, "answer_card", return_value=self.ok),
             mock.patch.object(self.manage, "confirm_proposal", return_value=self.ok),
@@ -212,8 +212,8 @@ class RoutineTopicTests(RoutineMethodCase):
 
     def test_a_card_answer_team_gave_is_kept_and_an_unavailable_history_never_fails_it(self) -> None:
         answered = {"team_id": "team_1", "proposal_id": ROUTINE, "routine_id": ROUTINE, "status": "created"}
-        given = self.team.TeamResponse(200, answered)
-        refused = self.team.TeamResponse(409, {"code": "routine-proposal-expired"})
+        given = self.transport.TeamResponse(200, answered)
+        refused = self.transport.TeamResponse(409, {"code": "routine-proposal-expired"})
         params = {"team_id": "team_1", "proposal_id": ROUTINE}
         with mock.patch.object(self.manage, "confirm_proposal", side_effect=[given, refused]):
             self.results(("routines.proposal_confirm", params), ("routines.proposal_confirm", params))
@@ -233,7 +233,7 @@ class RoutineTopicTests(RoutineMethodCase):
 class RoutineResumeTests(RoutineMethodCase):
     def test_a_human_answer_says_once_that_the_run_resumes_and_answers_with_its_outcome(self) -> None:
         checked = self.answer.Answered("team_1", RUN, {"challenge_id": CHALLENGE, "decision": "deny"}, None, None)
-        resumed = self.team.TeamResponse(200, {"team_id": "team_1", "run_id": RUN, "status": "denied"})
+        resumed = self.transport.TeamResponse(200, {"team_id": "team_1", "run_id": RUN, "status": "denied"})
 
         async def scenario() -> list[dict]:
             websocket = await self._connect()
@@ -258,7 +258,7 @@ class RoutineResumeTests(RoutineMethodCase):
         checked = self.answer.Answered(
             "team_1", RUN, {"challenge_id": CHALLENGE, "decision": "deny"}, None, (503, "authentication-unavailable")
         )
-        denied = self.team.TeamResponse(200, {"team_id": "team_1", "run_id": RUN, "status": "denied"})
+        denied = self.transport.TeamResponse(200, {"team_id": "team_1", "run_id": RUN, "status": "denied"})
         with (
             mock.patch.object(self.answer, "authenticated", new=mock.AsyncMock(return_value=checked)),
             mock.patch.object(self.answer, "resume_answered", return_value=denied),
@@ -271,7 +271,7 @@ class RoutineResumeTests(RoutineMethodCase):
         self.assertEqual(raised, {"team/team_1/routines"})
 
     def test_a_rejected_or_expired_answer_never_resumes_and_says_nothing_started(self) -> None:
-        rejected = self.team.TeamResponse(409, {"code": "authentication-denied", "attempts_remaining": 2})
+        rejected = self.transport.TeamResponse(409, {"code": "authentication-denied", "attempts_remaining": 2})
         with (
             mock.patch.object(self.answer, "authenticated", new=mock.AsyncMock(return_value=rejected)),
             mock.patch.object(self.answer, "resume_answered") as resume,
@@ -319,7 +319,7 @@ class RoutineResumeTests(RoutineMethodCase):
         resume.assert_not_called()
 
     def test_an_integrations_resume_says_once_that_it_started(self) -> None:
-        resumed = self.team.TeamResponse(200, {"team_id": "team_1", "run_id": RUN, "status": "done"})
+        resumed = self.transport.TeamResponse(200, {"team_id": "team_1", "run_id": RUN, "status": "done"})
 
         async def scenario() -> list[dict]:
             websocket = await self._connect()

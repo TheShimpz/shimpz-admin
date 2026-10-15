@@ -211,11 +211,11 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
 
         self.assertEqual(
             response,
-            team.TeamResponse(409, {"detail": "assistant already installed"}),
+            transport.TeamResponse(409, {"detail": "assistant already installed"}),
         )
 
     def test_install_uses_its_full_lifecycle_timeout_budget(self):
-        with mock.patch.object(team, "_call", return_value=team.TeamResponse(200, {})) as call:
+        with mock.patch.object(transport, "call", return_value=transport.TeamResponse(200, {})) as call:
             team.install_assistant(
                 "team_1",
                 {"assistant_id": "hello-pulse", "source_digest": "sha256:" + ("a" * 64)},
@@ -234,13 +234,13 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         self.assertGreater(team.CHAT_STREAM_TIMEOUT_SECONDS, 300)
         with (
             mock.patch.object(team, "canonical_team_chat_body", return_value={"message": "oi"}),
-            mock.patch.object(team, "_call_stream", return_value=team.TeamResponse(200, {})) as stream,
+            mock.patch.object(transport, "call_stream", return_value=transport.TeamResponse(200, {})) as stream,
         ):
             team.chat("team_1", {}, provider="openai", api_key="test-key", progress=print)
         self.assertEqual(stream.call_args.kwargs["timeout"], team.CHAT_STREAM_TIMEOUT_SECONDS)
         with (
             mock.patch.object(team, "canonical_integration_resume", return_value={"challenge_id": "a" * 32}),
-            mock.patch.object(team, "_call_stream", return_value=team.TeamResponse(200, {})) as stream,
+            mock.patch.object(transport, "call_stream", return_value=transport.TeamResponse(200, {})) as stream,
         ):
             team.resume_chat_integrations("team_1", {}, provider="openai", api_key="test-key", progress=print)
         self.assertEqual(stream.call_args.kwargs["timeout"], team.CHAT_STREAM_TIMEOUT_SECONDS)
@@ -282,7 +282,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         self.assertEqual(request["path"], "/v1/local-assistants/" + ("c" * 64) + "/summary/pt")
         before = len(_TeamHandler.requests)
         for image_id, locale in (("sha256:" + ("c" * 64), "pt-BR"), ("sha256:" + ("c" * 64), None), ("latest", "pt")):
-            with self.subTest(image_id=image_id, locale=locale), self.assertRaises(team.TeamRequestError):
+            with self.subTest(image_id=image_id, locale=locale), self.assertRaises(transport.TeamRequestError):
                 team.local_assistant_summary(image_id, locale)
         self.assertEqual(len(_TeamHandler.requests), before)
 
@@ -306,7 +306,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         ):
             with (
                 self.subTest(team_id=team_id, assistant_id=assistant_id, locale=locale),
-                self.assertRaises(team.TeamRequestError),
+                self.assertRaises(transport.TeamRequestError),
             ):
                 team.assistant_summary(team_id, assistant_id, locale)
         self.assertEqual(len(_TeamHandler.requests), before)
@@ -326,7 +326,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             lambda: team.assistant_details("team_1", "Hello", "pt"),
             lambda: team.assistant_details("team_1", "hello-pulse", None),
         ):
-            with self.subTest(call=call), self.assertRaises(team.TeamRequestError):
+            with self.subTest(call=call), self.assertRaises(transport.TeamRequestError):
                 call()
         self.assertEqual(len(_TeamHandler.requests), before)
 
@@ -348,7 +348,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         ).encode()
 
         self.assertEqual(team.resolve_team_name("team_1"), "Marketing")
-        self.assertEqual(team.resolve_team_name("team_2"), team.TeamResponse(404, {"detail": "Team not found"}))
+        self.assertEqual(team.resolve_team_name("team_2"), transport.TeamResponse(404, {"detail": "Team not found"}))
 
         _TeamHandler.response_body = json.dumps(
             {"teams": [{"team_id": "team_1", "team_name": "Marketing", "status": "running", "extra": True}]},
@@ -356,7 +356,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         ).encode()
         self.assertEqual(
             team.resolve_team_name("team_1"),
-            team.TeamResponse(502, {"detail": "Team inventory response is invalid."}),
+            transport.TeamResponse(502, {"detail": "Team inventory response is invalid."}),
         )
         self.assertEqual([request["path"] for request in _TeamHandler.requests], ["/v1/teams"] * 3)
 
@@ -389,7 +389,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
 
         self.assertEqual(
             uploaded,
-            team.TeamResponse(200, {"team_id": "team_1", "file": metadata, **usage}),
+            transport.TeamResponse(200, {"team_id": "team_1", "file": metadata, **usage}),
         )
         upload_request = _TeamHandler.requests[-1]
         self.assertEqual(
@@ -408,7 +408,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         listed = team.list_files("team_1")
         self.assertEqual(
             listed,
-            team.TeamResponse(200, {"team_id": "team_1", "files": [metadata], **usage}),
+            transport.TeamResponse(200, {"team_id": "team_1", "files": [metadata], **usage}),
         )
 
         _TeamHandler.response_body = json.dumps(
@@ -418,7 +418,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         deleted = team.delete_file("team_1", file_id)
         self.assertEqual(
             deleted,
-            team.TeamResponse(
+            transport.TeamResponse(
                 200,
                 {"team_id": "team_1", "id": file_id, "deleted": True, **usage},
             ),
@@ -436,7 +436,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             self.assertEqual(request["headers"]["authorization"], "Bearer internal-test-bearer")
 
     def test_storage_projection_keeps_over_quota_cleanup_visible(self):
-        response = team.TeamResponse(
+        response = transport.TeamResponse(
             200,
             {
                 "team_id": "team_1",
@@ -459,7 +459,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             lambda: team.delete_file("team_1", "../not-an-id"),
         )
         for action in invalid:
-            with self.subTest(action=action), self.assertRaises(team.TeamRequestError):
+            with self.subTest(action=action), self.assertRaises(transport.TeamRequestError):
                 action()
         self.assertEqual(_TeamHandler.requests, [])
 
@@ -471,7 +471,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
 
         self.assertEqual(
             response,
-            team.TeamResponse(507, {"detail": "Team storage quota exceeded"}),
+            transport.TeamResponse(507, {"detail": "Team storage quota exceeded"}),
         )
 
     def test_rejects_invalid_assistant_paths_and_input_before_network_access(self):
@@ -494,7 +494,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             lambda: team.uninstall_assistant("team_1", "../hello-pulse"),
         )
         for action in invalid:
-            with self.subTest(action=action), self.assertRaises(team.TeamRequestError):
+            with self.subTest(action=action), self.assertRaises(transport.TeamRequestError):
                 action()
         self.assertEqual(_TeamHandler.requests, [])
 
@@ -516,7 +516,7 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
                 _TeamHandler.response_headers = headers
                 self.assertEqual(
                     team.list_assistants(),
-                    team.TeamResponse(502, {"detail": "team unavailable"}),
+                    transport.TeamResponse(502, {"detail": "team unavailable"}),
                 )
 
 

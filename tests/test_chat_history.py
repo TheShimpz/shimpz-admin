@@ -15,7 +15,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from history import http as history_http
 from history import store as history
-from team import bridge as team
+from team import transport
 from tests.chat_history_case import ChatHistoryCase, done_event, installed_event, uninstall_assistant
 
 
@@ -820,12 +820,12 @@ class ChatHistoryTests(ChatHistoryCase):
             history.resumable_turn("marketing")
 
     def test_history_http_cleanup_and_projection_edges(self) -> None:
-        failed = team.TeamResponse(500, {"detail": "failed"})
+        failed = transport.TeamResponse(500, {"detail": "failed"})
         untouched = mock.Mock()
         self.assertEqual(history_http.cleanup(failed, untouched), failed)
         untouched.assert_not_called()
 
-        success = team.TeamResponse(200, {"created": True})
+        success = transport.TeamResponse(200, {"created": True})
         self.assertEqual(history_http.cleanup(success, mock.Mock()), success)
         unavailable = history_http.cleanup(
             success,
@@ -841,15 +841,15 @@ class ChatHistoryTests(ChatHistoryCase):
         with mock.patch.object(history, "clear_team", return_value=0):
             absent = history_http.team_delete(
                 "marketing",
-                lambda: team.TeamResponse(404, {"detail": "Team not found"}),
+                lambda: transport.TeamResponse(404, {"detail": "Team not found"}),
             )
-        self.assertEqual(absent, team.TeamResponse(200, {"deleted": False}))
+        self.assertEqual(absent, transport.TeamResponse(200, {"deleted": False}))
         with mock.patch.object(history, "clear_team", return_value=0) as clear:
             deleted = history_http.team_delete(
                 "marketing",
-                lambda: team.TeamResponse(200, {"deleted": True}),
+                lambda: transport.TeamResponse(200, {"deleted": True}),
             )
-        self.assertEqual(deleted, team.TeamResponse(200, {"deleted": True}))
+        self.assertEqual(deleted, transport.TeamResponse(200, {"deleted": True}))
         clear.assert_called_once_with("marketing")
         with mock.patch.object(history, "clear_all", return_value=0) as clear:
             self.assertEqual(history_http.space_reset(lambda: success), success)
@@ -859,7 +859,7 @@ class ChatHistoryTests(ChatHistoryCase):
             mock.patch.object(
                 history_http.team,
                 "resolve_team_name",
-                side_effect=team.TeamRequestError("invalid team"),
+                side_effect=transport.TeamRequestError("invalid team"),
             ),
             self.assertRaises(HTTPException) as rejected,
         ):
@@ -869,7 +869,7 @@ class ChatHistoryTests(ChatHistoryCase):
         with mock.patch.object(
             history_http.team,
             "resolve_team_name",
-            return_value=team.TeamResponse(404, {"detail": "Team not found"}),
+            return_value=transport.TeamResponse(404, {"detail": "Team not found"}),
         ):
             self.assertEqual(history_http.page("marketing").status_code, 404)
 

@@ -641,16 +641,18 @@ class SessionSocketWatchedValueTests(SessionSocketCase):
         bridge = self.methods.team_order.bridge
         listed = [{"team_id": "team_1", "team_name": "Marketing", "status": "running"}]
         failed = {"detail": "Team is unavailable"}
-        for topic, patched, status, body in (
-            ("teams", "list_teams", 200, {"teams": listed}),
-            ("teams", "list_teams", 503, failed),
-            ("local-assistants", "_call", 200, {"assistants": []}),
-            ("local-assistants", "_call", 503, failed),
+        for topic, owner, patched, status, body in (
+            ("teams", bridge, "list_teams", 200, {"teams": listed}),
+            ("teams", bridge, "list_teams", 503, failed),
+            ("local-assistants", self.transport, "call", 200, {"assistants": []}),
+            ("local-assistants", self.transport, "call", 503, failed),
         ):
             with self.subTest(topic=topic, status=status):
-                answers = [bridge.TeamResponse(status, {**body, "trace_id": trace}) for trace in ("a" * 32, "b" * 32)]
+                answers = [
+                    self.transport.TeamResponse(status, {**body, "trace_id": trace}) for trace in ("a" * 32, "b" * 32)
+                ]
                 with (
-                    mock.patch.object(bridge, patched, side_effect=answers),
+                    mock.patch.object(owner, patched, side_effect=answers),
                     mock.patch.object(self.methods.team_order, "load", return_value=None),
                 ):
                     first = watcher_module.WATCHED[topic].read()
@@ -676,7 +678,7 @@ class SessionSocketReadParityTests(SessionSocketCase):
             ):
                 with self.subTest(params=params):
                     self.assertEqual((await websocket.result("history.page", params))["status"], status)
-            missing = self.chat_socket.team.TeamResponse(404, {"detail": "Team not found"})
+            missing = self.transport.TeamResponse(404, {"detail": "Team not found"})
             with mock.patch.object(self.methods.history_http.team, "resolve_team_name", return_value=missing):
                 result = await websocket.result("history.page", {"team_id": "team_1"})
             self.assertEqual((result["status"], result["body"]), (404, {"detail": "Team not found"}))
@@ -693,7 +695,7 @@ class SessionSocketReadParityTests(SessionSocketCase):
         asyncio.run(scenario())
 
     def test_the_other_reads_answer_as_their_routes_did(self) -> None:
-        team_response = self.chat_socket.team.TeamResponse
+        team_response = self.transport.TeamResponse
 
         async def scenario() -> None:
             websocket = await self._connect()

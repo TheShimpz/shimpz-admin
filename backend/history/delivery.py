@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from chat.executor import BoundedThreadPoolExecutor, submit_in_context
 from history import context, store
 from team import bridge as team
+from team import transport
 
 log = logging.getLogger("shimpz-admin")
 # Admission holds the lifecycle lock across a synchronous Team lookup, so it runs on its own small lane: a slow Team
@@ -36,7 +37,7 @@ def _append_live_user(team_id: str, turn_id: str, message: object, file_ids: lis
     # Team deletion and Space reset hold the lifecycle lock across their Team call and transcript cleanup, so a user
     # row written here either precedes that cleanup or finds the Team gone: it never survives a completed deletion.
     with store.LIFECYCLE_LOCK:
-        if isinstance(team.resolve_team_name(team_id), team.TeamResponse):
+        if isinstance(team.resolve_team_name(team_id), transport.TeamResponse):
             raise store.HistoryUnavailableError("the Team is no longer available")
         return store.append_user(team_id, turn_id, message, files=_file_references(team_id, file_ids))
 

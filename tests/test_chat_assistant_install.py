@@ -10,6 +10,8 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from datetime import UTC, datetime
 
+from team import transport
+
 from chat import assistant_install, local_catalog, store_catalog
 
 
@@ -43,7 +45,7 @@ def _local_candidate() -> local_catalog.LocalAssistant:
 
 class AssistantInstallTests(unittest.TestCase):
     def test_submits_only_the_exact_store_publication(self) -> None:
-        response = assistant_install.team.TeamResponse(
+        response = transport.TeamResponse(
             200,
             {
                 "assistant": "shimpz-cloudflare",
@@ -70,24 +72,24 @@ class AssistantInstallTests(unittest.TestCase):
     def test_rejects_malformed_success_and_preserves_failure_status_without_body(self) -> None:
         cases = (
             (
-                assistant_install.team.TeamResponse(200, {"assistant": "other", "installed": True}),
+                transport.TeamResponse(200, {"assistant": "other", "installed": True}),
                 assistant_install.InstallResult(502),
             ),
             (
-                assistant_install.team.TeamResponse(409, {"detail": "/private/path"}),
+                transport.TeamResponse(409, {"detail": "/private/path"}),
                 assistant_install.InstallResult(409),
             ),
             # Only Team's closed Assistant-limit refusal carries its code through.
             (
-                assistant_install.team.TeamResponse(409, {"detail": "full", "code": "assistant_limit_reached"}),
+                transport.TeamResponse(409, {"detail": "full", "code": "assistant_limit_reached"}),
                 assistant_install.InstallResult(409, code=assistant_install.ASSISTANT_LIMIT_REACHED),
             ),
             (
-                assistant_install.team.TeamResponse(429, {"detail": "busy", "code": "assistant_limit_reached"}),
+                transport.TeamResponse(429, {"detail": "busy", "code": "assistant_limit_reached"}),
                 assistant_install.InstallResult(429),
             ),
             (
-                assistant_install.team.TeamResponse(409, {"detail": "busy", "code": "team-context-changed"}),
+                transport.TeamResponse(409, {"detail": "busy", "code": "team-context-changed"}),
                 assistant_install.InstallResult(409),
             ),
             (object(), assistant_install.InstallResult(502)),
@@ -104,7 +106,7 @@ class AssistantInstallTests(unittest.TestCase):
 
     def test_submits_only_the_exact_fresh_local_snapshot(self) -> None:
         candidate = _local_candidate()
-        response = assistant_install.team.TeamResponse(
+        response = transport.TeamResponse(
             200,
             {
                 "assistant": "shimpz-cloudflare",
@@ -136,40 +138,40 @@ class AssistantInstallTests(unittest.TestCase):
         }
         cases = (
             (object(), assistant_install.InstallResult(502)),
-            (assistant_install.team.TeamResponse("200", {}), assistant_install.InstallResult(502)),
-            (assistant_install.team.TeamResponse(True, {}), assistant_install.InstallResult(502)),
+            (transport.TeamResponse("200", {}), assistant_install.InstallResult(502)),
+            (transport.TeamResponse(True, {}), assistant_install.InstallResult(502)),
             (
-                assistant_install.team.TeamResponse(409, {"detail": "/private/path"}),
+                transport.TeamResponse(409, {"detail": "/private/path"}),
                 assistant_install.InstallResult(409),
             ),
-            (assistant_install.team.TeamResponse(200, valid), assistant_install.InstallResult(200, True)),
-            (assistant_install.team.TeamResponse(200, []), assistant_install.InstallResult(502)),
+            (transport.TeamResponse(200, valid), assistant_install.InstallResult(200, True)),
+            (transport.TeamResponse(200, []), assistant_install.InstallResult(502)),
             (
-                assistant_install.team.TeamResponse(200, {**valid, "trace_id": "bad"}),
+                transport.TeamResponse(200, {**valid, "trace_id": "bad"}),
                 assistant_install.InstallResult(502),
             ),
             (
-                assistant_install.team.TeamResponse(200, {**valid, "extra": True}),
+                transport.TeamResponse(200, {**valid, "extra": True}),
                 assistant_install.InstallResult(502),
             ),
             (
-                assistant_install.team.TeamResponse(200, {**valid, "assistant": "other"}),
+                transport.TeamResponse(200, {**valid, "assistant": "other"}),
                 assistant_install.InstallResult(502),
             ),
             (
-                assistant_install.team.TeamResponse(200, {**valid, "image_id": "sha256:" + ("d" * 64)}),
+                transport.TeamResponse(200, {**valid, "image_id": "sha256:" + ("d" * 64)}),
                 assistant_install.InstallResult(502),
             ),
             (
-                assistant_install.team.TeamResponse(200, {**valid, "provenance": "published"}),
+                transport.TeamResponse(200, {**valid, "provenance": "published"}),
                 assistant_install.InstallResult(502),
             ),
             (
-                assistant_install.team.TeamResponse(200, {**valid, "unpublished": False}),
+                transport.TeamResponse(200, {**valid, "unpublished": False}),
                 assistant_install.InstallResult(502),
             ),
             (
-                assistant_install.team.TeamResponse(200, {**valid, "installed": 1}),
+                transport.TeamResponse(200, {**valid, "installed": 1}),
                 assistant_install.InstallResult(502),
             ),
         )
@@ -189,12 +191,12 @@ class AssistantInstallTests(unittest.TestCase):
 
     def test_success_projection_requires_exact_identity_boolean_and_trace(self) -> None:
         malformed = (
-            assistant_install.team.TeamResponse(200, []),
-            assistant_install.team.TeamResponse(
+            transport.TeamResponse(200, []),
+            transport.TeamResponse(
                 200,
                 {"assistant": "shimpz-cloudflare", "installed": True, "trace_id": "bad"},
             ),
-            assistant_install.team.TeamResponse(
+            transport.TeamResponse(
                 200,
                 {"assistant": "shimpz-cloudflare", "installed": 1},
             ),

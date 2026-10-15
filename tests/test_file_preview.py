@@ -156,7 +156,7 @@ class FilePreviewUnitTests(unittest.TestCase):
 
     def test_the_bridge_forwards_a_rendition_and_closes_every_refusal(self) -> None:
         rendition = transport.TeamAssetResponse(200, PNG, {}, "image/png")
-        with mock.patch.object(bridge, "_call_preview", return_value=rendition) as call:
+        with mock.patch.object(transport, "call_preview", return_value=rendition) as call:
             self.assertIs(bridge.file_preview("team_1", "a" * 32), rendition)
         call.assert_called_once_with(f"/v1/teams/team_1/files/{'a' * 32}/preview")
         cases = (
@@ -174,13 +174,13 @@ class FilePreviewUnitTests(unittest.TestCase):
             with (
                 self.subTest(status=status, error=error),
                 mock.patch.object(
-                    bridge, "_call_preview", return_value=transport.TeamAssetResponse(status, None, error)
+                    transport, "call_preview", return_value=transport.TeamAssetResponse(status, None, error)
                 ),
             ):
                 answer = bridge.file_preview("team_1", "a" * 32)
             self.assertEqual((answer.status, answer.contents, answer.error.get("code")), (expected_status, None, code))
             self.assertEqual(answer.error.get("retry_after_ms"), retry)
-        with mock.patch.object(bridge, "_call_preview") as call, self.assertRaises(bridge.TeamRequestError):
+        with mock.patch.object(transport, "call_preview") as call, self.assertRaises(transport.TeamRequestError):
             bridge.file_preview("team_1", "../" + "a" * 29)
         call.assert_not_called()
 
@@ -215,7 +215,7 @@ class FilePreviewUnitTests(unittest.TestCase):
             with self.subTest(headers=refused.headers), self.assertRaisesRegex(OSError, "invalid Team asset response"):
                 transport._decode_preview(refused)
         with mock.patch.object(transport, "_request_asset", return_value="answer") as request:
-            self.assertEqual(transport._call_preview("/v1/preview"), "answer")
+            self.assertEqual(transport.call_preview("/v1/preview"), "answer")
         request.assert_called_once_with("GET", "/v1/preview", transport._PREVIEW_READING)
 
 

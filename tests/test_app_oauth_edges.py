@@ -18,6 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
 sys.path.insert(0, str(BACKEND))
 
+from team import transport
+
 
 def _request(*, cookie: str = "token") -> Request:
     headers = [(b"cookie", f"shimpz_admin={cookie}".encode())] if cookie else []
@@ -47,7 +49,7 @@ class AppOAuthEdgeTests(app_import.RouteStatusAssertions):
 
     def test_authorization_maps_provider_team_and_handoff_rejections(self) -> None:
         handoffs = self.admin_app.authorization.HANDOFFS
-        unavailable = self.admin_app.team.TeamResponse(503, {"error": "offline"})
+        unavailable = transport.TeamResponse(503, {"error": "offline"})
         preparation = self.preparation()
         with (
             mock.patch.object(handoffs, "issue", return_value=preparation),
@@ -75,7 +77,7 @@ class AppOAuthEdgeTests(app_import.RouteStatusAssertions):
         conflict = self.admin_app.handoff_store.OAuthHandoffError("conflict")
         with mock.patch.object(handoffs, "cancel", side_effect=conflict):
             self.assertEqual(self.call("cancel", "team_1", "a" * 32, "token")[0], 409)
-        rejected = self.admin_app.team.TeamResponse(409, {"error": "not pending"})
+        rejected = transport.TeamResponse(409, {"error": "not pending"})
         with (
             mock.patch.object(handoffs, "cancel", return_value="binding"),
             mock.patch.object(
@@ -94,7 +96,7 @@ class AppOAuthEdgeTests(app_import.RouteStatusAssertions):
             mock.patch.object(
                 self.admin_app.integrations,
                 "complete_cloudflare_oauth_callback",
-                side_effect=self.admin_app.team.TeamRequestError("invalid"),
+                side_effect=transport.TeamRequestError("invalid"),
             ),
         ):
             failed = asyncio.run(self.admin_app.oauth_cloudflare_callback(callback))
@@ -105,7 +107,7 @@ class AppOAuthEdgeTests(app_import.RouteStatusAssertions):
             mock.patch.object(
                 self.admin_app.integrations,
                 "complete_cloudflare_oauth_callback",
-                return_value=self.admin_app.team.TeamResponse(503, {"error": "offline"}),
+                return_value=transport.TeamResponse(503, {"error": "offline"}),
             ),
         ):
             rejected_callback = asyncio.run(self.admin_app.oauth_cloudflare_callback(callback))

@@ -39,7 +39,7 @@ def _public_key(identity: supervisor.LocalIdentity) -> str:
 
 def _ask_team(signer: supervisor.LocalIdentity, authority: str, pending: supervisor.LocalIdentity):
     with transport.supervisor_session(authority, local_identity=signer):
-        return transport._call("POST", ROTATION_PATH, {"public_key": _public_key(pending)})
+        return transport.call("POST", ROTATION_PATH, {"public_key": _public_key(pending)})
 
 
 def _switched(response: transport.TeamResponse, pending: supervisor.LocalIdentity) -> bool | None:

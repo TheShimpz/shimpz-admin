@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from history import context as conversation_context
 from team import bridge as team
+from team import transport
 
 from chat import assistant_proposal, local
 
@@ -22,7 +23,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
         reference = assistant_proposal.AssistantReference("cloudflare", "Cloudflare")
         with (
             mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
-            mock.patch.object(team, "intent_route", return_value=team.TeamResponse(503, {})) as route,
+            mock.patch.object(team, "intent_route", return_value=transport.TeamResponse(503, {})) as route,
         ):
             local.intent_route(
                 "team_1",
@@ -46,7 +47,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
         )
         self.assertEqual(route.call_args.args[1]["locale"], "pt")
         candidates = [{"id": "cloudflare", "name": "Cloudflare", "summary": ""}]
-        with self.assertRaises(team.TeamRequestError):
+        with self.assertRaises(transport.TeamRequestError):
             local.intent_route(
                 "team_1",
                 "instale o cloudflare",
@@ -66,7 +67,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             ("assistant-uninstall", [{"id": "cloudflare", "name": "Cloudflare", "summary": "private"}]),
         )
         for expected, directory in invalid_input:
-            with self.subTest(expected=expected, directory=directory), self.assertRaises(team.TeamRequestError):
+            with self.subTest(expected=expected, directory=directory), self.assertRaises(transport.TeamRequestError):
                 local.intent_route("team_1", "objective", expected, directory, local.IntentRouteContext(locale="en"))
 
         invalid_context = (
@@ -106,7 +107,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
         )
         with mock.patch.object(team, "intent_route") as route:
             for expected, directory, context in invalid_context:
-                with self.subTest(context=context), self.assertRaises(team.TeamRequestError):
+                with self.subTest(context=context), self.assertRaises(transport.TeamRequestError):
                     local.intent_route("team_1", "objective", expected, directory, context)
         route.assert_not_called()
 
@@ -132,7 +133,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             with (
                 self.subTest(body=body),
                 mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
-                mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, body)),
+                mock.patch.object(team, "intent_route", return_value=transport.TeamResponse(200, body)),
             ):
                 self.assertEqual(
                     local.intent_route(
@@ -142,7 +143,7 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
                         candidates,
                         EN,
                     ),
-                    team.TeamResponse(502, {"code": "chat-response-invalid"}),
+                    transport.TeamResponse(502, {"code": "chat-response-invalid"}),
                 )
 
         valid_classification = {**base, "intent": "ordinary-task", "assistant_ids": []}
@@ -155,11 +156,11 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             with (
                 self.subTest(body=body),
                 mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
-                mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, body)),
+                mock.patch.object(team, "intent_route", return_value=transport.TeamResponse(200, body)),
             ):
                 self.assertEqual(
                     local.intent_route("team_1", "faça isso", None, [], EN),
-                    team.TeamResponse(502, {"code": "chat-response-invalid"}),
+                    transport.TeamResponse(502, {"code": "chat-response-invalid"}),
                 )
 
         with (
@@ -167,12 +168,12 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
             mock.patch.object(
                 team,
                 "intent_route",
-                return_value=team.TeamResponse(200, valid_classification),
+                return_value=transport.TeamResponse(200, valid_classification),
             ),
         ):
             self.assertEqual(
                 local.intent_route("team_1", "faça isso", None, [], EN),
-                team.TeamResponse(
+                transport.TeamResponse(
                     200,
                     {key: value for key, value in valid_classification.items() if key != "trace_id"},
                 ),
@@ -181,21 +182,21 @@ class ChatLifecycleReferenceTests(unittest.TestCase):
         invalid_unresolved = {**valid_classification, "intent": "unresolved", "query": "unexpected"}
         with (
             mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
-            mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, invalid_unresolved)),
+            mock.patch.object(team, "intent_route", return_value=transport.TeamResponse(200, invalid_unresolved)),
         ):
             self.assertEqual(
                 local.intent_route("team_1", "instale", "assistant-install", candidates, EN),
-                team.TeamResponse(502, {"code": "chat-response-invalid"}),
+                transport.TeamResponse(502, {"code": "chat-response-invalid"}),
             )
 
         valid_unresolved = {**invalid_unresolved, "query": "", "reply": "Qual Assistant você quer instalar?"}
         with (
             mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
-            mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, valid_unresolved)),
+            mock.patch.object(team, "intent_route", return_value=transport.TeamResponse(200, valid_unresolved)),
         ):
             self.assertEqual(
                 local.intent_route("team_1", "instale", "assistant-install", candidates, EN),
-                team.TeamResponse(
+                transport.TeamResponse(
                     200,
                     {key: value for key, value in valid_unresolved.items() if key != "trace_id"},
                 ),

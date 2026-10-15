@@ -9,7 +9,6 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from team import bridge as team
 from team import transport
 
 from protocol.http.v1 import routine as routine_contract
@@ -31,13 +30,13 @@ PROPOSAL = {"team_id": "team_1", "proposal_id": ID, "routine_id": "d" * 32, "sta
 REVOKED = {"team_id": "team_1", "proposal_id": ID, "routine_id": None, "status": "revoked"}
 
 
-def answer(body: dict[str, object], status: int = 200) -> team.TeamResponse:
-    return team.TeamResponse(status, {**body, "trace_id": TRACE} if status < 300 else body)
+def answer(body: dict[str, object], status: int = 200) -> transport.TeamResponse:
+    return transport.TeamResponse(status, {**body, "trace_id": TRACE} if status < 300 else body)
 
 
 class RoutineManageTests(unittest.TestCase):
-    def call(self, response: team.TeamResponse):
-        return mock.patch.object(transport, "_call", return_value=response)
+    def call(self, response: transport.TeamResponse):
+        return mock.patch.object(transport, "call", return_value=response)
 
     def test_each_answer_is_admitted_only_in_its_view_and_errors_carry_only_a_safe_code(self) -> None:
         listed = {"team_id": "team_1", "routines": [ROUTINE], "runs": [RUN], "incidents": [INCIDENT]}
@@ -49,7 +48,10 @@ class RoutineManageTests(unittest.TestCase):
             "/v1/teams/team_1/routines",
             bounds=transport.ByteBounds(response=routine_notice_contract.MAX_ROUTINE_LIST_BYTES),
         )
-        for untraced in (team.TeamResponse(200, dict(listed)), team.TeamResponse(200, {**listed, "trace_id": "x"})):
+        for untraced in (
+            transport.TeamResponse(200, dict(listed)),
+            transport.TeamResponse(200, {**listed, "trace_id": "x"}),
+        ):
             with self.subTest(untraced=untraced), self.call(untraced):
                 self.assertEqual(manage.list_routines("team_1").body, {"code": "routine-response-invalid"})
         for invalid in (
@@ -95,7 +97,7 @@ class RoutineManageTests(unittest.TestCase):
             ),
             (answer({"code": "Bad Code", "error": "private detail"}, 500), (500, "routine-request-failed")),
             (answer({"detail": "team unavailable"}, 302), (502, "routine-request-failed")),
-            (team.TeamResponse(503, ["not", "an", "object"]), (503, "routine-request-failed")),
+            (transport.TeamResponse(503, ["not", "an", "object"]), (503, "routine-request-failed")),
         ):
             with self.subTest(error=error), self.call(error):
                 response = manage.delete("team_1", ID)
@@ -186,7 +188,7 @@ class RoutineManageTests(unittest.TestCase):
         self.assertEqual((response.status, response.body), (409, {"code": "routine-run-changed"}))
 
     def test_requests_are_refused_before_reaching_team(self) -> None:
-        with mock.patch.object(transport, "_call") as call:
+        with mock.patch.object(transport, "call") as call:
             for refused in (
                 lambda: manage.list_routines("Team 1"),
                 lambda: manage.delete("team_1", "../x"),
@@ -215,7 +217,7 @@ class RoutineManageTests(unittest.TestCase):
                 lambda: manage.confirm_proposal("team_1", "x"),
                 lambda: manage.revoke_proposal("Team 1", ID),
             ):
-                with self.assertRaises(team.TeamRequestError):
+                with self.assertRaises(transport.TeamRequestError):
                     refused()
         call.assert_not_called()
 

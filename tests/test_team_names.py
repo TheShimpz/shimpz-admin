@@ -12,7 +12,10 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from team import bridge as team
 from team import names as team_names
+from team import transport
 from test_team_bridge_assistants import _LiveTeamCase, _probe_session, _socket_results, _TeamHandler
+
+from chat import payloads
 
 TRACE_ID = "a" * 32
 
@@ -74,24 +77,27 @@ class TeamNameBoundaryTests(unittest.TestCase):
             {"team_id": "team_1", "team_name": "Growth", "extra": 1},
             {"team_id": "team_1", "team_name": "Growth", "trace_id": "bad"},
         ):
-            with self.subTest(body=body), mock.patch.object(team, "_call", return_value=team.TeamResponse(200, body)):
+            with (
+                self.subTest(body=body),
+                mock.patch.object(transport, "call", return_value=transport.TeamResponse(200, body)),
+            ):
                 self.assertEqual(team.rename("team_1", "Growth").status, 502)
         exact = {"team_id": "team_1", "team_name": "Growth"}
-        with mock.patch.object(team, "_call", return_value=team.TeamResponse(200, exact)):
+        with mock.patch.object(transport, "call", return_value=transport.TeamResponse(200, exact)):
             self.assertEqual(team.rename("team_1", "Growth").body, exact)
-        with self.assertRaises(team.TeamRequestError):
+        with self.assertRaises(transport.TeamRequestError):
             team.rename("team_1", "Équipe")
 
     def test_confirmed_deletion_sends_the_expected_name_to_team(self) -> None:
-        with mock.patch.object(team, "_call", return_value=team.TeamResponse(200, {})) as call:
+        with mock.patch.object(transport, "call", return_value=transport.TeamResponse(200, {})) as call:
             team.destroy_confirmed("team_1", "Growth")
         call.assert_called_once_with("DELETE", "/v1/teams/team_1", {"team_name": "Growth"})
 
     def test_suffixes_stay_inside_the_id_grammar_and_exhaustion_keeps_the_conflict(self) -> None:
         ids = team_names._candidate_ids("x" * 60)
         self.assertEqual(len(ids), team_names.MAX_ID_SUFFIX)
-        self.assertTrue(all(len(team_id) <= 40 and team.canonical_team_id(team_id) == team_id for team_id in ids))
-        conflict = team.TeamResponse(409, {"code": "team-name-conflict"})
+        self.assertTrue(all(len(team_id) <= 40 and payloads.canonical_team_id(team_id) == team_id for team_id in ids))
+        conflict = transport.TeamResponse(409, {"code": "team-name-conflict"})
         with mock.patch.object(team_names.bridge, "create", return_value=conflict) as create:
             self.assertEqual(team_names._create("Marketing"), ("marketing_9", conflict))
         self.assertEqual(create.call_count, team_names.MAX_ID_SUFFIX)
@@ -103,15 +109,15 @@ class TeamNameInProcessTests(unittest.TestCase):
     """The operations in process: a rename passes Team's refusals through, and creation clears stale history."""
 
     def test_a_rename_passes_team_refusals_through_and_refuses_an_invalid_name_before_team(self) -> None:
-        taken = team.TeamResponse(409, {"detail": "another Team already has this name", "code": "team-name-taken"})
-        with mock.patch.object(team, "_call", return_value=taken) as call:
+        taken = transport.TeamResponse(409, {"detail": "another Team already has this name", "code": "team-name-taken"})
+        with mock.patch.object(transport, "call", return_value=taken) as call:
             response = team_names.rename("team_1", {"team_name": "Growth"})
         call.assert_called_once_with("PATCH", "/v1/teams/team_1", {"team_name": "Growth"})
         self.assertEqual(response.status_code, 409)
         for body in ({"team_name": 1}, {"team_name": ""}):
             with (
                 self.subTest(body=body),
-                mock.patch.object(team, "_call") as unreached,
+                mock.patch.object(transport, "call") as unreached,
                 self.assertRaises(team_names.HTTPException) as invalid,
             ):
                 team_names.rename("team_1", body)
@@ -119,7 +125,7 @@ class TeamNameInProcessTests(unittest.TestCase):
             unreached.assert_not_called()
 
     def test_local_creation_clears_history_for_the_id_it_created(self) -> None:
-        created = team.TeamResponse(200, {"team_id": "marketing", "team_name": "Marketing", "created": True})
+        created = transport.TeamResponse(200, {"team_id": "marketing", "team_name": "Marketing", "created": True})
         with (
             mock.patch.object(team_names.bridge, "create", return_value=created),
             mock.patch.object(

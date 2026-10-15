@@ -23,6 +23,7 @@ from fastapi import WebSocket, WebSocketDisconnect
 from history import delivery as history_delivery
 from history import store as history
 from team import bridge as team
+from team import transport
 
 from chat import (
     assistant_route,
@@ -124,7 +125,7 @@ async def _await_turn_response(
     turn: _Turn,
 ) -> object:
     if turn.future is None or turn.progress is None:
-        return team.TeamResponse(502, {})
+        return transport.TeamResponse(502, {})
     result = await _await_progress_result(
         websocket,
         connection,
@@ -133,12 +134,12 @@ async def _await_turn_response(
         lambda: connection.closed or turn.terminal_sent,
         progress_transport.receipt_delivery(connection.receipt, turn.history_id, fresh=True),
     )
-    return team.TeamResponse(502, {}) if result is None else result
+    return transport.TeamResponse(502, {}) if result is None else result
 
 
 async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Turn, team_id: str) -> None:
     try:
-        response = team.TeamResponse(502, {})
+        response = transport.TeamResponse(502, {})
         # A provider callback may raise any ordinary exception. This process boundary must fail
         # closed while cancellation and process-control BaseExceptions continue to propagate.
         with contextlib.suppress(Exception):
@@ -147,8 +148,8 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
                     response = await _await_turn_response(websocket, connection, turn)
             except asyncio.CancelledError:
                 raise
-            except team.TeamRequestError:
-                response = team.TeamResponse(400, {})
+            except transport.TeamRequestError:
+                response = transport.TeamResponse(400, {})
         if turn.stop_requested and turn.stop_task is not None:
             with contextlib.suppress(asyncio.CancelledError, TimeoutError):
                 await asyncio.wait_for(
@@ -175,7 +176,7 @@ async def _deliver_turn(websocket: WebSocket, connection: _Connection, turn: _Tu
                 ),
             )
             return
-        if isinstance(response, team.TeamResponse) and (
+        if isinstance(response, transport.TeamResponse) and (
             response.status == 428
             or (
                 isinstance(response.body, dict)
@@ -343,13 +344,13 @@ async def _run_stop(
     emit: bool,
 ) -> None:
     try:
-        response = team.TeamResponse(502, {})
+        response = transport.TeamResponse(502, {})
         # Stop has the same fail-closed callback boundary as turn delivery.
         with contextlib.suppress(Exception):
             try:
                 response = await asyncio.wrap_future(submit_in_context(_STOP_EXECUTOR, local.stop, team_id))
             except ExecutorSaturatedError:
-                response = team.TeamResponse(429, {})
+                response = transport.TeamResponse(429, {})
         accepted = _stop_accepted(response, team_id)
         if not emit or connection.closed or turn.terminal_sent:
             return
@@ -363,7 +364,7 @@ async def _run_stop(
                 finish_history=True,
             )
         elif accepted is None:
-            status = response.status if isinstance(response, team.TeamResponse) else 502
+            status = response.status if isinstance(response, transport.TeamResponse) else 502
             await _send_terminal_once(
                 websocket,
                 connection,
@@ -564,7 +565,7 @@ async def _admit_chat_payload(
         return None
     try:
         payload = team.canonical_chat_payload({key: frame[key] for key in team.CHAT_PAYLOAD_FIELDS})
-    except team.TeamRequestError:
+    except transport.TeamRequestError:
         payload = None
     if payload is None:
         await _send_event(websocket, _error_terminal(400, "invalid chat request"))
@@ -849,7 +850,7 @@ class Channel:
                 try:
                     with self._scope():
                         await _dispatch(self.transport, self.connection, self.team_id, frame, self._authenticate)
-                except team.TeamRequestError, local_supervisor.SupervisorAuthorityError, RuntimeError:
+                except transport.TeamRequestError, local_supervisor.SupervisorAuthorityError, RuntimeError:
                     # The current Supervisor authority is unavailable: the frame is refused as the HTTP gate refuses.
                     log.warning("chat channel frame refused: Supervisor authority is unavailable")
                     await _send_event(self.transport, _error_terminal(503, "Supervisor authority is unavailable"))
@@ -868,7 +869,7 @@ class Channel:
         try:
             with self._scope():
                 await _close_connection(self.transport, self.connection, self.team_id)
-        except team.TeamRequestError, local_supervisor.SupervisorAuthorityError, RuntimeError:
+        except transport.TeamRequestError, local_supervisor.SupervisorAuthorityError, RuntimeError:
             # Without current authority Team refuses the Stop, but every local operation still ends here.
             log.warning("chat channel closed without Supervisor authority")
             await _close_connection(self.transport, self.connection, self.team_id)

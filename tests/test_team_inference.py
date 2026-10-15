@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from team import bridge as team
+from team import transport
 
 TRACE_GET = "0123456789abcdef0123456789abcdef"
 TRACE_PUT = "fedcba9876543210fedcba9876543210"
@@ -17,7 +18,7 @@ TRACE_PUT = "fedcba9876543210fedcba9876543210"
 class TeamInferenceTests(unittest.TestCase):
     def test_get_and_put_project_the_real_controller_envelope(self) -> None:
         responses = (
-            team.TeamResponse(
+            transport.TeamResponse(
                 200,
                 {
                     "team_id": "team_1",
@@ -26,7 +27,7 @@ class TeamInferenceTests(unittest.TestCase):
                     "trace_id": TRACE_GET,
                 },
             ),
-            team.TeamResponse(
+            transport.TeamResponse(
                 200,
                 {
                     "team_id": "team_1",
@@ -36,10 +37,10 @@ class TeamInferenceTests(unittest.TestCase):
                 },
             ),
         )
-        with mock.patch.object(team, "_call", side_effect=responses) as call:
+        with mock.patch.object(transport, "call", side_effect=responses) as call:
             self.assertEqual(
                 team.get_inference("team_1"),
-                team.TeamResponse(
+                transport.TeamResponse(
                     200,
                     {"team_id": "team_1", "provider": "openai", "model": "gpt-6-luna"},
                 ),
@@ -49,7 +50,7 @@ class TeamInferenceTests(unittest.TestCase):
                     "team_1",
                     {"provider": "anthropic", "model": "claude-sonnet-5-5"},
                 ),
-                team.TeamResponse(
+                transport.TeamResponse(
                     200,
                     {"team_id": "team_1", "provider": "anthropic", "model": "claude-sonnet-5-5"},
                 ),
@@ -69,16 +70,16 @@ class TeamInferenceTests(unittest.TestCase):
 
     def test_a_selection_is_exactly_provider_and_model_in_both_directions(self) -> None:
         body = {"team_id": "team_1", "provider": "openai", "model": "gpt-6-luna", "trace_id": TRACE_GET, "extra": 1}
-        with mock.patch.object(team, "_call", return_value=team.TeamResponse(200, body)):
+        with mock.patch.object(transport, "call", return_value=transport.TeamResponse(200, body)):
             self.assertEqual(team.get_inference("team_1").status, 502)
         for payload in ({"provider": "openai"}, {"provider": "openai", "model": "gpt-6-luna", "extra": 1}):
-            with self.subTest(payload=payload), self.assertRaises(team.TeamRequestError):
+            with self.subTest(payload=payload), self.assertRaises(transport.TeamRequestError):
                 team.configure_inference("team_1", payload)
-        mismatched = team.TeamResponse(
+        mismatched = transport.TeamResponse(
             200,
             {"team_id": "team_1", "provider": "openai", "model": "gpt-6.1-sol", "trace_id": TRACE_PUT},
         )
-        with mock.patch.object(team, "_call", return_value=mismatched):
+        with mock.patch.object(transport, "call", return_value=mismatched):
             self.assertEqual(
                 team.configure_inference("team_1", {"provider": "openai", "model": "gpt-6-luna"}).status,
                 502,
@@ -108,11 +109,11 @@ class TeamInferenceTests(unittest.TestCase):
         for body in invalid_responses:
             with (
                 self.subTest(body=body),
-                mock.patch.object(team, "_call", return_value=team.TeamResponse(200, body)),
+                mock.patch.object(transport, "call", return_value=transport.TeamResponse(200, body)),
             ):
                 self.assertEqual(
                     team.get_inference("team_1"),
-                    team.TeamResponse(502, {"detail": "Team inference response is invalid."}),
+                    transport.TeamResponse(502, {"detail": "Team inference response is invalid."}),
                 )
 
     def test_rejects_secret_bearing_or_extra_controller_metadata_without_reflecting_it(self) -> None:
@@ -137,21 +138,21 @@ class TeamInferenceTests(unittest.TestCase):
             with (
                 self.subTest(body=body),
                 mock.patch.object(
-                    team,
-                    "_call",
-                    return_value=team.TeamResponse(200, body),
+                    transport,
+                    "call",
+                    return_value=transport.TeamResponse(200, body),
                 ),
             ):
                 projected = team.get_inference("team_1")
                 self.assertEqual(
                     projected,
-                    team.TeamResponse(502, {"detail": "Team inference response is invalid."}),
+                    transport.TeamResponse(502, {"detail": "Team inference response is invalid."}),
                 )
                 self.assertNotIn(secret, repr(projected.body))
 
     def test_preserves_bounded_non_success_controller_status(self) -> None:
-        response = team.TeamResponse(409, {"detail": "not configured"})
-        with mock.patch.object(team, "_call", return_value=response):
+        response = transport.TeamResponse(409, {"detail": "not configured"})
+        with mock.patch.object(transport, "call", return_value=response):
             self.assertIs(team.get_inference("team_1"), response)
 
     def test_rejects_secrets_and_invalid_providers_before_network_io(self) -> None:
@@ -163,9 +164,9 @@ class TeamInferenceTests(unittest.TestCase):
             {"provider": "openai", "model": "gpt-5.7"},
             {"provider": "OpenAI", "model": "gpt-6.1-sol"},
         )
-        with mock.patch.object(team, "_call") as call:
+        with mock.patch.object(transport, "call") as call:
             for payload in payloads:
-                with self.subTest(payload=payload), self.assertRaises(team.TeamRequestError):
+                with self.subTest(payload=payload), self.assertRaises(transport.TeamRequestError):
                     team.configure_inference("team_1", payload)
         call.assert_not_called()
 

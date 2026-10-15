@@ -125,13 +125,13 @@ class SessionMethodCase(SessionSocketCase):
         order.start()
         self.addCleanup(order.stop)
         self.team_calls = []
-        call = mock.patch.object(self.team, "_call", side_effect=self._team_call)
+        call = mock.patch.object(self.transport, "call", side_effect=self._team_call)
         call.start()
         self.addCleanup(call.stop)
 
     def _team_call(self, method: str, path: str, *_args, **_kwargs):
         self.team_calls.append((method, path))
-        return self.team.TeamResponse(503, {"detail": "Team is unavailable"})
+        return self.transport.TeamResponse(503, {"detail": "Team is unavailable"})
 
     def _answers(self, method: str, params: dict, **options) -> dict:
         async def scenario() -> dict:
@@ -381,7 +381,7 @@ class TeamDeletionTests(SessionMethodCase):
             verify.assert_not_called()
 
     def test_the_right_password_lets_team_confirm_the_name_and_raises_the_team_list(self) -> None:
-        destroyed = self.team.TeamResponse(200, {"team_id": "team_1", "destroyed": True})
+        destroyed = self.transport.TeamResponse(200, {"team_id": "team_1", "destroyed": True})
 
         async def scenario() -> tuple[dict, dict]:
             websocket = await self._connect()
@@ -425,7 +425,7 @@ class SessionMethodTopicTests(SessionMethodCase):
 
     def test_each_change_raises_exactly_its_topics(self) -> None:
         topics = ["teams", "team/team_1/inventory", "team/team_1/inference", "assistants/registry"]
-        installed = self.team.TeamResponse(200, {"assistant": "hello-pulse", "installed": True})
+        installed = self.transport.TeamResponse(200, {"assistant": "hello-pulse", "installed": True})
         for method, answer, expected in (
             ("teams.rename", {"team_id": "team_1", "team_name": "Growth"}, {"teams"}),
             (
@@ -453,8 +453,8 @@ class SessionMethodTopicTests(SessionMethodCase):
                     "unpublished": True,
                 }
             )
-            ok = self.team.TeamResponse(200, body)
-            with self.subTest(method=method), mock.patch.object(self.team, "_call", return_value=ok):
+            ok = self.transport.TeamResponse(200, body)
+            with self.subTest(method=method), mock.patch.object(self.transport, "call", return_value=ok):
                 if method == "teams.reorder":
                     with mock.patch.object(self.team, "list_teams", return_value=ok):
                         result, raised = asyncio.run(self._changed_by(method, SAMPLES[method], topics))
@@ -545,8 +545,8 @@ class SessionMethodTopicTests(SessionMethodCase):
             ("integrations.disconnect", {"disconnected": True, "trace_id": TRACE}, 204),
         ):
             transport = self.methods.integrations.transport
-            answered = self.team.TeamResponse(200, answer)
-            with self.subTest(method=method), mock.patch.object(transport, "_call", return_value=answered):
+            answered = self.transport.TeamResponse(200, answer)
+            with self.subTest(method=method), mock.patch.object(transport, "call", return_value=answered):
                 result, raised = asyncio.run(self._changed_by(method, SAMPLES[method], topics))
             self.assertEqual((result["status"], raised), (status, set(topics)))
             # A refused change raises nothing.
@@ -566,12 +566,12 @@ class SessionMethodTopicTests(SessionMethodCase):
         heard = []
         with (
             mock.patch.object(self.topics, "team_changed", side_effect=lambda *args: heard.append(args)),
-            mock.patch.object(integrations.transport, "_call", return_value=self.team.TeamResponse(200, connected)),
+            mock.patch.object(integrations.transport, "call", return_value=self.transport.TeamResponse(200, connected)),
         ):
             integrations.complete_cloudflare_oauth_callback(state="b" * 43, claim="a" * 64, session_binding="c" * 43)
         with (
             mock.patch.object(self.topics, "team_changed", side_effect=lambda *args: heard.append(args)),
-            mock.patch.object(self.team, "_call_stream", return_value=self.team.TeamResponse(200, {})),
+            mock.patch.object(self.transport, "call_stream", return_value=self.transport.TeamResponse(200, {})),
         ):
             self.team.resume_chat_human(
                 "team_1",
@@ -583,7 +583,7 @@ class SessionMethodTopicTests(SessionMethodCase):
         # An answer that sealed its Input and paused again for the next request changed state too.
         with (
             mock.patch.object(self.topics, "team_changed", side_effect=lambda *args: heard.append(args)),
-            mock.patch.object(self.team, "_call_stream", return_value=self.team.TeamResponse(428, {})),
+            mock.patch.object(self.transport, "call_stream", return_value=self.transport.TeamResponse(428, {})),
         ):
             self.team.resume_chat_human(
                 "team_1",
@@ -595,7 +595,7 @@ class SessionMethodTopicTests(SessionMethodCase):
         # A refused answer changed nothing.
         with (
             mock.patch.object(self.topics, "team_changed", side_effect=lambda *args: heard.append(args)),
-            mock.patch.object(self.team, "_call_stream", return_value=self.team.TeamResponse(409, {})),
+            mock.patch.object(self.transport, "call_stream", return_value=self.transport.TeamResponse(409, {})),
         ):
             self.team.resume_chat_human(
                 "team_1",
@@ -607,7 +607,7 @@ class SessionMethodTopicTests(SessionMethodCase):
         self.assertEqual(heard, [("team_1", "integrations")] * 3)
 
     def test_a_created_team_raises_the_team_list(self) -> None:
-        created = self.team.TeamResponse(
+        created = self.transport.TeamResponse(
             200, {"team_id": "growth", "team_name": "Growth", "status": "running", "created": True}
         )
         with mock.patch.object(self.team, "create", return_value=created):
@@ -622,8 +622,8 @@ class SessionMethodTopicTests(SessionMethodCase):
             ("snapshots.list", "local-assistants"),
         ):
             revision = self.topics.changed(topic)
-            ok = self.team.TeamResponse(200, {"assistants": []} if "inference" not in method else INFERENCE)
-            with self.subTest(method=method), mock.patch.object(self.team, "_call", return_value=ok):
+            ok = self.transport.TeamResponse(200, {"assistants": []} if "inference" not in method else INFERENCE)
+            with self.subTest(method=method), mock.patch.object(self.transport, "call", return_value=ok):
                 result = self._answers(method, SAMPLES[method])
             self.assertEqual((result.get("topic"), result.get("revision")), (topic, revision))
 
@@ -632,7 +632,7 @@ class SessionMethodAnswerTests(SessionMethodCase):
     """Answers the routes gave, as call results: an install's progress, empty answers, and Team's own failures."""
 
     def test_an_install_says_once_that_it_started_and_then_answers_teams_result(self) -> None:
-        installed = self.team.TeamResponse(200, {"assistant": "hello-pulse", "installed": True})
+        installed = self.transport.TeamResponse(200, {"assistant": "hello-pulse", "installed": True})
 
         async def scenario() -> list[dict]:
             websocket = await self._connect()
@@ -642,7 +642,7 @@ class SessionMethodAnswerTests(SessionMethodCase):
             self.assertEqual(frames[0], {"type": "progress", "id": call_id, "state": "running"})
             return frames
 
-        with mock.patch.object(self.team, "_call", return_value=installed) as call:
+        with mock.patch.object(self.transport, "call", return_value=installed) as call:
             frames = asyncio.run(scenario())
         self.assertEqual((frames[1]["status"], frames[1]["body"]), (200, installed.body))
         self.assertEqual(
@@ -651,7 +651,7 @@ class SessionMethodAnswerTests(SessionMethodCase):
 
     def test_an_empty_answer_is_an_empty_object(self) -> None:
         integrations = self.methods.integrations
-        empty = self.team.TeamResponse(204, {})
+        empty = self.transport.TeamResponse(204, {})
         with mock.patch.object(integrations, "disconnect_assistant_integration", return_value=empty):
             disconnected = self._answers("integrations.disconnect", SAMPLES["integrations.disconnect"])
         self.assertEqual((disconnected["status"], disconnected["body"]), (204, {}))
@@ -659,7 +659,7 @@ class SessionMethodAnswerTests(SessionMethodCase):
         self.assertEqual((cancelled["status"], cancelled["body"]), (204, {}))
 
     def test_team_answers_and_admins_own_refusals_pass_through(self) -> None:
-        cleared = self.team.TeamResponse(200, {"cleared": True})
+        cleared = self.transport.TeamResponse(200, {"cleared": True})
         stored_input = self.methods.stored_input
         with mock.patch.object(stored_input, "clear_assistant_stored_input", return_value=cleared) as clear:
             result = self._answers("stored_inputs.clear", SAMPLES["stored_inputs.clear"])
@@ -690,7 +690,7 @@ class IntegrationAuthorizationTests(SessionMethodCase):
         self.addCleanup(handoffs.stop)
 
     def _authorized(self, origin: str, provider_url: str) -> dict:
-        provider = self.team.TeamResponse(200, {"authorization_url": provider_url})
+        provider = self.transport.TeamResponse(200, {"authorization_url": provider_url})
         with mock.patch.object(
             self.authorization.integrations, "start_local_assistant_integration_authorization", return_value=provider
         ) as start:

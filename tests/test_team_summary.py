@@ -95,7 +95,7 @@ class LocalizedTests(unittest.TestCase):
                     summary.localized(read, locale, "Assistant", kind=kind)
                 self.assertEqual(caught.exception.status_code, 422)
         read.assert_not_called()
-        refused = mock.Mock(side_effect=bridge.TeamRequestError("assistant id is invalid"))
+        refused = mock.Mock(side_effect=transport.TeamRequestError("assistant id is invalid"))
         with self.assertRaises(HTTPException) as caught:
             summary.localized(refused, "pt", "Assistant")
         self.assertEqual(caught.exception.status_code, 400)

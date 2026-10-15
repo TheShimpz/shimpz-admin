@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 import models
 from team import bridge as team
+from team import transport
 
 from chat import local
 
@@ -28,7 +29,7 @@ class LocalBrainOperationTests(unittest.TestCase):
                 "integrations": [{"id": "cloudflare", "provider": "cloudflare"}],
             }
         ]
-        upstream = team.TeamResponse(
+        upstream = transport.TeamResponse(
             200,
             {
                 "team_id": "team_1",
@@ -41,7 +42,7 @@ class LocalBrainOperationTests(unittest.TestCase):
             mock.patch.object(
                 team,
                 "get_inference",
-                return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"}),
+                return_value=transport.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"}),
             ),
             mock.patch.object(models, "resolve_api_key", return_value=api_key),
             mock.patch.object(team, "capability_plan", return_value=upstream) as plan,
@@ -50,7 +51,7 @@ class LocalBrainOperationTests(unittest.TestCase):
 
         self.assertEqual(
             response,
-            team.TeamResponse(
+            transport.TeamResponse(
                 200,
                 {
                     "team_id": "team_1",
@@ -88,17 +89,17 @@ class LocalBrainOperationTests(unittest.TestCase):
             with (
                 self.subTest(body=body),
                 mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
-                mock.patch.object(team, "capability_plan", return_value=team.TeamResponse(200, body)),
+                mock.patch.object(team, "capability_plan", return_value=transport.TeamResponse(200, body)),
             ):
                 self.assertEqual(
                     local.capability_plan("team_1", "Configure Cloudflare", []),
-                    team.TeamResponse(502, {"code": "chat-response-invalid"}),
+                    transport.TeamResponse(502, {"code": "chat-response-invalid"}),
                 )
 
     def test_intent_route_uses_one_request_scoped_credential_and_strips_trace(self) -> None:
         api_key = "sk-test-0123456789"
         candidates = [{"id": "cloudflare", "name": "Cloudflare", "summary": ""}]
-        upstream = team.TeamResponse(
+        upstream = transport.TeamResponse(
             200,
             {
                 "task_follows": False,
@@ -114,7 +115,7 @@ class LocalBrainOperationTests(unittest.TestCase):
             mock.patch.object(
                 team,
                 "get_inference",
-                return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"}),
+                return_value=transport.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"}),
             ),
             mock.patch.object(models, "resolve_api_key", return_value=api_key),
             mock.patch.object(team, "intent_route", return_value=upstream) as route,
@@ -129,7 +130,7 @@ class LocalBrainOperationTests(unittest.TestCase):
 
         self.assertEqual(
             response,
-            team.TeamResponse(
+            transport.TeamResponse(
                 200,
                 {
                     "task_follows": False,
@@ -169,7 +170,7 @@ class LocalBrainOperationTests(unittest.TestCase):
             "reply": "",
             "trace_id": TRACE_ID,
         }
-        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        inference = transport.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
         for key, upstream, expected in (
             ("decision-test-key", {**answered, "capability": "not-needed"}, "not-needed"),
             ("decision-test-key", {**answered, "capability": "possible"}, "possible"),
@@ -180,7 +181,7 @@ class LocalBrainOperationTests(unittest.TestCase):
                 mock.patch.object(team, "get_inference", return_value=inference),
                 mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
                 mock.patch.object(local.decision, "resolve", return_value=key),
-                mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, upstream)) as route,
+                mock.patch.object(team, "intent_route", return_value=transport.TeamResponse(200, upstream)) as route,
             ):
                 response = local.intent_route(
                     "team_1", "oi", None, [], local.IntentRouteContext(locale="pt"), installable
@@ -199,7 +200,7 @@ class LocalBrainOperationTests(unittest.TestCase):
                 mock.patch.object(team, "get_inference", return_value=inference),
                 mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
                 mock.patch.object(local.decision, "resolve", return_value="decision-test-key"),
-                mock.patch.object(team, "intent_route", return_value=team.TeamResponse(200, upstream)),
+                mock.patch.object(team, "intent_route", return_value=transport.TeamResponse(200, upstream)),
             ):
                 response = local.intent_route(
                     "team_1", "oi", None, [], local.IntentRouteContext(locale="pt"), installable
@@ -207,14 +208,14 @@ class LocalBrainOperationTests(unittest.TestCase):
             self.assertEqual(response.status, 502)
 
     def test_routing_and_planning_send_the_objective_team_admits(self) -> None:
-        inference = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+        inference = transport.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
         pasted = "veja \x1b[31mERRO\x1b[0m"
         with (
             mock.patch.object(team, "get_inference", return_value=inference),
             mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
             mock.patch.object(local.decision, "resolve", return_value=None),
-            mock.patch.object(team, "intent_route", return_value=team.TeamResponse(503, {})) as route,
-            mock.patch.object(team, "capability_plan", return_value=team.TeamResponse(503, {})) as plan,
+            mock.patch.object(team, "intent_route", return_value=transport.TeamResponse(503, {})) as route,
+            mock.patch.object(team, "capability_plan", return_value=transport.TeamResponse(503, {})) as plan,
         ):
             local.intent_route("team_1", pasted, None, [], local.IntentRouteContext(locale="pt"))
             local.capability_plan("team_1", pasted, [])
@@ -232,7 +233,7 @@ class LocalBrainOperationTests(unittest.TestCase):
             "reply": "",
             "trace_id": TRACE_ID,
         }
-        projected = local._project_intent_route(team.TeamResponse(200, body), "team_1", None, [])
+        projected = local._project_intent_route(transport.TeamResponse(200, body), "team_1", None, [])
         self.assertTrue(projected.body["task_follows"])
         for invalid, expected in (
             ({**body, "task_follows": "yes"}, None),
@@ -241,7 +242,7 @@ class LocalBrainOperationTests(unittest.TestCase):
             ({**body, "query": "", "assistant_ids": ["exa"]}, "assistant-install"),
         ):
             with self.subTest(body=invalid), self.assertRaises(ValueError):
-                local._project_intent_route(team.TeamResponse(200, invalid), "team_1", expected, ["exa"])
+                local._project_intent_route(transport.TeamResponse(200, invalid), "team_1", expected, ["exa"])
 
 
 if __name__ == "__main__":

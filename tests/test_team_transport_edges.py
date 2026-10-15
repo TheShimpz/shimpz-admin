@@ -156,7 +156,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
                 headers["Content-Length"] = str(len(body))
             _Connection.response = _Response(headers=headers, body=body)
             with _team_connection():
-                return transport._call("GET", "/v1/teams/team_1/routines", **kwargs).status
+                return transport.call("GET", "/v1/teams/team_1/routines", **kwargs).status
 
         self.addCleanup(setattr, _Connection, "response", _Response())
         above = b'{"x":"' + b"y" * transport.MAX_JSON_RESPONSE_BYTES + b'"}'
@@ -208,12 +208,12 @@ class TeamTransportEdgeTests(unittest.TestCase):
                 HTTPStatus.BAD_GATEWAY,
             )
         with _team_connection():
-            self.assertEqual(transport._call("GET", "/v1/teams").status, 502)
+            self.assertEqual(transport.call("GET", "/v1/teams").status, 502)
 
         _Connection.response = _Response()
         _Connection.close_error = True
         with _team_connection():
-            self.assertEqual(transport._call("GET", "/v1/teams").status, 200)
+            self.assertEqual(transport.call("GET", "/v1/teams").status, 200)
         _Connection.close_error = False
 
     def test_asset_decoder_rejects_invalid_status_metadata_and_lengths(self) -> None:
@@ -295,7 +295,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
 
     def test_wrapper_rejects_absent_stream_and_invalid_raw_body(self) -> None:
         with self.assertRaisesRegex(transport.TeamRequestError, "body is required"):
-            transport._call_stream(
+            transport.call_stream(
                 "POST",
                 "/chat",
                 None,
@@ -305,7 +305,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
             )
         for body, filename, media_type in (("bad", "x", "text/plain"), (b"x", 7, "text/plain")):
             with self.subTest(body=body), self.assertRaisesRegex(transport.TeamRequestError, "raw file"):
-                transport._call_raw("POST", "/file", body, filename=filename, media_type=media_type)
+                transport.call_raw("POST", "/file", body, filename=filename, media_type=media_type)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ from fastapi import WebSocket
 from history import delivery as history_delivery
 from history import store as history
 from team import bridge as team
+from team import transport
 
 from chat import assistant_proposal, lifecycle
 
@@ -34,7 +35,7 @@ def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], di
         "locale",
         "timezone",
     }:
-        raise team.TeamRequestError("invalid task resume request")
+        raise transport.TeamRequestError("invalid task resume request")
     payload = team.canonical_chat_payload(
         {
             "message": frame["message"],
@@ -59,7 +60,7 @@ def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], di
         or not assistant_proposal.capability_continuation(payload["message"])
         or assistant_proposal.capability_continuation(objective["message"])
     ):
-        raise team.TeamRequestError("invalid task resume request")
+        raise transport.TeamRequestError("invalid task resume request")
     return payload, objective
 
 
@@ -72,7 +73,7 @@ async def admit(
     """The resumed turn's payload, its objective, and the identity of its logical send, or None after a terminal."""
     try:
         payloads = _canonical_payloads(frame)
-    except team.TeamRequestError:
+    except transport.TeamRequestError:
         await operations.send_event(websocket, operations.error_terminal(400, "invalid task resume request"))
         return None
     if connection.active is not None or connection.sync_task is not None or connection.lifecycle is not None:

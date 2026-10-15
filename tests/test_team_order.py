@@ -21,6 +21,7 @@ from history import store as history_store
 from team import bridge as team
 from team import names as team_names
 from team import order as team_order
+from team import transport
 from test_team_bridge_assistants import _LiveTeamCase, _probe_session, _socket_results, _TeamHandler
 
 
@@ -28,11 +29,11 @@ def _teams(*team_ids: str) -> list[dict[str, str]]:
     return [{"team_id": team_id, "team_name": team_id.title(), "status": "running"} for team_id in team_ids]
 
 
-def _inventory(*team_ids: str, **extra: object) -> team.TeamResponse:
-    return team.TeamResponse(200, {"teams": _teams(*team_ids), **extra})
+def _inventory(*team_ids: str, **extra: object) -> transport.TeamResponse:
+    return transport.TeamResponse(200, {"teams": _teams(*team_ids), **extra})
 
 
-def _delete_with_history(team_id: str, action) -> team.TeamResponse:
+def _delete_with_history(team_id: str, action) -> transport.TeamResponse:
     """A Team deletion whose Team answer is `action`'s, through Admin's own history and order cleanup."""
     with mock.patch.object(team_names.bridge, "destroy_confirmed", side_effect=lambda *_args: action()):
         return team_names._deleted_with_history(team_id, "Name")
@@ -55,7 +56,7 @@ class OrderCase(unittest.TestCase):
     def saved(self, *team_ids: str) -> None:
         self.write(json.dumps({"team_ids": list(team_ids)}).encode())
 
-    def listed(self, response: team.TeamResponse) -> list[str]:
+    def listed(self, response: transport.TeamResponse) -> list[str]:
         return [item["team_id"] for item in response.body["teams"]]
 
 
@@ -259,7 +260,7 @@ class OrderFileTests(OrderCase):
 
 
 class ListingTests(OrderCase):
-    def listing(self, response: team.TeamResponse) -> team.TeamResponse:
+    def listing(self, response: transport.TeamResponse) -> transport.TeamResponse:
         with mock.patch.object(team, "list_teams", return_value=response):
             return team_order._listing()
 
@@ -268,7 +269,7 @@ class ListingTests(OrderCase):
         self.saved("a", "gone", "b")
         before = (self.path.read_bytes(), self.path.stat().st_mtime_ns)
         response = self.listing(_inventory("c", "b", "a", trace_id="f" * 32))
-        self.assertEqual(response, team.TeamResponse(200, {"teams": _teams("c", "a", "b"), "trace_id": "f" * 32}))
+        self.assertEqual(response, transport.TeamResponse(200, {"teams": _teams("c", "a", "b"), "trace_id": "f" * 32}))
         self.assertEqual((self.path.read_bytes(), self.path.stat().st_mtime_ns), before)
 
     def test_an_unusable_order_falls_back_to_newest_first_with_a_sanitized_diagnostic(self) -> None:
@@ -283,24 +284,24 @@ class ListingTests(OrderCase):
     def test_a_failed_or_invalid_inventory_is_never_replaced_by_the_saved_order(self) -> None:
         self.saved("a")
         with mock.patch.object(team_order, "load") as load:
-            refused = team.TeamResponse(403, {"detail": "Supervisor authority is required"})
+            refused = transport.TeamResponse(403, {"detail": "Supervisor authority is required"})
             self.assertIs(self.listing(refused), refused)
-            invalid = team.TeamResponse(200, {"teams": [{"team_id": "a"}]})
+            invalid = transport.TeamResponse(200, {"teams": [{"team_id": "a"}]})
             with self.assertLogs("shimpz-admin", "WARNING"):
                 self.assertEqual(self.listing(invalid).status, 502)
-            duplicate = team.TeamResponse(200, {"teams": _teams("a", "a")})
+            duplicate = transport.TeamResponse(200, {"teams": _teams("a", "a")})
             with self.assertLogs("shimpz-admin", "WARNING"):
                 self.assertEqual(self.listing(duplicate).status, 502)
         load.assert_not_called()
 
     def test_the_list_passes_a_team_failure_through(self) -> None:
-        with mock.patch.object(team, "list_teams", return_value=team.TeamResponse(502, {"detail": "unavailable"})):
+        with mock.patch.object(team, "list_teams", return_value=transport.TeamResponse(502, {"detail": "unavailable"})):
             response = team_order.listing()
         self.assertEqual((response.status_code, json.loads(response.body)), (502, {"detail": "unavailable"}))
 
 
 class ReorderTests(OrderCase):
-    def reorder(self, team_ids: list[str], inventory: team.TeamResponse) -> team.TeamResponse:
+    def reorder(self, team_ids: list[str], inventory: transport.TeamResponse) -> transport.TeamResponse:
         with mock.patch.object(team, "list_teams", return_value=inventory) as listed:
             response = team_order.reorder(team_ids)
         listed.assert_called_once_with()
@@ -308,7 +309,7 @@ class ReorderTests(OrderCase):
 
     def test_an_exact_permutation_of_the_fresh_inventory_is_saved(self) -> None:
         response = self.reorder(["a", "c", "b"], _inventory("c", "b", "a"))
-        self.assertEqual(response, team.TeamResponse(200, {"teams": _teams("a", "c", "b")}))
+        self.assertEqual(response, transport.TeamResponse(200, {"teams": _teams("a", "c", "b")}))
         self.assertEqual(team_order.load(), ["a", "c", "b"])
         # Every reorder reads a new inventory: a Team created since then makes the same request stale.
         response = self.reorder(["a", "c", "b"], _inventory("d", "c", "b", "a"))
@@ -325,16 +326,16 @@ class ReorderTests(OrderCase):
     def test_an_unavailable_inventory_or_store_saves_nothing(self) -> None:
         self.saved("b", "a")
         for inventory in (
-            team.TeamResponse(502, {"detail": "team unavailable"}),
-            team.TeamResponse(500, {"detail": "failed"}),
+            transport.TeamResponse(502, {"detail": "team unavailable"}),
+            transport.TeamResponse(500, {"detail": "failed"}),
         ):
             with self.subTest(inventory=inventory):
                 response = self.reorder(["a", "b"], inventory)
                 self.assertEqual((response.status, response.body["code"]), (503, "team-inventory-unavailable"))
         with self.assertLogs("shimpz-admin", "WARNING"):
-            response = self.reorder(["a", "b"], team.TeamResponse(200, {"teams": "invalid"}))
+            response = self.reorder(["a", "b"], transport.TeamResponse(200, {"teams": "invalid"}))
         self.assertEqual((response.status, response.body["code"]), (503, "team-inventory-unavailable"))
-        refused = team.TeamResponse(401, {"detail": "unauthenticated"})
+        refused = transport.TeamResponse(401, {"detail": "unauthenticated"})
         self.assertIs(self.reorder(["a", "b"], refused), refused)
         with (
             mock.patch.object(team_order, "_save", side_effect=team_order.OrderUnavailableError("full")),
@@ -367,7 +368,7 @@ class SaveTests(OrderCase):
     def test_only_a_saved_order_raises_the_team_list_topic(self) -> None:
         for inventory, expected in (
             (_inventory("c"), 409),
-            (team.TeamResponse(502, {"detail": "team unavailable"}), 503),
+            (transport.TeamResponse(502, {"detail": "team unavailable"}), 503),
             (_inventory("b", "a"), 200),
         ):
             with (
@@ -381,8 +382,8 @@ class SaveTests(OrderCase):
 
 
 class CreationTests(OrderCase):
-    def create(self, inventory: team.TeamResponse, created: team.TeamResponse | None = None):
-        created = created or team.TeamResponse(
+    def create(self, inventory: transport.TeamResponse, created: transport.TeamResponse | None = None):
+        created = created or transport.TeamResponse(
             200, {"team_id": "old", "team_name": "Old", "status": "running", "created": True}
         )
         with (
@@ -409,7 +410,7 @@ class CreationTests(OrderCase):
                 team,
                 "create",
                 side_effect=lambda *_args: (
-                    events.append("created") or team.TeamResponse(200, {"team_id": "old", "created": True})
+                    events.append("created") or transport.TeamResponse(200, {"team_id": "old", "created": True})
                 ),
             ),
             mock.patch.object(team_names.chat_history_http, "team_created", side_effect=lambda _id, result: result),
@@ -422,7 +423,9 @@ class CreationTests(OrderCase):
 
     def test_an_id_a_live_team_still_holds_keeps_its_position(self) -> None:
         self.saved("old", "a")
-        existing = team.TeamResponse(200, {"team_id": "old", "team_name": "Old", "status": "running", "created": False})
+        existing = transport.TeamResponse(
+            200, {"team_id": "old", "team_name": "Old", "status": "running", "created": False}
+        )
         response, listed, create = self.create(_inventory("a", "old"), existing)
         self.assertEqual(response.status_code, 200)
         listed.assert_called_once_with()
@@ -464,7 +467,7 @@ class CreationTests(OrderCase):
         create.assert_not_called()
         self.assertEqual(team_order.load(), ["a"])
         events: list[str] = []
-        created = team.TeamResponse(200, {"team_id": "old", "created": True})
+        created = transport.TeamResponse(200, {"team_id": "old", "created": True})
         with (
             mock.patch.object(team_order.os, "fsync", side_effect=lambda _fd: events.append("fsync")),
             mock.patch.object(team, "create", side_effect=lambda *_args: events.append("created") or created),
@@ -475,7 +478,7 @@ class CreationTests(OrderCase):
 
     def test_nothing_is_created_when_the_stale_position_cannot_be_released(self) -> None:
         self.saved("old")
-        response, _listed, create = self.create(team.TeamResponse(502, {"detail": "team unavailable"}))
+        response, _listed, create = self.create(transport.TeamResponse(502, {"detail": "team unavailable"}))
         self.assertEqual((response.status_code, json.loads(response.body)["code"]), (503, "team-inventory-unavailable"))
         create.assert_not_called()
         with (
@@ -511,18 +514,18 @@ class SerializationTests(OrderCase):
         creating = threading.Event()
         release = threading.Event()
 
-        def create(*_args) -> team.TeamResponse:
+        def create(*_args) -> transport.TeamResponse:
             events.append("create-start")
             creating.set()
             release.wait(5)
             events.append("create-end")
-            return team.TeamResponse(200, {"team_id": "new", "created": True})
+            return transport.TeamResponse(200, {"team_id": "new", "created": True})
 
-        def inventory() -> team.TeamResponse:
+        def inventory() -> transport.TeamResponse:
             events.append("inventory")
             return _inventory("new")
 
-        outcomes: list[team.TeamResponse] = []
+        outcomes: list[transport.TeamResponse] = []
         with (
             mock.patch.object(team, "create", side_effect=create),
             mock.patch.object(team, "list_teams", side_effect=inventory),
@@ -552,22 +555,22 @@ class LifecycleCleanupTests(OrderCase):
 
     def test_a_deleted_or_absent_team_loses_its_saved_position(self) -> None:
         self.saved("a", "b")
-        deleted = team.TeamResponse(200, {"deleted": True})
+        deleted = transport.TeamResponse(200, {"deleted": True})
         self.assertIs(_delete_with_history("a", lambda: deleted), deleted)
         self.assertEqual(team_order.load(), ["b"])
-        absent = team.TeamResponse(404, {"detail": "Team not found"})
-        self.assertEqual(_delete_with_history("b", lambda: absent), team.TeamResponse(200, {"deleted": False}))
+        absent = transport.TeamResponse(404, {"detail": "Team not found"})
+        self.assertEqual(_delete_with_history("b", lambda: absent), transport.TeamResponse(200, {"deleted": False}))
         self.assertEqual(team_order.load(), [])
 
     def test_a_failed_deletion_keeps_the_position(self) -> None:
         self.saved("a")
-        failed = team.TeamResponse(409, {"detail": "Team name does not match"})
+        failed = transport.TeamResponse(409, {"detail": "Team name does not match"})
         self.assertIs(_delete_with_history("a", lambda: failed), failed)
         self.assertEqual(team_order.load(), ["a"])
 
     def test_a_cleanup_failure_after_deletion_reports_partial_completion_and_retry(self) -> None:
         self.saved("a")
-        deleted = team.TeamResponse(200, {"deleted": True})
+        deleted = transport.TeamResponse(200, {"deleted": True})
         with (
             mock.patch.object(team_order, "_save", side_effect=team_order.OrderUnavailableError("full")),
             self.assertLogs("shimpz-admin", "ERROR"),
@@ -577,13 +580,13 @@ class LifecycleCleanupTests(OrderCase):
         self.assertIn("was deleted", response.body["detail"])
         self.assertIn("retry the deletion", response.body["detail"])
         # The retry finds the Team absent and completes the cleanup.
-        absent = team.TeamResponse(404, {"detail": "Team not found"})
+        absent = transport.TeamResponse(404, {"detail": "Team not found"})
         self.assertEqual(_delete_with_history("a", lambda: absent).status, 200)
         self.assertEqual(team_order.load(), [])
 
     def test_a_deletion_whose_invalid_order_cannot_be_removed_reports_partial_completion(self) -> None:
         self.saved("a")
-        deleted = team.TeamResponse(200, {"deleted": True})
+        deleted = transport.TeamResponse(200, {"deleted": True})
         with (
             mock.patch.object(team_order.os, "geteuid", return_value=os.geteuid() + 1),
             self.assertLogs("shimpz-admin", "WARNING"),
@@ -593,8 +596,8 @@ class LifecycleCleanupTests(OrderCase):
         self.assertTrue(self.path.exists())
 
     def test_space_reset_removes_the_saved_order_and_reports_a_failed_removal(self) -> None:
-        reset = team.TeamResponse(200, {"reset": True})
-        failed = team.TeamResponse(502, {"detail": "Team returned an invalid Space reset response"})
+        reset = transport.TeamResponse(200, {"reset": True})
+        failed = transport.TeamResponse(502, {"detail": "Team returned an invalid Space reset response"})
         self.saved("a")
         self.assertIs(self.admin_app._space_reset_with_history(lambda: failed), failed)
         self.assertTrue(self.path.exists())
@@ -606,18 +609,18 @@ class LifecycleCleanupTests(OrderCase):
         self.assertEqual((response.status, response.body["code"]), (503, "team-order-cleanup-incomplete"))
         self.assertIn("run the Space reset again", response.body["detail"])
 
-    def assert_waits_for_a_reorder(self, name: str, run, outcome: team.TeamResponse) -> None:
+    def assert_waits_for_a_reorder(self, name: str, run, outcome: transport.TeamResponse) -> None:
         listing = threading.Event()
         release = threading.Event()
         events: list[str] = []
 
-        def inventory() -> team.TeamResponse:
+        def inventory() -> transport.TeamResponse:
             events.append("inventory")
             listing.set()
             release.wait(5)
             return _inventory("a")
 
-        def action() -> team.TeamResponse:
+        def action() -> transport.TeamResponse:
             events.append(name)
             return outcome
 
@@ -635,7 +638,7 @@ class LifecycleCleanupTests(OrderCase):
         self.assertEqual(events, ["inventory", name])
 
     def reset_refused(self, owner: int) -> None:
-        reset = team.TeamResponse(200, {"reset": True})
+        reset = transport.TeamResponse(200, {"reset": True})
         with (
             mock.patch.object(team_order.os, "geteuid", return_value=owner),
             self.assertLogs("shimpz-admin", "ERROR"),
@@ -676,14 +679,14 @@ class LifecycleCleanupTests(OrderCase):
         self.assertTrue(parent.exists())
 
     def test_deletion_waits_for_a_reorder_in_progress(self) -> None:
-        deleted = team.TeamResponse(200, {"deleted": True})
+        deleted = transport.TeamResponse(200, {"deleted": True})
         self.assert_waits_for_a_reorder("delete", lambda action: _delete_with_history("a", action), deleted)
         # The deletion ran after the save, so the deleted Team's position does not survive it.
         self.assertEqual(team_order.load(), [])
 
     def test_reset_waits_for_a_reorder_in_progress(self) -> None:
         self.assert_waits_for_a_reorder(
-            "reset", self.admin_app._space_reset_with_history, team.TeamResponse(200, {"reset": True})
+            "reset", self.admin_app._space_reset_with_history, transport.TeamResponse(200, {"reset": True})
         )
         # The reset ran after the save, so no saved order survives it.
         self.assertFalse(self.path.exists())

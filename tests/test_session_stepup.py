@@ -66,7 +66,7 @@ class StepUpCase(SessionSocketCase):
         clock.start()
         self.addCleanup(clock.stop)
         self.team_delete = mock.patch.object(
-            self.manage, "delete", return_value=self.team.TeamResponse(200, DELETED)
+            self.manage, "delete", return_value=self.transport.TeamResponse(200, DELETED)
         ).start()
         self.addCleanup(mock.patch.stopall)
 
@@ -564,9 +564,9 @@ class SecurityOperationTests(StepUpCase):
         def pinned(method, path, payload):
             raw = app.supervisor_key.base64.urlsafe_b64decode(payload["public_key"] + "=")
             team(method, path)
-            return self.team.TeamResponse(200, {"rotated": True, "key_sha256": hashlib.sha256(raw).hexdigest()})
+            return self.transport.TeamResponse(200, {"rotated": True, "key_sha256": hashlib.sha256(raw).hexdigest()})
 
-        with mock.patch.object(app.supervisor_key.transport, "_call", side_effect=pinned):
+        with mock.patch.object(app.supervisor_key.transport, "call", side_effect=pinned):
             self.assertEqual(self.answer(self._rotation({"code": self.wrong()})), (401, {"code": "code-incorrect"}))
             team.assert_not_called()
             self.assertEqual(self.answer(self._rotation({"code": self.code()})), (200, {"rotated": True}))
@@ -583,13 +583,13 @@ class SecurityOperationTests(StepUpCase):
         retry = mock.Mock()
         app.app.state.supervisor_key_recovery = retry
         self.addCleanup(delattr, app.app.state, "supervisor_key_recovery")
-        unavailable = self.team.TeamResponse(502, {"detail": "team unavailable"})
-        with mock.patch.object(app.supervisor_key.transport, "_call", return_value=unavailable):
+        unavailable = self.transport.TeamResponse(502, {"detail": "team unavailable"})
+        with mock.patch.object(app.supervisor_key.transport, "call", return_value=unavailable):
             pending = self._rotation({"code": self.code()})
         self.assertEqual(self.answer(pending), (503, {"code": "supervisor-key-rotation-pending"}))
         retry.wake.assert_called_once_with()
-        refused = self.team.TeamResponse(403, {"code": "invalid-supervisor"})
-        with mock.patch.object(app.supervisor_key.transport, "_call", return_value=refused):
+        refused = self.transport.TeamResponse(403, {"code": "invalid-supervisor"})
+        with mock.patch.object(app.supervisor_key.transport, "call", return_value=refused):
             abandoned = self._rotation({"code": self.code()})
         self.assertEqual(self.answer(abandoned), (409, {"code": "supervisor-key-rotation-refused"}))
         self.assertIsNone(self.state.pending_supervisor_key())
@@ -639,5 +639,8 @@ class OperationTicketTests(StepUpCase):
     def test_the_subject_names_the_canonical_team_and_routine(self) -> None:
         self.assertEqual(self.manage.deletion_subject(TEAM, ROUTINE), f"routine-delete:{TEAM}:{ROUTINE}")
         for team_id, routine_id in (("Team", ROUTINE), (TEAM, "../x"), (TEAM, ROUTINE.upper())):
-            with self.subTest(team_id=team_id, routine_id=routine_id), self.assertRaises(self.team.TeamRequestError):
+            with (
+                self.subTest(team_id=team_id, routine_id=routine_id),
+                self.assertRaises(self.transport.TeamRequestError),
+            ):
                 self.manage.deletion_subject(team_id, routine_id)

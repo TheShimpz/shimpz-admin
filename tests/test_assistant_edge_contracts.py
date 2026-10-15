@@ -8,7 +8,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from team import bridge as team
+from team import transport
 
 from action import stored_input
 from chat import (
@@ -39,10 +39,10 @@ def _catalog_assistant(assistant_id: str, *, provider: str = "provider") -> stor
 
 class StoredInputProjectionEdges(unittest.TestCase):
     def test_inventory_rejects_invalid_authority_and_envelopes(self) -> None:
-        with self.assertRaises(team.TeamRequestError):
+        with self.assertRaises(transport.TeamRequestError):
             stored_input.list_assistant_stored_inputs("Bad")
 
-        upstream = team.TeamResponse(503, {"secret": "must-not-project"})
+        upstream = transport.TeamResponse(503, {"secret": "must-not-project"})
         self.assertIs(stored_input._project_inventory(upstream, "team_1"), upstream)
 
         invalid_bodies = (
@@ -68,16 +68,16 @@ class StoredInputProjectionEdges(unittest.TestCase):
         for body in invalid_bodies:
             with self.subTest(body=body):
                 self.assertEqual(
-                    stored_input._project_inventory(team.TeamResponse(200, body), "team_1").status,
+                    stored_input._project_inventory(transport.TeamResponse(200, body), "team_1").status,
                     502,
                 )
 
     def test_clear_preserves_errors_and_rejects_malformed_success(self) -> None:
-        upstream = team.TeamResponse(409, {"code": "conflict"})
-        with mock.patch.object(stored_input.transport, "_call", return_value=upstream):
+        upstream = transport.TeamResponse(409, {"code": "conflict"})
+        with mock.patch.object(stored_input.transport, "call", return_value=upstream):
             self.assertIs(stored_input.clear_assistant_stored_input("team_1", "whatsapp", "token"), upstream)
 
-        malformed = team.TeamResponse(
+        malformed = transport.TeamResponse(
             200,
             {
                 "team_id": "team_1",
@@ -87,11 +87,11 @@ class StoredInputProjectionEdges(unittest.TestCase):
                 "trace_id": "a" * 32,
             },
         )
-        with mock.patch.object(stored_input.transport, "_call", return_value=malformed):
+        with mock.patch.object(stored_input.transport, "call", return_value=malformed):
             result = stored_input.clear_assistant_stored_input("team_1", "whatsapp", "token")
         self.assertEqual(
             result,
-            team.TeamResponse(502, {"detail": "Assistant Stored Input clear response is invalid."}),
+            transport.TeamResponse(502, {"detail": "Assistant Stored Input clear response is invalid."}),
         )
 
 
@@ -99,11 +99,11 @@ class AssistantInventoryEdges(unittest.TestCase):
     def test_installed_inventory_rejects_each_closed_shape(self) -> None:
         responses = (
             object(),
-            team.TeamResponse(200, {"assistants": [], "trace_id": "bad"}),
-            team.TeamResponse(200, {"assistants": [], "extra": True}),
-            team.TeamResponse(200, {"assistants": None}),
-            team.TeamResponse(200, {"assistants": [None]}),
-            team.TeamResponse(
+            transport.TeamResponse(200, {"assistants": [], "trace_id": "bad"}),
+            transport.TeamResponse(200, {"assistants": [], "extra": True}),
+            transport.TeamResponse(200, {"assistants": None}),
+            transport.TeamResponse(200, {"assistants": [None]}),
+            transport.TeamResponse(
                 200,
                 {
                     "assistants": [
@@ -122,7 +122,7 @@ class AssistantInventoryEdges(unittest.TestCase):
                 assistant_inventory.installed(response)
 
     def test_installed_inventory_retains_closed_provenance(self) -> None:
-        response = team.TeamResponse(
+        response = transport.TeamResponse(
             200,
             {
                 "assistants": [
@@ -156,19 +156,19 @@ class AssistantInventoryEdges(unittest.TestCase):
             "trace_id": "a" * 32,
         }
         with mock.patch.object(
-            assistant_inventory.team, "assistant_details", return_value=team.TeamResponse(200, page)
+            assistant_inventory.team, "assistant_details", return_value=transport.TeamResponse(200, page)
         ) as details:
             creator = assistant_inventory.binding_creator("team_1", "shimpz-cloudflare", "1.4.0")
         self.assertEqual(creator, "@builder")
         details.assert_called_once_with("team_1", "shimpz-cloudflare", "en")
         # Another binding, version, language, or shape than the one installed, or a Team failure, is refused.
         refused = (
-            team.TeamResponse(503, {"detail": "unavailable"}),
-            team.TeamResponse(200, ["not", "an", "object"]),
-            team.TeamResponse(200, {**page, "assistant_id": "other"}),
-            team.TeamResponse(200, {**page, "assistant_version": "1.4.1"}),
-            team.TeamResponse(200, {**page, "locale": "pt"}),
-            team.TeamResponse(200, {**page, "creators": ["builder"]}),
+            transport.TeamResponse(503, {"detail": "unavailable"}),
+            transport.TeamResponse(200, ["not", "an", "object"]),
+            transport.TeamResponse(200, {**page, "assistant_id": "other"}),
+            transport.TeamResponse(200, {**page, "assistant_version": "1.4.1"}),
+            transport.TeamResponse(200, {**page, "locale": "pt"}),
+            transport.TeamResponse(200, {**page, "creators": ["builder"]}),
             mock.sentinel.not_a_response,
         )
         for response in refused:
@@ -181,9 +181,9 @@ class AssistantInventoryEdges(unittest.TestCase):
 
     def test_registry_admits_the_producer_action_count_and_no_more(self) -> None:
         # Developers' install protocol and Team admit up to 128 Actions per Assistant.
-        def response(count: int) -> team.TeamResponse:
+        def response(count: int) -> transport.TeamResponse:
             actions = [f"action-{index:03d}" for index in range(count)]
-            return team.TeamResponse(
+            return transport.TeamResponse(
                 200,
                 {"assistants": [{"id": "valid", "title": "Title", "summary": "Summary", "actions": actions}]},
             )
@@ -194,9 +194,9 @@ class AssistantInventoryEdges(unittest.TestCase):
 
     def test_registry_rejects_each_closed_shape_and_text(self) -> None:
         responses = (
-            team.TeamResponse(200, {"assistants": None}),
-            team.TeamResponse(200, {"assistants": [None]}),
-            team.TeamResponse(
+            transport.TeamResponse(200, {"assistants": None}),
+            transport.TeamResponse(200, {"assistants": [None]}),
+            transport.TeamResponse(
                 200,
                 {"assistants": [{"id": "valid", "title": "Title", "summary": "Summary", "actions": []}]},
             ),
@@ -210,13 +210,15 @@ class AssistantInventoryEdges(unittest.TestCase):
     def test_a_teams_registry_holds_at_most_its_assistants(self) -> None:
         entry = {"title": "Title", "summary": "Summary", "actions": ["act"]}
         entries = [{"id": f"assistant-{index:02d}", **entry} for index in range(17)]
-        self.assertEqual(len(assistant_inventory.registry(team.TeamResponse(200, {"assistants": entries[:16]}))), 16)
+        self.assertEqual(
+            len(assistant_inventory.registry(transport.TeamResponse(200, {"assistants": entries[:16]}))), 16
+        )
         with self.assertRaisesRegex(ValueError, "Assistant catalog is invalid"):
-            assistant_inventory.registry(team.TeamResponse(200, {"assistants": entries}))
+            assistant_inventory.registry(transport.TeamResponse(200, {"assistants": entries}))
 
     def test_names_admit_each_identity_once_with_its_name_only(self) -> None:
         named = assistant_inventory.names(
-            team.TeamResponse(200, {"assistants": [{"id": "hello-pulse", "title": "Hello Pulse"}]})
+            transport.TeamResponse(200, {"assistants": [{"id": "hello-pulse", "title": "Hello Pulse"}]})
         )
         self.assertEqual(named, {"hello-pulse": "Hello Pulse"})
         refused = (
@@ -229,20 +231,20 @@ class AssistantInventoryEdges(unittest.TestCase):
         )
         for body, message in refused:
             with self.subTest(body=str(body)[:60]), self.assertRaisesRegex(ValueError, message):
-                assistant_inventory.names(team.TeamResponse(200, body))
+                assistant_inventory.names(transport.TeamResponse(200, body))
 
 
 class AssistantPlanEdges(unittest.TestCase):
     def test_selection_and_empty_plan_fail_closed(self) -> None:
         with self.assertRaises(ValueError):
-            assistant_plan._selected_ids(team.TeamResponse(200, {}), "team_1", frozenset())
+            assistant_plan._selected_ids(transport.TeamResponse(200, {}), "team_1", frozenset())
         self.assertEqual(assistant_plan._prepared_plan("team_1", (), (), ()), assistant_plan.Preparation())
 
     def test_unavailable_or_invalid_planner_installs_nothing(self) -> None:
         candidate = _catalog_assistant("whatsapp", provider="whatsapp")
         catalog = mock.Mock()
         catalog.get.return_value = (candidate,)
-        responses: tuple[object, ...] = (team.TeamResponse(409, {}), object())
+        responses: tuple[object, ...] = (transport.TeamResponse(409, {}), object())
         for response in responses:
             with (
                 self.subTest(response=response),
@@ -325,8 +327,8 @@ class AssistantProposalEdges(unittest.TestCase):
 class AssistantUninstallEdges(unittest.TestCase):
     def test_body_validation_is_closed(self) -> None:
         responses = (
-            team.TeamResponse(200, []),
-            team.TeamResponse(200, {"assistant": "whatsapp", "uninstalled": True, "trace_id": "bad"}),
+            transport.TeamResponse(200, []),
+            transport.TeamResponse(200, {"assistant": "whatsapp", "uninstalled": True, "trace_id": "bad"}),
         )
         for response in responses:
             with self.subTest(response=response), self.assertRaises(ValueError):
@@ -335,7 +337,7 @@ class AssistantUninstallEdges(unittest.TestCase):
 
 class LocalPlannerEdges(unittest.TestCase):
     def test_credential_failures_short_circuit_plan_calls(self) -> None:
-        unavailable = team.TeamResponse(409, {"code": "model-credential-missing"})
+        unavailable = transport.TeamResponse(409, {"code": "model-credential-missing"})
         with (
             mock.patch.object(local, "model_credential", return_value=unavailable),
             mock.patch.object(local.team, "capability_plan") as planner,
@@ -344,13 +346,13 @@ class LocalPlannerEdges(unittest.TestCase):
         planner.assert_not_called()
 
     def test_planner_error_is_reduced_to_a_safe_machine_code(self) -> None:
-        upstream = team.TeamResponse(503, {"code": "safe-code", "secret": "must-not-cross"})
+        upstream = transport.TeamResponse(503, {"code": "safe-code", "secret": "must-not-cross"})
         with (
             mock.patch.object(local, "model_credential", return_value=("openai", "secret")),
             mock.patch.object(local.team, "capability_plan", return_value=upstream),
         ):
             result = local.capability_plan("team_1", "send", [])
-        self.assertEqual(result, team.TeamResponse(503, {"code": "safe-code"}))
+        self.assertEqual(result, transport.TeamResponse(503, {"code": "safe-code"}))
         self.assertNotIn("secret", repr(result))
 
 

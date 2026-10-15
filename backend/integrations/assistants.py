@@ -147,7 +147,7 @@ def _project_integration_inventory(response: transport.TeamResponse, team_id: st
 def list_assistant_integrations(team_id: object) -> transport.TeamResponse:
     canonical_id = payloads.canonical_team_id(team_id)
     return _project_integration_inventory(
-        transport._call("GET", f"/v1/teams/{canonical_id}/assistant-integrations"),
+        transport.call("GET", f"/v1/teams/{canonical_id}/assistant-integrations"),
         canonical_id,
     )
 
@@ -181,7 +181,7 @@ def start_local_assistant_integration_authorization(
     binding = canonical_oauth_binding(session_binding)
     if callback_mode not in {"loopback", "local-domain", "out-of-band"}:
         raise transport.TeamRequestError("OAuth callback mode is invalid.")
-    response = transport._call(
+    response = transport.call(
         "POST",
         f"/v1/teams/{canonical_id}/assistant-integrations/challenges/{canonical_challenge}/authorize",
         {
@@ -202,7 +202,7 @@ def cancel_local_assistant_integration_authorization(
     canonical_id = payloads.canonical_team_id(team_id)
     canonical_challenge = payloads.canonical_challenge_id(challenge_id)
     binding = canonical_oauth_binding(session_binding)
-    response = transport._call(
+    response = transport.call(
         "DELETE",
         f"/v1/teams/{canonical_id}/assistant-integrations/challenges/{canonical_challenge}/authorize",
         {"session_binding": binding},
@@ -227,7 +227,7 @@ def disconnect_assistant_integration(
     canonical_id = payloads.canonical_team_id(team_id)
     assistant = payloads.canonical_assistant_id(assistant_id)
     integration = payloads.canonical_identifier(integration_id)
-    response = transport._call(
+    response = transport.call(
         "DELETE",
         f"/v1/teams/{canonical_id}/assistant-integrations/{assistant}/{integration}",
     )
@@ -250,7 +250,7 @@ def complete_cloudflare_oauth_callback(
     identifier = canonical_oauth_binding(state)
     one_time_claim = canonical_oauth_claim(claim)
     binding = canonical_oauth_binding(session_binding)
-    response = transport._call(
+    response = transport.call(
         "POST",
         "/v1/oauth/cloudflare/callback",
         {"state": identifier, "claim": one_time_claim, "session_binding": binding},

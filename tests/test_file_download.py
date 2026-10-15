@@ -220,8 +220,8 @@ class FileDownloadUnitTests(unittest.TestCase):
             with self.subTest(headers=response.headers), self.assertRaisesRegex(OSError, "file content"):
                 transport._decode_content(response)
         with mock.patch.object(transport, "_request_asset", return_value="answer") as request:
-            self.assertEqual(transport._call_content("/v1/content"), "answer")
-            self.assertEqual(transport._call_page_preview("/v1/page"), "answer")
+            self.assertEqual(transport.call_content("/v1/content"), "answer")
+            self.assertEqual(transport.call_page_preview("/v1/page"), "answer")
         self.assertEqual(
             request.call_args_list,
             [
@@ -245,11 +245,11 @@ class FileDownloadUnitTests(unittest.TestCase):
 
     def test_the_bridge_forwards_bytes_and_closes_every_refusal(self) -> None:
         original = transport.TeamAssetResponse(200, ORIGINAL, {}, "application/octet-stream")
-        with mock.patch.object(bridge, "_call_content", return_value=original) as call:
+        with mock.patch.object(transport, "call_content", return_value=original) as call:
             self.assertIs(bridge.file_content("team_1", "a" * 32), original)
         call.assert_called_once_with(f"/v1/teams/team_1/files/{'a' * 32}/content")
         page = transport.TeamAssetResponse(200, PNG, {}, "image/png", 3)
-        with mock.patch.object(bridge, "_call_page_preview", return_value=page) as call:
+        with mock.patch.object(transport, "call_page_preview", return_value=page) as call:
             self.assertIs(bridge.file_page_preview("team_1", "a" * 32, "2"), page)
         call.assert_called_once_with(f"/v1/teams/team_1/files/{'a' * 32}/pages/2/preview")
         cases = (
@@ -261,7 +261,7 @@ class FileDownloadUnitTests(unittest.TestCase):
             with (
                 self.subTest(status=status, error=error),
                 mock.patch.object(
-                    bridge, "_call_content", return_value=transport.TeamAssetResponse(status, None, error)
+                    transport, "call_content", return_value=transport.TeamAssetResponse(status, None, error)
                 ),
             ):
                 answer = bridge.file_content("team_1", "a" * 32)
@@ -270,8 +270,8 @@ class FileDownloadUnitTests(unittest.TestCase):
         for invalid in ("0", "51", "01", 2, None):
             with (
                 self.subTest(page=invalid),
-                mock.patch.object(bridge, "_call_page_preview") as call,
-                self.assertRaises(bridge.TeamRequestError),
+                mock.patch.object(transport, "call_page_preview") as call,
+                self.assertRaises(transport.TeamRequestError),
             ):
                 bridge.file_page_preview("team_1", "a" * 32, invalid)
             call.assert_not_called()
@@ -335,7 +335,7 @@ class FileDownloadUnitTests(unittest.TestCase):
             self.assertEqual(answer.status_code, 404)
             self.assertEqual(answer.headers["cache-control"], "no-store")
             with self.assertRaises(HTTPException):
-                self._download(_browser_request(DOWNLOAD), bridge.TeamRequestError("file id is invalid"))
+                self._download(_browser_request(DOWNLOAD), transport.TeamRequestError("file id is invalid"))
             with self.assertRaises(OSError):
                 self._download(_browser_request(DOWNLOAD), OSError("team failed"))
         refused = self._download(_browser_request(_sent(REFUSED["image"])), refusal)

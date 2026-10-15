@@ -25,18 +25,18 @@ TRACE = "a" * 32
 CREDENTIAL = ("openai", "sk-test-0123456789")
 
 
-def frozen(kind: str = "approval", **overrides: object) -> team.TeamResponse:
-    return team.TeamResponse(200, {**_response(_request(kind)), "run_id": RUN, **overrides})
+def frozen(kind: str = "approval", **overrides: object) -> transport.TeamResponse:
+    return transport.TeamResponse(200, {**_response(_request(kind)), "run_id": RUN, **overrides})
 
 
-def resumed(status: str = "done", run: str = RUN) -> team.TeamResponse:
-    return team.TeamResponse(200, {"team_id": "team_1", "run_id": run, "status": status, "trace_id": TRACE})
+def resumed(status: str = "done", run: str = RUN) -> transport.TeamResponse:
+    return transport.TeamResponse(200, {"team_id": "team_1", "run_id": run, "status": status, "trace_id": TRACE})
 
 
-async def answered(frame: dict[str, object], authenticate) -> team.TeamResponse:
+async def answered(frame: dict[str, object], authenticate) -> transport.TeamResponse:
     """An answer as the session socket's method makes it: authenticated, then the run resumed."""
     checked = await answer.authenticated("team_1", RUN, frame, authenticate)
-    if isinstance(checked, team.TeamResponse):
+    if isinstance(checked, transport.TeamResponse):
         return checked
     return answer.answered_outcome(checked, answer.resume_answered(checked))
 
@@ -50,15 +50,17 @@ class RoutineAnswerTests(unittest.TestCase):
         self.addCleanup(answer._GENERATIONS.clear)
 
     def open(self, kind: str = "approval") -> dict[str, object]:
-        with mock.patch.object(transport, "_call", return_value=frozen(kind)) as call:
+        with mock.patch.object(transport, "call", return_value=frozen(kind)) as call:
             response = answer.open_challenge("team_1", RUN, {"locale": "en"})
         call.assert_called_once_with("POST", f"/v1/teams/team_1/routines/runs/{RUN}/challenge", {"locale": "en"})
         self.assertEqual((response.status, response.body["status"]), (200, "human-required"))
         return response.body["challenge"]
 
-    def respond(self, frame: dict[str, object], authenticate=None, resume=None) -> tuple[team.TeamResponse, mock.Mock]:
+    def respond(
+        self, frame: dict[str, object], authenticate=None, resume=None
+    ) -> tuple[transport.TeamResponse, mock.Mock]:
         authenticate = authenticate or mock.AsyncMock()
-        with mock.patch.object(transport, "_call_stream", return_value=resume or resumed()) as stream:
+        with mock.patch.object(transport, "call_stream", return_value=resume or resumed()) as stream:
             result = asyncio.run(answered(frame, authenticate))
         return result, stream
 
@@ -110,7 +112,7 @@ class RoutineAnswerTests(unittest.TestCase):
             **_response(stored, purpose=purpose, help=help_text, help_url=help_url, **localization(rendered, "pt")),
             "run_id": RUN,
         }
-        with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, body)) as call:
+        with mock.patch.object(transport, "call", return_value=transport.TeamResponse(200, body)) as call:
             response = answer.open_challenge("team_1", RUN, {"locale": "pt"})
         self.assertEqual(call.call_args.args[2], {"locale": "pt"})
         challenge = response.body["challenge"]
@@ -129,16 +131,16 @@ class RoutineAnswerTests(unittest.TestCase):
             "run_id": RUN,
             "file": disclosed,
         }
-        with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, filed)):
+        with mock.patch.object(transport, "call", return_value=transport.TeamResponse(200, filed)):
             self.assertEqual(answer.open_challenge("team_1", RUN, {"locale": "pt"}), manage._INVALID)
 
         # A run's card shows no input rows (ADR-0101 §6).
         refused = {**_response(approval, input=INPUT, **localization(rendered_for(approval), "pt")), "run_id": RUN}
-        with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, refused)):
+        with mock.patch.object(transport, "call", return_value=transport.TeamResponse(200, refused)):
             self.assertEqual(answer.open_challenge("team_1", RUN, {"locale": "pt"}), manage._INVALID)
 
         # A challenge rendered in another language than the opening named is refused and never remembered.
-        with mock.patch.object(transport, "_call", return_value=team.TeamResponse(200, body)):
+        with mock.patch.object(transport, "call", return_value=transport.TeamResponse(200, body)):
             refused = answer.open_challenge("team_1", RUN, {"locale": "de"})
         self.assertEqual(refused, manage._INVALID)
 
@@ -181,7 +183,7 @@ class RoutineAnswerTests(unittest.TestCase):
         async def other_tab_opens_meanwhile(*_args):
             # While A awaits authentication, another tab opens B, which cancels A at Team.
             replaced = frozen("auth:password", challenge_id=newer, turn_id=newer)
-            with mock.patch.object(transport, "_call", return_value=replaced):
+            with mock.patch.object(transport, "call", return_value=replaced):
                 self.assertEqual(
                     answer.open_challenge("team_1", RUN, {"locale": "en"}).body["challenge"]["challenge_id"], newer
                 )
@@ -205,7 +207,7 @@ class RoutineAnswerTests(unittest.TestCase):
 
         async def other_tab_opens_and_answers(*_args):
             replaced = frozen("auth:password", challenge_id=newer, turn_id=newer)
-            with mock.patch.object(transport, "_call", return_value=replaced):
+            with mock.patch.object(transport, "call", return_value=replaced):
                 answer.open_challenge("team_1", RUN, {"locale": "en"})
             self.assertIsNotNone(answer._take(("team_1", RUN, newer)))
             return human.AuthenticationResult("denied", attempts_remaining=1)
@@ -218,22 +220,22 @@ class RoutineAnswerTests(unittest.TestCase):
         for response in (
             frozen(run_id="e" * 32),
             frozen(status="integrations-required"),
-            team.TeamResponse(409, {"code": "routine-run-not-frozen", "trace_id": TRACE}),
+            transport.TeamResponse(409, {"code": "routine-run-not-frozen", "trace_id": TRACE}),
         ):
-            with self.subTest(response=response), mock.patch.object(transport, "_call", return_value=response):
+            with self.subTest(response=response), mock.patch.object(transport, "call", return_value=response):
                 self.assertNotEqual(answer.open_challenge("team_1", RUN, {"locale": "en"}).status, 200)
-        waiting = team.TeamResponse(
+        waiting = transport.TeamResponse(
             200, {"team_id": "team_1", "run_id": RUN, "status": "integrations-required", "trace_id": TRACE}
         )
-        with mock.patch.object(transport, "_call", return_value=waiting):
+        with mock.patch.object(transport, "call", return_value=waiting):
             self.assertEqual(
                 answer.open_challenge("team_1", RUN, {"locale": "en"}).body["status"], "integrations-required"
             )
         with mock.patch.object(
-            transport, "_call", return_value=team.TeamResponse(200, {**waiting.body, "run_id": "e" * 32})
+            transport, "call", return_value=transport.TeamResponse(200, {**waiting.body, "run_id": "e" * 32})
         ):
             self.assertEqual(answer.open_challenge("team_1", RUN, {"locale": "en"}).status, 502)
-        with self.assertRaises(team.TeamRequestError):
+        with self.assertRaises(transport.TeamRequestError):
             answer.open_challenge("team_1", "x", {"locale": "en"})
         self.open()
         frame = {"type": "human-response", "challenge_id": CHALLENGE, "decision": "submit", "value": True}
@@ -242,21 +244,21 @@ class RoutineAnswerTests(unittest.TestCase):
 
     def test_a_challenge_opens_only_in_one_closed_interface_language(self) -> None:
         for body in ({}, {"locale": None}, {"locale": "pt-BR"}, {"locale": "PT"}, {"locale": "pt", "x": 1}, [], None):
-            with self.subTest(body=body), mock.patch.object(transport, "_call") as call:
-                with self.assertRaises(team.TeamRequestError):
+            with self.subTest(body=body), mock.patch.object(transport, "call") as call:
+                with self.assertRaises(transport.TeamRequestError):
                     answer.open_challenge("team_1", RUN, body)
                 call.assert_not_called()
 
     def test_team_refusals_of_an_opening_keep_their_safe_code(self) -> None:
         for code in ("assistant-language-drift", "human-request-invalid", "team-context-changed"):
-            refused = team.TeamResponse(409, {"code": code, "detail": "must-not-cross", "trace_id": TRACE})
-            with self.subTest(code=code), mock.patch.object(transport, "_call", return_value=refused):
+            refused = transport.TeamResponse(409, {"code": code, "detail": "must-not-cross", "trace_id": TRACE})
+            with self.subTest(code=code), mock.patch.object(transport, "call", return_value=refused):
                 self.assertEqual(
-                    answer.open_challenge("team_1", RUN, {"locale": "pt"}), team.TeamResponse(409, {"code": code})
+                    answer.open_challenge("team_1", RUN, {"locale": "pt"}), transport.TeamResponse(409, {"code": code})
                 )
 
     def test_an_integration_resume_carries_no_model_key(self) -> None:
-        with mock.patch.object(transport, "_call_stream", return_value=resumed("frozen")) as stream:
+        with mock.patch.object(transport, "call_stream", return_value=resumed("frozen")) as stream:
             self.assertEqual(answer.resume_integrations("team_1", RUN).body["status"], "frozen")
         self.assertEqual(stream.call_args.args[1], f"/v1/teams/team_1/routines/runs/{RUN}/integrations")
         self.assertIsNone(stream.call_args.kwargs["bindings"].model_credential)
@@ -339,7 +341,7 @@ class RoutineAnswerTests(unittest.TestCase):
             opened[tab] = answer.open_challenge("team_1", RUN, {"locale": "en"}).body["challenge"]["challenge_id"]
 
         with (
-            mock.patch.object(transport, "_call", side_effect=team_opens),
+            mock.patch.object(transport, "call", side_effect=team_opens),
             mock.patch.object(answer, "_remember", side_effect=remembered),
         ):
             tab_a = threading.Thread(target=open_in, args=("a",))
@@ -359,10 +361,10 @@ class RoutineAnswerTests(unittest.TestCase):
         self.assertEqual(stream.call_args.args[2]["challenge_id"], second)
 
     def test_an_opening_waits_a_bounded_time_and_leaves_no_lock_behind(self) -> None:
-        busy = team.TeamResponse(409, {"code": "routine-challenge-busy"})
+        busy = transport.TeamResponse(409, {"code": "routine-challenge-busy"})
         with mock.patch.object(answer, "OPENING_WAIT_SECONDS", 0.01), answer._opening("team_1") as held:
             self.assertTrue(held)
-            with mock.patch.object(transport, "_call") as call:
+            with mock.patch.object(transport, "call") as call:
                 self.assertEqual(answer.open_challenge("team_1", RUN, {"locale": "en"}), busy)
                 # Too many Teams opening at once refuses another Team before it waits or asks Team.
                 with mock.patch.object(answer, "MAX_OPENING_TEAMS", 1):
@@ -372,7 +374,7 @@ class RoutineAnswerTests(unittest.TestCase):
         self.assertEqual(answer._OPENINGS, {})
         # A failed Team request releases the Team's opening too.
         with (
-            mock.patch.object(transport, "_call", side_effect=RuntimeError("unreachable")),
+            mock.patch.object(transport, "call", side_effect=RuntimeError("unreachable")),
             self.assertRaises(RuntimeError),
         ):
             answer.open_challenge("team_1", RUN, {"locale": "en"})

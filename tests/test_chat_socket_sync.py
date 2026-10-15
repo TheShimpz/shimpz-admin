@@ -37,7 +37,7 @@ _wait_for_thread = chat_socket_fixtures.wait_for_thread
 class ChatWebSocketSyncTests(ChatWebSocketCase):
     def setUp(self) -> None:
         super().setUp()
-        empty = self.team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
+        empty = self.transport.TeamResponse(200, {"team_id": "team_1", "status": "none"})
         pending_human = mock.patch.object(
             self.chat_socket.local,
             "open_human",
@@ -55,7 +55,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
     def test_integration_sync_rejects_augmented_pending_state_without_resuming(self) -> None:
         async def scenario() -> None:
             sensitive_marker = "must-not-cross"
-            augmented = self.team.TeamResponse(
+            augmented = self.transport.TeamResponse(
                 200,
                 {**dict(_integration_challenge(status=200).body), "access_token": sensitive_marker},
             )
@@ -75,7 +75,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
 
     def test_empty_integration_sync_returns_one_exact_nonterminal_event(self) -> None:
         async def scenario() -> None:
-            empty = self.team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
+            empty = self.transport.TeamResponse(200, {"team_id": "team_1", "status": "none"})
             with (
                 mock.patch.object(self.chat_socket.local, "pending_integrations", return_value=empty),
                 mock.patch.object(self.chat_socket.local, "resume_integrations") as resume,
@@ -90,7 +90,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
     def test_empty_sync_clears_an_expired_challenge_before_the_next_turn(self) -> None:
         async def scenario() -> None:
             pending = _integration_challenge(status=200)
-            empty = self.team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
+            empty = self.transport.TeamResponse(200, {"team_id": "team_1", "status": "none"})
             completed = chat_socket_fixtures.completed_turn("Fresh turn.")
             with (
                 mock.patch.object(
@@ -289,7 +289,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
 
     def test_sync_delivery_exception_fails_closed_with_one_terminal(self) -> None:
         async def scenario() -> None:
-            empty = self.team.TeamResponse(200, {"team_id": "team_1", "status": "none"})
+            empty = self.transport.TeamResponse(200, {"team_id": "team_1", "status": "none"})
             with (
                 mock.patch.object(self.chat_socket.local, "pending_integrations", return_value=empty),
                 mock.patch.object(
@@ -341,7 +341,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
             # Team refuses a turn that races a Local reset; the code survives so the person knows to retry.
             resetting = await response_for(
                 self.chat_socket.local._safe_error(
-                    self.team.TeamResponse(409, {"code": "space-resetting", "detail": "the Space is being reset"})
+                    self.transport.TeamResponse(409, {"code": "space-resetting", "detail": "the Space is being reset"})
                 )
             )
             self.assertEqual(
@@ -355,7 +355,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
 
             sensitive_marker = "sk-private-must-never-cross-the-websocket"
             upstream_error = await response_for(
-                self.team.TeamResponse(
+                self.transport.TeamResponse(
                     502,
                     {"code": "brain-runtime-failed", "debug": sensitive_marker},
                 )
@@ -375,7 +375,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
             )
 
             augmented_success = await response_for(
-                self.team.TeamResponse(
+                self.transport.TeamResponse(
                     200,
                     {
                         "team_id": "team_1",

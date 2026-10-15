@@ -165,7 +165,7 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
             valid = human_challenge("approval")
             body = json.loads(json.dumps(valid.body))
             body["request"]["title"] = "tampered"
-            invalid = self.chat_socket.team.TeamResponse(428, body)
+            invalid = self.transport.TeamResponse(428, body)
             with mock.patch.object(self.chat_socket.local, "turn", return_value=invalid):
                 websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("Continue"))

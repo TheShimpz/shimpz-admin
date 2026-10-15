@@ -16,7 +16,7 @@ from chat.delivery import challenge as challenge_delivery
 from chat.delivery import sync as sync_delivery
 from chat.delivery import terminal as terminal_delivery
 from history import http as history_http
-from team import bridge as team
+from team import transport
 from tests.chat_socket_case import ChatDeliveryCase
 
 from chat import socket
@@ -72,7 +72,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
             }
             for file_id, name, size in (("b" * 32, "b.txt", 2), ("a" * 32, "a.txt", 1), ("c" * 32, "c.txt", 3))
         ]
-        listing = team.TeamResponse(200, {"team_id": "team_1", "files": stored})
+        listing = transport.TeamResponse(200, {"team_id": "team_1", "files": stored})
         with (
             mock.patch.object(delivery.team, "resolve_team_name", return_value="Marketing"),
             mock.patch.object(delivery.team, "list_files", return_value=listing) as list_files,
@@ -80,7 +80,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
             asyncio.run(delivery.admit("team_1", "Compare", files=["a" * 32, "b" * 32]))
             with self.assertRaises(delivery.SelectedFileUnavailableError):
                 asyncio.run(delivery.admit("team_1", "Missing", files=["d" * 32]))
-            list_files.return_value = team.TeamResponse(503, {"detail": "team unavailable"})
+            list_files.return_value = transport.TeamResponse(503, {"detail": "team unavailable"})
             with self.assertRaises(socket.history.HistoryUnavailableError):
                 asyncio.run(delivery.admit("team_1", "Unavailable", files=["a" * 32]))
         (entry,) = socket.history.page("team_1")["entries"]
@@ -105,7 +105,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
                 "locale": "en",
                 "timezone": None,
             }
-            listing = team.TeamResponse(200, {"team_id": "team_1", "files": []})
+            listing = transport.TeamResponse(200, {"team_id": "team_1", "files": []})
             with (
                 mock.patch.object(socket.history_delivery.team, "list_files", return_value=listing),
                 mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)) as send,
@@ -124,8 +124,8 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
         deleted = threading.Event()
         outcome: dict[str, object] = {}
 
-        def resolve(_team_id: str) -> team.TeamResponse | str:
-            return team.TeamResponse(404, {"detail": "Team not found"}) if deleted.is_set() else "Marketing"
+        def resolve(_team_id: str) -> transport.TeamResponse | str:
+            return transport.TeamResponse(404, {"detail": "Team not found"}) if deleted.is_set() else "Marketing"
 
         def admit() -> None:
             try:
@@ -135,12 +135,12 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
 
         worker = threading.Thread(target=admit)
 
-        def delete() -> team.TeamResponse:
+        def delete() -> transport.TeamResponse:
             worker.start()
             worker.join(0.3)
             self.assertTrue(worker.is_alive(), "the admission must wait behind the deletion")
             deleted.set()
-            return team.TeamResponse(200, {"deleted": True})
+            return transport.TeamResponse(200, {"deleted": True})
 
         with mock.patch.object(delivery.team, "resolve_team_name", side_effect=resolve):
             self.assertEqual(history_http.team_delete("marketing", delete).status, 200)

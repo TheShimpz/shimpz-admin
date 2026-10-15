@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from history import store as history_store
 from http_request import json_request, remote, through_gate
+from team import transport
 
 
 def _request(path: str, payload: object | None = None, *, origin: str | None = None, cookie: str = "") -> Request:
@@ -170,7 +171,7 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
         self.assertEqual(response.status_code, 503)
 
     def test_a_team_authority_failure_after_the_response_started_is_not_answered_twice(self) -> None:
-        failure = self.admin_app.team.TeamRequestError
+        failure = transport.TeamRequestError
         sent: list[dict] = []
 
         async def send(message):

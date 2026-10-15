@@ -68,7 +68,7 @@ class SupervisorKeyRotationTests(unittest.TestCase):
         self.addCleanup(published.stop)
 
     def _team(self, team: _Team):
-        return mock.patch.object(transport, "_call", side_effect=team)
+        return mock.patch.object(transport, "call", side_effect=team)
 
     def _assert_kept(self) -> None:
         self.assertEqual(state.local_supervisor(), self.original)
@@ -116,12 +116,12 @@ class SupervisorKeyRotationTests(unittest.TestCase):
         for status in (403, 409):
             with self.subTest(status=status):
                 answers = [transport.TeamResponse(status, {}), transport.TeamResponse(403, {})]
-                with mock.patch.object(transport, "_call", side_effect=answers):
+                with mock.patch.object(transport, "call", side_effect=answers):
                     self.assertIs(supervisor_key.rotate(SESSION, None), supervisor_key.Outcome.ABANDONED)
                 self._assert_kept()
         self.assertEqual(_events()[-1], ("supervisor-key-rotation-abandoned", "denied"))
         # Any other definite refusal under the old key means Team never switched: the new key is not tried.
-        with mock.patch.object(transport, "_call", return_value=transport.TeamResponse(400, {})) as call:
+        with mock.patch.object(transport, "call", return_value=transport.TeamResponse(400, {})) as call:
             self.assertIs(supervisor_key.rotate(SESSION, None), supervisor_key.Outcome.ABANDONED)
         call.assert_called_once()
         self._assert_kept()
@@ -136,13 +136,13 @@ class SupervisorKeyRotationTests(unittest.TestCase):
         )
         for answers in cases:
             with self.subTest(answers=answers), self.assertLogs("shimpz-admin", "WARNING"):
-                with mock.patch.object(transport, "_call", side_effect=answers):
+                with mock.patch.object(transport, "call", side_effect=answers):
                     self.assertIs(supervisor_key.rotate(SESSION, None), supervisor_key.Outcome.PENDING)
                 pending = state.pending_supervisor_key()
                 self.assertIsNotNone(pending)
                 self.assertEqual(state.local_supervisor(), self.original)
                 # The open rotation is settled before another begins: Team kept the old key.
-                with mock.patch.object(transport, "_call", side_effect=_Team("f" * 64)):
+                with mock.patch.object(transport, "call", side_effect=_Team("f" * 64)):
                     self.assertIs(supervisor_key.resolve(), supervisor_key.Outcome.ABANDONED)
                 self._assert_kept()
 

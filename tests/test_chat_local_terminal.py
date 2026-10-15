@@ -15,6 +15,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 import models
 from team import bridge as team
+from team import transport
 
 from chat import local
 
@@ -26,7 +27,7 @@ REQUEST = {"issued_at": 1_700_000_000, "nonce": "0" * 32}
 
 def _turn(reply: str, message: str, locale: str = "en", **extra: object) -> object:
     """Relay one Marketing reply, with these extra fields, that Team answered to Admin's local turn."""
-    controller = team.TeamResponse(
+    controller = transport.TeamResponse(
         200,
         {
             "team_id": "team_1",
@@ -41,7 +42,7 @@ def _turn(reply: str, message: str, locale: str = "en", **extra: object) -> obje
         mock.patch.object(
             team,
             "get_inference",
-            return_value=team.TeamResponse(200, {"provider": "openai", "model": "gpt-6.1-sol"}),
+            return_value=transport.TeamResponse(200, {"provider": "openai", "model": "gpt-6.1-sol"}),
         ),
         mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789abcdef"),
         mock.patch.object(team, "chat", return_value=controller),

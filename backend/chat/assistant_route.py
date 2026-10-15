@@ -8,7 +8,7 @@ from typing import Literal
 import decision
 from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context
 from history import context as conversation_context
-from team import bridge as team
+from team import transport
 
 from chat import (
     assistant_inventory,
@@ -174,7 +174,7 @@ def _valid_guidance_reply(value: str) -> bool:
 
 
 def _safe_status(response: object) -> int:
-    return response.status if isinstance(response, team.TeamResponse) and 400 <= response.status <= 599 else 502
+    return response.status if isinstance(response, transport.TeamResponse) and 400 <= response.status <= 599 else 502
 
 
 def _route(
@@ -186,7 +186,7 @@ def _route(
     installable: list[dict[str, str]] | None = None,
 ) -> Route:
     response = local.intent_route(team_id, objective, expected_intent, candidates, context, installable)
-    if not isinstance(response, team.TeamResponse) or not 200 <= response.status < 300:
+    if not isinstance(response, transport.TeamResponse) or not 200 <= response.status < 300:
         raise RouteError(_safe_status(response))
     body = response.body
     if not isinstance(body, dict):
@@ -320,7 +320,7 @@ def _prepare_uninstall(
         return Result("assistant-uninstall", guidance=_platform_guidance("assistant-uninstall-replacement", locale))
     try:
         creator = assistant_inventory.binding_creator(team_id, match.assistant.assistant_id, match.version)
-    except ValueError, team.TeamRequestError:
+    except ValueError, transport.TeamRequestError:
         raise RouteError(502) from None
     return Result("assistant-uninstall", uninstall=assistant_proposal.UninstallTarget(match, creator))
 

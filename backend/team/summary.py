@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 from team import bridge as team
 from team import http as team_http
+from team import transport
 
 from chat import assistant_inventory
 from protocol.http.v1 import payload as team_contract
@@ -17,7 +18,7 @@ def assistants_list() -> JSONResponse:
     return team_http.response(_interface_registry)
 
 
-def _interface_registry() -> team.TeamResponse:
+def _interface_registry() -> transport.TeamResponse:
     response = team.list_assistants()
     if not 200 <= response.status < 300:
         return response
@@ -25,13 +26,13 @@ def _interface_registry() -> team.TeamResponse:
         named = assistant_inventory.names(response)
     except ValueError:
         raise HTTPException(status_code=502, detail="Team Assistant registry is invalid") from None
-    return team.TeamResponse(
+    return transport.TeamResponse(
         200, {"assistants": [{"id": assistant_id, "title": name} for assistant_id, name in named.items()]}
     )
 
 
 def localized(
-    read: Callable[[str], team.TeamResponse],
+    read: Callable[[str], transport.TeamResponse],
     locale: str,
     subject: str,
     *,

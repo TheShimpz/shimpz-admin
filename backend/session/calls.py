@@ -15,7 +15,7 @@ from protocol.socket.v1 import frames
 from session import budget, lane, methods, topics
 from session.outbound import OutboundOverflowError
 from signin import audit, auth
-from team import bridge as team
+from team import transport
 
 if TYPE_CHECKING:
     from session.socket import SessionSocket
@@ -51,7 +51,7 @@ async def _dispatch(socket: SessionSocket, call_id: str, method: str, params: di
             return await methods.dispatch(socket, call_id, method, params)
     except lane.RefusedError:
         raise
-    except team.TeamRequestError, supervisor.SupervisorAuthorityError:
+    except transport.TeamRequestError, supervisor.SupervisorAuthorityError:
         return UNAVAILABLE_AUTHORITY
     except auth.PasswordRecordError:
         return 503, {"code": "password-recovery-required", "detail": "Supervisor password recovery is required"}

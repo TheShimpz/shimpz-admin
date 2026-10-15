@@ -19,6 +19,8 @@ from starlette.responses import PlainTextResponse
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from team import transport
+
 
 class AuthRouteTests(unittest.TestCase):
     @classmethod
@@ -374,7 +376,7 @@ class AuthRouteTests(unittest.TestCase):
         configure_supervisor(self.admin_app.state, password)
         reset = self._request("/api/space", {"password": password})
         reset.scope["method"] = "DELETE"
-        expected = self.admin_app.team.TeamResponse(200, {"reset": True})
+        expected = transport.TeamResponse(200, {"reset": True})
 
         with mock.patch.object(self.admin_app.team, "reset_space", return_value=expected) as team_reset:
             response = asyncio.run(self.admin_app.local_space_reset(reset))
@@ -507,7 +509,7 @@ class AuthRouteTests(unittest.TestCase):
             mock.patch.object(
                 self.admin_app.team,
                 "reset_space",
-                side_effect=self.admin_app.team.TeamRequestError("Supervisor session is unavailable"),
+                side_effect=transport.TeamRequestError("Supervisor session is unavailable"),
             ),
         ):
             asyncio.run(self.admin_app.local_space_reset(reset))

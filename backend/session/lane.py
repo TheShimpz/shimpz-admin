@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING
 from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context
 from fastapi import HTTPException
 from fastapi.responses import Response
-from team import bridge
+from team import transport
 
 if TYPE_CHECKING:
     from session.socket import SessionSocket
@@ -39,7 +39,7 @@ def answer(response: object) -> Answer:
     """An operation's answer as a call result: its status and JSON body; an empty body is an empty object."""
     if isinstance(response, Response):
         return response.status_code, json.loads(response.body) if response.body else {}
-    if isinstance(response, bridge.TeamResponse):
+    if isinstance(response, transport.TeamResponse):
         return response.status, response.body
     if isinstance(response, tuple):
         return response

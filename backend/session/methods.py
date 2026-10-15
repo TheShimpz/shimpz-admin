@@ -28,6 +28,7 @@ from team import names as team_names
 from team import order as team_order
 from team import snapshots as team_snapshots
 from team import summary as team_summary
+from team import transport
 
 from action import stored_input
 from chat import assets as chat_assets
@@ -53,7 +54,7 @@ def _on_lane(owner: object, operation: str, *names: str) -> Method:
 def _team_call(owner: object, operation: str, *names: str) -> Method:
     """A method whose answer is Team's own, as its route passed it on: a request Admin refused before Team is 400."""
 
-    def handler(*args: object) -> team.TeamResponse:
+    def handler(*args: object) -> transport.TeamResponse:
         with team_http.refused_as_bad_request():
             return getattr(owner, operation)(*args)
 
@@ -133,7 +134,9 @@ async def _team_delete(socket: SessionSocket, params: dict[str, object]) -> Answ
 # Assistants
 
 
-async def _install(socket: SessionSocket, call_id: str, install: Callable[..., team.TeamResponse], params) -> Answer:
+async def _install(
+    socket: SessionSocket, call_id: str, install: Callable[..., transport.TeamResponse], params
+) -> Answer:
     """An install runs on its own lane; once it starts, the page hears so, and its result follows when Team answers."""
 
     def started() -> None:

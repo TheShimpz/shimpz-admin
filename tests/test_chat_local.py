@@ -12,6 +12,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 import models
 from team import bridge as team
+from team import transport
 
 from chat import local
 
@@ -68,12 +69,12 @@ def integration_body(requirement: dict[str, object] | None = None) -> dict[str, 
 
 
 # The chat model the Team reports as selected; no test mutates it.
-OPENAI_INFERENCE = team.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
+OPENAI_INFERENCE = transport.TeamResponse(200, {"provider": "openai", "model": "gpt-6-luna"})
 
 
-def _reply(reply: str = "Ready", *, team_name: object = "Marketing") -> team.TeamResponse:
+def _reply(reply: str = "Ready", *, team_name: object = "Marketing") -> transport.TeamResponse:
     """Team's completed Marketing turn with this reply and no question."""
-    return team.TeamResponse(
+    return transport.TeamResponse(
         200,
         {"team_id": "team_1", "team_name": team_name, "reply": reply, "clarification": None, "trace_id": TRACE_ID},
     )
@@ -94,13 +95,13 @@ class LocalChatOrchestrationTests(unittest.TestCase):
     def test_integration_challenge_projects_only_public_consent_metadata(self) -> None:
         body = integration_body()
 
-        response = local._project_integration_challenge(team.TeamResponse(428, body), "team_1")
+        response = local._project_integration_challenge(transport.TeamResponse(428, body), "team_1")
 
         # Team's English provider summary and each Action's Creator name and summary are validated but never reach the
         # browser, which words the provider per language and shows only each Action id.
         self.assertEqual(
             response,
-            team.TeamResponse(
+            transport.TeamResponse(
                 428,
                 {
                     **{key: value for key, value in body.items() if key != "trace_id"},
@@ -141,14 +142,14 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         )
         for body in invalid:
             with self.subTest(body=body):
-                response = local._project_integration_challenge(team.TeamResponse(428, body), "team_1")
+                response = local._project_integration_challenge(transport.TeamResponse(428, body), "team_1")
             self.assertEqual(
                 response,
-                team.TeamResponse(502, {"code": "integration-challenge-response-invalid"}),
+                transport.TeamResponse(502, {"code": "integration-challenge-response-invalid"}),
             )
 
     def test_turn_preserves_integration_before_later_gates(self) -> None:
-        controller = team.TeamResponse(
+        controller = transport.TeamResponse(
             428,
             integration_body(),
         )
@@ -249,7 +250,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertIsInstance(events[-1]["elapsed_ms"], int)
 
     def test_pending_integration_is_team_bound_and_none_is_closed(self) -> None:
-        pending = team.TeamResponse(
+        pending = transport.TeamResponse(
             200,
             integration_body(),
         )
@@ -258,18 +259,18 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertEqual(projected.body["status"], "integrations-required")
         self.assertNotIn("trace_id", projected.body)
 
-        none = team.TeamResponse(200, {"team_id": "team_1", "status": "none", "trace_id": TRACE_ID})
+        none = transport.TeamResponse(200, {"team_id": "team_1", "status": "none", "trace_id": TRACE_ID})
         with mock.patch.object(team, "pending_chat_integrations", return_value=none):
             self.assertEqual(
                 local.pending_integrations("team_1"),
-                team.TeamResponse(200, {"team_id": "team_1", "status": "none"}),
+                transport.TeamResponse(200, {"team_id": "team_1", "status": "none"}),
             )
 
-        cross_team = team.TeamResponse(200, {**none.body, "team_id": "team_2"})
+        cross_team = transport.TeamResponse(200, {**none.body, "team_id": "team_2"})
         with mock.patch.object(team, "pending_chat_integrations", return_value=cross_team):
             self.assertEqual(
                 local.pending_integrations("team_1"),
-                team.TeamResponse(502, {"code": "integration-challenge-response-invalid"}),
+                transport.TeamResponse(502, {"code": "integration-challenge-response-invalid"}),
             )
 
     def test_integration_resume_rejects_augmented_or_invalid_payload_before_transport(self) -> None:
@@ -279,9 +280,9 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             {"challenge_id": CHALLENGE_ID, "authorization_code": "must-not-cross"},
             {"challenge_id": CHALLENGE_ID, "access_token": "must-not-cross"},
         )
-        with mock.patch.object(team, "_call") as transport:
+        with mock.patch.object(transport, "call") as sent:
             for payload in invalid:
-                with self.subTest(payload=payload), self.assertRaises(team.TeamRequestError):
+                with self.subTest(payload=payload), self.assertRaises(transport.TeamRequestError):
                     team.resume_chat_integrations(
                         "team_1",
                         payload,
@@ -289,12 +290,12 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                         api_key="sk-test-0123456789",
                         progress=lambda _event: None,
                     )
-        transport.assert_not_called()
+        sent.assert_not_called()
 
     def test_human_resume_binds_only_exact_successful_assurance(self) -> None:
-        response = team.TeamResponse(200, {})
+        response = transport.TeamResponse(200, {})
         assurance = {"kind": "auth:password", "challenge_id": CHALLENGE_ID}
-        with mock.patch.object(team, "_call_stream", return_value=response) as transport:
+        with mock.patch.object(transport, "call_stream", return_value=response) as sent:
             result = team.resume_chat_human(
                 "team_1",
                 {"challenge_id": CHALLENGE_ID, "decision": "submit", "value": True},
@@ -305,10 +306,10 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             )
 
         self.assertEqual(result, response)
-        bindings = transport.call_args.kwargs["bindings"]
+        bindings = sent.call_args.kwargs["bindings"]
         self.assertEqual(bindings.human_assurance, assurance)
         self.assertEqual(bindings.model_credential, ("openai", "sk-test-0123456789"))
-        self.assertEqual(transport.call_args.args[1], "/v1/teams/team_1/chat/human")
+        self.assertEqual(sent.call_args.args[1], "/v1/teams/team_1/chat/human")
 
         invalid = (
             ({"challenge_id": CHALLENGE_ID, "decision": "deny"}, assurance),
@@ -325,9 +326,9 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 {"kind": "auth:unknown", "challenge_id": CHALLENGE_ID},
             ),
         )
-        with mock.patch.object(team, "_call_stream") as transport:
+        with mock.patch.object(transport, "call_stream") as sent:
             for payload, evidence in invalid:
-                with self.subTest(payload=payload, evidence=evidence), self.assertRaises(team.TeamRequestError):
+                with self.subTest(payload=payload, evidence=evidence), self.assertRaises(transport.TeamRequestError):
                     team.resume_chat_human(
                         "team_1",
                         payload,
@@ -336,11 +337,11 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                         progress=lambda _event: None,
                         assurance=evidence,
                     )
-        transport.assert_not_called()
+        sent.assert_not_called()
 
     def test_human_resume_accepts_only_bounded_browser_values(self) -> None:
         valid_values = (True, "", "notes\nwith detail", ["one", "two"])
-        with mock.patch.object(team, "_call_stream", return_value=team.TeamResponse(200, {})) as transport:
+        with mock.patch.object(transport, "call_stream", return_value=transport.TeamResponse(200, {})) as sent:
             for value in valid_values:
                 with self.subTest(value=value):
                     team.resume_chat_human(
@@ -350,12 +351,12 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                         api_key="sk-test-0123456789",
                         progress=lambda _event: None,
                     )
-        self.assertEqual(transport.call_count, len(valid_values))
+        self.assertEqual(sent.call_count, len(valid_values))
 
         invalid_values = (False, None, 1, {}, ["duplicate", "duplicate"], "x" * 16_001)
-        with mock.patch.object(team, "_call_stream") as transport:
+        with mock.patch.object(transport, "call_stream") as sent:
             for value in invalid_values:
-                with self.subTest(value=value), self.assertRaises(team.TeamRequestError):
+                with self.subTest(value=value), self.assertRaises(transport.TeamRequestError):
                     team.resume_chat_human(
                         "team_1",
                         {"challenge_id": CHALLENGE_ID, "decision": "submit", "value": value},
@@ -363,11 +364,11 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                         api_key="sk-test-0123456789",
                         progress=lambda _event: None,
                     )
-        transport.assert_not_called()
+        sent.assert_not_called()
 
     def test_human_resume_projects_denial_without_reflecting_private_values(self) -> None:
         inference = OPENAI_INFERENCE
-        denied = team.TeamResponse(
+        denied = transport.TeamResponse(
             200,
             {
                 "team_id": "team_1",
@@ -388,7 +389,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
 
         self.assertEqual(
             response,
-            team.TeamResponse(409, {"code": "human-request-denied"}),
+            transport.TeamResponse(409, {"code": "human-request-denied"}),
         )
         self.assertNotIn("assurance", resume.call_args.kwargs)
         self.assertNotIn("sk-test-0123456789", json.dumps(response.body))
@@ -425,10 +426,10 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         )
         for body in invalid:
             with self.subTest(body=body):
-                response = local._project_human_denial(team.TeamResponse(200, body), "team_1")
+                response = local._project_human_denial(transport.TeamResponse(200, body), "team_1")
             self.assertEqual(
                 response,
-                team.TeamResponse(502, {"code": "human-response-invalid"}),
+                transport.TeamResponse(502, {"code": "human-response-invalid"}),
             )
 
     def test_browser_payload_rejects_ambient_authority_and_invalid_scopes(self) -> None:
@@ -456,12 +457,12 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         )
         with mock.patch.object(team, "get_inference") as inference:
             for payload in payloads:
-                with self.subTest(payload=payload), self.assertRaises(team.TeamRequestError):
+                with self.subTest(payload=payload), self.assertRaises(transport.TeamRequestError):
                     local.turn("team_1", payload, (), REQUEST)
         inference.assert_not_called()
 
     def test_resolves_key_in_backend_and_projects_controller_reply(self) -> None:
-        inference = team.TeamResponse(200, {"provider": "anthropic", "model": "claude-sonnet-5-5"})
+        inference = transport.TeamResponse(200, {"provider": "anthropic", "model": "claude-sonnet-5-5"})
         controller = _reply()
         with (
             mock.patch.object(team, "get_inference", return_value=inference),
@@ -497,7 +498,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertTrue(callable(call.kwargs["progress"]))
 
     def test_missing_controller_contract_fails_503_without_mocking_success(self) -> None:
-        missing = team.TeamResponse(404, {"detail": "no such operation"})
+        missing = transport.TeamResponse(404, {"detail": "no such operation"})
         with (
             mock.patch.object(team, "get_inference", return_value=missing),
             mock.patch.object(models, "resolve_api_key") as resolve_key,
@@ -519,14 +520,14 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         for body in invalid:
             with (
                 self.subTest(body=body),
-                mock.patch.object(team, "get_inference", return_value=team.TeamResponse(200, body)),
+                mock.patch.object(team, "get_inference", return_value=transport.TeamResponse(200, body)),
                 mock.patch.object(models, "resolve_api_key") as resolve_key,
                 mock.patch.object(team, "chat") as chat,
             ):
                 response = _hi_turn()
             self.assertEqual(
                 response,
-                team.TeamResponse(502, {"code": "inference-response-invalid"}),
+                transport.TeamResponse(502, {"code": "inference-response-invalid"}),
             )
             resolve_key.assert_not_called()
             chat.assert_not_called()
@@ -537,7 +538,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         ):
             response = _hi_turn()
 
-        self.assertEqual(response, team.TeamResponse(409, {"code": "model-credential-missing"}))
+        self.assertEqual(response, transport.TeamResponse(409, {"code": "model-credential-missing"}))
         chat.assert_not_called()
 
     def test_intent_route_without_a_model_credential_never_calls_team(self) -> None:
@@ -550,12 +551,12 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             context = local.IntentRouteContext(locale="pt")
             response = local.intent_route("team_1", "Pesquise notícias", None, [], context)
 
-        self.assertEqual(response, team.TeamResponse(409, {"code": "model-credential-missing"}))
+        self.assertEqual(response, transport.TeamResponse(409, {"code": "model-credential-missing"}))
         route.assert_not_called()
 
     def test_controller_cannot_echo_the_private_key_to_browser(self) -> None:
         api_key = "sk-test-0123456789"
-        echoed = team.TeamResponse(
+        echoed = transport.TeamResponse(
             502,
             {
                 "error": f"provider rejected {api_key}",
@@ -610,10 +611,10 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         for controller_body in invalid:
             with (
                 self.subTest(controller_body=controller_body),
-                _openai_chat("sk-test-0123456789", return_value=team.TeamResponse(200, controller_body)),
+                _openai_chat("sk-test-0123456789", return_value=transport.TeamResponse(200, controller_body)),
             ):
                 response = _hi_turn()
-            self.assertEqual(response, team.TeamResponse(502, {"code": "chat-response-invalid"}))
+            self.assertEqual(response, transport.TeamResponse(502, {"code": "chat-response-invalid"}))
 
     def test_private_key_in_team_name_is_rejected_without_echo(self) -> None:
         api_key = "sk-test-0123456789"
@@ -626,7 +627,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertNotIn(api_key, json.dumps(response.body))
 
     def test_stop_projects_an_accepted_turn_without_overclaiming_action_confirmation(self) -> None:
-        controller = team.TeamResponse(
+        controller = transport.TeamResponse(
             200,
             {
                 "team_id": "team_1",
@@ -639,7 +640,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         )
         with mock.patch.object(team, "stop_chat", return_value=controller):
             response = local.stop("team_1")
-        self.assertEqual(response, team.TeamResponse(200, {"team_id": "team_1", "stopped": True}))
+        self.assertEqual(response, transport.TeamResponse(200, {"team_id": "team_1", "stopped": True}))
 
     def test_stop_rejects_malformed_or_cross_team_controller_responses(self) -> None:
         valid = {
@@ -663,13 +664,13 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 mock.patch.object(
                     team,
                     "stop_chat",
-                    return_value=team.TeamResponse(200, controller_body),
+                    return_value=transport.TeamResponse(200, controller_body),
                 ),
             ):
                 response = local.stop("team_1")
             self.assertEqual(
                 response,
-                team.TeamResponse(502, {"code": "chat-stop-response-invalid"}),
+                transport.TeamResponse(502, {"code": "chat-stop-response-invalid"}),
             )
 
     def test_public_progress_and_websocket_projection_reject_invalid_authority(self) -> None:
@@ -700,9 +701,9 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         self.assertIsNone(response.websocket_event("team_2"))
 
     def test_inference_and_credential_failures_are_reduced_to_public_codes(self) -> None:
-        with mock.patch.object(team, "get_inference", return_value=team.TeamResponse(500, {"private": "value"})):
+        with mock.patch.object(team, "get_inference", return_value=transport.TeamResponse(500, {"private": "value"})):
             response = local._inference("team_1")
-        self.assertEqual(response, team.TeamResponse(500, {"code": "chat-request-failed"}))
+        self.assertEqual(response, transport.TeamResponse(500, {"code": "chat-request-failed"}))
 
         with (
             mock.patch.object(
@@ -713,11 +714,11 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             mock.patch.object(models, "resolve_api_key", side_effect=models.ModelProviderError("invalid")),
         ):
             response = local.model_credential("team_1")
-        self.assertEqual(response, team.TeamResponse(502, {"code": "model-credential-store-invalid"}))
+        self.assertEqual(response, transport.TeamResponse(502, {"code": "model-credential-store-invalid"}))
 
         self.assertEqual(
-            local._safe_error(team.TeamResponse(500, {"code": "BAD CODE"})),
-            team.TeamResponse(500, {"code": "chat-request-failed"}),
+            local._safe_error(transport.TeamResponse(500, {"code": "BAD CODE"})),
+            transport.TeamResponse(500, {"code": "chat-request-failed"}),
         )
 
     def test_integration_challenge_rejects_missing_identity_capabilities_and_action(self) -> None:
@@ -731,11 +732,11 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             {**base, "requirements": [{**requirement, "actions": [{}]}]},
         )
         for body in invalid:
-            projected = local._project_integration_challenge(team.TeamResponse(428, body), "team_1")
+            projected = local._project_integration_challenge(transport.TeamResponse(428, body), "team_1")
             self.assertEqual(projected.status, 502)
 
         self.assertEqual(
-            local._project_pending_challenge(team.TeamResponse(428, {"status": "unknown"}), "team_1").status,
+            local._project_pending_challenge(transport.TeamResponse(428, {"status": "unknown"}), "team_1").status,
             502,
         )
         denial = {
@@ -744,13 +745,13 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             "reason": "authentication-unavailable",
             "trace_id": TRACE_ID,
         }
-        projected = local._project_human_denial(team.TeamResponse(409, denial), "team_1")
+        projected = local._project_human_denial(transport.TeamResponse(409, denial), "team_1")
         self.assertEqual(projected.body["code"], "human-authentication-unavailable")
 
     def test_runtime_missing_pending_errors_and_stop_errors_are_projected(self) -> None:
         inference = OPENAI_INFERENCE
         with (
-            _openai_chat("sk-test-0123456789", return_value=team.TeamResponse(404, {})),
+            _openai_chat("sk-test-0123456789", return_value=transport.TeamResponse(404, {})),
         ):
             self.assertEqual(
                 _hi_turn().status,
@@ -760,14 +761,14 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         with (
             mock.patch.object(team, "get_inference", return_value=inference),
             mock.patch.object(models, "resolve_api_key", return_value="sk-test-0123456789"),
-            mock.patch.object(team, "resume_chat_integrations", return_value=team.TeamResponse(404, {})),
+            mock.patch.object(team, "resume_chat_integrations", return_value=transport.TeamResponse(404, {})),
         ):
             self.assertEqual(local.resume_integrations("team_1", CHALLENGE_ID).status, 503)
 
         for status, expected in ((404, 503), (500, 500)):
-            with mock.patch.object(team, "pending_chat_integrations", return_value=team.TeamResponse(status, {})):
+            with mock.patch.object(team, "pending_chat_integrations", return_value=transport.TeamResponse(status, {})):
                 self.assertEqual(local.pending_integrations("team_1").status, expected)
-            with mock.patch.object(team, "stop_chat", return_value=team.TeamResponse(status, {})):
+            with mock.patch.object(team, "stop_chat", return_value=transport.TeamResponse(status, {})):
                 self.assertEqual(local.stop("team_1").status, expected)
 
 

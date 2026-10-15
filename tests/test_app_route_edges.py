@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "backend"))
 
 from history import store as history_store
 from http_request import http_request, json_request, remote
+from team import transport
 
 
 def _request(
@@ -59,9 +60,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
 
     def test_a_team_request_admin_refused_is_a_bad_request(self) -> None:
         with self.assertRaises(self.admin_app.HTTPException) as raised:
-            self.admin_app.team_http.response(
-                lambda: (_ for _ in ()).throw(self.admin_app.team.TeamRequestError("bad"))
-            )
+            self.admin_app.team_http.response(lambda: (_ for _ in ()).throw(transport.TeamRequestError("bad")))
         self.assertEqual(raised.exception.status_code, 400)
 
     def test_the_platform_release_read_is_a_read_only_local_projection(self) -> None:
@@ -141,7 +140,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             mock.patch.object(
                 self.admin_app.team,
                 "create",
-                return_value=self.admin_app.team.TeamResponse(201, {"team_id": "marketing"}),
+                return_value=transport.TeamResponse(201, {"team_id": "marketing"}),
             ),
             mock.patch.object(self.admin_app.log, "info") as logged,
         ):
@@ -152,16 +151,16 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         with mock.patch.object(
             self.admin_app.team,
             "create",
-            return_value=self.admin_app.team.TeamResponse(409, {"error": "exists"}),
+            return_value=transport.TeamResponse(409, {"error": "exists"}),
         ):
             self.assertEqual(self.team_names.create({"team_name": "Marketing"}).status_code, 409)
 
     def test_new_local_team_clears_only_stale_history_for_its_id(self) -> None:
-        created = self.admin_app.team.TeamResponse(
+        created = transport.TeamResponse(
             201,
             {"team_id": "marketing", "team_name": "Marketing", "status": "running", "created": True},
         )
-        existing = self.admin_app.team.TeamResponse(
+        existing = transport.TeamResponse(
             200,
             {"team_id": "marketing", "team_name": "Marketing", "status": "running", "created": False},
         )
@@ -195,7 +194,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             self.assertEqual(self.admin_app.chat_history_http.page("marketing", None, "a" * 32).status_code, 200)
         loaded.assert_called_once_with("marketing", before=None, routine="a" * 32)
 
-        missing = self.admin_app.team.TeamResponse(404, {"detail": "Team not found"})
+        missing = transport.TeamResponse(404, {"detail": "Team not found"})
         with (
             mock.patch.object(self.admin_app.team, "resolve_team_name", return_value=missing),
             mock.patch.object(history_store, "page") as loaded,
@@ -205,8 +204,8 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         loaded.assert_not_called()
 
     def test_team_lifecycle_cleanup_fails_loud_after_authoritative_success(self) -> None:
-        deleted = self.admin_app.team.TeamResponse(200, {"deleted": True})
-        failed = self.admin_app.team.TeamResponse(503, {"detail": "unavailable"})
+        deleted = transport.TeamResponse(200, {"deleted": True})
+        failed = transport.TeamResponse(503, {"detail": "unavailable"})
         with mock.patch.object(history_store, "clear_team", return_value=3) as cleared:
             self.assertIs(self.delete_with_history("marketing", deleted), deleted)
         cleared.assert_called_once_with("marketing")
@@ -215,10 +214,10 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             self.assertIs(self.delete_with_history("marketing", failed), failed)
         cleared.assert_not_called()
 
-        absent = self.admin_app.team.TeamResponse(404, {"detail": "Team not found"})
+        absent = transport.TeamResponse(404, {"detail": "Team not found"})
         with mock.patch.object(history_store, "clear_team", return_value=1) as cleared:
             response = self.delete_with_history("marketing", absent)
-        self.assertEqual(response, self.admin_app.team.TeamResponse(200, {"deleted": False}))
+        self.assertEqual(response, transport.TeamResponse(200, {"deleted": False}))
         cleared.assert_called_once_with("marketing")
 
         with mock.patch.object(
@@ -234,7 +233,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         cleared.assert_called_once_with()
 
     def test_the_interface_registry_carries_each_assistants_name(self) -> None:
-        registry = self.admin_app.team.TeamResponse(
+        registry = transport.TeamResponse(
             200,
             {
                 "assistants": [
@@ -246,10 +245,10 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         )
         with mock.patch.object(self.admin_app.team, "list_assistants", return_value=registry):
             shown = self.team_summary.assistants_list()
-        unavailable = self.admin_app.team.TeamResponse(503, {"detail": "Team is unavailable"})
+        unavailable = transport.TeamResponse(503, {"detail": "Team is unavailable"})
         with mock.patch.object(self.admin_app.team, "list_assistants", return_value=unavailable):
             refused = self.team_summary.assistants_list()
-        malformed = self.admin_app.team.TeamResponse(200, {"assistants": [{"id": "hello-pulse"}]})
+        malformed = transport.TeamResponse(200, {"assistants": [{"id": "hello-pulse"}]})
         with (
             mock.patch.object(self.admin_app.team, "list_assistants", return_value=malformed),
             self.assertRaises(self.admin_app.HTTPException) as invalid,
@@ -269,7 +268,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         self.assertEqual(invalid.exception.status_code, 502)
 
     def test_thin_team_operations_preserve_the_team_response(self) -> None:
-        response = self.admin_app.team.TeamResponse(200, {"ok": True})
+        response = transport.TeamResponse(200, {"ok": True})
         operations = (
             (self.team_inference.status, "get_inference", ("team_1",)),
             (self.team_inference.configure, "configure_inference", ("team_1", {"model": "x"})),

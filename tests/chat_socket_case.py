@@ -36,6 +36,7 @@ class ChatWebSocketCase(unittest.TestCase):
         cls.assistant_plan = importlib.import_module("chat.assistant_plan")
         cls.assistant_route = importlib.import_module("chat.assistant_route")
         cls.team = importlib.import_module("team.bridge")
+        cls.transport = importlib.import_module("team.transport")
         cls.history_store = importlib.import_module("history.store")
         previous_store = cls.admin_app.state.STORE_PATH
         previous_history_store = cls.history_store.STORE_PATH

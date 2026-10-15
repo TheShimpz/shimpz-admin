@@ -8,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from history import store as history_store
-from team import bridge as team
+from team import transport
 
 from chat import assistant_inventory, human, payloads, store_catalog
 
@@ -42,7 +42,7 @@ class TeamIdentifierKindTests(unittest.TestCase):
     def test_the_team_assistant_registry_names_canonical_actions(self) -> None:
         def registry(actions: list[str]):
             body = {"assistants": [{"id": "helper", "title": "Helper", "summary": "Helps.", "actions": actions}]}
-            return assistant_inventory.registry(team.TeamResponse(200, body))
+            return assistant_inventory.registry(transport.TeamResponse(200, body))
 
         self.assertIn("helper", registry(list(ACTIONS)))
         for actions in (["a" * 129], ["dns..read"]):

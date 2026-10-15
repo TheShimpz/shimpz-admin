@@ -10,8 +10,8 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-
 from history import context as conversation_context
+from team import transport
 
 from chat import (
     assistant_inventory,
@@ -202,13 +202,13 @@ class AssistantRouteTests(unittest.TestCase):
             mock.patch.object(
                 assistant_plan.team,
                 "list_installed_assistants",
-                return_value=assistant_plan.team.TeamResponse(200, {"assistants": []}),
+                return_value=transport.TeamResponse(200, {"assistants": []}),
             ) as installed,
             mock.patch.object(assistant_plan.team, "list_assistants") as registry,
             mock.patch.object(
                 assistant_plan.team,
                 "list_local_assistants",
-                return_value=assistant_plan.team.TeamResponse(200, {"assistants": []}),
+                return_value=transport.TeamResponse(200, {"assistants": []}),
             ),
         ):
             result = assistant_route._catalog_state("team_1", catalog)
@@ -494,7 +494,7 @@ class AssistantRouteTests(unittest.TestCase):
                 assistant.assistant_id, "0.4.5", "local", "running"
             )
         }
-        for failure in (ValueError("invalid"), assistant_plan.team.TeamRequestError("unavailable")):
+        for failure in (ValueError("invalid"), transport.TeamRequestError("unavailable")):
             with (
                 self.subTest(failure=type(failure).__name__),
                 _selected_route("assistant-install", assistant.assistant_id),
@@ -672,7 +672,7 @@ class AssistantRouteTests(unittest.TestCase):
             "0.4.5",
             "local",
         )
-        for failure in (ValueError("invalid"), assistant_plan.team.TeamRequestError("unavailable")):
+        for failure in (ValueError("invalid"), transport.TeamRequestError("unavailable")):
             with (
                 self.subTest(failure=type(failure).__name__),
                 _selected_route("assistant-uninstall", "shimpz-cloudflare"),

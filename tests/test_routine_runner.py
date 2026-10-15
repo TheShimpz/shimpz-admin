@@ -22,7 +22,6 @@ sys.path.insert(0, str(ROOT / "backend"))
 import state
 import supervisor
 from history import store as history
-from team import bridge as team_bridge
 from team import transport
 from tests.chat_history_case import ChatHistoryCase
 
@@ -52,8 +51,8 @@ def _decode(encoded: str) -> bytes:
     return base64.urlsafe_b64decode(encoded + "=" * (-len(encoded) % 4))
 
 
-def answer(body: dict[str, object], status: int = 200) -> team_bridge.TeamResponse:
-    return team_bridge.TeamResponse(status, {**body, "trace_id": TRACE})
+def answer(body: dict[str, object], status: int = 200) -> transport.TeamResponse:
+    return transport.TeamResponse(status, {**body, "trace_id": TRACE})
 
 
 def _acquire_within_five_seconds(case: unittest.TestCase, slot) -> None:
@@ -291,19 +290,19 @@ class RoutineHistoryViewTests(ChatHistoryCase):
 
 class RoutineTeamCallTests(unittest.TestCase):
     def test_calls_admit_only_closed_answers(self) -> None:
-        with mock.patch.object(transport, "_call", return_value=answer(CLAIMED)) as call:
+        with mock.patch.object(transport, "call", return_value=answer(CLAIMED)) as call:
             self.assertEqual(team.claim(False), CLAIMED)
         # The claim says only whether Admin can take a long run now.
         call.assert_called_once_with("POST", "/v1/routines/claim", {"long": False})
-        with mock.patch.object(transport, "_call", return_value=answer({"run": LONG, "next_due_at": None})) as call:
+        with mock.patch.object(transport, "call", return_value=answer({"run": LONG, "next_due_at": None})) as call:
             self.assertEqual(team.claim(True)["run"], LONG)
         call.assert_called_once_with("POST", "/v1/routines/claim", {"long": True})
         hinted = {"run": None, "next_due_at": 1790000300}
-        with mock.patch.object(transport, "_call", return_value=answer(hinted)):
+        with mock.patch.object(transport, "call", return_value=answer(hinted)):
             self.assertEqual(team.claim(False), hinted)
-        with mock.patch.object(transport, "_call", return_value=answer(BATCH)):
+        with mock.patch.object(transport, "call", return_value=answer(BATCH)):
             self.assertEqual(team.notices(), BATCH)
-        with mock.patch.object(transport, "_call", return_value=answer({"acknowledged": True})) as call:
+        with mock.patch.object(transport, "call", return_value=answer({"acknowledged": True})) as call:
             team.acknowledge(BATCH["notices"])
         first = BATCH["notices"][0]
         self.assertEqual(
@@ -315,13 +314,13 @@ class RoutineTeamCallTests(unittest.TestCase):
             (answer({"run": None}), lambda: team.claim(False)),
             (answer({"notices": [], "more": True}), team.notices),
             (answer({"acknowledged": False}), lambda: team.acknowledge(BATCH["notices"])),
-            (team_bridge.TeamResponse(200, IDLE), lambda: team.claim(False)),
+            (transport.TeamResponse(200, IDLE), lambda: team.claim(False)),
             (answer({"code": "x"}, 503), team.notices),
-            (team_bridge.TeamResponse(200, ["not", "an", "object"]), team.notices),
+            (transport.TeamResponse(200, ["not", "an", "object"]), team.notices),
         ):
             with (
                 self.subTest(response=response),
-                mock.patch.object(transport, "_call", return_value=response),
+                mock.patch.object(transport, "call", return_value=response),
                 self.assertRaises(team.RoutineTeamError),
             ):
                 action()
@@ -333,7 +332,7 @@ class RoutineTeamCallTests(unittest.TestCase):
         ]
         self.assertGreater(len(json.dumps({"deliveries": delivered}, separators=(",", ":"))), 16 * 1024)
         acknowledged = answer({"acknowledged": True})
-        with mock.patch.object(transport, "_call", return_value=acknowledged) as call:
+        with mock.patch.object(transport, "call", return_value=acknowledged) as call:
             team.acknowledge([{**item, "outcome": "done"} for item in delivered])
         bodies = [request.args[2] for request in call.call_args_list]
         self.assertGreater(len(bodies), 1)
@@ -343,17 +342,17 @@ class RoutineTeamCallTests(unittest.TestCase):
         self.assertEqual([item for body in bodies for item in body["deliveries"]], delivered)
         # Deliveries small enough to reach Team's count bound before the byte bound are split by count.
         small = [{"team_id": "t", "notice_id": str(index), "version": 1} for index in range(300)]
-        with mock.patch.object(transport, "_call", return_value=acknowledged) as call:
+        with mock.patch.object(transport, "call", return_value=acknowledged) as call:
             team.acknowledge(small)
         self.assertEqual([len(request.args[2]["deliveries"]) for request in call.call_args_list], [256, 44])
-        with mock.patch.object(transport, "_call", return_value=acknowledged) as call:
+        with mock.patch.object(transport, "call", return_value=acknowledged) as call:
             team.acknowledge([])
         call.assert_not_called()
         # A failed acknowledgment is reported and ends the rest; the acknowledged part stays acknowledged.
         many = [{"team_id": "team_1", "notice_id": f"{index:032x}", "version": 1} for index in range(700)]
         failed = answer({"code": "x"}, 503)
         with (
-            mock.patch.object(transport, "_call", side_effect=[acknowledged, failed, acknowledged]) as call,
+            mock.patch.object(transport, "call", side_effect=[acknowledged, failed, acknowledged]) as call,
             self.assertRaises(team.RoutineTeamError),
         ):
             team.acknowledge(many)
@@ -362,7 +361,7 @@ class RoutineTeamCallTests(unittest.TestCase):
     def test_a_run_segment_is_signed_for_its_own_lease_and_answers_its_own_run(self) -> None:
         identity = supervisor.new_identity()
         done = answer({"team_id": CLAIM["team_id"], "run_id": CLAIM["run_id"], "status": "done"})
-        with mock.patch.object(transport, "_call_stream", return_value=done) as stream:
+        with mock.patch.object(transport, "call_stream", return_value=done) as stream:
             self.assertEqual(team.run(CLAIM, identity), "done")
         bindings = stream.call_args.kwargs["bindings"]
         self.assertEqual(bindings.routine, (identity, CLAIM["lease_token"]))
@@ -381,7 +380,7 @@ class RoutineTeamCallTests(unittest.TestCase):
         ):
             with (
                 self.subTest(response=response),
-                mock.patch.object(transport, "_call_stream", return_value=response),
+                mock.patch.object(transport, "call_stream", return_value=response),
                 self.assertRaises(team.RoutineTeamError),
             ):
                 team.run(CLAIM, identity)
@@ -456,7 +455,7 @@ class RoutineLifecycleTests(ChatHistoryCase):
             deleting.set()
             # Team removes the Team's notices with the Team, so a later read returns none.
             deleted.wait(5)
-            return team_bridge.TeamResponse(200, {"deleted": True})
+            return transport.TeamResponse(200, {"deleted": True})
 
         def notices():
             return {"notices": [] if deleted.is_set() else [done], "more": False}

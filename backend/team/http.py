@@ -6,7 +6,7 @@ from contextlib import contextmanager
 
 from fastapi import HTTPException, Request
 from fastapi.responses import JSONResponse
-from team import bridge, transport
+from team import transport
 
 from protocol.http.v1 import strict_json
 
@@ -16,7 +16,7 @@ def refused_as_bad_request() -> Iterator[None]:
     """Answer a request Admin refused before any Team call as the browser's own 400, with the refusal's reason."""
     try:
         yield
-    except bridge.TeamRequestError as exc:
+    except transport.TeamRequestError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
 
 

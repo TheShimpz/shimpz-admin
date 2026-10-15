@@ -17,8 +17,8 @@ from typing import TYPE_CHECKING
 from fastapi import HTTPException
 from history import store as history_store
 from session import lane, stepup, topics
-from team import bridge as team
 from team import http as team_http
+from team import transport
 
 from protocol.http.v1 import websocket as chat_ws_common
 from routine import answer, manage
@@ -29,13 +29,13 @@ if TYPE_CHECKING:
 Answer = lane.Answer
 
 
-def _relayed(operation: Callable[..., team.TeamResponse], *args: object) -> team.TeamResponse:
+def _relayed(operation: Callable[..., transport.TeamResponse], *args: object) -> transport.TeamResponse:
     """Team's answer to one operation; a request Admin refused before Team is the page's own 400."""
     with team_http.refused_as_bad_request():
         return operation(*args)
 
 
-def _settled(socket: SessionSocket, team_id: object, response: team.TeamResponse, *, wake: bool = False):
+def _settled(socket: SessionSocket, team_id: object, response: transport.TeamResponse, *, wake: bool = False):
     """On the lane worker, as Team answers a Routine change: the sockets showing the Team's Routines read them again.
 
     It runs where the change completes, so it happens even when the socket that asked closed meanwhile. A 200 answer
@@ -61,7 +61,7 @@ def _read(operation: str, *names: str):
 def _change(owner: object, operation: str, *names: str, wake: bool = False):
     """A Routine change: Team's answer, the Team's `routines` topic on success, and the scheduler woken if asked."""
 
-    def change(socket: SessionSocket, params: dict[str, object]) -> team.TeamResponse:
+    def change(socket: SessionSocket, params: dict[str, object]) -> transport.TeamResponse:
         response = _relayed(getattr(owner, operation), *(params[name] for name in names))
         return _settled(socket, params["team_id"], response, wake=wake)
 
@@ -74,7 +74,7 @@ def _change(owner: object, operation: str, *names: str, wake: bool = False):
 def _proposal(operation: str, *, wake: bool = False):
     """A Routine card answer, kept in the Team's transcript as soon as Team gives it, so a reload shows it answered."""
 
-    def answer(socket: SessionSocket, params: dict[str, object]) -> team.TeamResponse:
+    def answer(socket: SessionSocket, params: dict[str, object]) -> transport.TeamResponse:
         response = _relayed(getattr(manage, operation), params["team_id"], params["proposal_id"])
         if response.status == 200:
             with contextlib.suppress(history_store.HistoryUnavailableError):
@@ -93,7 +93,7 @@ def _proposal(operation: str, *, wake: bool = False):
 def _deletion_subject(params: dict[str, object]) -> str:
     try:
         return manage.deletion_subject(params["team_id"], params["routine_id"])
-    except team.TeamRequestError as exc:
+    except transport.TeamRequestError as exc:
         raise HTTPException(status_code=400, detail="Routine is invalid") from exc
 
 
@@ -112,7 +112,7 @@ async def _delete(socket: SessionSocket, params: dict[str, object]) -> Answer:
     except HTTPException as exc:
         return exc.status_code, {"detail": exc.detail}
 
-    def delete(_asker) -> team.TeamResponse:
+    def delete(_asker) -> transport.TeamResponse:
         return _settled(socket, params["team_id"], _relayed(manage.delete, params["team_id"], params["routine_id"]))
 
     return await stepup.complete(socket, subject, params["body"], delete)
@@ -125,7 +125,7 @@ def _started(socket: SessionSocket, call_id: str) -> Callable[[], None]:
     return lambda: socket.loop.call_soon_threadsafe(socket.progress, call_id)
 
 
-def _answered(socket: SessionSocket, call_id: str, params: dict[str, object]) -> team.TeamResponse:
+def _answered(socket: SessionSocket, call_id: str, params: dict[str, object]) -> transport.TeamResponse:
     """On the lane worker: authenticate the answer on the socket's loop, check the socket again, then resume the run.
 
     The Action password is checked by chat's own authority, so a wrong one spends the same lockout chat does.
@@ -135,9 +135,9 @@ def _answered(socket: SessionSocket, call_id: str, params: dict[str, object]) ->
             answer.authenticated(params["team_id"], params["run_id"], params["body"], socket.gate.authenticate),
             socket.loop,
         ).result()
-    except team.TeamRequestError, chat_ws_common.FrameError:
+    except transport.TeamRequestError, chat_ws_common.FrameError:
         raise HTTPException(status_code=400, detail="human response is invalid") from None
-    if isinstance(checked, team.TeamResponse):
+    if isinstance(checked, transport.TeamResponse):
         return checked
     if not lane.current(socket):
         raise lane.RefusedError
@@ -152,7 +152,7 @@ async def human(socket: SessionSocket, call_id: str, params: dict[str, object]) 
     return await lane.run(socket, _answered, socket, call_id, params, executor=lane.RESUME_LANE)
 
 
-def _resumed(socket: SessionSocket, params: dict[str, object]) -> team.TeamResponse:
+def _resumed(socket: SessionSocket, params: dict[str, object]) -> transport.TeamResponse:
     response = _relayed(answer.resume_integrations, params["team_id"], params["run_id"])
     return _settled(socket, params["team_id"], response)
 

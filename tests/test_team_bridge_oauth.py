@@ -14,7 +14,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from admin_http import serve_loopback
-from team import bridge as team
 from team import transport
 
 from integrations import assistants as integrations
@@ -93,7 +92,7 @@ class TeamOAuthBridgeTest(unittest.TestCase):
             "local-domain",
         )
 
-        self.assertEqual(response, team.TeamResponse(200, {"authorization_url": authorization_url}))
+        self.assertEqual(response, transport.TeamResponse(200, {"authorization_url": authorization_url}))
         request = _TeamHandler.requests[-1]
         self.assertEqual(
             request["path"],
@@ -123,7 +122,7 @@ class TeamOAuthBridgeTest(unittest.TestCase):
             "d" * 43,
             "local-domain",
         )
-        self.assertEqual(read_only, team.TeamResponse(200, {"authorization_url": read_only_url}))
+        self.assertEqual(read_only, transport.TeamResponse(200, {"authorization_url": read_only_url}))
 
         out_of_band_url = self._authorization_url(callback="out-of-band")
         _TeamHandler.response_body = json.dumps(
@@ -138,7 +137,7 @@ class TeamOAuthBridgeTest(unittest.TestCase):
             "d" * 43,
             "out-of-band",
         )
-        self.assertEqual(out_of_band, team.TeamResponse(200, {"authorization_url": out_of_band_url}))
+        self.assertEqual(out_of_band, transport.TeamResponse(200, {"authorization_url": out_of_band_url}))
         self.assertEqual(
             json.loads(_TeamHandler.requests[-1]["body"]),
             {
@@ -174,10 +173,10 @@ class TeamOAuthBridgeTest(unittest.TestCase):
             )
             self.assertEqual(
                 invalid,
-                team.TeamResponse(502, {"detail": "OAuth authorization response is invalid."}),
+                transport.TeamResponse(502, {"detail": "OAuth authorization response is invalid."}),
             )
 
-        with self.assertRaisesRegex(team.TeamRequestError, "callback mode"):
+        with self.assertRaisesRegex(transport.TeamRequestError, "callback mode"):
             integrations.start_local_assistant_integration_authorization(
                 "team_1",
                 "c" * 32,
@@ -198,7 +197,7 @@ class TeamOAuthBridgeTest(unittest.TestCase):
             )
             self.assertEqual(
                 invalid,
-                team.TeamResponse(502, {"detail": "OAuth authorization response is invalid."}),
+                transport.TeamResponse(502, {"detail": "OAuth authorization response is invalid."}),
             )
 
     def test_disconnect_and_callback_forward_only_fixed_private_contracts(self):
@@ -232,11 +231,11 @@ class TeamOAuthBridgeTest(unittest.TestCase):
             "d" * 43,
         )
 
-        self.assertEqual(disconnected, team.TeamResponse(204, {}))
-        self.assertEqual(cancelled, team.TeamResponse(204, {}))
+        self.assertEqual(disconnected, transport.TeamResponse(204, {}))
+        self.assertEqual(cancelled, transport.TeamResponse(204, {}))
         self.assertEqual(
             completed,
-            team.TeamResponse(
+            transport.TeamResponse(
                 200,
                 {
                     "connected": True,

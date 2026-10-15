@@ -21,6 +21,7 @@ from session import registry, topics
 from space import release as platform_release
 from team import bridge as team
 from team import order as team_order
+from team import transport
 
 log = logging.getLogger("shimpz-admin")
 
@@ -111,7 +112,7 @@ class Watcher:
         try:
             with handle.scope() if watched.authority else contextlib.nullcontext():
                 value = await asyncio.to_thread(watched.read)
-        except (team.TeamRequestError, supervisor.SupervisorAuthorityError, HTTPException, OSError) as exc:
+        except (transport.TeamRequestError, supervisor.SupervisorAuthorityError, HTTPException, OSError) as exc:
             log.warning("session watcher could not read %s (%s)", topic, type(exc).__name__)
             return
         # The first sample is announced too: a change made after a page's own read and before this sample would

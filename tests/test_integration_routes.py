@@ -16,6 +16,8 @@ from starlette.requests import Request
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from team import transport
+
 
 def _request(method: str, url: str, *, body: bytes = b"", cookie: str = "", origin: str = "") -> Request:
     parsed = urlsplit(url)
@@ -94,7 +96,7 @@ class OAuthRoutesTest(unittest.TestCase):
         )
 
     def test_an_authorization_from_loopback_returns_only_one_strict_loopback_handoff(self) -> None:
-        provider = self.admin_app.team.TeamResponse(
+        provider = transport.TeamResponse(
             200,
             {"authorization_url": self._cloudflare_authorization_url()},
         )
@@ -180,7 +182,7 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(replay.headers["location"], "/chat?oauth=start-failed")
 
     def test_local_domain_handoff_start_and_callback_use_only_the_named_https_origin(self) -> None:
-        provider = self.admin_app.team.TeamResponse(
+        provider = transport.TeamResponse(
             200,
             {"authorization_url": self._cloudflare_authorization_url("local-domain")},
         )
@@ -226,7 +228,7 @@ class OAuthRoutesTest(unittest.TestCase):
             "https://local.shimpz.com/api/oauth/cloudflare/callback?state=" + "b" * 43 + "&claim=" + "a" * 64,
             cookie=f"shimpz_oauth_binding={binding.value}",
         )
-        completed = self.admin_app.team.TeamResponse(200, {"connected": True})
+        completed = transport.TeamResponse(200, {"connected": True})
         with (
             mock.patch.object(self.admin_app.state, "browser_origin", return_value="https://local.shimpz.com"),
             mock.patch.object(
@@ -282,7 +284,7 @@ class OAuthRoutesTest(unittest.TestCase):
 
     def test_custom_https_address_completes_out_of_band_in_the_original_session(self) -> None:
         provider_url = self._cloudflare_authorization_url("out-of-band")
-        provider = self.admin_app.team.TeamResponse(200, {"authorization_url": provider_url})
+        provider = transport.TeamResponse(200, {"authorization_url": provider_url})
         with (
             self._origins("https://developer.example.test"),
             mock.patch.object(self.admin_app.state, "browser_origin", return_value="https://developer.example.test"),
@@ -298,7 +300,7 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(start.call_args.args[5], "out-of-band")
 
         code = "c1." + "b" * 43 + "." + "d" * 64
-        completed = self.admin_app.team.TeamResponse(
+        completed = transport.TeamResponse(
             200,
             {
                 "connected": True,
@@ -319,7 +321,7 @@ class OAuthRoutesTest(unittest.TestCase):
         self.assertEqual(replay[0], 409)
 
     def test_custom_https_authorization_cancel_releases_the_exact_team_binding(self) -> None:
-        provider = self.admin_app.team.TeamResponse(
+        provider = transport.TeamResponse(
             200,
             {"authorization_url": self._cloudflare_authorization_url("out-of-band")},
         )
@@ -334,7 +336,7 @@ class OAuthRoutesTest(unittest.TestCase):
         ):
             self._authorize("https://developer.example.test")
 
-        cancelled = self.admin_app.team.TeamResponse(204, {})
+        cancelled = transport.TeamResponse(204, {})
         with mock.patch.object(
             self.admin_app.integrations,
             "cancel_local_assistant_integration_authorization",
@@ -355,7 +357,7 @@ class OAuthRoutesTest(unittest.TestCase):
             f"http://127.0.0.1:7777/api/oauth/cloudflare/callback?state={state}&claim={claim}",
             cookie=f"shimpz_oauth_binding={binding}",
         )
-        result = self.admin_app.team.TeamResponse(
+        result = transport.TeamResponse(
             200,
             {
                 "connected": True,
