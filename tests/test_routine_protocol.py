@@ -115,10 +115,11 @@ class RoutineProtocolMirrorTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(supervisor.SupervisorAssertionError):
                 supervisor.canonical_claims(value, audience=supervisor.ROUTINE_AUDIENCE)
 
-    def test_a_run_usage_may_name_no_model_and_a_chat_usage_must_name_one(self) -> None:
-        replay = {"duration_ms": 1200, "models": []}
-        self.assertEqual(team_contract.canonical_run_usage(replay), replay)
-        self.assertIsNone(team_contract.canonical_turn_usage(replay))
+    def test_a_run_usage_is_its_duration_alone_and_a_chat_usage_must_name_a_model(self) -> None:
+        run = {"duration_ms": 1200}
+        self.assertEqual(team_contract.canonical_run_usage(run), run)
+        self.assertIsNone(team_contract.canonical_turn_usage(run))
+        self.assertIsNone(team_contract.canonical_turn_usage({**run, "models": []}))
 
     def test_the_card_shows_the_owner_s_selector_whole(self) -> None:
         selector = [item for step in CARD["steps"] for item in step["inputs"] if item["origin"] == "selector"]
