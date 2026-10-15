@@ -525,7 +525,6 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
     { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
     { team_id: 'gestao', team_name: 'Gestão', status: 'running' },
   ] } }));
-  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
   await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: {
       version: 1, next: null, locale: 'en',
       assistants: [{
@@ -540,7 +539,6 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
       }],
     } } : undefined));
   await routeRead(page, 'snapshots.list', () => ({ status: 200, json: { assistants: [], trace_id: 'c'.repeat(32) } }));
-  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
 
   await page.goto('/assistants/?team=marketing');
   const catalog = page.getByRole('region', { name: 'Shimpz Assistant Store' });
@@ -577,8 +575,6 @@ test('never renders a matching publication while Local snapshots are settling', 
     body: JSON.stringify(authenticatedLocalSession()),
   }));
   await answerQuietSpace(page);
-  await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
-  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
   await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [{
       assistant: 'shimpz-cloudflare',
       assistant_version: '0.4.5',
@@ -684,9 +680,6 @@ test('renders Assistant identities immediately during in-app icon hydration', as
     body: JSON.stringify(authenticatedLocalSession()),
   }));
   await answerQuietSpace(page);
-  await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
-  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
-  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
   await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: { version: 1, next: null, locale: 'en', assistants: [] } } : undefined));
   await routeRead(page, 'snapshots.list', () => ({ status: 200, json: {
       assistants: [{
@@ -738,9 +731,7 @@ test('shows the first Assistants view before a public icon finishes loading', as
   let markIconRequested;
   const iconGate = new Promise((resolve) => { releaseIcon = resolve; });
   const iconRequested = new Promise((resolve) => { markIconRequested = resolve; });
-  await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } }));
-  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
-  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
+  await answerQuietSpace(page);
   await routeRead(page, 'store.catalog', () => ({ status: 200, json: { version: 1, next: null, locale: 'en', assistants: [{
         assistant_id: 'hello-pulse', assistant_version: '1.0.0', creators: ['@creator'],
         icon_digest: `sha256:${createHash('sha256').update(icon).digest('hex')}`, name: 'Hello Pulse',
@@ -799,9 +790,7 @@ test('shows the first Assistants view before a public icon finishes loading', as
 });
 
 test('shows an over-budget public icon as unavailable instead of loading forever', async ({ page }) => {
-  await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } }));
-  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
-  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
+  await answerQuietSpace(page);
   await routeRead(page, 'store.catalog', () => ({ status: 200, json: { version: 1, next: null, locale: 'en', assistants: [{
         assistant_id: 'hello-pulse', assistant_version: '1.0.0', creators: ['@creator'],
         icon_digest: `sha256:${'b'.repeat(64)}`, name: 'Hello Pulse',
@@ -857,8 +846,6 @@ test('keeps public discovery available when Local snapshot enumeration fails', a
     body: JSON.stringify(authenticatedLocalSession()),
   }));
   await answerQuietSpace(page);
-  await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
-  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
   await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: { version: 1, next: null, locale: 'en', assistants: [{
       assistant_id: 'published-helper',
       assistant_version: '1.0.0',
@@ -874,7 +861,6 @@ test('keeps public discovery available when Local snapshot enumeration fails', a
       code: 'local-assistant-snapshots-unavailable',
       trace_id: 'c'.repeat(32),
     } }));
-  await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
 
   const localInventory = waitForRead(page, 'snapshots.list');
   await page.goto('/assistants/');
@@ -906,7 +892,6 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await routeRead(page, 'teams.list', () => ok({ teams: [
       { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
     ] }));
-  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
   await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: {
       version: 1, next: null, locale: 'en',
       assistants: [{
@@ -1076,7 +1061,6 @@ test('removes an installed publication before its staged build is installed', as
   await routeRead(page, 'teams.list', () => ok({ teams: [
       { team_id: 'marketing', team_name: 'Marketing', status: 'running' },
     ] }));
-  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
   await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: {
       version: 1, next: null, locale: 'en',
       assistants: [{
@@ -1172,7 +1156,6 @@ test('asks for the first Team from the Store when no Team exists', async ({ page
   }));
   await answerQuietSpace(page);
   await routeRead(page, 'teams.list', () => ok({ teams: [] }));
-  await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
   await routeRead(page, 'store.catalog', ({ locale }) => (locale === 'en' ? { status: 200, json: { version: 1, next: null, locale: 'en', assistants: [] } } : undefined));
 
   await page.goto('/assistants/');
