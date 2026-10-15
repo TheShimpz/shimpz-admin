@@ -18,7 +18,8 @@
   } from '#lib/auth/security.js';
 
   // The Supervisor's sign-in security settings (ADR-0051): how many recovery codes are left, and replacing them all.
-  let { dialog = $bindable(), onclose } = $props();
+  let { onclose } = $props();
+  let dialog = $state();
   const id = $props.id();
   // `summary` reads the counts, `confirm` asks for the password and a second factor before replacing the recovery codes,
   // `codes` shows the new set once, and `rotate` confirms replacing the Supervisor signing key.
