@@ -64,6 +64,7 @@ import {
   questionWords,
   refusalWords,
   routineErrorMessage,
+  routineFailureWords,
   routineNotice,
   routineStatus,
   scheduleWords,
@@ -1683,4 +1684,10 @@ test("a recorded attempt reads in words by its replay step", () => {
     attemptWords({ ...item, position: 3 }, copy.details.attempt, names),
     attemptWords({ ...item, position: 4 }, copy.details.attempt, names),
   );
+});
+
+test("a failed Routine change's words say its outcome is unknown only when the socket dropped first", () => {
+  const errors = routineMessages.en.errors;
+  assert.equal(routineFailureWords(new LocalApiError('lost', 0, 'outcome-unknown'), errors, 'unknown'), 'unknown');
+  assert.equal(routineFailureWords(new RoutineError('routine-busy'), errors, 'unknown'), errors.busy);
 });

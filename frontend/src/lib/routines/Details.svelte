@@ -18,7 +18,7 @@
     displayZone,
     fillParts,
     instantWords,
-    routineErrorMessage,
+    routineFailureWords,
     routineNotice,
     routineStatus,
     runCountWords,
@@ -28,7 +28,7 @@
     untilWords,
   } from '#lib/routines/words.js';
   import { refreshTeamRoutines } from '#lib/routines/context.js';
-  import { call, commandsReady, outcomeUnknown } from '#lib/session/socket.js';
+  import { call, commandsReady } from '#lib/session/socket.js';
   import RoutineDecision from '#lib/routines/Decision.svelte';
   import RoutineDeletion from '#lib/routines/Deletion.svelte';
   import RoutinePlan from '#lib/routines/Plan.svelte';
@@ -232,7 +232,7 @@
       await action();
       await refreshTeamRoutines(teamId);
     } catch (failure) {
-      error = outcomeUnknown(failure) ? $t('shell.outcomeUnknown') : routineErrorMessage(failure, copy.errors);
+      error = routineFailureWords(failure, copy.errors, $t('shell.outcomeUnknown'));
     } finally {
       busy = false;
     }

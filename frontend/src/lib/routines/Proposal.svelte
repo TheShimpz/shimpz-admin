@@ -7,7 +7,7 @@
   import Inputs from '#lib/routines/Inputs.svelte';
   import Tag from '#lib/routines/Tag.svelte';
 
-  import { call, commandsReady, outcomeUnknown } from '#lib/session/socket.js';
+  import { call, commandsReady } from '#lib/session/socket.js';
   import { installedIconUrl } from '#lib/assistants/icons.js';
   import { assistantNames } from '#lib/assistants/names.js';
   import { t } from '#lib/i18n/index.js';
@@ -15,7 +15,7 @@
   import { refreshTeamRoutines } from '#lib/routines/context.js';
   import { humanizeId } from '#lib/ids.js';
   import { confirmRoutineProposal, revokeRoutineProposal } from '#lib/routines/protocol.js';
-  import { fillParts, proposalInputValue, routineErrorMessage } from '#lib/routines/words.js';
+  import { fillParts, proposalInputValue, routineFailureWords } from '#lib/routines/words.js';
 
   // The card of a Routine a recording turn recorded (ADR-0101 section 5.2), under its reply, kept short for a person
   // who is not technical: the recording agent's plain description of the work and a warning when a step changes
@@ -65,7 +65,7 @@
       given = result.status;
       if (result.status !== 'revoked') await refreshTeamRoutines(teamId);
     } catch (failure) {
-      error = outcomeUnknown(failure) ? $t('shell.outcomeUnknown') : routineErrorMessage(failure, copy.errors);
+      error = routineFailureWords(failure, copy.errors, $t('shell.outcomeUnknown'));
     } finally {
       working = false;
     }
@@ -108,7 +108,7 @@
         }
         revoked = true;
       } catch (failure) {
-        error = outcomeUnknown(failure) ? $t('shell.outcomeUnknown') : routineErrorMessage(failure, copy.errors);
+        error = routineFailureWords(failure, copy.errors, $t('shell.outcomeUnknown'));
         return;
       } finally {
         working = false;

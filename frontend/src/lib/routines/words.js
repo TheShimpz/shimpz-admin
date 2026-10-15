@@ -6,6 +6,7 @@ import { clockTime } from '../chat/days.js';
 import { fill } from '../i18n/fill.js';
 import { dateFormat, numberFormat, pluralRules, relativeFormat } from '../i18n/formats.js';
 import { humanizeId } from '../ids.js';
+import { outcomeUnknown } from '../session/socket.js';
 import { escapedText, questionTarget, RoutineError } from './protocol.js';
 
 /** The timezone Admin shows a Routine's instants in: the one it runs in, UTC when no timezone was given. */
@@ -222,6 +223,14 @@ export function routineErrorMessage(error, copy) {
     'team-context-unavailable': copy.unavailable,
   };
   return byCode[code] ?? copy.generic;
+}
+
+/**
+ * The words of a failed Routine change: `unknown` when the socket dropped before Admin answered, so the change may or
+ * may not have happened, else the words of its code.
+ */
+export function routineFailureWords(error, copy, unknown) {
+  return outcomeUnknown(error) ? unknown : routineErrorMessage(error, copy);
 }
 
 // The words of a count: one form for exactly one, the other for any other number.

@@ -4,7 +4,7 @@
   import AssistantHumanRequestDialog from '#lib/assistants/HumanRequestDialog.svelte';
   import { assistantNames } from '#lib/assistants/names.js';
   import ChoiceList from '#lib/choice/List.svelte';
-  import { call, commandsReady, outcomeUnknown } from '#lib/session/socket.js';
+  import { call, commandsReady } from '#lib/session/socket.js';
   import { locale, t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
   import { createHumanResponseFrame, parseChatEvent } from '#lib/chat/protocol.js';
@@ -17,7 +17,7 @@
     openRoutineChallenge,
     resumeRoutineIntegrations,
   } from '#lib/routines/protocol.js';
-  import { conditionWords, failureCause, routineErrorMessage } from '#lib/routines/words.js';
+  import { conditionWords, failureCause, routineFailureWords } from '#lib/routines/words.js';
 
   // The decision one Routine run waits for (ADR-0092), the same wherever it is shown: a held or paused run's
   // recovery card, or a frozen run's approval through chat's own dialog. Nothing runs until the Supervisor answers.
@@ -122,7 +122,7 @@
 
   // A change Admin never answered because the socket dropped may or may not have happened, and says so.
   function failed(error) {
-    return outcomeUnknown(error) ? $t('shell.outcomeUnknown') : routineErrorMessage(error, copy.errors);
+    return routineFailureWords(error, copy.errors, $t('shell.outcomeUnknown'));
   }
 
   async function openCard() {
