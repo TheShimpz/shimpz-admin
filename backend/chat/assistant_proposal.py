@@ -258,7 +258,7 @@ def _score_fields(
     return score
 
 
-def _candidate_score(message: str, tokens: frozenset[str], candidate: store_catalog.CatalogAssistant) -> int:
+def _candidate_score(message: str, tokens: frozenset[str], candidate: DirectoryAssistant | Capability) -> int:
     return _score_fields(
         message,
         tokens,
@@ -270,16 +270,9 @@ def _candidate_score(message: str, tokens: frozenset[str], candidate: store_cata
     )
 
 
-def _capability_score(message: str, tokens: frozenset[str], capability: Capability) -> int:
-    return _score_fields(
-        message,
-        tokens,
-        assistant_id=capability.assistant_id,
-        name=capability.name,
-        summary=capability.summary,
-        integrations=capability.integrations,
-        actions=capability.actions,
-    )
+def _ranked[AssistantT](scored: Iterable[tuple[int, str, AssistantT]]) -> list[tuple[int, str, AssistantT]]:
+    """Scored candidates, strongest first and ties in Assistant id order."""
+    return sorted(scored, key=lambda item: (-item[0], item[1]))
 
 
 def _bounded_pool[AssistantT](
@@ -315,23 +308,16 @@ def capability_candidates(
     if not search:
         return (), ()
     tokens = _tokens(message)
-    installable = sorted(
-        (
-            (_candidate_score(search, tokens, candidate), candidate.assistant_id, candidate)
-            for candidate in catalog
-            if candidate.assistant_id not in installed_ids
-        ),
-        key=lambda item: (-item[0], item[1]),
+    installable = _ranked(
+        (_candidate_score(search, tokens, candidate), candidate.assistant_id, candidate)
+        for candidate in catalog
+        if candidate.assistant_id not in installed_ids
     )
     kept_installable = _bounded_pool(installable, MAX_CAPABILITY_SHORTLIST)
     if not kept_installable:
         return (), ()
-    context = sorted(
-        (
-            (_capability_score(search, tokens, capability), capability.assistant_id, capability)
-            for capability in enabled
-        ),
-        key=lambda item: (-item[0], item[1]),
+    context = _ranked(
+        (_candidate_score(search, tokens, capability), capability.assistant_id, capability) for capability in enabled
     )
     kept_enabled = tuple(item[2] for item in context[: MAX_CAPABILITY_SHORTLIST - len(kept_installable)])
     return (
@@ -357,19 +343,16 @@ def install_shortlist(
     tokens = _tokens(query)
     if not search:
         return ()
-    ranked = sorted(
+    ranked = _ranked(
         (
-            (
-                max(
-                    _directory_identity_score(search, tokens, candidate.assistant_id, candidate.name),
-                    _candidate_score(search, tokens, candidate),
-                ),
-                candidate.assistant_id,
-                candidate,
-            )
-            for candidate in candidates
-        ),
-        key=lambda item: (-item[0], item[1]),
+            max(
+                _directory_identity_score(search, tokens, candidate.assistant_id, candidate.name),
+                _candidate_score(search, tokens, candidate),
+            ),
+            candidate.assistant_id,
+            candidate,
+        )
+        for candidate in candidates
     )
     return _bounded_pool(ranked, MAX_ROUTE_SHORTLIST)
 
@@ -388,10 +371,7 @@ def uninstall_shortlist(
         assistant = candidate.assistant
         return _directory_identity_score(search, tokens, assistant.assistant_id, assistant.name)
 
-    ranked = sorted(
-        ((score(candidate), candidate.assistant.assistant_id, candidate) for candidate in candidates),
-        key=lambda item: (-item[0], item[1]),
-    )
+    ranked = _ranked((score(candidate), candidate.assistant.assistant_id, candidate) for candidate in candidates)
     return _bounded_pool(ranked, MAX_ROUTE_SHORTLIST)
 
 
