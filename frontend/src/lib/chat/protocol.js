@@ -26,6 +26,11 @@ import {
   TEAM_ID_RE,
 } from '../ids.js';
 
+// A chat response that fails its contract: one closed refusal that never echoes what arrived.
+function invalidResponse() {
+  return new LocalApiError('The local chat response is invalid.');
+}
+
 export const CHAT_TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
 const SECRET_CONTROL_RE = /[\p{C}\p{Zl}\p{Zp}]/u;
 export const MAX_MESSAGE_CHARS = 16_000;
@@ -132,18 +137,18 @@ export function canonicalId(value, message = 'The local chat response is invalid
 
 export function canonicalPublicText(value, maximum) {
   if (!isShownText(value, maximum, SECRET_CONTROL_RE)) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   return value;
 }
 
 export function canonicalIntegrationScopes(values) {
   if (!Array.isArray(values) || !values.length || values.length > MAX_INTEGRATION_SCOPES) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   const scopes = values.map((value) => canonicalPublicText(value, 128));
   if (new Set(scopes).size !== scopes.length) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   return scopes;
 }
@@ -155,18 +160,18 @@ function canonicalIntegrationAction(value) {
     Array.isArray(value) ||
     !exactKeys(value, ['id'])
   ) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   return { id: canonicalId(value.id, undefined, isActionId) };
 }
 
 function canonicalIntegrationActions(values) {
   if (!Array.isArray(values) || !values.length || values.length > MAX_INTEGRATION_ACTIONS) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   const actions = values.map(canonicalIntegrationAction);
   if (new Set(actions.map((action) => action.id)).size !== actions.length) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   return actions;
 }
@@ -186,7 +191,7 @@ function canonicalIntegrationRequirement(value) {
       'actions',
     ])
   ) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   return {
     assistant_id: canonicalId(value.assistant_id),
@@ -235,7 +240,7 @@ function canonicalCopyReference(value) {
     !Reflect.ownKeys(params).every((name) => (
       typeof name === 'string' && MESSAGE_PARAM_NAME_RE.test(name) && messageParam(params[name])
     ))
-  ) throw new LocalApiError('The local chat response is invalid.');
+  ) throw invalidResponse();
   return { message: value.message, params: { ...params } };
 }
 
@@ -246,11 +251,11 @@ function canonicalOptionalCopyReference(value) {
 // One rendered field: null exactly where its reference is null, otherwise bounded public NFC text.
 function renderedText(text, reference, maximum) {
   if (reference === null) {
-    if (text !== null) throw new LocalApiError('The local chat response is invalid.');
+    if (text !== null) throw invalidResponse();
     return null;
   }
   if (typeof text !== 'string' || text.normalize('NFC') !== text) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   return canonicalPublicText(text, maximum);
 }
@@ -261,7 +266,7 @@ function canonicalRendered(value, request) {
   const fields = Object.keys(RENDERED_FIELD_CHARS).filter((field) => Object.hasOwn(request, field));
   const options = Object.hasOwn(request, 'options');
   if (!exactKeys(value, options ? [...fields, 'options'] : fields)) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   const rendered = Object.fromEntries(fields.map((field) => [
     field,
@@ -269,10 +274,10 @@ function canonicalRendered(value, request) {
   ]));
   if (!options) return rendered;
   if (!Array.isArray(value.options) || value.options.length !== request.options.length) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   rendered.options = value.options.map((item, index) => {
-    if (!exactKeys(item, ['label', 'description'])) throw new LocalApiError('The local chat response is invalid.');
+    if (!exactKeys(item, ['label', 'description'])) throw invalidResponse();
     const option = request.options[index];
     return {
       label: renderedText(item.label, option.label, RENDERED_OPTION_CHARS.label),
@@ -301,7 +306,7 @@ function canonicalHumanOption(value) {
     typeof value !== 'object' ||
     Array.isArray(value) ||
     !exactKeys(value, ['value', 'label', 'description'])
-  ) throw new LocalApiError('The local chat response is invalid.');
+  ) throw invalidResponse();
   return {
     value: canonicalPublicText(value.value, 128),
     label: canonicalCopyReference(value.label),
@@ -311,11 +316,11 @@ function canonicalHumanOption(value) {
 
 function canonicalHumanOptions(values) {
   if (!Array.isArray(values) || values.length < 2 || values.length > MAX_HUMAN_OPTIONS) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   const options = values.map(canonicalHumanOption);
   if (new Set(options.map((option) => option.value)).size !== options.length) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   return options;
 }
@@ -331,7 +336,7 @@ function canonicalHumanRequestBase(value) {
     value.ordinal >= MAX_HUMAN_REQUESTS_PER_ACTION ||
     typeof value.fingerprint !== 'string' ||
     !/^[0-9a-f]{64}$/.test(value.fingerprint)
-  ) throw new LocalApiError('The local chat response is invalid.');
+  ) throw invalidResponse();
   return {
     kind: value.kind,
     ordinal: value.ordinal,
@@ -343,7 +348,7 @@ function canonicalHumanRequestBase(value) {
 
 function canonicalHumanInputBase(value, base) {
   if (typeof value.required !== 'boolean') {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   return { ...base, label: canonicalCopyReference(value.label), required: value.required };
 }
@@ -382,7 +387,7 @@ export function isHelpUrl(value, maximum = MAX_HELP_URL_CHARS) {
 
 // Where a person creates a Stored Input's value, as its reviewed Assistant declared it.
 export function canonicalHelpUrl(value) {
-  if (!isHelpUrl(value)) throw new LocalApiError('The local chat response is invalid.');
+  if (!isHelpUrl(value)) throw invalidResponse();
   return value;
 }
 
@@ -397,7 +402,7 @@ export function canonicalPurpose(value) {
     codePointLength(value) > MAX_PURPOSE_CHARS ||
     PURPOSE_FORBIDDEN_RE.test(value) ||
     value.toLowerCase().includes('www.')
-  ) throw new LocalApiError('The local chat response is invalid.');
+  ) throw invalidResponse();
   return value;
 }
 
@@ -430,7 +435,7 @@ function canonicalInputProjection(value) {
     value.omitted < 0 ||
     value.omitted > INPUT_PROJECTION_MAX_OMITTED ||
     (value.omitted > 0 && value.fields.length !== INPUT_PROJECTION_MAX_FIELDS)
-  ) throw new LocalApiError('The local chat response is invalid.');
+  ) throw invalidResponse();
   const fields = value.fields.map((field, index) => {
     if (
       !exactKeys(field, ['name', 'value', 'truncated']) ||
@@ -438,7 +443,7 @@ function canonicalInputProjection(value) {
       !projectedText(field.value, INPUT_PROJECTION_VALUE_CHARS) ||
       typeof field.truncated !== 'boolean' ||
       (index > 0 && codePointOrder(value.fields[index - 1].name, field.name) >= 0)
-    ) throw new LocalApiError('The local chat response is invalid.');
+    ) throw invalidResponse();
     return { name: field.name, value: field.value, truncated: field.truncated };
   });
   return { fields, omitted: value.omitted };
@@ -448,7 +453,7 @@ function canonicalHumanRequest(value) {
   const base = canonicalHumanRequestBase(value);
   const baseKeys = ['kind', 'ordinal', 'title', 'description', 'fingerprint'];
   if (base.kind === 'approval' || HUMAN_AUTH_KINDS.has(base.kind)) {
-    if (!exactKeys(value, baseKeys)) throw new LocalApiError('The local chat response is invalid.');
+    if (!exactKeys(value, baseKeys)) throw invalidResponse();
     return base;
   }
   const input = canonicalHumanInputBase(value, base);
@@ -467,7 +472,7 @@ function canonicalHumanRequest(value) {
       value.min_length < 0 ||
       value.max_length < value.min_length ||
       value.max_length > limit
-    ) throw new LocalApiError('The local chat response is invalid.');
+    ) throw invalidResponse();
     return {
       ...input,
       placeholder: canonicalOptionalCopyReference(value.placeholder),
@@ -478,7 +483,7 @@ function canonicalHumanRequest(value) {
   }
   if (HUMAN_SINGLE_CHOICE_KINDS.has(base.kind)) {
     if (!exactKeys(value, [...baseKeys, 'label', 'required', 'options'])) {
-      throw new LocalApiError('The local chat response is invalid.');
+      throw invalidResponse();
     }
     return { ...input, options: canonicalHumanOptions(value.options) };
   }
@@ -486,13 +491,13 @@ function canonicalHumanRequest(value) {
     !exactKeys(value, [...baseKeys, 'label', 'required', 'options', 'min_selections', 'max_selections']) ||
     !Number.isSafeInteger(value.min_selections) ||
     !Number.isSafeInteger(value.max_selections)
-  ) throw new LocalApiError('The local chat response is invalid.');
+  ) throw invalidResponse();
   const options = canonicalHumanOptions(value.options);
   if (
     value.min_selections < 0 ||
     value.max_selections < value.min_selections ||
     value.max_selections > options.length
-  ) throw new LocalApiError('The local chat response is invalid.');
+  ) throw invalidResponse();
   return {
     ...input,
     options,
@@ -503,7 +508,7 @@ function canonicalHumanRequest(value) {
 
 function canonicalHumanIdentity(value, expectedKeys, maximum, valid) {
   if (!value || typeof value !== 'object' || Array.isArray(value) || !exactKeys(value, expectedKeys)) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   return Object.fromEntries(expectedKeys.map((key) => [
     key,
@@ -662,10 +667,10 @@ export function parseInstallPlanAssistant(value, { maxProviders = MAX_INSTALL_PR
     value.providers.length > maxProviders ||
     !['local', 'published'].includes(value.provenance) ||
     !states.includes(value.status)
-  ) throw new LocalApiError('The local chat response is invalid.');
+  ) throw invalidResponse();
   const providers = value.providers.map((provider) => canonicalId(provider, undefined, isIdentifier));
   if (!isAscending(providers)) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   return {
     id: canonicalId(value.id),
@@ -691,7 +696,7 @@ export function parseUninstallAssistant(value) {
     typeof value.creator !== 'string' ||
     !PUBLIC_CREATOR_RE.test(value.creator) ||
     !['local', 'published'].includes(value.provenance)
-  ) throw new LocalApiError('The local chat response is invalid.');
+  ) throw invalidResponse();
   return {
     id: canonicalId(value.id),
     name: canonicalPublicText(value.name, 80),
@@ -730,10 +735,10 @@ function parseAssistantInstallPlanEvent(value, expectedTeamId, expectedTeamName)
       !['dispatch', 'none'].includes(value.continuation) ||
       ('outcome' in value && value.outcome !== 'already-installed')
     ))
-  ) throw new LocalApiError('The local chat response is invalid.');
+  ) throw invalidResponse();
   const assistants = value.assistants.map((assistant) => parseInstallPlanAssistant(assistant));
   if (!isAscending(assistants, (assistant) => assistant.id)) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   const statuses = assistants.map((assistant) => assistant.status);
   const firstPending = statuses.indexOf('pending');
@@ -759,7 +764,7 @@ function parseAssistantInstallPlanEvent(value, expectedTeamId, expectedTeamName)
       index < prefixLength || (firstPending === prefixLength && status === 'pending')
     )))
   );
-  if (!valid) throw new LocalApiError('The local chat response is invalid.');
+  if (!valid) throw invalidResponse();
   return {
     type: 'assistant-install-plan',
     state: value.state,
@@ -786,7 +791,7 @@ function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
       !Number.isSafeInteger(value.expires_in) ||
       value.expires_in < 1 ||
       value.expires_in > 120
-    ) throw new LocalApiError('The local chat response is invalid.');
+    ) throw invalidResponse();
     return {
       type: 'assistant-uninstall',
       state: 'proposed',
@@ -798,11 +803,11 @@ function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
     };
   }
   if (!OPAQUE_ID_RE.test(value.proposal_id)) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   const assistantId = canonicalId(value.assistant_id);
   if (['uninstalling', 'cancelled', 'expired'].includes(value.state)) {
-    if (!exactKeys(value, base)) throw new LocalApiError('The local chat response is invalid.');
+    if (!exactKeys(value, base)) throw invalidResponse();
     return {
       type: 'assistant-uninstall',
       state: value.state,
@@ -816,7 +821,7 @@ function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
       !exactKeys(value, expectedKeys) ||
       value.team_id !== expectedTeamId ||
       typeof value.uninstalled !== 'boolean'
-    ) throw new LocalApiError('The local chat response is invalid.');
+    ) throw invalidResponse();
     return {
       type: 'assistant-uninstall',
       state: 'uninstalled',
@@ -832,7 +837,7 @@ function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
       !Number.isInteger(value.status) ||
       value.status < 400 ||
       value.status > 599
-    ) throw new LocalApiError('The local chat response is invalid.');
+    ) throw invalidResponse();
     return {
       type: 'assistant-uninstall',
       state: 'failed',
@@ -841,7 +846,7 @@ function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
       status: value.status,
     };
   }
-  throw new LocalApiError('The local chat response is invalid.');
+  throw invalidResponse();
 }
 
 // A recording turn's reply carries the card of the Routine it recorded, what Team asks the person first, or why it made
@@ -895,7 +900,7 @@ function progressEvent(value, extra) {
       value.total > 512
     ))
   ) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   const event = {
     seq: value.seq,
@@ -920,18 +925,18 @@ function progressEvent(value, extra) {
  */
 export function parseReceipt(value) {
   if (!Array.isArray(value) || value.length < 1 || value.length > MAX_CHAT_PROGRESS_EVENTS) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   const receipt = [];
   for (const item of value) {
     if (!item || typeof item !== 'object' || Array.isArray(item)) {
-      throw new LocalApiError('The local chat response is invalid.');
+      throw invalidResponse();
     }
     const event = progressEvent(item, ['segment']);
     const previous = receipt.at(-1) ?? { segment: 0, seq: 0 };
     const ordered = (item.segment === previous.segment && event.seq > previous.seq) ||
       (receipt.length > 0 && item.segment === previous.segment + 1);
-    if (event.origin !== 'team' || !ordered) throw new LocalApiError('The local chat response is invalid.');
+    if (event.origin !== 'team' || !ordered) throw invalidResponse();
     receipt.push({ ...event, segment: item.segment });
   }
   return receipt;
@@ -940,7 +945,7 @@ export function parseReceipt(value) {
 /** Parse one public chat frame. Raw provider events and extra fields fail closed. */
 export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new LocalApiError('The local chat response is invalid.');
+    throw invalidResponse();
   }
   if (value.type === 'done') {
     let clarification = null;
@@ -951,10 +956,10 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       usage = parseTaskUsage(value.usage);
       routine = parseRoutineReply(value, clarification);
     } catch {
-      throw new LocalApiError('The local chat response is invalid.');
+      throw invalidResponse();
     }
     if (clarification && value.reply !== renderClarification(clarification)) {
-      throw new LocalApiError('The local chat response is invalid.');
+      throw invalidResponse();
     }
     const doneKeys = ['type', 'team_id', 'team_name', 'reply', 'clarification'];
     // `usage` is optional: Team reports it only when a model call of the turn reported usage.
@@ -971,7 +976,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       codePointLength(value.reply) > MAX_REPLY_CHARS ||
       CHAT_TEXT_CONTROL_RE.test(value.reply)
     ) {
-      throw new LocalApiError('The local chat response is invalid.');
+      throw invalidResponse();
     }
     return {
       type: 'done',
@@ -991,7 +996,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       !exactKeys(value, ['type', 'team_id', 'code', 'reply']) ||
       value.team_id !== expectedTeamId ||
       !GUIDANCE_CODES.has(value.code)
-    ) throw new LocalApiError('The local chat response is invalid.');
+    ) throw invalidResponse();
     return {
       type: 'assistant-guidance',
       team_id: value.team_id,
@@ -1011,7 +1016,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       value.status > 599 ||
       !isShownText(value.detail, MAX_ERROR_DETAIL_CHARS)
     ) {
-      throw new LocalApiError('The local chat response is invalid.');
+      throw invalidResponse();
     }
     return { type: 'error', status: value.status, detail: value.detail };
   }
@@ -1040,7 +1045,7 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
         value.retry_after < 1 ||
         value.retry_after > 60
       ))
-    ) throw new LocalApiError('The local chat response is invalid.');
+    ) throw invalidResponse();
     return {
       type: 'human-response-rejected',
       challenge_id: value.challenge_id,
@@ -1061,14 +1066,14 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       !value.requirements.length ||
       value.requirements.length > MAX_INTEGRATION_REQUIREMENTS
     ) {
-      throw new LocalApiError('The local chat response is invalid.');
+      throw invalidResponse();
     }
     const requirements = value.requirements.map(canonicalIntegrationRequirement);
     const identities = requirements.map((requirement) => (
       `${requirement.assistant_id}\u0000${requirement.integration_id}`
     ));
     if (new Set(identities).size !== identities.length) {
-      throw new LocalApiError('The local chat response is invalid.');
+      throw invalidResponse();
     }
     return {
       type: 'integrations-required',
@@ -1097,17 +1102,17 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       !isLocale(value.locale) ||
       typeof value.pack_digest !== 'string' ||
       !DIGEST_RE.test(value.pack_digest)
-    ) throw new LocalApiError('The local chat response is invalid.');
+    ) throw invalidResponse();
     const request = canonicalHumanRequest(value.request);
     const storedInput = request.kind === 'input:password' && request.stored_input !== undefined;
     if (['help', 'help_url'].some((key) => optional.includes(key) !== storedInput)) {
-      throw new LocalApiError('The local chat response is invalid.');
+      throw invalidResponse();
     }
     if (optional.includes('file') && request.kind !== 'approval' && !HUMAN_AUTH_KINDS.has(request.kind)) {
-      throw new LocalApiError('The local chat response is invalid.');
+      throw invalidResponse();
     }
     if (optional.includes('input') && !INPUT_KINDS.has(request.kind)) {
-      throw new LocalApiError('The local chat response is invalid.');
+      throw invalidResponse();
     }
     return {
       type: 'human-required',
@@ -1130,5 +1135,5 @@ export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
       ...(optional.includes('input') ? { input: canonicalInputProjection(value.input) } : {}),
     };
   }
-  throw new LocalApiError('The local chat response is invalid.');
+  throw invalidResponse();
 }

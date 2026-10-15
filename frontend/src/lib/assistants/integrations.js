@@ -9,6 +9,12 @@ import { CONTROL_RE, isAscending } from '../grammar.js';
 import { ASSISTANT_ID_RE, isIdentifier, OPAQUE_ID_RE, SEMANTIC_VERSION_RE } from '../ids.js';
 import { synced } from '../session/synced.js';
 
+// Each closed refusal of an answer that fails its contract, with the HTTP status it arrived with when one did.
+const refusal = (message) => (status = 0) => new LocalApiError(message, status);
+const invalidInventory = refusal('The Assistant integration inventory is invalid.');
+const invalidAuthorization = refusal('The Assistant authorization response is invalid.');
+const invalidStoredInputs = refusal('The Assistant Stored Input inventory is invalid.');
+
 const MAX_INTEGRATIONS = 512;
 const MAX_STORED_INPUTS = 128;
 
@@ -24,7 +30,7 @@ export function assistantIntegrationProviderLabel(provider) {
 
 function canonicalSemanticVersion(value) {
   if (typeof value !== 'string' || !SEMANTIC_VERSION_RE.test(value)) {
-    throw new LocalApiError('The Assistant integration inventory is invalid.');
+    throw invalidInventory();
   }
   return value;
 }
@@ -52,7 +58,7 @@ function canonicalIntegrationIntegration(value) {
     Array.isArray(value) ||
     !exactKeys(value, ['id', 'name', 'username'])
   ) {
-    throw new LocalApiError('The Assistant integration inventory is invalid.');
+    throw invalidInventory();
   }
   return {
     id: canonicalPublicText(value.id, 160),
@@ -72,7 +78,7 @@ function canonicalIntegrationExpiry(value) {
     value !== value.trim() ||
     CONTROL_RE.test(value)
   ) {
-    throw new LocalApiError('The Assistant integration inventory is invalid.');
+    throw invalidInventory();
   }
   const [, year, month, day, hour, minute, second, , offsetHour = '00', offsetMinute = '00'] = match;
   const maximumDay = new Date(Date.UTC(Number(year), Number(month), 0)).getUTCDate();
@@ -87,11 +93,11 @@ function canonicalIntegrationExpiry(value) {
     Number(offsetHour) > 23 ||
     Number(offsetMinute) > 59
   ) {
-    throw new LocalApiError('The Assistant integration inventory is invalid.');
+    throw invalidInventory();
   }
   const parsed = new Date(value);
   if (!Number.isFinite(parsed.getTime())) {
-    throw new LocalApiError('The Assistant integration inventory is invalid.');
+    throw invalidInventory();
   }
   return value;
 }
@@ -115,7 +121,7 @@ function canonicalIntegrationInventoryItem(value) {
     ]) ||
     !['missing', 'connected', 'expired', 'reauthorization-required'].includes(value.status)
   ) {
-    throw new LocalApiError('The Assistant integration inventory is invalid.');
+    throw invalidInventory();
   }
   const integration = canonicalIntegrationIntegration(value.integration);
   return {
@@ -134,13 +140,13 @@ function canonicalIntegrationInventoryItem(value) {
 
 function trustedAuthorizationUrl(value, completionMode) {
   if (typeof value !== 'string' || value.length > 4096 || CONTROL_RE.test(value)) {
-    throw new LocalApiError('The Assistant authorization response is invalid.');
+    throw invalidAuthorization();
   }
   let url;
   try {
     url = new URL(value);
   } catch {
-    throw new LocalApiError('The Assistant authorization response is invalid.');
+    throw invalidAuthorization();
   }
   const browserOrigin = globalThis.location?.origin;
   const localHandoff = (
@@ -166,7 +172,7 @@ function trustedAuthorizationUrl(value, completionMode) {
     (completionMode === 'code' && outOfBand)
   );
   if (url.username || url.password || url.hash || !trusted) {
-    throw new LocalApiError('The Assistant authorization response is invalid.');
+    throw invalidAuthorization();
   }
   return url.href;
 }
@@ -200,24 +206,24 @@ export async function listAssistantIntegrations(teamId, call = socketReads.call)
     !Array.isArray(body.integrations) ||
     body.integrations.length > MAX_INTEGRATIONS
   ) {
-    throw new LocalApiError('The Assistant integration inventory is invalid.', response.status);
+    throw invalidInventory(response.status);
   }
   let integrations;
   try {
     integrations = body.integrations.map(canonicalIntegrationInventoryItem);
   } catch {
-    throw new LocalApiError('The Assistant integration inventory is invalid.', response.status);
+    throw invalidInventory(response.status);
   }
   const identities = integrations.map((integration) => `${integration.assistant_id}\u0000${integration.id}`);
   if (new Set(identities).size !== identities.length) {
-    throw new LocalApiError('The Assistant integration inventory is invalid.', response.status);
+    throw invalidInventory(response.status);
   }
   const assistantMetadata = new Map();
   for (const integration of integrations) {
     const current = assistantMetadata.get(integration.assistant_id);
     const metadata = [integration.assistant_name, integration.assistant_version];
     if (current && current.some((value, index) => value !== metadata[index])) {
-      throw new LocalApiError('The Assistant integration inventory is invalid.', response.status);
+      throw invalidInventory(response.status);
     }
     assistantMetadata.set(integration.assistant_id, metadata);
   }
@@ -231,7 +237,7 @@ function canonicalStoredInputMetadata(value) {
     Array.isArray(value) ||
     !exactKeys(value, ['assistant_id', 'stored_input_id', 'status']) ||
     !['missing', 'stored'].includes(value.status)
-  ) throw new LocalApiError('The Assistant Stored Input inventory is invalid.');
+  ) throw invalidStoredInputs();
   try {
     return {
       assistant_id: canonicalId(value.assistant_id),
@@ -239,7 +245,7 @@ function canonicalStoredInputMetadata(value) {
       status: value.status,
     };
   } catch {
-    throw new LocalApiError('The Assistant Stored Input inventory is invalid.');
+    throw invalidStoredInputs();
   }
 }
 
@@ -254,11 +260,11 @@ export async function listAssistantStoredInputs(teamId, call = socketReads.call)
     !exactKeys(body, ['stored_inputs']) ||
     !Array.isArray(body.stored_inputs) ||
     body.stored_inputs.length > MAX_STORED_INPUTS
-  ) throw new LocalApiError('The Assistant Stored Input inventory is invalid.', response.status);
+  ) throw invalidStoredInputs(response.status);
   const storedInputs = body.stored_inputs.map(canonicalStoredInputMetadata);
   const identities = storedInputs.map((item) => `${item.assistant_id}\u0000${item.stored_input_id}`);
   if (!isAscending(identities)) {
-    throw new LocalApiError('The Assistant Stored Input inventory is invalid.', response.status);
+    throw invalidStoredInputs(response.status);
   }
   return { stored_inputs: storedInputs };
 }
@@ -313,7 +319,7 @@ export async function authorizeAssistantIntegration(teamId, challengeId, assista
     !exactKeys(body, ['authorization_url', 'completion_mode']) ||
     !['automatic', 'code'].includes(body.completion_mode)
   ) {
-    throw new LocalApiError('The Assistant authorization response is invalid.', response.status);
+    throw invalidAuthorization(response.status);
   }
   return {
     authorization_url: trustedAuthorizationUrl(body.authorization_url, body.completion_mode),
