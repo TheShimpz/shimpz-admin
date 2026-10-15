@@ -733,21 +733,19 @@
     chatOwnsFocus = true;
     liveTurn.forgetSegments();
     if (messageFiles.teamId !== nextTeamId) messageFiles.clear();
+    // Closing the socket already ended the old Team's progress, challenges, and lifecycle cards.
     closeSocket();
+    liveTurn.settle();
     liveTurn.clearInstalled();
     uninstall.forgetIcons();
     capabilityObjective = null;
     liveAnswers = new Map();
     socketTeamId = nextTeamId;
-    liveTurn.stopping = false;
     uninstall.reset();
     if (nextTeamId && draftTeamId && draftTeamId !== nextTeamId) draft = '';
     if (nextTeamId) draftTeamId = nextTeamId;
     promptHistoryIndex = -1;
-    liveTurn.busy = false;
-    liveTurn.resetProgress();
     integrationsOpen = false;
-    resetChallengeState();
     clearError();
     transcript.open(nextTeamId);
   }
