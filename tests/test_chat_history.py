@@ -76,8 +76,8 @@ class ChatHistoryTests(ChatHistoryCase):
             ],
         )
         with contextlib.closing(sqlite3.connect(self.path)) as database:
-            self.assertEqual(database.execute("PRAGMA user_version").fetchone()[0], 12)
-        self.assertEqual(history.SCHEMA_VERSION, 12)
+            self.assertEqual(database.execute("PRAGMA user_version").fetchone()[0], 13)
+        self.assertEqual(history.SCHEMA_VERSION, 13)
 
     def test_a_malformed_row_time_fails_closed(self) -> None:
         history.append_user("marketing", history.new_turn_id(), "Private")

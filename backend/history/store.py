@@ -28,8 +28,8 @@ from protocol.http.v1 import turn as turn_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 STORE_PATH = Path(os.environ.get("SHIMPZ_CHAT_HISTORY_STORE") or "/data/chat-history.sqlite3")
-# Version 12 keeps a Routine's creation and change notices with an empty detail and its failure-streak pause notice.
-SCHEMA_VERSION = 12
+# Version 13 keeps of a Routine's notices only those a view shows, each with only the detail it renders.
+SCHEMA_VERSION = 13
 # A row's provenance is server-owned: `attached` marks every row of a turn whose message carried attachments, which
 # never enters a conversation projection (ADR-0093); every other row is `plain`. An attached user row keeps the
 # references of the files its message carried, exactly what the transcript shows of them and never their content.
@@ -88,6 +88,13 @@ def _text(value: object, maximum: int, field: str) -> str:
     ):
         raise ValueError(f"chat history {field} is invalid")
     return value
+
+
+def _reply_text(value: object, carrier: Mapping[str, object]) -> str:
+    """A reply's text, which is empty only beside a Routine card, question, or refusal that says everything."""
+    if value == "" and any(name in carrier for name in chat_local.ROUTINE_FIELDS):
+        return value
+    return _text(value, MAX_REPLY_CHARS, "assistant reply")
 
 
 def _now() -> str:
@@ -153,7 +160,7 @@ def _initialize(database: sqlite3.Connection) -> None:
             team_id TEXT PRIMARY KEY,
             turn_id TEXT NOT NULL UNIQUE
         );
-        PRAGMA user_version = 12;
+        PRAGMA user_version = 13;
         """
     )
 
@@ -252,19 +259,49 @@ _NOTICE_FIELDS = (
 )
 
 
+# What a stored Routine notice keeps of its detail, by outcome: only what the chat or the Routine's history renders. A
+# Routine's change, deletion, and scope change show nowhere, so their notices are acknowledged and never stored.
+_STORED_DETAIL = {
+    "done": ("plan", "output"),
+    "recovered": ("plan", "output"),
+    "held": (),
+    "paused": ("reason",),
+    "user-skipped": (),
+    "skipped": ("missed",),
+    "healthy": ("runs",),
+    "frozen": ("request_kind",),
+    "failed": ("code",),
+    "denied": (),
+    "stopped": (),
+    "created": (),
+    "streak-paused": ("failures",),
+}
+# The outcomes whose whole detail is stored, which Team's own closed form then checks again when a row is read.
+_WHOLE_DETAIL = frozenset({"done", "recovered", "skipped", "healthy", "created", "streak-paused"})
+_KEPT_DETAIL = {
+    "paused": lambda detail: detail["reason"] in routine_contract.PAUSE_REASONS,
+    "frozen": lambda detail: detail["request_kind"] in routine_notice_contract.REQUEST_KINDS,
+    "failed": lambda detail: routine_contract.matches(detail["code"], routine_contract.ERROR_CODE_RE),
+}
+
+
 def append_routine_notice(notice: object) -> bool:
     """Write one Routine notice to its Team's transcript (ADR-0086); it never enters the Brain window.
 
     A run keeps one row, keyed by its notice id. A newer version replaces the row and moves it to the end, so an
     outcome that arrives long after the run froze is where the Supervisor looks; an older or equal version is already
-    delivered and changes nothing.
+    delivered and changes nothing. A notice no view shows is admitted and stored nowhere.
     """
     admitted = routine_notice_contract.canonical_notice(notice)
     if admitted is None:
         raise ValueError("Routine notice is invalid")
     team_id = _team_id(admitted["team_id"])
+    kept = _STORED_DETAIL.get(admitted["outcome"])
+    if kept is None:
+        return True
     event_key = f"{admitted['notice_id']}:routine"
     payload = {"kind": "routine-run", **{name: admitted[name] for name in _NOTICE_FIELDS}}
+    payload["detail"] = {name: admitted["detail"][name] for name in kept}
     encoded = _encoded(payload)
     with _database() as database:
         existing = database.execute(
@@ -286,7 +323,6 @@ def append_routine_notice(notice: object) -> bool:
     return True
 
 
-_PROPOSAL_ANSWERS = frozenset({"created", "changed", "revoked"})
 _CARD_BY_PROPOSAL = (
     "SELECT json_extract(payload, '$.routine_proposal.name') FROM transcript WHERE team_id = ? "
     "AND substr(event_key, -6) = ':reply' AND json_extract(payload, '$.routine_proposal.proposal_id') = ?"
@@ -300,7 +336,7 @@ def append_proposal_answer(answer: object) -> bool:
     a cancel after a confirmation never reads as cancelled. A card the transcript no longer holds writes nothing.
     """
     admitted = routine_proposal_contract.canonical_proposal_answer(answer)
-    if admitted is None or admitted["status"] not in _PROPOSAL_ANSWERS:
+    if admitted is None:
         raise ValueError("Routine card answer is invalid")
     team_id, proposal_id = _team_id(admitted["team_id"]), admitted["proposal_id"]
     with _database() as database:
@@ -382,7 +418,7 @@ def append_reply(team_id: object, turn_id: object, event: object, *, receipt: ob
     if event["type"] != "done" or event["team_id"] != canonical_team:
         raise ValueError("chat history reply event is invalid")
     author = chat_ws_common.public_text(event["team_name"], team_contract.MAX_TEAM_NAME_CHARS, field="Team name")
-    reply = _text(event["reply"], MAX_REPLY_CHARS, "assistant reply")
+    reply = _reply_text(event["reply"], event)
     entry: dict[str, object] = {"kind": "message", "role": "assistant", "text": reply, "author": author}
     if event["clarification"] is not None:
         clarification = team_contract.canonical_clarification(event["clarification"])
@@ -678,12 +714,10 @@ def _validate_stored_message(payload: dict[str, object]) -> None:
         _file_references(payload["files"])
     if set(payload) != expected or role not in {"user", "assistant"}:
         raise ValueError("invalid stored message")
-    _text(
-        payload.get("text"),
-        team_contract.MAX_CHAT_MESSAGE_CHARS if role == "user" else MAX_REPLY_CHARS,
-        "stored message",
-    )
-    if role == "assistant":
+    if role == "user":
+        _text(payload.get("text"), team_contract.MAX_CHAT_MESSAGE_CHARS, "stored message")
+    else:
+        _reply_text(payload.get("text"), payload)
         chat_ws_common.public_text(payload.get("author"), team_contract.MAX_TEAM_NAME_CHARS)
 
 
@@ -737,12 +771,37 @@ def _validate_stored_uninstall(payload: dict[str, object]) -> None:
             raise ValueError("invalid stored uninstall")
 
 
+def _stored_detail(outcome: object, detail: object) -> bool:
+    """Whether a stored notice's detail is exactly what its outcome keeps, each kept field in Team's closed form."""
+    kept = _STORED_DETAIL.get(outcome) if isinstance(outcome, str) else None
+    if kept is None or not isinstance(detail, dict) or set(detail) != set(kept):
+        return False
+    if outcome in _WHOLE_DETAIL:
+        return routine_notice_contract.canonical_notice_detail(outcome, detail) == detail
+    return outcome not in _KEPT_DETAIL or _KEPT_DETAIL[outcome](detail)
+
+
 def _validate_stored_routine(payload: dict[str, object]) -> None:
     if set(payload) != {"kind", *_NOTICE_FIELDS}:
         raise ValueError("invalid stored Routine notice")
-    fields = {name: payload[name] for name in _NOTICE_FIELDS}
-    # The Team is the row's own; any valid id stands in for it while the notice's closed shape is checked.
-    if routine_notice_contract.canonical_notice({**fields, "team_id": "stored"}) != {**fields, "team_id": "stored"}:
+    outcome, run_id = payload["outcome"], payload["run_id"]
+    routine_outcome = outcome in routine_contract.ROUTINE_OUTCOMES
+    used = not routine_outcome or outcome == "healthy"
+    valid = (
+        _stored_detail(outcome, payload["detail"])
+        and routine_contract.matches(payload["notice_id"], routine_contract.ROUTINE_ID_RE)
+        and type(payload["version"]) is int
+        and payload["version"] >= 1
+        and routine_contract.matches(payload["routine_id"], routine_contract.ROUTINE_ID_RE)
+        and routine_contract.exact_name(payload["name"])
+        # A run's one notice is keyed by its run id; a Routine outcome names no run.
+        and run_id == (None if routine_outcome else payload["notice_id"])
+        and routine_notice_contract.instant(payload["created_at"])
+        and (routine_contract.canonical_run_usage(payload["usage"]) is not None if used else payload["usage"] is None)
+        and type(payload["protection_lost"]) is bool
+        and not (routine_outcome and payload["protection_lost"])
+    )
+    if not valid:
         raise ValueError("invalid stored Routine notice")
 
 
@@ -751,8 +810,8 @@ def _validate_stored_answer(payload: dict[str, object]) -> None:
         set(payload) != {"kind", "proposal_id", "status", "name"}
         or not isinstance(payload["proposal_id"], str)
         or routine_contract.ROUTINE_ID_RE.fullmatch(payload["proposal_id"]) is None
-        or payload["status"] not in _PROPOSAL_ANSWERS
-        or routine_contract.canonical_name(payload["name"]) != payload["name"]
+        or payload["status"] not in routine_proposal_contract.PROPOSAL_STATUSES
+        or not routine_contract.exact_name(payload["name"])
     ):
         raise ValueError("invalid stored Routine card answer")
 

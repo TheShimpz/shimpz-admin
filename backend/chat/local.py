@@ -715,7 +715,8 @@ def _project_turn(
         or not transport.is_trace_id(response.body.get("trace_id"))
         or team_contract.canonical_team_name(team_name) is None
         or not isinstance(reply, str)
-        or not reply.strip()
+        # A reply is empty only beside a Routine card, question, or refusal, which then says everything.
+        or (not reply.strip() and (reply or not routine))
         or len(reply) > MAX_REPLY_CHARS
         or _REPLY_CONTROL_RE.search(reply) is not None
         or any(value and value in shown for value in forbidden_values)

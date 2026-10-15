@@ -99,6 +99,13 @@ class LocalChatTerminalProjectionTests(unittest.TestCase):
         self.assertNotIn("routine_proposal", turn().body)
         question = {"code": "routine-schedule-unstated", "options": [], "value": None}
         self.assertEqual(turn(routine_question=question).websocket_event("team_1")["routine_question"], question)
+        # A recording Team answers with its card alone says nothing beside it; an empty reply needs that card.
+        silent = partial(_turn, "", "Cria uma rotina", "pt")
+        self.assertEqual(silent(routine_proposal=card).websocket_event("team_1")["reply"], "")
+        self.assertEqual(silent().body, {"code": "chat-response-invalid"})
+        self.assertEqual(
+            _turn(" ", "Cria uma rotina", "pt", routine_proposal=card).body, {"code": "chat-response-invalid"}
+        )
         leaked = {**card, "name": "sk-test-0123456789abcdef"}
         for extra in (
             {"routine_proposal": {**card, "clamped": False}},

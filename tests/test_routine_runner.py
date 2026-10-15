@@ -413,6 +413,62 @@ class RoutineRollupDeliveryTests(unittest.TestCase):
                 self.assertEqual(rows, case["transcript"])
 
 
+def _notice(outcome: str) -> dict[str, object]:
+    return next(
+        item for batch in VECTORS["notice_batch"]["valid"] for item in batch["notices"] if item["outcome"] == outcome
+    )
+
+
+class StoredNoticeTests(ChatHistoryCase):
+    def test_a_notice_no_view_shows_is_delivered_unstored_and_still_refreshes_the_routine_list(self) -> None:
+        unseen = [_notice(outcome) for outcome in ("changed", "deleted", "scope-changed")]
+        with (
+            mock.patch.object(team, "notices", return_value={"notices": unseen, "more": False}),
+            mock.patch.object(team, "acknowledge") as acknowledge,
+            mock.patch.object(delivery.topics, "team_changed") as changed,
+        ):
+            self.assertEqual(delivery.deliver(), 3)
+        acknowledge.assert_called_once_with(unseen)
+        self.assertIn(mock.call("team_1", "routines"), changed.call_args_list)
+        self.assertNotIn(mock.call("team_1", "history"), changed.call_args_list)
+        self.assertEqual(history.page("team_1")["entries"], [])
+        for notice in unseen:
+            self.assertEqual(history.page("team_1", routine=notice["routine_id"])["entries"], [])
+
+    def test_a_shown_notice_keeps_only_the_detail_its_view_renders(self) -> None:
+        kept = {
+            "frozen": {"request_kind"},
+            "failed": {"code"},
+            "paused": {"reason"},
+            "held": set(),
+            "user-skipped": set(),
+            "denied": set(),
+            "stopped": set(),
+        }
+        for index, (outcome, fields) in enumerate(kept.items()):
+            run = f"{index:x}" * 32
+            notice = {**_notice(outcome), "notice_id": run, "run_id": run}
+            with self.subTest(outcome=outcome):
+                self.assertTrue(history.append_routine_notice(notice))
+                entries = history.page(notice["team_id"], routine=notice["routine_id"])["entries"]
+                (entry,) = [item for item in entries if item["id"] == f"{notice['notice_id']}:routine"]
+                self.assertEqual(entry["detail"], {name: notice["detail"][name] for name in fields})
+        # A stored detail that holds more than its view renders is corrupt, never shown.
+        frozen = {**_notice("frozen"), "notice_id": "0" * 32, "run_id": "0" * 32}
+        with sqlite3.connect(self.path) as database:
+            row = database.execute(
+                "SELECT payload FROM transcript WHERE event_key = ?", (f"{frozen['notice_id']}:routine",)
+            ).fetchone()
+            stored = json.loads(row[0])
+            stored["detail"] = dict(frozen["detail"])
+            database.execute(
+                "UPDATE transcript SET payload = ? WHERE event_key = ?",
+                (json.dumps(stored), f"{frozen['notice_id']}:routine"),
+            )
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.page(frozen["team_id"], routine=frozen["routine_id"])
+
+
 class RoutineDeliveryTests(unittest.TestCase):
     def test_every_batch_is_written_before_it_is_acknowledged(self) -> None:
         events: list[str] = []

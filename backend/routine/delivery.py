@@ -1,7 +1,8 @@
 """Deliver Team's Routine notices to each Team's transcript (ADR-0086).
 
 A notice is written before its exact version is acknowledged, so a crash between them only delivers it again, and the
-transcript write is idempotent per version.
+transcript write is idempotent per version. A notice no view shows (a Routine's change, deletion, or scope change) is
+acknowledged without being written, yet still tells each Team's Routine list to refresh, as every notice does.
 """
 
 from history import store as history
@@ -13,7 +14,7 @@ MAX_BATCHES = 32
 
 
 def deliver() -> int:
-    """Write and acknowledge every undelivered notice, one bounded batch at a time; returns how many were written."""
+    """Deliver and acknowledge every undelivered notice, one bounded batch at a time; returns how many it delivered."""
     written = 0
     for _ in range(MAX_BATCHES):
         # A batch is read, written, and acknowledged while no Team deletion or Space reset runs.

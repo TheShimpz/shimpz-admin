@@ -181,6 +181,12 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
         ):
             with self.subTest(invalid=invalid), self.assertRaises(ValueError):
                 history.append_reply("marketing", self._admitted(), {**done, **invalid})
+        # A reply is empty only beside the card, question, or refusal that says everything.
+        silent = self._admitted()
+        self.assertTrue(history.append_reply("marketing", silent, {**done, "reply": "", "routine_proposal": card}))
+        self.assertEqual(history.page("marketing")["entries"][-1]["text"], "")
+        with self.assertRaises(ValueError):
+            history.append_reply("marketing", self._admitted(), {**done, "reply": ""})
         tampered = self._admitted()
         self.assertTrue(history.append_reply("marketing", tampered, done))
         stored = {"kind": "message", "role": "assistant", "text": "x", "author": "Marketing", "routine_refusal": {}}
