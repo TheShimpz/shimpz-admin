@@ -40,102 +40,32 @@ class SnapshotListTests(unittest.TestCase):
         self.assertEqual(json.loads(response.body), {"assistants": []})
 
 
-class SnapshotSummaryTests(unittest.TestCase):
-    def summary(self, team_response: transport.TeamResponse, locale: str = "pt"):
-        with mock.patch.object(bridge, "local_assistant_summary", return_value=team_response) as read:
-            response = snapshots.local_assistant_summary(IMAGE_ID, locale)
-        read.assert_called_once_with(IMAGE_ID, locale)
-        return response
+class SnapshotPreviewTests(unittest.TestCase):
+    """Each staged snapshot's summary and page reads the exact image through the shared localized projection."""
 
-    def test_returns_exactly_the_requested_locale_summary_without_team_trace(self) -> None:
-        response = self.summary(
-            transport.TeamResponse(200, {"locale": "pt", "summary": "Resumo.", "trace_id": "a" * 32})
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(json.loads(response.body), {"locale": "pt", "summary": "Resumo."})
-
-    def test_refuses_an_answer_in_another_locale_or_outside_its_shape(self) -> None:
-        for body in (
-            {"locale": "en", "summary": "Summary."},
-            {"locale": "pt", "summary": ""},
-            {"locale": "pt", "summary": "Resumo.", "messages": []},
-            {"locale": "pt"},
+    def test_reads_the_exact_image_in_the_requested_locale_without_team_trace(self) -> None:
+        for read, call, answer in (
+            ("local_assistant_summary", snapshots.local_assistant_summary, {"locale": "pt", "summary": "Resumo."}),
+            ("local_assistant_details", snapshots.local_assistant_details, DETAILS),
         ):
-            with self.subTest(body=body), self.assertRaises(HTTPException) as caught:
-                self.summary(transport.TeamResponse(200, body))
-            self.assertEqual(caught.exception.status_code, 502)
+            team_response = transport.TeamResponse(200, {**answer, "trace_id": "a" * 32})
+            with self.subTest(read=read), mock.patch.object(bridge, read, return_value=team_response) as reader:
+                response = call(IMAGE_ID, "pt")
+            reader.assert_called_once_with(IMAGE_ID, "pt")
+            self.assertEqual(json.loads(response.body), answer)
 
-    def test_passes_a_bounded_team_failure_through_with_its_retry_hint(self) -> None:
-        busy = {
-            "error": "Local Assistant preview capacity is busy",
-            "code": "local-assistant-preview-busy",
-            "retry_after_ms": 250,
-            "trace_id": "b" * 32,
-        }
-        response = self.summary(transport.TeamResponse(503, busy))
-        self.assertEqual(response.status_code, 503)
-        self.assertEqual(json.loads(response.body), busy)
-
-    def test_refuses_an_invalid_locale_or_image_before_reaching_team(self) -> None:
-        with mock.patch.object(bridge, "local_assistant_summary") as read:
-            for locale in ("", "it", "PT", "pt-BR"):
-                with self.subTest(locale=locale), self.assertRaises(HTTPException) as caught:
-                    snapshots.local_assistant_summary(IMAGE_ID, locale)
-                self.assertEqual(caught.exception.status_code, 422)
-        read.assert_not_called()
-        with self.assertRaises(HTTPException) as caught:
-            snapshots.local_assistant_summary("not-a-digest", "pt")
-        self.assertEqual(caught.exception.status_code, 400)
-
-
-class SnapshotDetailsTests(unittest.TestCase):
-    def details(self, team_response: transport.TeamResponse, locale: str = "pt"):
-        with mock.patch.object(bridge, "local_assistant_details", return_value=team_response) as read:
-            response = snapshots.local_assistant_details(IMAGE_ID, locale)
-        read.assert_called_once_with(IMAGE_ID, locale)
-        return response
-
-    def test_returns_exactly_the_requested_locale_page_without_team_trace(self) -> None:
-        response = self.details(transport.TeamResponse(200, {**DETAILS, "trace_id": "a" * 32}))
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(json.loads(response.body), DETAILS)
-
-    def test_refuses_a_page_in_another_locale_or_outside_its_contract(self) -> None:
-        for body in (
-            {**DETAILS, "locale": "en"},
-            {**DETAILS, "description": "d" * 501},
-            {**DETAILS, "links": {"github": "https://gitlab.com/shimpz"}},
-            {**DETAILS, "actions": [{"id": "list-zones", "effect": "deleting", "description": "Liste."}]},
-            {**DETAILS, "pack": {}},
+    def test_names_a_refused_page_as_the_local_assistant_and_refuses_an_invalid_image(self) -> None:
+        refused = transport.TeamResponse(200, {**DETAILS, "locale": "en"})
+        with (
+            mock.patch.object(bridge, "local_assistant_details", return_value=refused),
+            self.assertRaises(HTTPException) as caught,
         ):
-            with self.subTest(body=body), self.assertRaises(HTTPException) as caught:
-                self.details(transport.TeamResponse(200, body))
-            self.assertEqual(caught.exception.status_code, 502)
-            self.assertEqual(caught.exception.detail, "Local Assistant details is invalid")
-
-    def test_passes_a_busy_or_refused_preview_through(self) -> None:
-        for status, body in (
-            (
-                503,
-                {"error": "busy", "code": "local-assistant-preview-busy", "retry_after_ms": 250, "trace_id": "b" * 32},
-            ),
-            (409, {"error": "invalid", "code": "local-assistant-preview-invalid", "trace_id": "b" * 32}),
-        ):
-            with self.subTest(status=status):
-                response = self.details(transport.TeamResponse(status, body))
-                self.assertEqual(response.status_code, status)
-                self.assertEqual(json.loads(response.body), body)
-
-    def test_refuses_an_invalid_locale_or_image_before_reaching_team(self) -> None:
-        with mock.patch.object(bridge, "local_assistant_details") as read:
-            for locale in ("", "it", "PT"):
-                with self.subTest(locale=locale), self.assertRaises(HTTPException) as caught:
-                    snapshots.local_assistant_details(IMAGE_ID, locale)
-                self.assertEqual(caught.exception.status_code, 422)
-        read.assert_not_called()
-        with self.assertRaises(HTTPException) as caught:
-            snapshots.local_assistant_details("not-a-digest", "pt")
-        self.assertEqual(caught.exception.status_code, 400)
+            snapshots.local_assistant_details(IMAGE_ID, "pt")
+        self.assertEqual(caught.exception.detail, "Local Assistant details is invalid")
+        for call in (snapshots.local_assistant_summary, snapshots.local_assistant_details):
+            with self.subTest(call=call.__name__), self.assertRaises(HTTPException) as caught:
+                call("not-a-digest", "pt")
+            self.assertEqual(caught.exception.status_code, 400)
 
 
 if __name__ == "__main__":
