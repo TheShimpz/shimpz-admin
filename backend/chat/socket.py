@@ -735,12 +735,11 @@ async def _close_connection(
 class Transport:
     """One attached Team's chat channel on its session socket, as the `shimpz.chat.v7` delivery code writes to it.
 
-    Every frame sent carries the Team's `team_id`. When the delivery code closes its connection, the whole session
-    socket closes.
+    The session socket's `send` adds the Team's `team_id` to every frame. When the delivery code closes its
+    connection, the whole session socket closes.
     """
 
-    def __init__(self, team_id: str, send: Callable[[dict[str, object]], None], close: Callable[[int], None]) -> None:
-        self._team_id = team_id
+    def __init__(self, send: Callable[[dict[str, object]], None], close: Callable[[int], None]) -> None:
         self._send = send
         self._close = close
 

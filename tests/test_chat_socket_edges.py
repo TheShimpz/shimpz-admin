@@ -710,7 +710,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
         async def scenario() -> None:
             future: concurrent.futures.Future[object] = concurrent.futures.Future()
             future.set_result(object())
-            transport = socket.Transport("team_1", mock.Mock(), mock.Mock())
+            transport = socket.Transport(mock.Mock(), mock.Mock())
             channel = socket.Channel(
                 transport,
                 "team_1",

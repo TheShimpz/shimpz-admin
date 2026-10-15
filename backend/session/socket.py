@@ -238,11 +238,7 @@ class SessionSocket:
             return 409, {"detail": "the Team's chat is already attached"}
         if len(self.channels) >= frames.MAX_ATTACHED_TEAMS:
             return 409, {"detail": "a session socket attaches at most 4 Teams"}
-        transport = chat_channel.Transport(
-            team_id,
-            lambda event: self.send(frames.chat_event(team_id, event)),
-            self._end,
-        )
+        transport = chat_channel.Transport(lambda event: self.send(frames.chat_event(team_id, event)), self._end)
         channel = chat_channel.Channel(
             transport,
             team_id,
