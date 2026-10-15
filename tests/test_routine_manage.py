@@ -129,9 +129,11 @@ class RoutineManageTests(unittest.TestCase):
         with self.call(answer(REVOKED)) as call:
             self.assertEqual(manage.revoke_proposal("team_1", ID).body, REVOKED)
         call.assert_called_once_with("DELETE", f"/v1/teams/team_1/routines/proposals/{ID}", None)
+        # A card already confirmed answers a revocation with the Routine its confirmation created.
+        with self.call(answer(PROPOSAL)):
+            self.assertEqual(manage.revoke_proposal("team_1", ID).body, PROPOSAL)
         for foreign, operation in (
             (REVOKED, manage.confirm_proposal),
-            (PROPOSAL, manage.revoke_proposal),
             ({**PROPOSAL, "proposal_id": "e" * 32}, manage.confirm_proposal),
             ({**PROPOSAL, "team_id": "team_2"}, manage.confirm_proposal),
             ({**PROPOSAL, "status": "pending"}, manage.confirm_proposal),

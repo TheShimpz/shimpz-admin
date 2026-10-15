@@ -216,10 +216,17 @@
     font-size: 0.8rem;
     line-height: 1.55;
   }
-  p, h3, ol, dl, dd { margin: 0; }
+  p, h3, ol { margin: 0; }
   header { display: grid; gap: var(--shimpz-space-2); padding: var(--shimpz-space-4); }
-  .kicker, dt { font: var(--label); letter-spacing: 0.12em; text-transform: uppercase; }
-  .kicker { display: flex; align-items: center; gap: var(--gap-item); color: var(--shimpz-color-cyan); }
+  .kicker {
+    display: flex;
+    align-items: center;
+    gap: var(--gap-item);
+    color: var(--shimpz-color-cyan);
+    font: var(--label);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
   .kicker :global(.routine-icon) { width: 0.8rem; height: 0.8rem; }
   .name { font: 700 1rem/1.3 var(--shimpz-font-mono); letter-spacing: -0.01em; overflow-wrap: anywhere; }
   .description { font-size: 0.86rem; line-height: 1.6; overflow-wrap: anywhere; }

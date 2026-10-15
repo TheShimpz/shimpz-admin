@@ -196,7 +196,7 @@
     letter-spacing: 0.02em;
     font-variant-numeric: tabular-nums;
   }
-  .routine-run { margin: 0; color: var(--shimpz-color-green); font-weight: 600; outline-offset: 4px; }
+  .exchange .routine-run { margin: 0; color: var(--shimpz-color-green); font-weight: 600; outline-offset: 4px; }
   .routine-refusal {
     margin: var(--gap-item) 0 0;
     color: var(--shimpz-color-text-muted);

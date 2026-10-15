@@ -11,6 +11,7 @@ export const SOURCE_TIME = 1_791_884_573;
 // The `shimpz.chat.v7` server frames whose own shape names their Team; every other frame gains it on the channel.
 const NATIVE_TEAM_FRAMES = new Set(['done', 'assistant-install-plan', 'assistant-guidance']);
 const NATIVE_UNINSTALL_STATES = new Set(['proposed', 'uninstalled']);
+const CARD_ANSWERS = new Set(['routines.proposal_confirm', 'routines.proposal_revoke']);
 
 function channelFrame(teamId, event) {
   const native = NATIVE_TEAM_FRAMES.has(event?.type) ||
@@ -63,7 +64,10 @@ export function serveSession(transport, handlers, revisions = new Map()) {
       },
       send(value) {
         const event = typeof value === 'string' ? JSON.parse(value) : value;
-        if (channels.get(teamId) === channel) send(channelFrame(teamId, event));
+        if (channels.get(teamId) !== channel) return;
+        send(channelFrame(teamId, event));
+        // Admin keeps each reply in the Team's history as it delivers it, which every page then reads again.
+        if (event?.type === 'done') raise(revisions, [session], `team/${teamId}/history`);
       },
       // A v7 socket handler's close drops the whole session socket.
       close({ code = 1000, reason = '' } = {}) {
@@ -113,6 +117,8 @@ export function serveSession(transport, handlers, revisions = new Map()) {
       const { status, json, after } = await answer(frame);
       send({ type: 'result', id: frame.id, status, body: json ?? {} });
       after?.();
+      // Admin keeps a card's answer in the Team's history, which the page then reads again.
+      if (status === 200 && CARD_ANSWERS.has(frame.method)) raise(revisions, [session], `team/${frame.params.team_id}/history`);
       return;
     }
     if (frame.type === 'activity') {
