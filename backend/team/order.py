@@ -58,28 +58,13 @@ def canonical_ids(value: object) -> list[str] | None:
 def load() -> list[str] | None:
     """The saved order, or None when none is saved."""
     try:
-        # No link is followed and a special file never blocks the read.
-        descriptor = os.open(ORDER_PATH, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC)
+        raw = private_file.read_private(ORDER_PATH, MAX_ORDER_BYTES, single_link=True)
     except FileNotFoundError:
         return None
     except OSError as exc:
-        raise OrderUnavailableError("Team order cannot be opened") from exc
-    try:
-        metadata = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or stat.S_IMODE(metadata.st_mode) != 0o600
-            or metadata.st_nlink != 1
-            or metadata.st_uid != os.geteuid()
-        ):
-            raise OrderInvalidError("Team order is not a private regular file")
-        raw = os.read(descriptor, MAX_ORDER_BYTES + 1)
-    except OSError as exc:
         raise OrderUnavailableError("Team order cannot be read") from exc
-    finally:
-        os.close(descriptor)
-    if len(raw) != metadata.st_size or len(raw) > MAX_ORDER_BYTES:
-        raise OrderInvalidError("Team order has an invalid size")
+    except ValueError:
+        raise OrderInvalidError("Team order is not a private regular file of a valid size") from None
     try:
         value = strict_json.loads(raw)
     except ValueError, RecursionError:

@@ -49,10 +49,12 @@ def replace_atomically(path: Path, payload: bytes) -> None:
 def read_private(path: Path, max_bytes: int, *, require_group: int | None = None, single_link: bool = False) -> bytes:
     """Read a non-empty regular 0600 file this process owns, of at most `max_bytes`, never through a final symlink.
 
+    The open never blocks, so a special file planted at `path` is refused rather than waited on.
+
     `require_group` also requires that group, and `single_link` a file with no other hard link. It raises OSError
     when the file cannot be read and ValueError when it fails these checks or changes size while being read.
     """
-    descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
     try:
         record = os.fstat(descriptor)
         if (
