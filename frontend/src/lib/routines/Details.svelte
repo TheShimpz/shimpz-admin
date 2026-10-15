@@ -445,15 +445,6 @@
   .tabs :global(.tab:focus-visible) { outline: 2px solid var(--shimpz-color-cyan); outline-offset: -2px; }
   /* A decision fills the panel, and its choice group closes the panel's frame along its bottom edge. */
   .content.decide {
-    --choice-inline: var(--gap-panel);
-    --choice-ask-align: center;
-    --choice-list-border: 1px solid var(--shimpz-color-border);
-    /* The panel's side lines run only beside the header and the message; the answers below are open. */
-    --decision-message-bleed: var(--gap-panel);
-    --decision-message-top: var(--gap-panel);
-    --decision-message-sides: inset 1px 0 0 var(--shimpz-color-border), inset -1px 0 0 var(--shimpz-color-border);
-    --decision-message-rule: 1px solid var(--shimpz-color-border);
-    --choice-rule: 0;
     display: flex;
     flex: 0 1 auto;
     flex-direction: column;

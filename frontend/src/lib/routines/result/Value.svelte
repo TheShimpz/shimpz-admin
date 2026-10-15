@@ -54,7 +54,7 @@
     --button-hover-color: var(--shimpz-color-text);
     --button-hover-bg: transparent;
     display: block;
-    max-width: var(--result-id-width, 16ch);
+    max-width: 16ch;
     min-height: 0;
     padding: 0;
     overflow: hidden;

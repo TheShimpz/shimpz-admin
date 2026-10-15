@@ -8,7 +8,6 @@
   // says what it is or does, and a chevron. `variant="choice"` sets the label as a mono uppercase verb, `"item"` as a
   // plain name. The row is named by its label and described by its line, plus any `status` words that only assistive
   // technology reads. Text always wraps, never truncates; the hover glitch moves the label and icon, never the line.
-  // A host may size and frame the list with `--choice-*` properties (see the style block).
   let { label, title = '', items = [], variant = 'choice', disabled = false, onchoose = () => {} } = $props();
 
   const id = $props.id();
@@ -40,37 +39,31 @@
 </div>
 
 <style>
-  /* Host properties: `--choice-inline` (the row's inline padding, and how far the list bleeds into its host's padding),
-     `--choice-ask-align`, `--choice-width` (narrows the title and rows), `--choice-justify`, `--choice-rule` (the
-     list's top rule), and `--choice-list-border` (frames the rows as one list). */
+  /* The list bleeds into its host's panel padding, and its rows are framed as one list. */
   .choices {
-    container-type: inline-size;
     display: grid;
-    justify-items: var(--choice-justify, stretch);
-    margin-inline: calc(-1 * var(--choice-inline, 0px));
-    border-block-start: var(--choice-rule, 1px solid var(--shimpz-color-border));
+    margin-inline: calc(-1 * var(--gap-panel));
   }
   /* The question is the list's title, and each row below answers it: a heading-sized line over a short cyan rule. */
   .ask {
     display: grid;
     gap: var(--gap-item);
     margin: 0;
-    padding: var(--gap-group) var(--choice-inline, var(--gap-group));
+    padding: var(--gap-group) var(--gap-panel);
     color: var(--shimpz-color-text);
     font: 650 1.12rem/1.3 var(--shimpz-font-sans);
     letter-spacing: -0.01em;
-    justify-items: var(--choice-ask-align, start);
-    text-align: var(--choice-ask-align, start);
+    justify-items: center;
+    text-align: center;
     overflow-wrap: anywhere;
   }
   .ask::after { content: ""; width: 2rem; height: 2px; border-radius: 0; background: var(--shimpz-color-cyan); box-shadow: 0 0 0.5rem color-mix(in srgb, var(--shimpz-color-cyan) 60%, transparent); }
   .ask + .segment { border-block-start: 1px solid var(--shimpz-color-border); }
-  .ask, .segment { box-sizing: border-box; width: var(--choice-width, auto); max-width: 100%; }
-  @container (max-width: 34rem) { .ask, .segment { width: auto; justify-self: stretch; } }
+  .ask, .segment { box-sizing: border-box; max-width: 100%; }
   /* The rows' side lines continue the frame they sit in, so they run straight. */
-  .segment { display: grid; min-width: 0; border-inline: var(--choice-list-border, 0); border-radius: 0; }
-  .segment:last-child { border-block-end: var(--choice-list-border, 0); }
-  .segment:first-child { border-block-start: var(--choice-list-border, 0); }
+  .segment { display: grid; min-width: 0; border-inline: 1px solid var(--shimpz-color-border); border-radius: 0; }
+  .segment:last-child { border-block-end: 1px solid var(--shimpz-color-border); }
+  .segment:first-child { border-block-start: 1px solid var(--shimpz-color-border); }
   .segment + .segment { border-block-start: 1px solid var(--shimpz-color-border); }
 
   /* The row: the shared Button without its chrome. Hover and keyboard focus light a cyan edge at its start, a faint
@@ -86,7 +79,7 @@
     isolation: isolate;
     width: 100%;
     min-height: 0;
-    padding: var(--gap-item) var(--choice-inline, var(--gap-group));
+    padding: var(--gap-item) var(--gap-panel);
     text-align: start;
     text-transform: none;
     letter-spacing: normal;

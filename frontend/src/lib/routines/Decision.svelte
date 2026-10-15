@@ -253,7 +253,7 @@
     <!-- One clear message: what happened, where, and that the person chooses how to go on. -->
     <!-- What happened, as the headline: the likely cause in plain words when the error says it, else that the run
          stopped; then where; then its likely cause as a fact; the literal error stays one click away. -->
-    <!-- The message: a host may bleed it to its own edges and draw its side lines (`--decision-message-*`). -->
+    <!-- The message reaches the panel's edges and continues its side lines. -->
     <div class="message">
     <div class="alert">
       <!-- The badge wears the failed status's color and the shared idle glitch. -->
@@ -398,17 +398,18 @@
   .technical-error .meta { margin: 0; color: var(--shimpz-color-text-muted); font: 400 0.72rem/1.4 var(--shimpz-font-mono); overflow-wrap: anywhere; }
   .result { margin: 0; color: var(--shimpz-color-text); font-size: 0.85rem; line-height: 1.45; }
 
-  /* The message may reach its host's edges; the choice list below it does the same through `--choice-inline`. */
+  /* The message reaches the panel's edges, as the choice list below it does; the panel's side lines run only beside
+     the header and the message, and the answers below are open. */
   .spacer { flex: 0 0 0; }
   .message {
     display: grid;
     flex: 1 0 auto;
     align-content: start;
     gap: var(--gap-item);
-    margin-inline: calc(-1 * var(--decision-message-bleed, 0px));
-    padding: var(--decision-message-top, 0px) var(--decision-message-bleed, 0px) var(--gap-group);
-    box-shadow: var(--decision-message-sides, none);
-    border-block-end: var(--decision-message-rule, 0);
+    margin-inline: calc(-1 * var(--gap-panel));
+    padding: var(--gap-panel) var(--gap-panel) var(--gap-group);
+    box-shadow: inset 1px 0 0 var(--shimpz-color-border), inset -1px 0 0 var(--shimpz-color-border);
+    border-block-end: 1px solid var(--shimpz-color-border);
     /* Its sides and bottom continue the panel's frame lines, which run straight. */
     border-radius: 0;
   }
