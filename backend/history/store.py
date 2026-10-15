@@ -19,6 +19,7 @@ from history import reply as reply_payload
 from session import topics
 
 from chat import assistant_install, store_catalog
+from chat import local as chat_local
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import routine_notice as routine_notice_contract
@@ -27,8 +28,8 @@ from protocol.http.v1 import turn as turn_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 STORE_PATH = Path(os.environ.get("SHIMPZ_CHAT_HISTORY_STORE") or "/data/chat-history.sqlite3")
-# Version 10 keeps each Assistant card's Creator and version, and its provenance for an uninstall.
-SCHEMA_VERSION = 11
+# Version 12 keeps a Routine's creation and change notices with an empty detail and its failure-streak pause notice.
+SCHEMA_VERSION = 12
 # A row's provenance is server-owned: `attached` marks every row of a turn whose message carried attachments, which
 # never enters a conversation projection (ADR-0093); every other row is `plain`. An attached user row keeps the
 # references of the files its message carried, exactly what the transcript shows of them and never their content.
@@ -152,7 +153,7 @@ def _initialize(database: sqlite3.Connection) -> None:
             team_id TEXT PRIMARY KEY,
             turn_id TEXT NOT NULL UNIQUE
         );
-        PRAGMA user_version = 11;
+        PRAGMA user_version = 12;
         """
     )
 
@@ -375,7 +376,7 @@ def append_reply(team_id: object, turn_id: object, event: object, *, receipt: ob
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
     fields = {"type", "team_id", "team_name", "reply", "clarification"}
-    optional = {"usage", *reply_payload.ROUTINE_FIELDS}
+    optional = {"usage", *chat_local.ROUTINE_FIELDS}
     if not isinstance(event, Mapping) or set(event) - optional != fields:
         raise ValueError("chat history reply event is invalid")
     if event["type"] != "done" or event["team_id"] != canonical_team:
