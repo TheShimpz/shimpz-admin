@@ -203,6 +203,10 @@
   let lifecycleWorking = $derived(transcript.turns.some((turn) => (
     turn.lifecycle?.state === 'working'
   )) || installPlanWorking);
+  // A running turn can be stopped except while Admin synchronizes it or a lifecycle card other than an install plan
+  // works; an Integration or human request pauses it.
+  let stopShown = $derived(liveTurn.busy && !liveTurn.syncing && (!lifecycleWorking || installPlanWorking));
+  let challengePending = $derived(Boolean(integration.challenge || human.challenge));
   let historyHydrating = $derived(
     Boolean(chatTeamId) && (transcript.loading || socketTeamId !== chatTeamId),
   );
@@ -445,10 +449,7 @@
   async function focusStop(fromElement) {
     await tick();
     if (fromElement && document.activeElement !== fromElement) return;
-    if (
-      mounted && liveTurn.busy && !liveTurn.syncing && (!lifecycleWorking || installPlanWorking) &&
-      !integration.challenge && !human.challenge
-    ) {
+    if (mounted && stopShown && !challengePending) {
       stopButton?.focus({ preventScroll: true });
     }
   }
@@ -1017,7 +1018,7 @@
           class="conversation"
           class:empty-conversation={transcript.turns.length === 0}
           aria-label={teamName}
-          aria-busy={composerBusy && !integration.challenge && !human.challenge}
+          aria-busy={composerBusy && !challengePending}
           inert={historyHydrating}
         >
         <p class="live-status sr-only" aria-live="polite" aria-atomic="true">{liveStatus}</p>
@@ -1077,7 +1078,7 @@
               onrewrite={rewriteRoutine}
               cardAnswer={answers.get(exchange.assistant?.routineProposal?.proposal_id) ?? ''}
               ondecide={uninstall.decide}
-              thinking={index === exchanges.length - 1 && liveTurn.busy && !integration.challenge && !human.challenge &&
+              thinking={index === exchanges.length - 1 && liveTurn.busy && !challengePending &&
                 (exchange.assistant ? exchange.assistant.installPlan?.state === 'installed' : !lifecycleWorking)
                 ? liveThinking
                 : undefined}
@@ -1124,7 +1125,7 @@
             {menusBusy}
             {integrationsOpen}
             integrationsDisabled={$teamContext.installedAssistants.length === 0 && !integration.challenge}
-            stopShown={liveTurn.busy && !liveTurn.syncing && (!lifecycleWorking || installPlanWorking)}
+            {stopShown}
             stopping={liveTurn.stopping}
             {sendUnavailable}
             {socketReady}
