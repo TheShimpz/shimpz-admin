@@ -78,7 +78,6 @@ function spellsAddress(plain, url) {
   return safeLink(plain)?.href === url.href && URL_AUTHORITY.exec(plain)[1].toLowerCase() === url.host;
 }
 
-/** Parse a deliberately small inline Markdown subset into text-only display tokens. */
 // Where a link destination starting at each position ends: its first `)` outside balanced parentheses (a URL such as
 // https://en.wikipedia.org/wiki/Foo_(bar) keeps its own), or -1 when it never closes or closes past the longest
 // destination a link may have. That `)` is where the parenthesis depth first drops below the depth at the start, so
@@ -98,6 +97,7 @@ function destinationEnds(input) {
   return ends;
 }
 
+/** Parse a deliberately small inline Markdown subset into text-only display tokens. */
 export function parseInline(source) {
   const input = String(source ?? '');
   const tokens = [];
