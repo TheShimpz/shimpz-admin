@@ -32,11 +32,10 @@
   import { showTeamRoutines } from '#lib/routines/context.js';
   import { adminSocket, call, commandsReady, openChatChannel, outcomeUnknown } from '#lib/session/socket.js';
   import {
-    createExecutionProjection,
-    extendExecutionProjection,
     localizedEventLabel,
   } from '#lib/chat/progress/projection.js';
   import { escapeMarkdownText } from '#lib/chat/markdown.js';
+  import { ChatTurn } from '#lib/chat/turn.svelte.js';
   import { locale, t } from '#lib/i18n/index.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { CLARIFICATION_LABELS } from '#lib/chat/clarificationLabels.js';
@@ -75,39 +74,19 @@
   // Every change replaces the list or the turn it changes, never a field in place, so no turn needs a deep proxy.
   let turns = $state.raw([]);
   let nextRenderKey = 0;
-  let busy = $state(false);
-  // When the turn in flight started, as this page observed it: its thinking view counts from here, also after a human
-  // or Integration request hid it for a while.
-  let turnStartedAt = $state(0);
-
-  function beginTurn() {
-    if (!busy) turnStartedAt = Date.now();
-    busy = true;
-  }
-  // Assistants the current turn's continuing install plan proved running; a just-in-time request may reach the
-  // browser, or be redelivered after a same-Team reconnect, before the asynchronous Team inventory refresh reflects
-  // them. Cleared at every terminal result, empty sync, protocol error, new message, and Team change.
-  let turnInstalled = { teamId: '', ids: new Set() };
-  // Advances at every turn boundary so an inventory-dependent admission started in an older turn is discarded.
-  let turnEpoch = 0;
-
-  function clearTurnInstalled() {
-    turnInstalled = { teamId: '', ids: new Set() };
-    turnEpoch += 1;
-  }
+  // The turn in flight, its progress, and its receipt (lib/chat/turn.svelte.js).
+  const liveTurn = new ChatTurn();
 
   // What a connection that ended, closed or refused for a protocol violation, leaves behind: no turn, progress,
   // challenge, or lifecycle card of it stays live. A reconnect may restore another turn; one this page still waits on
   // keeps only what it observes from then on.
   function resetConnection() {
-    forgetSegments();
+    liveTurn.forgetSegments();
     socket = null;
     socketReady = false;
-    busy = false;
-    syncing = false;
-    stopping = false;
+    liveTurn.settle();
     expireSocketLifecycles();
-    resetProgress();
+    liveTurn.resetProgress();
     resetChallengeState();
   }
 
@@ -120,7 +99,7 @@
 
   function failProtocol(active) {
     resetConnection();
-    clearTurnInstalled();
+    liveTurn.clearInstalled();
     setError(copy.protocolError);
     active.close(1002, 'Invalid chat event');
     if (protocolFailures >= PROTOCOL_REATTACHES) return;
@@ -137,16 +116,7 @@
     globalThis.clearTimeout(reattachTimer);
     protocolFailures = 0;
   }
-
-  function installedThisTurn(assistantId) {
-    return turnInstalled.teamId === chatTeamId && turnInstalled.ids.has(assistantId);
-  }
-  let syncing = $state(false);
   let lifecycleOutcomePending = $state(null);
-  let progressEvents = $state([]);
-  let progressProjection = $state(createExecutionProjection());
-  let progressSequence = $state(0);
-  let stopping = $state(false);
   let lifecycleDecisionPending = $state(false);
   let error = $state('');
   let errorDetail = $state('');
@@ -236,12 +206,12 @@
   // first sync instead of accepting text for a moment and dropping what is typed when the sync starts.
   let socketOpening = $derived(Boolean(socket) && !socketReady);
   let composerBusy = $derived(
-    busy || syncing || socketOpening || lifecycleOutcomePending !== null || historyHydrating || historyChecking,
+    liveTurn.busy || liveTurn.syncing || socketOpening || lifecycleOutcomePending !== null || historyHydrating || historyChecking,
   );
   // The Brain and fast-routing menus stay open while Admin reconnects, so a change they sent can say how it ended; what
   // they would send waits for the connection on its own.
   let menusBusy = $derived(
-    busy || syncing || lifecycleOutcomePending !== null || historyHydrating || stopping,
+    liveTurn.busy || liveTurn.syncing || lifecycleOutcomePending !== null || historyHydrating || liveTurn.stopping,
   );
   // A message waits for a pending Brain change to be saved so the turn never runs on the previous selection.
   let brainSaving = $derived($modelContext.phase === 'saving');
@@ -267,7 +237,7 @@
   );
   let keySelection = $derived(`${chatTeamId}\u0000${$modelContext.provider}`);
   let providerKey = $state('');
-  let currentProgress = $derived(progressEvents.at(-1));
+  let currentProgress = $derived(liveTurn.events.at(-1));
   let assistantNames = $derived(new Map($teamContext.catalog.map((assistant) => [assistant.id, assistant.name])));
   let liveStatus = $derived(
     lifecycleWorking
@@ -276,7 +246,7 @@
         : copy.uninstall.working
       : currentProgress
       ? `${thinking} ${localizedEventLabel(currentProgress, copy.progress, { teamName, assistantNames })}`
-      : busy ? thinking : '',
+      : liveTurn.busy ? thinking : '',
   );
   let contextFailed = $derived($teamContext.phase === 'error');
   let teamsKnownEmpty = $derived($teamContext.phase === 'ready' && $teamContext.teams.length === 0 && !historyHydrating);
@@ -291,7 +261,7 @@
   );
   let lifecycleDecisionDisabled = $derived(
     composerBusy ||
-      stopping ||
+      liveTurn.stopping ||
       lifecycleDecisionPending ||
       !inventoryReady ||
       !socketReady ||
@@ -337,35 +307,6 @@
   let attachmentsUnavailable = $derived(
     composerBusy || questionOpen || brainSaving || keyRequired || !chatTeamId,
   );
-
-  // Team's progress of the earlier segments of the turn in flight, kept across each human or Integration pause so the
-  // turn's receipt lists every step it observed; each event carries its segment, as every segment restarts its seq.
-  let earlierSegments = [];
-  let segmentNumber = 0;
-
-  function retainSegment() {
-    for (const event of progressEvents) {
-      if (event.origin === 'team') earlierSegments.push({ ...event, segment: segmentNumber });
-    }
-    segmentNumber += 1;
-  }
-
-  function forgetSegments() {
-    earlierSegments = [];
-    segmentNumber = 0;
-  }
-
-  function turnReceipt() {
-    const receipt = [...earlierSegments, ...progressEvents.map((event) => ({ ...event, segment: segmentNumber }))];
-    forgetSegments();
-    return receipt;
-  }
-
-  function resetProgress() {
-    progressEvents = [];
-    progressProjection = createExecutionProjection();
-    progressSequence = 0;
-  }
 
   // The turns of history rows, keeping the render identity of a row already shown.
   function historyTurns(entries, team) {
@@ -902,7 +843,7 @@
     await tick();
     if (fromElement && document.activeElement !== fromElement) return;
     if (
-      mounted && busy && !syncing && (!lifecycleWorking || installPlanWorking) &&
+      mounted && liveTurn.busy && !liveTurn.syncing && (!lifecycleWorking || installPlanWorking) &&
       !integrationChallenge && !humanChallenge
     ) {
       stopButton?.focus({ preventScroll: true });
@@ -911,7 +852,7 @@
 
   async function focusLifecycleTask(proposalId) {
     await tick();
-    if (!mounted || !busy || !lifecycleWorking) return;
+    if (!mounted || !liveTurn.busy || !lifecycleWorking) return;
     document.getElementById(`assistant-lifecycle-${proposalId}`)?.focus({ preventScroll: true });
   }
 
@@ -943,9 +884,9 @@
     const current = socket;
     socket = null;
     socketReady = false;
-    syncing = false;
+    liveTurn.syncing = false;
     expireSocketLifecycles();
-    resetProgress();
+    liveTurn.resetProgress();
     resetChallengeState();
     current?.close(1000, 'Team changed');
   }
@@ -957,21 +898,21 @@
   // Only a settled inventory admits an Assistant's request at once; one being read again is checked when it arrives.
   function knownIntegrationAssistants(incoming) {
     const selected = new Set(inventoryReady ? $teamContext.activeAssistantIds : []);
-    return integrationAssistantIds(incoming).every((id) => selected.has(id) || installedThisTurn(id));
+    return integrationAssistantIds(incoming).every((id) => selected.has(id) || liveTurn.installedIn(chatTeamId, id));
   }
 
   function knownHumanAssistant(incoming) {
     const installed = new Set(
       inventoryReady ? $teamContext.installedAssistants.map((assistant) => assistant.assistant) : [],
     );
-    return installed.has(incoming.assistant.id) || installedThisTurn(incoming.assistant.id);
+    return installed.has(incoming.assistant.id) || liveTurn.installedIn(chatTeamId, incoming.assistant.id);
   }
 
   // The cached Team inventory may be one being read again (after an install, for instance), so an Assistant it does
   // not admit is checked against the fresh authenticated Team inventory before the request is refused as a protocol
   // error.
   async function admitWithFreshInventory(active, expectedTeamId, assistantIds, accept) {
-    const epoch = turnEpoch;
+    const epoch = liveTurn.epoch;
     let installed = new Set();
     try {
       const { installedAssistants } = await refreshTeamInventory();
@@ -979,8 +920,8 @@
     } catch {
       installed = new Set();
     }
-    if (socket !== active || chatTeamId !== expectedTeamId || epoch !== turnEpoch) return;
-    if (assistantIds.every((id) => installed.has(id) || installedThisTurn(id))) accept();
+    if (socket !== active || chatTeamId !== expectedTeamId || epoch !== liveTurn.epoch) return;
+    if (assistantIds.every((id) => installed.has(id) || liveTurn.installedIn(chatTeamId, id))) accept();
     else failProtocol(active);
   }
 
@@ -994,11 +935,7 @@
     integrationsDialogOpen = true;
     oauthFailedOnReturn = false;
     integrationsOpen = false;
-    beginTurn();
-    syncing = false;
-    stopping = false;
-    retainSegment();
-    resetProgress();
+    liveTurn.pause();
   }
 
   function acceptHumanChallenge(incoming) {
@@ -1010,11 +947,7 @@
     humanRejection = undefined;
     humanWorking = false;
     integrationsOpen = false;
-    beginTurn();
-    syncing = false;
-    stopping = false;
-    retainSegment();
-    resetProgress();
+    liveTurn.pause();
   }
 
   function connectSocket(expectedTeamId) {
@@ -1037,8 +970,8 @@
     active.onopen = () => {
       if (socket !== active || chatTeamId !== expectedTeamId) return;
       socketReady = true;
-      syncing = true;
-      resetProgress();
+      liveTurn.syncing = true;
+      liveTurn.resetProgress();
       if (error === copy.disconnected || error === copy.connectionFailed) clearError();
     };
     active.onframe = (frame) => {
@@ -1086,12 +1019,7 @@
           return;
         }
         if (incoming.type === 'progress') {
-          if (!busy && !syncing) throw new Error('unexpected progress frame');
-          if (incoming.seq !== progressSequence + 1) throw new Error('out-of-order progress frame');
-          if (syncing) beginTurn();
-          progressSequence = incoming.seq;
-          progressEvents.push(incoming);
-          extendExecutionProjection(progressProjection, incoming);
+          liveTurn.progress(incoming);
           const completedHumanTransition = humanWorking;
           if (completedHumanTransition) {
             humanChallenge = undefined;
@@ -1103,58 +1031,56 @@
           return;
         }
         if (incoming.type === 'sync-empty') {
-          syncing = false;
-          forgetSegments();
-          resetProgress();
-          clearTurnInstalled();
+          liveTurn.syncing = false;
+          liveTurn.forgetSegments();
+          liveTurn.resetProgress();
+          liveTurn.clearInstalled();
           if (humanRelocalizing) {
             // The request ended before it could be opened in the selected language.
-            busy = false;
-            stopping = false;
+            liveTurn.busy = false;
+            liveTurn.stopping = false;
             resetChallengeState();
             setError(humanRequestCopy.expired);
             return;
           }
           if (humanExpiredId) {
-            busy = false;
-            stopping = false;
+            liveTurn.busy = false;
+            liveTurn.stopping = false;
             resetChallengeState();
             return;
           }
-          if (busy && turns.length > 0) {
-            busy = false;
-            stopping = false;
+          if (liveTurn.busy && turns.length > 0) {
+            liveTurn.busy = false;
+            liveTurn.stopping = false;
             resetChallengeState();
             setError(copy.turnFailed);
           }
           return;
         }
         if (incoming.type === 'assistant-install-plan') {
-          if (!busy || syncing) throw new Error('unexpected Assistant install plan event');
-          const receipt = turnReceipt();
+          liveTurn.requireRunning('Assistant install plan event');
+          const receipt = liveTurn.receipt();
           applyInstallPlanEvent(incoming, receipt);
-          const restoreStoppedFocus = stopping && document.activeElement === document.body;
-          stopping = false;
-          resetProgress();
+          const restoreStoppedFocus = liveTurn.stopping && document.activeElement === document.body;
+          liveTurn.stopping = false;
+          liveTurn.resetProgress();
           if (restoreStoppedFocus) void focusStop();
           if (incoming.state === 'planned' || incoming.state === 'installing') {
             return;
           }
           if (incoming.state === 'installed') {
             if (incoming.continuation === 'dispatch') {
-              const ids = turnInstalled.teamId === chatTeamId ? turnInstalled.ids : new Set();
-              for (const assistant of incoming.assistants) ids.add(assistant.id);
-              turnInstalled = { teamId: chatTeamId, ids };
+              liveTurn.addInstalled(chatTeamId, incoming.assistants.map((assistant) => assistant.id));
             }
             void refreshTeamInventory().catch(() => undefined);
             if (incoming.continuation === 'none') {
               capabilityObjective = null;
-              busy = false;
+              liveTurn.busy = false;
               clearError();
             }
             return;
           }
-          busy = false;
+          liveTurn.busy = false;
           if (incoming.state === 'failed') {
             setError(
               incoming.code === ASSISTANT_LIMIT_REACHED ? words.limit : friendlyChatError(incoming.status, words),
@@ -1166,53 +1092,51 @@
           return;
         }
         if (incoming.type === 'assistant-guidance') {
-          if (!busy || syncing) throw new Error('unexpected Assistant guidance event');
+          liveTurn.requireRunning('Assistant guidance event');
           capabilityObjective = null;
           turns = [...turns, {
             renderKey: nextRenderKey++,
             role: 'assistant',
             text: escapeMarkdownText(incoming.reply),
             author: incoming.team_name,
-            receipt: turnReceipt(),
+            receipt: liveTurn.receipt(),
           }];
-          busy = false;
-          stopping = false;
-          resetProgress();
+          liveTurn.busy = false;
+          liveTurn.stopping = false;
+          liveTurn.resetProgress();
           clearError();
           void revealLatestExchange();
           return;
         }
         if (incoming.type === 'assistant-uninstall') {
-          if (!busy || syncing) throw new Error('unexpected Assistant lifecycle event');
+          liveTurn.requireRunning('Assistant lifecycle event');
           capabilityObjective = null;
-          const receipt = turnReceipt();
+          const receipt = liveTurn.receipt();
           // A Stop may cross a proposal or the uninstall it approved; Admin answers that Stop with nothing, so the
           // lifecycle event is applied as it is and ends the stop.
           const terminal = applyLifecycleEvent(incoming, receipt);
-          stopping = false;
-          resetProgress();
+          liveTurn.stopping = false;
+          liveTurn.resetProgress();
           if (!terminal) {
             void focusLifecycleTask(incoming.proposal_id);
             return;
           }
-          busy = false;
+          liveTurn.busy = false;
           clearError();
           if (incoming.state === 'uninstalled') void confirmUninstall(incoming);
           return;
         }
-        if (!busy && !stopping && !syncing) throw new Error('unexpected terminal frame');
+        liveTurn.requireTerminal();
       } catch {
         failProtocol(active);
         return;
       }
 
-      const receipt = turnReceipt();
+      const receipt = liveTurn.receipt();
       expireSocketLifecycles();
-      busy = false;
-      syncing = false;
-      stopping = false;
+      liveTurn.settle();
       resetChallengeState();
-      clearTurnInstalled();
+      liveTurn.clearInstalled();
       if (incoming.type === 'done') {
         turns = [...turns, {
           renderKey: nextRenderKey++,
@@ -1229,7 +1153,7 @@
         const projectedError = projectedChatError(incoming.status, incoming.detail, words);
         setError(projectedError.message, projectedError.detail);
       }
-      resetProgress();
+      liveTurn.resetProgress();
     };
     // The session socket dropped: nothing of the turn stays live, and the channel attaches again when it reopens. The
     // shell alone says that Admin reconnects; only an attach Admin refused while the socket stays open is the chat's own.
@@ -1244,29 +1168,29 @@
   function activateTeam(nextTeamId) {
     forgetProtocolFailures();
     chatOwnsFocus = true;
-    forgetSegments();
+    liveTurn.forgetSegments();
     if (messageFiles.teamId !== nextTeamId) messageFiles.clear();
     closeSocket();
-    clearTurnInstalled();
+    liveTurn.clearInstalled();
     clearLifecycleIconCaptures();
     capabilityObjective = null;
     liveAnswers = new Map();
     socketTeamId = nextTeamId;
-    stopping = false;
+    liveTurn.stopping = false;
     lifecycleOutcomePending = null;
     deferredUninstall = null;
     if (nextTeamId && draftTeamId && draftTeamId !== nextTeamId) draft = '';
     if (nextTeamId) draftTeamId = nextTeamId;
     promptHistoryIndex = -1;
     turns = [];
-    busy = false;
+    liveTurn.busy = false;
     historyBefore = null;
     historyWorking = false;
     olderHistoryArmed = false;
     olderHistoryFailed = false;
     historyLoading = Boolean(nextTeamId);
     const generation = ++historyGeneration;
-    resetProgress();
+    liveTurn.resetProgress();
     scrollRequest += 1;
     integrationsOpen = false;
     resetChallengeState();
@@ -1495,7 +1419,7 @@
     ) return false;
     let frame;
     let resumedObjective = '';
-    clearTurnInstalled();
+    liveTurn.clearInstalled();
     const assistantIds = [...$teamContext.activeAssistantIds];
     const files = attached.map((item) => item.id);
     // A message with attachments never resumes an objective nor becomes one: installs need an attachment-free request.
@@ -1525,9 +1449,9 @@
       setError(reason instanceof Error ? reason.message : copy.loadFailed);
       return false;
     }
-    beginTurn();
-    forgetSegments();
-    resetProgress();
+    liveTurn.begin();
+    liveTurn.forgetSegments();
+    liveTurn.resetProgress();
     clearError();
     if (projectUserTurn) {
       turns = [...turns, {
@@ -1559,8 +1483,8 @@
       if (focusActiveTurn) void focusStop();
       return true;
     } catch (reason) {
-      busy = false;
-      resetProgress();
+      liveTurn.busy = false;
+      liveTurn.resetProgress();
       setError(reason instanceof Error ? reason.message : copy.loadFailed);
       socket.close();
       return false;
@@ -1645,13 +1569,13 @@
 
   function stop() {
     const teamId = $teamContext.selectedTeamId;
-    if (!busy || syncing || stopping || !teamId || !socketReady || !socket) return;
-    stopping = true;
+    if (!liveTurn.busy || liveTurn.syncing || liveTurn.stopping || !teamId || !socketReady || !socket) return;
+    liveTurn.stopping = true;
     clearError();
     try {
       socket.send(createStopFrame(teamId));
     } catch (reason) {
-      stopping = false;
+      liveTurn.stopping = false;
       setError(reason instanceof Error ? reason.message : copy.loadFailed);
       socket.close();
     }
@@ -1694,18 +1618,18 @@
   function reconcileExpiredHuman(challengeId) {
     if (humanChallenge?.challenge_id !== challengeId || humanWorking) return;
     humanExpiredId = challengeId;
-    busy = false;
-    stopping = false;
+    liveTurn.busy = false;
+    liveTurn.stopping = false;
     humanChallenge = undefined;
     humanRejection = undefined;
     setError(humanRequestCopy.expired);
-    if (!socketReady || !socket || syncing) return;
-    syncing = true;
-    resetProgress();
+    if (!socketReady || !socket || liveTurn.syncing) return;
+    liveTurn.syncing = true;
+    liveTurn.resetProgress();
     try {
       socket.send(createSyncFrame(chatTeamId, $locale));
     } catch {
-      syncing = false;
+      liveTurn.syncing = false;
       socket.close();
     }
   }
@@ -1714,19 +1638,19 @@
   // selected language before it can be answered. A reply that arrives after yet another switch is reconciled again.
   function relocalizeHumanRequest(selected) {
     humanRelocalizing = selected;
-    syncing = true;
+    liveTurn.syncing = true;
     try {
       socket.send(createSyncFrame(chatTeamId, selected));
     } catch {
       humanRelocalizing = '';
-      syncing = false;
+      liveTurn.syncing = false;
       socket.close();
     }
   }
 
   $effect(() => {
     const selected = $locale;
-    if (!humanStale || humanWorking || humanRelocalizing || syncing || !socketReady || !socket) return;
+    if (!humanStale || humanWorking || humanRelocalizing || liveTurn.syncing || !socketReady || !socket) return;
     if (humanChallenge.challenge_id === humanExpiredId) return;
     relocalizeHumanRequest(selected);
   });
@@ -1784,8 +1708,8 @@
     if (initialTeamId !== socketTeamId) activateTeam(initialTeamId);
     else historyLoading = false;
     if (oauthFailedOnReturn) {
-      busy = false;
-      resetProgress();
+      liveTurn.busy = false;
+      liveTurn.resetProgress();
       history.replaceState(history.state, '', '/chat');
       setError(integrationsCopy.authorizationFailed);
     }
@@ -1848,13 +1772,13 @@
           {#snippet liveThinking()}
             <ShimpzThinking
               label={thinking}
-              steps={progressProjection.steps}
-              currentIndex={progressProjection.currentIndex}
+              steps={liveTurn.projection.steps}
+              currentIndex={liveTurn.projection.currentIndex}
               elapsedText={copy.elapsed}
               progressLabels={copy.progress}
               {teamName}
               {assistantNames}
-              startedAt={turnStartedAt}
+              startedAt={liveTurn.startedAt}
             />
           {/snippet}
           {#each exchanges as exchange, index (exchange.key)}
@@ -1878,7 +1802,7 @@
               onrewrite={rewriteRoutine}
               cardAnswer={answers.get(exchange.assistant?.routineProposal?.proposal_id) ?? ''}
               ondecide={submitLifecycleDecision}
-              thinking={index === exchanges.length - 1 && busy && !integrationChallenge && !humanChallenge &&
+              thinking={index === exchanges.length - 1 && liveTurn.busy && !integrationChallenge && !humanChallenge &&
                 (exchange.assistant ? exchange.assistant.installPlan?.state === 'installed' : !lifecycleWorking)
                 ? liveThinking
                 : undefined}
@@ -1925,8 +1849,8 @@
             {menusBusy}
             {integrationsOpen}
             integrationsDisabled={$teamContext.installedAssistants.length === 0 && !integrationChallenge}
-            stopShown={busy && !syncing && (!lifecycleWorking || installPlanWorking)}
-            {stopping}
+            stopShown={liveTurn.busy && !liveTurn.syncing && (!lifecycleWorking || installPlanWorking)}
+            stopping={liveTurn.stopping}
             {sendUnavailable}
             {socketReady}
             onsubmit={keyRequired ? saveProviderKey : send}
