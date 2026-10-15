@@ -548,7 +548,7 @@ export default {
     proposal: {
       title: 'あなたの判断が必要です',
       replaces: 'ルーティン「{name}」を変更します',
-      steps: 'このルーティンが行うこと',
+      steps: '詳細',
       stepLine: '{assistant} · {action}',
       stepRead: '読み取り',
       stepWrite: '書き込み',
@@ -558,8 +558,6 @@ export default {
         step: 'ステップ {n} から',
         selector: 'ステップ {n} から、{member} が「{value}」の項目',
       },
-      ranOnce: 'これはたった今一度実行されました。',
-      approvals: '承認が必要なステップは、毎回確認します。',
       confirm: '作成',
       cancel: 'キャンセル',
       edit: '編集',

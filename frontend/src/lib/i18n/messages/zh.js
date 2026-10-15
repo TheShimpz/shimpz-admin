@@ -548,7 +548,7 @@ export default {
     proposal: {
       title: '需要你的决定',
       replaces: '更改例行任务“{name}”',
-      steps: '此例行任务将执行的操作',
+      steps: '详情',
       stepLine: '{assistant} · {action}',
       stepRead: '读取',
       stepWrite: '写入',
@@ -558,8 +558,6 @@ export default {
         step: '来自步骤 {n}',
         selector: '来自步骤 {n}，即 {member} 为“{value}”的那一项',
       },
-      ranOnce: '这已经运行过一次了。',
-      approvals: '如果某个步骤需要你的批准，它每次都会询问。',
       confirm: '创建',
       cancel: '取消',
       edit: '编辑',

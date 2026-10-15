@@ -548,7 +548,7 @@ export default {
     proposal: {
       title: 'يحتاج إلى قرارك',
       replaces: 'يغيّر الروتين «{name}»',
-      steps: 'ما سيفعله هذا الروتين',
+      steps: 'التفاصيل',
       stepLine: '{assistant} · {action}',
       stepRead: 'قراءة',
       stepWrite: 'كتابة',
@@ -558,8 +558,6 @@ export default {
         step: 'من الخطوة {n}',
         selector: 'من الخطوة {n}، العنصر الذي قيمة {member} فيه «{value}»',
       },
-      ranOnce: 'تم تشغيل هذا مرة واحدة الآن.',
-      approvals: 'إذا احتاجت خطوة إلى موافقتك، فستطلبها في كل مرة.',
       confirm: 'إنشاء',
       cancel: 'إلغاء',
       edit: 'تعديل',

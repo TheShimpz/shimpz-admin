@@ -555,7 +555,7 @@ export default {
     proposal: {
       title: 'Needs your decision',
       replaces: 'Changes the Routine “{name}”',
-      steps: 'What this routine will do',
+      steps: 'Details',
       stepLine: '{assistant} · {action}',
       stepRead: 'Read',
       stepWrite: 'Write',
@@ -565,8 +565,6 @@ export default {
         step: 'from step {n}',
         selector: 'from step {n}, the item whose {member} is “{value}”',
       },
-      ranOnce: 'This already ran once just now.',
-      approvals: 'If a step needs your approval, it will ask every time.',
       confirm: 'Create',
       cancel: 'Cancel',
       edit: 'Edit',

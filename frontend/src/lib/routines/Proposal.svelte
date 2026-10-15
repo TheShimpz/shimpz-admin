@@ -18,8 +18,8 @@
   import { fillParts, proposalInputValue, routineErrorMessage } from '#lib/routines/words.js';
 
   // The card of a Routine a recording turn recorded (ADR-0101 section 5.2), under its reply, kept short for a person
-  // who is not technical: the recording agent's plain description of the work, a warning when a step changes
-  // something, and a footnote that the work ran once now and approvals ask on every run. A collapsed footer lists
+  // who is not technical: the recording agent's plain description of the work and a warning when a step changes
+  // something. A collapsed footer lists
   // each step's Assistant, linked to its page, its Action, whether it changes something, and every input's complete
   // value. All of it is escaped text. Three buttons under the card, none preselected: Cancel revokes it, Edit turns
   // its description into the prompt that records it again, and Create confirms it. A card past its lifetime is no
@@ -147,7 +147,6 @@
         <p class="description">{proposal.description}</p>
       {/if}
       {#if changes}<p class="warning"><RoutineIcon name="warning" />{card.changes}</p>{/if}
-      {#if !editing}<p class="footnote">{card.ranOnce} {card.approvals}</p>{/if}
     </header>
 
     {#if !editing}
@@ -241,14 +240,6 @@
   .warning :global(.routine-icon) { width: 0.85rem; height: 0.85rem; }
   /* Scoped under the card, so the chat's own paragraph color never overrides these gray notes. */
   .routine-proposal .note { color: var(--shimpz-color-text-dim); font-size: 0.7rem; }
-  /* The run notes as the header's footnote, just under the description and aligned with it: small, italic, and gray. */
-  .routine-proposal .footnote {
-    padding-block-start: var(--shimpz-space-1);
-    color: var(--shimpz-color-text-dim);
-    font-style: italic;
-    font-size: 0.66rem;
-    line-height: 1.5;
-  }
   header :global(.prompt textarea) { min-height: 6rem; font: 0.86rem/1.6 var(--shimpz-font-sans); resize: vertical; }
   /* The footer: a raised band whose disclosure title is centered across it. */
   .sheet > :global(.details) {

@@ -548,7 +548,7 @@ export default {
     proposal: {
       title: 'Precisa da sua decisão',
       replaces: 'Altera a rotina “{name}”',
-      steps: 'O que esta rotina vai fazer',
+      steps: 'Detalhes',
       stepLine: '{assistant} · {action}',
       stepRead: 'Leitura',
       stepWrite: 'Escrita',
@@ -558,8 +558,6 @@ export default {
         step: 'da etapa {n}',
         selector: 'da etapa {n}, o item cujo {member} é “{value}”',
       },
-      ranOnce: 'Isto já rodou uma vez agora.',
-      approvals: 'Se algum passo precisar da sua aprovação, ele vai pedir toda vez.',
       confirm: 'Criar',
       cancel: 'Cancelar',
       edit: 'Editar',
