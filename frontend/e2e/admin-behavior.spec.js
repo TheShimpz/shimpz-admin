@@ -21,7 +21,14 @@ import {
   waitForRead,
 } from './scenarioRoutes.js';
 import { planPage, planSummary, ROUTINE_TEXT, routineLifecycleStart, runStepsPage } from './routineScenarios.js';
-import { historyView, CLARIFICATION as SCENARIO_CLARIFICATION, ROUTINE_PLAN, ROUTINE_VIEW } from './scenarios.js';
+import {
+  authenticatedLocalSession,
+  historyView,
+  localSession,
+  CLARIFICATION as SCENARIO_CLARIFICATION,
+  ROUTINE_PLAN,
+  ROUTINE_VIEW,
+} from './scenarios.js';
 
 const ok = (json, status = 200) => ({ status, json });
 
@@ -38,30 +45,6 @@ const HISTORY_AT = '2026-10-01T12:00:00Z';
 const modelCatalog = JSON.parse(
   readFileSync(new URL('../src/lib/brain/catalog.json', import.meta.url), 'utf8'),
 );
-
-function localSession(overrides = {}) {
-  return {
-    profile: 'local',
-    authenticated: false,
-    initialized: false,
-    authentication_state: 'uninitialized',
-    ...overrides,
-  };
-}
-
-function authenticatedLocalSession(overrides = {}) {
-  return localSession({
-    authenticated: true,
-    initialized: true,
-    authentication_state: 'configured',
-    authentication_method: 'webauthn',
-    origin_admitted: true,
-    oauth_completion_mode: null,
-    passkey_enrollment_available: true,
-    passkey_registered: true,
-    ...overrides,
-  });
-}
 
 const localTeamResidues = [
   'action_checkpoints',
@@ -4113,7 +4096,7 @@ test('keeps a first Store install ready while local display metadata catches up'
   }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+    body: JSON.stringify(authenticatedLocalSession()),
   }));
   await routeRead(page, 'teams.list', () => ok({
       teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }],

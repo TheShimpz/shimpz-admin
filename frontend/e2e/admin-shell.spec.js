@@ -13,35 +13,12 @@ import {
   sessionFrames,
   waitForRead,
 } from './scenarioRoutes.js';
+import { authenticatedLocalSession, localSession } from './scenarios.js';
 import { recoveryCodeSet } from './securityScenarios.js';
 
 const ok = (json, status = 200) => ({ status, json });
 // The Admin version the sidebar names: its commit date and short revision, or dev for a build that names no revision.
 const ADMIN_VERSION = /^Admin (?:dev|v\d{4}\.\d{2}\.\d{2}-[0-9a-f]{7})$/;
-
-function localSession(overrides = {}) {
-  return {
-    profile: 'local',
-    authenticated: false,
-    initialized: false,
-    authentication_state: 'uninitialized',
-    ...overrides,
-  };
-}
-
-function authenticatedLocalSession(overrides = {}) {
-  return localSession({
-    authenticated: true,
-    initialized: true,
-    authentication_state: 'configured',
-    authentication_method: 'webauthn',
-    origin_admitted: true,
-    oauth_completion_mode: null,
-    passkey_enrollment_available: true,
-    passkey_registered: true,
-    ...overrides,
-  });
-}
 
 // A person taps on a touch screen and clicks with a pointer; each touch-project run proves the control works by touch.
 // A Space with one Team and no Assistant: the shell's Team context reads it, so the screen under test settles.
@@ -69,6 +46,7 @@ test('completes mandatory authenticator enrollment before opening Admin', async 
     contentType: 'application/json',
     body: JSON.stringify(authenticationState === 'configured'
       ? authenticatedLocalSession({
+        oauth_completion_mode: null,
         authentication_method: 'totp',
         passkey_enrollment_available: false,
         passkey_registered: false,
@@ -184,6 +162,7 @@ test('registers and then uses a UV passkey through the browser ceremony', async 
     const body = sessionState === 'none'
       ? localSession({ initialized: true, authentication_state: 'configured' })
       : authenticatedLocalSession({
+        oauth_completion_mode: null,
         authentication_method: sessionState === 'totp' ? 'totp' : 'webauthn',
         passkey_enrollment_available: true,
         passkey_registered: sessionState === 'passkey',
@@ -310,7 +289,7 @@ test('shows the installed Admin version with the read-only Local release status'
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+    body: JSON.stringify(authenticatedLocalSession()),
   }));
   await answerQuietSpace(page);
   await routeRead(page, 'platform.release', () => ({ status: 200, json: {
@@ -357,7 +336,7 @@ test('names a developer release built on this host in the Local release status',
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+    body: JSON.stringify(authenticatedLocalSession()),
   }));
   await answerQuietSpace(page);
   await routeRead(page, 'platform.release', () => ({ status: 200, json: {
@@ -377,7 +356,7 @@ test('still shows the installed Admin version when Local release status is unava
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+    body: JSON.stringify(authenticatedLocalSession()),
   }));
   await answerQuietSpace(page);
 
@@ -390,7 +369,7 @@ test('reports a Local rollback as a localized warning', async ({ page }) => {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+    body: JSON.stringify(authenticatedLocalSession()),
   }));
   await answerQuietSpace(page);
   await routeRead(page, 'platform.release', () => ({ status: 200, json: {
@@ -504,7 +483,7 @@ test('reads the Local release status at open and when Admin says it changed, nev
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+    body: JSON.stringify(authenticatedLocalSession()),
   }));
   await answerQuietSpace(page);
   let reads = 0;
@@ -539,7 +518,7 @@ test('opens the Store for the Team its link names and refuses a missing Team', {
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+    body: JSON.stringify(authenticatedLocalSession()),
   }));
   await answerQuietSpace(page);
   await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [
@@ -595,7 +574,7 @@ test('never renders a matching publication while Local snapshots are settling', 
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+    body: JSON.stringify(authenticatedLocalSession()),
   }));
   await answerQuietSpace(page);
   await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
@@ -702,7 +681,7 @@ test('renders Assistant identities immediately during in-app icon hydration', as
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+    body: JSON.stringify(authenticatedLocalSession()),
   }));
   await answerQuietSpace(page);
   await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
@@ -778,7 +757,7 @@ test('shows the first Assistants view before a public icon finishes loading', as
       return;
     }
     const body = {
-      '/api/session': authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
+      '/api/session': authenticatedLocalSession(),
     }[path];
     await route.fulfill({
       status: body ? 200 : 503,
@@ -835,7 +814,7 @@ test('shows an over-budget public icon as unavailable instead of loading forever
     // The icon never answers within ICON_PRESENTATION_BUDGET_MS, so the catalog gives up on it.
     if (path === '/api/assistants/hello-pulse/catalog-icon') return;
     const body = {
-      '/api/session': authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
+      '/api/session': authenticatedLocalSession(),
     }[path];
     await route.fulfill({
       status: body ? 200 : 503,
@@ -875,7 +854,7 @@ test('keeps public discovery available when Local snapshot enumeration fails', a
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+    body: JSON.stringify(authenticatedLocalSession()),
   }));
   await answerQuietSpace(page);
   await routeRead(page, 'teams.list', () => ok({ teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] }));
@@ -921,7 +900,7 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+    body: JSON.stringify(authenticatedLocalSession()),
   }));
   await answerQuietSpace(page);
   await routeRead(page, 'teams.list', () => ok({ teams: [
@@ -1091,7 +1070,7 @@ test('removes an installed publication before its staged build is installed', as
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+    body: JSON.stringify(authenticatedLocalSession()),
   }));
   await answerQuietSpace(page);
   await routeRead(page, 'teams.list', () => ok({ teams: [
@@ -1189,7 +1168,7 @@ test('asks for the first Team from the Store when no Team exists', async ({ page
   await page.route('**/api/**', (route) => route.fulfill({ status: 503, body: '{}' }));
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',
-    body: JSON.stringify(authenticatedLocalSession({ oauth_completion_mode: 'automatic' })),
+    body: JSON.stringify(authenticatedLocalSession()),
   }));
   await answerQuietSpace(page);
   await routeRead(page, 'teams.list', () => ok({ teams: [] }));

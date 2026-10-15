@@ -95,9 +95,20 @@ const FROZEN_RUN = {
   steps: 1,
 };
 
-export function authenticatedLocalSession(overrides = {}) {
+/** Admin's session answer before any sign-in; `overrides` sets the fields a test changes. */
+export function localSession(overrides = {}) {
   return {
     profile: 'local',
+    authenticated: false,
+    initialized: false,
+    authentication_state: 'uninitialized',
+    ...overrides,
+  };
+}
+
+/** Admin's session answer for a Supervisor signed in with a passkey at a loopback origin. */
+export function authenticatedLocalSession(overrides = {}) {
+  return localSession({
     authenticated: true,
     initialized: true,
     authentication_state: 'configured',
@@ -107,7 +118,7 @@ export function authenticatedLocalSession(overrides = {}) {
     passkey_enrollment_available: true,
     passkey_registered: true,
     ...overrides,
-  };
+  });
 }
 
 // Responses are deep copies, so neither a caller nor another scenario can mutate a scenario's state.
@@ -295,7 +306,7 @@ const STARTS = {
   // The Supervisor signs in again: with an authenticator code, or with a recovery code and the authenticator's
   // re-enrollment it begins, which shows a new set of codes once (ADR-0051).
   'sign-in': () => ({
-    session: { profile: 'local', authenticated: false, initialized: true, authentication_state: 'configured' },
+    session: localSession({ initialized: true, authentication_state: 'configured' }),
     teams: [...TEAMS],
     routines: [],
     runs: [],

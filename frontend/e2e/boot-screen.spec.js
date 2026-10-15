@@ -4,34 +4,11 @@ import { expect, test } from '@playwright/test';
 
 import { accessibilityViolations } from './axe.js';
 import { readsOf, routeChat, routeRead, waitForRead } from './scenarioRoutes.js';
+import { authenticatedLocalSession, localSession } from './scenarios.js';
 
 const modelCatalog = JSON.parse(
   readFileSync(new URL('../src/lib/brain/catalog.json', import.meta.url), 'utf8'),
 );
-
-function localSession(overrides = {}) {
-  return {
-    profile: 'local',
-    authenticated: false,
-    initialized: false,
-    authentication_state: 'uninitialized',
-    ...overrides,
-  };
-}
-
-function authenticatedLocalSession(overrides = {}) {
-  return localSession({
-    authenticated: true,
-    initialized: true,
-    authentication_state: 'configured',
-    authentication_method: 'webauthn',
-    origin_admitted: true,
-    oauth_completion_mode: null,
-    passkey_enrollment_available: true,
-    passkey_registered: true,
-    ...overrides,
-  });
-}
 
 function deferred() {
   let resolve;
@@ -64,7 +41,7 @@ async function routeReadyChat(page, { teamGate, inferenceGate }) {
     503,
   ));
   await routeSession(page, {
-    body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
+    body: authenticatedLocalSession(),
   });
   await routeRead(page, 'teams.list', async () => {
     await teamGate.promise;
@@ -142,7 +119,7 @@ test('keeps boot visible across the authenticated root redirect and releases wit
     503,
   ));
   await routeSession(page, {
-    body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
+    body: authenticatedLocalSession(),
   });
   await routeRead(page, 'teams.list', async () => {
     await teamGate.promise;
@@ -170,7 +147,7 @@ test('releases to the final Chat error when Team hydration fails', async ({ page
     503,
   ));
   await routeSession(page, {
-    body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
+    body: authenticatedLocalSession(),
   });
   // Team refuses the read: a failure of a working connection, which an outage (only read again) is not.
   await routeRead(page, 'teams.list', async () => {
@@ -204,7 +181,7 @@ test('releases the Assistants route when initial catalog hydration does not sett
     503,
   ));
   await routeSession(page, {
-    body: authenticatedLocalSession({ oauth_completion_mode: 'automatic' }),
+    body: authenticatedLocalSession(),
   });
   await routeRead(page, 'teams.list', () => ({
     status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] },
@@ -267,7 +244,7 @@ test('only the newest session check decides what opens', async ({ page }) => {
     // The older of two checks answers last, from before the session ended.
     if (checks === 2) {
       await olderAnswer.promise;
-      return json(route, authenticatedLocalSession());
+      return json(route, authenticatedLocalSession({ oauth_completion_mode: null }));
     }
     return json(route, localSession({ initialized: true, authentication_state: 'configured' }));
   });
