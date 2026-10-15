@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 import { assistantDetails, publicAssistant, stagedSnapshot } from './assistantPages.js';
 import { accessibilityViolations } from './axe.js';
+import { switchLanguage } from './interaction.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 import { dropSessions, nextRead, raiseTopic, readsOf, routeRead, waitForRead } from './scenarioRoutes.js';
 import { authenticatedLocalSession } from './scenarios.js';
@@ -297,8 +298,7 @@ test('never shows a page read for the previous language once the language change
   await waitForRead(page, 'snapshots.details', (params) => params.locale === 'en');
 
   // The language changes while the English page is still being read.
-  await page.getByRole('button', { name: 'Language: English' }).click();
-  await page.getByRole('menuitemradio', { name: /Português/ }).click();
+  await switchLanguage(page, 'en', 'pt');
   await waitForRead(page, 'snapshots.details', (params) => params.locale === 'pt');
   // The English answer arrives after the change; the page drops it.
   releaseEnglish();

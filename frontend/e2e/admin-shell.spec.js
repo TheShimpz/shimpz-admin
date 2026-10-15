@@ -4,6 +4,7 @@ import { expect, test } from '@playwright/test';
 import { assistantDetails, PAGE_COPY, publicAssistant } from './assistantPages.js';
 import { accessibilityViolations } from './axe.js';
 import { catalogSnapshots } from './catalogScenario.js';
+import { switchLanguage } from './interaction.js';
 import {
   activityReports,
   raiseTopic,
@@ -316,8 +317,7 @@ test('Admin opens and changes its language where the browser refuses site storag
   await routeScenario(page, 'ready');
   await page.goto('/chat/?team=marketing');
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Language: English' }).click();
-  await page.getByRole('menuitemradio', { name: /Português/ }).click();
+  await switchLanguage(page, 'en', 'pt');
   await expect(page.getByRole('button', { name: 'Idioma: Português' })).toBeFocused();
   expect(errors).toEqual([]);
 });
@@ -373,8 +373,7 @@ test('reports a Local rollback as a localized warning', async ({ page }) => {
 
   const release = page.getByText(ADMIN_VERSION).locator('..');
   await expect(release.getByText('Update rolled back', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Language: English' }).click();
-  await page.getByRole('menuitemradio', { name: /Português/ }).click();
+  await switchLanguage(page, 'en', 'pt');
   await expect(release.getByText('Atualização revertida', { exact: true })).toBeVisible();
 });
 

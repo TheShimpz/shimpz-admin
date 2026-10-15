@@ -6,6 +6,7 @@ import { assistantDetails, PAGE_COPY } from './assistantPages.js';
 
 import { messages } from '../src/lib/i18n/catalogs.js';
 import { accessibilityViolations } from './axe.js';
+import { sendMessage, switchLanguage } from './interaction.js';
 import { localizedChallenge } from './localizedRequest.js';
 
 import {
@@ -1133,8 +1134,7 @@ function sentMessages(frames) {
 async function askVoiceQuestion(page, scenario) {
   await page.goto('/chat/?team=marketing');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await fillWhenReady(page, composer, VOICE_REQUEST);
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, VOICE_REQUEST);
   const card = page.getByRole('form', { name: SCENARIO_CLARIFICATION.question });
   await expect(card.getByRole('radio', { name: /· recommended/ })).toBeChecked();
   expect(sentMessages(scenario.chatFrames())).toEqual([VOICE_REQUEST]);
@@ -1166,8 +1166,7 @@ test('answering a question sends the request with the answer at once and the Tea
   await expect(send).toBeEnabled();
   await composer.fill('');
   await expect(page.getByRole('article', { name: 'You' })).toHaveCount(2);
-  await page.getByRole('button', { name: 'Language: English' }).click();
-  await page.getByRole('menuitemradio', { name: 'Português' }).click();
+  await switchLanguage(page, 'en', 'pt');
   await expect(page.getByRole('textbox', { name: 'Enviar', exact: true })).toBeEnabled();
   await expect(card).toHaveCount(0);
   expect(sentMessages(scenario.chatFrames())).toHaveLength(2);
@@ -1285,8 +1284,7 @@ test('a send refused while the Space resets explains the reset', async ({ page }
     terminalDetail: 'space-resetting: the Space is being reset; retry when it finishes',
   });
   await page.goto('/chat/');
-  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, 'List my DNS zones');
   const notice = page.locator('[data-slot="notice"].shimpz-notice--error');
   await expect(notice).toContainText(messages.en.chatPage.spaceResetting);
 });
@@ -1319,9 +1317,7 @@ test('an error delivered by a reconnect sync is shown without sending the finish
     });
   });
   await page.goto('/chat/?team=marketing');
-  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await fillWhenReady(page, composer, 'Uninstall the Assistant');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, 'Uninstall the Assistant');
 
   await expect(page.getByText('The local chat runtime is unavailable.')).toBeVisible();
   expect(frames.filter((frame) => frame.type === 'chat')).toHaveLength(1);
@@ -1338,9 +1334,7 @@ test('a question of 240 emoji is offered and its emoji answer is sent', async ({
   const reply = `${clarification.question}\n\n1. ${clarification.options[0].label} ✓ — ${clarification.options[0].description}\n2. This week`;
   const chat = await routeReadyChat(page, { clarification, reply });
   await page.goto('/chat/');
-  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await fillWhenReady(page, composer, 'Which new AI models were released?');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, 'Which new AI models were released?');
 
   const card = page.getByRole('form', { name: clarification.question });
   await card.getByRole('button', { name: 'Answer' }).click();
@@ -1353,10 +1347,8 @@ test('a question of 240 emoji is offered and its emoji answer is sent', async ({
 test('an answer that would exceed one message is refused and nothing is sent', async ({ page }) => {
   const chat = await routeReadyChat(page, { clarification: CLARIFICATION, reply: CLARIFICATION_REPLY });
   await page.goto('/chat/');
-  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
   const request = 'x'.repeat(16_000 - 60);
-  await fillWhenReady(page, composer, request);
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, request);
 
   const card = page.getByRole('form', { name: CLARIFICATION.question });
   await card.getByRole('button', { name: 'Answer' }).click();
@@ -1370,8 +1362,7 @@ test('an answer shows the question it answers, when sent and after a reload', as
   const request = 'Which new AI models were released?';
   await routeReadyChat(page, { clarification: CLARIFICATION, reply: CLARIFICATION_REPLY });
   await page.goto('/chat/');
-  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), request);
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, request);
   const card = page.getByRole('form', { name: CLARIFICATION.question });
   const answer = card.getByRole('button', { name: 'Answer' });
   await card.getByRole('radio', { name: 'Other answer' }).check();
@@ -1472,8 +1463,7 @@ test('shows a Brain failure and its retry beside an earlier chat error', async (
     terminalError: true,
   });
   await page.goto('/chat/');
-  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, 'List my DNS zones');
   await expect(page.getByText('The local chat runtime is unavailable.')).toBeVisible();
 
   await chooseBrainModel(page, 'Claude Opus 5.5');
@@ -1627,8 +1617,7 @@ test('the composer sends 16,000 emoji and shows a reply longer than 60,000 UTF-1
   const chat = await routeReadyChat(page, { reply: `Accepted ${'😀'.repeat(30_001)}` });
   await page.goto('/chat/');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await fillWhenReady(page, composer, message);
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, message);
 
   await expect.poll(() => chat.chatFrames().length).toBe(1);
   expect(chat.chatFrames()[0].message).toBe(message);
@@ -2610,9 +2599,7 @@ test('keeps reconnecting while Admin restarts for a release and recovers without
   });
   await page.goto('/chat/');
 
-  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await fillWhenReady(page, composer, 'List my DNS zones');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, 'List my DNS zones');
   // One condition, one message: the shell says that Admin reconnects, and the chat adds no notice of its own.
   const reconnecting = page.getByText(messages.en.shell.reconnecting);
   await expect(reconnecting).toBeVisible();
@@ -2629,8 +2616,7 @@ test('keeps reconnecting while Admin restarts for a release and recovers without
   await expect.poll(advanced(() => reconnecting.isVisible()), { timeout: 30_000, intervals: [100] }).toBe(false);
   await expect(page.getByText('The secure chat connection could not be established.', { exact: false })).toHaveCount(0);
 
-  await fillWhenReady(page, composer, 'List my DNS zones');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, 'List my DNS zones');
   await expect(page.getByText('Task complete.')).toBeVisible();
 });
 
@@ -2643,9 +2629,7 @@ test('a session that expired while disconnected returns to sign-in instead of re
   });
   await page.goto('/chat/');
 
-  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await fillWhenReady(page, composer, 'List my DNS zones');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, 'List my DNS zones');
   // A dropped socket first asks Admin about the session (ADR-0114): signed out, it returns to sign-in at once and
   // never tries to reconnect.
   await expect(page.getByLabel('Password', { exact: true })).toBeVisible();
@@ -2660,9 +2644,7 @@ test('an expired session ends the chat connection instead of reconnecting', asyn
   const chat = await routeReadyChat(page, { expireSessionOnFirstChat: true });
   await page.goto('/chat/');
 
-  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await fillWhenReady(page, composer, 'List my DNS zones');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, 'List my DNS zones');
   // Admin closing the socket as signed out (4401) returns to sign-in and clears what the session showed.
   await expect(page.getByLabel('Password', { exact: true })).toBeVisible();
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toHaveCount(0);
@@ -2774,9 +2756,7 @@ test('keeps target-required guidance valid when Stop races its response', async 
 test('a failed uninstall decision shows its error', async ({ page }) => {
   const chat = await routeReadyChat(page, { assistantUninstall: true, failUninstallDecision: true });
   await page.goto('/chat/');
-  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await fillWhenReady(page, composer, 'Uninstall the Cloudflare Assistant');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, 'Uninstall the Cloudflare Assistant');
   const uninstall = page.getByRole('button', { name: 'Uninstall Shimpz Cloudflare' });
   await expect(uninstall).toBeEnabled();
   await uninstall.click();
@@ -2788,12 +2768,9 @@ test('a failed uninstall decision shows its error', async ({ page }) => {
 test('a typed uninstall decision that fails shows its error', async ({ page }) => {
   const chat = await routeReadyChat(page, { assistantUninstall: true, failUninstallDecision: true });
   await page.goto('/chat/');
-  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await fillWhenReady(page, composer, 'Uninstall the Cloudflare Assistant');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, 'Uninstall the Cloudflare Assistant');
   await expect(page.getByRole('button', { name: 'Uninstall Shimpz Cloudflare' })).toBeEnabled();
-  await fillWhenReady(page, composer, 'no');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, 'no');
 
   await expect(page.getByRole('alert').filter({ hasText: 'chat history is unavailable' })).toBeVisible();
   expect(chat.chatFrames().map((frame) => frame.message)).toEqual(['Uninstall the Cloudflare Assistant', 'no']);
@@ -2921,10 +2898,8 @@ for (const [interruption, interrupt] of [
     const chat = await routeReadyChat(page, { assistantUninstall: true, holdAssistantIcon: true, secondTeam: true });
     await freezeClock(page);
     await page.goto('/chat/');
-    const composer = page.getByRole('textbox', { name: 'Send', exact: true });
     await expect.poll(() => chat.syncFrames()).toBe(1);
-    await fillWhenReady(page, composer, 'Uninstall the Cloudflare Assistant');
-    await page.getByRole('button', { name: 'Send' }).click();
+    await sendMessage(page, 'Uninstall the Cloudflare Assistant');
     const task = page.locator('[data-slot="chat-task"]');
     const uninstall = task.getByRole('button', { name: 'Uninstall Shimpz Cloudflare' });
     await expect(uninstall).toBeEnabled();
@@ -3670,8 +3645,7 @@ test('restores Supervisor password authorization as a focused validation modal',
     }],
   });
   await page.goto('/chat/');
-  await page.getByRole('button', { name: 'Language: English' }).click();
-  await page.getByRole('menuitemradio', { name: 'Português' }).click();
+  await switchLanguage(page, 'en', 'pt');
   await page.getByRole('textbox', { name: 'Enviar', exact: true }).fill('Crie o registro DNS revisado');
   await page.getByRole('button', { name: 'Enviar' }).click();
   const dialog = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
@@ -3731,8 +3705,7 @@ test('blocks Supervisor password retry behind the server countdown', async ({ pa
 test('keeps authorization modal until Team progress proves password continuation', async ({ page }) => {
   const contract = await routeReadyChat(page, { humanKind: 'auth:password', holdHumanResponse: true });
   await page.goto('/chat/');
-  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'Create the reviewed DNS record');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, 'Create the reviewed DNS record');
   const dialog = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
   await dialog.getByLabel('Supervisor password').fill('supervisor-password');
   await dialog.getByRole('button', { name: 'Confirm authorization' }).click();
@@ -3753,8 +3726,7 @@ test('reopens the Team-owned human request when reconnect sync proves it is stil
     humanKind: 'auth:password',
   });
   await page.goto('/chat/');
-  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'Create the reviewed DNS record');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, 'Create the reviewed DNS record');
   const dialog = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
   await dialog.getByLabel('Supervisor password').fill('supervisor-password');
   await dialog.getByRole('button', { name: 'Confirm authorization' }).click();
@@ -4826,8 +4798,7 @@ test.describe('Team Routines', () => {
   async function recordRoutine(page, scenario = 'routine-card') {
     const routed = await routeScenario(page, scenario);
     await page.goto('/chat/?team=marketing');
-    await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), ROUTINE_TEXT.en.request);
-    await page.getByRole('button', { name: 'Send' }).click();
+    await sendMessage(page, ROUTINE_TEXT.en.request);
     return routed;
   }
 
@@ -4955,8 +4926,7 @@ test.describe('Team Routines', () => {
     });
     await page.goto('/chat/?team=marketing');
     const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-    await fillWhenReady(page, composer, ROUTINE_TEXT.en.request);
-    await page.getByRole('button', { name: 'Send' }).click();
+    await sendMessage(page, ROUTINE_TEXT.en.request);
     const card = page.getByRole('region', { name: messages.en.routine.proposal.title }).first();
     await card.getByRole('button', { name: 'Edit', exact: true }).click();
     await card.getByRole('button', { name: 'Send', exact: true }).click();
@@ -7305,9 +7275,7 @@ test.describe('Team Routines', () => {
     await expect(turns.locator('article', { has: page.locator('.routine-run') }).locator('time').first()).toHaveText('12:00:00');
 
     // A message sent now belongs to today, under the header already there.
-    const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-    await fillWhenReady(page, composer, 'Sent today');
-    await page.getByRole('button', { name: 'Send' }).click();
+    await sendMessage(page, 'Sent today');
     await expect(page.getByText('Live answer', { exact: true })).toBeVisible();
     await expect(days).toHaveText(DAYS);
     // A message sent and a reply completed while the page is open show the times the page saw them.
@@ -7402,13 +7370,11 @@ test('every chat frame carries the interface language selected when it is sent',
   const chat = await routeReadyChat(page);
   await page.goto('/chat/');
   const composer = page.getByRole('textbox', { name: 'Send', exact: true });
-  await fillWhenReady(page, composer, 'List my DNS zones');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await sendMessage(page, 'List my DNS zones');
   await expect.poll(() => chat.chatFrames().length).toBe(1);
   await expect(composer).toBeEnabled();
 
-  await page.getByRole('button', { name: 'Language: English' }).click();
-  await page.getByRole('menuitemradio', { name: 'Português' }).click();
+  await switchLanguage(page, 'en', 'pt');
   const portuguese = page.getByRole('textbox', { name: 'Enviar', exact: true });
   await portuguese.fill('Liste minhas zonas DNS');
   await page.getByRole('button', { name: 'Enviar', exact: true }).click();

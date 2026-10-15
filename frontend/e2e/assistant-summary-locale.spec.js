@@ -107,8 +107,7 @@ test('shows published and staged summaries in the interface language and reloads
   await expect(staged).toContainText(STAGED.en);
   expect(requests.summaries).toEqual([]);
 
-  await page.getByRole('button', { name: 'Language: English' }).click();
-  await page.getByRole('menuitemradio', { name: /Português/ }).click();
+  await switchLanguage(page, 'en', 'pt');
 
   await expect(published).toContainText(PUBLISHED.pt);
   await expect(staged).toContainText(STAGED.pt);
