@@ -14,7 +14,7 @@
   menuLabel={$t('shell.supervisorMenu')}
   triggerLabel={$t('shell.supervisorMenu')}
   compact
-  onSelect={(value) => value === 'security' && onsecurity?.()}
+  onSelect={(value) => value === 'security' && onsecurity()}
 >
   {#snippet triggerIcon()}
     <span class="avatar">

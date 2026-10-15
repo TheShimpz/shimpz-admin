@@ -18,8 +18,8 @@
     primaryDisabled = false,
     busy = false,
     destructive = false,
-    onconfirm = () => {},
-    oncancel = () => {},
+    onconfirm,
+    oncancel,
     // The dialog's own title id, distinct for each dialog a page holds.
     titleId = 'assistant-action-title',
     // What the dialog shows before its target and its error.

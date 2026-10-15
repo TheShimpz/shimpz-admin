@@ -7,7 +7,7 @@
     ondelete,
     renameLabel,
     onrename,
-    routinesLabel = '',
+    routinesLabel,
     onroutines = null,
   } = $props();
 

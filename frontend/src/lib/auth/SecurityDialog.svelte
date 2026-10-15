@@ -54,7 +54,7 @@
     rotated = false;
     opened = false;
     dialog?.close();
-    onclose?.();
+    onclose();
   }
 
   async function confirmed(operation, proof) {
