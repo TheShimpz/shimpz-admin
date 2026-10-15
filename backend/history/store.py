@@ -771,9 +771,9 @@ def _validate_stored_payload(payload: dict[str, object]) -> None:
 
 # A page reads one of two views of a Team's transcript. The chat shows the conversation, how the person answered each
 # Routine card, and, of its Routines' notices, only each Routine's creation; a Routine's own history is its runs, its
-# healthy rollups, the runs it missed, and its pause after a failure streak, which only its panel shows. Both filter the same rows, so a page's position
-# cursor works alike in either. The view's first parameter is the Routine id, or null for the chat; its second is that
-# id again.
+# healthy rollups, the runs it missed, and its pause after a failure streak, which only its panel shows. Both filter the
+# same rows, so a page's position cursor works alike in either. The view's first parameter is the Routine id, or null
+# for the chat; its second is that id again.
 _PAGE_SELECT = "SELECT position, event_key, payload, provenance, created_at FROM transcript WHERE team_id = ? "
 _PAGE_VIEW = (
     "AND CASE WHEN ? IS NULL "
