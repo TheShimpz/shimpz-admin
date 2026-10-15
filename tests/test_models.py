@@ -102,8 +102,7 @@ class ModelProviderTests(unittest.TestCase):
 
     def test_invalid_provider_and_key_fail_closed(self) -> None:
         for provider, secret in (
-            ("codex", "sk-test-0123456789"),
-            ("claude-code", "sk-test-0123456789"),
+            ("unknown-provider", "sk-test-0123456789"),
             ("openai", " short "),
             ("anthropic", "line-one\nline-two-secret"),
         ):

@@ -6,7 +6,7 @@ to the browser, or mixed with the platform media key in `.env`.
 
 Fail-loud on corruption: a damaged admin.json RAISES rather than reading as "no password set" —
 otherwise a corrupt store would silently re-open first-run bootstrap and let anyone claim the
-password. (Contrast with shimpzipc's quarantine-and-continue; here "continue" is a security hole.)
+password.
 """
 
 import copy

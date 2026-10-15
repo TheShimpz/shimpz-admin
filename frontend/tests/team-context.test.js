@@ -254,7 +254,7 @@ test('a confirmed empty Space keeps the catalog while malformed Team data fails 
 
   for (const document of [
     { teams: [{ team_id: '../escape', team_name: 'Unsafe', status: 'running' }] },
-    { teams: [{ id: 'marketing', name: 'Unsupported alias', status: 'running' }] },
+    { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running', extra: true }] },
     { teams: [], trace_id: '../invalid' },
     { teams: [], debug: true },
   ]) {
