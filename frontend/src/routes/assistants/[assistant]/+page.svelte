@@ -11,7 +11,7 @@
   import AssistantActionDialog from '#lib/assistants/ActionDialog.svelte';
   import { acquireIcon, localIcon, publicIcon } from '#lib/assistants/iconCache.js';
   import { installedIconUrl } from '#lib/assistants/icons.js';
-  import { actionGroups, continuingText, pageTarget } from '#lib/assistants/page.js';
+  import { actionGroups, continuingText, pageTarget, storeTeam } from '#lib/assistants/page.js';
   import { installedDetails, publicCatalog, snapshotDetails, stagedSnapshots } from '#lib/assistants/sources.js';
   import { CREATOR_LINK_ICONS, CREATOR_LINK_NAMES } from '#lib/assistants/creatorLinks.js';
   import { locale, t } from '#lib/i18n/index.js';
@@ -22,7 +22,7 @@
   import { groupLocalAssistantSnapshots } from '#lib/assistants/snapshots.js';
   import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teams/context.js';
   import { ASSISTANT_LIMIT_REACHED } from '#lib/api.js';
-  import { ASSISTANT_ID_RE, TEAM_ID_RE } from '#lib/ids.js';
+  import { isAssistantId } from '#lib/ids.js';
 
   const initialViewReadiness = getContext(INITIAL_VIEW_READINESS);
 
@@ -56,21 +56,10 @@
   let storeCopy = $derived($t('store'));
   let actionCopy = $derived($t('assistantStore'));
   let assistantId = $derived(page.params.assistant ?? '');
-  let validAssistant = $derived(ASSISTANT_ID_RE.test(assistantId) && assistantId.length <= 40);
-  let runningTeams = $derived($teamContext.teams.filter((team) => team.status === 'running'));
-  let requestedTeamId = $derived.by(() => {
-    const candidate = page.url.searchParams.get('team') ?? '';
-    return TEAM_ID_RE.test(candidate) ? candidate : '';
-  });
-  // The page acts only for the exact Team its link names, and only once that Team's context is ready.
-  let requestedTeamUnavailable = $derived(
-    $teamContext.phase === 'ready' && page.url.searchParams.has('team') && requestedTeamId !== $teamContext.selectedTeamId,
-  );
-  let activeTeam = $derived(
-    $teamContext.phase !== 'ready' || requestedTeamUnavailable
-      ? null
-      : runningTeams.find((team) => team.id === $teamContext.selectedTeamId) ?? null,
-  );
+  let validAssistant = $derived(isAssistantId(assistantId));
+  let store = $derived(storeTeam($teamContext, page.url.searchParams));
+  let requestedTeamUnavailable = $derived(store.unavailable);
+  let activeTeam = $derived(store.team);
   let installed = $derived(
     activeTeam ? $teamContext.installedAssistants.find((entry) => entry.assistant === assistantId) ?? null : null,
   );

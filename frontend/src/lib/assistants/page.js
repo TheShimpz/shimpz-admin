@@ -4,7 +4,7 @@
 import { HELP_URL_PATTERN } from '../chat/protocol.js';
 import { exactKeys } from '../api.js';
 import { codePointLength } from '../grammar.js';
-import { isIdentifier } from '../ids.js';
+import { isIdentifier, TEAM_ID_RE } from '../ids.js';
 
 // The Creator's link kinds in their display order.
 const LINK_KINDS = ['site', 'github', 'x', 'youtube', 'linkedin', 'instagram'];
@@ -177,4 +177,18 @@ export function pageTarget({ installed, localGroup, publication, localKnown = tr
   if (publication) return { mode: 'public', publication };
   if (!publicKnown) return { mode: 'unverified' };
   return { mode: 'missing' };
+}
+
+/**
+ * The Team a Store page acts for. A page whose link names a Team acts only for that exact Team, and only once its
+ * context is ready (`unavailable` while the selected Team is another one); either way the Team must be running.
+ */
+export function storeTeam(context, searchParams) {
+  const candidate = searchParams.get('team') ?? '';
+  const requested = TEAM_ID_RE.test(candidate) ? candidate : '';
+  const unavailable = context.phase === 'ready' && searchParams.has('team') && requested !== context.selectedTeamId;
+  const team = context.phase !== 'ready' || unavailable
+    ? null
+    : context.teams.find((entry) => entry.status === 'running' && entry.id === context.selectedTeamId) ?? null;
+  return { team, unavailable };
 }

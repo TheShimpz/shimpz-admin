@@ -8,8 +8,8 @@
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { locale, t } from '#lib/i18n/index.js';
   import { groupLocalAssistantSnapshots, projectPublishedAssistants } from '#lib/assistants/snapshots.js';
+  import { storeTeam } from '#lib/assistants/page.js';
   import { teamContext } from '#lib/teams/context.js';
-  import { TEAM_ID_RE } from '#lib/ids.js';
 
   const ICON_PRESENTATION_BUDGET_MS = 1500;
   // How far beyond the screen a row's icon is already shown, so scrolling meets icons that are ready.
@@ -38,7 +38,6 @@
   let copy = $derived($t('assistantStore'));
   let localCopy = $derived($t('store'));
   let pageCopy = $derived($t('assistantPage'));
-  let runningTeams = $derived($teamContext.teams.filter((team) => team.status === 'running'));
   // Unknown until read. A failure is said once it happens, while the value keeps reading again on its own (a failure
   // that clears by itself) or until the person asks (a refusal); the page never waits on a failed source.
   let localFailure = $derived($snapshots.status === 'error' ? $snapshots.error : $snapshots.status === 'loading' ? $snapshots.failing : null);
@@ -56,22 +55,11 @@
     $locale === 'en' ? [] : localSnapshotGroups.map((group) => summaryKey($locale, group.primary)),
   );
   let summaryStates = $derived(summaryFamily.of(summaryKeys));
-  let requestedTeamId = $derived.by(() => {
-    const candidate = page.url.searchParams.get('team') ?? '';
-    return TEAM_ID_RE.test(candidate) ? candidate : '';
-  });
-  // Without a visible destination header, the Store acts only for the exact Team its link names, and only once
-  // that Team's context is ready; every confirmation rechecks the Team it was opened for.
-  let requestedTeamUnavailable = $derived(
-    $teamContext.phase === 'ready'
-      && page.url.searchParams.has('team')
-      && requestedTeamId !== $teamContext.selectedTeamId,
-  );
-  let activeTeamRecord = $derived(
-    $teamContext.phase !== 'ready' || requestedTeamUnavailable
-      ? null
-      : runningTeams.find((team) => team.id === $teamContext.selectedTeamId) ?? null,
-  );
+  // Without a visible destination header, the Store acts only for the exact Team its link names; every confirmation
+  // rechecks the Team it was opened for.
+  let store = $derived(storeTeam($teamContext, page.url.searchParams));
+  let requestedTeamUnavailable = $derived(store.unavailable);
+  let activeTeamRecord = $derived(store.team);
   // The selected Team's installed Assistants: a row marks one installed in the Team its page acts for.
   let installedIds = $derived(new Set(
     activeTeamRecord ? $teamContext.installedAssistants.map((entry) => entry.assistant) : [],

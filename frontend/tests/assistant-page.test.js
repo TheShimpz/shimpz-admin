@@ -8,6 +8,7 @@ import {
   canonicalPageCopy,
   continuingText,
   pageTarget,
+  storeTeam,
 } from '../src/lib/assistants/page.js';
 import { loadAssistantDetails, loadLocalAssistantDetails } from '../src/lib/assistants/preview.js';
 import { LocalApiError } from '../src/lib/api.js';
@@ -140,6 +141,21 @@ test('an installed Assistant always shows its binding; a candidate needs every s
   assert.equal(pageTarget({ installed: null, localGroup: null, publication, localKnown: false }).mode, 'unverified');
   assert.equal(pageTarget({ installed: null, localGroup: group, publication: null, publicKnown: false }).mode, 'local');
   assert.equal(pageTarget({ installed: null, localGroup: null, publication: null, publicKnown: false }).mode, 'unverified');
+});
+
+test('a Store page acts only for the running Team its link names, once that Team is selected', () => {
+  const teams = [
+    { id: 'alpha', status: 'running' },
+    { id: 'beta', status: 'stopped' },
+  ];
+  const context = (selectedTeamId, phase = 'ready') => ({ phase, selectedTeamId, teams });
+  const link = (query) => new URLSearchParams(query);
+  assert.deepEqual(storeTeam(context('alpha'), link('')), { team: teams[0], unavailable: false });
+  assert.deepEqual(storeTeam(context('alpha'), link('team=alpha')), { team: teams[0], unavailable: false });
+  assert.deepEqual(storeTeam(context('alpha'), link('team=beta')), { team: null, unavailable: true });
+  assert.deepEqual(storeTeam(context('alpha'), link('team=Not%20an%20id')), { team: null, unavailable: true });
+  assert.deepEqual(storeTeam(context('beta'), link('team=beta')), { team: null, unavailable: false });
+  assert.deepEqual(storeTeam(context('alpha', 'loading'), link('team=beta')), { team: null, unavailable: false });
 });
 
 test('reads a staged page through the busy-retrying preview queue in exactly the asked language', async () => {
