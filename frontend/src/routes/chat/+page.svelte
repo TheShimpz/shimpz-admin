@@ -9,15 +9,12 @@
   import AssistantIntegrationsDrawer from '#lib/assistants/IntegrationsDrawer.svelte';
   import Composer from '#lib/chat/Composer.svelte';
   import Exchange from '#lib/chat/Exchange.svelte';
-  import { snapshotIcon } from '#lib/chat/lifecycle/snapshot.js';
+  import { UninstallLifecycle } from '#lib/chat/lifecycle/uninstall.svelte.js';
   import {
     cardAnswers,
-    expiredTurns,
     friendlyChatError,
     groupExchanges,
     installPlanTurns,
-    lifecycleTurnIndex,
-    lifecycleTurns,
     projectedChatError,
     replyFields,
   } from '#lib/chat/turns.js';
@@ -76,6 +73,20 @@
     loadFailed: () => copy.loadFailed,
     connect: (teamId) => connectSocket(teamId),
   });
+  // An Assistant uninstall's proposal, decision, and outcome (lib/chat/lifecycle/uninstall.svelte.js).
+  const uninstall = new UninstallLifecycle(transcript, {
+    teamId: () => chatTeamId,
+    words: () => words,
+    error: () => error,
+    setError,
+    clearError,
+    socket: () => socket,
+    submit: (decision) => submitMessage(decision, {
+      focusActiveTurn: false,
+      projectUserTurn: false,
+      useCapabilityObjective: false,
+    }),
+  });
   // The turn in flight, its progress, and its receipt (lib/chat/turn.svelte.js).
   const liveTurn = new ChatTurn();
 
@@ -87,7 +98,7 @@
     socket = null;
     socketReady = false;
     liveTurn.settle();
-    expireSocketLifecycles();
+    uninstall.expireAll();
     liveTurn.resetProgress();
     resetChallengeState();
   }
@@ -118,8 +129,6 @@
     globalThis.clearTimeout(reattachTimer);
     protocolFailures = 0;
   }
-  let lifecycleOutcomePending = $state(null);
-  let lifecycleDecisionPending = $state(false);
   let error = $state('');
   let errorDetail = $state('');
   // The selected Team's chat channel on the Admin session socket (ADR-0114). The shell's socket reconnects on its own
@@ -127,8 +136,6 @@
   // synchronizes the Team, so this page only reflects whether its channel is open.
   let socket = $state(null);
   let socketReady = $state(false);
-  const lifecycleExpiryTimers = new Map();
-  const lifecycleIconCaptures = new Map();
   let integrationsOpen = $state(false);
   let integrationsButton = $state();
   // The Integration request the turn waits on and its authorization.
@@ -206,12 +213,12 @@
   // first sync instead of accepting text for a moment and dropping what is typed when the sync starts.
   let socketOpening = $derived(Boolean(socket) && !socketReady);
   let composerBusy = $derived(
-    liveTurn.busy || liveTurn.syncing || socketOpening || lifecycleOutcomePending !== null || historyHydrating || transcript.checking,
+    liveTurn.busy || liveTurn.syncing || socketOpening || uninstall.outcomePending !== null || historyHydrating || transcript.checking,
   );
   // The Brain and fast-routing menus stay open while Admin reconnects, so a change they sent can say how it ended; what
   // they would send waits for the connection on its own.
   let menusBusy = $derived(
-    liveTurn.busy || liveTurn.syncing || lifecycleOutcomePending !== null || historyHydrating || liveTurn.stopping,
+    liveTurn.busy || liveTurn.syncing || uninstall.outcomePending !== null || historyHydrating || liveTurn.stopping,
   );
   // A message waits for a pending Brain change to be saved so the turn never runs on the previous selection.
   let brainSaving = $derived($modelContext.phase === 'saving');
@@ -261,7 +268,7 @@
   let lifecycleDecisionDisabled = $derived(
     composerBusy ||
       liveTurn.stopping ||
-      lifecycleDecisionPending ||
+      uninstall.decisionPending ||
       !inventoryReady ||
       !socketReady ||
       !socket ||
@@ -330,150 +337,6 @@
   // A plan's frame adds or updates its turn; a new turn takes the next render identity.
   function applyInstallPlanEvent(incoming, receipt) {
     transcript.extend((key) => installPlanTurns(transcript.turns, incoming, receipt, key, words));
-  }
-
-  function captureUninstallIcon(proposalId, assistantId, teamId) {
-    const existing = lifecycleIconCaptures.get(proposalId);
-    if (existing) return existing.promise;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2000);
-    let captured = false;
-    const promise = snapshotIcon(teamId, assistantId, controller.signal).then((snapshot) => {
-      if (!snapshot) return;
-      captured = true;
-      transcript.turns = transcript.turns.map((turn) => (
-        turn.lifecycle?.proposal_id === proposalId &&
-        turn.lifecycle.assistant.id === assistantId
-          ? { ...turn, lifecycle: { ...turn.lifecycle, iconSnapshot: snapshot } }
-          : turn
-      ));
-    }).catch(() => undefined).finally(() => {
-      clearTimeout(timer);
-      if (!captured && lifecycleIconCaptures.get(proposalId)?.promise === promise) {
-        lifecycleIconCaptures.delete(proposalId);
-      }
-    });
-    lifecycleIconCaptures.set(proposalId, { controller, promise });
-    return promise;
-  }
-
-  function clearLifecycleIconCaptures() {
-    for (const capture of lifecycleIconCaptures.values()) capture.controller.abort();
-    lifecycleIconCaptures.clear();
-  }
-
-  function clearLifecycleExpiry(proposalId) {
-    const timer = lifecycleExpiryTimers.get(proposalId);
-    if (timer) clearTimeout(timer);
-    lifecycleExpiryTimers.delete(proposalId);
-  }
-
-  function scheduleLifecycleExpiry(proposalId, expiresIn) {
-    clearLifecycleExpiry(proposalId);
-    lifecycleExpiryTimers.set(proposalId, setTimeout(() => {
-      lifecycleExpiryTimers.delete(proposalId);
-      transcript.turns = transcript.turns.map((turn) => (
-        turn.lifecycle?.proposal_id === proposalId && turn.lifecycle.state === 'proposed'
-          ? { ...turn, lifecycle: { ...turn.lifecycle, state: 'expired' } }
-          : turn
-      ));
-    }, expiresIn * 1000));
-  }
-
-  function expireSocketLifecycles() {
-    for (const timer of lifecycleExpiryTimers.values()) clearTimeout(timer);
-    lifecycleExpiryTimers.clear();
-    transcript.turns = expiredTurns(transcript.turns);
-  }
-
-  // A proposal adds its card, with its expiry and icon snapshot; a later frame moves it on. True when the uninstall ended.
-  function applyLifecycleEvent(incoming, receipt) {
-    let terminal = false;
-    transcript.extend((key) => {
-      const next = lifecycleTurns(transcript.turns, incoming, receipt, key, words);
-      terminal = next.terminal;
-      return next.turns;
-    });
-    if (incoming.state !== 'proposed') {
-      clearLifecycleExpiry(incoming.proposal_id);
-      return terminal;
-    }
-    scheduleLifecycleExpiry(incoming.proposal_id, incoming.expires_in);
-    void captureUninstallIcon(
-      incoming.proposal_id,
-      incoming.assistant.id,
-      incoming.team_id,
-    );
-    return terminal;
-  }
-
-  async function appendUninstallOutcome(incoming) {
-    const { installedAssistants } = await refreshTeamInventory();
-    if (
-      lifecycleOutcomePending?.teamId !== incoming.team_id ||
-      lifecycleOutcomePending?.proposalId !== incoming.proposal_id ||
-      lifecycleOutcomePending?.assistantId !== incoming.assistant_id ||
-      chatTeamId !== incoming.team_id
-    ) return;
-    const index = lifecycleTurnIndex(transcript.turns, incoming.proposal_id);
-    if (index < 0) return;
-    const uninstall = transcript.turns[index].lifecycle;
-    if (
-      uninstall.state !== 'uninstalled' ||
-      uninstall.assistant.id !== incoming.assistant_id ||
-      uninstall.completionAnnounced
-    ) return;
-    const team = $teamContext.teams.find((entry) => entry.id === incoming.team_id);
-    const stillInstalled = installedAssistants.some(
-      (entry) => entry.assistant === incoming.assistant_id,
-    );
-    const stillProjected = $teamContext.installedAssistants.some(
-      (entry) => entry.assistant === incoming.assistant_id,
-    );
-    if (
-      stillInstalled ||
-      stillProjected ||
-      !team ||
-      $teamContext.phase !== 'ready' ||
-      $teamContext.selectedTeamId !== incoming.team_id ||
-      $teamContext.activeAssistantIds.includes(incoming.assistant_id)
-    ) throw new Error('uninstalled Assistant inventory mismatch');
-    transcript.turns = transcript.turns.map((turn, turnIndex) => (
-      turnIndex === index
-        ? { ...turn, lifecycle: { ...turn.lifecycle, completionAnnounced: true } }
-        : turn
-    ));
-    void transcript.reveal();
-  }
-
-  // An uninstall's outcome is announced once Team's inventory confirms the Assistant is gone. A read that fails keeps
-  // the outcome deferred, with its error, until the chat's Retry reads the inventory again.
-  let deferredUninstall = null;
-
-  function confirmUninstall(incoming) {
-    deferredUninstall = null;
-    lifecycleOutcomePending = {
-      teamId: incoming.team_id,
-      proposalId: incoming.proposal_id,
-      assistantId: incoming.assistant_id,
-    };
-    const lifecycleMessages = copy.uninstall;
-    const current = () => (
-      lifecycleOutcomePending?.teamId === incoming.team_id &&
-      lifecycleOutcomePending?.proposalId === incoming.proposal_id
-    );
-    return appendUninstallOutcome(incoming)
-      .then(() => {
-        if (current() && error === lifecycleMessages.refreshFailed) clearError();
-      })
-      .catch(() => {
-        if (!current()) return;
-        deferredUninstall = incoming;
-        setError(lifecycleMessages.refreshFailed);
-      })
-      .finally(() => {
-        if (current()) lifecycleOutcomePending = null;
-      });
   }
 
   function clearError() {
@@ -559,8 +422,7 @@
   async function retryInventory() {
     inventoryRetrying = true;
     try {
-      if (deferredUninstall?.team_id === chatTeamId) await confirmUninstall(deferredUninstall);
-      else await refreshTeamInventory().catch(() => {});
+      await (uninstall.retry(chatTeamId) ?? refreshTeamInventory().catch(() => {}));
       await tick();
     } finally {
       inventoryRetrying = false;
@@ -608,7 +470,7 @@
     socket = null;
     socketReady = false;
     liveTurn.syncing = false;
-    expireSocketLifecycles();
+    uninstall.expireAll();
     liveTurn.resetProgress();
     resetChallengeState();
     current?.close(1000, 'Team changed');
@@ -649,7 +511,7 @@
   }
 
   function acceptIntegrationChallenge(incoming) {
-    expireSocketLifecycles();
+    uninstall.expireAll();
     integration.accept(incoming);
     human.dismiss();
     integrationsOpen = false;
@@ -657,7 +519,7 @@
   }
 
   function acceptHumanChallenge(incoming) {
-    expireSocketLifecycles();
+    uninstall.expireAll();
     human.accept(incoming);
     integrationsOpen = false;
     liveTurn.pause();
@@ -790,7 +652,7 @@
     const receipt = liveTurn.receipt();
     // A Stop may cross a proposal or the uninstall it approved; Admin answers that Stop with nothing, so the
     // lifecycle event is applied as it is and ends the stop.
-    const terminal = applyLifecycleEvent(incoming, receipt);
+    const terminal = uninstall.apply(incoming, receipt);
     liveTurn.stopping = false;
     liveTurn.resetProgress();
     if (!terminal) {
@@ -799,13 +661,13 @@
     }
     liveTurn.busy = false;
     clearError();
-    if (incoming.state === 'uninstalled') void confirmUninstall(incoming);
+    if (incoming.state === 'uninstalled') void uninstall.confirm(incoming);
   }
 
   // The turn's terminal answer: its reply, its stop, or its failure.
   function endTurn(incoming) {
     const receipt = liveTurn.receipt();
-    expireSocketLifecycles();
+    uninstall.expireAll();
     liveTurn.settle();
     resetChallengeState();
     liveTurn.clearInstalled();
@@ -885,13 +747,12 @@
     if (messageFiles.teamId !== nextTeamId) messageFiles.clear();
     closeSocket();
     liveTurn.clearInstalled();
-    clearLifecycleIconCaptures();
+    uninstall.forgetIcons();
     capabilityObjective = null;
     liveAnswers = new Map();
     socketTeamId = nextTeamId;
     liveTurn.stopping = false;
-    lifecycleOutcomePending = null;
-    deferredUninstall = null;
+    uninstall.reset();
     if (nextTeamId && draftTeamId && draftTeamId !== nextTeamId) draft = '';
     if (nextTeamId) draftTeamId = nextTeamId;
     promptHistoryIndex = -1;
@@ -1034,43 +895,6 @@
     }
   }
 
-  function proposedLifecycle(proposalId) {
-    return transcript.turns.some((turn) => turn.lifecycle?.proposal_id === proposalId && turn.lifecycle.state === 'proposed');
-  }
-
-  async function submitLifecycleDecision(decision) {
-    if (lifecycleDecisionPending) return false;
-    lifecycleDecisionPending = true;
-    try {
-      const pendingUninstall = transcript.turns.findLast((turn) => (
-        turn.lifecycle?.state === 'proposed'
-      ))?.lifecycle;
-      if (decision === 'yes' && pendingUninstall && chatTeamId) {
-        const teamId = chatTeamId;
-        const active = socket;
-        await captureUninstallIcon(
-          pendingUninstall.proposal_id,
-          pendingUninstall.assistant.id,
-          teamId,
-        );
-        // The approval answers only the proposal it was given for, on the connection that proposed it: a Team change,
-        // a reconnect, or an expiry while the icon was captured leaves nothing to approve.
-        if (
-          chatTeamId !== teamId ||
-          socket !== active ||
-          !proposedLifecycle(pendingUninstall.proposal_id)
-        ) return false;
-      }
-      return submitMessage(decision, {
-        focusActiveTurn: false,
-        projectUserTurn: false,
-        useCapabilityObjective: false,
-      });
-    } finally {
-      lifecycleDecisionPending = false;
-    }
-  }
-
   function send(event) {
     event.preventDefault();
     if (messageFiles.pending) return;
@@ -1188,7 +1012,7 @@
       mounted = false;
       transcript.close();
       closeSocket();
-      clearLifecycleIconCaptures();
+      uninstall.forgetIcons();
       // Files belong to the message being written here; leaving the chat stops their uploads.
       messageFiles.clear();
     };
@@ -1266,7 +1090,7 @@
               onanswer={(answer) => answerClarification(exchange, answer)}
               onrewrite={rewriteRoutine}
               cardAnswer={answers.get(exchange.assistant?.routineProposal?.proposal_id) ?? ''}
-              ondecide={submitLifecycleDecision}
+              ondecide={uninstall.decide}
               thinking={index === exchanges.length - 1 && liveTurn.busy && !integration.challenge && !human.challenge &&
                 (exchange.assistant ? exchange.assistant.installPlan?.state === 'installed' : !lifecycleWorking)
                 ? liveThinking
