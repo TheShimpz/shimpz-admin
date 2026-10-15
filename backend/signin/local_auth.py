@@ -17,7 +17,6 @@ from fastapi.responses import JSONResponse
 from mfa import passkeys, recovery, tickets, totp
 from signin import audit, auth
 from space import supervisor_key
-from team import http as team_http
 
 from protocol.http.v1.websocket import canonical_origin
 
@@ -46,7 +45,7 @@ class Context:
 
 
 async def _json_object(request: Request) -> dict:
-    return await team_http.bounded_json_object(request, MAX_BODY_BYTES)
+    return await request_body.bounded_json_object(request, MAX_BODY_BYTES)
 
 
 def _request_origin(request: Request) -> str | None:

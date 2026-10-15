@@ -43,6 +43,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         cls.team_summary = importlib.import_module("team.summary")
         cls.team_inference = importlib.import_module("team.inference")
         cls.team_snapshots = importlib.import_module("team.snapshots")
+        cls.request_body = importlib.import_module("request_body")
 
     def delete_with_history(self, team_id: str, answer):
         with mock.patch.object(self.admin_app.team, "destroy_confirmed", return_value=answer):
@@ -79,16 +80,17 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             self.assert_sync_status(503, self.platform_release.status_response)
 
     def test_bounded_json_rejects_media_length_stream_and_document_violations(self) -> None:
-        self.assert_status(415, self.admin_app.team_http.bounded_json_object(_request(body=b"{}")))
+        self.assert_status(415, self.request_body.bounded_json_object(_request(body=b"{}"), 1024))
         self.assert_status(
             400,
-            self.admin_app.team_http.bounded_json_object(
-                _request(body=b"{}", headers=[(b"content-type", b"application/json"), (b"content-length", b"x")])
+            self.request_body.bounded_json_object(
+                _request(body=b"{}", headers=[(b"content-type", b"application/json"), (b"content-length", b"x")]),
+                1024,
             ),
         )
         self.assert_status(
             413,
-            self.admin_app.team_http.bounded_json_object(
+            self.request_body.bounded_json_object(
                 _request(
                     body=b"{}",
                     headers=[(b"content-type", b"application/json"), (b"content-length", b"3")],
@@ -98,7 +100,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         )
         self.assert_status(
             413,
-            self.admin_app.team_http.bounded_json_object(
+            self.request_body.bounded_json_object(
                 _request(body=b"{}", headers=[(b"content-type", b"application/json")]),
                 max_bytes=1,
             ),
@@ -107,14 +109,14 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             with self.subTest(body=body):
                 self.assert_status(
                     400,
-                    self.admin_app.team_http.bounded_json_object(
-                        _request(body=body, headers=[(b"content-type", b"application/json")])
+                    self.request_body.bounded_json_object(
+                        _request(body=body, headers=[(b"content-type", b"application/json")]), 1024
                     ),
                 )
         self.assert_status(
             400,
-            self.admin_app.team_http.bounded_json_object(
-                _request(body=b"[]", headers=[(b"content-type", b"application/json")])
+            self.request_body.bounded_json_object(
+                _request(body=b"[]", headers=[(b"content-type", b"application/json")]), 1024
             ),
         )
 

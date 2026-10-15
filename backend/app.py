@@ -24,6 +24,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import browser
+import request_body
 import state
 import supervisor
 from history import http as chat_history_http
@@ -475,7 +476,7 @@ async def local_space_host_reset(request: Request):
     return await host_reset.reset(
         request,
         setup_lock=_ADMIN_SETUP_LOCK,
-        read_json=partial(team_http.bounded_json_object, max_bytes=MAX_SPACE_RESET_BODY_BYTES),
+        read_json=partial(request_body.bounded_json_object, max_bytes=MAX_SPACE_RESET_BODY_BYTES),
         verify_password=_host_reset_password,
         bootstrap_reset=lambda: _space_reset_response(team.bootstrap_reset_space),
         established_reset=_established_host_reset,
@@ -489,7 +490,7 @@ async def local_space_reset(request: Request):
     return await space_reset.authenticated(
         request,
         max_password_chars=MAX_PASSWORD_CHARS,
-        read_json=partial(team_http.bounded_json_object, max_bytes=MAX_SPACE_RESET_BODY_BYTES),
+        read_json=partial(request_body.bounded_json_object, max_bytes=MAX_SPACE_RESET_BODY_BYTES),
         recheck_password=partial(local_auth.recheck_password, context=_LOCAL_AUTH_CONTEXT),
         team_response=_space_reset_response,
     )
