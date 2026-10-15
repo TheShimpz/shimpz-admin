@@ -26,7 +26,7 @@ import { recoveryCodeSet, SECURITY_METHODS, securityRoutes, securityStart, secur
 
 const TEAM = { team_id: 'marketing', team_name: 'Marketing', status: 'running' };
 
-// The Local sidebar as the owner sees it: newest first, Marketing (the Team the chat scenarios talk to) on top.
+// The Local sidebar as the Supervisor sees it: newest first, Marketing (the Team the chat scenarios talk to) on top.
 const TEAMS = Object.freeze([
   TEAM,
   ...['Trinity', 'Cypher', 'Morpheus', 'Neo', 'Smith'].map((name) => ({
@@ -125,7 +125,7 @@ const ok = (json) => ({ status: 200, json: structuredClone(json) });
 // Each scenario names its starting state; `ready` is the Local chat with its Team list and no Routines.
 const STARTS = {
   ready: () => ({ session: authenticatedLocalSession(), teams: [...TEAMS], routines: [], runs: [] }),
-  // The owner's Assistants catalog: four staged Assistants, two installed in Marketing, each with its own page.
+  // The Supervisor's Assistants catalog: four staged Assistants, two installed in Marketing, each with its own page.
   catalog: () => ({ session: authenticatedLocalSession(), teams: [...TEAMS], routines: [], runs: [], catalog: true }),
   // The next Team order save finds the membership changed: a Team created elsewhere appears, and Admin answers 409.
   'reorder-conflict': () => ({
@@ -164,7 +164,7 @@ const STARTS = {
   // usage with and without a model, a held run's recovery card, a paused Routine, a minute rollup, and a run's
   // execution details (ADR-0092, ADR-0101).
   'routine-lifecycle': (locale) => ({ session: authenticatedLocalSession(), teams: [TEAM], ...routineLifecycleStart(locale) }),
-  // Any message is a recording turn whose reply carries the owner's Cloudflare watch card: Criar creates it,
+  // Any message is a recording turn whose reply carries the Supervisor's Cloudflare watch card: Criar creates it,
   // Cancelar revokes it (ADR-0101).
   // The card's Assistants open their own pages, so the installed catalog answers them.
   'routine-card': () => ({

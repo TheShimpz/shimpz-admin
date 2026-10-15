@@ -1,13 +1,13 @@
 // The Admin session socket (ADR-0114) the offline chat measurements stand in for, inside the page: the measured chat
 // frames are dispatched synchronously in the page, as Admin's frames would arrive, while each read the page makes is
-// answered by the driver. `installSessionSocket` runs in the page (Playwright `addInitScript`), so it is self-contained.
+// answered by the benchmark runner. `installSessionSocket` runs in the page (Playwright `addInitScript`), so it is self-contained.
 
 /**
  * Replace the page's WebSocket with one session socket speaking `shimpz.admin.v1`: subscriptions and the chat channel's
- * attach and detach are answered in the page; every other call goes to the driver's `benchCall(method, params)`, which
+ * attach and detach are answered in the page; every other call goes to the benchmark runner's `benchCall(method, params)`, which
  * answers `{ status, body }`. Attaching the Team synchronizes it as Admin does (`sync-empty`) and sets `benchReady`.
  * `benchEmit(event)` dispatches one `shimpz.chat.v7` frame of the attached Team; `benchCallSent` and
- * `benchCallAnswered`, when the page sets them, observe each driver-answered call as it leaves and as its result
+ * `benchCallAnswered`, when the page sets them, observe each runner-answered call as it leaves and as its result
  * arrives.
  */
 export function installSessionSocket() {

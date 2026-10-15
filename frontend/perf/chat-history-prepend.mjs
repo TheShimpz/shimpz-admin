@@ -11,7 +11,7 @@
 // Journey metrics span every older-page load after the initial hydrated page.
 // A forced collection after the visible window bounds deferred heap work separately.
 // Journey totals contain the idle and scroll windows; adding them would count work twice.
-// Collection totals also include assertions; journeyWallMs is measured by the driver.
+// Collection totals also include assertions; journeyWallMs is measured by the benchmark runner.
 // SHIMPZ_HISTORY_EXHAUST=1 makes the measured page the oldest one, so its prepend also removes the history sentinel.
 import { chromium } from '@playwright/test';
 import { preview } from 'vite';

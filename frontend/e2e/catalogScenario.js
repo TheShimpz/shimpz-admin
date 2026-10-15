@@ -1,4 +1,4 @@
-// The owner's Local Assistants catalog (ADR-0087 preview): four staged Assistants, two of them installed in Marketing,
+// The Supervisor's Local Assistants catalog (ADR-0087 preview): four staged Assistants, two of them installed in Marketing,
 // with each page's copy in English and Portuguese as Team reads it from every snapshot's own language pack. Any other
 // interface language shows the English copy, as a snapshot staged without a translation key does (ADR-0091).
 

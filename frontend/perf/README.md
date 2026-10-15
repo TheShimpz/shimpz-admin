@@ -5,7 +5,7 @@ that directory. It alternates fresh Chromium contexts with and without the
 selected synthetic progress frames at the configured interval, and
 checks the final announcement, terminal reply, and
 completed receipt. The page's session socket (`perf/sessionSocket.js`) runs in
-the page: chat frames are dispatched there synchronously, and the driver answers
+the page: chat frames are dispatched there synchronously, and the benchmark runner answers
 each read the page makes. The commands below use 128 events separated by 25 ms.
 Run it in the image `playwright.Dockerfile` builds (Playwright 1.62.0 on Node.js 26), 2 CPUs, 2 GiB,
 512 MiB shared memory, and no container network. Install dependencies first

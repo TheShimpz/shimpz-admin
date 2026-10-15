@@ -1,5 +1,5 @@
 // Measure the built Local Assistants page with bounded, deterministic API delays. The page's session socket
-// (`perf/sessionSocket.js`) runs in the page and the driver answers each of its calls after its delay; the session
+// (`perf/sessionSocket.js`) runs in the page and the benchmark runner answers each of its calls after its delay; the session
 // bootstrap and the icons stay HTTP.
 // SHIMPZ_PERF_SCENARIO=navigation measures instead a same-tab visit from the chat: the chat loads, the page is left
 // alone until it sends nothing for a second (so anything it prepares at idle is done), and a click on the sidebar's
