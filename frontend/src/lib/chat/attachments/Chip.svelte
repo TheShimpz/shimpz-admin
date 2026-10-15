@@ -1,33 +1,15 @@
 <script>
-  import { Button } from '@shimpz/frontend';
   import { formatFileSize } from '#lib/chat/attachments/files.js';
   import { locale, t } from '#lib/i18n/index.js';
 
-  // One file as a quiet chip: a type mark, its literal name, then its type, size, and what Team reads of it. In the
-  // composer it may still be uploading and can be removed from the message; in the transcript it is only a record.
-  // `element` is the chip itself, so a sent image's thumbnail can tell when it comes near the screen.
-  let {
-    element = $bindable(),
-    name,
-    size,
-    kind = 'file',
-    note = '',
-    state = 'ready',
-    sent = false,
-    onremove = null,
-  } = $props();
+  // One file as a quiet chip: a type mark, its literal name, then its type and size.
+  let { name, size, kind = 'file' } = $props();
 
   let copy = $derived($t('attachments'));
-  let noteText = $derived(
-    note === 'pdf-text' ? copy.pdfText : note === 'unreadable' ? (sent ? copy.notRead : copy.willNotRead) : '',
-  );
-  let stateText = $derived(state === 'queued' ? copy.queued : state === 'uploading' ? copy.sending : '');
-  let details = $derived(
-    [copy.kinds[kind] ?? copy.kinds.file, formatFileSize(size, $locale), noteText, stateText].filter(Boolean).join(' · '),
-  );
+  let details = $derived([copy.kinds[kind] ?? copy.kinds.file, formatFileSize(size, $locale)].join(' · '));
 </script>
 
-<li bind:this={element} class="attachment-chip" data-kind={kind} aria-busy={state === 'ready' ? undefined : 'true'}>
+<li class="attachment-chip" data-kind={kind}>
   <svg class="attachment-mark" viewBox="0 0 24 24" aria-hidden="true">
     {#if kind === 'image'}
       <path d="M4.5 5.5h15v13h-15zM4.5 15.5l4.5-4.5 4 4 2.5-2.5 4 4"></path><circle cx="15.5" cy="9.5" r="1.4"></circle>
@@ -43,19 +25,6 @@
     <span class="attachment-name" title={name}>{name}</span>
     <span class="attachment-details">{details}</span>
   </span>
-  {#if onremove}
-    <Button
-      class="attachment-remove"
-      variant="ghost"
-      size="icon"
-      type="button"
-      onclick={onremove}
-      title={copy.remove}
-      aria-label={$t('attachments.removeNamed', { name })}
-    >
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7l10 10M17 7 7 17"></path></svg>
-    </Button>
-  {/if}
 </li>
 
 <style>
@@ -66,13 +35,10 @@
     gap: var(--gap-item);
     min-width: 0;
     max-width: 100%;
-    /* The remove button brings its own hit area, so the end side needs less. */
     padding: var(--gap-inside) var(--gap-inside) var(--gap-inside) var(--gap-item);
     border: 1px solid var(--shimpz-color-border);
     background: color-mix(in srgb, var(--shimpz-color-text) 3%, transparent);
   }
-
-  .attachment-chip[aria-busy="true"] { border-style: dashed; }
 
   .attachment-mark {
     width: 1.15rem;
@@ -101,22 +67,5 @@
     font: 400 0.68rem/1.35 var(--shimpz-font-mono);
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .attachment-chip :global(.shimpz-button.attachment-remove) {
-    width: 1.75rem;
-    height: 1.75rem;
-    min-height: 0;
-    padding: 0;
-    color: var(--shimpz-color-text-dim);
-  }
-
-  .attachment-chip :global(.attachment-remove svg) {
-    width: 0.9rem;
-    height: 0.9rem;
-    fill: none;
-    stroke: currentColor;
-    stroke-linecap: round;
-    stroke-width: 1.5;
   }
 </style>
