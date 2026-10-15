@@ -738,7 +738,6 @@ export function disconnectAdminSocket() {
  * class so a page can keep it in its own state and still compare it by identity.
  */
 class ChatChannel {
-  readyState = WebSocket.CONNECTING;
   attached = false;
   attaching = false;
   waiting = [];
@@ -770,7 +769,6 @@ class ChatChannel {
         return;
       }
       this.attached = true;
-      this.readyState = WebSocket.OPEN;
       this.onopen?.({});
       for (const event of this.waiting.splice(0)) this.deliver(event);
     }).catch(() => {
@@ -794,7 +792,6 @@ class ChatChannel {
     this.attached = false;
     this.attaching = false;
     this.waiting = [];
-    this.readyState = WebSocket.CONNECTING;
     if (wasAttached || code !== 1000) this.onclose?.({ code });
   }
 
@@ -807,7 +804,6 @@ class ChatChannel {
   close() {
     if (this.closedByPage) return;
     this.closedByPage = true;
-    this.readyState = WebSocket.CLOSED;
     if (channels.get(this.teamId) === this) channels.delete(this.teamId);
     if (this.attached) call('chat.detach', { team_id: this.teamId }).catch(() => {});
     this.attached = false;
