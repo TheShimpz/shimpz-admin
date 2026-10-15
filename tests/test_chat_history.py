@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from history import http as history_http
+from history import lifecycle
 from history import store as history
 from team import transport
 from tests.chat_history_case import ChatHistoryCase, done_event, installed_event, uninstall_assistant
@@ -452,76 +453,76 @@ class ChatHistoryTests(ChatHistoryCase):
                     done_event("No", "sales", "Sales"),
                 ),
             ),
-            (history._install_assistant, (None,)),
-            (history._install_assistant, ({"id": "missing-fields"},)),
+            (lifecycle._install_assistant, (None,)),
+            (lifecycle._install_assistant, ({"id": "missing-fields"},)),
             (
-                history._install_assistant,
+                lifecycle._install_assistant,
                 ({**installed_event()["assistants"][0], "id": "Invalid"},),
             ),
             (
-                history._install_assistant,
+                lifecycle._install_assistant,
                 ({**installed_event()["assistants"][0], "providers": ()},),
             ),
             (
-                history._install_assistant,
+                lifecycle._install_assistant,
                 ({**installed_event()["assistants"][0], "providers": ["x"] * 33},),
             ),
             (
-                history._install_assistant,
+                lifecycle._install_assistant,
                 ({**installed_event()["assistants"][0], "provenance": "unknown"},),
             ),
             (
-                history._install_assistant,
+                lifecycle._install_assistant,
                 ({**installed_event()["assistants"][0], "creator": "shimpz"},),
             ),
             (
-                history._install_assistant,
+                lifecycle._install_assistant,
                 ({**installed_event()["assistants"][0], "creator": None},),
             ),
             (
-                history._install_assistant,
+                lifecycle._install_assistant,
                 ({**installed_event()["assistants"][0], "version": "v1.0"},),
             ),
             (
-                history._install_assistant,
+                lifecycle._install_assistant,
                 ({**installed_event()["assistants"][0], "status": "working"},),
             ),
             (
-                history._install_assistant,
+                lifecycle._install_assistant,
                 ({**installed_event()["assistants"][0], "providers": ["bad_provider"]},),
             ),
             (
-                history._install_assistant,
+                lifecycle._install_assistant,
                 ({**installed_event()["assistants"][0], "providers": ["x", "x"]},),
             ),
-            (history._install_payload, (None, "marketing")),
-            (history._install_payload, ({"type": "other"}, "marketing")),
+            (lifecycle.install_payload, (None, "marketing")),
+            (lifecycle.install_payload, ({"type": "other"}, "marketing")),
             (
-                history._install_payload,
+                lifecycle.install_payload,
                 ({**installed_event(), "state": "installing"}, "marketing"),
             ),
             (
-                history._install_payload,
+                lifecycle.install_payload,
                 ({**installed_event(), "team_id": "sales"}, "marketing"),
             ),
             (
-                history._install_payload,
+                lifecycle.install_payload,
                 ({**installed_event(), "plan_id": "invalid"}, "marketing"),
             ),
             (
-                history._install_payload,
+                lifecycle.install_payload,
                 ({**installed_event(), "assistants": []}, "marketing"),
             ),
             (
-                history._install_payload,
+                lifecycle.install_payload,
                 ({**installed_event(), "assistants": [installed_event()["assistants"][0]] * 2}, "marketing"),
             ),
             (
-                history._install_payload,
+                lifecycle.install_payload,
                 ({**installed_event(), "continuation": "later"}, "marketing"),
             ),
             (
-                history._install_payload,
+                lifecycle.install_payload,
                 (
                     {
                         **installed_event(),
@@ -531,11 +532,11 @@ class ChatHistoryTests(ChatHistoryCase):
                 ),
             ),
             (
-                history._install_payload,
+                lifecycle.install_payload,
                 ({**installed_event(), "outcome": "new"}, "marketing"),
             ),
             (
-                history._install_payload,
+                lifecycle.install_payload,
                 (
                     {
                         **installed_event(),
@@ -576,11 +577,11 @@ class ChatHistoryTests(ChatHistoryCase):
             "status": True,
         }
         with self.assertRaises(ValueError):
-            history._install_payload(invalid_failed, "marketing")
+            lifecycle.install_payload(invalid_failed, "marketing")
         # A failed install names only Team's closed Assistant-limit code, and only beside its 409.
         for status, code in ((503, "assistant_limit_reached"), (409, "team-context-changed")):
             with self.subTest(status=status, code=code), self.assertRaises(ValueError):
-                history._install_payload({**invalid_failed, "status": status, "code": code}, "marketing")
+                lifecycle.install_payload({**invalid_failed, "status": status, "code": code}, "marketing")
 
     def test_rejects_malformed_uninstall_and_stored_payloads(self) -> None:
         assistant = uninstall_assistant()
@@ -591,29 +592,29 @@ class ChatHistoryTests(ChatHistoryCase):
             "assistant_id": assistant["id"],
         }
         invalid_calls = (
-            (history._uninstall_assistant, (None,)),
-            (history._uninstall_assistant, ({"id": "missing"},)),
-            (history._uninstall_assistant, ({**assistant, "id": "Invalid"},)),
-            (history._uninstall_assistant, ({**assistant, "version": 1},)),
-            (history._uninstall_assistant, ({**assistant, "version": "latest"},)),
-            (history._uninstall_assistant, ({**assistant, "creator": "@-bad"},)),
-            (history._uninstall_assistant, ({**assistant, "provenance": "store"},)),
-            (history._uninstall_payload, (None, "marketing", assistant)),
-            (history._uninstall_payload, ({**base_event, "type": "other"}, "marketing", assistant)),
+            (lifecycle._uninstall_assistant, (None,)),
+            (lifecycle._uninstall_assistant, ({"id": "missing"},)),
+            (lifecycle._uninstall_assistant, ({**assistant, "id": "Invalid"},)),
+            (lifecycle._uninstall_assistant, ({**assistant, "version": 1},)),
+            (lifecycle._uninstall_assistant, ({**assistant, "version": "latest"},)),
+            (lifecycle._uninstall_assistant, ({**assistant, "creator": "@-bad"},)),
+            (lifecycle._uninstall_assistant, ({**assistant, "provenance": "store"},)),
+            (lifecycle.uninstall_payload, (None, "marketing", assistant)),
+            (lifecycle.uninstall_payload, ({**base_event, "type": "other"}, "marketing", assistant)),
             (
-                history._uninstall_payload,
+                lifecycle.uninstall_payload,
                 ({**base_event, "state": "uninstalling"}, "marketing", assistant),
             ),
             (
-                history._uninstall_payload,
+                lifecycle.uninstall_payload,
                 ({**base_event, "proposal_id": "invalid"}, "marketing", assistant),
             ),
             (
-                history._uninstall_payload,
+                lifecycle.uninstall_payload,
                 ({**base_event, "assistant_id": "other"}, "marketing", assistant),
             ),
             (
-                history._uninstall_payload,
+                lifecycle.uninstall_payload,
                 (
                     {**base_event, "state": "uninstalled", "team_id": "sales", "uninstalled": True},
                     "marketing",
@@ -621,7 +622,7 @@ class ChatHistoryTests(ChatHistoryCase):
                 ),
             ),
             (
-                history._uninstall_payload,
+                lifecycle.uninstall_payload,
                 ({**base_event, "state": "failed", "status": True}, "marketing", assistant),
             ),
             (history._position, ("",)),
@@ -634,13 +635,13 @@ class ChatHistoryTests(ChatHistoryCase):
             (history._decoded, ('{"kind":"guidance","code":"bad"}',)),
             (history._validate_stored_message, ({"kind": "message", "role": "system", "text": "x"},)),
             (history._validate_stored_guidance, ({"kind": "guidance", "code": "bad"},)),
-            (history._validate_stored_install, ({"kind": "assistant-install", "state": "working"},)),
+            (lifecycle.validate_stored_install, ({"kind": "assistant-install", "state": "working"},)),
             (
-                history._validate_stored_install,
+                lifecycle.validate_stored_install,
                 ({"kind": "assistant-install", "state": "stopped", "assistants": []},),
             ),
             (
-                history._validate_stored_install,
+                lifecycle.validate_stored_install,
                 (
                     {
                         "kind": "assistant-install",
@@ -650,7 +651,7 @@ class ChatHistoryTests(ChatHistoryCase):
                 ),
             ),
             (
-                history._validate_stored_install,
+                lifecycle.validate_stored_install,
                 (
                     {
                         "kind": "assistant-install",
@@ -661,7 +662,7 @@ class ChatHistoryTests(ChatHistoryCase):
                 ),
             ),
             (
-                history._validate_stored_install,
+                lifecycle.validate_stored_install,
                 (
                     {
                         "kind": "assistant-install",
@@ -671,7 +672,7 @@ class ChatHistoryTests(ChatHistoryCase):
                 ),
             ),
             (
-                history._validate_stored_install,
+                lifecycle.validate_stored_install,
                 (
                     {
                         "kind": "assistant-install",
@@ -681,10 +682,10 @@ class ChatHistoryTests(ChatHistoryCase):
                     },
                 ),
             ),
-            (history._validate_stored_uninstall, ({"kind": "assistant-uninstall", "state": "working"},)),
+            (lifecycle.validate_stored_uninstall, ({"kind": "assistant-uninstall", "state": "working"},)),
             # Team's English registry summary is never stored or shown with an uninstall.
             (
-                history._validate_stored_uninstall,
+                lifecycle.validate_stored_uninstall,
                 (
                     {
                         "kind": "assistant-uninstall",
@@ -694,11 +695,11 @@ class ChatHistoryTests(ChatHistoryCase):
                 ),
             ),
             (
-                history._validate_stored_uninstall,
+                lifecycle.validate_stored_uninstall,
                 ({"kind": "assistant-uninstall", "state": "cancelled", "assistant": assistant, "extra": True},),
             ),
             (
-                history._validate_stored_uninstall,
+                lifecycle.validate_stored_uninstall,
                 (
                     {
                         "kind": "assistant-uninstall",
@@ -709,7 +710,7 @@ class ChatHistoryTests(ChatHistoryCase):
                 ),
             ),
             (
-                history._validate_stored_uninstall,
+                lifecycle.validate_stored_uninstall,
                 (
                     {
                         "kind": "assistant-uninstall",
@@ -736,7 +737,7 @@ class ChatHistoryTests(ChatHistoryCase):
             event = {**base_event, "state": state, **fields}
             self.assertTrue(history.append_uninstall("marketing", self._admitted(), assistant, event))
 
-        history._validate_stored_install(
+        lifecycle.validate_stored_install(
             {
                 "kind": "assistant-install",
                 "state": "failed",
@@ -744,7 +745,7 @@ class ChatHistoryTests(ChatHistoryCase):
                 "status": 503,
             }
         )
-        history._validate_stored_uninstall(
+        lifecycle.validate_stored_uninstall(
             {
                 "kind": "assistant-uninstall",
                 "state": "failed",

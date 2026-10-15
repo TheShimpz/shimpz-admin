@@ -7,7 +7,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from history import store as history_store
+from history import lifecycle as history_lifecycle
 from team import transport
 
 from chat import assistant_inventory, human, payloads, store_catalog
@@ -60,9 +60,9 @@ class TeamIdentifierKindTests(unittest.TestCase):
             "provenance": "published",
             "status": "installed",
         }
-        self.assertEqual(history_store._install_assistant(item)["providers"], ["p" * 64])
+        self.assertEqual(history_lifecycle._install_assistant(item)["providers"], ["p" * 64])
         with self.assertRaises(ValueError):
-            history_store._install_assistant({**item, "providers": ["p" * 65]})
+            history_lifecycle._install_assistant({**item, "providers": ["p" * 65]})
 
 
 class StoreCatalogIdentifierKindTests(unittest.TestCase):
