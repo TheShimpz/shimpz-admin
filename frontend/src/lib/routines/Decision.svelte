@@ -33,9 +33,9 @@
     outcome,
     detail,
     copy,
-    onsettled = () => {},
+    onsettled,
     onunavailable,
-    ondelete = () => {},
+    ondelete,
   } = $props();
 
   // A response that arrives after this decision gave way to a newer one never speaks for that newer one.

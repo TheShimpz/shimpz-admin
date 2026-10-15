@@ -3,10 +3,10 @@
 
   // The one stroke icon set of Routine surfaces (ADR-0086), drawn by name at one stroke weight, decorative only. Every
   // icon sits beside words that say the same thing, so it is always hidden from assistive technology.
-  let { name, class: className = '' } = $props();
+  let { name } = $props();
 </script>
 
-<svg class={['routine-icon', `routine-icon--${name}`, className]} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+<svg class={['routine-icon', `routine-icon--${name}`]} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
   {#if CIRCLES[name]}<circle cx={CIRCLES[name][0]} cy={CIRCLES[name][1]} r={CIRCLES[name][2]}></circle>{/if}
   {#each PATHS[name] ?? [] as path (path)}<path d={path}></path>{/each}
 </svg>
