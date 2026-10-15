@@ -203,10 +203,6 @@ class TeamOAuthBridgeTest(unittest.TestCase):
     def test_disconnect_and_callback_forward_only_fixed_private_contracts(self):
         _TeamHandler.response_by_route = {
             (
-                "DELETE",
-                "/v1/teams/team_1/assistant-integrations/shimpz-cloudflare/x-integration",
-            ): (200, b'{"disconnected":true,"trace_id":"ffffffffffffffffffffffffffffffff"}'),
-            (
                 "POST",
                 "/v1/oauth/cloudflare/callback",
             ): (
@@ -219,7 +215,6 @@ class TeamOAuthBridgeTest(unittest.TestCase):
             ): (200, b'{"cancelled":true,"trace_id":"ffffffffffffffffffffffffffffffff"}'),
         }
 
-        disconnected = integrations.disconnect_assistant_integration("team_1", "shimpz-cloudflare", "x-integration")
         completed = integrations.complete_cloudflare_oauth_callback(
             state="a" * 43,
             claim="c" * 64,
@@ -231,7 +226,6 @@ class TeamOAuthBridgeTest(unittest.TestCase):
             "d" * 43,
         )
 
-        self.assertEqual(disconnected, transport.TeamResponse(204, {}))
         self.assertEqual(cancelled, transport.TeamResponse(204, {}))
         self.assertEqual(
             completed,

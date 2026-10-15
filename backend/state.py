@@ -786,21 +786,6 @@ def set_model_api_key(provider, api_key):
     topics.changed("space/models")
 
 
-def delete_model_api_key(provider):
-    """Delete one provider key without disturbing the Admin session or other providers."""
-
-    def delete_key(data: dict) -> bool:
-        records = data.get("model_credentials", {})
-        if not isinstance(records, dict):
-            raise RuntimeError(f"admin store {STORE_PATH} has invalid model credentials")
-        return records.pop(provider, None) is not None
-
-    deleted = bool(_mutate(delete_key, bool))
-    if deleted:
-        topics.changed("space/models")
-    return deleted
-
-
 def decision_credential() -> dict[str, object] | None:
     """Return the private TypeSafe decision-key record for trusted backend callers only (ADR-0077)."""
     record = _read().get("decision_credential")

@@ -81,14 +81,6 @@ class StateEdgeTests(unittest.TestCase):
             state.model_credentials()
         with self.assertRaisesRegex(RuntimeError, "invalid model credentials"):
             state.set_model_api_key("openai", "sk-openai-0123456789")
-        with self.assertRaisesRegex(RuntimeError, "invalid model credentials"):
-            state.delete_model_api_key("openai")
-
-    def test_deleting_absent_key_does_not_rewrite_store(self) -> None:
-        state._write({"model_credentials": {}})
-        with mock.patch.object(state, "_write", wraps=state._write) as write:
-            self.assertFalse(state.delete_model_api_key("openai"))
-        write.assert_not_called()
 
     def test_password_initialization_rejects_an_ambiguous_existing_session_secret(self) -> None:
         state._write({"session_secret": "existing-session-secret"})

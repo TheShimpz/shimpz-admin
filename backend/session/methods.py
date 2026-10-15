@@ -21,7 +21,6 @@ from session import lane, routines, stepup, topics, watcher
 from signin import security
 from space import release as platform_release
 from team import bridge as team
-from team import files as team_files
 from team import http as team_http
 from team import inference as team_inference
 from team import names as team_names
@@ -73,13 +72,6 @@ def save_model_key(provider: str, payload: dict) -> dict[str, object]:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     except models.ModelProviderUnavailableError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from None
-
-
-def remove_model_key(provider: str) -> dict[str, object]:
-    try:
-        return models.remove(provider)
-    except models.ModelProviderError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
 
 
 # The Space's and the session's state
@@ -244,7 +236,6 @@ METHODS: dict[str, Method] = {
     "snapshots.details": _on_lane(team_snapshots, "local_assistant_details", "image_id", "locale"),
     "models.list": _on_lane(models, "status"),
     "models.save": _on_lane(sys.modules[__name__], "save_model_key", "provider", "body"),
-    "models.remove": _on_lane(sys.modules[__name__], "remove_model_key", "provider"),
     "decision.read": _on_lane(decision, "status"),
     "decision.save": _on_lane(decision, "save", "body"),
     "decision.remove": _on_lane(decision, "remove"),
@@ -252,15 +243,10 @@ METHODS: dict[str, Method] = {
     "integrations.authorize": _authorize,
     "integrations.complete": _complete,
     "integrations.cancel": _cancel,
-    "integrations.disconnect": _team_call(
-        integrations, "disconnect_assistant_integration", "team_id", "assistant_id", "integration_id"
-    ),
     "stored_inputs.list": _team_call(stored_input, "list_assistant_stored_inputs", "team_id"),
     "stored_inputs.clear": _team_call(
         stored_input, "clear_assistant_stored_input", "team_id", "assistant_id", "stored_input_id"
     ),
-    "files.list": _on_lane(team_files, "team_files_list", "team_id"),
-    "files.delete": _on_lane(team_files, "team_file_delete", "team_id", "file_id"),
     "store.catalog": _catalog,
     "subscribe": _subscribe,
     "unsubscribe": _unsubscribe,

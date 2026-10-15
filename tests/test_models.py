@@ -89,17 +89,6 @@ class ModelProviderTests(unittest.TestCase):
         status["providers"][0]["models"][0]["id"] = "mutated"
         self.assertEqual(models.status()["providers"][0]["models"][0]["id"], "gpt-6.1-sol")
 
-    def test_provider_removal_preserves_other_keys(self) -> None:
-        with mock.patch.object(models, "_validate_api_key"):
-            models.configure("openai", "sk-openai-0123456789")
-            models.configure("anthropic", "sk-ant-0123456789")
-
-        removed = models.remove("openai")
-
-        self.assertFalse(removed["configured"])
-        self.assertIsNone(models.resolve_api_key("openai"))
-        self.assertEqual(models.resolve_api_key("anthropic"), "sk-ant-0123456789")
-
     def test_invalid_provider_and_key_fail_closed(self) -> None:
         for provider, secret in (
             ("unknown-provider", "sk-test-0123456789"),

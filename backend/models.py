@@ -203,12 +203,6 @@ def configure(provider: object, api_key: object) -> dict[str, object]:
     return next(item for item in status()["providers"] if item["id"] == selected)
 
 
-def remove(provider: object) -> dict[str, object]:
-    selected = canonical_provider(provider)
-    state.delete_model_api_key(selected)
-    return next(item for item in status()["providers"] if item["id"] == selected)
-
-
 def resolve_api_key(provider: object) -> str | None:
     """Resolve cleartext for a future backend-to-controller chat hand-off; never expose as HTTP."""
     selected = canonical_provider(provider)

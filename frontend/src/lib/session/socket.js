@@ -164,9 +164,8 @@ async function socketOpen() {
 // (subscriptions and attached chat channels) is restored by the socket when it reopens.
 const CHANGES = new Set([
   'teams.create', 'teams.rename', 'teams.reorder', 'teams.delete', 'inference.save',
-  'assistants.install', 'assistants.install_local', 'assistants.uninstall', 'models.save', 'models.remove',
-  'decision.save', 'decision.remove', 'integrations.authorize', 'integrations.complete', 'integrations.cancel',
-  'integrations.disconnect', 'stored_inputs.clear', 'files.delete',
+  'assistants.install', 'assistants.install_local', 'assistants.uninstall', 'models.save', 'decision.save',
+  'decision.remove', 'integrations.authorize', 'integrations.complete', 'integrations.cancel', 'stored_inputs.clear',
   'routines.pause', 'routines.resume', 'routines.deletion', 'routines.delete', 'routines.card', 'routines.card_answer',
   'routines.challenge', 'routines.human', 'routines.integrations', 'routines.proposal_confirm',
   'routines.proposal_revoke', 'security.acknowledge', 'recovery_codes.confirmation', 'recovery_codes.replace',

@@ -219,31 +219,6 @@ def cancel_local_assistant_integration_authorization(
     return transport.TeamResponse(204, {})
 
 
-def disconnect_assistant_integration(
-    team_id: object,
-    assistant_id: object,
-    integration_id: object,
-) -> transport.TeamResponse:
-    canonical_id = payloads.canonical_team_id(team_id)
-    assistant = payloads.canonical_assistant_id(assistant_id)
-    integration = payloads.canonical_identifier(integration_id)
-    response = transport.call(
-        "DELETE",
-        f"/v1/teams/{canonical_id}/assistant-integrations/{assistant}/{integration}",
-    )
-    if not 200 <= response.status < 300:
-        return response
-    if (
-        response.status != 200
-        or not transport.is_closed_traced(response.body, {"disconnected"})
-        or type(response.body["disconnected"]) is not bool
-    ):
-        log.warning("team returned an invalid OAuth disconnect response")
-        return transport.TeamResponse(502, {"detail": "OAuth disconnect response is invalid."})
-    topics.team_changed(canonical_id, "integrations")
-    return transport.TeamResponse(204, {})
-
-
 def complete_cloudflare_oauth_callback(
     *, state: object, claim: object, session_binding: object
 ) -> transport.TeamResponse:

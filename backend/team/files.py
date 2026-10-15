@@ -1,4 +1,4 @@
-"""A Team's files: the upload, a file's previews, and its download stay HTTP; their metadata are session calls."""
+"""A Team's files over HTTP: the upload, a file's previews, and its download."""
 
 import threading
 import weakref
@@ -104,17 +104,9 @@ def register(app: FastAPI) -> None:
     app.add_api_route("/api/teams/{team_id}/files/{file_id}/download", team_file_download, methods=["GET"])
 
 
-def team_files_list(team_id: str):
-    return team_http.response(lambda: team.list_files(team_id))
-
-
 async def team_file_upload(team_id: str, request: Request):
     filename, media_type, content = await bounded_multipart_file(request)
     return await run_in_threadpool(team_http.response, lambda: team.upload_file(team_id, filename, media_type, content))
-
-
-def team_file_delete(team_id: str, file_id: str):
-    return team_http.response(lambda: team.delete_file(team_id, file_id))
 
 
 def team_file_preview(team_id: str, file_id: str, request: Request) -> Response:

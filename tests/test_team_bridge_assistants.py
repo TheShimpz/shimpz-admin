@@ -411,25 +411,11 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
             transport.TeamResponse(200, {"team_id": "team_1", "files": [metadata], **usage}),
         )
 
-        _TeamHandler.response_body = json.dumps(
-            {"team_id": "team_1", "id": file_id, "deleted": True, **usage},
-            separators=(",", ":"),
-        ).encode()
-        deleted = team.delete_file("team_1", file_id)
-        self.assertEqual(
-            deleted,
-            transport.TeamResponse(
-                200,
-                {"team_id": "team_1", "id": file_id, "deleted": True, **usage},
-            ),
-        )
-
         self.assertEqual(
             [(request["method"], request["path"]) for request in _TeamHandler.requests],
             [
                 ("POST", "/v1/teams/team_1/files"),
                 ("GET", "/v1/teams/team_1/files"),
-                ("DELETE", f"/v1/teams/team_1/files/{file_id}"),
             ],
         )
         for request in _TeamHandler.requests:
@@ -456,7 +442,6 @@ class TeamAssistantBridgeTest(_LiveTeamCase):
         invalid = (
             lambda: team.upload_file("team_1", "../brief.txt", "text/plain", b"data"),
             lambda: team.upload_file("team_1", "brief.txt", "text/plain", b""),
-            lambda: team.delete_file("team_1", "../not-an-id"),
         )
         for action in invalid:
             with self.subTest(action=action), self.assertRaises(transport.TeamRequestError):

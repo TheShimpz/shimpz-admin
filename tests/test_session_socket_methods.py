@@ -67,7 +67,6 @@ SAMPLES = {
     "snapshots.details": {"image_id": IMAGE, "locale": "en"},
     "models.list": {},
     "models.save": {"provider": "openai", "body": {"api_key": "test-api-key-for-models"}},
-    "models.remove": {"provider": "openai"},
     "decision.read": {},
     "decision.save": {"body": {"api_key": "test-api-key-for-models"}},
     "decision.remove": {},
@@ -75,15 +74,8 @@ SAMPLES = {
     "integrations.authorize": {"team_id": "team_1", "challenge_id": CHALLENGE, "body": PAIR},
     "integrations.complete": {"team_id": "team_1", "challenge_id": CHALLENGE, "body": {"completion_code": CODE}},
     "integrations.cancel": {"team_id": "team_1", "challenge_id": CHALLENGE},
-    "integrations.disconnect": {
-        "team_id": "team_1",
-        "assistant_id": "shimpz-cloudflare",
-        "integration_id": "cloudflare",
-    },
     "stored_inputs.list": {"team_id": "team_1"},
     "stored_inputs.clear": {"team_id": "team_1", "assistant_id": "whatsapp", "stored_input_id": "whatsapp-token"},
-    "files.list": {"team_id": "team_1"},
-    "files.delete": {"team_id": "team_1", "file_id": "f" * 32},
     "store.catalog": {"locale": "en"},
     "routines.pause": {"team_id": "team_1", "routine_id": ROUTINE},
     "routines.resume": {"team_id": "team_1", "routine_id": ROUTINE},
@@ -467,11 +459,10 @@ class SessionMethodTopicTests(SessionMethodCase):
                 self.assertNotEqual(result["status"], 200)
                 self.assertEqual(raised, set())
 
-    def test_every_key_save_and_removal_raises_its_space_topic_when_it_completes(self) -> None:
+    def test_every_key_save_and_decision_removal_raises_its_space_topic_when_it_completes(self) -> None:
         models = self.methods.models
         for method, topic in (
             ("models.save", "space/models"),
-            ("models.remove", "space/models"),
             ("decision.save", "space/decision"),
             ("decision.remove", "space/decision"),
         ):
@@ -484,12 +475,10 @@ class SessionMethodTopicTests(SessionMethodCase):
                 result, raised = asyncio.run(self._changed_by(method, params, ["space/models", "space/decision"]))
             self.assertEqual((result["status"], raised), (200, {topic}))
         # Removing a key that is already gone changes nothing, so it raises nothing.
-        for method in ("models.remove", "decision.remove"):
-            with self.subTest(method=method, absent=True):
-                result, raised = asyncio.run(
-                    self._changed_by(method, SAMPLES[method], ["space/models", "space/decision"])
-                )
-            self.assertEqual((result["status"], raised), (200, set()))
+        result, raised = asyncio.run(
+            self._changed_by("decision.remove", SAMPLES["decision.remove"], ["space/models", "space/decision"])
+        )
+        self.assertEqual((result["status"], raised), (200, set()))
 
     def test_a_key_save_that_completes_after_its_socket_dropped_tells_the_reopened_socket(self) -> None:
         import threading
@@ -531,7 +520,7 @@ class SessionMethodTopicTests(SessionMethodCase):
         self.assertTrue(configured["openai"])
         self.assertEqual(frames["after"]["topic"], "space/models")
 
-    def test_every_change_to_a_teams_integrations_or_stored_inputs_raises_its_topic(self) -> None:
+    def test_a_stored_input_clear_raises_the_teams_integrations(self) -> None:
         topics = ["team/team_1/integrations"]
         cleared = {
             "team_id": "team_1",
@@ -540,19 +529,14 @@ class SessionMethodTopicTests(SessionMethodCase):
             "cleared": True,
             "trace_id": TRACE,
         }
-        for method, answer, status in (
-            ("stored_inputs.clear", cleared, 200),
-            ("integrations.disconnect", {"disconnected": True, "trace_id": TRACE}, 204),
-        ):
-            transport = self.methods.integrations.transport
-            answered = self.transport.TeamResponse(200, answer)
-            with self.subTest(method=method), mock.patch.object(transport, "call", return_value=answered):
-                result, raised = asyncio.run(self._changed_by(method, SAMPLES[method], topics))
-            self.assertEqual((result["status"], raised), (status, set(topics)))
-            # A refused change raises nothing.
-            with self.subTest(method=method, refused=True):
-                result, raised = asyncio.run(self._changed_by(method, SAMPLES[method], topics))
-            self.assertEqual(raised, set())
+        sample = SAMPLES["stored_inputs.clear"]
+        answered = self.transport.TeamResponse(200, cleared)
+        with mock.patch.object(self.methods.integrations.transport, "call", return_value=answered):
+            result, raised = asyncio.run(self._changed_by("stored_inputs.clear", sample, topics))
+        self.assertEqual((result["status"], raised), (200, set(topics)))
+        # A refused change raises nothing.
+        result, raised = asyncio.run(self._changed_by("stored_inputs.clear", sample, topics))
+        self.assertEqual(raised, set())
 
     def test_a_completed_authorization_and_a_human_answer_raise_the_teams_integrations(self) -> None:
         integrations = self.methods.integrations
@@ -650,11 +634,6 @@ class SessionMethodAnswerTests(SessionMethodCase):
         )
 
     def test_an_empty_answer_is_an_empty_object(self) -> None:
-        integrations = self.methods.integrations
-        empty = self.transport.TeamResponse(204, {})
-        with mock.patch.object(integrations, "disconnect_assistant_integration", return_value=empty):
-            disconnected = self._answers("integrations.disconnect", SAMPLES["integrations.disconnect"])
-        self.assertEqual((disconnected["status"], disconnected["body"]), (204, {}))
         cancelled = self._answers("integrations.cancel", SAMPLES["integrations.cancel"])
         self.assertEqual((cancelled["status"], cancelled["body"]), (204, {}))
 
@@ -672,7 +651,6 @@ class SessionMethodAnswerTests(SessionMethodCase):
         with mock.patch.object(self.methods.chat_assets.store_catalog.CATALOG, "get", return_value=()):
             result = self._answers("store.catalog", {"locale": "en", "cursor": "not-a-cursor"})
         self.assertEqual((result["status"], result["body"]), (400, {"detail": "Assistant catalog cursor is invalid"}))
-        self.assertEqual(self._answers("models.remove", {"provider": "unknown-provider"})["status"], 400)
         with mock.patch.object(self.methods.decision, "status", return_value={"configured": False}):
             self.assertEqual(self._answers("decision.read", {})["body"], {"configured": False})
 

@@ -63,11 +63,6 @@ class ModelProviderOperationTests(unittest.TestCase):
             self.assertEqual(caught.exception.status_code, 400)
             configure.assert_not_called()
 
-    def test_a_removal_of_an_unknown_provider_is_a_bad_request(self) -> None:
-        with self.assertRaises(HTTPException) as caught:
-            self.methods.remove_model_key("unknown-provider")
-        self.assertEqual(caught.exception.status_code, 400)
-
 
 if __name__ == "__main__":
     unittest.main()

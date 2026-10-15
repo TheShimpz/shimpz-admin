@@ -582,7 +582,6 @@ def _project_storage_response(
     *,
     team_id: str,
     kind: str,
-    expected_file_id: str | None = None,
 ) -> transport.TeamResponse:
     if not 200 <= response.status < 300:
         error_body = {
@@ -597,7 +596,6 @@ def _project_storage_response(
         response.body,
         kind=kind,
         expected_team_id=team_id,
-        expected_file_id=expected_file_id,
         include_team_id=True,
     )
     if body is None:
@@ -628,18 +626,6 @@ def list_files(team_id: object) -> transport.TeamResponse:
     canonical_id = payloads.canonical_team_id(team_id)
     response = transport.call("GET", _files_path(canonical_id))
     return _project_storage_response(response, team_id=canonical_id, kind="list")
-
-
-def delete_file(team_id: object, file_id: object) -> transport.TeamResponse:
-    canonical_id = payloads.canonical_team_id(team_id)
-    canonical_file_id = payloads._canonical_id(file_id, field="file id", pattern=_FILE_ID_RE, maximum=32)
-    response = transport.call("DELETE", _files_path(canonical_id, canonical_file_id))
-    return _project_storage_response(
-        response,
-        team_id=canonical_id,
-        kind="delete",
-        expected_file_id=canonical_file_id,
-    )
 
 
 # The closed refusals of a file preview Admin forwards: the file is absent or collected, has no preview, or the preview

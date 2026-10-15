@@ -214,20 +214,6 @@ class IntegrationProjectionEdgeTests(unittest.TestCase):
                 502,
             )
 
-        with mock.patch.object(
-            assistants.transport,
-            "call",
-            side_effect=[upstream_error, invalid],
-        ):
-            self.assertEqual(
-                assistants.disconnect_assistant_integration("team_1", "assistant", "integration"),
-                upstream_error,
-            )
-            self.assertEqual(
-                assistants.disconnect_assistant_integration("team_1", "assistant", "integration").status,
-                502,
-            )
-
         complete = partial(
             assistants.complete_cloudflare_oauth_callback, state="a" * 43, claim="b" * 64, session_binding="c" * 43
         )

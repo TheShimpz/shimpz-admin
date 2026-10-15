@@ -273,8 +273,6 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
             (self.team_inference.status, "get_inference", ("team_1",)),
             (self.team_inference.configure, "configure_inference", ("team_1", {"model": "x"})),
             (self.team_snapshots.local_assistants_list, "list_local_assistants", ()),
-            (self.admin_app.team_files.team_files_list, "list_files", ("team_1",)),
-            (self.admin_app.team_files.team_file_delete, "delete_file", ("team_1", "f" * 32)),
         )
         for operation, name, arguments in operations:
             with (
