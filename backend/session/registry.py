@@ -49,8 +49,7 @@ class Handle:
 
 
 class Registry:
-    def __init__(self, *, per_session: int = frames.MAX_SOCKETS_PER_SESSION) -> None:
-        self._per_session = per_session
+    def __init__(self) -> None:
         self._lock = threading.Lock()
         self._handles: dict[str, set[Handle]] = {}
 
@@ -58,7 +57,7 @@ class Registry:
         """Register one socket, or refuse it when its session already holds as many as it may."""
         with self._lock:
             handles = self._handles.setdefault(handle.session, set())
-            if len(handles) >= self._per_session:
+            if len(handles) >= frames.MAX_SOCKETS_PER_SESSION:
                 return False
             handles.add(handle)
             return True
