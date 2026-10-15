@@ -186,7 +186,7 @@ const STREAK_PAUSE = `${'d'.repeat(31)}0`;
 
 // A held run's incident names the call it was held at by its position among its plan's steps.
 function incident(runId, routine, held) {
-  return { incident_id: runId, routine_id: routine.routine_id, name: routine.name, created_at: '2026-10-01T11:00:07Z', ...held };
+  return { run_id: runId, routine_id: routine.routine_id, name: routine.name, created_at: '2026-10-01T11:00:07Z', ...held };
 }
 
 const placed = (action, position, total) => ({
@@ -200,8 +200,8 @@ const MODEL_USAGE = Object.freeze({
   duration_ms: 9800,
   models: [{ provider: 'openai', model: 'gpt-6-luna', input_tokens: 6500, output_tokens: 300 }],
 });
-// The outcomes of a Routine rather than of a run; of them only the healthy rollup sums its runs' usage.
-const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed', 'healthy', 'deleted', 'streak-paused'];
+// The outcomes of a Routine rather than of a run that Admin stores; of them only the healthy rollup sums its runs' usage.
+const ROUTINE_OUTCOMES = ['skipped', 'created', 'healthy', 'streak-paused'];
 
 function row(noticeId, routine, outcome, detail, { at = '2026-10-01T12:00:00Z', version = 1, usage, lost = false } = {}) {
   const run = !ROUTINE_OUTCOMES.includes(outcome);
@@ -269,8 +269,9 @@ const SHOWN_RECORDS = Object.freeze({
   truncated: true,
 });
 
-// The stored history, oldest first: one row of every Routine notice, ending with a deleted Routine's last notice. The
-// chat shows only the creations among them and each Routine's panel its own runs. Its rows span the day before the
+// The stored history, oldest first: one row of every Routine notice Admin stores, each with only the detail its view
+// renders (a Routine's change, deletion, and scope change are never stored). The chat shows only the creations among
+// them and each Routine's panel its own runs. Its rows span the day before the
 // preview opened and that day itself, so the transcript shows a day header for each and today's replacing yesterday's.
 function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now, removedName) {
   const opened = Math.floor(now / 1000) * 1000;
@@ -280,23 +281,21 @@ function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now, removedName) {
   const completed = (plan, output) => ({ plan, output });
   return [
     row(id('a'), CONTINUOUS, 'created', {}, { at: yesterday(-120) }),
-    row(id('b'), HELD, 'changed', {}, { at: yesterday(-90) }),
     row(id('c'), CONTINUOUS, 'done', completed(CONTINUOUS.plan, null), { at: yesterday(-50) }),
     row(id('d'), CONTINUOUS, 'healthy', { runs: 9 }, { at: yesterday(0), version: 9, usage: { duration_ms: 37_080 } }),
     row(id('e'), HELD, 'recovered', completed(HELD.plan, SHOWN_RECORDS), { at: yesterday(20), usage: { duration_ms: 9800 } }),
     row(id('8'), PAUSED, 'done', completed(PAUSED.plan, SHOWN_ZONES), { at: yesterday(40) }),
-    row(id('f'), HELD, 'user-skipped', { ...placed('update-dns-record', 3, 3), choice: 'run' }, { at: at(-180) }),
+    row(id('f'), HELD, 'user-skipped', {}, { at: at(-180) }),
     // A run resumed after a Team restart lost the protection of its secret values, and says so.
-    row(FAILED_RUN, PAUSED, 'failed', { code: 'assistant-rpc-failed', actions: [], position: 1, steps: 2 }, {
+    row(FAILED_RUN, PAUSED, 'failed', { code: 'assistant-rpc-failed' }, {
       at: at(-150), lost: true,
     }),
     // Its consecutive failed runs paused the Routine.
     row(STREAK_PAUSE, PAUSED, 'streak-paused', { failures: 3 }, { at: at(-140) }),
-    row(HELD_RUN, HELD, 'held', placed('update-dns-record', 3, 3), { at: at(-120), version: 2 }),
-    row(PAUSED_RUN, PAUSED_HELD, 'paused', { ...placed('delete-dns-record', 3, 3), reason: 'exhausted' }, {
+    row(HELD_RUN, HELD, 'held', {}, { at: at(-120), version: 2 }),
+    row(PAUSED_RUN, PAUSED_HELD, 'paused', { reason: 'exhausted' }, {
       at: at(-90), version: 3,
     }),
-    row(id('9'), removed, 'deleted', {}, { at: at(-60) }),
   ];
 }
 
@@ -315,43 +314,30 @@ export function routineLifecycleStart(locale = 'en', now = Date.now()) {
   };
 }
 
-/** A person set a held run aside (Rodar, or its Routine's deletion): its row says how; nothing was undone. */
-export function setAside(state, incidentId, choice) {
-  const held = (state.incidents ?? []).find((item) => item.incident_id === incidentId);
-  if (!held) return;
-  state.incidents = state.incidents.filter((item) => item.incident_id !== incidentId);
-  state.history = state.history.map((entry) => (entry.run_id === incidentId
-    ? {
-      ...entry,
-      outcome: 'user-skipped',
-      detail: { assistant_id: held.assistant_id, action: held.action, position: held.position, steps: held.steps, choice },
-      version: entry.version + 1,
-    }
+/** A person set a held run aside (Rodar, or its Routine's deletion): its row says so; nothing was undone. */
+export function setAside(state, runId) {
+  if (!(state.incidents ?? []).some((item) => item.run_id === runId)) return;
+  state.incidents = state.incidents.filter((item) => item.run_id !== runId);
+  state.history = state.history.map((entry) => (entry.run_id === runId
+    ? { ...entry, outcome: 'user-skipped', detail: {}, version: entry.version + 1 }
     : entry));
 }
 
-/** A deleted Routine's last notice: it names the Routine and closes its timeline. */
-export function recordDeletion(state, routine) {
-  state.sequence = (state.sequence ?? 0) + 1;
-  const noticeId = `6${state.sequence.toString(16)}`.padStart(32, '0');
-  state.history = [...state.history, row(noticeId, routine, 'deleted', {}, { at: instant(Date.now()) })];
-}
-
 // The entity tag of the held run's card as last opened: an answer naming another one is stale.
-function cardTag(state, incidentId) {
-  return `${incidentId.slice(0, 32)}${(state.cards ?? 0).toString(16).padStart(32, '0')}`;
+function cardTag(state, runId) {
+  return `${runId.slice(0, 32)}${(state.cards ?? 0).toString(16).padStart(32, '0')}`;
 }
 
-function card(state, incidentId) {
-  const held = state.incidents.find((item) => item.incident_id === incidentId);
+function card(state, runId) {
+  const held = state.incidents.find((item) => item.run_id === runId);
   if (!held) return { status: 404, json: { code: 'routine-incident-unavailable' } };
   state.cards = (state.cards ?? 0) + 1;
-  const failed = diagnostics(incidentId).json.diagnostics.at(-1) ?? null;
+  const failed = diagnostics(runId).json.diagnostics.at(-1) ?? null;
   return {
     status: 200,
     json: {
       team_id: 'marketing',
-      incident_id: incidentId,
+      run_id: runId,
       routine_id: held.routine_id,
       revision: 1,
       assistant_id: held.assistant_id,
@@ -360,20 +346,20 @@ function card(state, incidentId) {
       steps: held.steps,
       evidence: failed ? 'recorded' : 'absent',
       diagnostic: failed,
-      tag: cardTag(state, incidentId),
+      tag: cardTag(state, runId),
     },
   };
 }
 
 // Rodar sets the held run aside and starts the Routine again; Excluir is the Routine's own confirmed deletion.
-function answer(state, incidentId, body) {
-  const held = state.incidents.find((item) => item.incident_id === incidentId);
+function answer(state, runId, body) {
+  const held = state.incidents.find((item) => item.run_id === runId);
   if (!held) return { status: 404, json: { code: 'routine-incident-unavailable' } };
-  if (body?.choice !== 'run') return { status: 422, json: { code: 'invalid-body' } };
-  if (body.tag !== cardTag(state, incidentId)) return { status: 409, json: { code: 'routine-card-stale' } };
-  setAside(state, incidentId, 'run');
+  if (Object.keys(body ?? {}).join() !== 'tag') return { status: 422, json: { code: 'invalid-body' } };
+  if (body.tag !== cardTag(state, runId)) return { status: 409, json: { code: 'routine-card-stale' } };
+  setAside(state, runId);
   state.routines = state.routines.map((item) => (item.routine_id === held.routine_id ? { ...item, state: 'active' } : item));
-  return { status: 200, json: { team_id: 'marketing', incident_id: incidentId, choice: 'run', status: 'requested' } };
+  return { status: 200, json: { team_id: 'marketing', run_id: runId } };
 }
 
 // Each held step's execution details. The weekly Routine's update hit a Cloudflare account out of credits; the monthly
@@ -444,11 +430,11 @@ function diagnostics(runId) {
 export const ROUTINE_RECOVERY_METHODS = Object.freeze({
   'routines.card': (state, params) => {
     state.incidents ??= [];
-    return card(state, params.incident_id);
+    return card(state, params.run_id);
   },
   'routines.card_answer': (state, params) => {
     state.incidents ??= [];
-    return answer(state, params.incident_id, params.body);
+    return answer(state, params.run_id, params.body);
   },
   'routines.diagnostics': (_state, params) => diagnostics(params.run_id),
 });
@@ -639,7 +625,7 @@ function answers(state, message) {
 /**
  * A recording turn (ADR-0101): it did the work once, then its reply carries the card of the Routine that repeats it,
  * or, in the refusal scenario, why no Routine was created (its request would hold a password). In a question scenario
- * the first reply asks Team's question instead, and the answer's reply carries the card. Returns Team's frame.
+ * the first reply asks Team's question instead, and the answer's reply carries the card alone. Returns Team's frame.
  */
 export function recordingReply(state, message, teamName) {
   const text = textFor(state.locale);

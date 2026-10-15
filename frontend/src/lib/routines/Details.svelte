@@ -88,7 +88,7 @@
     if (status === 'recovery') {
       const incident = incidents.find((item) => item.routine_id === routine.routine_id);
       const held = live.find((run) => run.status === 'held');
-      const source = incident ? { ...incident, run_id: incident.incident_id } : { ...held, position: null, steps: null };
+      const source = incident ?? { ...held, position: null, steps: null };
       return source.run_id ? {
         runId: source.run_id,
         outcome: 'held',

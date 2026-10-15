@@ -12,7 +12,6 @@ import { DIGEST_RE, isActionId, isAssistantId, isIdentifier, OPAQUE_ID_RE, TEAM_
 
 const ENCODER = new TextEncoder();
 
-const MAX_ASSISTANTS = 16;
 const FORBIDDEN_RE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\u2028\u2029]/u;
 const TIME_RE = /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/;
 const TIMEZONE_RE = /^[A-Za-z][A-Za-z0-9_+-]{0,31}(?:\/[A-Za-z0-9][A-Za-z0-9_+-]{0,31}){0,2}$/;
@@ -51,10 +50,6 @@ const TIMEZONE_SOURCES = ['browser', 'person', 'none'];
 /** Whether a timezone and its source are each in their closed forms (ADR-0101). */
 export function isZoned(timezone, source) {
   return TIMEZONE_SOURCES.includes(source) && isTimezone(timezone);
-}
-
-function isAssistants(value, minimum) {
-  return Array.isArray(value) && value.length >= minimum && value.length <= MAX_ASSISTANTS && value.every(isAssistantId);
 }
 
 const MAX_ROUTINES = 8;
@@ -443,18 +438,6 @@ export function isOutput(value) {
     (value.state === 'shown' ? isOutputNode(value.value, 0) : value.value === null);
 }
 
-function isActions(value) {
-  return (
-    Array.isArray(value) &&
-    value.length <= MAX_ASSISTANTS &&
-    value.every((pair) =>
-      Array.isArray(pair) &&
-      pair.length === 2 &&
-      isAssistantId(pair[0]) &&
-      isActionId(pair[1]))
-  );
-}
-
 // What a frozen run waits for: a person's answer or an Integration.
 const REQUEST_KINDS = ['human', 'integrations'];
 
@@ -488,10 +471,10 @@ function isHeldStep(detail) {
 
 /** One unresolved incident of a held run (ADR-0092): its Routine's name and the call whose effect is unknown. */
 export function parseIncidentView(value) {
-  const keys = ['incident_id', 'routine_id', 'name', 'created_at', 'assistant_id', 'action', 'position', 'steps'];
+  const keys = ['run_id', 'routine_id', 'name', 'created_at', 'assistant_id', 'action', 'position', 'steps'];
   return view(value, keys, (item) =>
-    typeof item.incident_id === 'string' &&
-    OPAQUE_ID_RE.test(item.incident_id) &&
+    typeof item.run_id === 'string' &&
+    OPAQUE_ID_RE.test(item.run_id) &&
     typeof item.routine_id === 'string' &&
     OPAQUE_ID_RE.test(item.routine_id) &&
     isName(item.name) &&
@@ -630,11 +613,8 @@ export function escapedText(text) {
 
 // A held run's recovery card (ADR-0092 section 7, ADR-0101): Rodar and Excluir, in this order, none recommended. Team
 // answers Rodar; Excluir is the Routine's own confirmed deletion. The card carries the entity tag of the held run's state,
-// which the answer names so Team applies it only to exactly that state (RFC 9110 If-Match).
-const CARD_CHOICES = ['run', 'delete'];
+// which Rodar names alone so Team applies it only to exactly that state (RFC 9110 If-Match).
 const TAG_RE = /^[0-9a-f]{64}$/;
-const CARD_ANSWERS = ['run'];
-const CARD_STATUSES = { run: 'requested' };
 const CARD_EVIDENCE = ['recorded', 'absent', 'unavailable'];
 
 // The held operation's latest diagnostic, exactly when Team recorded one.
@@ -645,14 +625,14 @@ function isCardEvidence(item) {
   return item.diagnostic === null || isDiagnostic(item.diagnostic);
 }
 
-function parseCard(body, teamId, incidentId) {
+function parseCard(body, teamId, runId) {
   const keys = [
-    'team_id', 'incident_id', 'routine_id', 'revision', 'assistant_id', 'action', 'position', 'steps', 'evidence',
+    'team_id', 'run_id', 'routine_id', 'revision', 'assistant_id', 'action', 'position', 'steps', 'evidence',
     'diagnostic', 'tag',
   ];
   return view(body, keys, (item) =>
     item.team_id === teamId &&
-    item.incident_id === incidentId &&
+    item.run_id === runId &&
     typeof item.routine_id === 'string' &&
     OPAQUE_ID_RE.test(item.routine_id) &&
     Number.isInteger(item.revision) &&
@@ -666,29 +646,25 @@ function parseCard(body, teamId, incidentId) {
 }
 
 /** Open a held run's recovery card for the signed-in person, with the tag of the state it shows. */
-export async function openRoutineCard(call, teamId, incidentId) {
-  const body = await request(call, 'routines.card', { team_id: team(teamId), incident_id: opaque(incidentId) });
-  return parseCard(body, teamId, incidentId);
+export async function openRoutineCard(call, teamId, runId) {
+  const body = await request(call, 'routines.card', { team_id: team(teamId), run_id: opaque(runId) });
+  return parseCard(body, teamId, runId);
 }
 
 /**
- * Answer an open card with Rodar; returns what Team did. Team refuses it as `routine-card-stale` once the held run's
- * state no longer has the card's tag. Excluir is the confirmed deletion instead.
+ * Answer an open card with Rodar, its tag alone; Team sets the held run aside and requests one fresh run. Team refuses
+ * it as `routine-card-stale` once the held run's state no longer has the card's tag. Excluir is the confirmed deletion.
  */
-export async function answerRoutineCard(call, teamId, incidentId, card, choice) {
-  if (!CARD_ANSWERS.includes(choice) || typeof card?.tag !== 'string' || !TAG_RE.test(card.tag)) {
+export async function answerRoutineCard(call, teamId, runId, card) {
+  if (typeof card?.tag !== 'string' || !TAG_RE.test(card.tag)) {
     throw new RoutineError('routine-request-invalid');
   }
   const body = await request(call, 'routines.card_answer', {
     team_id: team(teamId),
-    incident_id: opaque(incidentId),
-    body: { tag: card.tag, choice },
+    run_id: opaque(runId),
+    body: { tag: card.tag },
   });
-  return view(body, ['team_id', 'incident_id', 'choice', 'status'], (item) =>
-    item.team_id === teamId &&
-    item.incident_id === incidentId &&
-    item.choice === choice &&
-    item.status === CARD_STATUSES[choice]);
+  return view(body, ['team_id', 'run_id'], (item) => item.team_id === teamId && item.run_id === runId);
 }
 
 const MAX_NAME_CHARS = 80;
@@ -705,48 +681,35 @@ function isCompleted(detail) {
   return isSummary(detail.plan) && (detail.output === null || isOutput(detail.output));
 }
 
-// The call a failed run stopped at by position, or both null when it failed before any call.
-function isFailedAt(detail) {
-  return (detail.position === null && detail.steps === null) || isCallPosition(detail.position, detail.steps);
-}
-
-const STEP_KEYS = ['assistant_id', 'action', 'position', 'steps'];
 const COMPLETED_KEYS = ['plan', 'output'];
 // Consecutive failed runs that pause a Routine (ADR-0092 section 6).
 const MAX_FAILURE_STREAK = 3;
+const NOTHING = [[], () => true];
 
+// What Admin keeps of each notice it stores: only the detail a view renders. A Routine's change, deletion, and scope
+// change show nowhere, so Admin never stores them.
 const NOTICE_DETAILS = {
   done: [COMPLETED_KEYS, isCompleted],
   recovered: [COMPLETED_KEYS, isCompleted],
-  held: [STEP_KEYS, isHeldStep],
-  paused: [[...STEP_KEYS, 'reason'], (detail) => isHeldStep(detail) && PAUSE_REASONS.includes(detail.reason)],
+  held: NOTHING,
+  paused: [['reason'], (detail) => PAUSE_REASONS.includes(detail.reason)],
   // A person set the held run aside: Rodar, or the deletion of its Routine.
-  'user-skipped': [[...STEP_KEYS, 'choice'], (detail) => isHeldStep(detail) && CARD_CHOICES.includes(detail.choice)],
+  'user-skipped': NOTHING,
   skipped: [['missed'], (detail) => Number.isInteger(detail.missed) && detail.missed >= 1],
   healthy: [['runs'], (detail) => whole(detail.runs, 1, MAX_ROLLUP_RUNS)],
-  'scope-changed': [['assistants'], (detail) => isAssistants(detail.assistants, 1)],
-  frozen: [
-    ['request_kind', ...STEP_KEYS],
-    (detail) => REQUEST_KINDS.includes(detail.request_kind) && detail.assistant_id !== null && isHeldStep(detail),
-  ],
-  failed: [
-    ['code', 'actions', 'position', 'steps'],
-    (detail) => typeof detail.code === 'string' && ERROR_CODE_RE.test(detail.code) && isActions(detail.actions) &&
-      isFailedAt(detail),
-  ],
-  denied: [['actions'], (detail) => isActions(detail.actions)],
-  stopped: [['actions'], (detail) => isActions(detail.actions)],
-  // A Routine's creation, change, and deletion name it and say nothing else (ADR-0101).
-  created: [[], () => true],
-  changed: [[], () => true],
-  deleted: [[], () => true],
+  frozen: [['request_kind'], (detail) => REQUEST_KINDS.includes(detail.request_kind)],
+  failed: [['code'], (detail) => typeof detail.code === 'string' && ERROR_CODE_RE.test(detail.code)],
+  denied: NOTHING,
+  stopped: NOTHING,
+  // A Routine's creation names it and says nothing else (ADR-0101).
+  created: NOTHING,
   // Its consecutive failed runs paused the Routine, and how many.
   'streak-paused': [['failures'], (detail) => whole(detail.failures, 1, MAX_FAILURE_STREAK)],
 };
 
-// `healthy` rolls up a continuous Routine's healthy runs that ended in one minute (ADR-0092 section 9); `deleted`
-// closes a Routine's timeline (ADR-0101); `streak-paused` says a failure streak paused it (ADR-0092 section 6).
-const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed', 'healthy', 'deleted', 'streak-paused'];
+// `healthy` rolls up a continuous Routine's healthy runs that ended in one minute (ADR-0092 section 9); `streak-paused`
+// says a failure streak paused it (ADR-0092 section 6).
+const ROUTINE_OUTCOMES = ['skipped', 'created', 'healthy', 'streak-paused'];
 
 /** Whether a value is a Routine name in Team's closed form: one plain NFC line of at most 80 characters. */
 export function isName(value, maximum = MAX_NAME_CHARS) {

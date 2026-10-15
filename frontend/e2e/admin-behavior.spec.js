@@ -4287,7 +4287,7 @@ test('holds Send while a Brain change is saving so the turn uses the saved selec
 
 // A Routine notice's usage and protection as Team writes them (ADR-0101): a run's notice carries its active duration;
 // a Routine's notice carries none, except the healthy rollup's summed duration.
-const ROUTINE_OUTCOMES = ['skipped', 'scope-changed', 'created', 'changed', 'healthy', 'deleted', 'streak-paused'];
+const ROUTINE_OUTCOMES = ['skipped', 'created', 'healthy', 'streak-paused'];
 function noticeExtras(outcome) {
   const used = !ROUTINE_OUTCOMES.includes(outcome) || outcome === 'healthy';
   return { usage: used ? { duration_ms: 4120 } : null, protection_lost: false };
@@ -4300,7 +4300,7 @@ const CREDITS_MESSAGE = "Client error '402 Payment Required' for url 'https://ap
 function recoveryCard(incidentId, { tag = 'f'.repeat(64), action = 'replace-dns-record', failure = {} } = {}) {
   return {
     team_id: 'marketing',
-    incident_id: incidentId,
+    run_id: incidentId,
     routine_id: ROUTINE_VIEW.routine_id,
     revision: 1,
     assistant_id: 'shimpz-cloudflare',
@@ -4367,7 +4367,7 @@ async function routeRoutines(
   let runs = [];
   let incidents = held ? [
     {
-      incident_id: 'b'.repeat(32),
+      run_id: 'b'.repeat(32),
       routine_id: ROUTINE_VIEW.routine_id,
       name: ROUTINE_VIEW.name,
       created_at: '2026-09-30T12:01:07Z',
@@ -4424,12 +4424,12 @@ async function routeRoutines(
     return ok({ team_id: 'marketing', routine_id: routineId, deleted: !runEnding });
   });
   // The held run's card. Rodar sets the run aside and lifts the pause.
-  await routeRead(page, 'routines.card', ({ incident_id: incidentId }) => ok(recoveryCard(incidentId)));
-  await routeRead(page, 'routines.card_answer', ({ incident_id: incidentId, body: answer }) => {
+  await routeRead(page, 'routines.card', ({ run_id: incidentId }) => ok(recoveryCard(incidentId)));
+  await routeRead(page, 'routines.card_answer', ({ run_id: incidentId, body: answer }) => {
     calls.answers.push(answer);
-    incidents = incidents.filter((item) => item.incident_id !== incidentId);
+    incidents = incidents.filter((item) => item.run_id !== incidentId);
     routines = routines.map((routine) => ({ ...routine, state: 'active' }));
-    return ok({ team_id: 'marketing', incident_id: incidentId, choice: answer.choice, status: 'requested' });
+    return ok({ team_id: 'marketing', run_id: incidentId });
   });
   return calls;
 }
@@ -5183,7 +5183,7 @@ test.describe('Team Routines', () => {
           run_id: failed,
           outcome: 'failed',
           created_at: '2026-10-01T12:01:07Z',
-          detail: { code: 'assistant-rpc-failed', actions: [], position: null, steps: null },
+          detail: { code: 'assistant-rpc-failed' },
           version: 1,
           ...noticeExtras('failed'),
         }],
@@ -5466,7 +5466,7 @@ test.describe('Team Routines', () => {
       if (params.run_id !== run) return undefined;
       runs = [{ ...runs[0], status: 'held', request_kind: null, assistant_id: null, action: null, position: null, steps: null }];
       incidents = [{
-        incident_id: run,
+        run_id: run,
         routine_id: ROUTINE_VIEW.routine_id,
         name: ROUTINE_VIEW.name,
         created_at: '2026-10-01T12:01:07Z',
@@ -5504,10 +5504,10 @@ test.describe('Team Routines', () => {
     const openings = [];
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
     await routeRead(page, 'routines.card', (params) => {
-      openings.push(params.incident_id);
+      openings.push(params.run_id);
       // Team has not indexed the incident at the first opening; it is listed from then on.
       if (openings.length === 1) {
-        incidents = [{ incident_id: run, routine_id: ROUTINE_VIEW.routine_id, name: ROUTINE_VIEW.name, created_at: '2026-10-01T12:01:07Z', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }];
+        incidents = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, name: ROUTINE_VIEW.name, created_at: '2026-10-01T12:01:07Z', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }];
         return ok({ code: 'routine-incident-unavailable' }, 404);
       }
       return ok(recoveryCard(run, { tag: 'e'.repeat(64) }));
@@ -5535,7 +5535,7 @@ test.describe('Team Routines', () => {
     // Team has no card for the run that was held: the panel reads the Routine list again on its own.
     const cards = [];
     await routeRead(page, 'routines.card', (params) => {
-      cards.push(params.incident_id);
+      cards.push(params.run_id);
       return ok({ code: 'routine-incident-unavailable' }, 404);
     });
     const steps = [];
@@ -5573,13 +5573,13 @@ test.describe('Team Routines', () => {
     await routeReadyChat(page);
     const run = 'd'.repeat(32);
     let runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', scheduled_at: '2026-10-01T12:00:00Z', request_kind: null, assistant_id: null, action: null, position: null, steps: null }];
-    let incidents = [{ incident_id: run, routine_id: ROUTINE_VIEW.routine_id, name: ROUTINE_VIEW.name, created_at: '2026-10-01T12:01:07Z', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }];
+    let incidents = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, name: ROUTINE_VIEW.name, created_at: '2026-10-01T12:01:07Z', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }];
     let release;
     const answered = new Promise((resolve) => { release = resolve; });
     const openings = [];
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
     await routeRead(page, 'routines.card', (params) => {
-      openings.push(params.incident_id);
+      openings.push(params.run_id);
       return ok(recoveryCard(run, { tag: 'e'.repeat(64) }));
     });
     // Rodar starts a fresh run, which freezes for an approval that the Team lists before the answer itself is
@@ -5588,7 +5588,7 @@ test.describe('Team Routines', () => {
       runs = [{ ...runs[0], status: 'frozen', request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }];
       incidents = [];
       await answered;
-      return ok({ team_id: 'marketing', incident_id: run, choice: 'run', status: 'requested' });
+      return ok({ team_id: 'marketing', run_id: run });
     });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
@@ -5684,8 +5684,8 @@ test.describe('Team Routines', () => {
         entries: [
           entry('a'.repeat(32), 'created', {}, null, '2026-10-01T11:00:00Z'),
           entry('f'.repeat(32), 'skipped', { missed: 2 }, null, '2026-10-01T11:30:00Z'),
-          entry('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']], position: null, steps: null }),
-          entry('d'.repeat(32), 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }),
+          entry('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed' }),
+          entry('d'.repeat(32), 'frozen', { request_kind: 'human' }),
           entry('b'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: null }),
         ],
         before: null,
@@ -6191,7 +6191,7 @@ test.describe('Team Routines', () => {
       history: {
         entries: [
           row('b'.repeat(32), 'a'.repeat(32), 'created', {}, null),
-          row('c'.repeat(32), listed.routine_id, 'failed', { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']], position: null, steps: null }),
+          row('c'.repeat(32), listed.routine_id, 'failed', { code: 'assistant-rpc-failed' }),
           row('d'.repeat(32), 'f'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: null }),
         ],
         before: null,
@@ -6252,7 +6252,7 @@ test.describe('Team Routines', () => {
   // An unresolved incident that holds a run of `routine` for recovery (ADR-0092); it shares the run's id.
   function heldIncident(id, routine = ROUTINE_VIEW) {
     return {
-      incident_id: id,
+      run_id: id,
       routine_id: routine.routine_id,
       name: routine.name,
       created_at: '2026-10-01T12:00:07Z',
@@ -6288,12 +6288,11 @@ test.describe('Team Routines', () => {
     const held = 'b'.repeat(32);
     const paused = 'c'.repeat(32);
     const audit = { ...ROUTINE_VIEW, routine_id: 'e'.repeat(32), name: 'Weekly DNS audit' };
-    const step = { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 };
     await routeReadyChat(page, {
       history: {
         entries: [
-          routineRow(held, 'held', step, { version: 2 }),
-          routineRow(paused, 'paused', { ...step, reason: 'exhausted' }, { routine: audit, version: 2 }),
+          routineRow(held, 'held', {}, { version: 2 }),
+          routineRow(paused, 'paused', { reason: 'exhausted' }, { routine: audit, version: 2 }),
         ],
         before: null,
       },
@@ -6303,20 +6302,20 @@ test.describe('Team Routines', () => {
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines, runs: [], incidents }) : undefined));
     const opened = [];
     const answers = [];
-    await routeRead(page, 'routines.card', ({ incident_id: incidentId }) => {
+    await routeRead(page, 'routines.card', ({ run_id: incidentId }) => {
       opened.push(incidentId);
       // Team's card names its current step, which the transcript row may not show yet.
       const action = incidentId === held ? 'create-dns-record' : 'replace-dns-record';
       return ok(recoveryCard(incidentId, { tag: String(opened.length).repeat(64), action }));
     });
     // The paused run's first answer finds its card stale; everything else settles its run and lifts its Routine's pause.
-    await routeRead(page, 'routines.card_answer', ({ incident_id: incidentId, body: answer }) => {
+    await routeRead(page, 'routines.card_answer', ({ run_id: incidentId, body: answer }) => {
       answers.push(answer);
       if (incidentId === paused && answers.length === 2) return ok({ code: 'routine-card-stale' }, 409);
-      const settled = incidents.find((item) => item.incident_id === incidentId);
+      const settled = incidents.find((item) => item.run_id === incidentId);
       incidents = incidents.filter((item) => item !== settled);
       routines = routines.map((routine) => (routine.routine_id === settled.routine_id ? { ...routine, state: 'active' } : routine));
-      return ok({ team_id: 'marketing', incident_id: incidentId, choice: answer.choice, status: 'requested' });
+      return ok({ team_id: 'marketing', run_id: incidentId });
     });
     await page.goto('/chat/?team=marketing');
     // The chat shows no run; the Team's Routines button says a Routine needs the person, and opening one is the card.
@@ -6359,7 +6358,7 @@ test.describe('Team Routines', () => {
     expect(new Set(opened)).toEqual(new Set([held, paused]));
     // Every answer carries exactly the tag of a card the panel had shown, never one opened after the click.
     const tags = opened.map((_id, index) => String(index + 1).repeat(64));
-    expect(answers.map((answer) => answer.choice)).toEqual(['run', 'run', 'run']);
+    expect(answers.map((answer) => Object.keys(answer))).toEqual([['tag'], ['tag'], ['tag']]);
     for (const answer of answers) expect(tags).toContain(answer.tag);
     const pausedTags = opened.flatMap((id, index) => (id === paused ? [String(index + 1).repeat(64)] : []));
     expect(answers.slice(1).map((answer) => answer.tag)).toEqual(pausedTags.slice(0, 2));
@@ -6371,7 +6370,7 @@ test.describe('Team Routines', () => {
     const message = '<img src=x onerror=alert(1)> Insufficient account credits';
     await routeReadyChat(page, {
       history: {
-        entries: [routineRow(held, 'held', { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }, { version: 2 })],
+        entries: [routineRow(held, 'held', {}, { version: 2 })],
         before: null,
       },
     });
@@ -6389,7 +6388,7 @@ test.describe('Team Routines', () => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     const failed = 'c'.repeat(32);
     await routeReadyChat(page, {
-      history: { entries: [routineRow(failed, 'failed', { code: 'assistant-rpc-failed', actions: [], position: null, steps: null })], before: null },
+      history: { entries: [routineRow(failed, 'failed', { code: 'assistant-rpc-failed' })], before: null },
     });
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     const requested = [];
@@ -6454,7 +6453,7 @@ test.describe('Team Routines', () => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     const failed = 'c'.repeat(32);
     await routeReadyChat(page, {
-      history: { entries: [routineRow(failed, 'failed', { code: 'assistant-rpc-failed', actions: [], position: 5, steps: 6 })], before: null },
+      history: { entries: [routineRow(failed, 'failed', { code: 'assistant-rpc-failed' })], before: null },
     });
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     // The same Action's first attempt failed at steps 2, 5, and 7: one operation per position.
@@ -6521,7 +6520,7 @@ test.describe('Team Routines', () => {
     const chatHistory = await routeReadyChat(page, {
       history: {
         entries: [
-          routineRow('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [], position: null, steps: null }),
+          routineRow('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed' }),
           routineRow('d'.repeat(32), 'done', done),
           ...chat,
         ],
@@ -6624,7 +6623,7 @@ test.describe('Team Routines', () => {
   test("a Routine's panel that stays open lists every run that ends, and every older run stays reachable", async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const done = { plan: ROUTINE_VIEW.plan, output: null };
-    const failed = { code: 'assistant-rpc-failed', actions: [], position: null, steps: null };
+    const failed = { code: 'assistant-rpc-failed' };
     // The Routine's stored history, oldest first; a row's position is its place in it, as Admin's cursor names it.
     const stored = [];
     // Each run ends a second after the one before, so a listed run is known by its time.
@@ -6825,7 +6824,7 @@ test.describe('Team Routines', () => {
     const at = (row, createdAt) => ({ ...row, created_at: createdAt });
     const missed = { ...at(routineRow('a'.repeat(32), 'skipped', { missed: 2 }), '2026-10-01T11:00:00Z'), run_id: null };
     const lost = {
-      ...at(routineRow('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed', actions: [], position: null, steps: null }), '2026-10-01T11:30:00Z'),
+      ...at(routineRow('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed' }), '2026-10-01T11:30:00Z'),
       protection_lost: true,
     };
     const done = {
@@ -6834,7 +6833,7 @@ test.describe('Team Routines', () => {
     };
     // A run paused for a safety rule, and the pause its Routine's consecutive failed runs caused, which is no run.
     const paused = at(routineRow('e'.repeat(32), 'paused', {
-      assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3, reason: 'policy',
+      reason: 'policy',
     }), '2026-10-01T11:10:00Z');
     const streak = {
       ...at(routineRow('f'.repeat(32), 'streak-paused', { failures: 3 }), '2026-10-01T11:20:00Z'),
@@ -6887,9 +6886,9 @@ test.describe('Team Routines', () => {
     await routeReadyChat(page, {
       history: {
         entries: [
-          routineRow(failed, 'failed', { code: 'assistant-rpc-failed', actions: [], position: null, steps: null }),
+          routineRow(failed, 'failed', { code: 'assistant-rpc-failed' }),
           routineRow(held, 'paused', {
-            assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3, reason: 'exhausted',
+            reason: 'exhausted',
           }, { routine: heldRoutine }),
         ],
         before: null,
@@ -6945,7 +6944,7 @@ test.describe('Team Routines', () => {
     await routeReadyChat(page, {
       history: {
         entries: [routineRow(run, 'frozen', {
-          request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3,
+          request_kind: 'human',
         })],
         before: null,
       },
@@ -6989,7 +6988,7 @@ test.describe('Team Routines', () => {
     const waiting = 'e'.repeat(32);
     const audit = { ...ROUTINE_VIEW, routine_id: 'c'.repeat(32), name: 'Weekly DNS audit' };
     const frozenRow = (id, requestKind, routine) => routineRow(id, 'frozen', {
-      request_kind: requestKind, assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3,
+      request_kind: requestKind,
     }, { routine });
     await routeReadyChat(page, {
       history: { entries: [frozenRow(waiting, 'integrations', audit), frozenRow(run, 'human', ROUTINE_VIEW)], before: null },
@@ -7077,7 +7076,7 @@ test.describe('Team Routines', () => {
     await routeReadyChat(page, {
       history: {
         entries: [routineRow(run, 'frozen', {
-          request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3,
+          request_kind: 'human',
         })],
         before: null,
       },
@@ -7140,7 +7139,7 @@ test.describe('Team Routines', () => {
     await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
     const run = 'd'.repeat(32);
     const earlier = createdRow('c'.repeat(32));
-    const frozen = routineRow(run, 'frozen', { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 });
+    const frozen = routineRow(run, 'frozen', { request_kind: 'human' });
     let history = { entries: [], before: null };
     let runs = [];
     await routeReadyChat(page, { history });
@@ -7447,7 +7446,7 @@ test('a frozen Routine run opens in the interface language and answers with the 
         run_id: run,
         outcome: 'frozen',
         created_at: '2026-10-01T12:01:07Z',
-        detail: { request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 },
+        detail: { request_kind: 'human' },
         version: 1,
         ...noticeExtras('frozen'),
       }],

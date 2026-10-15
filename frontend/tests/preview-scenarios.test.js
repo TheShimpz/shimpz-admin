@@ -320,12 +320,12 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
   const chat = scenario.call('history.page', { team_id: 'marketing' }).json.entries;
   assert.ok(chat.length > 0);
   assert.ok(chat.every((entry) => parseRoutineRunEntry(entry).outcome === 'created'));
-  for (const outcome of ['created', 'changed', 'done', 'healthy', 'recovered', 'user-skipped', 'failed', 'held', 'paused', 'deleted']) {
+  for (const outcome of ['created', 'done', 'healthy', 'recovered', 'user-skipped', 'failed', 'held', 'paused']) {
     assert.ok(outcomes.includes(outcome), outcome);
   }
-  // Every row is titled by the name Team froze into it; the deleted Routine's notice is the last row and still names it.
+  // Every row is titled by the name Team froze into it.
   const notices = entries.map(parseRoutineRunEntry);
-  assert.deepEqual([notices.at(-1).outcome, notices.at(-1).name], ['deleted', ROUTINE_TEXT.en.names[4]]);
+  assert.ok(notices.every((notice) => ROUTINE_TEXT.en.names.includes(notice.name)));
   // Runs report their active duration, and one run says it lost its secret-value protection.
   assert.ok(notices.some((notice) => notice.usage?.duration_ms > 0));
   assert.ok(notices.some((notice) => notice.protectionLost));
@@ -335,21 +335,24 @@ test('the Routine lifecycle preview holds only rows, views, cards, and details t
   assert.ok(listed.routines.some((routine) => routine.state === 'paused'));
   const [held, paused] = listed.incidents;
   // The weekly Routine's update hit a Cloudflare account out of credits; the card shows it as a likely credits cause.
-  const card = await openRoutineCard(reader(scenario), 'marketing', held.incident_id);
+  const card = await openRoutineCard(reader(scenario), 'marketing', held.run_id);
   assert.deepEqual([card.evidence, failureCause(card.diagnostic)], ['recorded', 'credits']);
-  assert.equal(failureCause((await openRoutineCard(reader(scenario), 'marketing', paused.incident_id)).diagnostic), 'auth');
+  assert.equal(failureCause((await openRoutineCard(reader(scenario), 'marketing', paused.run_id)).diagnostic), 'auth');
   // A card read again carries a new tag, so an answer naming the earlier one is stale; Rodar sets the weekly one's held
   // run aside.
-  const current = await openRoutineCard(reader(scenario), 'marketing', held.incident_id);
+  const current = await openRoutineCard(reader(scenario), 'marketing', held.run_id);
   await assert.rejects(
-    answerRoutineCard(reader(scenario), 'marketing', held.incident_id, card, 'run'),
+    answerRoutineCard(reader(scenario), 'marketing', held.run_id, card),
     (error) => error.code === 'routine-card-stale',
   );
-  assert.equal((await answerRoutineCard(reader(scenario), 'marketing', held.incident_id, current, 'run')).status, 'requested');
+  assert.deepEqual(
+    await answerRoutineCard(reader(scenario), 'marketing', held.run_id, current),
+    { team_id: 'marketing', run_id: held.run_id },
+  );
   assert.equal((await listRoutines(reader(scenario), 'marketing')).incidents.length, 1);
   const rows = scenario.call('history.page', { team_id: 'marketing', routine: held.routine_id }).json.entries;
-  const setAside = parseRoutineRunEntry(rows.find((entry) => entry.run_id === held.incident_id));
-  assert.deepEqual([setAside.outcome, setAside.detail.choice], ['user-skipped', 'run']);
+  const setAside = parseRoutineRunEntry(rows.find((entry) => entry.run_id === held.run_id));
+  assert.equal(setAside.outcome, 'user-skipped');
   const failed = entries.find((entry) => entry.outcome === 'failed');
   assert.equal((await readRunDiagnostics(reader(scenario), 'marketing', failed.run_id)).length, 3);
   // Every listed Routine's steps read page by page for its own revision; the 120-step watch takes two pages, and a
@@ -389,8 +392,8 @@ test('the Routine lifecycle preview spans the day before it opened and that day,
   const instants = history.map((entry) => Date.parse(entry.created_at));
   assert.deepEqual(instants, [...instants].sort((left, right) => left - right));
   assert.deepEqual(history.map((entry) => entry.created_at.slice(0, 10)), [
-    ...Array(6).fill('2026-10-02'),
-    ...Array(6).fill('2026-10-03'),
+    ...Array(5).fill('2026-10-02'),
+    ...Array(5).fill('2026-10-03'),
   ]);
   for (const entry of history) assert.equal(parseRoutineRunEntry(entry).createdAt, entry.created_at);
 });

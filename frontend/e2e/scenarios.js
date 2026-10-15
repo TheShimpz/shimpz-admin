@@ -13,7 +13,6 @@ import {
 import { catalogBindingAnswer, catalogImageAnswer, catalogInventory, catalogSnapshots } from './catalogScenario.js';
 import { localizedChallenge } from './localizedRequest.js';
 import {
-  recordDeletion,
   recordingReply,
   ROUTINE_QUESTIONS,
   routineLifecycleStart,
@@ -73,7 +72,7 @@ const WEEKLY_ROUTINE = {
 
 // A held run's unresolved incident (ADR-0092): its Routine is paused until a recovery card settles it.
 const HELD_INCIDENT = {
-  incident_id: 'b'.repeat(32),
+  run_id: 'b'.repeat(32),
   routine_id: ROUTINE_VIEW.routine_id,
   name: ROUTINE_VIEW.name,
   created_at: '2026-09-30T12:01:07Z',
@@ -391,11 +390,8 @@ function deleteRoutine(state, { routine_id: routineId, body }) {
   if (!/^[0-9]{6}$/.test(body?.code ?? '')) return { status: 401, json: { code: 'authentication-expired' } };
   // Deleting a Routine sets each of its held runs aside, as Team does.
   for (const held of (state.incidents ?? []).filter((item) => item.routine_id === routineId)) {
-    setAside(state, held.incident_id, 'delete');
+    setAside(state, held.run_id);
   }
-  // Its last notice names it and closes its timeline.
-  const deleted = state.routines.find((item) => item.routine_id === routineId);
-  if (deleted) recordDeletion(state, deleted);
   state.routines = state.routines.filter((item) => item.routine_id !== routineId);
   state.runs = state.runs.filter((run) => run.routine_id !== routineId);
   return ok({ team_id: 'marketing', routine_id: routineId, deleted: true });

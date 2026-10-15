@@ -45,7 +45,7 @@ const RUN = {
   steps: null,
 };
 const INCIDENT = {
-  incident_id: 'd'.repeat(32),
+  run_id: 'd'.repeat(32),
   routine_id: ROUTINE.routine_id,
   name: ROUTINE.name,
   created_at: '2026-10-05T12:01:07Z',

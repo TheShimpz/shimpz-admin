@@ -165,7 +165,7 @@
     working = true;
     result = '';
     try {
-      await answerRoutineCard(call, teamId, runId, card, choice);
+      await answerRoutineCard(call, teamId, runId, card);
       result = copy.card.requested;
       finish(result);
     } catch (error) {

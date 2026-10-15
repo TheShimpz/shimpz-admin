@@ -432,7 +432,7 @@ const ATTEMPT_FAILURE = Object.freeze({
 });
 
 const INCIDENT = {
-  incident_id: 'b'.repeat(32),
+  run_id: 'b'.repeat(32),
   routine_id: ROUTINE.routine_id,
   name: 'DNS semanal',
   created_at: '2026-10-05T12:01:07Z',
@@ -555,10 +555,8 @@ test('Routine requests go to exact Admin operations and admit only exact answers
     () => beginRoutineDeletion(fetcher([]).fetch, 'team_1', ROUTINE.routine_id, ''),
     () => resumeRoutine(fetcher([]).fetch, 'team_1', 'x'),
     () => openRoutineCard(fetcher([]).fetch, 'team_1', 'x'),
-    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { tag: 'c'.repeat(64) }, 'approve'),
-    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { tag: 'x' }, 'run'),
-    // Excluir is the confirmed deletion, never a card answer.
-    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, { tag: 'c'.repeat(64) }, 'delete'),
+    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.run_id, { tag: 'x' }),
+    () => answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.run_id, {}),
   ]) {
     await assert.rejects(refused(), (error) => error.code === 'routine-request-invalid');
   }
@@ -652,7 +650,6 @@ const RUN_ENTRY = {
   usage: REPLAY_USAGE,
   protection_lost: false,
 };
-const STEP = { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 };
 // A two-step plan's summary, and a 120-step one whose middle Action repeats.
 const TWO = Object.freeze({ ...SUMMARY, steps: 2, actions: [['shimpz-cloudflare', 'list-zones', 1], ['shimpz-cloudflare', 'list-dns-records', 1]] });
 const LONG = Object.freeze({
@@ -701,24 +698,20 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'recovered', detail: { plan: LONG, output: { ...UNSHOWN, step: 120 } } },
     { ...RUN_ENTRY, protection_lost: true },
     { ...RUN_ENTRY, usage: { duration_ms: 9800 } },
-    { ...RUN_ENTRY, outcome: 'deleted', run_id: null, usage: null, detail: {} },
-    { ...RUN_ENTRY, outcome: 'held', detail: STEP },
-    { ...RUN_ENTRY, outcome: 'held', detail: UNPLACED },
-    { ...RUN_ENTRY, outcome: 'paused', detail: { ...STEP, reason: 'exhausted' } },
-    { ...RUN_ENTRY, outcome: 'paused', detail: { ...STEP, reason: 'policy' } },
-    { ...RUN_ENTRY, outcome: 'paused', detail: { ...UNPLACED, reason: 'evidence' } },
-    { ...RUN_ENTRY, outcome: 'user-skipped', detail: { ...STEP, choice: 'run' } },
-    { ...RUN_ENTRY, outcome: 'user-skipped', detail: { ...UNPLACED, choice: 'delete' } },
+    // Admin keeps of each notice only the detail its view renders.
+    { ...RUN_ENTRY, outcome: 'held', detail: {} },
+    { ...RUN_ENTRY, outcome: 'paused', detail: { reason: 'exhausted' } },
+    { ...RUN_ENTRY, outcome: 'paused', detail: { reason: 'policy' } },
+    { ...RUN_ENTRY, outcome: 'paused', detail: { reason: 'evidence' } },
+    { ...RUN_ENTRY, outcome: 'user-skipped', detail: {} },
     { ...RUN_ENTRY, outcome: 'skipped', run_id: null, usage: null, notice_id: 'f'.repeat(32), id: `${'f'.repeat(32)}:routine`, detail: { missed: 3 } },
-    { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, usage: null, detail: { assistants: ['shimpz-cloudflare'] } },
     { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 60 } },
-    { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'human', ...STEP } },
-    { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'assistant-rpc-failed', actions: [['shimpz-cloudflare', 'list-zones']], position: null, steps: null } },
-    { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'plan-input-type', actions: [], position: 37, steps: 120 } },
-    { ...RUN_ENTRY, outcome: 'denied', detail: { actions: [] } },
-    { ...RUN_ENTRY, outcome: 'stopped', detail: { actions: [] } },
+    { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'human' } },
+    { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'integrations' } },
+    { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'assistant-rpc-failed' } },
+    { ...RUN_ENTRY, outcome: 'denied', detail: {} },
+    { ...RUN_ENTRY, outcome: 'stopped', detail: {} },
     { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: {} },
-    { ...RUN_ENTRY, outcome: 'changed', run_id: null, usage: null, detail: {} },
     { ...RUN_ENTRY, outcome: 'streak-paused', run_id: null, usage: null, detail: { failures: 1 } },
     { ...RUN_ENTRY, outcome: 'streak-paused', run_id: null, usage: null, detail: { failures: 3 } },
   ];
@@ -738,37 +731,26 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, usage: { duration_ms: 1, extra: 1 } },
     { ...RUN_ENTRY, protection_lost: 'no' },
     { ...RUN_ENTRY, detail: { ...RUN_ENTRY.detail, extra: null } },
-    { ...RUN_ENTRY, outcome: 'held', detail: { ...STEP, position: '2' } },
-    { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'email', ...STEP } },
+    { ...RUN_ENTRY, outcome: 'held', detail: { extra: null } },
+    { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'email' } },
+    { ...RUN_ENTRY, outcome: 'frozen', detail: {} },
     { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { name: 'DNS semanal' } },
-    { ...RUN_ENTRY, outcome: 'changed', run_id: null, usage: null, detail: { extra: null } },
-    { ...RUN_ENTRY, outcome: 'deleted', run_id: null, usage: null, detail: { name: 'x' } },
-    { ...RUN_ENTRY, outcome: 'deleted', run_id: null, usage: REPLAY_USAGE, detail: {} },
-    { ...RUN_ENTRY, outcome: 'user-skipped', detail: { ...STEP, choice: 'other' } },
     { ...RUN_ENTRY, created_at: '2026-02-30T12:00:00Z' },
     { ...RUN_ENTRY, version: 0 },
     // A done row carries the summary of the plan it carried out, never a reply or a result.
     { ...RUN_ENTRY, detail: { reply: 'Done.' } },
-    { ...RUN_ENTRY, detail: { actions: [['shimpz-cloudflare', 'list-zones']], output: null } },
     { ...RUN_ENTRY, detail: { plan: SUMMARY, output: null, result: { ip: '1.2.3.4' } } },
     { ...RUN_ENTRY, detail: { plan: SUMMARY } },
     { ...RUN_ENTRY, outcome: 'needs-input', detail: { question: 'Which zone?' } },
-    { ...RUN_ENTRY, outcome: 'held', detail: { ...STEP, action: null } },
-    { ...RUN_ENTRY, outcome: 'held', detail: { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' } },
-    { ...RUN_ENTRY, outcome: 'held', detail: { ...STEP, position: 4 } },
-    { ...RUN_ENTRY, outcome: 'held', detail: { ...UNPLACED, position: 1 } },
-    { ...RUN_ENTRY, outcome: 'paused', detail: { ...STEP, reason: 'approve' } },
+    { ...RUN_ENTRY, outcome: 'paused', detail: { reason: 'approve' } },
+    { ...RUN_ENTRY, outcome: 'paused', detail: {} },
     // A person's skip is a run outcome; it never stands in for the missed-schedule skip.
-    { ...RUN_ENTRY, outcome: 'user-skipped', run_id: null, usage: null, detail: STEP },
+    { ...RUN_ENTRY, outcome: 'user-skipped', run_id: null, usage: null, detail: {} },
     // A minute's healthy rollup belongs to the Routine, counts at most one run a second, and names no Actions.
     { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 61 } },
     { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 2, actions: [] } },
-    { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'email', ...STEP } },
-    { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'human', ...UNPLACED } },
-    { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'Bad Code', actions: [], position: null, steps: null } },
-    { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'x', actions: [] } },
-    { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'x', actions: [], position: 1, steps: null } },
-    { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, usage: null, detail: { assistants: [] } },
+    { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'Bad Code' } },
+    { ...RUN_ENTRY, outcome: 'failed', detail: {} },
     { ...RUN_ENTRY, outcome: 'skipped', run_id: null, usage: null, detail: { missed: 0 } },
     { ...RUN_ENTRY, outcome: 'created', detail: {} },
     // A failure streak pauses its Routine after one to three failed runs in a row, and carries no usage.
@@ -794,7 +776,6 @@ test("the chat's view admits each card's answer and only a Routine's creation, a
   const keyed = (letter) => ({ id: `${letter.repeat(32)}:routine`, notice_id: letter.repeat(32) });
   const missed = { ...RUN_ENTRY, ...keyed('c'), outcome: 'skipped', run_id: null, usage: null, detail: { missed: 2 } };
   const healthy = { ...RUN_ENTRY, ...keyed('d'), outcome: 'healthy', run_id: null, detail: { runs: 2 } };
-  const changed = { ...created, outcome: 'changed' };
   const streak = { ...RUN_ENTRY, ...keyed('f'), outcome: 'streak-paused', run_id: null, usage: null, detail: { failures: 3 } };
   const answer = { id: `${'e'.repeat(32)}:answer`, kind: 'routine-answer', proposal_id: 'e'.repeat(32), status: 'created',
     name: 'Notícias de futebol', created_at: '2026-10-15T06:54:52Z' };
@@ -812,13 +793,13 @@ test("the chat's view admits each card's answer and only a Routine's creation, a
     await assert.rejects(listChatHistory(page([invalid]), 'marketing'), LocalApiError, JSON.stringify(invalid));
   }
   assert.equal((await listChatHistory(page([created]), 'marketing')).entries[0].outcome, 'created');
-  for (const hidden of [RUN_ENTRY, missed, healthy, changed, streak]) {
+  for (const hidden of [RUN_ENTRY, missed, healthy, streak]) {
     await assert.rejects(listChatHistory(page([hidden]), 'marketing'), LocalApiError, hidden.outcome);
   }
   const own = { routine: RUN_ENTRY.routine_id };
   const runs = await listChatHistory(page([missed, healthy, streak, RUN_ENTRY]), 'marketing', null, own);
   assert.deepEqual(runs.entries.map((entry) => entry.outcome), ['skipped', 'healthy', 'streak-paused', 'done']);
-  for (const foreign of [created, changed, { ...RUN_ENTRY, routine_id: 'c'.repeat(32) }]) {
+  for (const foreign of [created, { ...RUN_ENTRY, routine_id: 'c'.repeat(32) }]) {
     await assert.rejects(listChatHistory(page([foreign]), 'marketing', null, own), LocalApiError);
   }
   // The view travels as the Routine id, which must be one; nothing is requested otherwise.
@@ -843,16 +824,14 @@ test('every run reads as one line: a status phrase colored by meaning', () => {
   const cases = [
     [{ outcome: 'done', detail: { plan: SUMMARY, output: SHOWN_OUTPUT } }, ['healthy', 'concluída']],
     [{ outcome: 'recovered', detail: { plan: LONG, output: UNSHOWN } }, ['healthy', 'concluída após recuperação']],
-    [{ outcome: 'failed', detail: { code: 'plan-input-type', actions: [['shimpz-cloudflare', 'list-zones']], position: 37, steps: 120 } },
-      ['danger', 'falhou']],
-    [{ outcome: 'denied', detail: { actions: [] } }, ['danger', 'negada']],
-    [{ outcome: 'held', detail: STEP }, ['danger', 'parou com erro']],
-    [{ outcome: 'held', detail: UNPLACED }, ['danger', 'parou com erro']],
-    [{ outcome: 'paused', detail: { ...STEP, reason: 'exhausted' } }, ['waiting', 'pausada']],
-    [{ outcome: 'frozen', detail: { request_kind: 'human', ...STEP } }, ['waiting', 'aguardando aprovação']],
-    [{ outcome: 'frozen', detail: { request_kind: 'integrations', ...STEP } }, ['waiting', 'aguardando conexão']],
-    [{ outcome: 'stopped', detail: { actions: [['shimpz-cloudflare', 'list-zones']] } }, ['neutral', 'interrompida']],
-    [{ outcome: 'user-skipped', detail: { ...STEP, choice: 'delete' } }, ['neutral', 'deixada de lado']],
+    [{ outcome: 'failed', detail: { code: 'plan-input-type' } }, ['danger', 'falhou']],
+    [{ outcome: 'denied', detail: {} }, ['danger', 'negada']],
+    [{ outcome: 'held', detail: {} }, ['danger', 'parou com erro']],
+    [{ outcome: 'paused', detail: { reason: 'exhausted' } }, ['waiting', 'pausada']],
+    [{ outcome: 'frozen', detail: { request_kind: 'human' } }, ['waiting', 'aguardando aprovação']],
+    [{ outcome: 'frozen', detail: { request_kind: 'integrations' } }, ['waiting', 'aguardando conexão']],
+    [{ outcome: 'stopped', detail: {} }, ['neutral', 'interrompida']],
+    [{ outcome: 'user-skipped', detail: {} }, ['neutral', 'deixada de lado']],
   ];
   for (const [change, [tone, status]] of cases) {
     assert.deepEqual(noticeShown({ ...RUN_ENTRY, ...change }), { tone, status }, change.outcome);
@@ -1261,7 +1240,7 @@ test("a run whose notice names no plan binds its records to the run its first pa
 test('a recovery card shows its recorded failure, offers exactly Rodar and Excluir, and answers once', async () => {
   const card = {
     team_id: 'team_1',
-    incident_id: INCIDENT.incident_id,
+    run_id: INCIDENT.run_id,
     routine_id: ROUTINE.routine_id,
     revision: 2,
     assistant_id: 'shimpz-cloudflare',
@@ -1272,16 +1251,16 @@ test('a recovery card shows its recorded failure, offers exactly Rodar and Exclu
     diagnostic: { ...ATTEMPT_FAILURE, action: 'replace-dns-record', position: 2 },
     tag: 'c'.repeat(64),
   };
-  const answered = { team_id: 'team_1', incident_id: INCIDENT.incident_id, choice: 'run', status: 'requested' };
+  const answered = { team_id: 'team_1', run_id: INCIDENT.run_id };
   let api = fetcher([[200, card], [200, answered]]);
-  const opened = await openRoutineCard(api.fetch, 'team_1', INCIDENT.incident_id);
+  const opened = await openRoutineCard(api.fetch, 'team_1', INCIDENT.run_id);
   assert.deepEqual(opened, card);
-  assert.deepEqual(await answerRoutineCard(api.fetch, 'team_1', INCIDENT.incident_id, opened, 'run'), answered);
+  assert.deepEqual(await answerRoutineCard(api.fetch, 'team_1', INCIDENT.run_id, opened), answered);
   assert.deepEqual(api.calls, [
-    { method: 'routines.card', params: { team_id: 'team_1', incident_id: INCIDENT.incident_id } },
+    { method: 'routines.card', params: { team_id: 'team_1', run_id: INCIDENT.run_id } },
     {
       method: 'routines.card_answer',
-      params: { team_id: 'team_1', incident_id: INCIDENT.incident_id, body: { tag: card.tag, choice: 'run' } },
+      params: { team_id: 'team_1', run_id: INCIDENT.run_id, body: { tag: card.tag } },
     },
   ]);
   // A card whose position is no step number is refused.
@@ -1290,21 +1269,16 @@ test('a recovery card shows its recorded failure, offers exactly Rodar and Exclu
     diagnostic: { ...card.diagnostic, position: '2' },
   };
   await assert.rejects(
-    openRoutineCard(fetcher([[200, astray]]).fetch, 'team_1', INCIDENT.incident_id),
+    openRoutineCard(fetcher([[200, astray]]).fetch, 'team_1', INCIDENT.run_id),
     (error) => error.code === 'routine-response-invalid',
-  );
-  // A choice the card does not offer is refused before any request.
-  await assert.rejects(
-    answerRoutineCard(fetcher([]).fetch, 'team_1', INCIDENT.incident_id, card, 'other'),
-    (error) => error.code === 'routine-request-invalid',
   );
   for (const evidence of ['absent', 'unavailable']) {
     const plain = { ...card, evidence, diagnostic: null };
-    assert.deepEqual(await openRoutineCard(fetcher([[200, plain]]).fetch, 'team_1', INCIDENT.incident_id), plain);
+    assert.deepEqual(await openRoutineCard(fetcher([[200, plain]]).fetch, 'team_1', INCIDENT.run_id), plain);
   }
   for (const invalid of [
     { ...card, extra: 'run' },
-    { ...card, incident_id: 'd'.repeat(32) },
+    { ...card, run_id: 'd'.repeat(32) },
     { ...card, team_id: 'team_2' },
     { ...card, assistant_id: null, action: null },
     { ...card, tag: 'C'.repeat(64) },
@@ -1317,22 +1291,18 @@ test('a recovery card shows its recorded failure, offers exactly Rodar and Exclu
     { ...card, diagnostic: { ...card.diagnostic, failure: { ...card.diagnostic.failure, message: 'a\u202eb' } } },
   ]) {
     await assert.rejects(
-      openRoutineCard(fetcher([[200, invalid]]).fetch, 'team_1', INCIDENT.incident_id),
+      openRoutineCard(fetcher([[200, invalid]]).fetch, 'team_1', INCIDENT.run_id),
       (error) => error.code === 'routine-response-invalid',
     );
   }
-  for (const [choice, body] of [
-    ['run', { ...answered, status: 'other' }],
-    ['run', { ...answered, choice: 'other' }],
-    ['run', { ...answered, verdict: null }],
-  ]) {
+  for (const body of [{ ...answered, run_id: 'd'.repeat(32) }, { ...answered, verdict: null }, { team_id: 'team_1' }]) {
     await assert.rejects(
-      answerRoutineCard(fetcher([[200, body]]).fetch, 'team_1', INCIDENT.incident_id, card, choice),
+      answerRoutineCard(fetcher([[200, body]]).fetch, 'team_1', INCIDENT.run_id, card),
       (error) => error.code === 'routine-response-invalid',
     );
   }
   await assert.rejects(
-    answerRoutineCard(fetcher([[409, { code: 'routine-card-stale' }]]).fetch, 'team_1', INCIDENT.incident_id, card, 'run'),
+    answerRoutineCard(fetcher([[409, { code: 'routine-card-stale' }]]).fetch, 'team_1', INCIDENT.run_id, card),
     (error) => error.code === 'routine-card-stale' && error.status === 409,
   );
 });
@@ -1473,7 +1443,7 @@ test('a plan reads in words: ids, result paths, and literal previews', () => {
 test("a Routine's status is its most urgent one", () => {
   const routine = { routine_id: 'a'.repeat(32), schedule: { kind: 'daily', time: '09:00' }, state: 'active', deleting: false, needs_reconfirm: false };
   const run = (status) => ({ run_id: 'b'.repeat(32), routine_id: routine.routine_id, status });
-  const incident = { incident_id: 'c'.repeat(32), routine_id: routine.routine_id };
+  const incident = { run_id: 'c'.repeat(32), routine_id: routine.routine_id };
   assert.equal(routineStatus(routine), 'running');
   assert.equal(routineStatus({ ...routine, schedule: { kind: 'continuous', gap: 5 } }), 'running');
   assert.equal(routineStatus(routine, [run('leased')]), 'running');
