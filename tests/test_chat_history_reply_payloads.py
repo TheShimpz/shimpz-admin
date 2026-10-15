@@ -268,6 +268,76 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
                     database.execute("UPDATE transcript SET payload = ? WHERE event_key = ?", (original, key))
                 self.assertEqual(history.page("marketing")["entries"][-1]["text"], "Two zones are active.")
 
+    def test_a_reply_keeps_the_receipt_its_page_was_shown_for_reload(self) -> None:
+        # Two deliveries of one logical turn: Team's model call, then, after a human request, its Action and reply.
+        receipt = [
+            {"segment": 0, "seq": 2, "origin": "team", "phase": "model", "state": "started"},
+            {"segment": 0, "seq": 3, "origin": "team", "phase": "model", "state": "finished", "elapsed_ms": 40},
+            {
+                "segment": 1,
+                "seq": 1,
+                "origin": "team",
+                "phase": "action",
+                "state": "finished",
+                "elapsed_ms": 7,
+                "assistant_id": "shimpz-cloudflare",
+                "action": "list-zones",
+                "index": 1,
+                "total": 1,
+            },
+        ]
+        turn_id = self._admitted()
+        done = done_event("Two zones are active.")
+        self.assertTrue(history.append_reply("marketing", turn_id, done, receipt=copy.deepcopy(receipt)))
+        entry = history.page("marketing")["entries"][-1]
+        self.assertEqual((entry["id"], entry["receipt"]), (f"{turn_id}:reply", receipt))
+        # The steps never enter the Brain's conversation window.
+        following = self._admitted()
+        self.assertNotIn("list-zones", repr(history.conversation("marketing", following)))
+        # A reply stored without a receipt has none.
+        self.assertTrue(history.append_reply("marketing", following, done))
+        self.assertNotIn("receipt", history.page("marketing")["entries"][-1])
+        model = receipt[0]
+        for invalid in (
+            [],
+            {"0": model},
+            [None],
+            [{**model, "origin": "admin", "phase": "admin-preparation"}],
+            [{**model, "state": "finished"}],
+            [{**model, "secret": "value"}],
+            [{**model, "segment": 1}],
+            [{**model, "segment": "0"}],
+            [{**model, "seq": 0}],
+            [{**model, "seq": True}],
+            [model, model],
+            [model, {**receipt[1], "segment": 2}],
+            [model] * (local.MAX_PUBLIC_PROGRESS_EVENTS + 1),
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                history.append_reply("marketing", self._admitted(), done, receipt=invalid)
+        # A receipt too large for its row is left out, and the reply is kept without it.
+        large = self._admitted()
+        action = receipt[2]
+        many = [
+            {**action, "segment": 0, "seq": seq, "action": "a" * 128}
+            for seq in range(1, local.MAX_PUBLIC_PROGRESS_EVENTS)
+        ]
+        self.assertTrue(history.append_reply("marketing", large, done, receipt=many))
+        self.assertNotIn("receipt", history.page("marketing")["entries"][-1])
+        # A tampered stored receipt makes the history unavailable.
+        self._store_payload(
+            f"{turn_id}:reply",
+            {
+                "kind": "message",
+                "role": "assistant",
+                "text": "x",
+                "author": "Marketing",
+                "receipt": [{**model, "seq": 0}],
+            },
+        )
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.page("marketing")
+
 
 if __name__ == "__main__":
     unittest.main()

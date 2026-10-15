@@ -391,6 +391,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
             loop.call_soon(progress.put_nowait, dict(_MEASURED_PROGRESS[0]))
             websocket = mock.AsyncMock()
             connection = self.chat_socket._Connection()
+            recorded: list[object] = []
 
             with mock.patch.object(self.chat_socket.progress_transport.asyncio, "wrap_future", return_value=response):
                 result = await self.chat_socket._await_progress_result(
@@ -399,12 +400,15 @@ class ChatWebSocketTests(ChatWebSocketCase):
                     mock.sentinel.worker_future,
                     progress,
                     lambda: False,
+                    recorded.append,
                 )
 
             self.assertEqual(result, "completed")
             websocket.send_json.assert_awaited_once_with(
                 {"type": "progress", "seq": 1, **_MEASURED_PROGRESS[0]},
             )
+            # What the browser received is what the turn's receipt records.
+            self.assertEqual(recorded, [{"type": "progress", "seq": 1, **_MEASURED_PROGRESS[0]}])
 
         asyncio.run(scenario())
 
@@ -421,6 +425,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                     loop.call_soon(response.set_result, "completed")
                     raise RuntimeError("simulated peer send failure")
 
+            recorded: list[object] = []
             with mock.patch.object(self.chat_socket.progress_transport.asyncio, "wrap_future", return_value=response):
                 result = await self.chat_socket._await_progress_result(
                     FailingWebSocket(),
@@ -428,9 +433,12 @@ class ChatWebSocketTests(ChatWebSocketCase):
                     mock.sentinel.worker_future,
                     progress,
                     lambda: False,
+                    recorded.append,
                 )
 
             self.assertEqual(result, "completed")
             self.assertTrue(connection.closed)
+            # A frame the browser never received never enters a receipt.
+            self.assertEqual(recorded, [])
 
         asyncio.run(scenario())

@@ -205,7 +205,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
             }
             with mock.patch.object(socket.history, "append_reply", return_value=True) as append:
                 self.assertTrue(await socket._send_terminal_once(websocket, connection, turn, event))
-            append.assert_called_once_with("team_1", "a" * 32, event)
+            append.assert_called_once_with("team_1", "a" * 32, event, receipt=None)
             websocket.send_json.assert_awaited_once_with(event)
 
         asyncio.run(scenario())

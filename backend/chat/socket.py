@@ -101,12 +101,20 @@ async def _await_progress_result(
     future: concurrent.futures.Future,
     progress: asyncio.Queue[dict[str, object]],
     inactive: Callable[[], bool],
+    record: progress_transport.RecordEvent,
 ) -> object | None:
+    async def send(event: Mapping[str, object]) -> bool:
+        if not await _send_event(websocket, event):
+            return False
+        # The receipt keeps only what the browser received.
+        record(event)
+        return True
+
     return await progress_transport.await_result(
         future,
         progress,
         inactive,
-        lambda event: _send_event(websocket, event),
+        send,
         lambda: setattr(connection, "closed", True),
     )
 
@@ -124,6 +132,7 @@ async def _await_turn_response(
         turn.future,
         turn.progress,
         lambda: connection.closed or turn.terminal_sent,
+        progress_transport.receipt_delivery(connection.receipt, turn.history_id, fresh=True),
     )
     return team.TeamResponse(502, {}) if result is None else result
 
@@ -274,6 +283,7 @@ async def _load_sync_snapshot(
             future,
             progress,
             lambda: connection.closed or connection.sync_terminal_sent,
+            progress_transport.receipt_delivery(connection.receipt, connection.pending_history_id, fresh=False),
         )
     if snapshot is None and not connection.closed:
         await _send_sync_terminal_once(websocket, connection, _error_terminal(502))
@@ -447,6 +457,7 @@ async def _deliver_human_response(
                 future,
                 progress,
                 lambda: connection.closed or connection.sync_terminal_sent,
+                progress_transport.receipt_delivery(connection.receipt, connection.pending_history_id, fresh=False),
             )
         if response is None or connection.closed:
             if not connection.closed:

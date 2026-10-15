@@ -219,6 +219,111 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
 
         asyncio.run(scenario())
 
+    def _stored_reply(self) -> dict[str, object]:
+        return self.admin_app.chat_history.page("team_1")["entries"][-1]
+
+    def test_a_reply_keeps_the_team_steps_of_its_whole_logical_turn(self) -> None:
+        model = {"origin": "team", "phase": "model"}
+
+        def turn(_team_id, _payload, _conversation, _request, progress):
+            # Admin's own step runs outside Team's clock and never enters the receipt.
+            progress({"origin": "admin", "phase": "admin-preparation", "state": "started"})
+            progress({**model, "state": "started"})
+            progress({**model, "state": "finished", "elapsed_ms": 40})
+            return human_challenge("approval")
+
+        def resume(_team_id, _payload, progress, *, assurance):
+            progress({**model, "state": "started"})
+            progress({**model, "state": "finished", "elapsed_ms": 30})
+            return self.completed
+
+        async def scenario() -> None:
+            with (
+                mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
+                mock.patch.object(self.chat_socket.local, "resume_human", side_effect=resume),
+            ):
+                websocket = await self._open()
+                await websocket.send_json(chat_socket_fixtures.chat_frame("Continue"))
+                live = [await websocket.next_json() for _index in range(4)]
+                self.assertEqual([frame["type"] for frame in live], ["progress"] * 3 + ["human-required"])
+                await websocket.send_json(human_response(True))
+                resumed = [await websocket.next_json() for _index in range(3)]
+                self.assertEqual([frame["type"] for frame in resumed], ["progress", "progress", "done"])
+                await websocket.disconnect()
+            self.assertEqual(
+                self._stored_reply()["receipt"],
+                [
+                    {"segment": 0, "seq": 2, **model, "state": "started"},
+                    {"segment": 0, "seq": 3, **model, "state": "finished", "elapsed_ms": 40},
+                    {"segment": 1, "seq": 1, **model, "state": "started"},
+                    {"segment": 1, "seq": 2, **model, "state": "finished", "elapsed_ms": 30},
+                ],
+            )
+
+            # The next message begins its own receipt: a turn that showed no Team step keeps none.
+            with mock.patch.object(self.chat_socket.local, "turn", return_value=self.completed):
+                websocket = await self._open()
+                await websocket.send_json(chat_socket_fixtures.chat_frame("Again"))
+                self.assertEqual((await websocket.next_json())["type"], "done")
+                await websocket.disconnect()
+            self.assertNotIn("receipt", self._stored_reply())
+
+        asyncio.run(scenario())
+
+    def test_a_request_restored_on_another_page_keeps_only_the_steps_that_page_was_shown(self) -> None:
+        def resume(_team_id, _payload, progress, *, assurance):
+            progress({"origin": "team", "phase": "model", "state": "finished", "elapsed_ms": 30})
+            return self.completed
+
+        async def scenario() -> None:
+            empty = self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "status": "none"})
+            with (
+                mock.patch.object(self.chat_socket.local, "pending_integrations", return_value=empty),
+                mock.patch.object(self.chat_socket.local, "open_human", return_value=human_challenge("approval", 200)),
+                mock.patch.object(self.chat_socket.local, "resume_human", side_effect=resume),
+            ):
+                history_id = self.admin_app.chat_history.new_turn_id()
+                self.admin_app.chat_history.append_user("team_1", history_id, "Resume approval")
+                self.admin_app.chat_history.bind_resumable_turn("team_1", history_id)
+                websocket = await self._open(synchronized=False)
+                self.assertEqual((await websocket.next_json())["type"], "human-required")
+                await websocket.send_json(human_response(True))
+                self.assertEqual((await websocket.next_json())["type"], "progress")
+                self.assertEqual((await websocket.next_json())["type"], "done")
+                await websocket.disconnect()
+            self.assertEqual(
+                self._stored_reply()["receipt"],
+                [{"segment": 0, "seq": 1, "origin": "team", "phase": "model", "state": "finished", "elapsed_ms": 30}],
+            )
+
+        asyncio.run(scenario())
+
+    def test_a_receipt_is_kept_only_for_its_own_turn_and_within_its_bound(self) -> None:
+        progress = self.chat_socket.progress_transport
+        receipt = self.chat_socket.connection.Receipt()
+        step = {"type": "progress", "seq": 1, "origin": "team", "phase": "model", "state": "started"}
+        # A delivery that showed no Team step takes no number.
+        progress.receipt_delivery(receipt, "a" * 32, fresh=True)({**step, "origin": "admin"})
+        progress.receipt_delivery(receipt, "a" * 32, fresh=False)(step)
+        self.assertEqual(
+            progress.take_receipt(receipt, "a" * 32),
+            [{"segment": 0, "seq": 1, "origin": "team", "phase": "model", "state": "started"}],
+        )
+        # Taking ends it: nothing is kept twice.
+        self.assertIsNone(progress.take_receipt(receipt, "a" * 32))
+        # A continuation of another turn begins its own receipt, and a receipt is never kept for another turn.
+        progress.receipt_delivery(receipt, "a" * 32, fresh=False)(step)
+        progress.receipt_delivery(receipt, "b" * 32, fresh=False)(step)
+        self.assertEqual(len(receipt.events), 1)
+        self.assertIsNone(progress.take_receipt(receipt, "a" * 32))
+        self.assertIsNone(progress.take_receipt(receipt, None))
+        # One that outgrew its bound is not kept, and holds at most one event past it.
+        record = progress.receipt_delivery(receipt, "a" * 32, fresh=True)
+        for _index in range(self.chat_socket.local.MAX_PUBLIC_PROGRESS_EVENTS + 5):
+            record(step)
+        self.assertEqual(len(receipt.events), self.chat_socket.local.MAX_PUBLIC_PROGRESS_EVENTS + 1)
+        self.assertIsNone(progress.take_receipt(receipt, "a" * 32))
+
 
 if __name__ == "__main__":
     unittest.main()

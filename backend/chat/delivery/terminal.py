@@ -4,6 +4,7 @@ import logging
 from collections.abc import Mapping
 
 from chat.connection import Connection, Turn
+from chat.delivery.progress import take_receipt
 from chat.projection import error_terminal
 from fastapi import WebSocket, WebSocketDisconnect
 from history import delivery as history_delivery
@@ -31,12 +32,15 @@ async def turn(
     if connection.closed or active.terminal_sent:
         return False
     projected = event
+    # Every terminal ends the turn's receipt, as it does on the page; a reply keeps the steps its page was shown.
+    receipt = take_receipt(connection.receipt, active.history_id)
     try:
         await history_delivery.terminal(
             event.get("team_id"),
             active.history_id,
             event,
             finish_history=finish_history,
+            receipt=receipt,
         )
     except Exception:
         # Whatever stops the commit, the turn still ends with a terminal the browser sees, never a silence.
@@ -62,9 +66,10 @@ async def resumed(
     if connection.closed or connection.sync_terminal_sent:
         return False
     projected = event
+    receipt = take_receipt(connection.receipt, connection.pending_history_id)
     if finish_history:
         try:
-            await history_delivery.resumed_terminal(connection.pending_history_id, event)
+            await history_delivery.resumed_terminal(connection.pending_history_id, event, receipt=receipt)
         except Exception:
             log.exception("Admin resumed chat reply history commit failed")
             projected = error_terminal(503, "Admin chat history is unavailable")

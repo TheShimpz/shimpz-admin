@@ -32,6 +32,19 @@ class Turn:
 
 
 @dataclass(slots=True)
+class Receipt:
+    """The Team progress a channel delivered of one logical turn, which its reply keeps (ADR-0082).
+
+    The page lists these steps under the reply. Each delivery restarts its sequence, so every event keeps the delivery
+    it came in; a continuation after a human or Integration request adds its delivery to its history turn's receipt.
+    """
+
+    turn_id: str | None = None
+    deliveries: int = 0
+    events: list[dict[str, object]] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class Connection:
     active: Turn | None = None
     pending_challenge_id: str | None = None
@@ -45,6 +58,7 @@ class Connection:
     closed: bool = False
     admitted_history_id: str | None = field(default=None, repr=False)
     pending_history_id: str | None = field(default=None, repr=False)
+    receipt: Receipt = field(default_factory=Receipt, repr=False)
 
 
 @dataclass(frozen=True, slots=True)

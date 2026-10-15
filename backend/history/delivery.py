@@ -64,11 +64,12 @@ async def terminal(
     event: Mapping[str, object],
     *,
     finish_history: bool = False,
+    receipt: list[dict[str, object]] | None = None,
 ) -> None:
     if turn_id is None:
         return
     if event.get("type") == "done":
-        committed = await asyncio.to_thread(store.append_reply, team_id, turn_id, event)
+        committed = await asyncio.to_thread(store.append_reply, team_id, turn_id, event, receipt=receipt)
         if not committed:
             raise store.HistoryUnavailableError("chat history reply was not committed")
         return
@@ -106,12 +107,17 @@ async def abandon(turn_id: str | None) -> None:
         await asyncio.to_thread(store.finish_resumable_turn, turn_id)
 
 
-async def resumed_terminal(turn_id: str | None, event: Mapping[str, object]) -> None:
+async def resumed_terminal(
+    turn_id: str | None,
+    event: Mapping[str, object],
+    *,
+    receipt: list[dict[str, object]] | None = None,
+) -> None:
     if turn_id is None:
         raise store.HistoryUnavailableError("chat history resumable turn is unavailable")
     if event.get("type") == "done":
         team_id = event.get("team_id")
-        committed = await asyncio.to_thread(store.append_reply, team_id, turn_id, event)
+        committed = await asyncio.to_thread(store.append_reply, team_id, turn_id, event, receipt=receipt)
         if not committed:
             raise store.HistoryUnavailableError("chat history resumed reply was not committed")
         return

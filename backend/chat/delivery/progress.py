@@ -5,11 +5,14 @@ import concurrent.futures
 import contextlib
 from collections.abc import Awaitable, Callable, Mapping
 
+from chat.connection import Receipt
+
 from chat import local
 
 ProgressQueue = asyncio.Queue[dict[str, object]]
 ProgressReporter = Callable[[dict[str, object]], None]
 SendEvent = Callable[[Mapping[str, object]], Awaitable[bool]]
+RecordEvent = Callable[[Mapping[str, object]], None]
 
 
 def _enqueue(queue: ProgressQueue, value: dict[str, object]) -> None:
@@ -31,6 +34,47 @@ def channel() -> tuple[ProgressQueue, ProgressReporter]:
             loop.call_soon_threadsafe(_enqueue, progress, event)
 
     return progress, report
+
+
+def receipt_delivery(receipt: Receipt, turn_id: str | None, *, fresh: bool) -> RecordEvent:
+    """Begin one progress delivery of ``turn_id``'s receipt and return what records each frame the browser received.
+
+    A Team turn's own delivery begins its receipt afresh, as the page does for a sent message; a continuation adds to
+    the receipt of the same history turn, and one of another turn begins its own.
+    """
+    if fresh or receipt.turn_id != turn_id:
+        receipt.turn_id = turn_id
+        receipt.deliveries = 0
+        receipt.events = []
+    delivery = receipt.deliveries
+    receipt.deliveries += 1
+    events = receipt.events
+
+    def record(frame: Mapping[str, object]) -> None:
+        # Admin's own steps run outside Team's clock and never enter a receipt. One more than the bound is kept, so a
+        # receipt that outgrew it is known and left out.
+        if frame.get("origin") == "team" and len(events) <= local.MAX_PUBLIC_PROGRESS_EVENTS:
+            events.append({"segment": delivery, **{key: value for key, value in frame.items() if key != "type"}})
+
+    return record
+
+
+def take_receipt(receipt: Receipt, turn_id: str | None) -> list[dict[str, object]] | None:
+    """End the logical turn's receipt and return it for ``turn_id``'s reply, or None when there is none to keep.
+
+    Its deliveries are numbered in order from 0 among those that delivered a Team step. A receipt of another turn, an
+    empty one, and one that outgrew its bound are not kept.
+    """
+    owner, events = receipt.turn_id, receipt.events
+    receipt.turn_id = None
+    receipt.deliveries = 0
+    receipt.events = []
+    if turn_id is None or owner != turn_id or not events or len(events) > local.MAX_PUBLIC_PROGRESS_EVENTS:
+        return None
+    numbers: dict[object, int] = {}
+    for event in events:
+        numbers.setdefault(event["segment"], len(numbers))
+    return [{**event, "segment": numbers[event["segment"]]} for event in events]
 
 
 async def _deliver_event(
