@@ -36,6 +36,7 @@
   import { escapeMarkdownText } from '#lib/chat/markdown.js';
   import { ChatTurn } from '#lib/chat/turn.svelte.js';
   import { HumanRequest } from '#lib/chat/humanRequest.svelte.js';
+  import { IntegrationAuthorization } from '#lib/chat/integrationAuthorization.svelte.js';
   import { locale, t } from '#lib/i18n/index.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { CLARIFICATION_LABELS } from '#lib/chat/clarificationLabels.js';
@@ -47,12 +48,7 @@
   import { MAX_TEAM_ASSISTANTS, refreshTeamInventory, teamContext } from '#lib/teams/context.js';
   import { assistantName } from '#lib/assistants/names.js';
   import { ASSISTANT_LIMIT_REACHED } from '#lib/api.js';
-  import {
-    authorizeAssistantIntegration,
-    cancelAssistantIntegrationAuthorization,
-    completeAssistantIntegration,
-    oauthReturnFailure,
-  } from '#lib/assistants/integrations.js';
+  import { oauthReturnFailure } from '#lib/assistants/integrations.js';
   import {
     capabilityContinuation,
     createChatFrame,
@@ -128,8 +124,14 @@
   const lifecycleIconCaptures = new Map();
   let integrationsOpen = $state(false);
   let integrationsButton = $state();
-  let integrationsDialogOpen = $state(false);
-  let integrationChallenge = $state();
+  // The Integration request the turn waits on and its authorization.
+  const integration = new IntegrationAuthorization({
+    teamId: () => chatTeamId,
+    completionMode: () => $sessionContext.oauthCompletionMode,
+    words: () => integrationsCopy,
+    setError,
+    failureDetail,
+  });
   // The human request the turn waits on (ADR-0091).
   const human = new HumanRequest({
     liveTurn,
@@ -142,8 +144,6 @@
     expired: () => humanRequestCopy.expired,
     focusStop,
   });
-  let integrationWorking = $state('');
-  let oauthFailedOnReturn = false;
   let composerInput = $state();
   let chatRoute = $state();
   let inventoryRetry = $state();
@@ -854,7 +854,7 @@
     if (fromElement && document.activeElement !== fromElement) return;
     if (
       mounted && liveTurn.busy && !liveTurn.syncing && (!lifecycleWorking || installPlanWorking) &&
-      !integrationChallenge && !human.challenge
+      !integration.challenge && !human.challenge
     ) {
       stopButton?.focus({ preventScroll: true });
     }
@@ -880,10 +880,8 @@
   }
 
   function resetChallengeState() {
-    integrationChallenge = undefined;
+    integration.reset();
     human.reset();
-    integrationsDialogOpen = false;
-    integrationWorking = '';
   }
 
   function closeSocket() {
@@ -933,10 +931,8 @@
 
   function acceptIntegrationChallenge(incoming) {
     expireSocketLifecycles();
-    integrationChallenge = incoming;
+    integration.accept(incoming);
     human.dismiss();
-    integrationsDialogOpen = true;
-    oauthFailedOnReturn = false;
     integrationsOpen = false;
     liveTurn.pause();
   }
@@ -1203,10 +1199,6 @@
     queueMicrotask(() => integrationsButton?.focus());
   }
 
-  function closeIntegrationsDialog() {
-    integrationsDialogOpen = false;
-  }
-
   // A failure's detail: a change Admin never confirmed before it disconnected may or may not have happened.
   function failureDetail(reason, fallback) {
     if (outcomeUnknown(reason)) return $t('shell.outcomeUnknown');
@@ -1215,110 +1207,6 @@
 
   function toggleIntegrations() {
     integrationsOpen = !integrationsOpen;
-  }
-
-  async function authorizeIntegration(challengeId, requirement) {
-    const teamId = chatTeamId;
-    if (
-      !teamId ||
-      integrationWorking ||
-      !integrationChallenge ||
-      integrationChallenge.challenge_id !== challengeId ||
-      !integrationChallenge.requirements.some((candidate) => (
-        candidate.assistant_id === requirement?.assistant_id &&
-        candidate.integration_id === requirement?.integration_id
-      ))
-    ) throw new Error(integrationsCopy.authorizationFailed);
-    const requirementKey = `${requirement.assistant_id}/${requirement.integration_id}`;
-    integrationWorking = requirementKey;
-    flushSync();
-    const expectedCompletionMode = $sessionContext.oauthCompletionMode;
-    // Code completion needs a separate tab opened while this click still owns browser activation.
-    const authorizationWindow = expectedCompletionMode === 'code'
-      ? window.open('about:blank', '_blank')
-      : null;
-    if (authorizationWindow) authorizationWindow.opener = null;
-    let authorizationStarted = false;
-    try {
-      const authorization = await authorizeAssistantIntegration(
-        teamId,
-        challengeId,
-        requirement.assistant_id,
-        requirement.integration_id,
-      );
-      authorizationStarted = true;
-      if (chatTeamId !== teamId || integrationChallenge?.challenge_id !== challengeId) {
-        throw new Error(integrationsCopy.authorizationFailed);
-      }
-      if (authorization.completion_mode !== expectedCompletionMode) {
-        throw new Error(integrationsCopy.authorizationFailed);
-      }
-      if (authorization.completion_mode === 'code') {
-        if (!authorizationWindow || authorizationWindow.closed) {
-          throw new Error(integrationsCopy.authorizationFailed);
-        }
-        authorizationWindow.location.replace(authorization.authorization_url);
-        integrationWorking = '';
-        return authorization;
-      }
-      location.assign(authorization.authorization_url);
-      return authorization;
-    } catch (reason) {
-      authorizationWindow?.close();
-      if (authorizationStarted) {
-        try {
-          await cancelAssistantIntegrationAuthorization(teamId, challengeId);
-        } catch {
-          // Bounded server-side expiry remains the fail-closed fallback.
-        }
-      }
-      if (chatTeamId === teamId) {
-        setError(
-          integrationsCopy.authorizationFailed,
-          failureDetail(reason, integrationsCopy.authorizationFailed),
-        );
-      }
-      integrationWorking = '';
-      throw reason;
-    }
-  }
-
-  async function completeIntegration(challengeId, completionCode) {
-    const teamId = chatTeamId;
-    if (
-      !teamId ||
-      integrationWorking ||
-      integrationChallenge?.challenge_id !== challengeId
-    ) throw new Error(integrationsCopy.completionFailed);
-    integrationWorking = 'complete';
-    try {
-      await completeAssistantIntegration(teamId, challengeId, completionCode);
-      if (chatTeamId !== teamId || integrationChallenge?.challenge_id !== challengeId) {
-        throw new Error(integrationsCopy.completionFailed);
-      }
-      location.assign('/chat');
-    } catch (reason) {
-      if (chatTeamId === teamId) {
-        integrationWorking = '';
-        setError(
-          integrationsCopy.completionFailed,
-          failureDetail(reason, integrationsCopy.completionFailed),
-        );
-      }
-      throw reason;
-    }
-  }
-
-  async function cancelIntegrationAuthorization(challengeId) {
-    const teamId = chatTeamId;
-    if (!teamId || integrationChallenge?.challenge_id !== challengeId) return;
-    try {
-      await cancelAssistantIntegrationAuthorization(teamId, challengeId);
-    } catch {
-      // Expiry remains bounded and a new authorization uses a fresh binding.
-    } finally {
-      if (chatTeamId === teamId) integrationWorking = '';
-    }
   }
 
   function attachmentRefusalText(reason, name) {
@@ -1576,7 +1464,7 @@
   onMount(() => {
     mounted = true;
     document.addEventListener('focusin', trackFocus);
-    oauthFailedOnReturn = oauthReturnFailure(location.href);
+    const oauthFailedOnReturn = oauthReturnFailure(location.href);
     const initialTeamId = chatTeamId;
     if (initialTeamId !== socketTeamId) activateTeam(initialTeamId);
     else historyLoading = false;
@@ -1612,7 +1500,7 @@
           class="conversation"
           class:empty-conversation={turns.length === 0}
           aria-label={teamName}
-          aria-busy={composerBusy && !integrationChallenge && !human.challenge}
+          aria-busy={composerBusy && !integration.challenge && !human.challenge}
           inert={historyHydrating}
         >
         <p class="live-status sr-only" aria-live="polite" aria-atomic="true">{liveStatus}</p>
@@ -1672,7 +1560,7 @@
               onrewrite={rewriteRoutine}
               cardAnswer={answers.get(exchange.assistant?.routineProposal?.proposal_id) ?? ''}
               ondecide={submitLifecycleDecision}
-              thinking={index === exchanges.length - 1 && liveTurn.busy && !integrationChallenge && !human.challenge &&
+              thinking={index === exchanges.length - 1 && liveTurn.busy && !integration.challenge && !human.challenge &&
                 (exchange.assistant ? exchange.assistant.installPlan?.state === 'installed' : !lifecycleWorking)
                 ? liveThinking
                 : undefined}
@@ -1718,7 +1606,7 @@
             {attachmentsUnavailable}
             {menusBusy}
             {integrationsOpen}
-            integrationsDisabled={$teamContext.installedAssistants.length === 0 && !integrationChallenge}
+            integrationsDisabled={$teamContext.installedAssistants.length === 0 && !integration.challenge}
             stopShown={liveTurn.busy && !liveTurn.syncing && (!lifecycleWorking || installPlanWorking)}
             stopping={liveTurn.stopping}
             {sendUnavailable}
@@ -1741,20 +1629,20 @@
         <AssistantIntegrationsDrawer
           open={integrationsOpen}
           teamId={chatTeamId}
-          pending={integrationChallenge}
-          authorizing={integrationWorking}
+          pending={integration.challenge}
+          authorizing={integration.working}
           onclose={closeIntegrations}
-          onconnect={authorizeIntegration}
+          onconnect={integration.authorize}
           onerror={setError}
         />
         <AssistantIntegrationsDialog
-          open={integrationsDialogOpen}
-          challenge={integrationChallenge}
+          open={integration.dialogOpen}
+          challenge={integration.challenge}
           installedAssistants={$teamContext.installedAssistants}
-          onclose={closeIntegrationsDialog}
-          onauthorize={authorizeIntegration}
-          oncomplete={completeIntegration}
-          oncancel={cancelIntegrationAuthorization}
+          onclose={() => (integration.dialogOpen = false)}
+          onauthorize={integration.authorize}
+          oncomplete={integration.complete}
+          oncancel={integration.cancel}
         />
         <AssistantHumanRequestDialog
           open={human.open}
