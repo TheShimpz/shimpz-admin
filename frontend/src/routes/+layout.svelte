@@ -200,6 +200,24 @@
     document.getElementById('admin-password')?.focus({ preventScroll: true });
   }
 
+  // A refused second factor starts the sign-in again from the password, with the reason said.
+  async function backToPassword(nextPhase, message) {
+    phase = nextPhase;
+    clearCredentials();
+    error = message;
+    busy = false;
+    await focusPassword();
+  }
+
+  // One sign-in step: a JSON body posted to Admin's own origin.
+  function post(path, payload) {
+    return fetch(path, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+  }
+
   async function submitPassword() {
     if (busy || !['setup', 'enrollment-resume', 'login'].includes(phase)) return;
     error = '';
@@ -216,11 +234,7 @@
     const submittedPhase = phase;
     try {
       const endpoint = submittedPhase === 'login' ? '/api/login' : '/api/admin/setup';
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      });
+      const response = await post(endpoint, { password });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
         if (body.code === 'password-recovery-required') phase = 'recovery';
@@ -262,11 +276,7 @@
     busy = true;
     const submittedPhase = phase;
     try {
-      const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code }),
-      });
+      const response = await post(endpoint, { code });
       const body = await response.json().catch(() => ({}));
       // A wrong code while enrolling again keeps the enrollment: Admin hands back a fresh ticket for the next code.
       if (submittedPhase === 'totp-reenrollment' && response.status === 401) {
@@ -275,11 +285,10 @@
         return;
       }
       if (!response.ok) {
-        phase = submittedPhase === 'totp-enrollment' ? 'enrollment-resume' : 'login';
-        clearCredentials();
-        error = response.status === 429 ? $t('auth.tooManyAttempts') : $t('auth.badCodeRetry');
-        busy = false;
-        await focusPassword();
+        await backToPassword(
+          submittedPhase === 'totp-enrollment' ? 'enrollment-resume' : 'login',
+          response.status === 429 ? $t('auth.tooManyAttempts') : $t('auth.badCodeRetry'),
+        );
         return;
       }
       clearCredentials();
@@ -303,18 +312,10 @@
     error = '';
     busy = true;
     try {
-      const response = await fetch('/api/login/recovery', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: recoveryCode }),
-      });
+      const response = await post('/api/login/recovery', { code: recoveryCode });
       const body = await response.json().catch(() => ({}));
       if (!response.ok) {
-        phase = 'login';
-        clearCredentials();
-        error = response.status === 429 ? $t('auth.tooManyAttempts') : $t('security.recoveryCodeRetry');
-        busy = false;
-        await focusPassword();
+        await backToPassword('login', response.status === 429 ? $t('auth.tooManyAttempts') : $t('security.recoveryCodeRetry'));
         return;
       }
       if (response.status !== 202) throw new Error('invalid recovery');
@@ -339,17 +340,9 @@
     busy = true;
     try {
       const credential = await authenticateWithPasskey(passkeyOptions);
-      const response = await fetch('/api/login/passkey', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential }),
-      });
+      const response = await post('/api/login/passkey', { credential });
       if (!response.ok) {
-        phase = 'login';
-        clearCredentials();
-        error = $t('auth.passkeyRetry');
-        busy = false;
-        await focusPassword();
+        await backToPassword('login', $t('auth.passkeyRetry'));
         return;
       }
       clearCredentials();
@@ -366,19 +359,11 @@
     error = '';
     busy = true;
     try {
-      const begin = await fetch('/api/admin/passkeys/registration', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: '{}',
-      });
+      const begin = await post('/api/admin/passkeys/registration', {});
       const body = await begin.json().catch(() => ({}));
       if (!begin.ok || !body.options) throw new Error('passkey registration unavailable');
       const credential = await registerPasskey(body.options);
-      const complete = await fetch('/api/admin/passkeys', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ credential }),
-      });
+      const complete = await post('/api/admin/passkeys', { credential });
       if (!complete.ok) throw new Error('passkey registration failed');
       await checkSession({ redirectToChat: redirectAfterAuthentication, skipPasskeyOffer: true });
     } catch (failure) {
