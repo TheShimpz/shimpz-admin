@@ -1,7 +1,7 @@
 // The Assistant page's copy and declarations (Assistant Spec v1): its localized description, the Creator's declared
 // links, every Action with its effect and localized description, and the credentials it keeps. One validator admits
 // them from Team's details (a staged snapshot or an installed binding) and from the public catalog entry alike.
-import { HELP_URL_PATTERN } from '../chat/protocol.js';
+import { isHelpUrl } from '../chat/protocol.js';
 import { exactKeys } from '../api.js';
 import { codePointLength, isAscending } from '../grammar.js';
 import { isIdentifier, TEAM_ID_RE } from '../ids.js';
@@ -17,10 +17,6 @@ const LINK_ORIGINS = {
   instagram: ['https://instagram.com/', 'https://www.instagram.com/'],
 };
 const MAX_LINK_CHARS = 256;
-// A Stored Input's help link: the same canonical public https grammar at the Developers manifest bound.
-const MAX_HELP_URL_CHARS = 2048;
-// Built on first use: this module and the chat module that owns the key-page grammar import one another indirectly.
-let linkPattern = null;
 export const SUMMARY_CHARS = 80;
 const DESCRIPTION_CHARS = 500;
 const LINE_CHARS = 120;
@@ -47,16 +43,6 @@ export function isDisplayText(value, maximum) {
     value === value.normalize('NFC') &&
     codePointLength(value) <= maximum &&
     !NON_PRINTABLE_RE.test(value)
-  );
-}
-
-// One canonical public https page that the browser serializes unchanged, so a link opens exactly what was admitted.
-function isHelpUrl(url, maximum) {
-  return (
-    typeof url === 'string' &&
-    url.length <= maximum &&
-    (linkPattern ??= new RegExp(HELP_URL_PATTERN, 'u')).test(url) &&
-    new URL(url).href === url
   );
 }
 
@@ -122,7 +108,7 @@ function canonicalStoredInputs(value) {
       !isIdentifier(input.id) ||
       !isDisplayText(input.label, LINE_CHARS) ||
       !isDisplayText(input.description, DESCRIPTION_CHARS) ||
-      !isHelpUrl(input.help_url, MAX_HELP_URL_CHARS)
+      !isHelpUrl(input.help_url)
     ) {
       throw invalid();
     }

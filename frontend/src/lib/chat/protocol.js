@@ -365,21 +365,24 @@ const MAX_STORED_INPUT_HELP_CHARS = 500;
 const MAX_PURPOSE_CHARS = 280;
 const PURPOSE_FORBIDDEN_RE = /[\p{C}\p{Zl}\p{Zp}]|(?!-)\p{Pd}| -|- |:\/\//u;
 
-// Where a person creates a Stored Input's value, as its reviewed Assistant declared it; it must also survive the
-// browser's own URL serialization unchanged, so the link opens exactly what Team admitted.
-export function canonicalHelpUrl(value) {
-  if (typeof value !== 'string' || value.length > MAX_HELP_URL_CHARS || !HELP_URL_RE.test(value)) {
-    throw new LocalApiError('The local chat response is invalid.');
-  }
+/**
+ * Whether a value is one canonical public https page of at most `maximum` characters that also survives the browser's
+ * own URL serialization unchanged, so a link opens exactly what its producer admitted.
+ */
+export function isHelpUrl(value, maximum = MAX_HELP_URL_CHARS) {
+  if (typeof value !== 'string' || value.length > maximum || !HELP_URL_RE.test(value)) return false;
   let url;
   try {
     url = new URL(value);
   } catch {
-    throw new LocalApiError('The local chat response is invalid.');
+    return false;
   }
-  if (url.protocol !== 'https:' || url.username || url.password || url.href !== value) {
-    throw new LocalApiError('The local chat response is invalid.');
-  }
+  return url.protocol === 'https:' && !url.username && !url.password && url.href === value;
+}
+
+// Where a person creates a Stored Input's value, as its reviewed Assistant declared it.
+export function canonicalHelpUrl(value) {
+  if (!isHelpUrl(value)) throw new LocalApiError('The local chat response is invalid.');
   return value;
 }
 
