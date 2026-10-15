@@ -454,7 +454,6 @@ export default {
       excerpt: '応答の抜粋',
       redacted: 'この記録からシークレットが削除されました。',
       truncated: 'この記録は短縮されています。',
-      close: '閉じる',
       conditions: {
         exit: 'Action はステータス {code} で終了しました。',
         stderr: 'Action がエラー出力に書き込みました。',

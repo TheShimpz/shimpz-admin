@@ -454,7 +454,6 @@ export default {
       excerpt: 'Antwortauszug',
       redacted: 'Geheimnisse wurden aus dieser Aufzeichnung entfernt.',
       truncated: 'Diese Aufzeichnung wurde gekürzt.',
-      close: 'Schließen',
       conditions: {
         exit: 'Die Action wurde mit Status {code} beendet.',
         stderr: 'Die Action hat in ihre Fehlerausgabe geschrieben.',

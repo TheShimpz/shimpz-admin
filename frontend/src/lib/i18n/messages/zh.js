@@ -454,7 +454,6 @@ export default {
       excerpt: '响应摘录',
       redacted: '此记录中的机密已被移除。',
       truncated: '此记录已被截短。',
-      close: '关闭',
       conditions: {
         exit: '该 Action 以状态 {code} 退出。',
         stderr: '该 Action 向错误输出写入了内容。',

@@ -454,7 +454,6 @@ export default {
       excerpt: 'Trecho da resposta',
       redacted: 'Segredos foram removidos deste registro.',
       truncated: 'Este registro foi encurtado.',
-      close: 'Fechar',
       conditions: {
         exit: 'A Action terminou com o status {code}.',
         stderr: 'A Action escreveu na saída de erro.',

@@ -454,7 +454,6 @@ export default {
       excerpt: 'مقتطف الاستجابة',
       redacted: 'أُزيلت الأسرار من هذا السجل.',
       truncated: 'تم اختصار هذا السجل.',
-      close: 'إغلاق',
       conditions: {
         exit: 'انتهت Action بالحالة {code}.',
         stderr: 'كتبت Action في مخرج الأخطاء.',

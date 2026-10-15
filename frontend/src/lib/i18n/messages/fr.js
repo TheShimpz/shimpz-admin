@@ -454,7 +454,6 @@ export default {
       excerpt: 'Extrait de la réponse',
       redacted: 'Des secrets ont été retirés de cet enregistrement.',
       truncated: 'Cet enregistrement a été raccourci.',
-      close: 'Fermer',
       conditions: {
         exit: 'L’Action s’est terminée avec le statut {code}.',
         stderr: 'L’Action a écrit sur sa sortie d’erreur.',

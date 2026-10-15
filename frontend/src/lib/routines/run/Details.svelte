@@ -1,10 +1,10 @@
 <script>
-  import { DialogFrame, Modal, Notice } from '@shimpz/frontend';
+  import { Notice } from '@shimpz/frontend';
 
   import { call } from '#lib/session/socket.js';
-  import DialogAction from '#lib/DialogAction.svelte';
   import { locale } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
+  import RoutineModal from '#lib/routines/Modal.svelte';
   import RoutineRunSteps from '#lib/routines/run/Steps.svelte';
   import { readRunDiagnostics, runBinding } from '#lib/routines/protocol.js';
   import { attemptWords, conditionWords, instantWords, routineErrorMessage } from '#lib/routines/words.js';
@@ -12,7 +12,8 @@
   // One Routine run's execution details (ADR-0092 section 8): its own step records, read page by page for its
   // historical revision (ADR-0092 amendment, 2026-10-05, scale), then Team's sanitized record of each failed attempt.
   // Every text member is literal evidence shown as escaped text, never Markdown or HTML, and never proof of what
-  // changed. `copy` is the whole Routine copy; the run is the history `entry` of one run.
+  // changed. It closes from its header, as every Routine modal does. `copy` is the whole Routine copy; the run is the
+  // history `entry` of one run.
   let { teamId, entry, copy: routineCopy, onclose } = $props();
 
   let copy = $derived(routineCopy.details);
@@ -24,10 +25,6 @@
   let dialog = $state();
   let diagnostics = $state(null);
   let error = $state('');
-
-  $effect(() => {
-    if (dialog && !dialog.open) dialog.showModal();
-  });
 
   $effect(() => {
     let current = true;
@@ -46,8 +43,9 @@
   }
 </script>
 
-<Modal bind:element={dialog} labelledBy={`${id}-title`} oncancel={close}>
-  <DialogFrame title={copy.open} titleId={`${id}-title`} lead={copy.lead}>
+<RoutineModal bind:dialog class="routine-run-details" size="md" title={copy.open} oncancel={close} onclose={close}>
+  <div class="content">
+    <p class="muted">{copy.lead}</p>
     <section class="records" aria-labelledby={`${id}-steps`}>
       <h3 id={`${id}-steps`}>{routineCopy.result.steps}</h3>
       <RoutineRunSteps {teamId} {runId} {binding} copy={routineCopy} locale={$locale} />
@@ -85,14 +83,12 @@
         {/each}
       </ol>
     {/if}
-    {#snippet footer()}
-      <DialogAction kind="cancel" type="button" onclick={close}>{copy.close}</DialogAction>
-    {/snippet}
-  </DialogFrame>
-</Modal>
+  </div>
+</RoutineModal>
 
 <style>
-  .records { display: grid; gap: var(--gap-item); margin-block-end: var(--gap-group); }
+  .content { display: grid; flex: 1 1 auto; align-content: start; gap: var(--gap-group); min-height: 0; padding: var(--gap-panel); overflow: auto; }
+  .records { display: grid; gap: var(--gap-item); }
   h3 { margin: 0; color: var(--shimpz-color-text-muted); font-size: 0.8rem; font-weight: 600; }
   .attempts { display: grid; gap: var(--gap-item); margin: 0; padding: 0; list-style: none; }
   .attempts li { display: grid; gap: var(--gap-inside); padding-block-end: var(--gap-item); border-block-end: 1px solid var(--shimpz-color-border-subtle); }

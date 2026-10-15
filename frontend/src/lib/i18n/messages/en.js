@@ -456,7 +456,6 @@ export default {
       excerpt: 'Response excerpt',
       redacted: 'Secrets were removed from this record.',
       truncated: 'This record was shortened.',
-      close: 'Close',
       conditions: {
         exit: 'The Action exited with status {code}.',
         stderr: 'The Action wrote to its error output.',
