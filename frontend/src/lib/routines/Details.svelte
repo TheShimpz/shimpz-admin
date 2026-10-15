@@ -46,7 +46,8 @@
   // full (the result it shows and its step records), and its icon its execution details. The menu's far end keeps one icon
   // per action on every page: Pause or Resume, and Delete, which turns the whole panel into its confirmation: the
   // Supervisor's password and a second factor, and nothing else until it is deleted or canceled.
-  // `onback` adds a Back control that returns to the list the panel was opened from; Escape then goes back as well.
+  // `runs` and `incidents` are the Team's, which the panel reads for this Routine only. `onback` adds a Back control that
+  // returns to the list the panel was opened from; Escape then goes back as well.
   let { teamId, teamName, routine, runs = [], incidents = [], copy, onclose, ondeleted, onback = null } = $props();
 
   const id = $props.id();

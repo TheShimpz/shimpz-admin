@@ -76,8 +76,8 @@
     {teamId}
     {teamName}
     routine={opened}
-    runs={runs.filter((run) => run.routine_id === opened.routine_id)}
-    incidents={incidents.filter((item) => item.routine_id === opened.routine_id)}
+    {runs}
+    {incidents}
     {copy}
     onback={() => (open = '')}
     onclose={() => onclose()}
