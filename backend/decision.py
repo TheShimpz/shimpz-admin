@@ -6,6 +6,7 @@ route and is never a call.
 """
 
 import models
+import request_body
 import state
 from fastapi import HTTPException
 
@@ -63,8 +64,7 @@ def resolve() -> str | None:
 
 def save(payload: dict) -> dict[str, object]:
     """Validate the key with TypeSafe, then store it; a rejected key is 400 and an unreachable TypeSafe 503."""
-    if set(payload) != {"api_key"}:
-        raise HTTPException(status_code=400, detail="request body must contain only api_key")
+    request_body.exact_fields(payload, "api_key")
     try:
         return configure(payload["api_key"])
     except DecisionProviderError as exc:

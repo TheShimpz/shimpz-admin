@@ -6,6 +6,7 @@ Each operation that changed the Team list raises its `teams` topic for the sessi
 import logging
 import unicodedata
 
+import request_body
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 from history import http as chat_history_http
@@ -22,8 +23,7 @@ log = logging.getLogger("shimpz-admin")
 
 
 def _team_name(payload: dict) -> str:
-    if set(payload) != {"team_name"}:
-        raise HTTPException(status_code=400, detail="request body must contain only team_name")
+    request_body.exact_fields(payload, "team_name")
     if not isinstance(payload["team_name"], str):
         raise HTTPException(status_code=400, detail="team name must be a string")
     with team_http.refused_as_bad_request():
@@ -74,8 +74,7 @@ def rename(team_id: str, payload: dict) -> JSONResponse:
 
 def deletion(payload: dict) -> tuple[str, str]:
     """The exact Team name and Supervisor password a deletion confirms, as the browser sent them."""
-    if set(payload) != {"team_name", "password"}:
-        raise HTTPException(status_code=400, detail="request body must contain only team_name and password")
+    request_body.exact_fields(payload, "team_name", "password")
     team_name = payload["team_name"]
     password = payload["password"]
     if not isinstance(team_name, str) or not isinstance(password, str):

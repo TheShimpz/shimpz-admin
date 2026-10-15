@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 
 import decision
 import models
+import request_body
 from fastapi import HTTPException
 from history import http as history_http
 from protocol.socket.v1 import frames
@@ -62,13 +63,9 @@ def _team_call(owner: object, operation: str, *names: str) -> Method:
     return method
 
 
-# A model key the Supervisor stores: Admin validates it with its provider first. A rejected key is 400 and an
-# unreachable provider 503, as the route that saved keys answered.
-
-
 def save_model_key(provider: str, payload: dict) -> dict[str, object]:
-    if set(payload) != {"api_key"}:
-        raise HTTPException(status_code=400, detail="request body must contain only api_key")
+    """Validate a model key with its provider, then store it; a rejected key is 400 and an unreachable provider 503."""
+    request_body.exact_fields(payload, "api_key")
     try:
         return models.configure(provider, payload["api_key"])
     except models.ModelProviderError as exc:

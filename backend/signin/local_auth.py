@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from typing import cast
 
 import browser
+import request_body
 import state
 import supervisor
 from fastapi import HTTPException, Request
@@ -206,9 +207,7 @@ def _complete_totp(
 
 async def setup(request: Request, context: Context) -> JSONResponse:
     """Create or resume the password-bound mandatory TOTP enrollment."""
-    payload = await _json_object(request)
-    if set(payload) != {"password"}:
-        raise HTTPException(status_code=400, detail="request body must contain only password")
+    payload = request_body.exact_fields(await _json_object(request), "password")
     origin = _request_origin(request)
     current = state.authentication_state()
     if current in {auth.RECORD_STATE_CONFIGURED, auth.RECORD_STATE_RECOVERY_ENROLLMENT}:
@@ -239,9 +238,7 @@ async def setup(request: Request, context: Context) -> JSONResponse:
 
 async def confirm_setup(request: Request, context: Context) -> JSONResponse:
     """Activate TOTP and issue the first MFA session."""
-    payload = await _json_object(request)
-    if set(payload) != {"code"}:
-        raise HTTPException(status_code=400, detail="request body must contain only code")
+    payload = request_body.exact_fields(await _json_object(request), "code")
     _token, ticket = _ticket(request, context, "totp-enrollment")
     response = await _complete_enrollment(payload["code"], ticket, context, "setup", "setup-completed")
     log.info("Local Supervisor MFA enrollment completed")
@@ -278,9 +275,7 @@ def _login_passkey_options(token: str, origin: str | None, generation: int, cont
 
 async def login(request: Request, context: Context) -> JSONResponse:
     """Verify the password and issue only a short-lived second-factor ticket."""
-    payload = await _json_object(request)
-    if set(payload) != {"password"}:
-        raise HTTPException(status_code=400, detail="request body must contain only password")
+    payload = request_body.exact_fields(await _json_object(request), "password")
     current = state.authentication_state()
     if current not in {auth.RECORD_STATE_CONFIGURED, auth.RECORD_STATE_RECOVERY_ENROLLMENT}:
         raise HTTPException(status_code=409, detail="Local Supervisor MFA setup is incomplete")
@@ -303,9 +298,7 @@ async def login(request: Request, context: Context) -> JSONResponse:
 
 async def confirm_login_totp(request: Request, context: Context) -> JSONResponse:
     """Consume one password ticket and complete login with TOTP."""
-    payload = await _json_object(request)
-    if set(payload) != {"code"}:
-        raise HTTPException(status_code=400, detail="request body must contain only code")
+    payload = request_body.exact_fields(await _json_object(request), "code")
     token, ticket = _ticket(request, context, "login")
     _discard_challenge(token, context)
     try:
@@ -324,9 +317,7 @@ async def confirm_login_totp(request: Request, context: Context) -> JSONResponse
 
 async def confirm_login_passkey(request: Request, context: Context) -> JSONResponse:
     """Consume one password ticket and complete login with an exact-origin UV assertion."""
-    payload = await _json_object(request)
-    if set(payload) != {"credential"}:
-        raise HTTPException(status_code=400, detail="request body must contain only credential")
+    payload = request_body.exact_fields(await _json_object(request), "credential")
     token, ticket = _ticket(request, context, "login")
     secret, suspension_reason = _passkey_assertion(token, ticket, payload["credential"], context, "login")
     if suspension_reason is not None:
@@ -341,9 +332,7 @@ async def confirm_login_passkey(request: Request, context: Context) -> JSONRespo
 
 async def confirm_login_recovery(request: Request, context: Context) -> JSONResponse:
     """Spend one password ticket and one recovery code; admit only the re-enrollment of TOTP, never a session."""
-    payload = await _json_object(request)
-    if set(payload) != {"code"}:
-        raise HTTPException(status_code=400, detail="request body must contain only code")
+    payload = request_body.exact_fields(await _json_object(request), "code")
     token, ticket = _ticket(request, context, "login")
     _discard_challenge(token, context)
     try:
@@ -378,9 +367,7 @@ async def confirm_login_recovery(request: Request, context: Context) -> JSONResp
 
 async def confirm_recovery_enrollment(request: Request, context: Context) -> JSONResponse:
     """Complete the TOTP re-enrollment a recovery code began, issuing the session and a fresh set of codes."""
-    payload = await _json_object(request)
-    if set(payload) != {"code"}:
-        raise HTTPException(status_code=400, detail="request body must contain only code")
+    payload = request_body.exact_fields(await _json_object(request), "code")
     _token, ticket = _ticket(request, context, "recovery-enrollment")
     try:
         response = await _complete_enrollment(payload["code"], ticket, context, "recovery", "recovery-completed")
@@ -489,9 +476,7 @@ async def begin_passkey_registration(request: Request, context: Context) -> JSON
 
 async def complete_passkey_registration(request: Request, context: Context) -> JSONResponse:
     """Persist one verified passkey and rotate every previous Local session."""
-    payload = await _json_object(request)
-    if set(payload) != {"credential"}:
-        raise HTTPException(status_code=400, detail="request body must contain only credential")
+    payload = request_body.exact_fields(await _json_object(request), "credential")
     origin = _request_origin(request)
     if not passkey_enrollment_available(origin):
         raise HTTPException(status_code=409, detail="passkeys are unavailable at this Admin address")
@@ -574,9 +559,7 @@ def _unavailable() -> OperationRefusedError:
 
 def operation_password(payload: dict) -> object:
     """The one password a confirmation starts with; any other body is the request's own 400."""
-    if set(payload) != {"password"}:
-        raise HTTPException(status_code=400, detail="request body must contain only password")
-    return payload["password"]
+    return request_body.exact_fields(payload, "password")["password"]
 
 
 async def verify_operation_password(asker: Asker, context: Context, password: object) -> None:

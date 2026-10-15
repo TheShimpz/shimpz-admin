@@ -9,6 +9,7 @@ with a code the person pastes back. Each handoff is bound to the socket's Superv
 from collections.abc import Callable
 from urllib.parse import urlencode
 
+import request_body
 import state
 from fastapi import HTTPException
 from team import bridge as team
@@ -55,8 +56,7 @@ def authorize(
 
     `origin` is the Admin page's own Origin, which `allowed` must still admit, and it chooses the callback mode.
     """
-    if set(payload) != {"assistant_id", "integration_id"}:
-        raise HTTPException(status_code=400, detail="request body must contain only assistant_id and integration_id")
+    request_body.exact_fields(payload, "assistant_id", "integration_id")
     mode = callback_mode(origin, allowed)
     preparation = None
     authorized = False
@@ -90,8 +90,7 @@ def authorize(
 
 def complete(team_id: str, challenge_id: str, payload: dict, session: str) -> team.TeamResponse:
     """Finish an out-of-band authorization with the completion code the person pasted back."""
-    if set(payload) != {"completion_code"}:
-        raise HTTPException(status_code=400, detail="request body must contain only completion_code")
+    request_body.exact_fields(payload, "completion_code")
     try:
         completion = HANDOFFS.complete(
             team_id=team.canonical_team_id(team_id),

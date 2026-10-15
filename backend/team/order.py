@@ -19,6 +19,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import private_file
+import request_body
 from fastapi import HTTPException
 from fastapi.responses import JSONResponse
 from session import topics
@@ -277,8 +278,7 @@ def space_reset(response: bridge.TeamResponse) -> bridge.TeamResponse:
 
 
 def _requested_ids(payload: dict) -> list[str]:
-    if set(payload) != {"team_ids"}:
-        raise HTTPException(status_code=400, detail="request body must contain only team_ids")
+    request_body.exact_fields(payload, "team_ids")
     team_ids = canonical_ids(payload["team_ids"])
     if team_ids is None:
         raise HTTPException(status_code=400, detail="team_ids must list at most 128 unique canonical Team ids")
