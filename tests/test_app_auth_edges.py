@@ -15,25 +15,12 @@ from starlette.requests import Request
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from http_request import http_request, json_headers, remote, through_gate
+from http_request import json_request, remote, through_gate
 
 
-def _request(
-    path: str,
-    payload: object | None = None,
-    *,
-    origin: str | None = None,
-    cookie: str = "",
-) -> Request:
-    body = json.dumps(payload).encode() if payload is not None else b""
-    headers = json_headers(body) if payload is not None else []
-    # The Admin page's own fetch: the browser marks every request it sends to its own origin.
-    headers.append((b"sec-fetch-site", b"same-origin"))
-    if origin is not None:
-        headers.append((b"origin", origin.encode()))
-    if cookie:
-        headers.append((b"cookie", f"shimpz_admin={cookie}".encode()))
-    return http_request(path, remote("192.0.2.10"), body=body, headers=headers)
+def _request(path: str, payload: object | None = None, *, origin: str | None = None, cookie: str = "") -> Request:
+    cookies = {"shimpz_admin": cookie} if cookie else None
+    return json_request(path, payload, peer=remote("192.0.2.10"), method="POST", origin=origin, cookies=cookies)
 
 
 class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):

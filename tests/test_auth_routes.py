@@ -11,15 +11,13 @@ from pathlib import Path
 from unittest import mock
 
 import app_import
-from http_request import LOOPBACK, http_request, json_headers, through_gate
+from http_request import SAME_ORIGIN, json_request, response_cookie, through_gate
 from mfa_helper import code, configure_supervisor
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
-# What the browser marks on every request the Admin page sends to its own origin.
-ADMIN_PAGE = ((b"sec-fetch-site", b"same-origin"),)
 
 
 class AuthRouteTests(unittest.TestCase):
@@ -103,40 +101,17 @@ class AuthRouteTests(unittest.TestCase):
         cookie: str | None = None,
         ticket: str | None = None,
         method: str | None = None,
-        browser: tuple[tuple[bytes, bytes], ...] = ADMIN_PAGE,
+        browser: tuple[tuple[bytes, bytes], ...] = SAME_ORIGIN,
     ) -> Request:
-        raw_path, _, query = path.partition("?")
-        body = json.dumps(payload).encode() if payload is not None else b""
-        headers = json_headers(body) if body else []
-        if origin is not None:
-            headers.append((b"origin", origin.encode("ascii")))
-        if cookie is not None:
-            headers.append((b"cookie", f"shimpz_admin={cookie}".encode("ascii")))
-        if ticket is not None:
-            headers.append((b"cookie", f"shimpz_admin_ticket={ticket}".encode("ascii")))
-        headers.extend(browser)
-        return http_request(
-            raw_path,
-            LOOPBACK,
-            method=method or ("POST" if body else "GET"),
-            body=body,
-            headers=headers,
-            query=query.encode(),
-        )
-
-    @staticmethod
-    def _cookie(response, name: str) -> str:
-        prefix = name + "="
-        return next(
-            part.removeprefix(prefix) for part in response.headers["set-cookie"].split("; ") if part.startswith(prefix)
-        )
+        cookies = {name: value for name, value in (("shimpz_admin", cookie), ("shimpz_admin_ticket", ticket)) if value}
+        return json_request(path, payload, method=method, origin=origin, cookies=cookies, browser=browser)
 
     def _configure(self, password: str, origin: str | None = None):
         setup = asyncio.run(
             self.admin_app.admin_setup(self._request("/api/admin/setup", {"password": password}, origin=origin))
         )
         enrollment = json.loads(setup.body)["enrollment"]
-        ticket = self._cookie(setup, "shimpz_admin_ticket")
+        ticket = response_cookie(setup, "shimpz_admin_ticket")
         confirmed = asyncio.run(
             self.admin_app.admin_setup_totp(
                 self._request(
@@ -151,7 +126,7 @@ class AuthRouteTests(unittest.TestCase):
 
     def test_a_valid_session_in_the_query_grants_no_api_access(self) -> None:
         _setup, confirmed = self._configure("violet otter lantern quartz 92")
-        session = self._cookie(confirmed, "shimpz_admin")
+        session = response_cookie(confirmed, "shimpz_admin")
 
         async def allowed(_request):
             return PlainTextResponse("allowed")
@@ -185,7 +160,7 @@ class AuthRouteTests(unittest.TestCase):
             return asyncio.run(through_gate(self.admin_app, request, allowed)).status_code
 
         with mock.patch.object(auth, "SESSIONS", auth.SessionActivity(clock=lambda: now[0])):
-            session = self._cookie(self._configure("violet otter lantern quartz 92")[1], "shimpz_admin")
+            session = response_cookie(self._configure("violet otter lantern quartz 92")[1], "shimpz_admin")
             now[0] = auth.IDLE_SECONDS - 600
             for request in (
                 self._request("/api/gate-check", cookie=session),
@@ -199,7 +174,7 @@ class AuthRouteTests(unittest.TestCase):
 
     def test_a_session_this_process_does_not_track_is_refused(self) -> None:
         _setup, confirmed = self._configure("violet otter lantern quartz 92")
-        session = self._cookie(confirmed, "shimpz_admin")
+        session = response_cookie(confirmed, "shimpz_admin")
         auth = self.admin_app.auth
 
         async def allowed(_request):
@@ -321,7 +296,7 @@ class AuthRouteTests(unittest.TestCase):
         response = asyncio.run(self.admin_app.login(valid))
         self.assertEqual(response.status_code, 202)
         self.assertIsNone(self.admin_app.state.browser_origin())
-        ticket = self._cookie(response, "shimpz_admin_ticket")
+        ticket = response_cookie(response, "shimpz_admin_ticket")
         confirmed = asyncio.run(
             self.admin_app.local_login_totp(
                 self._request(
@@ -425,7 +400,7 @@ class AuthRouteTests(unittest.TestCase):
         return [json.loads(line)["event"] for line in lines]
 
     def test_a_cross_origin_state_change_never_reaches_its_route(self) -> None:
-        session = self._cookie(self._configure("violet otter lantern quartz 92")[1], "shimpz_admin")
+        session = response_cookie(self._configure("violet otter lantern quartz 92")[1], "shimpz_admin")
 
         async def route(_request):
             return PlainTextResponse("changed")
@@ -441,7 +416,7 @@ class AuthRouteTests(unittest.TestCase):
         self.assertEqual(answer("http://127.0.0.1:7777").status_code, 200)
 
     def test_logout_journals_the_session_it_ends(self) -> None:
-        session = self._cookie(self._configure("violet otter lantern quartz 92")[1], "shimpz_admin")
+        session = response_cookie(self._configure("violet otter lantern quartz 92")[1], "shimpz_admin")
         response = asyncio.run(
             self.admin_app.logout(self._request("/api/logout", origin="http://127.0.0.1:7777", cookie=session))
         )
@@ -451,7 +426,7 @@ class AuthRouteTests(unittest.TestCase):
 
     def test_password_rechecks_share_the_sign_in_budget_and_lockout(self) -> None:
         password = "violet otter lantern quartz 92"
-        session = self._cookie(self._configure(password)[1], "shimpz_admin")
+        session = response_cookie(self._configure(password)[1], "shimpz_admin")
         limit = self.admin_app.auth.LOGIN_FAILURE_LIMIT
 
         def team_deletion(attempt: str) -> int:
@@ -502,7 +477,7 @@ class AuthRouteTests(unittest.TestCase):
         confirm = self._request(
             "/api/admin/setup/totp",
             {"code": code(secret, int(time.time()))},
-            ticket=self._cookie(setup, "shimpz_admin_ticket"),
+            ticket=response_cookie(setup, "shimpz_admin_ticket"),
         )
         unwritable = self.admin_app.audit.AuditUnavailableError("unwritable")
         with (

@@ -1,6 +1,7 @@
 """The Supervisor's own sign-in security: refused second factors reported after sign-in (ADR-0051)."""
 
 import asyncio
+import functools
 import importlib
 import json
 import os
@@ -13,7 +14,7 @@ from unittest import mock
 
 import app_import
 from fastapi import HTTPException
-from http_request import LOOPBACK, http_request, json_headers
+from http_request import json_request, response_cookie
 from mfa_helper import NOW, code, configure_supervisor, isolated_store, recovery_codes
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -27,8 +28,6 @@ from signin import auth
 
 PASSWORD = "violet otter lantern quartz 92"
 ORIGIN = "http://localhost:7777"
-# What the browser marks on every request the Admin page sends to its own origin.
-ADMIN_PAGE = ((b"sec-fetch-site", b"same-origin"),)
 
 
 def _secret() -> str:
@@ -270,30 +269,7 @@ class SecurityRouteTests(unittest.TestCase):
         group.start()
         self.addCleanup(group.stop)
 
-    @staticmethod
-    def _request(
-        path: str,
-        payload: object = None,
-        *,
-        method: str | None = None,
-        cookies: dict[str, str] | None = None,
-        origin: str | None = ORIGIN,
-    ) -> Request:
-        body = json.dumps(payload).encode() if payload is not None else b""
-        headers = json_headers(body) if body else []
-        if origin is not None:
-            headers.append((b"origin", origin.encode("ascii")))
-        if cookies:
-            headers.append((b"cookie", "; ".join(f"{key}={value}" for key, value in cookies.items()).encode()))
-        headers.extend(ADMIN_PAGE)
-        return http_request(path, LOOPBACK, method=method or ("POST" if body else "GET"), body=body, headers=headers)
-
-    @staticmethod
-    def _cookie(response, name: str) -> str:
-        prefix = name + "="
-        return next(
-            part.removeprefix(prefix) for part in response.headers["set-cookie"].split("; ") if part.startswith(prefix)
-        )
+    _request = staticmethod(functools.partial(json_request, origin=ORIGIN))
 
     def _code(self) -> str:
         """The authenticator's code for the next TOTP step, with Admin's TOTP clock moved onto that step."""
@@ -310,7 +286,7 @@ class SecurityRouteTests(unittest.TestCase):
     def _login(self) -> tuple[list[str], str]:
         response = self._call(self.admin_app.login, "/api/login", {"password": PASSWORD})
         self.assertEqual(response.status_code, 202)
-        return json.loads(response.body)["methods"], self._cookie(response, "shimpz_admin_ticket")
+        return json.loads(response.body)["methods"], response_cookie(response, "shimpz_admin_ticket")
 
     def _configure(self) -> tuple[str, list[str]]:
         """Set the Supervisor up; return its first session and the recovery codes setup showed."""
@@ -321,12 +297,12 @@ class SecurityRouteTests(unittest.TestCase):
         self.addCleanup(clock.stop)
         setup = self._call(app.admin_setup, "/api/admin/setup", {"password": PASSWORD})
         self.secret = json.loads(setup.body)["enrollment"]["secret"]
-        ticket = self._cookie(setup, "shimpz_admin_ticket")
+        ticket = response_cookie(setup, "shimpz_admin_ticket")
         confirmed = self._call(
             app.admin_setup_totp, "/api/admin/setup/totp", {"code": self._code()}, shimpz_admin_ticket=ticket
         )
         self.assertEqual(confirmed.status_code, 200)
-        return self._cookie(confirmed, "shimpz_admin"), json.loads(confirmed.body)["recovery_codes"]
+        return response_cookie(confirmed, "shimpz_admin"), json.loads(confirmed.body)["recovery_codes"]
 
     def _sign_in(self) -> str:
         """Set the Supervisor up, then sign in once with a wrong code first; return the session."""
@@ -339,7 +315,7 @@ class SecurityRouteTests(unittest.TestCase):
         confirmed = self._call(
             app.local_login_totp, "/api/login/totp", {"code": self._code()}, shimpz_admin_ticket=ticket
         )
-        return self._cookie(confirmed, "shimpz_admin")
+        return response_cookie(confirmed, "shimpz_admin")
 
     def _over_socket(self, request: Request, method: str, params: dict) -> types.SimpleNamespace:
         """Answer one request's operation over a session socket opened with its cookies and Origin.
@@ -449,7 +425,7 @@ class SecurityRouteTests(unittest.TestCase):
         self.assertEqual(used.status_code, 202)
         self.assertNotIn("shimpz_admin=", used.headers["set-cookie"])
         self.secret = json.loads(used.body)["enrollment"]["secret"]
-        reenrollment = self._cookie(used, "shimpz_admin_ticket")
+        reenrollment = response_cookie(used, "shimpz_admin_ticket")
         # Every session ended, and until TOTP is enrolled again a sign-in offers only another recovery code.
         self.assertEqual(
             self._gated(self._request("/api/admin/security", cookies={"shimpz_admin": session})).status_code, 401
@@ -471,7 +447,7 @@ class SecurityRouteTests(unittest.TestCase):
             shimpz_admin_ticket=reenrollment,
         )
         self.assertEqual(mistyped.status_code, 401)
-        reenrollment = self._cookie(mistyped, "shimpz_admin_ticket")
+        reenrollment = response_cookie(mistyped, "shimpz_admin_ticket")
         completed = self._call(
             app.local_recovery_enrollment,
             "/api/login/recovery/totp",
@@ -482,7 +458,7 @@ class SecurityRouteTests(unittest.TestCase):
         fresh = json.loads(completed.body)["recovery_codes"]
         self.assertEqual(len(fresh), recovery.CODE_COUNT)
         self.assertFalse(set(fresh) & set(codes))
-        new_session = {"shimpz_admin": self._cookie(completed, "shimpz_admin")}
+        new_session = {"shimpz_admin": response_cookie(completed, "shimpz_admin")}
         summary = json.loads(self._gated(self._request("/api/admin/security", cookies=new_session)).body)
         self.assertEqual(summary["failed_second_factor_attempts"], 2)
         self.assertEqual(summary["recovery_codes_remaining"], 10)
@@ -507,7 +483,7 @@ class SecurityRouteTests(unittest.TestCase):
         request = self._request(
             "/api/login/recovery/totp",
             {"code": self._code()},
-            cookies={"shimpz_admin_ticket": self._cookie(used, "shimpz_admin_ticket")},
+            cookies={"shimpz_admin_ticket": response_cookie(used, "shimpz_admin_ticket")},
             origin="http://127.0.0.1:7777",
         )
 
@@ -523,7 +499,7 @@ class SecurityRouteTests(unittest.TestCase):
         used = self._call(
             app.local_login_recovery, "/api/login/recovery", {"code": codes[0]}, shimpz_admin_ticket=ticket
         )
-        ticket = self._cookie(used, "shimpz_admin_ticket")
+        ticket = response_cookie(used, "shimpz_admin_ticket")
         statuses = []
         for _attempt in range(totp.FAILURE_LIMIT):
             refused = self._call(
@@ -533,7 +509,7 @@ class SecurityRouteTests(unittest.TestCase):
                 shimpz_admin_ticket=ticket,
             )
             statuses.append(refused.status_code)
-            ticket = self._cookie(refused, "shimpz_admin_ticket") if refused.status_code == 401 else ticket
+            ticket = response_cookie(refused, "shimpz_admin_ticket") if refused.status_code == 401 else ticket
 
         self.assertEqual(statuses, [401] * (totp.FAILURE_LIMIT - 1) + [429])
         self.assertNotIn("set-cookie", refused.headers)

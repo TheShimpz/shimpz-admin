@@ -1,5 +1,6 @@
 """One in-memory ASGI HTTP request for Admin tests that call route handlers and gates directly."""
 
+import json
 from typing import NamedTuple
 from urllib.parse import unquote
 
@@ -26,6 +27,45 @@ def remote(client_host: str) -> Peer:
 
 def json_headers(body: bytes) -> list[tuple[bytes, bytes]]:
     return [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())]
+
+
+# The Admin page's own fetch: the browser marks every request it sends to its own origin.
+SAME_ORIGIN = ((b"sec-fetch-site", b"same-origin"),)
+
+
+def json_request(
+    path: str,
+    payload: object = None,
+    *,
+    peer: Peer = LOOPBACK,
+    method: str | None = None,
+    origin: str | None = None,
+    cookies: dict[str, str] | None = None,
+    browser: tuple[tuple[bytes, bytes], ...] = SAME_ORIGIN,
+) -> Request:
+    """Return a request to `path` (with any query) carrying `payload` as JSON, sent by the Admin page by default.
+
+    It is a POST with a payload and a GET without one, unless `method` names another.
+    """
+    raw_path, _, query = path.partition("?")
+    body = b"" if payload is None else json.dumps(payload).encode()
+    headers = json_headers(body) if body else []
+    if origin is not None:
+        headers.append((b"origin", origin.encode("ascii")))
+    if cookies:
+        headers.append((b"cookie", "; ".join(f"{name}={value}" for name, value in cookies.items()).encode("ascii")))
+    headers.extend(browser)
+    return http_request(
+        raw_path, peer, method=method or ("POST" if body else "GET"), body=body, headers=headers, query=query.encode()
+    )
+
+
+def response_cookie(response, name: str) -> str:
+    """The value one response sets for cookie `name`."""
+    prefix = name + "="
+    return next(
+        part.removeprefix(prefix) for part in response.headers["set-cookie"].split("; ") if part.startswith(prefix)
+    )
 
 
 def _scope(

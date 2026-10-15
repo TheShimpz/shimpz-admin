@@ -15,7 +15,7 @@ from starlette.requests import Request
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
-from http_request import http_request, json_headers, remote
+from http_request import http_request, json_request, remote
 
 
 def _request(
@@ -32,8 +32,8 @@ def _request(
 
 
 def _json_request(payload: object, *, cookie: str = "") -> Request:
-    body = json.dumps(payload).encode()
-    return _request(body=body, headers=json_headers(body), cookie=cookie)
+    cookies = {"shimpz_admin": cookie} if cookie else None
+    return json_request("/api/test", payload, peer=remote("192.0.2.20"), cookies=cookies, browser=())
 
 
 class AppRouteEdgeTests(app_import.RouteStatusAssertions):
