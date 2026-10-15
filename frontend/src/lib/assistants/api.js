@@ -1,5 +1,5 @@
 import { ASSISTANT_LIMIT_REACHED, exactEnvelope, exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
-import { isShownText, isUniqueList } from '../grammar.js';
+import { isAscending, isShownText, isUniqueList } from '../grammar.js';
 import {
   DIGEST_RE,
   isAssistantId,
@@ -336,9 +336,9 @@ export async function listLocalAssistantSnapshots(call = socketReads.call) {
       !isShownText(entry.name, 80) ||
       !isShownText(entry.summary, SUMMARY_CHARS) ||
       !isUniqueList(entry.actions, 1, 128, isIdentifier) ||
-      entry.actions.some((action, index) => index > 0 && entry.actions[index - 1] >= action) ||
+      !isAscending(entry.actions) ||
       !isUniqueList(entry.integrations, 0, 16, isIdentifier) ||
-      entry.integrations.some((integration, index) => index > 0 && entry.integrations[index - 1] >= integration) ||
+      !isAscending(entry.integrations) ||
       !isUniqueList(entry.declared_creators, 1, 4, isDeclaredCreator) ||
       typeof entry.created_at !== 'string' ||
       !CREATED_AT_RE.test(entry.created_at) ||

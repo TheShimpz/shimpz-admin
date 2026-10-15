@@ -16,7 +16,7 @@ import { parseTaskUsage } from './usage.js';
 import { sessionFamily } from '../session/family.js';
 import { synced } from '../session/synced.js';
 import { ASSISTANT_LIMIT_REACHED, exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
-import { isInstant, isShownText } from '../grammar.js';
+import { isAscending, isInstant, isShownText } from '../grammar.js';
 import {
   MAX_TEAM_NAME_CHARS,
   OPAQUE_ID_RE,
@@ -154,7 +154,7 @@ function installEntry(value, suffix, status) {
   ) throw invalidHistory(status);
   const assistants = value.assistants.map((assistant) => installAssistant(assistant, status));
   if (
-    assistants.some((assistant, index) => index > 0 && assistants[index - 1].id >= assistant.id) ||
+    !isAscending(assistants, (assistant) => assistant.id) ||
     (value.state === 'installed' && assistants.some((assistant) => assistant.status !== 'installed'))
   ) throw invalidHistory(status);
   return {

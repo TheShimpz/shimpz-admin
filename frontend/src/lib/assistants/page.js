@@ -3,7 +3,7 @@
 // them from Team's details (a staged snapshot or an installed binding) and from the public catalog entry alike.
 import { HELP_URL_PATTERN } from '../chat/protocol.js';
 import { exactKeys } from '../api.js';
-import { codePointLength } from '../grammar.js';
+import { codePointLength, isAscending } from '../grammar.js';
 import { isIdentifier, TEAM_ID_RE } from '../ids.js';
 
 // The Creator's link kinds in their display order.
@@ -78,10 +78,12 @@ export function canonicalLinks(value) {
 }
 
 function sortedUnique(items, maximum, minimum = 0) {
-  if (!Array.isArray(items) || items.length < minimum || items.length > maximum) throw invalid();
-  items.forEach((item, index) => {
-    if (index > 0 && items[index - 1].id >= item.id) throw invalid();
-  });
+  if (
+    !Array.isArray(items) ||
+    items.length < minimum ||
+    items.length > maximum ||
+    !isAscending(items, (item) => item.id)
+  ) throw invalid();
   return items;
 }
 

@@ -2,7 +2,7 @@
 // estimate from the reviewed catalog prices; a model the catalog does not price contributes tokens but no cost.
 import MODEL_CATALOG from '../brain/catalog.json' with { type: 'json' };
 import { exactKeys } from '../api.js';
-import { isCount } from '../grammar.js';
+import { isAscending, isCount } from '../grammar.js';
 import { numberFormat } from '../i18n/formats.js';
 
 const MAX_DURATION_MS = 24 * 60 * 60 * 1000;
@@ -41,7 +41,6 @@ export function parseTaskUsage(value) {
     value.models.length < 1 ||
     value.models.length > MAX_MODELS
   ) throw invalid();
-  let previous = null;
   const models = value.models.map((entry) => {
     if (
       !exactKeys(entry, MODEL_KEYS) ||
@@ -50,14 +49,10 @@ export function parseTaskUsage(value) {
       !isCount(entry.input_tokens, MAX_TOKENS) ||
       !isCount(entry.output_tokens, MAX_TOKENS)
     ) throw invalid();
-    // Strictly ascending by provider, then model: distinct and in the one canonical order.
-    if (
-      previous &&
-      (entry.provider < previous.provider || (entry.provider === previous.provider && entry.model <= previous.model))
-    ) throw invalid();
-    previous = entry;
     return { provider: entry.provider, model: entry.model, input_tokens: entry.input_tokens, output_tokens: entry.output_tokens };
   });
+  // Strictly ascending by provider, then model: distinct and in the one canonical order. No identifier holds U+0000.
+  if (!isAscending(models, (model) => `${model.provider}\u0000${model.model}`)) throw invalid();
   return { duration_ms: value.duration_ms, models };
 }
 

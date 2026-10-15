@@ -4,7 +4,7 @@ import { socketReads } from '../session/socket.js';
 import { listAssistantCatalog, listInstalledAssistants } from '../assistants/api.js';
 import { synced } from '../session/synced.js';
 import { exactKeys, jsonObject, LocalApiError, publicError, safeApiError } from '../api.js';
-import { codePointLength, isShownText } from '../grammar.js';
+import { codePointLength, isAscending, isShownText } from '../grammar.js';
 import { ASSISTANT_ID_RE, MAX_TEAM_NAME_CHARS, OPAQUE_ID_RE, TEAM_ID_RE } from '../ids.js';
 
 const MAX_TEAMS = 128;
@@ -50,11 +50,8 @@ function validTeamResidueProof(value) {
     Array.isArray(value) &&
     value.length > 0 &&
     value.length <= MAX_TEAM_RESIDUE_CLASSES &&
-    value.every((entry, index) => (
-      typeof entry === 'string' &&
-      TEAM_RESIDUE_CLASS_RE.test(entry) &&
-      (index === 0 || value[index - 1] < entry)
-    ))
+    value.every((entry) => typeof entry === 'string' && TEAM_RESIDUE_CLASS_RE.test(entry)) &&
+    isAscending(value)
   );
 }
 

@@ -1,5 +1,5 @@
 // The bounded value grammars every protocol parser shares: text measured in code points, the control characters no
-// shown text may hold, a UTC instant in whole seconds, and a whole count.
+// shown text may hold, a UTC instant in whole seconds, a whole count, and a strictly ascending list.
 
 export const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 
@@ -38,6 +38,11 @@ export function isUniqueList(value, minimum, maximum, isItem) {
     value.every((item) => isItem(item)) &&
     new Set(value).size === value.length
   );
+}
+
+/** Whether `values` are strictly ascending by `key`: distinct, and in the one canonical order. */
+export function isAscending(values, key = (value) => value) {
+  return values.every((value, index) => index === 0 || key(values[index - 1]) < key(value));
 }
 
 /** A real UTC instant in whole seconds, written YYYY-MM-DDTHH:MM:SSZ. */

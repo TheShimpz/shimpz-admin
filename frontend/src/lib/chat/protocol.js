@@ -13,7 +13,7 @@ import {
 } from '../routines/protocol.js';
 import { isLocale } from '../i18n/locales.js';
 import { ASSISTANT_LIMIT_REACHED, exactKeys, LocalApiError } from '../api.js';
-import { codePointLength, isShownText } from '../grammar.js';
+import { codePointLength, isAscending, isShownText } from '../grammar.js';
 import {
   DIGEST_RE,
   isActionId,
@@ -661,7 +661,7 @@ export function parseInstallPlanAssistant(value, { maxProviders = MAX_INSTALL_PR
     !states.includes(value.status)
   ) throw new LocalApiError('The local chat response is invalid.');
   const providers = value.providers.map((provider) => canonicalId(provider, undefined, isIdentifier));
-  if (providers.some((provider, index) => index > 0 && providers[index - 1] >= provider)) {
+  if (!isAscending(providers)) {
     throw new LocalApiError('The local chat response is invalid.');
   }
   return {
@@ -729,8 +729,7 @@ function parseAssistantInstallPlanEvent(value, expectedTeamId, expectedTeamName)
     ))
   ) throw new LocalApiError('The local chat response is invalid.');
   const assistants = value.assistants.map((assistant) => parseInstallPlanAssistant(assistant));
-  const ids = assistants.map((assistant) => assistant.id);
-  if (ids.some((id, index) => index > 0 && ids[index - 1] >= id)) {
+  if (!isAscending(assistants, (assistant) => assistant.id)) {
     throw new LocalApiError('The local chat response is invalid.');
   }
   const statuses = assistants.map((assistant) => assistant.status);

@@ -5,7 +5,7 @@
 import { socketReads } from '../session/socket.js';
 import { exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
 import { canonicalId, canonicalIntegrationScopes, canonicalPublicText, requireTeam } from '../chat/protocol.js';
-import { CONTROL_RE } from '../grammar.js';
+import { CONTROL_RE, isAscending } from '../grammar.js';
 import { ASSISTANT_ID_RE, isIdentifier, OPAQUE_ID_RE, SEMANTIC_VERSION_RE } from '../ids.js';
 import { synced } from '../session/synced.js';
 
@@ -40,8 +40,7 @@ function trustedCloudflareScopes(value) {
     scopes.length >= 1 &&
     scopes.length <= CLOUDFLARE_SCOPES.size &&
     scopes.every((scope) => OAUTH_SCOPE_RE.test(scope) && CLOUDFLARE_SCOPES.has(scope)) &&
-    new Set(scopes).size === scopes.length &&
-    scopes.every((scope, index) => index === 0 || scopes[index - 1] < scope)
+    isAscending(scopes)
   );
 }
 
@@ -258,10 +257,9 @@ export async function listAssistantStoredInputs(teamId, call = socketReads.call)
   ) throw new LocalApiError('The Assistant Stored Input inventory is invalid.', response.status);
   const storedInputs = body.stored_inputs.map(canonicalStoredInputMetadata);
   const identities = storedInputs.map((item) => `${item.assistant_id}\u0000${item.stored_input_id}`);
-  if (
-    new Set(identities).size !== identities.length ||
-    identities.some((identity, index) => index > 0 && identities[index - 1] >= identity)
-  ) throw new LocalApiError('The Assistant Stored Input inventory is invalid.', response.status);
+  if (!isAscending(identities)) {
+    throw new LocalApiError('The Assistant Stored Input inventory is invalid.', response.status);
+  }
   return { stored_inputs: storedInputs };
 }
 
