@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 from signin import audit, auth
 from starlette.concurrency import run_in_threadpool
 
-CAPABILITY_PATH = Path(os.environ.get("SHIMPZ_HOST_RESET_CAPABILITY_FILE") or "/run/shimpz-local-reset/capability.json")
+CAPABILITY_PATH = Path("/run/shimpz-local-reset/capability.json")
 MAX_CAPABILITY_BYTES = 1024
 MAX_CAPABILITY_SECONDS = 120
 SPACE_ID_RE = re.compile(r"^space-[0-9a-f]{24}$")
