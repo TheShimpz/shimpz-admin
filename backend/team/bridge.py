@@ -60,13 +60,6 @@ def canonical_local_team_name(value: object) -> str:
     return canonical
 
 
-def canonical_locale(value: object) -> str:
-    canonical = team_contract.canonical_locale(value)
-    if canonical is None:
-        raise transport.TeamRequestError("locale must be one interface language")
-    return canonical
-
-
 def canonical_source_digest(value: object) -> str:
     if not isinstance(value, str) or team_contract.SOURCE_DIGEST_RE.fullmatch(value) is None:
         raise transport.TeamRequestError("source digest must be a canonical sha256 digest")
@@ -387,7 +380,7 @@ def open_chat_human(team_id: object, locale: object) -> transport.TeamResponse:
     """Open the Team's pending human challenge with its request copy in one interface language (ADR-0091)."""
     canonical_id = payloads.canonical_team_id(team_id)
     return transport.call(
-        "POST", f"/v1/teams/{canonical_id}/chat/human/challenge", {"locale": canonical_locale(locale)}
+        "POST", f"/v1/teams/{canonical_id}/chat/human/challenge", {"locale": payloads.canonical_locale(locale)}
     )
 
 
@@ -483,12 +476,12 @@ def local_assistant_icon(image_id: object) -> transport.TeamAssetResponse:
 
 def local_assistant_summary(image_id: object, locale: object) -> transport.TeamResponse:
     """Return one exact unpublished image's summary in one interface language, read from its own pack."""
-    return transport.call("GET", f"{_local_assistant_path(image_id)}/summary/{canonical_locale(locale)}")
+    return transport.call("GET", f"{_local_assistant_path(image_id)}/summary/{payloads.canonical_locale(locale)}")
 
 
 def local_assistant_details(image_id: object, locale: object) -> transport.TeamResponse:
     """Return one exact unpublished image's page in one interface language, read from its own package and pack."""
-    return transport.call("GET", f"{_local_assistant_path(image_id)}/details/{canonical_locale(locale)}")
+    return transport.call("GET", f"{_local_assistant_path(image_id)}/details/{payloads.canonical_locale(locale)}")
 
 
 def _assistant_path(team_id: object, assistant_id: object | None = None) -> str:
@@ -507,12 +500,16 @@ def assistant_icon(team_id: object, assistant_id: object) -> transport.TeamAsset
 
 def assistant_summary(team_id: object, assistant_id: object, locale: object) -> transport.TeamResponse:
     """Return one installed Assistant's summary in one interface language, read from its binding's pack."""
-    return transport.call("GET", f"{_assistant_path(team_id, assistant_id)}/summary/{canonical_locale(locale)}")
+    return transport.call(
+        "GET", f"{_assistant_path(team_id, assistant_id)}/summary/{payloads.canonical_locale(locale)}"
+    )
 
 
 def assistant_details(team_id: object, assistant_id: object, locale: object) -> transport.TeamResponse:
     """Return one installed Assistant's page in one interface language, read from its exact binding and pack."""
-    return transport.call("GET", f"{_assistant_path(team_id, assistant_id)}/details/{canonical_locale(locale)}")
+    return transport.call(
+        "GET", f"{_assistant_path(team_id, assistant_id)}/details/{payloads.canonical_locale(locale)}"
+    )
 
 
 def install_assistant(team_id: object, payload: object) -> transport.TeamResponse:

@@ -45,6 +45,14 @@ def canonical_action_id(value: object) -> str:
     return canonical
 
 
+def canonical_locale(value: object) -> str:
+    """One interface language exactly as Team admits it (ADR-0090)."""
+    canonical = team_contract.canonical_locale(value)
+    if canonical is None:
+        raise TeamRequestError("locale must be one interface language")
+    return canonical
+
+
 def canonical_challenge_id(value: object) -> str:
     if not isinstance(value, str) or chat_ws_common.CHALLENGE_ID_RE.fullmatch(value) is None:
         raise TeamRequestError("OAuth challenge is invalid")
@@ -71,9 +79,7 @@ def canonical_chat_payload(payload: object) -> dict[str, object]:
     """Validate one explicit Assistant scope without treating an empty scope as all, in one interface language."""
     if not isinstance(payload, dict) or set(payload) != CHAT_PAYLOAD_FIELDS:
         raise TeamRequestError("chat requires message, files, assistant_ids, locale, and timezone")
-    locale = team_contract.canonical_locale(payload["locale"])
-    if locale is None:
-        raise TeamRequestError("locale must be one interface language")
+    locale = canonical_locale(payload["locale"])
     timezone = payload["timezone"]
     if timezone is not None and routine_contract.canonical_timezone(timezone) is None:
         raise TeamRequestError("timezone must be one IANA zone name or null")
