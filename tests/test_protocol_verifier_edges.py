@@ -310,6 +310,13 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
         ):
             with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
                 _execute(HTTP / "verify.py", mutate)
+        # Each offered schedule answer states one schedule Team reads, in every interface language.
+        for mutate in (
+            edit('"A cada hora", "Todo dia às 09:00"', '"A cada hora", "Sempre"'),
+            edit('"pt": "A cada {seconds} segundos"', '"pt": "A cada {seconds} minutos"'),
+        ):
+            with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
+                _execute(HTTP / "verify.py", mutate)
 
     def test_rejects_missing_or_drifted_rendered_copy_vectors(self) -> None:
         def missing(value: dict[str, object]) -> None:
