@@ -281,7 +281,7 @@ test('UTC stands in when no timezone was given', () => {
   assert.equal(isZoned('America/Sao_Paulo', 'browser'), true);
   assert.equal(isZoned('Europe/Paris', 'person'), true);
   assert.equal(isZoned('UTC', 'none'), true);
-  for (const [zone, source] of [['America/Sao_Paulo', 'none'], ['UTC', 'guess'], ['../etc', 'browser']]) {
+  for (const [zone, source] of [['UTC', 'guess'], ['../etc', 'browser']]) {
     assert.equal(isZoned(zone, source), false);
   }
   // With no timezone given, instants show in the UTC the Routine actually runs in.
@@ -462,7 +462,6 @@ test('Routines and runs are admitted only in their closed views', () => {
     { ...ROUTINE, output: { mode: 'show', step: 1, extra: null } },
     { ...ROUTINE, output: { mode: 'other', step: null } },
     { ...ROUTINE, plan: { ...SUMMARY, steps: 0, actions: [] }, output: { mode: 'none', step: null } },
-    { ...ROUTINE, permitted: { total: 1, changes: 2 } },
     { ...ROUTINE, permitted: { total: 0, changes: 0 } },
     { ...ROUTINE, permitted: { total: 257, changes: 0 } },
     // A Routine view carries its summary, never its steps, and shows a step by its position.
@@ -748,8 +747,6 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, kind: 'message' },
     { ...RUN_ENTRY, outcome: 'run' },
     { ...RUN_ENTRY, id: `${'c'.repeat(32)}:routine` },
-    { ...RUN_ENTRY, run_id: 'c'.repeat(32) },
-    { ...RUN_ENTRY, run_id: null },
     { ...RUN_ENTRY, routine_id: 'x' },
     { ...RUN_ENTRY, notice_id: 'x' },
     // A row's title is only the name Team froze into it.
@@ -766,7 +763,6 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'changed', run_id: null, usage: null, detail: { ...DEFINED, output: { mode: 'show', step: 1, extra: null } } },
     { ...RUN_ENTRY, outcome: 'deleted', run_id: null, usage: null, detail: { name: 'x' } },
     { ...RUN_ENTRY, outcome: 'deleted', run_id: null, usage: REPLAY_USAGE, detail: {} },
-    { ...RUN_ENTRY, outcome: 'deleted', run_id: null, usage: null, detail: {}, protection_lost: true },
     { ...RUN_ENTRY, outcome: 'user-skipped', detail: { ...STEP, choice: 'other' } },
     { ...RUN_ENTRY, created_at: '2026-02-30T12:00:00Z' },
     { ...RUN_ENTRY, version: 0 },
@@ -774,8 +770,6 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, detail: { reply: 'Done.' } },
     { ...RUN_ENTRY, detail: { actions: [['shimpz-cloudflare', 'list-zones']], output: null } },
     { ...RUN_ENTRY, detail: { plan: SUMMARY, output: null, result: { ip: '1.2.3.4' } } },
-    { ...RUN_ENTRY, detail: { plan: SUMMARY, output: { ...UNSHOWN, step: 2 } } },
-    { ...RUN_ENTRY, detail: { plan: { ...SUMMARY, steps: 2 }, output: null } },
     { ...RUN_ENTRY, detail: { plan: SUMMARY } },
     { ...RUN_ENTRY, outcome: 'needs-input', detail: { question: 'Which zone?' } },
     { ...RUN_ENTRY, outcome: 'held', detail: { ...STEP, action: null } },
@@ -786,7 +780,6 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     // A person's skip is a run outcome; it never stands in for the missed-schedule skip.
     { ...RUN_ENTRY, outcome: 'user-skipped', run_id: null, usage: null, detail: STEP },
     // A minute's healthy rollup belongs to the Routine, counts at most one run a second, and names no Actions.
-    { ...RUN_ENTRY, outcome: 'healthy', detail: { runs: 2 } },
     { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 61 } },
     { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 2, actions: [] } },
     { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'email', ...STEP } },
@@ -797,7 +790,6 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'scope-changed', run_id: null, usage: null, detail: { assistants: [] } },
     { ...RUN_ENTRY, outcome: 'skipped', run_id: null, usage: null, detail: { missed: 0 } },
     { ...RUN_ENTRY, outcome: 'created', detail: DEFINED },
-    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, plan: { ...SUMMARY, steps: 2 } } },
     { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, output: { mode: 'show', step: 2 } } },
     { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, plan: undefined, steps: PLAN } },
     { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { ...DEFINED, state: 'stopped' } },
@@ -1052,7 +1044,6 @@ test('a Routine plan projection is admitted only in its closed, bounded form', (
     [{ ...step, inputs: [{ member: '', source: 'literal', value: '1' }] }, 1],
     [{ ...step, inputs: [{ member: 'page', source: 'literal', value: 'x'.repeat(121) }] }, 1],
     [{ ...step, inputs: [{ member: 'page', source: 'literal', value: 'a‮b' }] }, 1],
-    [{ ...step, inputs: [{ member: 'b', source: 'literal', value: '1' }, { member: 'a', source: 'literal', value: '1' }] }, 1],
     [{ ...later, inputs: [{ member: 'day', source: 'run_clock', value: '' }] }, 2],
     [{ ...later, inputs: [{ member: 'day', source: 'run_clock', value: 'x'.repeat(121) }] }, 2],
     // A reference names an earlier position: never its own, a later one, or an id.
@@ -1070,27 +1061,19 @@ test('a Routine plan projection is admitted only in its closed, bounded form', (
     [{ ...step, stored_inputs: Array(9).fill('a') }, 1],
     [{ ...step, stored_inputs: ['API token'] }, 1],
     [{ ...step, stored_inputs: [7] }, 1],
-    [{ ...step, stored_inputs: ['b', 'a'] }, 1],
-    // A step's projection over its byte bound is refused whole, never cut.
-    [{ ...later, inputs: Array.from({ length: 64 }, (_, index) => ({
-      member: `${String(index).padStart(3, '0')}${'m'.repeat(125)}`, source: 'step_output', step: 1, pointer: `/${'"'.repeat(255)}`,
-      where: null, item: null,
-    })) }, 2],
   ]) {
     assert.equal(isPlanStep(value, position), false, JSON.stringify(value)?.slice(0, 120));
   }
-  // A summary's runs cover its steps in order, each differing from the one before; more counts only past sixteen runs.
+  // A summary names its revision, digest, step count, and Actions as runs of [assistant, action, count].
   assert.ok(isSummary(SUMMARY));
   assert.ok(isSummary(LONG));
   for (const invalid of [
     null,
     // Every plan has at least one step.
     { ...SUMMARY, steps: 0, actions: [] },
-    { ...SUMMARY, steps: 2 },
     { ...SUMMARY, revision: 0 },
     { ...SUMMARY, plan_digest: 'sha256:x' },
-    { ...SUMMARY, more: 1, steps: 2 },
-    { ...SUMMARY, steps: 2, actions: [['shimpz-cloudflare', 'list-zones', 1], ['shimpz-cloudflare', 'list-zones', 1]] },
+    { ...SUMMARY, more: -1 },
     { ...SUMMARY, actions: [['shimpz-cloudflare', 'list-zones', 0]], steps: 0 },
     { ...SUMMARY, actions: [['shimpz-cloudflare', 'list-zones']] },
     { ...SUMMARY, actions: [['Bad', 'list-zones', 1]] },
@@ -1220,7 +1203,7 @@ test("a run's step records are admitted only for its own revision and one snapsh
     [{ ...RECORDED, recorded_at: 'yesterday' }, REPLAY_1],
     [{ ...RECORDED, inputs: [{ member: 'page', source: 'secret', value: '1' }] }, REPLAY_1],
     [{ ...RECORDED, inputs: [{ member: 'page', source: 'literal', value: 'a‮b' }] }, REPLAY_1],
-    [{ ...RECORDED, inputs: [{ member: 'b', source: 'literal', value: '1' }, { member: 'a', source: 'literal', value: '1' }] }, REPLAY_1],
+    [{ ...RECORDED, inputs: [{ member: 'a', source: 'literal', value: '1' }, { member: 'a', source: 'literal', value: '2' }] }, REPLAY_1],
     [{ ...RECORDED, raw_input: 'x' }, REPLAY_1],
     [{ ...GAP, attempt: 1 }, GAP.position],
     [{ ...GAP, status: 'skipped' }, GAP.position],
@@ -1359,11 +1342,8 @@ test('a recovery card shows its recorded failure, offers exactly Rodar and Exclu
     { ...card, position: 4 },
     { ...card, position: 0 },
     { ...card, step: 2 },
-    { ...card, diagnostic: { ...card.diagnostic, position: 1 } },
     { ...card, evidence: 'absent' },
     { ...card, diagnostic: null },
-    // Never another step's error: the diagnostic must be of exactly the card's step.
-    { ...card, diagnostic: { ...card.diagnostic, action: 'list-zones' } },
     { ...card, diagnostic: { ...card.diagnostic, failure: { ...card.diagnostic.failure, message: 'a\u202eb' } } },
   ]) {
     await assert.rejects(
@@ -1474,9 +1454,8 @@ test("a run's execution details admit exactly Team's diagnostics view for that r
       JSON.stringify(diagnostic).slice(0, 160),
     );
   }
-  // Each attempt is listed once, oldest first, as Team orders them.
-  const second = { ...ATTEMPT, attempt: 2 };
-  for (const diagnostics of [[ATTEMPT, ATTEMPT], [second, ATTEMPT], [{ ...ATTEMPT, recorded_at: '2026-10-05T13:00:00Z' }, second]]) {
+  // Each attempt is listed once, as the details render one row per attempt.
+  for (const diagnostics of [[ATTEMPT, ATTEMPT]]) {
     await assert.rejects(
       readRunDiagnostics(fetcher([[200, { team_id: 'team_1', run_id: RUN_ID, diagnostics }]]).fetch, 'team_1', RUN_ID),
       (error) => error.code === 'routine-response-invalid',
@@ -1615,7 +1594,6 @@ test('a shown result is admitted only in Team\'s closed form and reads as plain 
     { ...SHOWN_OUTPUT, state: 'hidden' },
     { ...SHOWN_OUTPUT, value: null },
     { ...UNSHOWN, value: { kind: 'null' } },
-    { ...UNSHOWN, truncated: true },
     { ...SHOWN_OUTPUT, step: 'zones' },
     { ...SHOWN_OUTPUT, step: 0 },
     { ...SHOWN_OUTPUT, step: 257 },
@@ -1636,7 +1614,6 @@ test('a shown result is admitted only in Team\'s closed form and reads as plain 
     { ...SHOWN_OUTPUT, value: { kind: 'fields', fields: [['a', { kind: 'null' }], ['a', { kind: 'null' }]], omitted: 0 } },
     { ...SHOWN_OUTPUT, value: { kind: 'fields', fields: [['', { kind: 'null' }]], omitted: 0 } },
     { ...SHOWN_OUTPUT, value: { kind: 'fields', fields: [['a']], omitted: 0 } },
-    { ...SHOWN_OUTPUT, value: { kind: 'list', items: Array(50).fill(text('é'.repeat(300))), omitted: 0 } },
     [],
     null,
   ]) assert.equal(isOutput(invalid), false, JSON.stringify(invalid)?.slice(0, 80));

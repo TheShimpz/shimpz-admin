@@ -1,6 +1,8 @@
-// Team Routines (ADR-0086, ADR-0092, ADR-0101) as the browser admits them. Each parser mirrors Team's closed protocol
-// view and throws on any other shape; nothing here schedules or authorizes: a Routine exists only once the person
-// confirms the card Team recorded from a chat turn.
+// Team Routines (ADR-0086, ADR-0092, ADR-0101) as the browser admits them. Admin already admits every Routine answer
+// through Team's mirrored canonical forms, so each parser here keeps only what rendering needs to be safe: exact keys,
+// types, bounded and safe strings, identifiers, the keys a list renders by, and the bindings to the request it answers.
+// It throws on anything else; nothing here schedules or authorizes: a Routine exists only once the person confirms the
+// card Team recorded from a chat turn.
 
 import { isLocale } from '../i18n/locales.js';
 import { parseRunUsage } from '../chat/usage.js';
@@ -45,25 +47,14 @@ export function isTimezone(value) {
 // Where a Routine's timezone came from (ADR-0101): the person's browser, a zone the person wrote, or none, when the
 // Routine needs no zone and stores UTC only by convention, which Admin never shows as the person's zone.
 const TIMEZONE_SOURCES = ['browser', 'person', 'none'];
-const CONVENTIONAL_TIMEZONE = 'UTC';
 
-/**
- * Whether a timezone and its source fit together, as Team's `zoned` admits them: a known source names a zone, and
- * `none` means UTC used because no timezone was given, for any schedule and any run date (ADR-0101).
- */
+/** Whether a timezone and its source are each in their closed forms (ADR-0101). */
 export function isZoned(timezone, source) {
-  if (!TIMEZONE_SOURCES.includes(source) || !isTimezone(timezone)) return false;
-  return source !== 'none' || timezone === CONVENTIONAL_TIMEZONE;
+  return TIMEZONE_SOURCES.includes(source) && isTimezone(timezone);
 }
 
 function isAssistants(value, minimum) {
-  return (
-    Array.isArray(value) &&
-    value.length >= minimum &&
-    value.length <= MAX_ASSISTANTS &&
-    value.every(isAssistantId) &&
-    value.every((item, index) => index === 0 || value[index - 1] < item)
-  );
+  return Array.isArray(value) && value.length >= minimum && value.length <= MAX_ASSISTANTS && value.every(isAssistantId);
 }
 
 const MAX_ROUTINES = 8;
@@ -98,7 +89,7 @@ const MAX_PERMITTED = 256;
 
 function isPermittedSummary(value) {
   return exactKeys(value, ['total', 'changes']) && whole(value.total, 1, MAX_PERMITTED) &&
-    whole(value.changes, 0, value.total);
+    whole(value.changes, 0, MAX_PERMITTED);
 }
 
 // A Routine's standing scope: whether it runs, and its permitted Actions.
@@ -135,10 +126,8 @@ export const MAX_ROUTINE_STEPS = 256;
 const MAX_PREVIEW_CHARS = 120;
 const MAX_STEP_INPUTS = 64;
 const MAX_STEP_STORED_INPUTS = 8;
-const MAX_STEP_VIEW_BYTES = 24 * 1024;
-// A page holds whole consecutive steps: at most this many and this many encoded bytes.
+// A page holds whole consecutive steps: at most this many.
 const MAX_PAGE_STEPS = 64;
-const MAX_PAGE_BYTES = 96 * 1024;
 // A plan summary names its Actions as runs of consecutive equal Actions, at most this many.
 const MAX_SUMMARY_RUNS = 16;
 const POINTER_RE = /^(?:\/(?:[^/~]|~[01])*)*$/;
@@ -159,14 +148,14 @@ function isPosition(value, maximum = MAX_ROUTINE_STEPS) {
   return whole(value, 1, maximum);
 }
 
-function encodedBytes(value) {
-  return ENCODER.encode(JSON.stringify(value)).length;
+// Each value once, as the list that renders them is keyed by it.
+function distinct(values) {
+  return new Set(values).size === values.length;
 }
 
-// Members in strictly ascending order, each once.
-function sortedMembers(items) {
-  const members = items.map((item) => item.member);
-  return JSON.stringify(members) === JSON.stringify([...new Set(members)].sort());
+// Members each once, as a step's inputs render keyed by member.
+function distinctMembers(items) {
+  return distinct(items.map((item) => item.member));
 }
 
 function isPointer(value) {
@@ -219,18 +208,15 @@ export function isPlanStep(value, position) {
     isActionId(value.action) &&
     typeof value.read_only === 'boolean' &&
     Array.isArray(inputs) && inputs.length <= MAX_STEP_INPUTS && inputs.every((item) => isInput(item, position)) &&
-    sortedMembers(inputs) &&
+    distinctMembers(inputs) &&
     Array.isArray(stored) && stored.length <= MAX_STEP_STORED_INPUTS &&
-    stored.every(isIdentifier) &&
-    JSON.stringify(stored) === JSON.stringify([...new Set(stored)].sort()) &&
-    encodedBytes(value) <= MAX_STEP_VIEW_BYTES
+    stored.every(isIdentifier) && distinct(stored)
   );
 }
 
 /**
- * Whether a value is a revision's plan summary, mirroring Team's `routine.canonical_summary`: its revision and digest,
- * its step count, and its Actions as runs of consecutive equal `[assistant, action, count]` that cover the first steps
- * in order; `more` counts the steps after the sixteenth run. A plan always has at least one step.
+ * Whether a value is a revision's plan summary in Team's `routine.canonical_summary` form: its revision and digest, its
+ * step count, its Actions as runs of `[assistant, action, count]`, and `more`, the steps after them.
  */
 export function isSummary(value) {
   if (!exactKeys(value, ['revision', 'plan_digest', 'steps', 'actions', 'more'])) return false;
@@ -242,9 +228,7 @@ export function isSummary(value) {
     Array.isArray(runs) && runs.length > 0 && runs.length <= MAX_SUMMARY_RUNS &&
     runs.every((run) => Array.isArray(run) && run.length === 3 && isAssistantId(run[0]) && isActionId(run[1]) &&
       isPosition(run[2])) &&
-    runs.every((run, index) => index === 0 || run[0] !== runs[index - 1][0] || run[1] !== runs[index - 1][1]) &&
-    Number.isInteger(more) && more >= 0 && (more === 0 || runs.length === MAX_SUMMARY_RUNS) &&
-    runs.reduce((sum, run) => sum + run[2], 0) + more === total
+    whole(more, 0, MAX_ROUTINE_STEPS)
   );
 }
 
@@ -256,8 +240,7 @@ function isPageOf(value, admit) {
     Number.isInteger(offset) && offset >= 0 && offset < total &&
     Array.isArray(steps) && steps.length > 0 && steps.length <= Math.min(MAX_PAGE_STEPS, total - offset) &&
     steps.every((step, index) => admit(step, offset + index + 1)) &&
-    next === (offset + steps.length === total ? null : offset + steps.length) &&
-    encodedBytes(steps) <= MAX_PAGE_BYTES
+    next === (offset + steps.length === total ? null : offset + steps.length)
   );
 }
 
@@ -330,8 +313,7 @@ export function isRunStep(value, position, steps) {
     (value.status !== 'recovered' || duration === null) &&
     isInstant(value.recorded_at) &&
     (value.inputs === null || (Array.isArray(value.inputs) && value.inputs.length <= MAX_STEP_INPUTS &&
-      value.inputs.every(isRunInput) && sortedMembers(value.inputs))) &&
-    encodedBytes(value) <= MAX_STEP_VIEW_BYTES
+      value.inputs.every(isRunInput) && distinctMembers(value.inputs)))
   );
 }
 
@@ -418,7 +400,6 @@ const MAX_OUTPUT_ITEMS = 50;
 const MAX_OUTPUT_FIELDS = 24;
 const MAX_OUTPUT_TEXT_CHARS = 300;
 const MAX_OUTPUT_KEY_CHARS = 64;
-const MAX_OUTPUT_BYTES = 16 * 1024;
 // A number is its exact JSON text, so the browser never rounds it.
 const MAX_OUTPUT_NUMBER_CHARS = 64;
 const OUTPUT_NUMBER_RE = /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?$/;
@@ -468,13 +449,11 @@ function isOutputNode(node, depth) {
 
 /** Whether a completed run's output is Team's closed form: a shown projection, or unchanged or unavailable alone. */
 export function isOutput(value) {
-  if (!exactKeys(value, ['step', 'state', 'value', 'truncated'])) return false;
-  const valid =
+  return exactKeys(value, ['step', 'state', 'value', 'truncated']) &&
     isPosition(value.step) &&
     OUTPUT_STATES.includes(value.state) &&
     typeof value.truncated === 'boolean' &&
-    (value.state === 'shown' ? isOutputNode(value.value, 0) : value.value === null && value.truncated === false);
-  return valid && encodedBytes(value) <= MAX_OUTPUT_BYTES;
+    (value.state === 'shown' ? isOutputNode(value.value, 0) : value.value === null);
 }
 
 function isActions(value) {
@@ -666,17 +645,12 @@ const CARD_ANSWERS = ['run'];
 const CARD_STATUSES = { run: 'requested' };
 const CARD_EVIDENCE = ['recorded', 'absent', 'unavailable'];
 
-// The held operation's latest diagnostic, exactly when Team recorded one, and only of the card's own call.
+// The held operation's latest diagnostic, exactly when Team recorded one.
 function isCardEvidence(item) {
   if (!CARD_EVIDENCE.includes(item.evidence) || (item.diagnostic === null) === (item.evidence === 'recorded')) {
     return false;
   }
-  return item.diagnostic === null || (
-    isDiagnostic(item.diagnostic) &&
-    item.diagnostic.assistant_id === item.assistant_id &&
-    item.diagnostic.action === item.action &&
-    item.diagnostic.position === item.position
-  );
+  return item.diagnostic === null || isDiagnostic(item.diagnostic);
 }
 
 function parseCard(body, teamId, incidentId) {
@@ -737,8 +711,7 @@ function closedText(value, maximum) {
 
 // The summary of the plan a completed run carried out, never an input, and the result it shows, if any.
 function isCompleted(detail) {
-  return isSummary(detail.plan) &&
-    (detail.output === null || (isOutput(detail.output) && detail.output.step <= detail.plan.steps));
+  return isSummary(detail.plan) && (detail.output === null || isOutput(detail.output));
 }
 
 // The call a failed run stopped at by position, or both null when it failed before any call.
@@ -836,15 +809,13 @@ export function parseRoutineRunEntry(value) {
     typeof value.routine_id !== 'string' ||
     !OPAQUE_ID_RE.test(value.routine_id) ||
     !isName(value.name) ||
-    (value.run_id !== null && value.run_id !== value.notice_id) ||
-    (value.run_id === null) !== ROUTINE_OUTCOMES.includes(value.outcome) ||
+    (value.run_id !== null && (typeof value.run_id !== 'string' || !OPAQUE_ID_RE.test(value.run_id))) ||
     !isInstant(value.created_at) ||
     !Number.isInteger(value.version) ||
     value.version < 1 ||
     !exactKeys(value.detail, rule[0]) ||
     !rule[1](value.detail) ||
-    typeof value.protection_lost !== 'boolean' ||
-    (value.protection_lost && ROUTINE_OUTCOMES.includes(value.outcome))
+    typeof value.protection_lost !== 'boolean'
   ) throw new RoutineError('routine-entry-invalid');
   return {
     id: value.id,
@@ -990,14 +961,7 @@ function isDiagnostic(value) {
   );
 }
 
-// Two diagnostics in Team's order: by instant, then operation, then attempt.
-function diagnosticOrder(left, right) {
-  if (left.recorded_at !== right.recorded_at) return left.recorded_at < right.recorded_at ? -1 : 1;
-  if (left.operation_id !== right.operation_id) return left.operation_id < right.operation_id ? -1 : 1;
-  return left.attempt - right.attempt;
-}
-
-/** One run's execution details for exactly the Team and run asked for, oldest attempt first, each attempt once. */
+/** One run's execution details for exactly the Team and run asked for, each attempt once, in Team's order. */
 export async function readRunDiagnostics(call, teamId, runId) {
   const body = await request(call, 'routines.diagnostics', { team_id: team(teamId), run_id: opaque(runId) });
   return view(body, ['team_id', 'run_id', 'diagnostics'], (item) =>
@@ -1006,15 +970,13 @@ export async function readRunDiagnostics(call, teamId, runId) {
     Array.isArray(item.diagnostics) &&
     item.diagnostics.length <= MAX_RUN_DIAGNOSTICS &&
     item.diagnostics.every(isDiagnostic) &&
-    new Set(item.diagnostics.map((entry) => `${entry.operation_id}:${entry.attempt}`)).size === item.diagnostics.length &&
-    item.diagnostics.every((entry, index) => index === 0 || diagnosticOrder(item.diagnostics[index - 1], entry) <= 0)).diagnostics;
+    distinct(item.diagnostics.map((entry) => `${entry.operation_id}:${entry.attempt}`))).diagnostics;
 }
 
 // The confirmation card of a recorded Routine (ADR-0101 section 5.2, amended 2026-10-15), mirroring Team's
 // `routine.canonical_proposal`: the recording agent's description, which states the schedule and the output, and every
 // step with its effect, every literal complete and escaped, every source and selector described completely. Nothing in
 // it is paged or cut.
-const MAX_PROPOSAL_BYTES = 160 * 1024;
 const INPUT_ORIGINS = ['request', 'assistant', 'clock', 'step', 'selector'];
 const CARD_INPUT_KEYS = ['member', 'origin', 'value', 'step', 'pointer', 'where', 'item'];
 
@@ -1041,7 +1003,7 @@ function isCardStep(value, position) {
     isActionId(value.action) &&
     typeof value.read_only === 'boolean' &&
     Array.isArray(value.inputs) && value.inputs.length <= MAX_STEP_INPUTS &&
-    value.inputs.every((item) => isCardInput(item, position)) && sortedMembers(value.inputs);
+    value.inputs.every((item) => isCardInput(item, position)) && distinctMembers(value.inputs);
 }
 
 /**
@@ -1059,8 +1021,7 @@ export function parseRoutineProposal(value) {
       isName(item.name) &&
       isName(item.description, MAX_DESCRIPTION_CHARS) &&
       Array.isArray(steps) && steps.length > 0 && steps.length <= MAX_ROUTINE_STEPS &&
-      steps.every((step, index) => isCardStep(step, index + 1)) &&
-      encodedBytes(item) <= MAX_PROPOSAL_BYTES
+      steps.every((step, index) => isCardStep(step, index + 1))
     );
   });
 }
