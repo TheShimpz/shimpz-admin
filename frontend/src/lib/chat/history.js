@@ -444,17 +444,19 @@ export function historyHead(teamId, { routine = null, retain = null } = {}) {
   // Restarts asked for so far; a value carries how many of them it answers, so only a value shown answers one.
   let restartsAsked = 0;
   const chat = routine === null;
+  // A value that replaces what is shown with these rows and the cursor before them.
+  const restartValue = (restarted, entries, before) => ({
+    restarted,
+    restart: true,
+    entries,
+    before,
+    marks: historyBoundary(new Set(), entries),
+    view: chat ? chatView(entries, before) : null,
+  });
   const newest = async (call) => {
     const asked = restartsAsked;
     const page = await listChatHistory(call, teamId, null, { routine });
-    return {
-      restarted: asked,
-      restart: true,
-      entries: page.entries,
-      before: page.before,
-      marks: historyBoundary(new Set(), page.entries),
-      view: chat ? chatView(page.entries, page.before) : null,
-    };
+    return restartValue(asked, page.entries, page.before);
   };
   const read = async (call, last) => {
     if (!last || last.restarted < restartsAsked) return newest(call);
@@ -462,17 +464,7 @@ export function historyHead(teamId, { routine = null, retain = null } = {}) {
     // More was written than one refresh reads, or none of the rows read before is there any more (the history was
     // cleared): what the refresh read replaces what is shown.
     const replaced = since.before !== null || (!since.reached && last.marks.size > 0);
-    if (replaced) {
-      if (!chat) return newest(call);
-      return {
-        restarted: last.restarted,
-        restart: true,
-        entries: since.entries,
-        before: since.before,
-        marks: historyBoundary(new Set(), since.entries),
-        view: chatView(since.entries, since.before),
-      };
-    }
+    if (replaced) return chat ? restartValue(last.restarted, since.entries, since.before) : newest(call);
     return {
       restarted: last.restarted,
       restart: false,
