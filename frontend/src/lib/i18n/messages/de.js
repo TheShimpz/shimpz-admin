@@ -573,7 +573,6 @@ export default {
         unavailable: 'Es wurde keine Routine erstellt: Diese Anfrage kann keine mehr aufzeichnen. Frag erneut.',
         tooLarge: 'Es wurde keine Routine erstellt: Sie ist größer, als eine Routine fassen kann.',
         empty: 'Es wurde keine Routine erstellt: In diesem Zug lief keine Aktion, die aufgezeichnet werden könnte.',
-        invalid: 'Es wurde keine Routine erstellt: Zeitplan oder Ausgabe konnten nicht verwendet werden.',
         secret: 'Es wurde keine Routine erstellt: Sie würde ein Passwort oder einen Schlüssel enthalten. Speichere ihn als gespeicherten Schlüssel des Assistenten oder verbinde den Assistenten.',
         stepBudget: 'Es wurde keine Routine erstellt: Das tägliche Aktionsbudget dieses Teams hat keinen Platz mehr.',
         recordAgain: 'Es wurde keine Routine erstellt: Frag erneut, damit die Arbeit neu aufgezeichnet wird.',

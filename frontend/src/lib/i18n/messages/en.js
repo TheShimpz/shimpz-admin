@@ -582,7 +582,6 @@ export default {
         unavailable: 'No Routine was created: this request can no longer record one. Ask again.',
         tooLarge: 'No Routine was created: it is larger than one Routine can hold.',
         empty: 'No Routine was created: no Action ran in this turn to record.',
-        invalid: 'No Routine was created: its schedule or output could not be used.',
         secret: 'No Routine was created: it would hold a password or key. Save it as the Assistant\'s stored key or connect the Assistant instead.',
         stepBudget: 'No Routine was created: this Team\'s daily Action budget has no room for it.',
         recordAgain: 'No Routine was created: ask again so the work is recorded anew.',

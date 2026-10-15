@@ -573,7 +573,6 @@ export default {
         unavailable: 'Nenhuma rotina foi criada: este pedido não pode mais registrar uma. Peça de novo.',
         tooLarge: 'Nenhuma rotina foi criada: ela é maior do que uma rotina comporta.',
         empty: 'Nenhuma rotina foi criada: nenhuma Ação rodou nesta conversa para registrar.',
-        invalid: 'Nenhuma rotina foi criada: o horário ou a saída dela não puderam ser usados.',
         secret: 'Nenhuma rotina foi criada: ela guardaria uma senha ou chave. Salve-a como chave guardada do Assistente ou conecte o Assistente.',
         stepBudget: 'Nenhuma rotina foi criada: o orçamento diário de Ações desta equipe não tem espaço para ela.',
         recordAgain: 'Nenhuma rotina foi criada: peça de novo para o trabalho ser registrado outra vez.',

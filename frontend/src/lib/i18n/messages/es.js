@@ -573,7 +573,6 @@ export default {
         unavailable: 'No se creó ninguna rutina: esta solicitud ya no puede registrar una. Pídela de nuevo.',
         tooLarge: 'No se creó ninguna rutina: es más grande de lo que cabe en una rutina.',
         empty: 'No se creó ninguna rutina: ninguna Acción se ejecutó en este turno para registrar.',
-        invalid: 'No se creó ninguna rutina: su horario o su salida no se pudieron usar.',
         secret: 'No se creó ninguna rutina: guardaría una contraseña o clave. Guárdala como clave del Asistente o conecta el Asistente.',
         stepBudget: 'No se creó ninguna rutina: el presupuesto diario de Acciones de este equipo no tiene espacio para ella.',
         recordAgain: 'No se creó ninguna rutina: pídela de nuevo para que el trabajo se registre otra vez.',

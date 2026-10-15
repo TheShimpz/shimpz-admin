@@ -608,7 +608,7 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   assert.equal(instantWords('2026-10-05T12:00:00Z', 'en', 'America/Sao_Paulo'), 'Oct 5, 2026, 9:00 AM');
   assert.equal(fill('{a} and {missing}', { a: 1 }), '1 and {missing}');
   const errors = routineMessages.en.errors;
-  assert.equal(routineErrorMessage(new RoutineError('routine-rate-limit'), errors), errors.full);
+  assert.equal(routineErrorMessage(new RoutineError('routine-limit'), errors), errors.full);
   assert.equal(routineErrorMessage(new RoutineError('team-context-unavailable'), errors), errors.unavailable);
   assert.equal(routineErrorMessage(new RoutineError('human-request-invalid'), errors), errors.changed);
   assert.equal(routineErrorMessage(new RoutineError('assistant-language-drift'), errors), errors.unavailable);
@@ -632,7 +632,7 @@ test('schedules, instants, and failures read naturally in each locale', () => {
     assert.equal(routineErrorMessage(new RoutineError(code), errors), errors[key], code);
   }
   for (const [locale, catalog] of Object.entries(routineMessages)) {
-    const budgets = ['routine-step-budget', 'routine-team-budget', 'routine-rate-limit']
+    const budgets = ['routine-step-budget', 'routine-team-budget', 'routine-limit']
       .map((code) => routineErrorMessage(new RoutineError(code), catalog.errors));
     assert.equal(new Set(budgets).size, 3, locale);
     assert.ok(budgets.every((words) => typeof words === 'string' && words.length > 0), locale);

@@ -198,7 +198,6 @@ export function routineErrorMessage(error, copy) {
     'human-request-invalid': copy.changed,
     'assistant-language-drift': copy.unavailable,
     'routine-limit': copy.full,
-    'routine-rate-limit': copy.full,
     // The Team's Routines' daily Action steps together, or their definitions together, would outgrow its budget.
     'routine-step-budget': copy.stepBudget,
     'routine-team-budget': copy.teamBudget,
@@ -420,7 +419,6 @@ const REFUSAL_KEYS = {
   'routine-recording-unavailable': 'unavailable',
   'routine-recording-too-large': 'tooLarge',
   'routine-recording-empty': 'empty',
-  'routine-recording-invalid': 'invalid',
   'routine-secret-literal': 'secret',
   'routine-step-budget': 'stepBudget',
   'routine-proposal-too-large': 'tooLarge',

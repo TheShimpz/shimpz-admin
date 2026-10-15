@@ -573,7 +573,6 @@ export default {
         unavailable: 'Aucune routine n’a été créée : cette demande ne peut plus en enregistrer une. Redemandez.',
         tooLarge: 'Aucune routine n’a été créée : elle dépasse ce qu’une routine peut contenir.',
         empty: 'Aucune routine n’a été créée : aucune Action ne s’est exécutée dans ce tour pour être enregistrée.',
-        invalid: 'Aucune routine n’a été créée : son horaire ou sa sortie n’ont pas pu être utilisés.',
         secret: 'Aucune routine n’a été créée : elle contiendrait un mot de passe ou une clé. Enregistrez-le comme clé de l’Assistant ou connectez l’Assistant.',
         stepBudget: 'Aucune routine n’a été créée : le budget quotidien d’Actions de cette équipe n’a plus de place.',
         recordAgain: 'Aucune routine n’a été créée : redemandez pour que le travail soit enregistré de nouveau.',
