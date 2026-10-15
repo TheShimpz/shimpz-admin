@@ -406,7 +406,7 @@ def _intent_route_reference(
 
 def _intent_route_context(
     expected_intent: str | None,
-    context: IntentRouteContext | None,
+    context: IntentRouteContext,
 ) -> tuple[dict[str, str] | None, list[dict[str, object]], str | None]:
     if not isinstance(context, IntentRouteContext) or team_contract.canonical_locale(context.locale) is None:
         raise transport.TeamRequestError("Assistant lifecycle context is invalid")
@@ -502,7 +502,7 @@ def intent_route(
     objective: object,
     expected_intent: object,
     candidates: list[dict[str, object]],
-    context: IntentRouteContext | None = None,
+    context: IntentRouteContext,
     installable: list[dict[str, str]] | None = None,
 ) -> transport.TeamResponse:
     """Project one credential-bound structured route without lifecycle authority.

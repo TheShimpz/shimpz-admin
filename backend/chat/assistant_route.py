@@ -182,7 +182,7 @@ def _route(
     objective: object,
     expected_intent: str | None,
     candidates: list[dict[str, object]],
-    context: local.IntentRouteContext | None = None,
+    context: local.IntentRouteContext,
     installable: list[dict[str, str]] | None = None,
 ) -> Route:
     response = local.intent_route(team_id, objective, expected_intent, candidates, context, installable)

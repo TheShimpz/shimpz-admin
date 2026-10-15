@@ -23,6 +23,7 @@ from chat import (
 )
 
 DIGEST = "sha256:" + ("a" * 64)
+EN = local.IntentRouteContext(locale="en")
 
 
 def payload(message: str) -> dict[str, object]:
@@ -114,7 +115,7 @@ class AssistantRouteTests(unittest.TestCase):
             "intent_route",
             return_value=response("assistant-uninstall", reply=reply),
         ):
-            routed = assistant_route._route("team_1", "désinstalle", None, [])
+            routed = assistant_route._route("team_1", "désinstalle", None, [], EN)
         self.assertEqual(routed.reply, reply)
 
         for separator in ("\u2028", "\u2029"):
@@ -127,7 +128,7 @@ class AssistantRouteTests(unittest.TestCase):
                 ),
                 self.assertRaises(assistant_route.RouteError),
             ):
-                assistant_route._route("team_1", "désinstalle", None, [])
+                assistant_route._route("team_1", "désinstalle", None, [], EN)
 
     def test_route_rejects_invalid_structured_responses(self) -> None:
         invalid = (
@@ -155,7 +156,7 @@ class AssistantRouteTests(unittest.TestCase):
 
         continuing = with_continuation(response("assistant-install", "exa"), True)
         with mock.patch.object(assistant_route.local, "intent_route", return_value=continuing):
-            self.assertTrue(assistant_route._route("team_1", "instala o exa e pesquisa", None, []).task_follows)
+            self.assertTrue(assistant_route._route("team_1", "instala o exa e pesquisa", None, [], EN).task_follows)
         selected = with_continuation(response("assistant-install", assistant_ids=["shimpz-exa"]), True)
         non_boolean = with_continuation(response("assistant-install", "exa"), 1)
         invalid_reply_rules = (
@@ -170,7 +171,7 @@ class AssistantRouteTests(unittest.TestCase):
                 mock.patch.object(assistant_route.local, "intent_route", return_value=routed),
                 self.assertRaises(assistant_route.RouteError),
             ):
-                assistant_route._route("team_1", "hello", expected_intent, [])
+                assistant_route._route("team_1", "hello", expected_intent, [], EN)
 
     def test_catalog_state_reads_inventory_and_directory_concurrently(self) -> None:
         installed = {"cloudflare": mock.sentinel.installed}
@@ -341,12 +342,12 @@ class AssistantRouteTests(unittest.TestCase):
                 mock.patch.object(assistant_route.local, "intent_route", return_value=local.PublicResponse(200, body)),
                 self.assertRaises(assistant_route.RouteError),
             ):
-                assistant_route._route("team_1", "oi", None, [])
+                assistant_route._route("team_1", "oi", None, [], EN)
         with (
             mock.patch.object(assistant_route.local, "intent_route", return_value=local.PublicResponse(200, [])),
             self.assertRaises(assistant_route.RouteError),
         ):
-            assistant_route._route("team_1", "oi", None, [])
+            assistant_route._route("team_1", "oi", None, [], EN)
 
     def test_capability_planning_overlaps_classification(self) -> None:
         planning_started = threading.Event()
