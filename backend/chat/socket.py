@@ -187,16 +187,12 @@ async def _continue_team_turn(
     payload: dict[str, object],
 ) -> None:
     if turn.stop_requested or connection.closed:
-        await _send_terminal_once(websocket, connection, turn, {"type": "stopped"})
-        if connection.active is turn:
-            connection.active = None
+        await _finish_active_turn(websocket, connection, turn, {"type": "stopped"})
         return
     try:
         future, progress = _submit_team_turn(team_id, payload, turn)
     except ExecutorSaturatedError:
-        await _send_terminal_once(websocket, connection, turn, error_terminal(429, "local chat capacity reached"))
-        if connection.active is turn:
-            connection.active = None
+        await _finish_active_turn(websocket, connection, turn, error_terminal(429, "local chat capacity reached"))
         return
     turn.future = future
     turn.progress = progress
