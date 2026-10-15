@@ -93,7 +93,6 @@ _CHAT_ERROR_DETAILS = {
     "human-request-invalid": "the Assistant request for your input changed; retry the message",
     "chat-challenge-response-invalid": "the Assistant challenge was invalid",
     "team-context-changed": "the Team capabilities changed; retry",
-    "team-has-no-active-assistants": "install and start at least one Assistant before chatting",
 }
 _CHAT_ERROR_FALLBACKS = {
     400: "invalid chat request",

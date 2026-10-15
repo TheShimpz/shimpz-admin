@@ -324,7 +324,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
             concrete_error = await response_for(
                 self.chat_socket.local.PublicResponse(
                     409,
-                    {"code": "team-has-no-active-assistants"},
+                    {"code": "team-context-changed"},
                 )
             )
             self.assertEqual(
@@ -332,9 +332,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
                 {
                     "type": "error",
                     "status": 409,
-                    "detail": (
-                        "team-has-no-active-assistants: install and start at least one Assistant before chatting"
-                    ),
+                    "detail": "team-context-changed: the Team capabilities changed; retry",
                 },
             )
 
