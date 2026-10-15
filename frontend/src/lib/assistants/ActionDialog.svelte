@@ -11,8 +11,6 @@
     targetLabel = '',
     targetName = '',
     targetId = '',
-    progress = '',
-    hint = '',
     error = '',
     primaryLabel = '',
     secondaryLabel,
@@ -24,7 +22,7 @@
     oncancel = () => {},
     // The dialog's own title id, distinct for each dialog a page holds.
     titleId = 'assistant-action-title',
-    // What the dialog shows before its target, its progress, and its error.
+    // What the dialog shows before its target and its error.
     body,
   } = $props();
 
@@ -59,8 +57,6 @@
     {#if targetName}
       <DialogTarget label={targetLabel} name={targetName} id={targetId} />
     {/if}
-    {#if progress}<p class="dialog-progress" role="status">{progress}</p>{/if}
-    {#if hint}<p class="dialog-route-hint">{hint}</p>{/if}
     {#if error}<Notice variant="error">{error}</Notice>{/if}
     {#snippet footer()}
       <DialogAction kind="cancel" type="button" disabled={busy} onclick={oncancel}>
@@ -81,6 +77,4 @@
 
 <style>
   form { margin: 0; }
-  .dialog-progress { margin: var(--gap-group) 0 0; color: var(--accent); font-family: var(--font-mono); font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase; }
-  .dialog-route-hint { margin: var(--gap-group) 0 0; border-inline-start: 2px solid var(--accent); border-radius: 0; padding: var(--gap-item) var(--gap-group); color: var(--text-dim); font-size: 0.72rem; line-height: 1.5; }
 </style>
