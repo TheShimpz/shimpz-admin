@@ -115,7 +115,7 @@ def team_file_preview(team_id: str, file_id: str, request: Request) -> Response:
     Only the page's own image load or script read reaches Team; Admin forwards exactly a JPEG or PNG within the preview
     bound, and otherwise a closed refusal.
     """
-    if not browser.same_origin_image(request):
+    if not browser.same_origin_fetch(request, browser.IMAGE_DESTINATIONS):
         return JSONResponse(status_code=403, content={"detail": "browser origin is not admitted"}, headers=_NO_STORE)
     with team_http.refused_as_bad_request():
         result = team.file_preview(team_id, file_id)
@@ -124,7 +124,7 @@ def team_file_preview(team_id: str, file_id: str, request: Request) -> Response:
 
 def team_file_page_preview(team_id: str, file_id: str, page: str, request: Request) -> Response:
     """One page of a Team PDF as a sanitized rendition for Admin's own page, with its page count (ADR-0093)."""
-    if not browser.same_origin_image(request):
+    if not browser.same_origin_fetch(request, browser.IMAGE_DESTINATIONS):
         return JSONResponse(status_code=403, content={"detail": "browser origin is not admitted"}, headers=_NO_STORE)
     with team_http.refused_as_bad_request():
         result = team.file_page_preview(team_id, file_id, page)
@@ -180,7 +180,7 @@ async def team_file_download(team_id: str, file_id: str, request: Request) -> Re
     Only Admin's own page reaches it. Team verifies the bytes against their digest and Admin verifies them again before
     sending any; at most MAX_DOWNLOADS are held at once, each from before Team is asked until its response ended.
     """
-    if not browser.same_origin_download(request):
+    if not browser.same_origin_fetch(request, browser.DOWNLOAD_DESTINATIONS):
         return JSONResponse(status_code=403, content={"detail": "browser origin is not admitted"}, headers=_NO_STORE)
     if not _DOWNLOADS.acquire(blocking=False):
         busy = {

@@ -148,11 +148,15 @@ class FilePreviewUnitTests(unittest.TestCase):
     """The same boundary in process, where branch coverage sees it."""
 
     def test_fetch_metadata_admits_only_the_pages_own_image_or_script_read(self) -> None:
-        self.assertTrue(browser.same_origin_image(_browser_request(IMAGE_LOAD)))
-        self.assertTrue(browser.same_origin_image(_browser_request({**IMAGE_LOAD, "sec-fetch-dest": "empty"})))
+        self.assertTrue(browser.same_origin_fetch(_browser_request(IMAGE_LOAD), browser.IMAGE_DESTINATIONS))
+        self.assertTrue(
+            browser.same_origin_fetch(
+                _browser_request({**IMAGE_LOAD, "sec-fetch-dest": "empty"}), browser.IMAGE_DESTINATIONS
+            )
+        )
         for headers in (*REFUSED_PAGES.values(),):
             sent = {name: value for name, value in headers.items() if value is not None}
-            self.assertFalse(browser.same_origin_image(_browser_request(sent)))
+            self.assertFalse(browser.same_origin_fetch(_browser_request(sent), browser.IMAGE_DESTINATIONS))
 
     def test_the_bridge_forwards_a_rendition_and_closes_every_refusal(self) -> None:
         rendition = transport.TeamAssetResponse(200, PNG, {}, "image/png")

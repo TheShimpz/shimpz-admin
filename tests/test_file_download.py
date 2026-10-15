@@ -191,10 +191,10 @@ class FileDownloadUnitTests(unittest.TestCase):
         self.assertEqual(held, [True] * team_files.MAX_DOWNLOADS)
 
     def test_fetch_metadata_admits_only_the_pages_own_download_or_script_read(self) -> None:
-        self.assertTrue(browser.same_origin_download(_browser_request(DOWNLOAD)))
-        self.assertTrue(browser.same_origin_download(_browser_request(SCRIPT_READ)))
+        self.assertTrue(browser.same_origin_fetch(_browser_request(DOWNLOAD), browser.DOWNLOAD_DESTINATIONS))
+        self.assertTrue(browser.same_origin_fetch(_browser_request(SCRIPT_READ), browser.DOWNLOAD_DESTINATIONS))
         for headers in REFUSED.values():
-            self.assertFalse(browser.same_origin_download(_browser_request(_sent(headers))))
+            self.assertFalse(browser.same_origin_fetch(_browser_request(_sent(headers)), browser.DOWNLOAD_DESTINATIONS))
 
     def test_the_transport_admits_only_an_exactly_framed_verified_original(self) -> None:
         def answer(body: bytes, **headers: str) -> _Response:
