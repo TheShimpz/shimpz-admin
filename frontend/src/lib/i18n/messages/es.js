@@ -563,7 +563,7 @@ export default {
       generic: 'La solicitud de la rutina falló. Inténtalo de nuevo.',
       expired: 'Esta solicitud caducó. Revisa la ejecución de nuevo.',
       changed: 'Los Assistants del Equipo cambiaron. Pídelo de nuevo en el chat.',
-      full: 'Este Equipo no admite otra rutina: como máximo 8 rutinas y 1000 ejecuciones por día.',
+      full: 'Este Equipo no admite otra rutina: como máximo 8 rutinas.',
       ended: 'Esa ejecución ya terminó.',
       unavailable: 'Las rutinas no están disponibles ahora. Inténtalo de nuevo.',
       stale: 'Esta ejecución cambió. Ábrela de nuevo.',

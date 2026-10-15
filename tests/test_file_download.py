@@ -225,8 +225,8 @@ class FileDownloadUnitTests(unittest.TestCase):
         self.assertEqual(
             request.call_args_list,
             [
-                mock.call("GET", "/v1/content", transport._CONTENT_READING),
-                mock.call("GET", "/v1/page", transport._PAGE_PREVIEW_READING),
+                mock.call("/v1/content", transport._CONTENT_READING),
+                mock.call("/v1/page", transport._PAGE_PREVIEW_READING),
             ],
         )
 

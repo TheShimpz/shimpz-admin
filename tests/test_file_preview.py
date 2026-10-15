@@ -220,7 +220,7 @@ class FilePreviewUnitTests(unittest.TestCase):
                 transport._decode_preview(refused)
         with mock.patch.object(transport, "_request_asset", return_value="answer") as request:
             self.assertEqual(transport.call_preview("/v1/preview"), "answer")
-        request.assert_called_once_with("GET", "/v1/preview", transport._PREVIEW_READING)
+        request.assert_called_once_with("/v1/preview", transport._PREVIEW_READING)
 
 
 async def _raw_request(admin_app, path: str, *, token: str, headers: dict[str, str | None]) -> dict[str, object]:

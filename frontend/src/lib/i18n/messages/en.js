@@ -572,7 +572,7 @@ export default {
       generic: 'The Routine request failed. Try again.',
       expired: 'This request expired. Review the run again.',
       changed: 'The Team\'s Assistants changed. Ask again in the chat.',
-      full: 'This Team cannot hold another Routine: at most 8 Routines and 1,000 runs per day.',
+      full: 'This Team cannot hold another Routine: at most 8 Routines.',
       ended: 'That run already ended.',
       unavailable: 'Routines are unavailable right now. Try again.',
       stale: 'This run changed. Open it again.',

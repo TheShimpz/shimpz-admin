@@ -563,7 +563,7 @@ export default {
       generic: 'La demande de routine a échoué. Réessayez.',
       expired: 'Cette demande a expiré. Examinez de nouveau l’exécution.',
       changed: 'Les Assistants de l’Équipe ont changé. Redemandez dans le chat.',
-      full: 'Cette Équipe ne peut pas accueillir une autre routine : au plus 8 routines et 1 000 exécutions par jour.',
+      full: 'Cette Équipe ne peut pas accueillir une autre routine : au plus 8 routines.',
       ended: 'Cette exécution est déjà terminée.',
       unavailable: 'Les routines sont indisponibles pour le moment. Réessayez.',
       stale: 'Cette exécution a changé. Rouvrez-la.',

@@ -24,20 +24,20 @@ class InstalledAssistant:
     status: str
 
 
-def _payload(response: object, field: str) -> object:
+def _assistants(response: object) -> object:
     if (
         not transport.is_team_response(response)
         or not 200 <= response.status < 300
         or not isinstance(response.body, dict)
     ):
         raise ValueError("Team Assistant inventory is unavailable")
-    if set(response.body) != transport.trace_envelope(response.body, {field}):
+    if set(response.body) != transport.trace_envelope(response.body, {"assistants"}):
         raise ValueError("Team Assistant inventory fields are invalid")
-    return response.body[field]
+    return response.body["assistants"]
 
 
 def installed(response: object) -> dict[str, InstalledAssistant]:
-    raw = _payload(response, "assistants")
+    raw = _assistants(response)
     if not isinstance(raw, list) or len(raw) > MAX_ASSISTANTS:
         raise ValueError("installed Assistant inventory is invalid")
     result: dict[str, InstalledAssistant] = {}
@@ -91,7 +91,7 @@ def binding_creator(team_id: str, assistant_id: str, version: str) -> str:
 
 def names(response: object) -> dict[str, str]:
     """The Space's admissible Assistants by name: each identity once, with its catalog name."""
-    raw = _payload(response, "assistants")
+    raw = _assistants(response)
     if not isinstance(raw, list) or len(raw) > MAX_ASSISTANTS:
         raise ValueError("Assistant names are invalid")
     named: dict[str, str] = {}
@@ -107,7 +107,7 @@ def names(response: object) -> dict[str, str]:
 
 def registry(response: object) -> dict[str, assistant_proposal.Capability]:
     """One Team's admitted Assistants with the capabilities its own bindings declare."""
-    raw = _payload(response, "assistants")
+    raw = _assistants(response)
     if not isinstance(raw, list) or len(raw) > team_contract.MAX_TEAM_ASSISTANTS:
         raise ValueError("Assistant catalog is invalid")
     capabilities: dict[str, assistant_proposal.Capability] = {}

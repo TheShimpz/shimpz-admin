@@ -563,7 +563,7 @@ export default {
       generic: 'Die Routine-Anfrage ist fehlgeschlagen. Versuchen Sie es erneut.',
       expired: 'Diese Anfrage ist abgelaufen. Prüfen Sie den Lauf erneut.',
       changed: 'Die Assistants des Teams haben sich geändert. Bitten Sie im Chat erneut darum.',
-      full: 'Dieses Team kann keine weitere Routine aufnehmen: höchstens 8 Routinen und 1.000 Ausführungen pro Tag.',
+      full: 'Dieses Team kann keine weitere Routine aufnehmen: höchstens 8 Routinen.',
       ended: 'Diese Ausführung ist bereits beendet.',
       unavailable: 'Routinen sind gerade nicht verfügbar. Versuchen Sie es erneut.',
       stale: 'Diese Ausführung hat sich geändert. Öffnen Sie sie erneut.',

@@ -563,7 +563,7 @@ export default {
       generic: 'O pedido da rotina falhou. Tente de novo.',
       expired: 'Este pedido expirou. Revise a execução de novo.',
       changed: 'Os Assistants do Time mudaram. Peça de novo no chat.',
-      full: 'Este Time não comporta outra rotina: no máximo 8 rotinas e 1.000 execuções por dia.',
+      full: 'Este Time não comporta outra rotina: no máximo 8 rotinas.',
       ended: 'Essa execução já terminou.',
       unavailable: 'As rotinas estão indisponíveis agora. Tente de novo.',
       stale: 'Esta execução mudou. Abra-a de novo.',

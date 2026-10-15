@@ -586,9 +586,10 @@ _CONTENT_READING = _Reading(
 )
 
 
-def _request_asset(method: str, path: str, reading: _Reading[TeamAssetResponse] = _ASSET_READING) -> TeamAssetResponse:
+def _request_asset(path: str, reading: _Reading[TeamAssetResponse] = _ASSET_READING) -> TeamAssetResponse:
+    """GET one Team asset with no body and no credential binding, read by `reading`."""
     return _exchange(
-        method,
+        "GET",
         path,
         _Entity(None, None),
         timeout=CONTROL_TIMEOUT_SECONDS,
@@ -680,19 +681,19 @@ def call(
 
 
 def call_asset(path: str) -> TeamAssetResponse:
-    return _request_asset("GET", path)
+    return _request_asset(path)
 
 
 def call_preview(path: str) -> TeamAssetResponse:
-    return _request_asset("GET", path, _PREVIEW_READING)
+    return _request_asset(path, _PREVIEW_READING)
 
 
 def call_page_preview(path: str) -> TeamAssetResponse:
-    return _request_asset("GET", path, _PAGE_PREVIEW_READING)
+    return _request_asset(path, _PAGE_PREVIEW_READING)
 
 
 def call_content(path: str) -> TeamAssetResponse:
-    return _request_asset("GET", path, _CONTENT_READING)
+    return _request_asset(path, _CONTENT_READING)
 
 
 def call_stream(

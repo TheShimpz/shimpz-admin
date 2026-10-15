@@ -195,7 +195,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
                 transport._request("GET", "/v1/teams", transport._Entity(None, None), timeout=1).status,
                 HTTPStatus.BAD_GATEWAY,
             )
-            self.assertEqual(transport._request_asset("GET", "/icon").status, HTTPStatus.BAD_GATEWAY)
+            self.assertEqual(transport._request_asset("/icon").status, HTTPStatus.BAD_GATEWAY)
             self.assertEqual(
                 transport._stream_request(
                     "POST",
@@ -232,7 +232,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
 
         _Connection.response = _Response(99)
         with _team_connection():
-            self.assertEqual(transport._request_asset("GET", "/icon").status, HTTPStatus.BAD_GATEWAY)
+            self.assertEqual(transport._request_asset("/icon").status, HTTPStatus.BAD_GATEWAY)
 
     def test_stream_decoder_rejects_headers_size_and_terminal_residue(self) -> None:
         with self.assertRaisesRegex(OSError, "invalid Team chat stream"):
@@ -265,7 +265,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
         answers = (
             (
                 _Response(headers={"Content-Type": "image/png", "Content-Length": "1"}, body=b"x"),
-                lambda: transport._request_asset("GET", "/icon"),
+                lambda: transport._request_asset("/icon"),
                 transport.TeamAssetResponse(HTTPStatus.OK, b"x", {}),
             ),
             (
