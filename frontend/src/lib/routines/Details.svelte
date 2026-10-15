@@ -421,7 +421,7 @@
 
 {#if viewedRun}
   {@const shown = routineNotice(viewedRun, copy)}
-  <RoutineRunView {teamId} entry={viewedRun} {routine} name={viewedRun.name} status={shown.status} tone={shown.tone} {copy}
+  <RoutineRunView {teamId} entry={viewedRun} {routine} status={shown.status} tone={shown.tone} {copy}
     onclose={closeRun} />
 {/if}
 

@@ -15,7 +15,7 @@
   // here, whether it completed, failed, stopped, or was held. The failed attempts Team recorded for the run are read on
   // open for exactly this Team and run; a late answer for an earlier run is discarded. Every value is escaped text.
   // `status` and `tone` are the run's notice status phrase and tone.
-  let { teamId, entry, routine = null, name, status, tone, copy, onclose } = $props();
+  let { teamId, entry, routine, status, tone, copy, onclose } = $props();
 
   const TAGS = {
     healthy: { tone: 'neutral', icon: 'check' },
@@ -40,7 +40,7 @@
   let total = $state(null);
   let steps = $derived(entry.detail.plan?.steps ?? total);
   let attempts = $derived(diagnostics ? attemptsByStep(diagnostics, steps ?? MAX_ROUTINE_STEPS) : null);
-  let finished = $derived(instantWords(entry.createdAt, $locale, routine?.timezone));
+  let finished = $derived(instantWords(entry.createdAt, $locale, routine.timezone));
   let count = $derived(steps === null ? '' : countWords(copy.result.stepCount, steps, $locale));
   let badge = $derived(TAGS[tone] ?? TAGS.neutral);
   let label = $derived(status.charAt(0).toLocaleUpperCase($locale) + status.slice(1));
@@ -74,7 +74,7 @@
   }
 </script>
 
-<RoutineModal bind:dialog class="routine-run-view" full title={name} oncancel={close} onclose={close}>
+<RoutineModal bind:dialog class="routine-run-view" full title={entry.name} oncancel={close} onclose={close}>
   {#snippet tag()}
     <RoutineTag {label} tone={badge.tone} icon={badge.icon} />
   {/snippet}
@@ -83,7 +83,7 @@
       <dl class="meta">
         <div>
           <dt>{WAITING.includes(entry.outcome) ? copy.result.updated : copy.result.finished}</dt>
-          <dd><time datetime={entry.createdAt}>{finished}</time>{#if routine}<span class="zone">{routine.timezone}</span>{/if}</dd>
+          <dd><time datetime={entry.createdAt}>{finished}</time><span class="zone">{routine.timezone}</span></dd>
         </div>
         {#if count}<div><dt>{copy.result.steps}</dt><dd>{count}</dd></div>{/if}
       </dl>
