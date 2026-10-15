@@ -942,198 +942,214 @@ export function parseReceipt(value) {
   return receipt;
 }
 
-/** Parse one public chat frame. Raw provider events and extra fields fail closed. */
-export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+function parseDoneEvent(value, expectedTeamId) {
+  let clarification = null;
+  let usage = null;
+  let routine = {};
+  try {
+    clarification = parseClarification(value.clarification);
+    usage = parseTaskUsage(value.usage);
+    routine = parseRoutineReply(value, clarification);
+  } catch {
     throw invalidResponse();
   }
-  if (value.type === 'done') {
-    let clarification = null;
-    let usage = null;
-    let routine = {};
-    try {
-      clarification = parseClarification(value.clarification);
-      usage = parseTaskUsage(value.usage);
-      routine = parseRoutineReply(value, clarification);
-    } catch {
-      throw invalidResponse();
-    }
-    if (clarification && value.reply !== renderClarification(clarification)) {
-      throw invalidResponse();
-    }
-    const doneKeys = ['type', 'team_id', 'team_name', 'reply', 'clarification'];
-    // `usage` is optional: Team reports it only when a model call of the turn reported usage.
-    if (Object.hasOwn(value, 'usage')) doneKeys.push('usage');
-    doneKeys.push(...Object.keys(routine));
-    if (
-      !exactKeys(value, doneKeys) ||
-      !TEAM_ID_RE.test(value.team_id) ||
-      value.team_id !== expectedTeamId ||
-      // The Team id binds the turn; its display name may have changed by a rename (ADR-0088) and is only checked.
-      !canonicalTeam(value.team_name) ||
-      typeof value.reply !== 'string' ||
-      !value.reply.trim() ||
-      codePointLength(value.reply) > MAX_REPLY_CHARS ||
-      CHAT_TEXT_CONTROL_RE.test(value.reply)
-    ) {
-      throw invalidResponse();
-    }
-    return {
-      type: 'done',
-      team_id: value.team_id,
-      team_name: value.team_name,
-      reply: value.reply,
-      clarification,
-      ...(usage ? { usage } : {}),
-      ...routine,
-    };
+  if (clarification && value.reply !== renderClarification(clarification)) {
+    throw invalidResponse();
   }
-  if (value.type === 'assistant-install-plan') {
-    return parseAssistantInstallPlanEvent(value, expectedTeamId, expectedTeamName);
+  const doneKeys = ['type', 'team_id', 'team_name', 'reply', 'clarification'];
+  // `usage` is optional: Team reports it only when a model call of the turn reported usage.
+  if (Object.hasOwn(value, 'usage')) doneKeys.push('usage');
+  doneKeys.push(...Object.keys(routine));
+  if (
+    !exactKeys(value, doneKeys) ||
+    !TEAM_ID_RE.test(value.team_id) ||
+    value.team_id !== expectedTeamId ||
+    // The Team id binds the turn; its display name may have changed by a rename (ADR-0088) and is only checked.
+    !canonicalTeam(value.team_name) ||
+    typeof value.reply !== 'string' ||
+    !value.reply.trim() ||
+    codePointLength(value.reply) > MAX_REPLY_CHARS ||
+    CHAT_TEXT_CONTROL_RE.test(value.reply)
+  ) {
+    throw invalidResponse();
   }
-  if (value.type === 'assistant-guidance') {
-    if (
-      !exactKeys(value, ['type', 'team_id', 'code', 'reply']) ||
-      value.team_id !== expectedTeamId ||
-      !GUIDANCE_CODES.has(value.code)
-    ) throw invalidResponse();
-    return {
-      type: 'assistant-guidance',
-      team_id: value.team_id,
-      team_name: canonicalTeam(expectedTeamName),
-      code: value.code,
-      reply: canonicalPublicText(value.reply, MAX_GUIDANCE_REPLY_CHARS),
-    };
+  return {
+    type: 'done',
+    team_id: value.team_id,
+    team_name: value.team_name,
+    reply: value.reply,
+    clarification,
+    ...(usage ? { usage } : {}),
+    ...routine,
+  };
+}
+
+function parseGuidanceEvent(value, expectedTeamId, expectedTeamName) {
+  if (
+    !exactKeys(value, ['type', 'team_id', 'code', 'reply']) ||
+    value.team_id !== expectedTeamId ||
+    !GUIDANCE_CODES.has(value.code)
+  ) throw invalidResponse();
+  return {
+    type: 'assistant-guidance',
+    team_id: value.team_id,
+    team_name: canonicalTeam(expectedTeamName),
+    code: value.code,
+    reply: canonicalPublicText(value.reply, MAX_GUIDANCE_REPLY_CHARS),
+  };
+}
+
+function parseErrorEvent(value) {
+  if (
+    !exactKeys(value, ['type', 'status', 'detail']) ||
+    !Number.isInteger(value.status) ||
+    value.status < 400 ||
+    value.status > 599 ||
+    !isShownText(value.detail, MAX_ERROR_DETAIL_CHARS)
+  ) {
+    throw invalidResponse();
   }
-  if (value.type === 'assistant-uninstall') {
-    return parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName);
+  return { type: 'error', status: value.status, detail: value.detail };
+}
+
+function parseHumanRejectedEvent(value) {
+  const denied = value.reason === 'authentication-denied';
+  const locked = value.reason === 'authentication-locked';
+  if (
+    !exactKeys(value, [
+      'type', 'challenge_id', 'reason', 'attempts_remaining', 'retry_after',
+    ]) ||
+    typeof value.challenge_id !== 'string' ||
+    !OPAQUE_ID_RE.test(value.challenge_id) ||
+    (!denied && !locked) ||
+    !Number.isSafeInteger(value.attempts_remaining) ||
+    !Number.isSafeInteger(value.retry_after) ||
+    (denied && (
+      value.attempts_remaining < 1 ||
+      value.attempts_remaining > 2 ||
+      value.retry_after !== 0
+    )) ||
+    (locked && (
+      value.attempts_remaining !== 0 ||
+      value.retry_after < 1 ||
+      value.retry_after > 60
+    ))
+  ) throw invalidResponse();
+  return {
+    type: 'human-response-rejected',
+    challenge_id: value.challenge_id,
+    reason: value.reason,
+    attempts_remaining: value.attempts_remaining,
+    retry_after: value.retry_after,
+  };
+}
+
+function parseIntegrationsRequiredEvent(value) {
+  if (
+    !exactKeys(value, ['type', 'challenge_id', 'expires_in', 'requirements']) ||
+    typeof value.challenge_id !== 'string' ||
+    !OPAQUE_ID_RE.test(value.challenge_id) ||
+    !Number.isSafeInteger(value.expires_in) ||
+    value.expires_in < 1 ||
+    value.expires_in > 900 ||
+    !Array.isArray(value.requirements) ||
+    !value.requirements.length ||
+    value.requirements.length > MAX_INTEGRATION_REQUIREMENTS
+  ) {
+    throw invalidResponse();
   }
-  if (value.type === 'error') {
-    if (
-      !exactKeys(value, ['type', 'status', 'detail']) ||
-      !Number.isInteger(value.status) ||
-      value.status < 400 ||
-      value.status > 599 ||
-      !isShownText(value.detail, MAX_ERROR_DETAIL_CHARS)
-    ) {
-      throw invalidResponse();
-    }
-    return { type: 'error', status: value.status, detail: value.detail };
+  const requirements = value.requirements.map(canonicalIntegrationRequirement);
+  const identities = requirements.map((requirement) => (
+    `${requirement.assistant_id}\u0000${requirement.integration_id}`
+  ));
+  if (new Set(identities).size !== identities.length) {
+    throw invalidResponse();
   }
-  if (value.type === 'progress') return { type: 'progress', ...progressEvent(value, ['type']) };
-  if (value.type === 'stopped' && exactKeys(value, ['type'])) return { type: 'stopped' };
-  if (value.type === 'sync-empty' && exactKeys(value, ['type'])) return { type: 'sync-empty' };
-  if (value.type === 'human-response-rejected') {
-    const denied = value.reason === 'authentication-denied';
-    const locked = value.reason === 'authentication-locked';
-    if (
-      !exactKeys(value, [
-        'type', 'challenge_id', 'reason', 'attempts_remaining', 'retry_after',
-      ]) ||
-      typeof value.challenge_id !== 'string' ||
-      !OPAQUE_ID_RE.test(value.challenge_id) ||
-      (!denied && !locked) ||
-      !Number.isSafeInteger(value.attempts_remaining) ||
-      !Number.isSafeInteger(value.retry_after) ||
-      (denied && (
-        value.attempts_remaining < 1 ||
-        value.attempts_remaining > 2 ||
-        value.retry_after !== 0
-      )) ||
-      (locked && (
-        value.attempts_remaining !== 0 ||
-        value.retry_after < 1 ||
-        value.retry_after > 60
-      ))
-    ) throw invalidResponse();
-    return {
-      type: 'human-response-rejected',
-      challenge_id: value.challenge_id,
-      reason: value.reason,
-      attempts_remaining: value.attempts_remaining,
-      retry_after: value.retry_after,
-    };
+  return {
+    type: 'integrations-required',
+    challenge_id: value.challenge_id,
+    expires_in: value.expires_in,
+    requirements,
+  };
+}
+
+function parseHumanRequiredEvent(value) {
+  // Presentation beside the fingerprinted request (ADR-0090): the Brain's optional task-bound purpose and, always and
+  // only for a Stored Input request, the help text and help link its reviewed Assistant declared. The rendered copy,
+  // its concrete locale, and the language pack's digest are required beside the canonical request (ADR-0091).
+  // An authorization request may also disclose the one original file its approved Action receives (ADR-0093).
+  // A chat authorization card may show the Action's validated input (ADR-0115).
+  const optional = ['purpose', 'help', 'help_url', 'file', 'input'].filter((key) => Object.hasOwn(value, key));
+  if (
+    !exactKeys(value, [
+      'type', 'challenge_id', 'expires_in', 'assistant', 'action', 'request', 'rendered', 'locale', 'pack_digest',
+      ...optional,
+    ]) ||
+    typeof value.challenge_id !== 'string' ||
+    !OPAQUE_ID_RE.test(value.challenge_id) ||
+    !Number.isSafeInteger(value.expires_in) ||
+    value.expires_in < 1 ||
+    value.expires_in > 300 ||
+    !isLocale(value.locale) ||
+    typeof value.pack_digest !== 'string' ||
+    !DIGEST_RE.test(value.pack_digest)
+  ) throw invalidResponse();
+  const request = canonicalHumanRequest(value.request);
+  const storedInput = request.kind === 'input:password' && request.stored_input !== undefined;
+  if (['help', 'help_url'].some((key) => optional.includes(key) !== storedInput)) {
+    throw invalidResponse();
   }
-  if (value.type === 'integrations-required') {
-    if (
-      !exactKeys(value, ['type', 'challenge_id', 'expires_in', 'requirements']) ||
-      typeof value.challenge_id !== 'string' ||
-      !OPAQUE_ID_RE.test(value.challenge_id) ||
-      !Number.isSafeInteger(value.expires_in) ||
-      value.expires_in < 1 ||
-      value.expires_in > 900 ||
-      !Array.isArray(value.requirements) ||
-      !value.requirements.length ||
-      value.requirements.length > MAX_INTEGRATION_REQUIREMENTS
-    ) {
-      throw invalidResponse();
-    }
-    const requirements = value.requirements.map(canonicalIntegrationRequirement);
-    const identities = requirements.map((requirement) => (
-      `${requirement.assistant_id}\u0000${requirement.integration_id}`
-    ));
-    if (new Set(identities).size !== identities.length) {
-      throw invalidResponse();
-    }
-    return {
-      type: 'integrations-required',
-      challenge_id: value.challenge_id,
-      expires_in: value.expires_in,
-      requirements,
-    };
+  if (optional.includes('file') && request.kind !== 'approval' && !HUMAN_AUTH_KINDS.has(request.kind)) {
+    throw invalidResponse();
   }
-  if (value.type === 'human-required') {
-    // Presentation beside the fingerprinted request (ADR-0090): the Brain's optional task-bound purpose and, always and
-    // only for a Stored Input request, the help text and help link its reviewed Assistant declared. The rendered copy,
-    // its concrete locale, and the language pack's digest are required beside the canonical request (ADR-0091).
-    // An authorization request may also disclose the one original file its approved Action receives (ADR-0093).
-    // A chat authorization card may show the Action's validated input (ADR-0115).
-    const optional = ['purpose', 'help', 'help_url', 'file', 'input'].filter((key) => Object.hasOwn(value, key));
-    if (
-      !exactKeys(value, [
-        'type', 'challenge_id', 'expires_in', 'assistant', 'action', 'request', 'rendered', 'locale', 'pack_digest',
-        ...optional,
-      ]) ||
-      typeof value.challenge_id !== 'string' ||
-      !OPAQUE_ID_RE.test(value.challenge_id) ||
-      !Number.isSafeInteger(value.expires_in) ||
-      value.expires_in < 1 ||
-      value.expires_in > 300 ||
-      !isLocale(value.locale) ||
-      typeof value.pack_digest !== 'string' ||
-      !DIGEST_RE.test(value.pack_digest)
-    ) throw invalidResponse();
-    const request = canonicalHumanRequest(value.request);
-    const storedInput = request.kind === 'input:password' && request.stored_input !== undefined;
-    if (['help', 'help_url'].some((key) => optional.includes(key) !== storedInput)) {
-      throw invalidResponse();
-    }
-    if (optional.includes('file') && request.kind !== 'approval' && !HUMAN_AUTH_KINDS.has(request.kind)) {
-      throw invalidResponse();
-    }
-    if (optional.includes('input') && !INPUT_KINDS.has(request.kind)) {
-      throw invalidResponse();
-    }
-    return {
-      type: 'human-required',
-      challenge_id: value.challenge_id,
-      expires_in: value.expires_in,
-      assistant: canonicalHumanIdentity(value.assistant, ['id', 'name', 'version'], 80, isAssistantId),
-      action: canonicalHumanIdentity(value.action, ['id', 'summary'], 160, isActionId),
-      request,
-      rendered: canonicalRendered(value.rendered, request),
-      locale: value.locale,
-      pack_digest: value.pack_digest,
-      ...(optional.includes('purpose') ? { purpose: canonicalPurpose(value.purpose) } : {}),
-      ...(storedInput
-        ? {
-          help: renderedText(value.help, '', MAX_STORED_INPUT_HELP_CHARS),
-          help_url: canonicalHelpUrl(value.help_url),
-        }
-        : {}),
-      ...(optional.includes('file') ? { file: parseFileDisclosure(value.file) } : {}),
-      ...(optional.includes('input') ? { input: canonicalInputProjection(value.input) } : {}),
-    };
+  if (optional.includes('input') && !INPUT_KINDS.has(request.kind)) {
+    throw invalidResponse();
   }
-  throw invalidResponse();
+  return {
+    type: 'human-required',
+    challenge_id: value.challenge_id,
+    expires_in: value.expires_in,
+    assistant: canonicalHumanIdentity(value.assistant, ['id', 'name', 'version'], 80, isAssistantId),
+    action: canonicalHumanIdentity(value.action, ['id', 'summary'], 160, isActionId),
+    request,
+    rendered: canonicalRendered(value.rendered, request),
+    locale: value.locale,
+    pack_digest: value.pack_digest,
+    ...(optional.includes('purpose') ? { purpose: canonicalPurpose(value.purpose) } : {}),
+    ...(storedInput
+      ? {
+        help: renderedText(value.help, '', MAX_STORED_INPUT_HELP_CHARS),
+        help_url: canonicalHelpUrl(value.help_url),
+      }
+      : {}),
+    ...(optional.includes('file') ? { file: parseFileDisclosure(value.file) } : {}),
+    ...(optional.includes('input') ? { input: canonicalInputProjection(value.input) } : {}),
+  };
+}
+
+// A frame that carries nothing but its type.
+function parseBareEvent(value) {
+  if (!exactKeys(value, ['type'])) throw invalidResponse();
+  return { type: value.type };
+}
+
+const CHAT_EVENT_PARSERS = new Map([
+  ['done', parseDoneEvent],
+  ['assistant-install-plan', parseAssistantInstallPlanEvent],
+  ['assistant-guidance', parseGuidanceEvent],
+  ['assistant-uninstall', parseAssistantUninstallEvent],
+  ['error', parseErrorEvent],
+  ['progress', (value) => ({ type: 'progress', ...progressEvent(value, ['type']) })],
+  ['stopped', parseBareEvent],
+  ['sync-empty', parseBareEvent],
+  ['human-response-rejected', parseHumanRejectedEvent],
+  ['integrations-required', parseIntegrationsRequiredEvent],
+  ['human-required', parseHumanRequiredEvent],
+]);
+
+/** Parse one public chat frame by its type. Raw provider events and extra fields fail closed. */
+export function parseChatEvent(value, expectedTeamId, expectedTeamName) {
+  const parse = value && typeof value === 'object' && !Array.isArray(value) ? CHAT_EVENT_PARSERS.get(value.type) : null;
+  if (!parse) throw invalidResponse();
+  return parse(value, expectedTeamId, expectedTeamName);
 }
