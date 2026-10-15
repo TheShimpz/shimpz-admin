@@ -6,7 +6,7 @@ import { socketReads } from '../session/socket.js';
 import { exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
 import { canonicalId, canonicalIntegrationScopes, canonicalPublicText, requireTeam } from '../chat/protocol.js';
 import { CONTROL_RE, isAscending } from '../grammar.js';
-import { ASSISTANT_ID_RE, isIdentifier, OPAQUE_ID_RE, SEMANTIC_VERSION_RE } from '../ids.js';
+import { isIdentifier, OPAQUE_ID_RE, SEMANTIC_VERSION_RE } from '../ids.js';
 import { synced } from '../session/synced.js';
 
 // Each closed refusal of an answer that fails its contract, with the HTTP status it arrived with when one did.
@@ -22,7 +22,7 @@ const CLOUDFLARE_SCOPES = new Set(['dns.read', 'dns.write', 'offline_access', 'z
 const OAUTH_SCOPE_RE = /^[A-Za-z0-9._:-]{1,128}$/;
 
 export function assistantIntegrationProviderLabel(provider) {
-  if (typeof provider !== 'string' || !ASSISTANT_ID_RE.test(provider)) return '';
+  if (!isIdentifier(provider)) return '';
   if (provider === 'x') return 'X';
   if (provider === 'whatsapp') return 'WhatsApp';
   return provider.split('-').map((part) => part[0].toUpperCase() + part.slice(1)).join(' ');
