@@ -80,7 +80,8 @@
     clip-path: polygon(0 0, calc(100% - var(--shimpz-cut-lg)) 0, 100% var(--shimpz-cut-lg), 100% 100%, 0 100%);
     box-shadow: 0 1.5rem 5rem rgb(0 0 0 / 68%);
   }
-  .frame--open { border-inline-color: transparent; border-block-end-color: transparent; }
+  /* An open frame's top edge, its header's side lines, and the content's own edges join as one frame: square corners. */
+  .frame--open { border-inline-color: transparent; border-block-end-color: transparent; border-radius: 0; }
   .frame--open > .head { box-shadow: inset 1px 0 0 var(--shimpz-color-border), inset -1px 0 0 var(--shimpz-color-border); }
   :global([dir="rtl"]) .frame { clip-path: polygon(var(--shimpz-cut-lg) 0, 100% 0, 100% 100%, 0 100%, 0 var(--shimpz-cut-lg)); }
   .head {
@@ -94,6 +95,7 @@
     color: var(--shimpz-color-text-dim);
     background: repeating-linear-gradient(0deg, transparent 0 2px, color-mix(in srgb, var(--shimpz-color-cyan) 4%, transparent) 2px 3px);
     border-block-end: 1px solid var(--shimpz-color-border);
+    border-radius: 0;
   }
   .head:has(:global(.back)) { padding-inline-start: var(--gap-item); }
   /* Long titles wrap. */

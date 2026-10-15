@@ -80,6 +80,8 @@
     white-space: nowrap;
   }
   td { min-width: 8ch; color: var(--shimpz-color-text); }
+  /* Square cells and rows, so the hairline grid meets without notches and the header tint has straight corners. */
+  table, tr, th, td { border-radius: 0; }
   tbody tr:nth-child(even) { background: rgb(255 255 255 / 0.025); }
   tbody tr:hover { background: color-mix(in srgb, var(--shimpz-color-cyan) 4%, transparent); }
   .kind-number { text-align: end; }

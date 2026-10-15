@@ -409,6 +409,8 @@
     padding: var(--decision-message-top, 0px) var(--decision-message-bleed, 0px) var(--gap-group);
     box-shadow: var(--decision-message-sides, none);
     border-block-end: var(--decision-message-rule, 0);
+    /* Its sides and bottom continue the panel's frame lines, which run straight. */
+    border-radius: 0;
   }
   .actions { display: flex; flex-wrap: wrap; gap: var(--gap-group); padding-block-start: var(--gap-inside); }
 </style>

@@ -73,7 +73,7 @@
     background: rgb(255 255 255 / 0.015);
   }
   .group { display: grid; gap: var(--gap-item); min-width: 0; }
-  .group + .group { padding-inline-start: var(--gap-panel); border-inline-start: 1px solid var(--shimpz-color-border-subtle); }
+  .group + .group { padding-inline-start: var(--gap-panel); border-inline-start: 1px solid var(--shimpz-color-border-subtle); border-radius: 0; }
   .group-label, dt, .block-label {
     margin: 0;
     color: var(--shimpz-color-text-dim);
@@ -89,7 +89,7 @@
   .block-label { display: flex; align-items: baseline; gap: var(--gap-item); color: var(--shimpz-color-text-muted); font-size: 0.68rem; }
   .count { color: var(--shimpz-color-text-dim); font-weight: 400; letter-spacing: 0.04em; text-transform: none; }
   .values { display: flex; flex-wrap: wrap; gap: var(--gap-inside) var(--gap-item); margin: 0; font-size: 0.85rem; }
-  .nested { display: grid; gap: var(--gap-group); padding-inline-start: var(--gap-group); border-inline-start: 1px solid var(--shimpz-color-border-subtle); }
+  .nested { display: grid; gap: var(--gap-group); padding-inline-start: var(--gap-group); border-inline-start: 1px solid var(--shimpz-color-border-subtle); border-radius: 0; }
   .single { margin: 0; font-size: 0.9rem; }
   .plain { font-size: 0.82rem; line-height: 1.45; }
   .dim { margin: 0; color: var(--shimpz-color-text-dim); font-size: 0.75rem; }

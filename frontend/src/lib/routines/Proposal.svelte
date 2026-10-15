@@ -251,7 +251,7 @@
   .sheet > :global(.details > .content) { display: grid; gap: var(--shimpz-space-3); margin-block: var(--shimpz-space-2); }
   .rows { display: grid; padding: 0; list-style: none; }
   .rows > li { display: grid; gap: var(--gap-inside); padding-block: var(--shimpz-space-2); }
-  .rows > li + li { border-block-start: 1px dashed var(--shimpz-color-border-subtle); }
+  .rows > li + li { border-block-start: 1px dashed var(--shimpz-color-border-subtle); border-radius: 0; }
   .row { display: grid; grid-template-columns: var(--index) minmax(0, 1fr) auto; align-items: center; gap: var(--shimpz-space-2); }
   .index { color: var(--shimpz-color-cyan); font: 600 0.7rem/1 var(--shimpz-font-mono); }
   .what { min-width: 0; overflow-wrap: anywhere; }

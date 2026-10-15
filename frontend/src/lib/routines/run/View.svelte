@@ -126,7 +126,7 @@
   .note { margin: 0; color: var(--shimpz-color-text-dim); font-size: 0.75rem; line-height: 1.5; }
   @media (min-width: 64rem) {
     .columns { grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem); }
-    .steps { padding-inline-start: var(--gap-panel); border-inline-start: 1px solid var(--shimpz-color-border-subtle); }
+    .steps { padding-inline-start: var(--gap-panel); border-inline-start: 1px solid var(--shimpz-color-border-subtle); border-radius: 0; }
     /* A run that shows no result reads its steps as the one column. */
     .columns--steps { grid-template-columns: minmax(0, 48rem); }
     .columns--steps .steps { padding-inline-start: 0; border-inline-start: 0; }

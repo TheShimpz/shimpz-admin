@@ -63,11 +63,12 @@
     text-align: var(--choice-ask-align, start);
     overflow-wrap: anywhere;
   }
-  .ask::after { content: ""; width: 2rem; height: 2px; background: var(--shimpz-color-cyan); box-shadow: 0 0 0.5rem color-mix(in srgb, var(--shimpz-color-cyan) 60%, transparent); }
+  .ask::after { content: ""; width: 2rem; height: 2px; border-radius: 0; background: var(--shimpz-color-cyan); box-shadow: 0 0 0.5rem color-mix(in srgb, var(--shimpz-color-cyan) 60%, transparent); }
   .ask + .segment { border-block-start: 1px solid var(--shimpz-color-border); }
   .ask, .segment { box-sizing: border-box; width: var(--choice-width, auto); max-width: 100%; }
   @container (max-width: 34rem) { .ask, .segment { width: auto; justify-self: stretch; } }
-  .segment { display: grid; min-width: 0; border-inline: var(--choice-list-border, 0); }
+  /* The rows' side lines continue the frame they sit in, so they run straight. */
+  .segment { display: grid; min-width: 0; border-inline: var(--choice-list-border, 0); border-radius: 0; }
   .segment:last-child { border-block-end: var(--choice-list-border, 0); }
   .segment:first-child { border-block-start: var(--choice-list-border, 0); }
   .segment + .segment { border-block-start: 1px solid var(--shimpz-color-border); }
@@ -109,6 +110,7 @@
     inset-block: 0.45rem; /* the hover edge's own length, not rhythm */
     inset-inline-start: 0;
     width: 2px;
+    border-radius: 0;
     background: var(--shimpz-color-cyan);
     box-shadow: 0 0 0.55rem var(--shimpz-color-cyan);
     transform: scaleY(0);

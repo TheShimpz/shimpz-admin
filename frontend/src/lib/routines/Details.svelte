@@ -424,7 +424,7 @@
   .note :global(.routine-icon) { color: var(--shimpz-color-yellow); }
   /* The page menu: mono labels on one rule, the selected page underlined in the panel's one accent. */
   /* The page menu starts at the panel's edge; the Routine's actions sit at its far end. */
-  .bar { display: flex; align-items: center; gap: var(--gap-item); min-height: 2.5rem; padding-inline-end: var(--gap-item); border-block-end: 1px solid var(--shimpz-color-border); }
+  .bar { display: flex; align-items: center; gap: var(--gap-item); min-height: 2.5rem; padding-inline-end: var(--gap-item); border-block-end: 1px solid var(--shimpz-color-border); border-radius: 0; }
   .tabs { display: flex; flex: 1 1 auto; min-width: 0; padding-block-start: var(--gap-inside); overflow-x: auto; }
   .actions { display: flex; flex: none; gap: var(--gap-inside); margin-inline-start: auto; }
   .actions :global(.act.act) { --button-border: transparent; --button-color: var(--shimpz-color-cyan); --button-hover-color: var(--shimpz-color-cyan); }
