@@ -101,7 +101,8 @@ def _set_session(response: JSONResponse, secret: str, method: str, origin: str |
     response.delete_cookie(TICKET_COOKIE, path="/api/")
 
 
-async def _verify_password(password: object, context: Context, origin: str | None = None) -> dict:
+async def check_password(password: object, context: Context, origin: str | None = None) -> dict:
+    """The Supervisor store record once the password passes sign-in's limiter and lockout; every refusal journaled."""
     if not isinstance(password, str) or not 1 <= len(password) <= auth.MAX_PASSWORD_CHARS:
         raise HTTPException(status_code=400, detail="invalid Supervisor credentials")
     record = state.get()
@@ -135,7 +136,7 @@ async def recheck_password(origin: str | None, password: object, context: Contex
     Origin of the page that asked.
     """
     try:
-        await _verify_password(password, context, origin)
+        await check_password(password, context, origin)
     except HTTPException as exc:
         if exc.status_code == 401:
             raise HTTPException(status_code=403, detail="Supervisor password is incorrect") from None
@@ -227,7 +228,7 @@ async def setup(request: Request, context: Context) -> JSONResponse:
         enrollment = await asyncio.to_thread(state.begin_supervisor_setup, password)
         await asyncio.to_thread(supervisor.materialize_public_key, state.local_supervisor())
     else:
-        await _verify_password(payload["password"], context, origin)
+        await check_password(payload["password"], context, origin)
         enrollment = state.resume_totp_enrollment()
     generation = state.factor_generation()
     token = context.ticket_store.issue("totp-enrollment", origin, generation)
@@ -280,7 +281,7 @@ async def login(request: Request, context: Context) -> JSONResponse:
     if current not in {auth.RECORD_STATE_CONFIGURED, auth.RECORD_STATE_RECOVERY_ENROLLMENT}:
         raise HTTPException(status_code=409, detail="Local Supervisor MFA setup is incomplete")
     origin = _request_origin(request)
-    await _verify_password(payload["password"], context, origin)
+    await check_password(payload["password"], context, origin)
     generation = state.factor_generation()
     token = context.ticket_store.issue("login", origin, generation)
     # While a recovery code's re-enrollment is open, only another recovery code can begin it again.
@@ -568,7 +569,7 @@ async def verify_operation_password(asker: Asker, context: Context, password: ob
         origin = _operation_origin(asker.origin)
         if state.authentication_state() != auth.RECORD_STATE_CONFIGURED:
             raise OperationRefusedError(409, "authentication-unavailable")
-        await _verify_password(password, context, origin)
+        await check_password(password, context, origin)
     except HTTPException as exc:
         if exc.status_code == 429:
             retry_after = int((exc.headers or {}).get("Retry-After", "1"))

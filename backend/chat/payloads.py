@@ -1,7 +1,5 @@
 """Fail-closed canonicalizers for Admin chat request payloads."""
 
-import re
-
 from team.transport import TeamRequestError
 
 from protocol.http.v1 import payload as team_contract
@@ -87,7 +85,7 @@ def canonical_chat_payload(payload: object) -> dict[str, object]:
     files = payload["files"]
     if not isinstance(files, list) or len(files) > MAX_CHAT_FILES:
         raise TeamRequestError(f"files must contain at most {MAX_CHAT_FILES} ids")
-    canonical_files = [_canonical_id(item, field="file id", pattern=_FILE_ID_RE, maximum=32) for item in files]
+    canonical_files = [canonical_file_id(item) for item in files]
     if len(set(canonical_files)) != len(canonical_files):
         raise TeamRequestError("files must not contain duplicate ids")
     assistant_ids = payload["assistant_ids"]
@@ -105,9 +103,9 @@ def canonical_chat_payload(payload: object) -> dict[str, object]:
     }
 
 
-def _canonical_id(value: object, *, field: str, pattern: re.Pattern[str], maximum: int) -> str:
-    if not isinstance(value, str) or not value or len(value) > maximum or not pattern.fullmatch(value):
-        raise TeamRequestError(f"{field} must be a canonical lowercase identifier")
+def canonical_file_id(value: object) -> str:
+    if not isinstance(value, str) or _FILE_ID_RE.fullmatch(value) is None:
+        raise TeamRequestError("file id must be a canonical lowercase identifier")
     return value
 
 

@@ -268,7 +268,7 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
 
         with mock.patch.object(
             self.admin_app.local_auth,
-            "_verify_password",
+            "check_password",
             new=mock.AsyncMock(),
         ) as verify_password:
             asyncio.run(self.admin_app._host_reset_password("secret"))

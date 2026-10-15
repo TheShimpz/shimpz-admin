@@ -276,7 +276,7 @@ class RoutineDeletionTests(StepUpCase):
         self.assertEqual({entry["origin"] for entry in entries}, {ORIGIN})
         # Sign-in shares the one budget: the right password is locked there too.
         with self.assertRaises(self.admin_app.HTTPException) as locked:
-            asyncio.run(self.local_auth._verify_password(PASSWORD, self.context))
+            asyncio.run(self.local_auth.check_password(PASSWORD, self.context))
         self.assertEqual(locked.exception.status_code, 429)
         self.assertEqual(self.context.ticket_store._records, {})
         self.team_delete.assert_not_called()
@@ -383,7 +383,7 @@ class RoutineDeletionTests(StepUpCase):
         binding = self.tickets.Binding("s" * 64, "a" * 32)
         for origin in (None, "https://admin.example", "http://evil.example"):
             asker = self.local_auth.Asker(origin, "session", binding)
-            with self.subTest(origin=origin), mock.patch.object(self.local_auth, "_verify_password") as verify:
+            with self.subTest(origin=origin), mock.patch.object(self.local_auth, "check_password") as verify:
                 with self.assertRaises(self.local_auth.OperationRefusedError) as refused:
                     asyncio.run(self.local_auth.verify_operation_password(asker, self.context, PASSWORD))
                 self.assertEqual(

@@ -453,7 +453,7 @@ app.add_api_route("/api/admin/passkeys", local_passkey_registration_complete, me
 
 
 async def _host_reset_password(password: object) -> None:
-    await local_auth._verify_password(password, _LOCAL_AUTH_CONTEXT)
+    await local_auth.check_password(password, _LOCAL_AUTH_CONTEXT)
 
 
 def _space_reset_with_history(action) -> transport.TeamResponse:

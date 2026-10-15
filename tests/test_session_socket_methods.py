@@ -158,7 +158,7 @@ class SessionMethodAuthorityTests(SessionMethodCase):
                         await websocket.finish()
             self.assertEqual(self.team_calls, [])
 
-        with mock.patch.object(self.admin_app.local_auth, "_verify_password", side_effect=AssertionError("no check")):
+        with mock.patch.object(self.admin_app.local_auth, "check_password", side_effect=AssertionError("no check")):
             asyncio.run(scenario())
 
     def test_every_method_closes_a_socket_whose_session_ended_before_it_runs(self) -> None:
@@ -366,7 +366,7 @@ class TeamDeletionTests(SessionMethodCase):
         ):
             with (
                 self.subTest(body=body),
-                mock.patch.object(self.admin_app.local_auth, "_verify_password") as verify,
+                mock.patch.object(self.admin_app.local_auth, "check_password") as verify,
             ):
                 result = self._answers("teams.delete", {"team_id": "team_1", "body": body})
             self.assertEqual((result["status"], result["body"]), (400, {"detail": detail}))

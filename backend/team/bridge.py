@@ -32,7 +32,6 @@ CAPABILITY_PLAN_TIMEOUT_SECONDS = 65
 INTENT_ROUTE_TIMEOUT_SECONDS = 25
 ASSISTANT_INSTALL_TIMEOUT_SECONDS = 360
 
-_FILE_ID_RE = team_contract.FILE_ID_RE
 MAX_TEAMS = 128
 MAX_TEAM_NAME_CHARS = team_contract.MAX_TEAM_NAME_CHARS
 _LATIN_ASCII_EXPANSIONS = str.maketrans(
@@ -566,7 +565,7 @@ def _files_path(team_id: object, file_id: object | None = None) -> str:
     base = f"/v1/teams/{canonical_id}/files"
     if file_id is None:
         return base
-    return f"{base}/{payloads._canonical_id(file_id, field='file id', pattern=_FILE_ID_RE, maximum=32)}"
+    return f"{base}/{payloads.canonical_file_id(file_id)}"
 
 
 def _project_storage_response(
@@ -652,15 +651,9 @@ def _file_bytes(
     return transport.TeamAssetResponse(response.status, None, error)
 
 
-def _canonical_file(team_id: object, file_id: object) -> str:
-    canonical_id = payloads.canonical_team_id(team_id)
-    canonical_file_id = payloads._canonical_id(file_id, field="file id", pattern=_FILE_ID_RE, maximum=32)
-    return _files_path(canonical_id, canonical_file_id)
-
-
 def file_preview(team_id: object, file_id: object) -> transport.TeamAssetResponse:
     """One Team file's sanitized image rendition, or its closed refusal (ADR-0093)."""
-    response = transport.call_preview(f"{_canonical_file(team_id, file_id)}/preview")
+    response = transport.call_preview(f"{_files_path(team_id, file_id)}/preview")
     return _file_bytes(response, _PREVIEW_REFUSALS, "file preview unavailable")
 
 
@@ -669,11 +662,11 @@ def file_page_preview(team_id: object, file_id: object, page: object) -> transpo
     canonical_page = preview_contract.canonical_page(page)
     if canonical_page is None:
         raise transport.TeamRequestError("page must be a number from 1 to 50")
-    response = transport.call_page_preview(f"{_canonical_file(team_id, file_id)}/pages/{canonical_page}/preview")
+    response = transport.call_page_preview(f"{_files_path(team_id, file_id)}/pages/{canonical_page}/preview")
     return _file_bytes(response, _PREVIEW_REFUSALS, "file preview unavailable")
 
 
 def file_content(team_id: object, file_id: object) -> transport.TeamAssetResponse:
     """One Team file's original, verified against its digest, or its closed refusal (ADR-0093)."""
-    response = transport.call_content(f"{_canonical_file(team_id, file_id)}/content")
+    response = transport.call_content(f"{_files_path(team_id, file_id)}/content")
     return _file_bytes(response, _CONTENT_REFUSALS, "file download unavailable")

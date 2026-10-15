@@ -87,7 +87,7 @@ class LocalAuthEdgeTests(unittest.TestCase):
     def test_password_ticket_and_totp_failures_map_to_closed_http_outcomes(self) -> None:
         context = local_auth.Context()
         with self.assertRaises(HTTPException) as malformed:
-            asyncio.run(local_auth._verify_password(None, context))
+            asyncio.run(local_auth.check_password(None, context))
         self.assertEqual(malformed.exception.status_code, 400)
 
         with (
@@ -95,7 +95,7 @@ class LocalAuthEdgeTests(unittest.TestCase):
             mock.patch.object(local_auth.auth, "attempt_login", mock.AsyncMock(return_value=(False, 12))),
             self.assertRaises(HTTPException) as locked,
         ):
-            asyncio.run(local_auth._verify_password("password", context))
+            asyncio.run(local_auth.check_password("password", context))
         self.assertEqual(locked.exception.status_code, 429)
         self.assertEqual(locked.exception.headers, {"Retry-After": "12"})
 
@@ -182,7 +182,7 @@ class LocalAuthEdgeTests(unittest.TestCase):
                 "authentication_state",
                 return_value=auth.RECORD_STATE_ENROLLMENT_REQUIRED,
             ),
-            mock.patch.object(local_auth, "_verify_password", mock.AsyncMock(return_value={})),
+            mock.patch.object(local_auth, "check_password", mock.AsyncMock(return_value={})),
             mock.patch.object(local_auth.state, "resume_totp_enrollment", return_value=enrollment),
             mock.patch.object(local_auth.state, "factor_generation", return_value=2),
         ):
@@ -210,7 +210,7 @@ class LocalAuthEdgeTests(unittest.TestCase):
 
         with (
             mock.patch.object(local_auth.state, "authentication_state", return_value=auth.RECORD_STATE_CONFIGURED),
-            mock.patch.object(local_auth, "_verify_password", mock.AsyncMock(return_value={})),
+            mock.patch.object(local_auth, "check_password", mock.AsyncMock(return_value={})),
             mock.patch.object(local_auth.state, "factor_generation", return_value=2),
             mock.patch.object(local_auth, "_login_passkey_options", return_value=options),
         ):
