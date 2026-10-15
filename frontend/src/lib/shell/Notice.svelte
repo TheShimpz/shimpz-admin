@@ -2,7 +2,7 @@
   import { Toast } from '@shimpz/frontend';
   import { onMount } from 'svelte';
   import {
-    DEFAULT_ADMIN_NOTICE_DURATION_MS,
+    ADMIN_NOTICE_DURATION_MS,
     createAdminNoticeTimer,
     adminNotice,
     dismissAdminNotice,
@@ -32,7 +32,7 @@
 
   $effect(() => {
     const notice = $adminNotice;
-    if (notice) noticeTimer.start(notice.id, DEFAULT_ADMIN_NOTICE_DURATION_MS, document.hidden);
+    if (notice) noticeTimer.start(notice.id, ADMIN_NOTICE_DURATION_MS, document.hidden);
     else noticeTimer.stop();
     return () => noticeTimer.stop();
   });
@@ -50,7 +50,7 @@
       class="admin-toast"
       tone={$adminNotice.tone === 'error' ? 'error' : $adminNotice.tone === 'success' ? 'success' : 'info'}
       label={$adminNotice.label}
-      durationMs={DEFAULT_ADMIN_NOTICE_DURATION_MS}
+      durationMs={ADMIN_NOTICE_DURATION_MS}
       {paused}
       {closeLabel}
       onClose={dismissCurrentNotice}
