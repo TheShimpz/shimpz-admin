@@ -582,7 +582,6 @@ def _project_storage_response(
         response.body,
         kind=kind,
         expected_team_id=team_id,
-        include_team_id=True,
     )
     if body is None:
         log.warning("team returned an invalid storage response (%s)", kind)

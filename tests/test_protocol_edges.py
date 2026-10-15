@@ -88,9 +88,7 @@ class PayloadEdges(unittest.TestCase):
             ({"team_id": "team"}, "unknown"),
         )
         for value, kind in cases:
-            self.assertIsNone(
-                payload.project_storage_response(value, kind=kind, expected_team_id="team", include_team_id=False)
-            )
+            self.assertIsNone(payload.project_storage_response(value, kind=kind, expected_team_id="team"))
 
 
 class ProgressEdges(unittest.TestCase):
