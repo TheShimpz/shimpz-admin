@@ -67,6 +67,7 @@
   .signal i {
     width: 0.12rem;
     height: 0.3em;
+    border-radius: 0;
     background: var(--accent);
     box-shadow: 0 0 0.4rem color-mix(in srgb, var(--accent) 72%, transparent);
     animation: signal 1.1s ease-in-out infinite;
