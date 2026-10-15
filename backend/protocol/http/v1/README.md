@@ -194,8 +194,8 @@ the label the person picks states that choice), a stated interval the Team's dai
 cannot hold (`routine-interval-over-budget`, whose `value` is the shortest interval in seconds that fits; with room
 for no run at all the recording is refused as `routine-step-budget`), which item an input means (`routine-binding-ambiguous`, whose `options` are at most 8
 targets `{value, label}`: `value` is the exact compact JSON text of the string or integer the input would take, so
-no client rounds a large integer, and `label` the item's name, or `null`), a value that no earlier result provides (`routine-binding-unsourced`), work split across messages
-(`routine-work-split`), and work to run again for a chosen target (`routine-work-rerun`). Only `routine-binding-ambiguous` has options, and only
+no client rounds a large integer, and `label` the item's name, or `null`), and work to run again
+(`routine-work-rerun`), for a value that no earlier result provides or a target the person chose instead. Only `routine-binding-ambiguous` has options, and only
 `routine-interval-over-budget` has a value. When the person's next send is Admin's composed answer to that question
 and its latest answer binds it (it states a schedule, an interval, or an output, or is exactly one target's JSON text), Team
 records again with the request's stored intent without asking the Brain, and the reply is the fixed
@@ -203,7 +203,7 @@ records again with the request's stored intent without asking the Brain, and the
 
 What a person's own words state about a Routine is read here too, with no model, so Team and the Brain read the
 same words alike (`phrase.py`, ADR-0101): `phrase.stated` reads the canonical schedules a text states,
-`phrase.outputs` the output choices (`show`, `changes`, `none`, `chain`), and `phrase.zones` the exact IANA zones it
+`phrase.outputs` the output choices (`show`, `changes`, `none`), and `phrase.zones` the exact IANA zones it
 names. `phrase.team_asks(text)` is true when one clarification question or option label asks or states a schedule,
 an interval, an output choice, or how many times a Routine may run, which Team asks itself and the Brain never does.
 `phrase.requests_routine(text)` is true when the text names a Routine affirmatively ("cria uma rotina", "create a
@@ -281,14 +281,13 @@ derived, never carried: `routine.continuous_cap(gap)`, `ceil(86400 / gap)` (at m
 17,280), so the interval a person stated runs all day and no cap ever rewrites it (ADR-0101).
 `routine.daily_rate` is a schedule's runs per day and `routine.daily_cap` its whole rolling 24-hour cap; the Team's
 daily Action-step budget alone bounds what its Routines' caps may start together. A Routine is recorded from the work the ordinary chat agent did in one turn and exists only once a person
-confirms its card (ADR-0101). Its notice then has the Routine outcome `created` or `changed`, no run id, and exactly
-`{name, plan, output, schedule, timezone, timezone_source, state, permitted}`: the Routine's name
-(`routine.canonical_name`, 1 to 80 NFC printable characters on one line), its revision's summary, its output
+confirms its card (ADR-0101). Its notice then has the Routine outcome `created` or `changed`, no run id, and the empty
+detail `{}`: the notice's own `name` says which Routine. A Routine view (`routine_notice.canonical_routine_view`) carries
+its name (`routine.canonical_name`, 1 to 80 NFC printable characters on one line), its revision's summary, its output
 disposition (`routine.canonical_disposition`: `{mode, step}`, where `mode` is `show`, `changes`, or `none`, and `step`
 is the 1-based position of the shown step for `show` and `changes`), its schedule, zone, and the zone's source
 (`routine.zoned`: `browser`, `person`, a zone the person wrote, or `none`, when the Routine runs on `UTC` by convention,
-its run date included, which is never a claim about the person), and its standing scope: its `state` (`active` or `paused`) and its permitted Actions
-as `{total, changes}` (`routine.canonical_permitted`, 1 to `routine.MAX_PERMITTED`). A plan holds 1 to 256 steps; on the
+its run date included, which is never a claim about the person), its next run, and its `state` (`active` or `paused`). A plan holds 1 to 256 steps; on the
 wire a step is always named by its position, never by its internal id. The summary
 (`routine.canonical_summary`) is `{revision, plan_digest, steps, actions, more}`: the step count and the Actions as runs
 of consecutive equal `[assistant, action, count]`, at most 16 runs, with `more` counting the steps after them, within
@@ -316,6 +315,8 @@ summed duration.
 `protection_lost` is true on a run's notice versions written after the run lost the protection of its secret values
 (ADR-0101 section 6.2), so nothing it produced afterwards was shown anywhere; it is always false on a Routine outcome.
 The Routine outcome `deleted` (detail `{}`) closes a Routine's timeline once its confirmed deletion completes.
+The Routine outcome `streak-paused` (detail `{failures}`, 1 to `routine.MAX_FAILURE_STREAK`) says its consecutive
+failed runs paused it, in the write that ended the run whose failure did.
 
 A run has one notice, keyed by its run id, whose version grows as the run goes on (`routine_notice.canonical_notice_detail`
 closes each outcome's detail). `done` and `recovered` carry `{plan, output}`: the `plan` summary of the
@@ -363,22 +364,22 @@ run now; a claimed run carries its `active_seconds` budget, which grows with its
 
 A Supervisor's `GET /v1/teams/:team_id/routines` lists each Routine (`routine_notice.canonical_routine_view`), its live runs
 (`routine_notice.canonical_run_view`, a frozen one with its call's `position` and `steps`), and its unresolved `incidents`, at
-most `routine_notice.MAX_UNRESOLVED_INCIDENTS` (`routine_notice.canonical_incident_view`): each held run's id, Routine, name, creation
-instant, and call, which outlive a deleted Routine. `POST /v1/teams/:team_id/routines/incidents/:incident_id/card` with
+most `routine_notice.MAX_UNRESOLVED_INCIDENTS` (`routine_notice.canonical_incident_view`): each held run's id, Routine,
+name, the instant its run was held, and call. `POST /v1/teams/:team_id/routines/incidents/:incident_id/card` with
 `{}` opens that run's recovery card (`routine_run.canonical_card`): the call it stopped at by `position` of `steps` in the
 plan the run executed, that revision, the `evidence` of its failure (`recorded`, with the held operation's latest
-sanitized `diagnostic` of the same call; `absent` when none is kept; or `unavailable` when it could not be read), a
-one-use 32-hex `nonce`, `expires_in` of 300 seconds, and exactly the choices `run` and `delete` in that order, none
-recommended. The card is bound to the authenticated person, the Team incarnation, the Routine and its current revision,
-the run, and its operation. `POST .../answer` with exactly `{nonce, choice}` (`routine_run.canonical_card_answer_request`)
-answers it once with `run`; `delete` is never a card answer but the Routine's own confirmed deletion.
-`routine_run.canonical_card_answer` says what it did. Rodar (`run`) sets the held run aside without verifying it and
-requests one fresh run of the current revision, answering `requested`; it carries no model credential. It refuses while
-the held attempt's workload is not proven stopped (`routine-workload-unquiesced`), while another run of the Routine is
-live (`routine-busy`), once it is deleted (`routine-not-found`), or when the Routine's Assistant contracts changed
-(`routine-contracts-changed`). Anything refused changes nothing. An expired, foreign, or reused card is
-`routine-card-expired`, and one whose Routine revision, Team incarnation, held generation, or operation changed since it
-opened is `routine-card-stale`; every answer is checked and applied in the Team's execution slot, and its write checks
+sanitized `diagnostic` of the same call; `absent` when none is kept; or `unavailable` when it could not be read), and its
+`tag`, 64 hex: an entity tag over exactly the state its answer must still find (the Team incarnation, the run, its
+Routine and the revision it executed, its held generation and operation, and the Routine's current revision). Rodar and
+Excluir are the card's two choices, none recommended. `POST .../answer` with exactly `{tag, choice}`
+(`routine_run.canonical_card_answer_request`) answers it with `run`, as an HTTP If-Match names the entity it expects;
+`delete` is never a card answer but the Routine's own confirmed deletion. `routine_run.canonical_card_answer` says what
+it did. Rodar (`run`) sets the held run aside without verifying it and requests one fresh run of the current revision,
+answering `requested`; it carries no model credential. It refuses while the held attempt's workload is not proven stopped
+(`routine-workload-unquiesced`), while another run of the Routine is live (`routine-busy`), once it is deleted
+(`routine-not-found`), or when the Routine's Assistant contracts changed (`routine-contracts-changed`). Anything refused
+changes nothing. A tag that no longer matches is `routine-card-stale`, and a run no longer held is
+`routine-incident-unavailable`; every answer is checked and applied in the Team's execution slot, and its write checks
 the same state again. `POST /v1/teams/:team_id/routines/:routine_id/pause` with `{}` turns a Routine's dispatch off,
 while a run already going finishes; `POST /v1/teams/:team_id/routines/:routine_id/resume` with `{}` turns dispatch back
 on and starts a fresh failure streak; an unresolved incident still holds the Routine until its card settles it. Deleting
