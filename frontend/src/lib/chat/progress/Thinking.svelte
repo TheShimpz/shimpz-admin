@@ -9,7 +9,6 @@
     currentIndex,
     elapsedText,
     progressLabels,
-    teamName,
     // When the turn started (ms since the epoch): the turn owns it, so the count survives this view being shown again.
     startedAt,
   } = $props();
@@ -31,7 +30,7 @@
   <div class="summary">
     <span class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
     <span class="elapsed" title={elapsedText} aria-hidden="true">{formattedElapsed} ·</span>
-    <span class="step-copy">{current ? localizedStepLabel(current, progressLabels, { teamName, assistantName: $assistantName }) : (progressLabels.awaiting ?? label)}</span>
+    <span class="step-copy">{current ? localizedStepLabel(current, progressLabels, { assistantName: $assistantName }) : progressLabels.awaiting}</span>
   </div>
 </div>
 

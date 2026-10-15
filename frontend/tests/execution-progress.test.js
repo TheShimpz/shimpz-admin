@@ -8,7 +8,6 @@ import {
   localizedEventLabel,
   localizedStepLabel,
   receiptSteps,
-  technicalStepLabel,
 } from '../src/lib/chat/progress/projection.js';
 import { CHAT_PROGRESS_PHASES } from '../src/lib/chat/protocol.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
@@ -37,7 +36,6 @@ test('pairs repeated measured operations without inventing workflow stages', () 
 
   assert.equal(steps.length, 3);
   assert.deepEqual(steps.map((step) => step.elapsed_ms), [1200, 25, null]);
-  assert.equal(technicalStepLabel(steps[1]), 'team · action 1/2');
 });
 
 test('incremental projection preserves nested pairing, orphan finishes, and narrative order', () => {
@@ -98,11 +96,6 @@ test('formats only bounded measured durations', () => {
 
 test('humanizes every observed phase in every supported Admin locale', () => {
   for (const [locale, copy] of Object.entries(messages)) {
-    assert.deepEqual(
-      Object.keys(copy.chatPage.progress.phases).sort(),
-      [...CHAT_PROGRESS_PHASES].sort(),
-      locale,
-    );
     for (const phase of CHAT_PROGRESS_PHASES) {
       const step = {
         origin: phase.startsWith('admin') || phase === 'reply-validation' ? 'admin' : 'team',

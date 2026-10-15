@@ -10,7 +10,6 @@
     // The announced step count, a template with `{count}`.
     label,
     progressLabels,
-    teamName,
     // The reply's usage line, the visible summary; the step count is announced after it.
     line,
   } = $props();
@@ -26,7 +25,7 @@
       {#each steps as step (step.key)}
         <li>
           <span class="tip">
-            <span class="step-copy">{localizedStepLabel(step, progressLabels, { teamName, assistantName: $assistantName })}</span>
+            <span class="step-copy">{localizedStepLabel(step, progressLabels, { assistantName: $assistantName })}</span>
             <time>{formatExecutionDuration(step.elapsed_ms)}</time>
           </span>
         </li>

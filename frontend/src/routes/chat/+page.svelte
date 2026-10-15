@@ -244,7 +244,7 @@
         ? copy.install.working
         : copy.uninstall.working
       : currentProgress
-      ? `${thinking} ${localizedEventLabel(currentProgress, copy.progress, { teamName, assistantName: $assistantName })}`
+      ? `${thinking} ${localizedEventLabel(currentProgress, copy.progress, { assistantName: $assistantName })}`
       : liveTurn.busy ? thinking : '',
   );
   let contextFailed = $derived($teamContext.phase === 'error');
@@ -1803,7 +1803,6 @@
               currentIndex={liveTurn.projection.currentIndex}
               elapsedText={copy.elapsed}
               progressLabels={copy.progress}
-              {teamName}
               startedAt={liveTurn.startedAt}
             />
           {/snippet}

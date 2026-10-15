@@ -87,11 +87,6 @@ export function receiptSteps(events, durationMs) {
   return rest > 0 ? [...steps, { key: 'rest', identity: 'rest', origin: 'team', phase: 'rest', elapsed_ms: rest }] : steps;
 }
 
-export function technicalStepLabel(step) {
-  const position = step.phase === 'action' ? ` ${step.index}/${step.total}` : '';
-  return `${step.origin} · ${step.phase}${position}`;
-}
-
 function isolate(value) {
   return `\u2068${value}\u2069`;
 }
@@ -128,15 +123,14 @@ function narrativeKey(step) {
   }[step.phase];
 }
 
-function narrativeLabel(step, labels, context) {
-  const template = labels.narrative?.[narrativeKey(step)];
-  if (typeof template !== 'string') return '';
+/** One step in the person's language: every phase has a narrative in every catalog. */
+export function localizedStepLabel(step, labels, context = {}) {
+  const template = labels.narrative[narrativeKey(step)];
   let label = fillNarrative(template, {
-    team: context.teamName ?? labels.origins?.team ?? 'Team',
     assistant: displayAssistant(step, context),
     action: humanizeId(step.action),
   });
-  if (step.phase === 'action' && step.total > 1 && typeof labels.narrative.actionPosition === 'string') {
+  if (step.phase === 'action' && step.total > 1) {
     label += ` ${fillNarrative(labels.narrative.actionPosition, {
       index: step.index,
       total: step.total,
@@ -145,25 +139,8 @@ function narrativeLabel(step, labels, context) {
   return label;
 }
 
-function fillStepPosition(template, step) {
-  return template
-    .replaceAll('{index}', String(step.index ?? ''))
-    .replaceAll('{total}', String(step.total ?? ''));
-}
-
-export function localizedStepLabel(step, labels = {}, context = {}) {
-  const narrative = narrativeLabel(step, labels, context);
-  if (narrative) return narrative;
-  const origin = labels.origins?.[step.origin] ?? step.origin;
-  const phaseTemplate = labels.phases?.[step.phase];
-  const phase = typeof phaseTemplate === 'string'
-    ? fillStepPosition(phaseTemplate, step)
-    : technicalStepLabel({ ...step, origin: '' }).replace(/^ · /, '');
-  return `${origin} · ${phase}`;
-}
-
-export function localizedEventLabel(event, labels = {}, context = {}) {
-  const state = labels.states?.[event.state] ?? event.state;
+export function localizedEventLabel(event, labels, context = {}) {
+  const state = labels.states[event.state];
   return `${localizedStepLabel(event, labels, context)} · ${state}`;
 }
 

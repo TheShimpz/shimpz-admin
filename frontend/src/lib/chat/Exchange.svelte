@@ -140,7 +140,6 @@
             steps={shown.steps}
             label={words.progressStagesExecuted}
             progressLabels={words.progress}
-            teamName={assistantTurn.author}
           />
         {:else}
           <p class="task-usage" title={formatTaskUsageDetail(shown.usage, $locale, words.usage)}>
