@@ -18,6 +18,7 @@ import { performance } from 'node:perf_hooks';
 import { crc32, deflateSync } from 'node:zlib';
 import { preview } from 'vite';
 import modelCatalog from '../src/lib/brain/catalog.json' with { type: 'json' };
+import { authenticatedLocalSession } from '../e2e/scenarios.js';
 import { installSessionSocket } from './sessionSocket.js';
 
 if (Number(process.versions.node.split('.')[0]) !== 26) throw new Error('This benchmark requires Node.js 26.');
@@ -138,15 +139,6 @@ function fixture(count) {
   return { local, published };
 }
 
-function sessionBody() {
-  return {
-    profile: 'local', authenticated: true, initialized: true,
-    authentication_state: 'configured', authentication_method: 'webauthn',
-    origin_admitted: true, passkey_enrollment_available: true,
-    passkey_registered: true, oauth_completion_mode: 'automatic',
-  };
-}
-
 // Each session socket operation the page makes, answered from the fixture.
 function callBody(method, params, data) {
   const answers = {
@@ -248,7 +240,7 @@ async function mockApi(page, current) {
       await route.fulfill({ contentType: 'image/png', body: iconPng });
       return;
     }
-    const body = path === '/api/session' ? sessionBody() : null;
+    const body = path === '/api/session' ? authenticatedLocalSession() : null;
     if (body === null) unexpectedRequests.add(`${route.request().method()} ${path}`);
     await route.fulfill({
       status: body === null ? 404 : 200,

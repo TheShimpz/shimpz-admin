@@ -6,17 +6,11 @@
 // With fewer than twenty samples, nearest-rank p95 is the maximum.
 import { chromium } from '@playwright/test';
 import { preview } from 'vite';
-import catalog from '../src/lib/brain/catalog.json' with { type: 'json' };
 import { receiptSteps } from '../src/lib/chat/progress/projection.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
+import { reads, routeApi, team } from './chatFixtures.js';
 import { answerCalls, installSessionSocket } from './sessionSocket.js';
 
-const team = { team_id: 'perf_team', team_name: 'Performance Team', status: 'running' };
-const provider = catalog.providers.find((item) => item.id === catalog.default_provider);
-const models = catalog.providers.map((item) => ({
-  id: item.id, title: item.title, default_model: item.default_model,
-  models: item.models, configured: item.id === provider.id, masked: null,
-}));
 // Visible copy comes from the current catalog, so the checks below track the final phase, not frozen prose.
 const copy = messages.en.chatPage;
 const finalPhase = copy.progress.narrative.replyValidation;
@@ -41,43 +35,6 @@ if (!Number.isSafeInteger(gap) || gap < 0 || gap > 1000) {
 }
 if (!['reduce', 'no-preference'].includes(motion)) {
   throw new Error('Motion must be reduce or no-preference.');
-}
-
-// Closed fixtures for the current Admin client contracts, shaped like e2e/scenarios.js: the session socket's reads by
-// method, and the session bootstrap over HTTP. Anything else is recorded as unexpected and fails the trial.
-const reads = {
-  'teams.list': () => ({ teams: [team] }),
-  'history.page': () => ({ entries: [], before: null }),
-  'routines.list': () => ({ team_id: team.team_id, routines: [], runs: [], incidents: [] }),
-  'security.summary': () => ({
-    failed_second_factor_attempts: 0, recovery_codes_remaining: 10,
-    sign_in_history: { previous: { at: '2026-09-23T00:00:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 0 },
-  }),
-  'platform.release': () => ({
-    release: 'ghcr.io/theshimpz/shimpz-local-release@sha256:' + 'd'.repeat(64),
-    ordinal: 1, checked_at: '2026-09-23T00:00:00Z', outcome: 'current',
-  }),
-  'assistants.registry': () => ({ assistants: [] }),
-  'models.list': () => ({ providers: models }),
-  'decision.read': () => ({ provider: 'typesafe', configured: false, masked: null }),
-  'store.catalog': () => ({ version: 1, locale: 'en', assistants: [], next: null }),
-  'snapshots.list': () => ({ assistants: [], trace_id: 'c'.repeat(32) }),
-  'assistants.list': () => ({ assistants: [] }),
-  'integrations.list': () => ({ integrations: [] }),
-  'stored_inputs.list': () => ({ stored_inputs: [] }),
-  'inference.read': () => ({ team_id: team.team_id, provider: provider.id, model: provider.default_model }),
-};
-
-function fixture(method, path) {
-  const answers = {
-    'POST /api/session': () => ({
-      profile: 'local', authenticated: true, initialized: true,
-      authentication_state: 'configured', authentication_method: 'webauthn',
-      origin_admitted: true, passkey_enrollment_available: false,
-      passkey_registered: false, oauth_completion_mode: 'automatic',
-    }),
-  };
-  return answers[`${method} ${path}`]?.() ?? null;
 }
 
 function frames(count) {
@@ -192,16 +149,8 @@ async function measure(browser, baseURL, count, control) {
     page.on('pageerror', (error) => pageErrors.push(error.name));
     await page.addInitScript(installSessionSocket);
     await page.addInitScript(installProbes);
-    await answerCalls(page, reads, badPaths);
-    await page.route('**/api/**', async (route) => {
-      const request = `${route.request().method()} ${new URL(route.request().url()).pathname}`;
-      const body = fixture(...request.split(' '));
-      if (!body) badPaths.push(request);
-      await route.fulfill({
-        status: body ? 200 : 404, contentType: 'application/json',
-        body: JSON.stringify(body ?? { detail: 'unknown' }),
-      });
-    });
+    await answerCalls(page, { ...reads, 'history.page': () => ({ entries: [], before: null }) }, badPaths);
+    await routeApi(page, badPaths);
     await page.goto('/chat/?team=perf_team');
     await page.waitForFunction(() => window.benchReady === true);
     await page.getByPlaceholder('Message Performance Team…').fill('Summarize the status');

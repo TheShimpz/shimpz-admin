@@ -15,15 +15,9 @@
 // SHIMPZ_HISTORY_EXHAUST=1 makes the measured page the oldest one, so its prepend also removes the history sentinel.
 import { chromium } from '@playwright/test';
 import { preview } from 'vite';
-import catalog from '../src/lib/brain/catalog.json' with { type: 'json' };
+import { reads, routeApi, team } from './chatFixtures.js';
 import { answerCalls, installSessionSocket } from './sessionSocket.js';
 
-const team = { team_id: 'perf_team', team_name: 'Performance Team', status: 'running' };
-const provider = catalog.providers.find((item) => item.id === catalog.default_provider);
-const models = catalog.providers.map((item) => ({
-  id: item.id, title: item.title, default_model: item.default_model,
-  models: item.models, configured: item.id === provider.id, masked: null,
-}));
 const pages = (process.env.SHIMPZ_HISTORY_PAGES ?? '1,4,8').split(',').map(Number);
 const samples = Number(process.env.SHIMPZ_PERF_SAMPLES ?? '5');
 const exhaust = (process.env.SHIMPZ_HISTORY_EXHAUST ?? '0') === '1';
@@ -55,43 +49,6 @@ function historyPage(index, totalPages) {
       author: team.team_name, text: `### ${marker}\n\n- **Status:** ready for review.\n- **Next:** check the attached result.\n\n\`\`\`text\n${marker}: complete\n\`\`\`` });
   }
   return { entries, before: index + 1 < totalPages ? cursor(index + 1) : null };
-}
-
-// Closed fixtures for the current Admin client contracts, shaped like e2e/scenarios.js: the session socket's reads by
-// method (history pages are answered per trial), and the session bootstrap over HTTP. Anything else is recorded as
-// unexpected and fails the trial.
-const reads = {
-  'teams.list': () => ({ teams: [team] }),
-  'routines.list': () => ({ team_id: team.team_id, routines: [], runs: [], incidents: [] }),
-  'security.summary': () => ({
-    failed_second_factor_attempts: 0, recovery_codes_remaining: 10,
-    sign_in_history: { previous: { at: '2026-09-23T00:00:00Z', origin: 'http://127.0.0.1:7777' }, failures_since: 0 },
-  }),
-  'platform.release': () => ({
-    release: 'ghcr.io/theshimpz/shimpz-local-release@sha256:' + 'd'.repeat(64),
-    ordinal: 1, checked_at: '2026-09-23T00:00:00Z', outcome: 'current',
-  }),
-  'assistants.registry': () => ({ assistants: [] }),
-  'models.list': () => ({ providers: models }),
-  'decision.read': () => ({ provider: 'typesafe', configured: false, masked: null }),
-  'store.catalog': () => ({ version: 1, locale: 'en', assistants: [], next: null }),
-  'snapshots.list': () => ({ assistants: [], trace_id: 'c'.repeat(32) }),
-  'assistants.list': () => ({ assistants: [] }),
-  'integrations.list': () => ({ integrations: [] }),
-  'stored_inputs.list': () => ({ stored_inputs: [] }),
-  'inference.read': () => ({ team_id: team.team_id, provider: provider.id, model: provider.default_model }),
-};
-
-function apiFixture(method, path) {
-  const answers = {
-    'POST /api/session': () => ({
-      profile: 'local', authenticated: true, initialized: true,
-      authentication_state: 'configured', authentication_method: 'webauthn',
-      origin_admitted: true, passkey_enrollment_available: false,
-      passkey_registered: false, oauth_completion_mode: 'automatic',
-    }),
-  };
-  return answers[`${method} ${path}`]?.() ?? null;
 }
 
 // Marks when the page issues the measured older-history read, and where the current first exchange sits when its
@@ -148,14 +105,7 @@ async function measure(browser, baseURL, existingPages) {
         return historyPage(index, existingPages + (exhaust ? 1 : 2));
       },
     }, unexpected);
-    await page.route('**/api/**', async (route) => {
-      const url = new URL(route.request().url());
-      const method = route.request().method();
-      const body = apiFixture(method, url.pathname);
-      if (!body) unexpected.push(`${method} ${url.pathname}`);
-      await route.fulfill({ status: body ? 200 : 404, contentType: 'application/json',
-        body: JSON.stringify(body ?? { detail: 'unknown' }) });
-    });
+    await routeApi(page, unexpected);
     await page.goto('/chat/?team=perf_team');
     await page.waitForFunction(() => window.benchReady === true);
     const cdp = await context.newCDPSession(page);
