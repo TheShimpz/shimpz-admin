@@ -35,8 +35,8 @@ MAX_ACTIONS = 128
 MAX_CACHED_ICONS = 256
 # Catalogs above this admitted byte budget intentionally retain only their most-recently-used subset.
 MAX_CACHED_ICON_BYTES = 8 * 1024 * 1024
-VERSION_RE = re.compile(r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$")
-CREATOR_RE = re.compile(r"^@[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$")
+VERSION_RE = team_contract.ASSISTANT_VERSION_RE
+CREATOR_RE = team_contract.DETAILS_CREATOR_RE
 _GITHUB = re.compile(
     r"^https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/"
     r"[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,98}[A-Za-z0-9])?$"
