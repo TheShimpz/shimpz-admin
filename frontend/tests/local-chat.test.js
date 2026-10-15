@@ -25,7 +25,6 @@ const completeAssistantIntegration = integrationCall('completeAssistantIntegrati
 const listAssistantIntegrations = integrationCall('listAssistantIntegrations');
 const listAssistantStoredInputs = integrationCall('listAssistantStoredInputs');
 
-const TURN_ID = 'a'.repeat(32);
 const CHALLENGE_ID = 'b'.repeat(32);
 const ASSISTANT_ID = 'shimpz-cloudflare';
 const INTEGRATION_ID = 'cloudflare';
@@ -599,7 +598,6 @@ test('chat rejects widened, cross-Team, duplicated, or malformed installation pl
 
 test('chat admits only the exact conversational Assistant uninstall lifecycle', () => {
   const proposalId = 'd'.repeat(32);
-  const imageId = `sha256:${'e'.repeat(64)}`;
   const proposed = {
     type: 'assistant-uninstall',
     state: 'proposed',

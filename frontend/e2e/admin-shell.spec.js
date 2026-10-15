@@ -741,7 +741,7 @@ test('shows the first Assistants view before a public icon finishes loading', as
   await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } }));
   await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
   await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
-  await routeRead(page, 'store.catalog', ({ locale }) => ({ status: 200, json: { version: 1, next: null, locale: 'en', assistants: [{
+  await routeRead(page, 'store.catalog', () => ({ status: 200, json: { version: 1, next: null, locale: 'en', assistants: [{
         assistant_id: 'hello-pulse', assistant_version: '1.0.0', creators: ['@creator'],
         icon_digest: `sha256:${createHash('sha256').update(icon).digest('hex')}`, name: 'Hello Pulse',
         source_digest: `sha256:${'a'.repeat(64)}`, summary: 'A measured public Assistant.',
@@ -802,7 +802,7 @@ test('shows an over-budget public icon as unavailable instead of loading forever
   await routeRead(page, 'teams.list', () => ({ status: 200, json: { teams: [{ team_id: 'marketing', team_name: 'Marketing', status: 'running' }] } }));
   await routeRead(page, 'assistants.registry', () => ({ status: 200, json: { assistants: [] } }));
   await routeRead(page, 'assistants.list', ({ team_id: teamId }) => (teamId === 'marketing' ? { status: 200, json: { assistants: [] } } : undefined));
-  await routeRead(page, 'store.catalog', ({ locale }) => ({ status: 200, json: { version: 1, next: null, locale: 'en', assistants: [{
+  await routeRead(page, 'store.catalog', () => ({ status: 200, json: { version: 1, next: null, locale: 'en', assistants: [{
         assistant_id: 'hello-pulse', assistant_version: '1.0.0', creators: ['@creator'],
         icon_digest: `sha256:${'b'.repeat(64)}`, name: 'Hello Pulse',
         source_digest: `sha256:${'a'.repeat(64)}`, summary: 'A measured public Assistant.',

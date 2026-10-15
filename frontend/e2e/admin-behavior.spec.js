@@ -4164,7 +4164,7 @@ test('keeps a first Store install ready while local display metadata catches up'
 });
 
 test('the ready Chat passes its accessibility scan and the Brain chooser works by keyboard', { tag: '@mobile' }, async ({ page }) => {
-  const chat = await routeReadyChat(page);
+  await routeReadyChat(page);
   await page.goto('/chat/');
 
   await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();

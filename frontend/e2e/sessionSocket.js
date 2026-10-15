@@ -85,7 +85,7 @@ export function serveSession(transport, handlers, revisions = new Map()) {
   }
 
   async function answer(frame) {
-    const { id, method, params } = frame;
+    const { method, params } = frame;
     if (method === 'subscribe' || method === 'unsubscribe') {
       for (const topic of params.topics) {
         if (method === 'subscribe') topics.add(topic);

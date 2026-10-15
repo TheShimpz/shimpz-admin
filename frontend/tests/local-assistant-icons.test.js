@@ -51,7 +51,7 @@ test('honors one bounded busy retry response before accepting the PNG', async ()
   let calls = 0;
   const delays = [];
   const fetcher = async () => {
-    const call = ++calls;
+    calls += 1;
     if (calls === 1) {
       return new Response(JSON.stringify({
         code: 'local-assistant-preview-busy',
