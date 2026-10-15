@@ -158,19 +158,7 @@ def _open(canonical: str, run: str, opening: dict[str, str]) -> transport.TeamRe
         "type": "human-required",
         **{
             name: projected[name]
-            for name in (
-                "challenge_id",
-                "expires_in",
-                "assistant",
-                "action",
-                "request",
-                "rendered",
-                "locale",
-                "pack_digest",
-                "purpose",
-                "help",
-                "help_url",
-            )
+            for name in (*human.CHALLENGE_FIELDS, *sorted(human.PRESENTATION_FIELDS))
             if name in projected
         },
     }

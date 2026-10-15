@@ -35,22 +35,9 @@ CHOICE_KINDS = frozenset({"input:select", "input:choice"})
 # Local Team asks only for the Supervisor password; it stops an Action that asks for auth:totp or auth:passkey as
 # authentication-unavailable before any challenge reaches Admin, so Admin never projects either.
 AUTH_KINDS = frozenset({"auth:password"})
-RESPONSE_FIELDS = frozenset(
-    {
-        "team_id",
-        "status",
-        "turn_id",
-        "challenge_id",
-        "expires_in",
-        "assistant",
-        "action",
-        "request",
-        "rendered",
-        "locale",
-        "pack_digest",
-        "trace_id",
-    }
-)
+# What a human-required challenge shows a person, in chat and in a frozen Routine run, beside the envelope it comes in.
+CHALLENGE_FIELDS = ("challenge_id", "expires_in", "assistant", "action", "request", "rendered", "locale", "pack_digest")
+RESPONSE_FIELDS = frozenset({"team_id", "status", "turn_id", *CHALLENGE_FIELDS, "trace_id"})
 # Optional presentation beside the Assistant-authored request; never part of its fingerprint (ADR-0090). `file` is
 # the platform-controlled disclosure of the one file an authorization of a file-taking Action delivers (ADR-0093), and
 # `input` the platform-rendered rows of the validated Action input a chat authorization card shows (ADR-0115).
