@@ -1,8 +1,8 @@
 """Local model-provider credentials owned exclusively by the Admin backend.
 
 Only masked metadata is safe for the browser. The cleartext resolver at the bottom is an
-internal hand-off point for the local chat control plane; it must never be registered as a route,
-placed in Team inference metadata, or sent through the Assistant Store iframe.
+internal hand-off point for the local chat control plane; it must never be registered as a route
+or placed in Team inference metadata.
 """
 
 import http.client
@@ -204,7 +204,7 @@ def configure(provider: object, api_key: object) -> dict[str, object]:
 
 
 def resolve_api_key(provider: object) -> str | None:
-    """Resolve cleartext for a future backend-to-controller chat hand-off; never expose as HTTP."""
+    """A verified provider key in cleartext, only for the Team turn chat.local delivers it to; never to a browser."""
     selected = canonical_provider(provider)
     record = _records().get(selected)
     return verified_secret(record)
