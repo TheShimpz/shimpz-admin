@@ -27,7 +27,7 @@ def _candidate(
         summary=f"Provides reviewed {name} automation.",
         source_digest="sha256:" + (assistant_id[0] * 64),
         icon_digest="sha256:" + (assistant_id[-1] * 64),
-        integrations=(store_catalog.CatalogIntegration(provider, ("messages.write",)),),
+        integrations=(provider,),
         actions=(action,),
         assistant_version="1.0.0",
         creators=("@shimpz",),

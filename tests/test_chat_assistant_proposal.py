@@ -26,7 +26,7 @@ def _candidate(
     provider: str = "cloudflare",
     actions: tuple[str, ...] = ("list-zones", "list-dns-records"),
 ) -> store_catalog.CatalogAssistant:
-    integrations = () if not provider else (store_catalog.CatalogIntegration(provider, ("zone.read",)),)
+    integrations = () if not provider else (provider,)
     return store_catalog.CatalogAssistant(
         assistant_id,
         name,

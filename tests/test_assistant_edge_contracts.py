@@ -30,7 +30,7 @@ def _catalog_assistant(assistant_id: str, *, provider: str = "provider") -> stor
         "Provides reviewed automation.",
         digest,
         digest,
-        (store_catalog.CatalogIntegration(provider, ("scope",)),),
+        (provider,),
         ("send-message",),
         assistant_version="1.0.0",
         creators=("@shimpz",),

@@ -107,7 +107,7 @@ def _catalog_entry(assistant: store_catalog.CatalogAssistant) -> dict[str, objec
         "actions": [
             {"id": action.id, "effect": action.effect, "description": action.description} for action in page.actions
         ],
-        "integrations": [{"id": item.provider, "provider": item.provider} for item in assistant.integrations],
+        "integrations": [{"id": provider, "provider": provider} for provider in assistant.integrations],
         "stored_inputs": [
             {"id": item.id, "label": item.label, "description": item.description, "help_url": item.help_url}
             for item in page.stored_inputs

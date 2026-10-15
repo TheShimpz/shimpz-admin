@@ -104,7 +104,7 @@ class StoreCatalogTests(unittest.TestCase):
                     summary="Manages reviewed Cloudflare zones and DNS records.",
                     source_digest=DIGEST,
                     icon_digest=ICON_DIGEST,
-                    integrations=(store_catalog.CatalogIntegration("cloudflare", ("zone.read",)),),
+                    integrations=("cloudflare",),
                     actions=("list-zones",),
                     assistant_version="1.2.3",
                     creators=("@shimpz",),

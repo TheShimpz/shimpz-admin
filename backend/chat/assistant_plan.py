@@ -69,9 +69,7 @@ def _planner_candidate(
         "name": assistant.name,
         "summary": assistant.summary,
         "actions": list(assistant.actions),
-        "integrations": [
-            {"id": integration.provider, "provider": integration.provider} for integration in assistant.integrations
-        ],
+        "integrations": [{"id": provider, "provider": provider} for provider in assistant.integrations],
     }
 
 
@@ -129,10 +127,7 @@ def _enabled_capabilities_with_providers(
     enabled: tuple[assistant_proposal.Capability, ...],
     catalog: tuple[store_catalog.CatalogAssistant | local_catalog.LocalAssistant, ...],
 ) -> tuple[assistant_proposal.Capability, ...]:
-    providers = {
-        assistant.assistant_id: tuple(integration.provider for integration in assistant.integrations)
-        for assistant in catalog
-    }
+    providers = {assistant.assistant_id: assistant.integrations for assistant in catalog}
     return tuple(
         assistant_proposal.Capability(
             assistant_id=capability.assistant_id,
@@ -397,7 +392,7 @@ def _already_installed(
                     "summary": assistant.summary,
                     "creator": creators[assistant.assistant_id],
                     "version": installed[assistant.assistant_id].version,
-                    "providers": sorted({integration.provider for integration in assistant.integrations}),
+                    "providers": sorted(set(assistant.integrations)),
                     "provenance": installed[assistant.assistant_id].provenance,
                     "status": "installed",
                 }
@@ -466,7 +461,7 @@ def _items(plan: Plan, states: dict[str, str]) -> tuple[dict[str, object], ...]:
             "summary": assistant.summary,
             "creator": creator(assistant),
             "version": assistant.assistant_version,
-            "providers": sorted({integration.provider for integration in assistant.integrations}),
+            "providers": sorted(set(assistant.integrations)),
             "provenance": "local" if isinstance(assistant, local_catalog.LocalAssistant) else "published",
             "status": states[assistant.assistant_id],
         }

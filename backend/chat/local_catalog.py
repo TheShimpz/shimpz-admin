@@ -18,7 +18,7 @@ class LocalAssistant:
     name: str
     summary: str
     image_id: str
-    integrations: tuple[store_catalog.CatalogIntegration, ...]
+    integrations: tuple[str, ...]
     actions: tuple[str, ...]
     assistant_version: str
     # The first Creator the snapshot's stage labels declare, as the chat cards show it beside the version.
@@ -50,7 +50,7 @@ def _assistant(entry: dict[str, object]) -> tuple[LocalAssistant, bool]:
         name=store_catalog.catalog_text(entry["name"], 80),
         summary=store_catalog.catalog_text(entry["summary"], 80),
         image_id=str(entry["image_id"]),
-        integrations=tuple(store_catalog.CatalogIntegration(provider, ()) for provider in entry["integrations"]),
+        integrations=tuple(entry["integrations"]),
         actions=tuple(entry["actions"]),
         assistant_version=str(entry["assistant_version"]),
         creator=str(entry["declared_creators"][0]),

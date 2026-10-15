@@ -102,12 +102,6 @@ class CatalogAssistantNotFoundError(LookupError):
 
 
 @dataclass(frozen=True, slots=True)
-class CatalogIntegration:
-    provider: str
-    scopes: tuple[str, ...]
-
-
-@dataclass(frozen=True, slots=True)
 class CatalogAction:
     """One Action as the Assistant page shows it: its id, declared effect, and localized description."""
 
@@ -143,7 +137,8 @@ class CatalogAssistant:
     summary: str
     source_digest: str
     icon_digest: str
-    integrations: tuple[CatalogIntegration, ...]
+    # The providers of the Integrations the Assistant declares; each Integration is named by its provider.
+    integrations: tuple[str, ...]
     actions: tuple[str, ...]
     assistant_version: str
     creators: tuple[str, ...]
@@ -219,10 +214,11 @@ def _strings(value: object, maximum: int, item_maximum: int) -> tuple[str, ...]:
     return output
 
 
-def _integrations(value: object) -> tuple[CatalogIntegration, ...]:
+def _integrations(value: object) -> tuple[str, ...]:
+    """The declared Integrations' providers; their scopes are admitted, yet only Team authorizes them on install."""
     if not isinstance(value, list) or len(value) > 16:
         raise ValueError("catalog Integrations are invalid")
-    output: list[CatalogIntegration] = []
+    output: list[str] = []
     for item in value:
         if not isinstance(item, dict) or set(item) != {"id", "provider", "scopes"}:
             raise ValueError("catalog Integration is invalid")
@@ -230,8 +226,9 @@ def _integrations(value: object) -> tuple[CatalogIntegration, ...]:
         provider = item["provider"]
         if team_contract.canonical_identifier(integration_id) is None or integration_id != provider:
             raise ValueError("catalog Integration identity is invalid")
-        output.append(CatalogIntegration(provider=provider, scopes=_strings(item["scopes"], 32, 128)))
-    if len({item.provider for item in output}) != len(output):
+        _strings(item["scopes"], 32, 128)
+        output.append(provider)
+    if len(set(output)) != len(output):
         raise ValueError("catalog Integrations are duplicated")
     return tuple(output)
 

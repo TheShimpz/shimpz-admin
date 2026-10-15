@@ -56,7 +56,7 @@ class CatalogPageTests(unittest.TestCase):
             summary="Manage Cloudflare DNS.",
             source_digest="sha256:" + ("a" * 64),
             icon_digest="sha256:" + ("b" * 64),
-            integrations=(store_catalog.CatalogIntegration("cloudflare", ("zone.read",)),),
+            integrations=("cloudflare",),
             actions=("list-zones",),
             assistant_version="0.4.5",
             creators=("@shimpz",),

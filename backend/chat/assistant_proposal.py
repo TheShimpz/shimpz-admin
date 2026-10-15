@@ -266,7 +266,7 @@ def _candidate_score(message: str, tokens: frozenset[str], candidate: store_cata
         assistant_id=candidate.assistant_id,
         name=candidate.name,
         summary=candidate.summary,
-        integrations=(item.provider for item in candidate.integrations),
+        integrations=candidate.integrations,
         actions=candidate.actions,
     )
 
