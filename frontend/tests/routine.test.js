@@ -54,6 +54,7 @@ import {
   inputWords,
   instantWords,
   literalWords,
+  needsPerson,
   omittedWords,
   outputLabels,
   outputScalarWords,
@@ -1483,6 +1484,14 @@ test("a Routine's status is its most urgent one", () => {
   assert.equal(routineStatus(routine, [run('held')]), 'recovery');
   assert.equal(routineStatus({ ...routine, deleting: true }, [], [incident]), 'deleting');
   assert.equal(routineStatus(routine, [{ ...run('leased'), routine_id: 'd'.repeat(32) }]), 'running');
+  // A Routine needs the person while a run of it waits for them or it is paused; one being deleted needs nobody.
+  assert.equal(needsPerson(routine), false);
+  assert.equal(needsPerson(routine, [run('leased')]), false);
+  assert.equal(needsPerson(routine, [run('frozen')]), true);
+  assert.equal(needsPerson(routine, [], [incident]), true);
+  assert.equal(needsPerson({ ...routine, state: 'paused' }), true);
+  assert.equal(needsPerson({ ...routine, needs_reconfirm: true }), true);
+  assert.equal(needsPerson({ ...routine, deleting: true }, [], [incident]), false);
 });
 
 test('a Routine shows the person only running, paused, or failed', () => {

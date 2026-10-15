@@ -47,6 +47,15 @@ export const STATUS_TAGS = Object.freeze({
 /** Statuses that need the person, shown in words beside the Routine. */
 export const ATTENTION_STATUSES = Object.freeze(['deleting', 'recovery', 'reconfirm', 'paused', 'waiting']);
 
+/**
+ * Whether a Routine waits for the person: a run held for recovery or waiting for their approval or connection, or the
+ * Routine paused or waiting to be asked again. One being deleted waits for nobody.
+ */
+export function needsPerson(routine, runs = [], incidents = []) {
+  const status = routineStatus(routine, runs, incidents);
+  return status !== 'deleting' && ATTENTION_STATUSES.includes(status);
+}
+
 /** A JSON Pointer into a step's result as words: "/zones/0/id" reads "zones › first › id". */
 export function pointerWords(pointer, copy) {
   return pointer.split('/').slice(1)

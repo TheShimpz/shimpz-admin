@@ -9,6 +9,7 @@
   import { CIRCLES, PATHS } from '#lib/icons.js';
   import { forgetChatHistoriesExcept } from '#lib/chat/history.js';
   import { retainTeamRoutines, routineContext } from '#lib/routines/context.js';
+  import { needsPerson } from '#lib/routines/words.js';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import TeamActionsMenu from '#lib/teams/ActionsMenu.svelte';
   import { canonicalTeamName, renameTeam, reorderTeams, teamContext } from '#lib/teams/context.js';
@@ -144,14 +145,11 @@
     return listed.routines.length > 0 || listed.failed;
   }
 
-  // A Team's Routines need the person when a run is held for recovery or waits for their approval, connection, or
-  // permission, or a Routine is paused or waiting to be asked again. The chat shows no run, so this is where a run that
-  // waits for the person is found.
+  // A Team's Routines need the person when one of them does. The chat shows no run, so this is where a run that waits
+  // for the person is found.
   function routinesNeedAttention(teamId) {
     const listed = teamRoutines(teamId);
-    return listed.incidents.length > 0 ||
-      listed.runs.some((run) => run.status === 'held' || run.status === 'frozen') ||
-      listed.routines.some((routine) => routine.state === 'paused' || routine.needs_reconfirm);
+    return listed.routines.some((routine) => needsPerson(routine, listed.runs, listed.incidents));
   }
 
   // Loads follow the Team list's membership, not every Team context transition such as a selection or a new order.
