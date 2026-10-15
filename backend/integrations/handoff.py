@@ -246,23 +246,11 @@ class OAuthHandoffStore:
         now = self._clock()
         with self._lock:
             self._expire(now)
-            selected = next(
-                (
-                    (token, pending)
-                    for token, pending in self._pending.items()
-                    if pending.team_id == team
-                    and pending.challenge_id == challenge
-                    and pending.callback_mode == "out-of-band"
-                    and pending.authorization_url is not None
-                    and pending.state is not None
-                    and hmac.compare_digest(pending.admin_session_digest, digest)
-                ),
-                None,
-            )
+            selected = self._select(team, challenge, digest, out_of_band=True)
             if selected is None or not hmac.compare_digest(selected[1].state, state):
                 raise OAuthHandoffError("OAuth completion is unavailable")
             token, pending = selected
-            self._pending.pop(token, None)
+            del self._pending[token]
         return OAuthCompletion(state, claim, pending.session_binding)
 
     def cancel(
@@ -279,21 +267,35 @@ class OAuthHandoffStore:
         now = self._clock()
         with self._lock:
             self._expire(now)
-            selected = next(
-                (
-                    (token, pending)
-                    for token, pending in self._pending.items()
-                    if pending.team_id == team
-                    and pending.challenge_id == challenge
-                    and hmac.compare_digest(pending.admin_session_digest, digest)
-                ),
-                None,
-            )
+            selected = self._select(team, challenge, digest, out_of_band=False)
             if selected is None:
                 return None
             token, pending = selected
-            self._pending.pop(token, None)
+            del self._pending[token]
             return pending.session_binding
+
+    def _select(
+        self, team: str, challenge: str, digest: bytes, *, out_of_band: bool
+    ) -> tuple[str, _PendingHandoff] | None:
+        """The pending handoff of one Team challenge and Admin session; an out-of-band one must await its code."""
+        return next(
+            (
+                (token, pending)
+                for token, pending in self._pending.items()
+                if pending.team_id == team
+                and pending.challenge_id == challenge
+                and (
+                    not out_of_band
+                    or (
+                        pending.callback_mode == "out-of-band"
+                        and pending.authorization_url is not None
+                        and pending.state is not None
+                    )
+                )
+                and hmac.compare_digest(pending.admin_session_digest, digest)
+            ),
+            None,
+        )
 
     def discard(self, value: object) -> bool:
         """Remove an incomplete reservation after Team rejects or transport fails."""
