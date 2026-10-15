@@ -4,7 +4,7 @@
   import { readable } from 'svelte/store';
   import { Button, EmptyState, Notice, ScrollArea } from '@shimpz/frontend';
   import AssistantHumanRequestDialog from '#lib/assistants/HumanRequestDialog.svelte';
-  import { MessageFiles } from '#lib/chat/attachments/upload.svelte.js';
+  import { MessageFiles, refuseFileDrop } from '#lib/chat/attachments/upload.svelte.js';
   import AssistantIntegrationsDialog from '#lib/assistants/IntegrationsDialog.svelte';
   import AssistantIntegrationsDrawer from '#lib/assistants/IntegrationsDrawer.svelte';
   import Composer from '#lib/chat/Composer.svelte';
@@ -69,7 +69,7 @@
   let draft = $state('');
   let draftTeamId = '';
   // The next message's files (ADR-0093), uploaded one at a time to the Team they were selected for.
-  const messageFiles = new MessageFiles(attachmentRefusalText);
+  const messageFiles = new MessageFiles(attachmentRefusalText, () => (attachmentsUnavailable ? '' : chatTeamId));
   let attachmentInput = $state();
   // Every change replaces the list or the turn it changes, never a field in place, so no turn needs a deep proxy.
   let turns = $state.raw([]);
@@ -1362,60 +1362,8 @@
     composerInput?.focus();
   }
 
-  function addAttachments(files) {
-    const teamId = chatTeamId;
-    if (!teamId || attachmentsUnavailable) return;
-    void messageFiles.add(files, teamId);
-  }
-
   function chooseAttachments() {
     attachmentInput?.click();
-  }
-
-  function attachmentsChosen(event) {
-    const files = [...(event.currentTarget.files ?? [])];
-    event.currentTarget.value = '';
-    if (files.length) addAttachments(files);
-  }
-
-  // Pasted files join the message; pasted text still lands in the draft as usual.
-  function pasteAttachments(event) {
-    const files = [...(event.clipboardData?.files ?? [])];
-    if (!files.length) return;
-    if (!event.clipboardData.getData('text/plain')) event.preventDefault();
-    addAttachments(files);
-  }
-
-  function carriesFiles(event) {
-    return [...(event.dataTransfer?.types ?? [])].includes('Files');
-  }
-
-  function dragAttachments(event) {
-    if (!carriesFiles(event) || attachmentsUnavailable) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'copy';
-    messageFiles.dragging = true;
-  }
-
-  function leaveAttachments(event) {
-    if (!event.currentTarget.contains(event.relatedTarget)) messageFiles.dragging = false;
-  }
-
-  // A file drag the composer did not take (dropped elsewhere, or while files cannot join a message) is refused here;
-  // left to the browser, it would open the file in place of Admin.
-  function refuseFileDrop(event) {
-    if (!carriesFiles(event) || event.defaultPrevented) return;
-    event.preventDefault();
-    event.dataTransfer.dropEffect = 'none';
-  }
-
-  function dropAttachments(event) {
-    if (!carriesFiles(event)) return;
-    event.preventDefault();
-    messageFiles.dragging = false;
-    if (attachmentsUnavailable) return;
-    const files = [...(event.dataTransfer.files ?? [])];
-    if (files.length) addAttachments(files);
   }
 
   // A Routine card's edited prompt, sent only into the conversation of the card's own Team: a page that moved to another
@@ -1878,16 +1826,16 @@
             {sendUnavailable}
             {socketReady}
             onsubmit={keyRequired ? saveProviderKey : send}
-            ondrag={dragAttachments}
-            ondragleave={leaveAttachments}
-            ondrop={dropAttachments}
+            ondrag={messageFiles.dragOver}
+            ondragleave={messageFiles.dragLeave}
+            ondrop={messageFiles.drop}
             onretrybrain={retryBrain}
             onkeydown={handleComposerKeydown}
-            onpaste={pasteAttachments}
+            onpaste={messageFiles.paste}
             oncancelfiles={cancelAttachmentUploads}
             onremovefile={removeAttachment}
             onchoose={chooseAttachments}
-            onfileschosen={attachmentsChosen}
+            onfileschosen={messageFiles.chosen}
             ontoggleintegrations={toggleIntegrations}
             onstop={stop}
           />

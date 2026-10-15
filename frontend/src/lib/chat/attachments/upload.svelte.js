@@ -4,6 +4,20 @@
 // message or are refused. The chat page owns one, says when files may join, and moves the focus.
 import { attachmentReadability, attachmentRefusal, AttachmentUploadError, uploadTeamFile } from './files.js';
 
+function carriesFiles(event) {
+  return [...(event.dataTransfer?.types ?? [])].includes('Files');
+}
+
+/**
+ * A file drag the composer did not take (dropped elsewhere, or while files cannot join a message) is refused; left to
+ * the browser, it would open the file in place of Admin.
+ */
+export function refuseFileDrop(event) {
+  if (!carriesFiles(event) || event.defaultPrevented) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'none';
+}
+
 export class MessageFiles {
   /** The selected files, each `queued`, `uploading`, or `ready` (with Team's id). */
   items = $state([]);
@@ -20,10 +34,15 @@ export class MessageFiles {
   #nextKey = 0;
   #nextInspection = 0;
   #refusalText;
+  #target;
 
-  /** `refusalText(reason, name)` words a refusal of the file `name`. */
-  constructor(refusalText) {
+  /**
+   * `refusalText(reason, name)` words a refusal of the file `name`; `target()` names the Team files chosen, pasted, or
+   * dropped now join a message to, or '' while none may join.
+   */
+  constructor(refusalText, target = () => '') {
     this.#refusalText = refusalText;
+    this.#target = target;
   }
 
   /** The Team the files were selected for, or '' with none. */
@@ -82,6 +101,45 @@ export class MessageFiles {
     this.items = this.items.filter((item) => item.state === 'ready');
     this.#inspections = [];
   }
+
+  #offer(files) {
+    const teamId = this.#target();
+    if (teamId && files.length) void this.add(files, teamId);
+  }
+
+  /** The files picked in the file input join the message; the input is emptied for the next pick. */
+  chosen = (event) => {
+    const files = [...(event.currentTarget.files ?? [])];
+    event.currentTarget.value = '';
+    this.#offer(files);
+  };
+
+  /** Pasted files join the message; pasted text still lands in the draft as usual. */
+  paste = (event) => {
+    const files = [...(event.clipboardData?.files ?? [])];
+    if (!files.length) return;
+    if (!event.clipboardData.getData('text/plain')) event.preventDefault();
+    this.#offer(files);
+  };
+
+  /** A file drag over the composer is taken while files may join. */
+  dragOver = (event) => {
+    if (!carriesFiles(event) || !this.#target()) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'copy';
+    this.dragging = true;
+  };
+
+  dragLeave = (event) => {
+    if (!event.currentTarget.contains(event.relatedTarget)) this.dragging = false;
+  };
+
+  drop = (event) => {
+    if (!carriesFiles(event)) return;
+    event.preventDefault();
+    this.dragging = false;
+    this.#offer([...(event.dataTransfer.files ?? [])]);
+  };
 
   /** Read and queue `files` for a message to `teamId`, then upload them. */
   async add(files, teamId) {
