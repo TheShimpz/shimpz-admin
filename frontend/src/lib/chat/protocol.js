@@ -638,7 +638,14 @@ export function createHumanResponseFrame(teamId, challengeId, decision, value) {
   };
 }
 
-function canonicalInstallPlanAssistant(value) {
+// The install states a live plan names; a stored plan never keeps the transient `installing`.
+const INSTALL_STATES = ['pending', 'installing', 'installed', 'failed'];
+
+/**
+ * One Assistant row of an install plan, live or stored: `maxProviders` bounds its distinct providers in id order, and
+ * `states` names the install states its source admits.
+ */
+export function parseInstallPlanAssistant(value, { maxProviders = MAX_INSTALL_PROVIDERS, states = INSTALL_STATES } = {}) {
   if (
     !value ||
     typeof value !== 'object' ||
@@ -649,15 +656,14 @@ function canonicalInstallPlanAssistant(value) {
     typeof value.version !== 'string' ||
     !SEMANTIC_VERSION_RE.test(value.version) ||
     !Array.isArray(value.providers) ||
-    value.providers.length > MAX_INSTALL_PROVIDERS ||
+    value.providers.length > maxProviders ||
     !['local', 'published'].includes(value.provenance) ||
-    !['pending', 'installing', 'installed', 'failed'].includes(value.status)
+    !states.includes(value.status)
   ) throw new LocalApiError('The local chat response is invalid.');
   const providers = value.providers.map((provider) => canonicalId(provider, undefined, isIdentifier));
-  if (
-    new Set(providers).size !== providers.length ||
-    providers.some((provider, index) => index > 0 && providers[index - 1] >= provider)
-  ) throw new LocalApiError('The local chat response is invalid.');
+  if (providers.some((provider, index) => index > 0 && providers[index - 1] >= provider)) {
+    throw new LocalApiError('The local chat response is invalid.');
+  }
   return {
     id: canonicalId(value.id),
     name: canonicalPublicText(value.name, 80),
@@ -721,7 +727,7 @@ function parseAssistantInstallPlanEvent(value, expectedTeamId, expectedTeamName)
       ('outcome' in value && value.outcome !== 'already-installed')
     ))
   ) throw new LocalApiError('The local chat response is invalid.');
-  const assistants = value.assistants.map(canonicalInstallPlanAssistant);
+  const assistants = value.assistants.map((assistant) => parseInstallPlanAssistant(assistant));
   const ids = assistants.map((assistant) => assistant.id);
   if (ids.some((id, index) => index > 0 && ids[index - 1] >= id)) {
     throw new LocalApiError('The local chat response is invalid.');

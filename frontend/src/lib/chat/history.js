@@ -6,6 +6,7 @@ import {
   MAX_GUIDANCE_REPLY_CHARS,
   MAX_MESSAGE_CHARS,
   MAX_REPLY_CHARS,
+  parseInstallPlanAssistant,
   parseReceipt,
   parseRoutineReply,
 } from './protocol.js';
@@ -17,7 +18,6 @@ import { ASSISTANT_LIMIT_REACHED, exactKeys, jsonObject, LocalApiError, safeApiE
 import { isInstant, isShownText } from '../grammar.js';
 import {
   isAssistantId,
-  isIdentifier,
   MAX_TEAM_NAME_CHARS,
   OPAQUE_ID_RE,
   PUBLIC_CREATOR_RE,
@@ -50,11 +50,6 @@ function assistantId(value, status) {
   return value;
 }
 
-function providerId(value, status) {
-  if (!isIdentifier(value)) throw invalidHistory(status);
-  return value;
-}
-
 function publicAssistant(value, status) {
   if (!exactKeys(value, ['creator', 'id', 'name', 'provenance', 'version'])) throw invalidHistory(status);
   if (
@@ -75,34 +70,15 @@ function publicAssistant(value, status) {
   };
 }
 
+// A stored plan keeps each Assistant's final state, never the transient `installing`.
+const STORED_INSTALL_STATES = ['pending', 'installed', 'failed'];
+
 function installAssistant(value, status) {
-  if (!exactKeys(value, ['creator', 'id', 'name', 'providers', 'provenance', 'status', 'summary', 'version'])) {
+  try {
+    return parseInstallPlanAssistant(value, { maxProviders: MAX_PROVIDERS, states: STORED_INSTALL_STATES });
+  } catch {
     throw invalidHistory(status);
   }
-  if (
-    typeof value.creator !== 'string' ||
-    !PUBLIC_CREATOR_RE.test(value.creator) ||
-    typeof value.version !== 'string' ||
-    !SEMANTIC_VERSION_RE.test(value.version) ||
-    !Array.isArray(value.providers) ||
-    value.providers.length > MAX_PROVIDERS ||
-    !['local', 'published'].includes(value.provenance) ||
-    !['pending', 'installed', 'failed'].includes(value.status)
-  ) throw invalidHistory(status);
-  const providers = value.providers.map((provider) => providerId(provider, status));
-  if (providers.some((provider, index) => index > 0 && providers[index - 1] >= provider)) {
-    throw invalidHistory(status);
-  }
-  return {
-    id: assistantId(value.id, status),
-    name: publicText(value.name, 80, status),
-    summary: publicText(value.summary, 80, status),
-    creator: value.creator,
-    version: value.version,
-    providers,
-    provenance: value.provenance,
-    status: value.status,
-  };
 }
 
 function messageEntry(value, suffix, status) {
