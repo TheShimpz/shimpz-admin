@@ -243,7 +243,7 @@ class RecoveryTests(unittest.TestCase):
             done.set()
             return supervisor_key.Outcome.NONE
 
-        recovery = supervisor_key.Recovery(interval=60)
+        recovery = supervisor_key.Recovery()
         with mock.patch.object(supervisor_key, "resolve", side_effect=resolve), self.assertLogs("shimpz-admin"):
             recovery.start()
             deadline = time.monotonic() + 5

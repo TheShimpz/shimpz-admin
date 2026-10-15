@@ -116,8 +116,7 @@ def rotate(authority: str, origin: str | None) -> Outcome:
 class Recovery:
     """Retry an open rotation in the background: at start, when woken, and every RETRY_SECONDS while one is open."""
 
-    def __init__(self, interval: float = RETRY_SECONDS) -> None:
-        self._interval = interval
+    def __init__(self) -> None:
         self._wake = threading.Event()
         self._stop = threading.Event()
         self._thread = threading.Thread(target=self._loop, name="supervisor-key-recovery", daemon=True)
@@ -136,7 +135,7 @@ class Recovery:
 
     def _loop(self) -> None:
         while True:
-            self._wake.wait(self._interval)
+            self._wake.wait(RETRY_SECONDS)
             self._wake.clear()
             if self._stop.is_set():
                 return
