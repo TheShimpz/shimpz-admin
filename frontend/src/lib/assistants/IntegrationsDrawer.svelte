@@ -352,7 +352,7 @@
   :global(.assistant-group > [data-slot="card-content"]) { padding: 0; }
   :global(.assistant-toggle.shimpz-button) { position: absolute; inset: 0; width: 100%; min-height: 100%; justify-content: flex-end; padding-inline: var(--gap-group); color: var(--accent); background: transparent; border-color: transparent; clip-path: none; }
   :global(.assistant-toggle.shimpz-button:hover:not(:disabled)) { color: var(--accent); background: transparent; border-color: transparent; box-shadow: none; }
-  :global(.assistant-toggle svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-linecap: square; stroke-linejoin: miter; stroke-width: 1.75; transition: transform var(--duration-fast) var(--ease); }
+  :global(.assistant-toggle svg) { width: 1rem; height: 1rem; fill: none; stroke: currentColor; stroke-linecap: square; stroke-linejoin: miter; stroke-width: 1.75; }
   :global(.assistant-toggle[aria-expanded="true"] svg) { transform: rotate(180deg); }
   .assistant-details[hidden] { display: none; }
   .assistant-details p { margin: 0; padding: var(--gap-item) var(--gap-group); color: var(--text-dim); font-size: 0.66rem; line-height: 1.5; }

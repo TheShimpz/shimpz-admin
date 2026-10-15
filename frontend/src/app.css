@@ -15,7 +15,6 @@
   --font-sans: var(--shimpz-font-sans);
   --font-mono: var(--shimpz-font-mono);
   --admin-divider: var(--shimpz-color-border);
-  --ease: cubic-bezier(0.22, 1, 0.36, 1);
   /* Spacing rhythm: every gap, margin, and padding is one of six steps, chosen by how closely two things belong
      together. Closer relation, smaller step; nothing between steps. */
   --gap-inside: var(--shimpz-space-1); /* 4px: within one element (glyph and its text, stacked meta lines) */
