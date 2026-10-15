@@ -287,6 +287,10 @@ export default {
       },
       monthly: 'On day {day} of every month at {time}',
       continuous: 'Every {gap} s, up to {cap} a day',
+      continuousDay: 'Every day',
+      continuousDays: 'Every {count} days',
+      continuousWeek: 'Every week',
+      continuousWeeks: 'Every {count} weeks',
     },
     list: {
       open: 'Routines',
@@ -370,6 +374,7 @@ export default {
       title: 'Steps',
       step: '{assistant} · {action}',
       clock: 'each run\'s {format}',
+      clockText: '{text} (in braces, each run\'s date: D day, M month, YYYY year, +N days later, and the month name\'s language)',
       clocks: {
         date: 'date',
       },

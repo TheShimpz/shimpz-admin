@@ -287,6 +287,10 @@ export default {
       },
       monthly: 'No dia {day} de cada mês às {time}',
       continuous: 'A cada {gap} s, até {cap} por dia',
+      continuousDay: 'A cada dia',
+      continuousDays: 'A cada {count} dias',
+      continuousWeek: 'A cada semana',
+      continuousWeeks: 'A cada {count} semanas',
     },
     list: {
       open: 'Rotinas',
@@ -369,6 +373,7 @@ export default {
       title: 'Etapas',
       step: '{assistant} · {action}',
       clock: '{format} de cada execução',
+      clockText: '{text} (entre chaves, a data de cada execução: D dia, M mês, YYYY ano, +N dias depois e o idioma do nome do mês)',
       clocks: {
         date: 'a data',
       },

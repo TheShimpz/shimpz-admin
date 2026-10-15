@@ -226,23 +226,6 @@ test("every interface language offers exactly the Team protocol's output choices
   }
 });
 
-test("every interface language offers the Team protocol's answer that keeps only the latest work", async () => {
-  const { readFileSync } = await import('node:fs');
-  // Team reads this label back with no model call (ADR-0101), so each language's must be exactly the protocol's.
-  const source = readFileSync(new URL('../../backend/protocol/http/v1/routine_proposal.py', import.meta.url), 'utf8');
-  const block = source.match(/SPLIT_LATEST = \{\n([\s\S]*?)\n\}/u)[1];
-  const protocol = Object.fromEntries([...block.matchAll(/"([a-z]{2})": "((?:[^"\\]|\\.)*)"/gu)].map(([, locale, label]) => [locale, label]));
-  assert.deepEqual(Object.keys(protocol).sort(), Object.keys(routineMessages).sort());
-  const asked = source.match(/SPLIT_QUESTION = \{\n([\s\S]*?)\n\}/u)[1];
-  const questions = Object.fromEntries([...asked.matchAll(/"([a-z]{2})": "((?:[^"\\]|\\.)*)"/gu)].map(([, locale, text]) => [locale, text]));
-  assert.deepEqual(Object.keys(questions).sort(), Object.keys(routineMessages).sort());
-  for (const [locale, catalog] of Object.entries(routineMessages)) {
-    assert.deepEqual(catalog.proposal.questions.split.answers.at(-1), protocol[locale], locale);
-    // Team binds that answer only to this exact question, so Admin must ask it word for word.
-    assert.equal(catalog.proposal.questions.split.question, questions[locale], locale);
-  }
-});
-
 test('a Routine question is admitted only in its closed form and reads as facts with answers in every locale', () => {
   // Each option carries its target's exact JSON text: a string with its quotes, an integer with every digit.
   const target = (text, label = 'shimpz.com') => ({ value: text, label });
@@ -340,6 +323,10 @@ test("a Routine's cap is its gap's whole day and UTC stands in when no timezone 
   assert.equal(parseRoutineProposal({ ...PROPOSAL, timezone: 'UTC', timezone_source: 'none' }).timezone_source, 'none');
 });
 
+function withInput(value) {
+  return { ...PROPOSAL, steps: [{ ...PROPOSAL.steps[0], inputs: [value] }, PROPOSAL.steps[1]] };
+}
+
 test('a Routine card is admitted only whole, and its inputs say where each value comes from', () => {
   assert.deepEqual(parseRoutineProposal(structuredClone(PROPOSAL)), PROPOSAL);
   // A step that changes something reads like any other: the card names it.
@@ -393,6 +380,13 @@ test('a Routine card is admitted only whole, and its inputs say where each value
   assert.equal(proposalInputValue(input({ origin: 'request', value: '"50"' }), copy.proposal, copy.plan), '50');
   assert.equal(proposalInputValue(input({ origin: 'assistant', value: 'true' }), copy.proposal, copy.plan), 'true');
   assert.equal(proposalInputValue(input({ origin: 'clock' }), copy.proposal, copy.plan), copy.proposal.origins.clock);
+  // A dated text shows its whole template, each date in braces with what its notes mean.
+  const dated = input({ origin: 'clock', value: 'notícias {D month YYYY|pt}' });
+  assert.equal(parseRoutineProposal(withInput(dated)).steps[0].inputs[0].value, dated.value);
+  assert.equal(proposalInputValue(dated, copy.proposal, copy.plan), fill(copy.plan.clockText, { text: dated.value }));
+  for (const value of ['no date', 'a‮b {D}', 7]) {
+    assert.throws(() => parseRoutineProposal(withInput(input({ origin: 'clock', value }))), RoutineError, String(value));
+  }
   const fromStep = proposalInputValue(input({ origin: 'step', step: 1, pointer: '/result/0/id' }), copy.proposal, copy.plan);
   assert.equal(fromStep, `${fill(copy.proposal.origins.step, { n: 1 })}: result › primeiro › id`);
   // Every documented refusal has its own sentence; a plan code reads as the plan's, any other code as the generic one.
@@ -657,8 +651,17 @@ test('schedules, instants, and failures read naturally in each locale', () => {
   // A continuous Routine's pause and cap are numbers in the viewer's locale.
   const continuous = { kind: 'continuous', gap: 5, cap: 17280 };
   assert.equal(scheduleWords(continuous, words, 'en'), 'Every 5 s, up to 17,280 a day');
+  // Whole weeks or days read in that unit.
+  const every = (gap) => ({ kind: 'continuous', gap, cap: continuousCap(gap) });
+  assert.equal(scheduleWords(every(30 * 86400), words, 'en'), 'Every 30 days');
+  assert.equal(scheduleWords(every(86400), words, 'en'), 'Every day');
+  assert.equal(scheduleWords(every(14 * 86400), words, 'en'), 'Every 2 weeks');
+  assert.equal(scheduleWords(every(7 * 86400), words, 'en'), 'Every week');
+  assert.equal(scheduleWords(every(108000), words, 'en'), 'Every 108,000 s, up to 1 a day');
   for (const [locale, catalog] of Object.entries(routineMessages)) {
-    assert.doesNotMatch(scheduleWords(continuous, catalog.schedule, locale), /\{/, locale);
+    for (const gap of [5, 86400, 3 * 86400, 7 * 86400, 21 * 86400]) {
+      assert.doesNotMatch(scheduleWords(every(gap), catalog.schedule, locale), /\{|undefined/, locale);
+    }
   }
   assert.equal(instantWords('2026-10-05T12:00:00Z', 'en', 'America/Sao_Paulo'), 'Oct 5, 2026, 9:00 AM');
   assert.equal(fill('{a} and {missing}', { a: 1 }), '1 and {missing}');
@@ -1073,6 +1076,8 @@ test('a Routine plan projection is admitted only in its closed, bounded form', (
   assert.equal(isPlanStep(selected, 2), true);
   assert.equal(isPlanStep(step, 1), true);
   assert.equal(isPlanStep(later, 2), true);
+  // A dated text's view is its template's preview.
+  assert.equal(isPlanStep({ ...later, inputs: [{ member: 'q', source: 'run_clock', value: 'news {D month YYYY|en}' }] }, 2), true);
   // One Action may repeat: a step is named by its position, never by an id (ADR-0092 amendment, 2026-10-05, scale).
   assert.equal(isPlanStep({ ...step, position: 256 }, 256), true);
   for (const [value, position] of [
@@ -1092,7 +1097,8 @@ test('a Routine plan projection is admitted only in its closed, bounded form', (
     [{ ...step, inputs: [{ member: 'page', source: 'literal', value: 'x'.repeat(121) }] }, 1],
     [{ ...step, inputs: [{ member: 'page', source: 'literal', value: 'a‮b' }] }, 1],
     [{ ...step, inputs: [{ member: 'b', source: 'literal', value: '1' }, { member: 'a', source: 'literal', value: '1' }] }, 1],
-    [{ ...later, inputs: [{ member: 'day', source: 'run_clock', value: 'weekday' }] }, 2],
+    [{ ...later, inputs: [{ member: 'day', source: 'run_clock', value: '' }] }, 2],
+    [{ ...later, inputs: [{ member: 'day', source: 'run_clock', value: 'x'.repeat(121) }] }, 2],
     // A reference names an earlier position: never its own, a later one, or an id.
     [{ ...later, inputs: [{ member: 'zone_id', source: 'step_output', step: 2, pointer: '/x', where: null, item: null }] }, 2],
     [{ ...later, inputs: [{ member: 'zone_id', source: 'step_output', step: 'zones', pointer: '/x', where: null, item: null }] }, 2],

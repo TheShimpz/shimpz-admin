@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { attemptWords, conditionWords, inputWords } from '../src/lib/routines/words.js';
+import { fill } from '../src/lib/i18n/fill.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 import {
   attemptsByStep,
@@ -186,6 +187,8 @@ test('plan inputs and attempt conditions read in words', () => {
   const plan = routineMessages.en.plan;
   assert.equal(inputWords({ member: 'page', source: 'literal', value: '"1"' }, plan), '1');
   assert.equal(inputWords({ member: 'at', source: 'run_clock', value: 'date' }, plan), "each run's date");
+  const dated = inputWords({ member: 'q', source: 'run_clock', value: 'news {DD/MM/YYYY|+6}' }, plan);
+  assert.equal(dated, fill(plan.clockText, { text: 'news {DD/MM/YYYY|+6}' }));
   // A reference names the earlier step by its position.
   const from = (step, pointer, where = null, item = null) => ({ member: 'z', source: 'step_output', step, pointer, where, item });
   assert.equal(inputWords(from(1, ''), plan), 'the whole result of step 1');

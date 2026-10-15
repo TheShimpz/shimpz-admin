@@ -95,7 +95,10 @@ function whereWords(where) {
  */
 export function inputWords(input, copy) {
   if (input.source === 'literal') return literalWords(input.value);
-  if (input.source === 'run_clock') return fill(copy.clock, { format: copy.clocks[input.value] });
+  if (input.source === 'run_clock') {
+    // The run date, or the preview of a text whose dates in braces each run writes for its own date.
+    return input.value === 'date' ? fill(copy.clock, { format: copy.clocks.date }) : fill(copy.clockText, { text: input.value });
+  }
   const n = input.step;
   if (input.where !== null) {
     const path = [pointerWords(input.pointer, copy), input.item ? pointerWords(input.item, copy) : ''].filter(Boolean);
@@ -137,6 +140,8 @@ export function failureCause(diagnostic) {
   return status !== null && status >= 500 ? 'provider' : 'unknown';
 }
 
+const DAY_SECONDS = 86400;
+const WEEK_SECONDS = 7 * DAY_SECONDS;
 // Weekday 0 is Monday in the Routine grammar.
 const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
@@ -146,6 +151,13 @@ export function scheduleWords(schedule, copy, locale) {
     return schedule.every === 1 ? copy.hour : fill(copy.hours, { every: schedule.every });
   }
   if (schedule.kind === 'continuous') {
+    // A gap of whole weeks or days reads in that unit; any other gap reads in seconds, with its daily cap.
+    for (const [seconds, one, many] of [[WEEK_SECONDS, 'continuousWeek', 'continuousWeeks'], [DAY_SECONDS, 'continuousDay', 'continuousDays']]) {
+      if (schedule.gap % seconds === 0) {
+        const count = schedule.gap / seconds;
+        return count === 1 ? copy[one] : fill(copy[many], { count: numberFormat(locale).format(count) });
+      }
+    }
     return fill(copy.continuous, {
       gap: numberFormat(locale).format(schedule.gap),
       cap: numberFormat(locale).format(schedule.cap),
@@ -386,7 +398,6 @@ const QUESTION_KEYS = {
   'routine-interval-over-budget': 'overBudget',
   'routine-binding-ambiguous': 'ambiguous',
   'routine-binding-unsourced': 'unsourced',
-  'routine-work-split': 'split',
   'routine-work-rerun': 'rerun',
   'routine-output-unstated': 'output',
 };
@@ -444,7 +455,7 @@ export function refusalWords(refusal, copy) {
  */
 export function proposalInputValue(input, copy, planCopy) {
   if (input.origin === 'request' || input.origin === 'assistant') return literalWords(input.value);
-  if (input.origin === 'clock') return copy.origins.clock;
+  if (input.origin === 'clock') return input.value === null ? copy.origins.clock : fill(planCopy.clockText, { text: input.value });
   const path = [input.pointer, input.item ?? ''].filter(Boolean).map((pointer) => pointerWords(pointer, planCopy));
   const origin = input.origin === 'selector'
     ? fill(copy.origins.selector, { n: input.step, member: humanizeId(input.where.member), value: whereWords(input.where) })

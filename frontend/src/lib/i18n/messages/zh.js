@@ -287,6 +287,10 @@ export default {
       },
       monthly: '每月 {day} 日 {time}',
       continuous: '每 {gap} 秒运行一次，每天最多 {cap} 次',
+      continuousDay: '每天运行一次',
+      continuousDays: '每 {count} 天运行一次',
+      continuousWeek: '每周运行一次',
+      continuousWeeks: '每 {count} 周运行一次',
     },
     list: {
       open: '例行任务',
@@ -369,6 +373,7 @@ export default {
       title: '步骤',
       step: '{assistant} · {action}',
       clock: '每次运行的{format}',
+      clockText: '{text}（花括号内为每次运行的日期：D 为日，M 为月，YYYY 为年，+N 表示 N 天后，语言代码为月份名称的语言）',
       clocks: {
         date: '日期',
       },

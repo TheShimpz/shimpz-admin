@@ -287,6 +287,10 @@ export default {
       },
       monthly: '毎月 {day} 日 {time}',
       continuous: '{gap} 秒ごとに実行、1 日最大 {cap} 回',
+      continuousDay: '1 日ごとに実行',
+      continuousDays: '{count} 日ごとに実行',
+      continuousWeek: '1 週間ごとに実行',
+      continuousWeeks: '{count} 週間ごとに実行',
     },
     list: {
       open: 'ルーティン',
@@ -369,6 +373,7 @@ export default {
       title: 'ステップ',
       step: '{assistant} · {action}',
       clock: '各実行の{format}',
+      clockText: '{text}（波かっこ内は各実行の日付: D は日、M は月、YYYY は年、+N は N 日後、言語コードは月名の言語）',
       clocks: {
         date: '日付',
       },

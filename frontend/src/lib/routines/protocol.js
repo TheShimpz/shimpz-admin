@@ -87,7 +87,7 @@ const MAX_ROUTINES = 8;
 const MAX_INCIDENTS = 32;
 const DAY_SECONDS = 86400;
 const MIN_CONTINUOUS_GAP_SECONDS = 5;
-const MAX_CONTINUOUS_GAP_SECONDS = 86400;
+const MAX_CONTINUOUS_GAP_SECONDS = 366 * DAY_SECONDS;
 // Runs start their gap apart, but one after an overrun or a confirmed change starts at once: one a second.
 const MAX_ROLLUP_RUNS = 60;
 
@@ -158,7 +158,6 @@ const MAX_PAGE_BYTES = 96 * 1024;
 // A plan summary names its Actions as runs of consecutive equal Actions, at most this many.
 const MAX_SUMMARY_RUNS = 16;
 const POINTER_RE = /^(?:\/(?:[^/~]|~[01])*)*$/;
-const CLOCK_FORMATS = ['date'];
 const PLAN_UNSAFE_RE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/u;
 const INPUT_KEYS = {
   literal: ['member', 'source', 'value'],
@@ -220,7 +219,8 @@ function isInput(value, position) {
   const keys = value && typeof value === 'object' && !Array.isArray(value) ? INPUT_KEYS[value.source] : undefined;
   if (!keys || !exactKeys(value, keys) || !plain(value.member, 128)) return false;
   if (value.source === 'literal') return plain(value.value, MAX_PREVIEW_CHARS);
-  if (value.source === 'run_clock') return CLOCK_FORMATS.includes(value.value);
+  // The run date, or the preview of a dated text's template as a person reads it.
+  if (value.source === 'run_clock') return plain(value.value, MAX_PREVIEW_CHARS);
   return isReference(value, position);
 }
 
@@ -1048,7 +1048,12 @@ function isCardInput(value, position) {
     return typeof value.value === 'string' && !PLAN_UNSAFE_RE.test(value.value) &&
       others(['step', 'pointer', 'where', 'item']);
   }
-  if (value.origin === 'clock') return others(['value', 'step', 'pointer', 'where', 'item']);
+  if (value.origin === 'clock') {
+    // The run date alone, or a text template complete, each of its dates in braces.
+    const template = value.value === null ||
+      (typeof value.value === 'string' && value.value.includes('{') && !PLAN_UNSAFE_RE.test(value.value));
+    return template && others(['step', 'pointer', 'where', 'item']);
+  }
   return value.value === null && (value.where !== null) === (value.origin === 'selector') && isReference(value, position);
 }
 
@@ -1124,7 +1129,6 @@ export const QUESTION_CODES = [
   'routine-interval-over-budget',
   'routine-binding-ambiguous',
   'routine-binding-unsourced',
-  'routine-work-split',
   'routine-work-rerun',
   'routine-output-unstated',
 ];

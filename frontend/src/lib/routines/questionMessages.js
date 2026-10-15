@@ -22,10 +22,6 @@ export const routineQuestionMessages = {
       question: 'The assistant used a value it did not look up in this conversation. Should it look it up again?',
       answers: ['Look it up again'],
     },
-    split: {
-      question: 'The work was split across several messages. What should this Routine repeat?',
-      answers: ['Run it all again', 'Use only the latest message\'s work'],
-    },
     rerun: {
       question: 'The chosen item differs from what the work used. Should the assistant run the work again with it?',
       answers: ['Run it again'],
@@ -57,10 +53,6 @@ export const routineQuestionMessages = {
       question: 'O assistente usou um valor que não consultou nesta conversa. Ele deve consultá-lo de novo?',
       answers: ['Consultar de novo'],
     },
-    split: {
-      question: 'O trabalho ficou dividido em várias mensagens. O que esta rotina deve repetir?',
-      answers: ['Executar tudo de novo', 'Usar só o trabalho da última mensagem'],
-    },
     rerun: {
       question: 'O item escolhido é diferente do que o trabalho usou. O assistente deve executar o trabalho de novo com ele?',
       answers: ['Executar de novo'],
@@ -87,10 +79,6 @@ export const routineQuestionMessages = {
       question: 'El asistente usó un valor que no consultó en esta conversación. ¿Debe consultarlo de nuevo?',
       answers: ['Consultar de nuevo'],
     },
-    split: {
-      question: 'El trabajo quedó dividido en varios mensajes. ¿Qué debe repetir esta rutina?',
-      answers: ['Ejecutar todo de nuevo', 'Usar solo el trabajo del último mensaje'],
-    },
     rerun: {
       question: 'El elemento elegido es distinto del que usó el trabajo. ¿Debe el asistente ejecutar el trabajo de nuevo con él?',
       answers: ['Ejecutar de nuevo'],
@@ -116,10 +104,6 @@ export const routineQuestionMessages = {
     unsourced: {
       question: '助手使用了一个未在本次对话中查询的值。要让它重新查询吗？',
       answers: ['重新查询'],
-    },
-    split: {
-      question: '这项工作分散在多条消息中。此例行任务应重复什么？',
-      answers: ['全部重新运行', '只使用最后一条消息的工作'],
     },
     rerun: {
       question: '所选项目与工作使用的不同。要让助手用它重新运行这项工作吗？',
@@ -152,10 +136,6 @@ export const routineQuestionMessages = {
       question: 'L’assistant a utilisé une valeur qu’il n’a pas consultée dans cette conversation. Doit-il la consulter de nouveau ?',
       answers: ['La consulter de nouveau'],
     },
-    split: {
-      question: 'Le travail a été réparti sur plusieurs messages. Que doit répéter cette routine ?',
-      answers: ['Tout exécuter de nouveau', 'Utiliser seulement le travail du dernier message'],
-    },
     rerun: {
       question: 'L’élément choisi diffère de celui utilisé par le travail. L’assistant doit-il exécuter le travail de nouveau avec lui ?',
       answers: ['Exécuter de nouveau'],
@@ -187,10 +167,6 @@ export const routineQuestionMessages = {
       question: 'Der Assistent hat einen Wert verwendet, den er in diesem Gespräch nicht abgefragt hat. Soll er ihn erneut abfragen?',
       answers: ['Erneut abfragen'],
     },
-    split: {
-      question: 'Die Arbeit war auf mehrere Nachrichten verteilt. Was soll diese Routine wiederholen?',
-      answers: ['Alles erneut ausführen', 'Nur die Arbeit der letzten Nachricht verwenden'],
-    },
     rerun: {
       question: 'Das gewählte Element unterscheidet sich von dem, das die Arbeit verwendet hat. Soll der Assistent die Arbeit damit erneut ausführen?',
       answers: ['Erneut ausführen'],
@@ -217,10 +193,6 @@ export const routineQuestionMessages = {
       question: 'アシスタントはこの会話で調べていない値を使いました。もう一度調べますか？',
       answers: ['もう一度調べる'],
     },
-    split: {
-      question: '作業が複数のメッセージに分かれています。このルーティンは何を繰り返しますか？',
-      answers: ['すべてもう一度実行する', '最後のメッセージの作業だけを使う'],
-    },
     rerun: {
       question: '選んだ項目は作業で使われたものと異なります。アシスタントにそれで作業をもう一度実行させますか？',
       answers: ['もう一度実行する'],
@@ -246,10 +218,6 @@ export const routineQuestionMessages = {
     unsourced: {
       question: 'استخدم المساعد قيمة لم يبحث عنها في هذه المحادثة. هل يبحث عنها مجددًا؟',
       answers: ['البحث مجددًا'],
-    },
-    split: {
-      question: 'انقسم العمل على عدة رسائل. ماذا يجب أن يكرر هذا الروتين؟',
-      answers: ['تشغيل الكل مجددًا', 'استخدم عمل الرسالة الأخيرة فقط'],
     },
     rerun: {
       question: 'العنصر المختار يختلف عما استخدمه العمل. هل يشغّل المساعد العمل مجددًا به؟',
