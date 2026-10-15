@@ -8,6 +8,7 @@ import threading
 import unittest
 from unittest import mock
 
+from history import store as history_store
 from tests.chat_socket_case import ChatWebSocketCase, uninstall_guidance_route
 
 from tests import chat_socket_fixtures
@@ -107,7 +108,7 @@ class ChatAssistantUninstallSocketTests(ChatWebSocketCase):
                 turn.assert_not_called()
                 await websocket.disconnect()
 
-            entries = self.admin_app.chat_history.page("team_1")["entries"]
+            entries = history_store.page("team_1")["entries"]
             self.assertEqual(
                 [(entry["kind"], entry.get("text")) for entry in entries],
                 [

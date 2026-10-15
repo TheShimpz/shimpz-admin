@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from fastapi import HTTPException
+from history import store as history_store
 from team import bridge as team
 from team import names as team_names
 from team import order as team_order
@@ -547,7 +548,7 @@ class LifecycleCleanupTests(OrderCase):
     def setUpClass(cls) -> None:
         root = app_import.temporary_root(cls)
         cls.admin_app = app_import.load_app(root)
-        app_import.replace_for_class(cls, cls.admin_app.chat_history, "STORE_PATH", root / "chat-history.sqlite3")
+        app_import.replace_for_class(cls, history_store, "STORE_PATH", root / "chat-history.sqlite3")
 
     def test_a_deleted_or_absent_team_loses_its_saved_position(self) -> None:
         self.saved("a", "b")

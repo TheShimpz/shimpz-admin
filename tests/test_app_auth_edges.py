@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 import app_import
+from history import store as history_store
 from starlette.requests import Request
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,7 +45,7 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
         )
         cls.store = root / "admin.json"
         app_import.replace_for_class(cls, cls.admin_app.state, "STORE_PATH", cls.store)
-        app_import.replace_for_class(cls, cls.admin_app.chat_history, "STORE_PATH", root / "chat-history.sqlite3")
+        app_import.replace_for_class(cls, history_store, "STORE_PATH", root / "chat-history.sqlite3")
 
     def setUp(self) -> None:
         self.store.unlink(missing_ok=True)

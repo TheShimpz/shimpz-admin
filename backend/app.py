@@ -47,7 +47,6 @@ from protocol.http.v1 import websocket as chat_ws_common
 from routine import scheduler as routine_scheduler
 
 log = logging.getLogger("shimpz-admin")
-chat_history = chat_history_http.store
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 
 

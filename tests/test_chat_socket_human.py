@@ -8,6 +8,7 @@ from collections.abc import Iterator
 from functools import partial
 from unittest import mock
 
+from history import store as history_store
 from tests.chat_socket_case import ChatWebSocketCase
 from tests.chat_socket_fixtures import CHALLENGE_ID, human_challenge, human_response
 
@@ -204,9 +205,9 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
                     return_value=self.completed,
                 ) as resume,
             ):
-                history_id = self.admin_app.chat_history.new_turn_id()
-                self.admin_app.chat_history.append_user("team_1", history_id, "Resume approval")
-                self.admin_app.chat_history.bind_resumable_turn("team_1", history_id)
+                history_id = history_store.new_turn_id()
+                history_store.append_user("team_1", history_id, "Resume approval")
+                history_store.bind_resumable_turn("team_1", history_id)
                 websocket = await self._open(synchronized=False)
                 challenge = await websocket.next_json()
                 self.assertEqual(challenge["type"], "human-required")
@@ -220,7 +221,7 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
         asyncio.run(scenario())
 
     def _stored_reply(self) -> dict[str, object]:
-        return self.admin_app.chat_history.page("team_1")["entries"][-1]
+        return history_store.page("team_1")["entries"][-1]
 
     def test_a_reply_keeps_the_team_steps_of_its_whole_logical_turn(self) -> None:
         model = {"origin": "team", "phase": "model"}
@@ -282,9 +283,9 @@ class ChatWebSocketHumanTests(ChatWebSocketCase):
                 mock.patch.object(self.chat_socket.local, "open_human", return_value=human_challenge("approval", 200)),
                 mock.patch.object(self.chat_socket.local, "resume_human", side_effect=resume),
             ):
-                history_id = self.admin_app.chat_history.new_turn_id()
-                self.admin_app.chat_history.append_user("team_1", history_id, "Resume approval")
-                self.admin_app.chat_history.bind_resumable_turn("team_1", history_id)
+                history_id = history_store.new_turn_id()
+                history_store.append_user("team_1", history_id, "Resume approval")
+                history_store.bind_resumable_turn("team_1", history_id)
                 websocket = await self._open(synchronized=False)
                 self.assertEqual((await websocket.next_json())["type"], "human-required")
                 await websocket.send_json(human_response(True))

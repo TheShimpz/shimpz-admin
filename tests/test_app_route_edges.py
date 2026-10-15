@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 import app_import
+from history import store as history_store
 from starlette.requests import Request
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,7 +42,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         root = app_import.temporary_root(cls)
         cls.admin_app = app_import.load_app(root)
         app_import.replace_for_class(cls, cls.admin_app.state, "STORE_PATH", root / "admin.json")
-        app_import.replace_for_class(cls, cls.admin_app.chat_history, "STORE_PATH", root / "chat-history.sqlite3")
+        app_import.replace_for_class(cls, history_store, "STORE_PATH", root / "chat-history.sqlite3")
         cls.team_names = importlib.import_module("team.names")
         cls.team_summary = importlib.import_module("team.summary")
         cls.team_inference = importlib.import_module("team.inference")
@@ -166,7 +167,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         )
         with (
             mock.patch.object(self.admin_app.team, "create", side_effect=(created, existing)),
-            mock.patch.object(self.admin_app.chat_history, "clear_team", return_value=2) as cleared,
+            mock.patch.object(history_store, "clear_team", return_value=2) as cleared,
         ):
             self.assertEqual(self.team_names.create({"team_name": "Marketing"}).status_code, 201)
             self.assertEqual(self.team_names.create({"team_name": "Marketing"}).status_code, 200)
@@ -179,7 +180,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         }
         with (
             mock.patch.object(self.admin_app.team, "resolve_team_name", return_value="Marketing"),
-            mock.patch.object(self.admin_app.chat_history, "page", return_value=page) as loaded,
+            mock.patch.object(history_store, "page", return_value=page) as loaded,
         ):
             response = self.admin_app.chat_history_http.page("marketing", None)
         self.assertEqual(response.status_code, 200)
@@ -189,7 +190,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         # A Routine's own history is read through the same gate, for exactly that Routine.
         with (
             mock.patch.object(self.admin_app.team, "resolve_team_name", return_value="Marketing"),
-            mock.patch.object(self.admin_app.chat_history, "page", return_value=page) as loaded,
+            mock.patch.object(history_store, "page", return_value=page) as loaded,
         ):
             self.assertEqual(self.admin_app.chat_history_http.page("marketing", None, "a" * 32).status_code, 200)
         loaded.assert_called_once_with("marketing", before=None, routine="a" * 32)
@@ -197,7 +198,7 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
         missing = self.admin_app.team.TeamResponse(404, {"detail": "Team not found"})
         with (
             mock.patch.object(self.admin_app.team, "resolve_team_name", return_value=missing),
-            mock.patch.object(self.admin_app.chat_history, "page") as loaded,
+            mock.patch.object(history_store, "page") as loaded,
         ):
             response = self.admin_app.chat_history_http.page("marketing", None)
         self.assertEqual(response.status_code, 404)
@@ -206,29 +207,29 @@ class AppRouteEdgeTests(app_import.RouteStatusAssertions):
     def test_team_lifecycle_cleanup_fails_loud_after_authoritative_success(self) -> None:
         deleted = self.admin_app.team.TeamResponse(200, {"deleted": True})
         failed = self.admin_app.team.TeamResponse(503, {"detail": "unavailable"})
-        with mock.patch.object(self.admin_app.chat_history, "clear_team", return_value=3) as cleared:
+        with mock.patch.object(history_store, "clear_team", return_value=3) as cleared:
             self.assertIs(self.delete_with_history("marketing", deleted), deleted)
         cleared.assert_called_once_with("marketing")
 
-        with mock.patch.object(self.admin_app.chat_history, "clear_team") as cleared:
+        with mock.patch.object(history_store, "clear_team") as cleared:
             self.assertIs(self.delete_with_history("marketing", failed), failed)
         cleared.assert_not_called()
 
         absent = self.admin_app.team.TeamResponse(404, {"detail": "Team not found"})
-        with mock.patch.object(self.admin_app.chat_history, "clear_team", return_value=1) as cleared:
+        with mock.patch.object(history_store, "clear_team", return_value=1) as cleared:
             response = self.delete_with_history("marketing", absent)
         self.assertEqual(response, self.admin_app.team.TeamResponse(200, {"deleted": False}))
         cleared.assert_called_once_with("marketing")
 
         with mock.patch.object(
-            self.admin_app.chat_history,
+            history_store,
             "clear_team",
-            side_effect=self.admin_app.chat_history.HistoryUnavailableError("full"),
+            side_effect=history_store.HistoryUnavailableError("full"),
         ):
             response = self.delete_with_history("marketing", deleted)
         self.assertEqual(response.status, 503)
 
-        with mock.patch.object(self.admin_app.chat_history, "clear_all", return_value=4) as cleared:
+        with mock.patch.object(history_store, "clear_all", return_value=4) as cleared:
             self.assertIs(self.admin_app._space_reset_with_history(lambda: deleted), deleted)
         cleared.assert_called_once_with()
 
