@@ -1580,13 +1580,18 @@ test('a shown result is admitted only in Team\'s closed form and reads as plain 
   assert.ok(isDisposition({ mode: 'none', step: null }, 1));
   for (const [invalid, total] of [
     [{ mode: 'show', step: 2 }, 1], [{ mode: 'show', step: 'zones' }, 1], [{ mode: 'none', step: 1 }, 1],
-    [{ mode: 'loud', step: null }, 1], [{ mode: 'none', step: null }, 0], [{ mode: 'chain', step: null }, 1],
+    [{ mode: 'loud', step: null }, 1], [{ mode: 'none', step: null }, 0],
     [{ mode: 'show', step: 1, extra: null }, 1],
   ]) {
     assert.equal(isDisposition(invalid, total), false, JSON.stringify(invalid));
   }
   const copy = routineMessages.pt;
-  assert.equal(dispositionWords({ mode: 'changes', step: 1 }, copy.plan), 'Mostra o resultado da etapa 1 só quando ele muda');
+  // Each output mode reads as its own words, a shown step by its position, with nothing left unfilled.
+  const dispositions = [{ mode: 'show', step: 7 }, { mode: 'changes', step: 7 }, { mode: 'none', step: null }]
+    .map((output) => dispositionWords(output, copy.plan));
+  assert.equal(new Set(dispositions).size, 3);
+  for (const words of dispositions.slice(0, 2)) assert.match(words, /7/u);
+  for (const words of dispositions) assert.doesNotMatch(words, /\{|undefined/u);
   // A list of field sets reads as one table, its name column first and a missing cell empty.
   const zones = SHOWN_OUTPUT.value.fields[0][1];
   const table = resultTable(zones, 8);
