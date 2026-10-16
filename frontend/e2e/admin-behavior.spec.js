@@ -5229,10 +5229,18 @@ test.describe('Team Routines', () => {
     // Each step lists its Assistant, linked to its page, its Action, and whether it reads or writes, as the card did.
     await expect.poll(() => stepHeads(planSteps)).toEqual(cardSteps);
     await expect(planSteps.getByRole('link', { name: 'Cloudflare', exact: true })).toHaveCount(cardSteps.length);
+    // Every step uses the saved key and says so, also the first, whose only input it is.
+    const savedKey = messages.en.routine.plan.storedInput.replace('{name}', 'api-token');
+    await expect(planSteps.locator(':scope > li').getByText(savedKey, { exact: true })).toHaveCount(cardSteps.length);
     expect(await accessibilityViolations(page)).toEqual([]);
     await page.keyboard.press('Escape');
     await expect(panel).toHaveCount(0);
     await expect(opener).toBeFocused();
+    // Escape closed the panel for good: the creation opens it again.
+    await opener.click();
+    await expect(panel).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
 
     // Its usage line totals every model turn of the recording, and opens the steps those turns took.
     const message = page.getByRole('article').filter({ has: created });
@@ -6411,6 +6419,36 @@ test.describe('Team Routines', () => {
     await expect(runs.nth(3).getByRole('button')).toHaveCount(0);
   });
 
+  test("a Routine panel opened from its Team's list says which steps write, and closes when a step's Assistant leaves the page", async ({ page }) => {
+    const steps = [
+      ...ROUTINE_PLAN,
+      { ...ROUTINE_PLAN[0], position: 2, action: 'create-dns-record', read_only: false, inputs: [] },
+    ];
+    const routine = {
+      ...ROUTINE_VIEW,
+      routine_id: 'c'.repeat(32),
+      name: 'DNS record upkeep',
+      plan: planSummary(steps),
+      output: { mode: 'show', step: steps.length },
+    };
+    await routeReadyChat(page);
+    await routeRoutines(page, { others: [routine], held: false });
+    await routeRead(page, 'routines.plan_steps', ({ routine_id: routineId, offset }) => (routineId === routine.routine_id
+      ? ok(planPage(routineId, routine.plan, steps, Number(offset)))
+      : undefined));
+    await page.goto('/chat/?team=marketing');
+    const panel = await openRoutinePanel(page, routine.name);
+    await panel.getByRole('tab', { name: 'Steps' }).click();
+    const rows = panel.getByRole('list', { name: 'Steps' }).locator(':scope > li');
+    const { stepRead, stepWrite } = messages.en.routine.proposal;
+    await expect(rows.nth(0).getByText(stepRead, { exact: true })).toBeVisible();
+    await expect(rows.nth(1).getByText(stepWrite, { exact: true })).toBeVisible();
+    await expect(rows.getByText(stepWrite, { exact: true })).toHaveCount(1);
+    await rows.nth(1).getByRole('link').click();
+    await expect(page).toHaveURL(/\/assistants\/shimpz-cloudflare\?team=marketing$/u);
+    await expect(panel).toHaveCount(0);
+  });
+
   test('a Routine run that shows its result opens it in full: its own step records and the result as escaped data', { tag: '@mobile' }, async ({ page, context }) => {
     // ADR-0092 amendment, 2026-10-05 (output): the run's zones with their nested account, a value Team redacted, and a
     // hostile value as text, opened from the Routine's history by the run's outcome.
@@ -6861,6 +6899,8 @@ test.describe('Team Routines', () => {
     await expect(notice).toContainText(name);
     await expect(notice).not.toContainText(listed.name);
     await expect(notice.getByRole('link')).toHaveCount(0);
+    // Team no longer lists the Routine it names, so the creation opens nothing.
+    await expect(notice.getByRole('button')).toHaveCount(0);
     await expect(notice.getByRole('img')).toHaveCount(0);
     await expect(notice.getByRole('heading')).toHaveCount(0);
     await expect(notice.locator('a, img, script, iframe, em, strong')).toHaveCount(0);
@@ -6899,6 +6939,22 @@ test.describe('Team Routines', () => {
     routines = [];
     await raiseTopic(page, 'team/marketing/routines');
     await expect(panel).toHaveCount(0);
+    await expect(line.getByRole('button')).toHaveCount(0);
+    await expect(line).toBeFocused();
+  });
+
+  test("a Routine deleted from the panel its creation opened leaves the focus on the creation, now text", async ({ page }) => {
+    await routeReadyChat(page, { history: { entries: [createdRow('a'.repeat(32))], before: null } });
+    await routeRoutines(page, { held: false });
+    await page.goto('/chat/?team=marketing');
+    const line = page.getByRole('group', { name: ROUTINE_VIEW.name, exact: true });
+    await line.getByRole('button').click();
+    await page.getByRole('dialog', { name: ROUTINE_VIEW.name, exact: true }).getByRole('button', { name: 'Delete' }).click();
+    const confirm = page.getByRole('dialog', { name: `Delete “${ROUTINE_VIEW.name}”?` });
+    await confirm.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
+    await confirm.getByLabel('Six-digit code').fill('123456');
+    await confirm.getByRole('button', { name: 'Delete' }).click();
+    await expect(confirm).toHaveCount(0);
     await expect(line.getByRole('button')).toHaveCount(0);
     await expect(line).toBeFocused();
   });
