@@ -765,6 +765,8 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, detail: { reply: 'Done.' } },
     { ...RUN_ENTRY, detail: { plan: SUMMARY, output: null, result: { ip: '1.2.3.4' } } },
     { ...RUN_ENTRY, detail: { plan: SUMMARY } },
+    // A shown result is always the plan's last step's.
+    { ...RUN_ENTRY, outcome: 'recovered', detail: { plan: LONG, output: { ...UNSHOWN, step: 1 } } },
     { ...RUN_ENTRY, outcome: 'needs-input', detail: { question: 'Which zone?' } },
     { ...RUN_ENTRY, outcome: 'paused', detail: { reason: 'approve' } },
     { ...RUN_ENTRY, outcome: 'paused', detail: {} },
@@ -842,7 +844,7 @@ test("the chat's view admits each card's answer and only a Routine's creation, a
 test('every run reads as one line: a status phrase colored by meaning', () => {
   const cases = [
     [{ outcome: 'done', detail: { plan: SUMMARY, output: SHOWN_OUTPUT } }, ['healthy', 'done']],
-    [{ outcome: 'recovered', detail: { plan: LONG, output: UNSHOWN } }, ['healthy', 'recovered']],
+    [{ outcome: 'recovered', detail: { plan: LONG, output: { ...UNSHOWN, step: LONG.steps } } }, ['healthy', 'recovered']],
     [{ outcome: 'failed', detail: { code: 'plan-input-type' } }, ['danger', 'failed']],
     [{ outcome: 'denied', detail: {} }, ['danger', 'denied']],
     [{ outcome: 'held', detail: {} }, ['danger', 'held']],
@@ -1580,12 +1582,13 @@ test('a shown result is admitted only in Team\'s closed form and reads as plain 
     null,
   ]) assert.equal(isOutput(invalid), false, JSON.stringify(invalid)?.slice(0, 80));
   assert.ok(isOutput({ ...SHOWN_OUTPUT, value: nested(4) }));
-  // A disposition names the position of one of the plan's steps exactly when it shows one.
+  // A disposition names the position of the plan's last step exactly when it shows one.
   assert.ok(isDisposition({ mode: 'changes', step: 1 }, 1));
   assert.ok(isDisposition({ mode: 'show', step: 120 }, 120));
   assert.ok(isDisposition({ mode: 'none', step: null }, 1));
   for (const [invalid, total] of [
-    [{ mode: 'show', step: 2 }, 1], [{ mode: 'show', step: 'zones' }, 1], [{ mode: 'none', step: 1 }, 1],
+    [{ mode: 'show', step: 2 }, 1], [{ mode: 'changes', step: 1 }, 2], [{ mode: 'show', step: 'zones' }, 1],
+    [{ mode: 'none', step: 1 }, 1],
     [{ mode: 'loud', step: null }, 1], [{ mode: 'none', step: null }, 0],
     [{ mode: 'show', step: 1, extra: null }, 1],
   ]) {

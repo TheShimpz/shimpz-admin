@@ -371,8 +371,8 @@ export function needsPage(loaded, wanted, next) {
 }
 
 // What a completed run does with its result (ADR-0092 amendment, 2026-10-05, output; ADR-0101), mirroring Team's
-// `routine.canonical_disposition` and `routine.canonical_output`: show one step's result after every run, only when it
-// changed, or show nothing, in the order Team's output question offers their labels (routines/questionMessages.js);
+// `routine.canonical_disposition` and `routine.canonical_output`: show the plan's last step's result after every run,
+// only when it changed, or show nothing, in the order Team's output question offers their labels (routines/questionMessages.js);
 // and a shown result as Team's bounded, redacted, ordered projection.
 export const OUTPUT_MODES = ['show', 'changes', 'none'];
 const SHOWN_MODES = ['show', 'changes'];
@@ -404,12 +404,12 @@ const SCALAR_NODES = {
 };
 
 /**
- * Whether a plan's output disposition is closed: it names one of its `total` steps' positions when it shows one.
+ * Whether a plan's output disposition is closed: it names its last step's position, `total`, when it shows one.
  */
 export function isDisposition(value, total) {
   if (!exactKeys(value, ['mode', 'step']) || !OUTPUT_MODES.includes(value.mode)) return false;
   if (!whole(total, 1, MAX_ROUTINE_STEPS)) return false;
-  return SHOWN_MODES.includes(value.mode) ? isPosition(value.step, total) : value.step === null;
+  return SHOWN_MODES.includes(value.mode) ? value.step === total : value.step === null;
 }
 
 function isOutputNode(node, depth) {
@@ -653,9 +653,10 @@ const MAX_NAME_CHARS = 80;
 const MAX_DESCRIPTION_CHARS = 600;
 const PAUSE_REASONS = ['exhausted', 'policy', 'evidence'];
 
-// The summary of the plan a completed run carried out, never an input, and the result it shows, if any.
+// The summary of the plan a completed run carried out, never an input, and its last step's result it shows, if any.
 function isCompleted(detail) {
-  return isSummary(detail.plan) && (detail.output === null || isOutput(detail.output));
+  return isSummary(detail.plan) &&
+    (detail.output === null || (isOutput(detail.output) && detail.output.step === detail.plan.steps));
 }
 
 const COMPLETED_KEYS = ['plan', 'output'];

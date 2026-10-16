@@ -6406,7 +6406,7 @@ test.describe('Team Routines', () => {
         entries: [
           entry(run, { plan, output: shown }),
           entry('c'.repeat(32), { plan, output: unchanged }),
-          entry(other, { plan: twoSteps, output: shown }),
+          entry(other, { plan: twoSteps, output: { ...shown, step: 2 } }),
         ],
         before: null,
       },
@@ -6650,7 +6650,7 @@ test.describe('Team Routines', () => {
       history: {
         entries: [noticeRow(run, ROUTINE_VIEW, 'done', {
           plan,
-          output: { step: 1, state: 'shown', value: { kind: 'text', value: 'ok', cut: false }, truncated: false },
+          output: { step: total, state: 'shown', value: { kind: 'text', value: 'ok', cut: false }, truncated: false },
         }, { at: NOTICE_AT })],
         before: null,
       },

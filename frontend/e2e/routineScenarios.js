@@ -145,8 +145,8 @@ const textFor = (locale) => ROUTINE_TEXT[locale] ?? ROUTINE_TEXT.en;
 const instant = (ms) => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace('.000Z', 'Z');
 
 // The continuous Routine, healthy and rolling its runs up per minute, which shows nothing after a run; a weekly
-// Routine that shows its records after every run and whose run is held for recovery; a daily Routine that shows its
-// zones only when they change, which its failures paused; and a monthly one that shows nothing, which a person paused
+// Routine that shows the record it updated after every run and whose run is held for recovery; a daily Routine that
+// shows its records only when they change, which its failures paused; and a monthly one that shows nothing, which a person paused
 // from its card while its held run still waits for a decision (ADR-0092 amendment, 2026-10-05, output).
 const UPDATE = step(3, 'update-dns-record', [fromStep('record_id', 2, '/records/0/id')], false);
 const DELETE = step(3, 'delete-dns-record', [fromStep('record_id', 2, '/records/2/id')], false);
@@ -159,13 +159,13 @@ function routines(locale) {
     { routine_id: id('1'), output: { mode: 'none', step: null }, schedule: { kind: 'continuous', gap: 5 } },
     {
       routine_id: id('2'),
-      output: { mode: 'show', step: 2 },
+      output: { mode: 'show', step: 3 },
       schedule: { kind: 'weekly', weekday: 6, time: '08:00' },
       next_run_at: '2026-10-04T11:00:00Z',
     },
     {
       routine_id: id('3'),
-      output: { mode: 'changes', step: 1 },
+      output: { mode: 'changes', step: 2 },
       schedule: { kind: 'daily', time: '09:00' },
       state: 'paused',
     },
@@ -228,34 +228,19 @@ const text = (value) => ({ kind: 'text', value, cut: false });
 const fields = (...pairs) => ({ kind: 'fields', fields: pairs, omitted: 0 });
 // What a run shows of its result: Team's bounded, redacted projection of the Action's validated result, as plain data.
 const number = (value) => ({ kind: 'number', value });
-const account = { kind: 'fields', fields: [['id', text('023e105f4ecef8ad9ca31a8372d0c353')], ['name', text('Shimpz Marketing')]], omitted: 0 };
-const zone = (zoneId, name, paused, status, type) => fields(
-  ['account', account],
-  ['id', text(zoneId)],
-  ['name', text(name)],
-  ['paused', { kind: 'bool', value: paused }],
-  ['status', text(status)],
-  ['type', text(type)],
-);
-// Cloudflare's zone list as Team projects it: its paging as single values, then each zone with its nested account.
-const SHOWN_ZONES = Object.freeze({
-  step: 1,
+// Cloudflare's updated DNS record as Team projects it: its own values, a comment holding markup kept as plain text.
+const SHOWN_UPDATE = Object.freeze({
+  step: 3,
   state: 'shown',
-  value: fields(
-    ['page', number('1')],
-    ['per_page', number('20')],
-    ['total_count', number('3')],
-    ['total_pages', number('1')],
-    ['zones', {
-      kind: 'list',
-      items: [
-        zone('9a7806061c88ada191ed06f989cc3dac', 'example.com', false, 'active', 'full'),
-        zone('4b2b5b3e9d0c4f0aa1b7c6d5e4f30211', 'example.org', true, 'pending', 'full'),
-        zone('c5d1f0e2a3b44c6d8e9f0a1b2c3d4e5f', '<img src=x onerror=alert(1)>.dev', false, 'active', 'partial'),
-      ],
-      omitted: 0,
-    }],
-  ),
+  value: fields(['result', fields(
+    ['comment', text('<img src=x onerror=alert(1)>')],
+    ['content', text('192.0.2.20')],
+    ['id', text('372e67954025e0ba6aaa6d586b9e0b59')],
+    ['name', text('www.example.com')],
+    ['proxied', { kind: 'bool', value: true }],
+    ['ttl', number('1')],
+    ['type', text('A')],
+  )]),
   truncated: false,
 });
 const SHOWN_RECORDS = Object.freeze({
@@ -285,8 +270,8 @@ function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now) {
     noticeRow(id('a'), CONTINUOUS, 'created', {}, { at: yesterday(-120) }),
     noticeRow(id('c'), CONTINUOUS, 'done', completed(CONTINUOUS.plan, null), { at: yesterday(-50) }),
     noticeRow(id('d'), CONTINUOUS, 'healthy', { runs: 9 }, { at: yesterday(0), version: 9, usage: { duration_ms: 37_080 } }),
-    noticeRow(id('e'), HELD, 'recovered', completed(HELD.plan, SHOWN_RECORDS), { at: yesterday(20), usage: { duration_ms: 9800 } }),
-    noticeRow(id('8'), PAUSED, 'done', completed(PAUSED.plan, SHOWN_ZONES), { at: yesterday(40) }),
+    noticeRow(id('e'), HELD, 'recovered', completed(HELD.plan, SHOWN_UPDATE), { at: yesterday(20), usage: { duration_ms: 9800 } }),
+    noticeRow(id('8'), PAUSED, 'done', completed(PAUSED.plan, SHOWN_RECORDS), { at: yesterday(40) }),
     noticeRow(id('f'), HELD, 'user-skipped', {}, { at: at(-180) }),
     // A run resumed after a Team restart lost the protection of its secret values, and says so.
     noticeRow(FAILED_RUN, PAUSED, 'failed', { code: 'assistant-rpc-failed' }, {
