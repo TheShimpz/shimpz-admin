@@ -24,6 +24,12 @@
     await tick();
     (line?.querySelector('button') ?? line)?.focus();
   }
+
+  // The Routine stopped being listed while its panel was open, such as when another window deleted it: the panel is
+  // gone, so the line takes the focus back.
+  $effect(() => {
+    if (open && !routine) void close();
+  });
 </script>
 
 <p class="routine-run" role="group" aria-label={notice.name} tabindex="-1" bind:this={line}>

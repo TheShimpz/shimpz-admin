@@ -6886,6 +6886,23 @@ test.describe('Team Routines', () => {
     return routineRow(id, 'created', structuredClone(CREATION), { routine });
   }
 
+  test("a Routine that stops being listed while its creation's panel is open closes it and leaves the focus on the creation", async ({ page }) => {
+    await routeReadyChat(page, { history: { entries: [createdRow('a'.repeat(32))], before: null } });
+    let routines = [ROUTINE_VIEW];
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines, runs: [], incidents: [] }) : undefined));
+    await page.goto('/chat/?team=marketing');
+    const line = page.getByRole('group', { name: ROUTINE_VIEW.name, exact: true });
+    await line.getByRole('button').click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name, exact: true });
+    await expect(panel).toBeVisible();
+    // Another window deleted the Routine: the Team's list no longer names it, and the creation stays as text.
+    routines = [];
+    await raiseTopic(page, 'team/marketing/routines');
+    await expect(panel).toHaveCount(0);
+    await expect(line.getByRole('button')).toHaveCount(0);
+    await expect(line).toBeFocused();
+  });
+
   function choiceNames(panel) {
     return panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button')
       .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
