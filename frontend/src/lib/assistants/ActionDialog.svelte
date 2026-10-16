@@ -3,6 +3,7 @@
   import DialogAction from '#lib/DialogAction.svelte';
   import DialogTarget from '#lib/assistants/DialogTarget.svelte';
   import { t } from '#lib/i18n/index.js';
+  import { recoverFocus } from '#lib/shell/focus.js';
   let {
     open = $bindable(false),
     kicker = '',
@@ -46,7 +47,8 @@
 </script>
 
 <Modal bind:element={dialog} labelledBy={titleId} oncancel={cancel}>
-  <form onsubmit={submit}>
+  <!-- A control the request disabled takes back the focus it dropped once enabled again. -->
+  <form onsubmit={submit} {@attach recoverFocus}>
   <DialogFrame
     kicker={kicker || $t('store.destinationKicker')}
     {title}

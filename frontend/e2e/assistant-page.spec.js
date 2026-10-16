@@ -267,6 +267,34 @@ test('reports a failed uninstall in the interface language', async ({ page }) =>
   await page.getByRole('article').getByRole('button', { name: copy.assistantPage.uninstall, exact: true }).click();
   await page.getByRole('dialog').getByRole('button', { name: copy.store.assistantUninstallConfirm }).click();
   await expect(page.getByRole('dialog').getByRole('alert')).toHaveText(copy.assistantPage.uninstallFailed);
+  // The request disabled the button pressed, which takes the focus back as the retry it became.
+  await expect(page.getByRole('dialog').getByRole('button', { name: copy.store.assistantActionRetry })).toBeFocused();
+});
+
+test('a failed uninstall leaves the focus on the page where the person pressed meanwhile', async ({ page }) => {
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await routePage(page, {
+    inventory: () => [{ assistant: 'shimpz-cloudflare', assistant_version: '0.5.2', status: 'running', provenance: 'local' }],
+    deleteStatus: 500,
+  });
+  await routeRead(page, 'assistants.uninstall', async () => {
+    await held;
+    return undefined;
+  });
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  await page.getByRole('article').getByRole('button', { name: messages.en.assistantPage.uninstall, exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: messages.en.store.assistantUninstallConfirm }).click();
+  await expect(dialog.getByRole('button', { name: messages.en.store.assistantUninstalling })).toBeDisabled();
+  // A press on the dialog's text is the person's own move: it focuses the dialog itself, which keeps the focus.
+  await dialog.getByRole('heading').first().click();
+  await expect(dialog).toBeFocused();
+  release();
+  await expect(dialog.getByRole('alert')).toHaveText(messages.en.assistantPage.uninstallFailed);
+  await expect(dialog.getByRole('button', { name: messages.en.store.assistantActionRetry })).toBeEnabled();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(dialog).toBeFocused();
 });
 
 test('reports an install Team refused at its Assistant limit in the interface language', async ({ page }) => {
@@ -278,6 +306,7 @@ test('reports an install Team refused at its Assistant limit in the interface la
   await page.getByRole('dialog').getByRole('button', { name: copy.store.localInstall, exact: true }).click();
   await expect(page.getByRole('dialog').getByRole('alert'))
     .toHaveText(copy.store.assistantLimitReached.replace('{maximum}', '16'));
+  await expect(page.getByRole('dialog').getByRole('button', { name: copy.store.localInstall, exact: true })).toBeFocused();
 });
 
 test('never shows a page read for the previous language once the language changed', async ({ page }) => {

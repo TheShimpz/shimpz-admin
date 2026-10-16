@@ -14,6 +14,7 @@
     localizedIntegrationList,
   } from '#lib/assistants/integrationMessages.js';
   import { assistantIntegrationProviderLabel } from '#lib/assistants/integrations.js';
+  import { recoverFocus, regainFocus } from '#lib/shell/focus.js';
 
   let {
     open = false,
@@ -89,6 +90,13 @@
     onclose();
   }
 
+  // The completion code field takes the focus where the dialog asks for a code: when the authorization switches to it,
+  // and again when a code is refused. A control a request disabled otherwise takes back the focus it dropped once
+  // enabled again (`recoverFocus`).
+  const CODE_FIELD = 'assistant-integration-completion-code';
+  const focusCode = () => regainFocus(() => document.getElementById(CODE_FIELD), () => Boolean(dialog?.open));
+  $effect(() => (dialog ? recoverFocus(dialog) : undefined));
+
   async function authorize(requirement) {
     if (submitting || !challenge) return;
     submitting = true;
@@ -99,6 +107,7 @@
       if (result?.completion_mode === 'code') {
         awaitingCompletion = true;
         submitting = false;
+        void focusCode();
       }
     } catch {
       submitError = copy.authorizationFailed;
@@ -115,6 +124,7 @@
     } catch {
       submitError = copy.completionFailed;
       submitting = false;
+      void focusCode();
     }
   }
 
@@ -152,7 +162,7 @@
     {#if awaitingCompletion}
       <p id="assistant-integration-completion-lead" class="context">{copy.completionLead}</p>
       <TextField
-        id="assistant-integration-completion-code"
+        id={CODE_FIELD}
         label={copy.completionLabel}
         bind:value={completionCode}
         autocomplete="off"

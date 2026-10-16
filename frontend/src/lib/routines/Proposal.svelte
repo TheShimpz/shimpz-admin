@@ -16,6 +16,7 @@
   import { humanizeId } from '#lib/ids.js';
   import { confirmRoutineProposal, revokeRoutineProposal } from '#lib/routines/protocol.js';
   import { fillParts, proposalInputValue, routineFailureWords, stepTag } from '#lib/routines/words.js';
+  import { recoverFocus } from '#lib/shell/focus.js';
 
   // The card of a Routine a recording turn recorded (ADR-0101), under its reply, kept short for a person
   // who is not technical: the recording agent's plain description of the work and a warning when a step changes
@@ -60,17 +61,10 @@
     return () => clearTimeout(timer);
   });
 
-  // An answer that keeps the card disabled the pressed button meanwhile, which dropped the focus to the document: the
-  // button takes it back once it is enabled again. Focus the person moved stays where it is.
-  async function regain(button) {
-    await tick();
-    const focused = document.activeElement;
-    if (!focused || focused === document.body) button.focus();
-  }
-
   // Once the card has left the chat, `onleave` gives the focus its button had to the composer, also when the
-  // transcript took the card out before its answer returned; the host's own guard keeps focus the person moved.
-  async function settle(action, button) {
+  // transcript took the card out before its answer returned; the host's own guard keeps focus the person moved. An
+  // answer that keeps the card gives the focus back to the button pressed once it is enabled again (`recoverFocus`).
+  async function settle(action) {
     working = true;
     error = '';
     try {
@@ -83,7 +77,6 @@
     } finally {
       working = false;
     }
-    if (error) void regain(button);
   }
 
   let changes = $derived(proposal.steps.some((step) => !step.read_only));
@@ -105,8 +98,7 @@
     shown = false;
   });
 
-  async function rewrite(event) {
-    const button = event.currentTarget;
+  async function rewrite() {
     const text = draft.trim();
     // The Team is the card's own as the person sent it; a later selection of another Team never receives it.
     const origin = teamId;
@@ -126,7 +118,6 @@
         revoked = true;
       } catch (failure) {
         error = routineFailureWords(failure, copy.errors, $t('shell.outcomeUnknown'));
-        void regain(button);
         return;
       } finally {
         working = false;
@@ -134,10 +125,7 @@
     }
     if (!shown) return;
     if (onrewrite(text, origin)) given = 'revoked';
-    else {
-      error = card.rewriteUnsent;
-      void regain(button);
-    }
+    else error = card.rewriteUnsent;
   }
 
   // Leaving the editor shows the card again with focus on its Edit button, unless it was already revoked for a send
@@ -160,7 +148,7 @@
 {:else if answer}
   <!-- Its Routine was created or changed; the answer's own message says so. -->
 {:else if !expired || revoked}
-<section class="routine-proposal" aria-label={card.title} bind:this={section}>
+<section class="routine-proposal" aria-label={card.title} bind:this={section} {@attach recoverFocus}>
   <div class="sheet admin-frame">
     <header>
       <p class="kicker"><RoutineIcon name="clock" />{editing ? card.editTitle : card.title}</p>
@@ -195,11 +183,11 @@
               onclick={rewrite}>{card.send}</DialogAction>
           {:else}
             <DialogAction kind="cancel" class="tone-cancel" size="sm" type="button" disabled={working || !$commandsReady}
-              onclick={(event) => settle(revokeRoutineProposal, event.currentTarget)}>{card.cancel}</DialogAction>
+              onclick={() => settle(revokeRoutineProposal)}>{card.cancel}</DialogAction>
             <DialogAction kind="edit" class="tone-edit" size="sm" type="button" disabled={working || disabled || !$commandsReady}
               onclick={edit}>{card.edit}</DialogAction>
             <DialogAction kind="confirm" size="sm" type="button" disabled={working || !$commandsReady}
-              onclick={(event) => settle(confirmRoutineProposal, event.currentTarget)}>{card.confirm}</DialogAction>
+              onclick={() => settle(confirmRoutineProposal)}>{card.confirm}</DialogAction>
           {/if}
         </div>
       </div>

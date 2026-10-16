@@ -1030,6 +1030,29 @@ test('a provider key the provider refuses is said so and its field takes the foc
   await expect(apiKey).toBeFocused();
 });
 
+test('a provider key refused after the person moved the focus leaves it where they put it', async ({ page }) => {
+  await routeReadyChat(page, { missingInference: true, unconfiguredProviders: ['openai', 'anthropic'] });
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  let asked = false;
+  await routeRead(page, 'models.save', async () => {
+    asked = true;
+    await held;
+    return ok({ detail: 'The provider rejected this API key' }, 400);
+  });
+  await page.goto('/chat/');
+  const apiKey = page.getByLabel('API key');
+  await expect(apiKey).toBeFocused();
+  await apiKey.fill('sk-browser-contract-1234567890');
+  await page.getByRole('button', { name: 'Save key' }).click();
+  await expect.poll(() => asked).toBe(true);
+  const elsewhere = page.getByRole('button', { name: /^(New Team|Open the Team list)$/ });
+  await elsewhere.focus();
+  release();
+  await expect(page.getByRole('alert').filter({ hasText: 'The provider rejected this API key' })).toBeVisible();
+  await expect(elsewhere).toBeFocused();
+});
+
 // Text typed into the composer is never dropped: once the visible composer accepts input it stays editable while the
 // Team's history loads, its connection opens, and its first sync settles, so a message typed at any moment can be sent.
 test('the visible composer never turns read-only again before the first message', async ({ page }) => {
@@ -1127,6 +1150,29 @@ test('a rejected Jev key is reported and an unsent one never outlives the panel'
   await expect(fast.getByRole('alert')).toHaveCount(0);
   await expect(fast.getByLabel('TypeSafe API key')).toHaveValue('');
   expect(chat.decisionRequests().map((request) => request.method)).toEqual(['decision.read', 'decision.save']);
+});
+
+test('a Jev key refused after the person moved the focus out of the panel leaves the focus there', async ({ page }) => {
+  await routeReadyChat(page);
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  let asked = false;
+  await routeRead(page, 'decision.save', async () => {
+    asked = true;
+    await held;
+    return ok({ detail: 'rejected' }, 400);
+  });
+  await page.goto('/chat/');
+  const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+  await expect(composer).toBeEnabled();
+  const { fast } = await openFastRouting(page);
+  await fast.getByLabel('TypeSafe API key').fill('tsk-held-contract-0123456789');
+  await fast.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect.poll(() => asked).toBe(true);
+  await composer.focus();
+  release();
+  await expect(fast.getByRole('alert')).toHaveText('TypeSafe rejected this key.');
+  await expect(composer).toBeFocused();
 });
 
 const CLARIFICATION = {
@@ -1509,8 +1555,26 @@ test('keeps a saved key when the model selection fails and retries only the sele
   await expect(page.getByLabel('API key')).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Send' })).toBeDisabled();
   await expect(page.getByText('The launch plan has three milestones.')).toBeVisible();
+  // The saved key's field left with the save; the Brain notice's Try again takes the focus it held.
+  const retry = page.getByRole('button', { name: 'Try again' });
+  await expect(retry).toBeFocused();
 
-  await page.getByRole('button', { name: 'Try again' }).click();
+  // A retry that fails again leaves while the selection is saved, then its new Try again takes the focus back.
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  let refusals = 1;
+  await routeRead(page, 'inference.save', async () => {
+    if (refusals === 0) return undefined;
+    refusals -= 1;
+    await held;
+    return ok({ detail: 'The Team model selection could not be saved.' }, 502);
+  });
+  await retry.click();
+  await expect(retry).toHaveCount(0);
+  release();
+  await expect(retry).toBeFocused();
+
+  await retry.click();
   await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
   await expect.poll(() => chat.credentialBodies()).toHaveLength(1);
   expect(chat.inferenceBodies()).toEqual([
@@ -3068,6 +3132,20 @@ test('renders and clears a persistent Action input without exposing its value', 
     .toBeVisible();
   await expect(storedInputs.getByRole('button', { name: 'Clear', exact: true })).toHaveCount(0);
   expect(chat.storedInputClears()).toBe(1);
+  // The Clear pressed left with the input it cleared; with no other input to clear, the drawer's Close takes the focus.
+  await expect(drawer.getByRole('button', { name: 'Close integrations' })).toBeFocused();
+});
+
+test('a Stored Input that could not be cleared keeps its Clear, which takes the focus back', async ({ page }) => {
+  await routeReadyChat(page, { whatsappInstalled: true, storedInputStatus: 'stored' });
+  await routeRead(page, 'stored_inputs.clear', () => ok({ detail: 'unavailable' }, 503));
+  await page.goto('/chat/');
+  await page.getByRole('button', { name: 'Assistant integrations' }).click();
+  const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
+  const clear = drawer.getByRole('region', { name: 'Stored Action inputs' }).getByRole('button', { name: 'Clear', exact: true });
+  await clear.click();
+  await expect(page.getByText('The stored Action input could not be cleared.').first()).toBeVisible();
+  await expect(clear).toBeFocused();
 });
 
 test('a cleared Stored Input shows what Admin reads afterwards, never the clear\'s own answer', async ({ page }) => {
@@ -3405,8 +3483,19 @@ test('opens the built Local app code flow in a separate tab', async ({ page }) =
   const popup = await popupPromise;
   await popup.waitForURL(authorizationUrl);
   await expect(popup).toHaveTitle('Cloudflare OAuth authorization');
-  await expect(page.getByRole('dialog', { name: 'Paste the completion code' })).toBeVisible();
+  const completion = page.getByRole('dialog', { name: 'Paste the completion code' });
+  await expect(completion).toBeVisible();
   expect(await popup.evaluate(() => window.opener)).toBeNull();
+  // The code the provider shows goes in the field that replaced the Authorize pressed, which has the focus.
+  const code = completion.getByLabel('One-time completion code');
+  await expect(code).toBeFocused();
+
+  // A code Admin refuses keeps the dialog, and its field takes the focus back for another code.
+  await routeRead(page, 'integrations.complete', () => ok({ detail: 'refused' }, 400));
+  await code.fill('completion-code-1');
+  await completion.getByRole('button', { name: 'Finish connection' }).click();
+  await expect(completion).toContainText('The secure authorization could not finish.');
+  await expect(code).toBeFocused();
 });
 
 test('cancels code-mode OAuth when the browser blocks its separate tab', async ({ page }) => {
@@ -3435,6 +3524,8 @@ test('cancels code-mode OAuth when the browser blocks its separate tab', async (
   await dialog.getByRole('button', { name: 'Authorize on Cloudflare' }).click();
   await expect.poll(() => canceled).toBe(true);
   await expect(dialog).toContainText('The secure authorization could not start.');
+  // The authorization disabled the button pressed, which takes the focus back for another try.
+  await expect(dialog.getByRole('button', { name: 'Authorize on Cloudflare' })).toBeFocused();
 });
 
 // The exact value each kind submits.
@@ -5271,9 +5362,11 @@ test.describe('Team Routines', () => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await routeReadyChat(page);
     let available = false;
+    let held = Promise.resolve();
     // Team refuses the listing: no outage, which the list would read again on its own, but a refusal it shows.
-    await routeRead(page, 'routines.list', (params) => {
+    await routeRead(page, 'routines.list', async (params) => {
       if (params.team_id !== 'marketing') return undefined;
+      await held;
       return available
         ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] })
         : ok({ code: 'routine-listing-refused' }, 409);
@@ -5287,15 +5380,20 @@ test.describe('Team Routines', () => {
     await expect(list.getByRole('alert')).toBeVisible();
     const retry = list.getByRole('button', { name: messages.en.routine.list.retry });
     await expect(retry).toBeFocused();
-    // A retry that fails again keeps the list open with its error.
+    // A retry that fails again keeps the list open with its error, and the Retry it disabled takes the focus back.
+    let release;
+    held = new Promise((resolve) => { release = resolve; });
     await retry.click();
+    await expect(retry).toBeDisabled();
+    release();
     await expect(retry).toBeEnabled();
     await expect(list.getByRole('alert')).toBeVisible();
-    // Once Team answers, the error leaves and the Routine is listed.
+    await expect(retry).toBeFocused();
+    // Once Team answers, the error and its Retry leave and the Routine is listed, with the focus.
     available = true;
     await retry.click();
     await expect(list.getByRole('alert')).toHaveCount(0);
-    await expect(list.getByRole('group', { name: 'Routines' }).getByRole('button', { name: ROUTINE_VIEW.name })).toBeVisible();
+    await expect(list.getByRole('group', { name: 'Routines' }).getByRole('button', { name: ROUTINE_VIEW.name })).toBeFocused();
     await list.getByRole('button', { name: 'Close' }).click();
     await expect(navigation.getByRole('button', { name: 'Routines for Marketing', exact: true })).toBeVisible();
   });
@@ -5510,6 +5608,25 @@ test.describe('Team Routines', () => {
     release();
     await expect(panel).toHaveCount(0);
     await expect.poll(() => calls.deletes).toEqual([{ code: '123456' }]);
+  });
+
+  test('a passkey this address no longer has turns the deletion back to the code, whose field takes the focus', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
+    await routeReadyChat(page);
+    // The session listed a passkey, but the deletion's offer names none.
+    const calls = await routeRoutines(page, { held: false });
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+    await openRoutinePanel(page);
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await panel.getByRole('group', { name: 'Confirm with' }).getByRole('radio', { name: 'Passkey' }).check();
+    await panel.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await expect(panel.getByRole('alert')).toHaveText(messages.en.security.passkeyMissing);
+    await expect(panel.getByRole('group', { name: 'Confirm with' })).toHaveCount(0);
+    await expect(panel.getByLabel('Six-digit code')).toBeFocused();
+    expect(calls.deletes).toEqual([]);
   });
 
   async function openHeldPanel(page, options = {}) {

@@ -12,7 +12,7 @@
   // The chat's composer: the message with its files, or the Brain's key while the selected provider has none, and its
   // tools (attach, the Brain and fast-routing menus, Integrations), then Send, or Stop while a turn runs. The page owns
   // the draft, the key, the files (`files`, a MessageFiles), and every action; it binds the controls it moves the focus
-  // to (the message, the file picker, the Integrations button, and Stop).
+  // to (the message, the file picker, the Integrations button, Stop, and the Brain notice's Try again).
   let {
     files,
     draft = $bindable(),
@@ -21,6 +21,7 @@
     attachmentInput = $bindable(),
     integrationsButton = $bindable(),
     stopButton = $bindable(),
+    retryButton = $bindable(),
     keyRequired,
     brainUnavailable,
     brainSaving,
@@ -77,7 +78,8 @@
     <Notice class="chat-brain-error" variant="error">
       <strong>{brainError}</strong>
       {#if brainUnavailable}
-        <Button variant="secondary" size="compact" type="button" onclick={onretrybrain} disabled={brainSaving || !$commandsReady}>
+        <Button bind:element={retryButton} variant="secondary" size="compact" type="button" onclick={onretrybrain}
+          disabled={brainSaving || !$commandsReady}>
           {keyCopy.retry}
         </Button>
       {/if}

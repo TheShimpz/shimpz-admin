@@ -272,6 +272,57 @@ test('registers and then uses a UV passkey through the browser ceremony', async 
   await client.send('WebAuthn.disable');
 });
 
+test('a passkey that cannot be created keeps the offer, and Create passkey takes the focus back', async ({ page }) => {
+  await page.route('**/api/**', (route) => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(authenticatedLocalSession({
+      oauth_completion_mode: null,
+      authentication_method: 'totp',
+      passkey_enrollment_available: true,
+      passkey_registered: false,
+    })),
+  }));
+
+  await page.goto('http://localhost:4173/');
+  await expect(page.getByRole('heading', { name: 'Make future sign-ins easier' })).toBeVisible();
+  const create = page.getByRole('button', { name: 'Create passkey' });
+  await create.click();
+  await expect(page.getByRole('alert')).toContainText(messages.en.auth.passkeyFailed);
+  await expect(create).toBeFocused();
+});
+
+test('a passkey sign-in the browser cancels returns the focus to the code field', async ({ page }) => {
+  await page.addInitScript(() => {
+    navigator.credentials.get = () => Promise.reject(new DOMException('canceled', 'NotAllowedError'));
+  });
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(localSession({ initialized: true, authentication_state: 'configured' })),
+  }));
+  await page.route('**/api/login', (route) => route.fulfill({
+    status: 202,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      methods: ['totp', 'passkey', 'recovery-code'],
+      passkey_options: {
+        allowCredentials: [],
+        challenge: 'YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODk',
+        rpId: 'localhost',
+        timeout: 180000,
+        userVerification: 'required',
+      },
+    }),
+  }));
+
+  await page.goto('/');
+  await page.getByLabel('Password', { exact: true }).fill('violet otter lantern quartz 92');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Use a passkey' }).click();
+  await expect(page.getByRole('alert')).toContainText(messages.en.auth.passkeyCanceled);
+  await expect(page.getByLabel('Six-digit code')).toBeFocused();
+});
+
 test('renders bounded Local login feedback instead of the raw API error', async ({ page }) => {
   await page.route('**/api/session', (route) => route.fulfill({
     contentType: 'application/json',

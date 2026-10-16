@@ -3,12 +3,14 @@
 
   import { t } from '#lib/i18n/index.js';
   import RoutineIcon from '#lib/routines/Icon.svelte';
+  import { recoverFocus } from '#lib/shell/focus.js';
 
   // The one shell of every Routine modal (ADR-0086): a chamfered frame under a scanline header with the modal's title.
   // `onback` adds a Back control before the title; `tag` renders beside it; `closable` keeps the Close control. `open`
   // leaves the frame open below its header: no side or bottom edges, so the content draws its own. The modal opens as
   // soon as it mounts, then `onopen` may place focus. `full` fills the whole viewport, for content read at length.
-  // Close and, unless `oncancel` handles it, Escape close the modal, then `onclose` hears that it closed.
+  // Close and, unless `oncancel` handles it, Escape close the modal, then `onclose` hears that it closed. A control a
+  // request disabled takes back the focus it dropped once enabled again (`recoverFocus`).
   let {
     dialog = $bindable(),
     class: className,
@@ -44,7 +46,8 @@
 </script>
 
 <Modal bind:element={dialog} class={['routine-modal', full && 'routine-modal--full', className]} {size} labelledBy={`${id}-title`} {oncancel}>
-  <div class={['frame', 'routine-frame', open && 'frame--open', full && 'frame--full', frameClass]}>
+  <div class={['frame', 'routine-frame', open && 'frame--open', full && 'frame--full', frameClass]}
+    {@attach recoverFocus}>
     <header class="head routine-head">
       {#if onback}
         <Button class="back" variant="ghost" size="sm" iconOnly type="button" aria-label={copy.back} title={copy.back} onclick={onback}>

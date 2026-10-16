@@ -4,6 +4,7 @@
   import { t } from '#lib/i18n/index.js';
   import { isFactorCode } from '#lib/auth/factor.js';
   import RecoveryCodes from '#lib/auth/RecoveryCodes.svelte';
+  import { recoverFocus } from '#lib/shell/focus.js';
 
   let {
     phase,
@@ -66,7 +67,7 @@
   }
 </script>
 
-<section class="auth-stage" aria-labelledby="auth-title">
+<section class="auth-stage" aria-labelledby="auth-title" {@attach recoverFocus}>
   <div class="welcome">
     <p class="kicker">
       {recovery ? $t('auth.recoveryKicker') : returning ? $t('auth.returning') : $t('auth.firstRun')}

@@ -9,6 +9,7 @@
   import RoutineDetailsDialog from '#lib/routines/Details.svelte';
   import RoutineModal from '#lib/routines/Modal.svelte';
   import { refreshTeamRoutines } from '#lib/routines/context.js';
+  import { regainFocus } from '#lib/shell/focus.js';
 
   // One Team's Routines as a choice modal (ADR-0086): each its clock tinted by its status, its name, and when it runs;
   // the status is said in words only to assistive technology. Choosing one turns the modal into that Routine's panel,
@@ -41,14 +42,19 @@
     if (routines.length === 0 && !failed) onclose();
   });
 
-  async function focusList() {
-    await tick();
-    const row = dialog?.querySelector(`[data-choice="${last}"]`) ?? dialog?.querySelector('[data-choice]') ??
+  // The Routine last opened, else the first listed, else the Retry of a list that failed.
+  function listTarget() {
+    return dialog?.querySelector(`[data-choice="${last}"]`) ?? dialog?.querySelector('[data-choice]') ??
       dialog?.querySelector('.retry');
-    row?.focus();
   }
 
-  // A retry that fails again keeps the error; one that succeeds replaces it with the list, or closes an empty one.
+  async function focusList() {
+    await tick();
+    listTarget()?.focus();
+  }
+
+  // A retry that fails again keeps the error, and its Retry takes the focus back (`recoverFocus`); one that succeeds
+  // replaces it with the list, whose Routine takes the focus the Retry had, or closes an empty one.
   async function retry() {
     retrying = true;
     try {
@@ -56,6 +62,7 @@
     } finally {
       retrying = false;
     }
+    void regainFocus(() => (failed ? null : listTarget()), () => Boolean(dialog?.open));
   }
 
   function choose(routineId) {

@@ -21,6 +21,7 @@
     teamIntegrations,
   } from '#lib/assistants/integrations.js';
   import { refreshTeamInventory, teamContext } from '#lib/teams/context.js';
+  import { recoverFocus, regainFocus } from '#lib/shell/focus.js';
 
   let {
     open = false,
@@ -109,6 +110,7 @@
   });
 
   let closeButton = $state();
+  let storedSection = $state();
   let expandedAssistantId = $state('');
   let copy = $derived($t('assistantIntegrations'));
   let groups = $derived.by(() => {
@@ -167,10 +169,12 @@
     ) return;
     storedInputWorking = key;
     const read = sources;
+    let cleared = false;
     try {
       await clearAssistantStoredInput(clearedTeamId, item.assistant_id, item.stored_input_id);
       // What the drawer shows next is the Stored Inputs read after Admin announces the change, never this answer.
       if (read?.teamId === clearedTeamId) await read.storedInputs.refresh();
+      cleared = true;
     } catch (reason) {
       if (teamId !== clearedTeamId) return;
       // A change Admin never confirmed before it disconnected may or may not have happened.
@@ -180,6 +184,11 @@
       onerror(copy.storedInputClearFailed, detail);
     } finally {
       if (teamId === clearedTeamId) storedInputWorking = '';
+    }
+    // The Clear pressed left with the input it cleared: the next input's Clear takes the focus it had, else the
+    // drawer's Close. A Clear that failed stays and takes the focus back itself (`recoverFocus`).
+    if (cleared && teamId === clearedTeamId) {
+      void regainFocus(() => storedSection?.querySelector('button:not(:disabled)') ?? closeButton, () => open);
     }
   }
 
@@ -299,7 +308,8 @@
     {/if}
 
     {#if synced && storedInputs.length > 0}
-      <section class="stored-inputs" aria-labelledby="assistant-stored-inputs-title">
+      <section class="stored-inputs" aria-labelledby="assistant-stored-inputs-title" bind:this={storedSection}
+        {@attach recoverFocus}>
         <h3 id="assistant-stored-inputs-title">{copy.storedInputsTitle}</h3>
         {#each storedInputs as item (`${item.assistant_id}/${item.stored_input_id}`)}
           {@const itemKey = `${item.assistant_id}/${item.stored_input_id}`}

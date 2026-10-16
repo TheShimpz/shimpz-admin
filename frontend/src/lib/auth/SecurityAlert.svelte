@@ -4,6 +4,7 @@
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n/index.js';
   import { acknowledgeFailedAttempts, securitySummary } from '#lib/auth/security.js';
+  import { recoverFocus } from '#lib/shell/focus.js';
 
   // The second-factor attempts refused since the previous sign-in (ADR-0051). The report stays on every page until the
   // Supervisor acknowledges the exact count it shows; one refused meanwhile keeps it on screen. The summary is read over
@@ -28,7 +29,8 @@
 </script>
 
 {#if count > 0}
-  <div class="security-alert">
+  <!-- Acknowledge, which its request disabled, takes back the focus it dropped once enabled again. -->
+  <div class="security-alert" {@attach recoverFocus}>
     <Notice variant="warning" title={$t('security.alertTitle')}>
       <p>{$t('security.alertMessage', { count })}</p>
       {#if error}<p class="error" role="alert">{error}</p>{/if}

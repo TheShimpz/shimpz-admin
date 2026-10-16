@@ -34,6 +34,7 @@
   import { Transcript } from '#lib/chat/transcript.svelte.js';
   import { locale, t } from '#lib/i18n/index.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
+  import { focusLost, regainFocus } from '#lib/shell/focus.js';
   import { CLARIFICATION_LABELS } from '#lib/chat/clarification/labels.js';
   import { routineQuestionMessages } from '#lib/routines/questionMessages.js';
   import { configureModelContext, loadModelContext, modelContext } from '#lib/brain/context.js';
@@ -166,6 +167,9 @@
   // A navigation onto this chat asked for the composer: it takes the focus as soon as it is usable, even when it is still
   // busy (reconnecting, its history being checked) at the moment the navigation ends.
   let focusWanted = $state(false);
+  // The selection whose failed Brain save or retry gives the focus to the notice's Try again (`brainRetry`) once shown.
+  let retryFocus = $state('');
+  let brainRetry = $state();
   let stopButton = $state();
   let capabilityObjective = null;
   let promptHistoryIndex = -1;
@@ -370,7 +374,6 @@
   // Supervisor chose, stays where it is.
   async function focusComposer() {
     await tick();
-    const focused = document.activeElement;
     if (
       !mounted ||
       !chatTeamId ||
@@ -379,7 +382,7 @@
       integrationsOpen ||
       inventoryRetrying ||
       !chatOwnsFocus ||
-      (focused && focused !== document.body) ||
+      !focusLost() ||
       document.querySelector('dialog[open], :popover-open')
     ) return;
     focusWanted = false;
@@ -390,6 +393,7 @@
   // nobody taking it, so the composer still takes it once usable.
   function trackFocus(event) {
     if (event.target === document.body) return;
+    retryFocus = '';
     chatOwnsFocus = Boolean(chatRoute?.contains(event.target));
     // The person moved the focus themselves: the navigation's request for the composer lapses.
     if (event.target !== composerInput) focusWanted = false;
@@ -411,16 +415,20 @@
     // While Admin reconnects the key stays in its field, unsent, until it can be saved.
     if (!teamId || !keyRequired || brainSaving || !$commandsReady || apiKey.trim().length < 16) return;
     providerKey = '';
+    retryFocus = '';
     try {
       await configureModelContext(teamId, apiKey);
     } catch {
       // The model context carries the public error shown above the composer. The save disabled the key field, which
       // dropped the focus to the document: the emptied field takes it back for the same Team and provider, unless the
-      // person moved it meanwhile.
-      await tick();
-      const focused = document.activeElement;
-      if (keySelection !== selection || !keyRequired || (focused && focused !== document.body)) return;
-      document.getElementById('chat-provider-key')?.focus({ preventScroll: true });
+      // person moved it meanwhile. A key that was saved takes the field away once the selection is read again, and
+      // the Brain notice's Try again takes the focus then.
+      await regainFocus(
+        () => document.getElementById('chat-provider-key'),
+        () => keySelection === selection && keyRequired,
+        { preventScroll: true },
+      );
+      retryFocus = selection;
       return;
     }
     if (keySelection === selection) void focusComposer();
@@ -440,8 +448,7 @@
     } finally {
       inventoryRetrying = false;
     }
-    const focused = document.activeElement;
-    if (focused && focused !== document.body) return;
+    if (!focusLost()) return;
     if ($teamContext.inventory === 'ready') void focusComposer();
     else inventoryRetry?.focus();
   }
@@ -449,12 +456,26 @@
   function retryBrain() {
     const teamId = chatTeamId;
     if (!teamId || brainSaving || !$commandsReady) return;
+    retryFocus = '';
     // A configured selection only needs its save repeated; an unreadable catalog or selection is reloaded.
+    const selection = keySelection;
     const retry = brainProvider?.configured && brainModel
       ? configureModelContext(teamId, '')
       : loadModelContext(teamId);
-    retry.catch(() => {});
+    retry.catch(() => {
+      retryFocus = selection;
+    });
   }
+
+  // A Brain save or retry that failed took its notice, and the focus with it, while it ran: once the reads after it
+  // show the notice again, its Try again takes the focus for the same Team and provider, unless the person placed it
+  // anywhere meanwhile (`trackFocus`).
+  $effect(() => {
+    if (!retryFocus || !brainRetry) return;
+    const selection = retryFocus;
+    retryFocus = '';
+    void regainFocus(() => brainRetry, () => mounted && keySelection === selection, { preventScroll: true });
+  });
 
   async function focusStop(fromElement) {
     await tick();
@@ -598,7 +619,7 @@
     liveTurn.requireRunning('Assistant install plan event');
     const receipt = liveTurn.receipt();
     applyInstallPlanEvent(incoming, receipt);
-    const restoreStoppedFocus = liveTurn.stopping && document.activeElement === document.body;
+    const restoreStoppedFocus = liveTurn.stopping && focusLost();
     liveTurn.stopping = false;
     liveTurn.resetProgress();
     if (restoreStoppedFocus) void focusStop();
@@ -1124,6 +1145,7 @@
             bind:attachmentInput
             bind:integrationsButton
             bind:stopButton
+            bind:retryButton={brainRetry}
             {keyRequired}
             {brainUnavailable}
             {brainSaving}
