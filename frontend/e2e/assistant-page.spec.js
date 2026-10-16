@@ -366,6 +366,36 @@ test("an uninstall's Install takes the focus once its staged build's page arrive
   await expect(install).toBeFocused();
 });
 
+test("an uninstall's Install gets no focus once the person pressed elsewhere while its staged build's page was read", async ({ page }) => {
+  let installed = true;
+  let release = () => {};
+  let hold = false;
+  await routePage(page, {
+    inventory: () => (installed
+      ? [{ assistant: 'shimpz-cloudflare', assistant_version: '0.5.2', status: 'running', provenance: 'local' }]
+      : []),
+    detailsGate: () => (hold ? new Promise((resolve) => { release = resolve; }) : undefined),
+  });
+  await routeRead(page, 'assistants.uninstall', () => {
+    installed = false;
+    hold = true;
+    return { status: 200, json: { assistant: 'shimpz-cloudflare', uninstalled: true } };
+  });
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  const sheet = page.getByRole('article');
+  await sheet.getByRole('button', { name: 'Uninstall', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Uninstall Assistant' }).click();
+  await expect(page.getByText('Assistant uninstalled', { exact: true })).toBeVisible();
+  const install = sheet.getByRole('button', { name: 'Install', exact: true });
+  await expect(install).toBeDisabled();
+  // A press on the Admin version, which nothing focuses, leaves the focus on the document, as the person chose.
+  await page.getByText(/^Admin (?:dev|v\d)/).click();
+  release();
+  await expect(install).toBeEnabled();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+});
+
 test('never shows a page read for the previous language once the language changed', async ({ page }) => {
   const portuguese = "Configure o DNS dos seus domínios sem abrir um painel.";
   const portugueseHelp = 'Uma chave que permite a este Assistente alterar seu DNS. Abra Meu perfil > Tokens de API e crie um token.';
