@@ -240,7 +240,7 @@
       // The deleted Routine leaves the list with the read after its deletion, which the panel waits for.
       await refreshTeamRoutines(teamId);
       dialog?.close();
-      (ondeleted ?? onclose)();
+      ondeleted();
       return;
     }
     // A run is still ending: Team keeps the Routine as being deleted until it has.
@@ -256,7 +256,7 @@
   }
 
   // Escape leaves the confirmation for the panel, and does nothing while the deletion is being confirmed; from the
-  // panel it goes back to the list it was opened from, if any, or closes it.
+  // panel it goes back to the list it was opened from (`back`).
   function stay(event) {
     event?.preventDefault();
     if (!deleting) void keep();
