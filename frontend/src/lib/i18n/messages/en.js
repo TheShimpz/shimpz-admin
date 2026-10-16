@@ -574,6 +574,7 @@ export default {
       ended: 'That run already ended.',
       unavailable: 'Routines are unavailable right now. Try again.',
       stale: 'This run changed. Open it again.',
+      unverifiable: 'This run can\'t be verified, so it can\'t run again.',
       cardChanged: 'This run changed, so nothing was done. What it shows now is current.',
       tooLarge: 'This Routine is larger than its Team can hold. Nothing changed.',
       stepBudget: 'This Team\'s Routines can run at most 20,000 Action steps a day together, and this change would go past that. Nothing changed.',

@@ -565,6 +565,7 @@ export default {
       ended: 'Essa execução já terminou.',
       unavailable: 'As rotinas estão indisponíveis agora. Tente de novo.',
       stale: 'Esta execução mudou. Abra-a de novo.',
+      unverifiable: 'Não é possível verificar esta execução, então ela não pode rodar de novo.',
       cardChanged: 'Esta execução mudou, então nada foi feito. O que ela mostra agora está atualizado.',
       tooLarge: 'Esta rotina é maior do que o Time comporta. Nada mudou.',
       stepBudget: 'As rotinas deste Time podem executar no máximo 20.000 etapas de Action por dia, somadas, e esta mudança passaria disso. Nada mudou.',

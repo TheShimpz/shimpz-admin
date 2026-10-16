@@ -207,6 +207,8 @@ export function routineErrorMessage(error, copy) {
     'routine-run-changed': copy.stale,
     'routine-run-not-found': copy.ended,
     'routine-incident-unavailable': copy.ended,
+    // Team cannot verify a held run's evidence, so it opens no card for it; its Routine can still be deleted.
+    'routine-incident-unverifiable': copy.unverifiable,
     // The card changed before the answer arrived; the decision opens its current card itself, so nothing is to reopen.
     'routine-card-stale': copy.cardChanged,
     'routine-not-found': copy.ended,

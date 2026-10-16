@@ -565,6 +565,7 @@ export default {
       ended: 'Esa ejecución ya terminó.',
       unavailable: 'Las rutinas no están disponibles ahora. Inténtalo de nuevo.',
       stale: 'Esta ejecución cambió. Ábrela de nuevo.',
+      unverifiable: 'No se puede verificar esta ejecución, así que no puede ejecutarse de nuevo.',
       cardChanged: 'Esta ejecución cambió, así que no se hizo nada. Lo que muestra ahora está actualizado.',
       tooLarge: 'Esta rutina es más grande de lo que el Equipo admite. No cambió nada.',
       stepBudget: 'Las rutinas de este Equipo pueden ejecutar como máximo 20 000 pasos de Action al día en conjunto, y este cambio superaría ese límite. No cambió nada.',

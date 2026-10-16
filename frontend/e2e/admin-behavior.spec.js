@@ -4326,25 +4326,21 @@ async function routeRoutines(
     listFailsAfterDelete = false,
     runEnding = false,
     held = true,
+    heldCall = true,
     lockAfter = 0,
     passkey = false,
   } = {},
 ) {
   const calls = { begins: [], deletes: [], resumes: [], pauses: [], answers: [] };
   let rejected = 0;
-  // The Routine is paused, and unless told otherwise an earlier run of it is held for recovery (ADR-0092).
+  // The Routine is paused, and unless told otherwise an earlier run of it is held for recovery (ADR-0092), at a call
+  // its incident names; a run held before it sealed a plan names none.
   let routines = [{ ...ROUTINE_VIEW, state: 'paused' }, ...others];
   let runs = [];
-  let incidents = held ? [
-    {
-      run_id: 'b'.repeat(32),
-      routine_id: ROUTINE_VIEW.routine_id,
-      assistant_id: 'shimpz-cloudflare',
-      action: 'replace-dns-record',
-      position: 2,
-      steps: 3,
-    },
-  ] : [];
+  const call = heldCall
+    ? { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }
+    : { assistant_id: null, action: null, position: null, steps: null };
+  let incidents = held ? [{ run_id: 'b'.repeat(32), routine_id: ROUTINE_VIEW.routine_id, ...call }] : [];
   // Every listed Routine's current revision projects the same plan, read page by page.
   await routeRead(page, 'routines.plan_steps', ({ team_id: teamId, routine_id: routineId, offset }) => {
     if (teamId !== 'marketing') return undefined;
@@ -5484,6 +5480,31 @@ test.describe('Team Routines', () => {
     await expect(panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button')).toHaveCount(2);
     expect(openings).toHaveLength(2);
   });
+
+  // Team cannot open a card for a held run whose evidence it cannot verify or whose state it cannot read; its Routine
+  // can still be deleted from the decision, which hides the panel's own Delete.
+  for (const code of ['routine-incident-unverifiable', 'routine-state-unavailable']) {
+    test(`a held run whose card fails with ${code} still offers its Routine's confirmed deletion`, async ({ page }, testInfo) => {
+      test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
+      await routeReadyChat(page);
+      const weekly = { ...ROUTINE_VIEW, routine_id: 'c'.repeat(32), name: 'Certificate check' };
+      const calls = await routeRoutines(page, { others: [weekly], heldCall: false });
+      await routeRead(page, 'routines.card', () => ok({ code }, 409));
+      await page.goto('/chat/?team=marketing');
+      await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+      const navigation = await openTeamNavigation(page);
+      await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+      const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
+      await list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+      const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+      await panel.getByRole('button', { name: 'Delete' }).click();
+      await panel.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
+      await panel.getByLabel('Six-digit code').fill('123456');
+      await panel.getByRole('button', { name: 'Delete' }).click();
+      await expect(list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) })).toHaveCount(0);
+      expect(calls.deletes).toHaveLength(1);
+    });
+  }
 
   test('a decision and a plan the panel shows because a run changed in the background never report activity', async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');

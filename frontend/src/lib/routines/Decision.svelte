@@ -25,7 +25,8 @@
   // Rodar and Excluir; Excluir is the Routine's own confirmed deletion, which `ondelete` opens in the host.
   // `onsettled` hears the outcome words once this decision is answered, and whether the same run was held again and
   // so waits for a fresh decision. A card Team cannot open yet (a held run listed before its incident) keeps Retry here
-  // and `onunavailable` lets the host refresh.
+  // and `onunavailable` lets the host refresh; one whose evidence Team cannot verify or whose state it cannot read also
+  // offers Excluir, since the host hides its own Delete while a decision is pending.
   let {
     teamId,
     teamName,
@@ -57,6 +58,9 @@
 
   // Rodar and Excluir, in this order, none recommended (ADR-0092 section 7).
   const CHOICES = ['run', 'delete'];
+  // The card openings Team refuses for the run itself, which a retry may not change: Excluir stays possible.
+  const UNOPENABLE = new Set(['routine-incident-unverifiable', 'routine-state-unavailable']);
+  let unopenable = $state(false);
   const CHOICE_ICONS = { run: 'play', delete: 'trash' };
   const HINTS = { run: 'runHint', delete: 'deleteHint' };
   let recovery = $derived(outcome === 'held');
@@ -113,8 +117,10 @@
   async function openCard() {
     try {
       card = await openRoutineCard(call, teamId, runId);
+      unopenable = false;
     } catch (error) {
       card = null;
+      unopenable = UNOPENABLE.has(error?.code);
       // A run already settled has nothing left to answer here; its newer notice replaces this one.
       if (error?.code !== 'routine-incident-unavailable') result = failed(error);
       else if (mounted) onunavailable();
@@ -311,6 +317,11 @@
         <Button size="sm" variant="secondary" type="button" disabled={!$commandsReady} onclick={() => (wanted = true)}>
           {copy.list.retry}
         </Button>
+        {#if unopenable}
+          <Button size="sm" variant="secondary" type="button" disabled={!$commandsReady} onclick={ondelete}>
+            {copy.card.delete}
+          </Button>
+        {/if}
       </div>
     {/if}
   {:else if recovery || ended}
