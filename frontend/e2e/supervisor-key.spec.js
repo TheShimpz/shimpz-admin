@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { dropSessions, readsOf, routeRead, routeScenario, sessionCalls, waitForRead } from './scenarioRoutes.js';
+import { authenticatedLocalSession } from './scenarios.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 
 // Replacing the Supervisor signing key (ADR-0051) against the built Admin with scenario fixtures (ADR-0087): Security
@@ -41,6 +42,27 @@ test('Security replaces the signing key after the password and an authenticator 
     ['supervisor_key.confirmation', { password: PASSWORD }],
     ['supervisor_key.rotate', { code: '123456' }],
   ]);
+});
+
+test('a passkey this address no longer has turns the replacement back to the code, whose field takes the focus', async ({ page }) => {
+  await routeScenario(page, 'supervisor-key');
+  // The session lists a passkey for this address, but the replacement's offer names none.
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(authenticatedLocalSession({ authentication_method: 'totp' })),
+  }));
+  await page.goto('/chat/');
+
+  await page.getByRole('button', { name: 'Supervisor' }).click();
+  await page.getByRole('menuitem', { name: copy.open }).click();
+  const dialog = page.getByRole('dialog', { name: copy.title });
+  await dialog.getByRole('region', { name: copy.keyLabel }).getByRole('button', { name: copy.rotate }).click();
+  await dialog.getByRole('group', { name: copy.method }).getByRole('radio', { name: copy.methodPasskey }).check();
+  await dialog.getByLabel(copy.password).fill(PASSWORD);
+  await dialog.getByRole('button', { name: copy.rotate, exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText(copy.passkeyMissing);
+  await expect(dialog.getByLabel(copy.code)).toBeFocused();
+  expect(await keyCalls(page)).toEqual([['supervisor_key.confirmation', { password: PASSWORD }]]);
 });
 
 test('a replacement Team has not answered says the new key is kept and stays in the confirmation', async ({ page }) => {
