@@ -259,17 +259,16 @@ export async function readPlanSteps(call, teamId, routineId, plan, offset) {
 }
 
 // What one run did, step by step (ADR-0092 amendment, 2026-10-05, scale; ADR-0101), mirroring Team's
-// `routine.canonical_run_step`: a recorded replay step's status, Action, attempt, duration, instant,
+// `routine_run.canonical_run_step`: a recorded replay step's status, Action, attempt, duration,
 // and its inputs as redacted previews, or a gap. `stopped`: Stop or the run's deadline cut the attempt, which says
 // nothing about whether the Action acted.
 const RUN_STEP_STATUSES = ['done', 'recovered', 'failed', 'stopped', 'waiting'];
 const RUN_STEP_GAPS = ['not_run', 'unavailable'];
-const RUN_INPUT_SOURCES = ['literal', 'run_clock', 'step_output'];
-const RUN_STEP_KEYS = ['position', 'status', 'assistant_id', 'action', 'attempt', 'duration_ms', 'recorded_at', 'inputs'];
+const RUN_STEP_KEYS = ['position', 'status', 'assistant_id', 'action', 'attempt', 'duration_ms', 'inputs'];
 
 function isRunInput(value) {
-  return exactKeys(value, ['member', 'source', 'value']) && plain(value.member, 128) &&
-    RUN_INPUT_SOURCES.includes(value.source) && (value.value === null || plain(value.value, MAX_PREVIEW_CHARS));
+  return exactKeys(value, ['member', 'value']) && plain(value.member, 128) &&
+    (value.value === null || plain(value.value, MAX_PREVIEW_CHARS));
 }
 
 /** Whether a value is a call's position: its step's 1-based position among `steps`. */
@@ -293,7 +292,6 @@ export function isRunStep(value, position, steps) {
     whole(value.attempt, 1, MAX_DIAGNOSTIC_ATTEMPTS) &&
     (duration === null || (Number.isSafeInteger(duration) && duration >= 0)) &&
     (value.status !== 'recovered' || duration === null) &&
-    isInstant(value.recorded_at) &&
     (value.inputs === null || (Array.isArray(value.inputs) && value.inputs.length <= MAX_STEP_INPUTS &&
       value.inputs.every(isRunInput) && distinctMembers(value.inputs)))
   );
@@ -345,8 +343,7 @@ export async function readRunSteps(call, teamId, runId, binding, snapshot, offse
     offset: offsetPath(offset),
   });
   const keys = [
-    'team_id', 'run_id', 'routine_id', 'revision', 'plan_digest', 'total', 'snapshot', 'ended', 'offset', 'steps',
-    'next',
+    'team_id', 'run_id', 'routine_id', 'revision', 'plan_digest', 'total', 'snapshot', 'offset', 'steps', 'next',
   ];
   return view(body, keys, (item) =>
     item.team_id === teamId &&
@@ -356,7 +353,6 @@ export async function readRunSteps(call, teamId, runId, binding, snapshot, offse
     Object.entries(binding).every(([key, expected]) => expected === null || item[key] === expected) &&
     typeof item.snapshot === 'string' && OPAQUE_ID_RE.test(item.snapshot) &&
     (snapshot === 'latest' || item.snapshot === snapshot) &&
-    typeof item.ended === 'boolean' &&
     item.offset === offset &&
     isPageOf(item, (step, index) => isRunStep(step, index, item.total)));
 }
@@ -621,16 +617,11 @@ function isCardEvidence(item) {
 
 function parseCard(body, teamId, runId) {
   const keys = [
-    'team_id', 'run_id', 'routine_id', 'revision', 'assistant_id', 'action', 'position', 'steps', 'evidence',
-    'diagnostic', 'tag',
+    'team_id', 'run_id', 'assistant_id', 'action', 'position', 'steps', 'evidence', 'diagnostic', 'tag',
   ];
   return view(body, keys, (item) =>
     item.team_id === teamId &&
     item.run_id === runId &&
-    typeof item.routine_id === 'string' &&
-    OPAQUE_ID_RE.test(item.routine_id) &&
-    Number.isInteger(item.revision) &&
-    item.revision >= 1 &&
     isAssistantId(item.assistant_id) &&
     isActionId(item.action) &&
     isCallPosition(item.position, item.steps) &&

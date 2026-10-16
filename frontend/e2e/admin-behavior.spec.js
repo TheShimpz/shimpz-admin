@@ -4273,8 +4273,6 @@ function recoveryCard(runId, { tag = 'f'.repeat(64), action = 'replace-dns-recor
   return {
     team_id: 'marketing',
     run_id: runId,
-    routine_id: ROUTINE_VIEW.routine_id,
-    revision: 1,
     assistant_id: 'shimpz-cloudflare',
     action,
     position: 2,
@@ -6015,7 +6013,7 @@ test.describe('Team Routines', () => {
     // Fifty-nine steps were done, Stop cut the next one, the one after failed, one record is gone, and the run never
     // started the rest.
     const gap = (position, kind) => ({
-      position: position, status: kind, assistant_id: null, action: null, attempt: null, duration_ms: null, recorded_at: null, inputs: null,
+      position: position, status: kind, assistant_id: null, action: null, attempt: null, duration_ms: null, inputs: null,
     });
     const records = Array.from({ length: total }, (_, index) => {
       const position = index + 1;
@@ -6028,9 +6026,8 @@ test.describe('Team Routines', () => {
         action: 'list-dns-records',
         attempt: position === 61 ? 3 : 1,
         duration_ms: 812,
-        recorded_at: '2026-10-01T12:00:02Z',
         // Team escaped a bidi override in the first step's preview.
-        inputs: [{ member: 'zone_id', source: 'step_output', value: position === 1 ? '"zone\\u202e-1"' : `"zone-${position}"` }],
+        inputs: [{ member: 'zone_id', value: position === 1 ? '"zone\\u202e-1"' : `"zone-${position}"` }],
       };
     });
     const read = [];

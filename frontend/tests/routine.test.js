@@ -1112,16 +1112,16 @@ const SNAPSHOT = 'c'.repeat(32);
 const REPLAY_1 = 1;
 const RECORDED = Object.freeze({
   position: REPLAY_1, status: 'done', assistant_id: 'shimpz-cloudflare', action: 'list-zones', attempt: 1, duration_ms: 812,
-  recorded_at: '2026-10-05T12:01:05Z', inputs: [{ member: 'page', source: 'literal', value: '1' }],
+  inputs: [{ member: 'page', value: '1' }],
 });
 const GAP = Object.freeze({
-  position: 2, status: 'not_run', assistant_id: null, action: null, attempt: null, duration_ms: null, recorded_at: null, inputs: null,
+  position: 2, status: 'not_run', assistant_id: null, action: null, attempt: null, duration_ms: null, inputs: null,
 });
 
-function runPage(offset, steps, { total = 2, snapshot = SNAPSHOT, ended = true } = {}) {
+function runPage(offset, steps, { total = 2, snapshot = SNAPSHOT } = {}) {
   return {
     team_id: 'team_1', run_id: RUN_ENTRY.run_id, routine_id: ROUTINE.routine_id, revision: 1, plan_digest: DIGEST,
-    total, snapshot, ended, offset, steps, next: offset + steps.length === total ? null : offset + steps.length,
+    total, snapshot, offset, steps, next: offset + steps.length === total ? null : offset + steps.length,
   };
 }
 // A position that is no step number, and a record placed there.
@@ -1147,7 +1147,7 @@ test("a run's step records are admitted only for its own revision and one snapsh
   for (const valid of [
     { ...RECORDED, status: 'recovered', duration_ms: null },
     { ...RECORDED, inputs: null },
-    { ...RECORDED, inputs: [{ member: 'api_key', source: 'literal', value: null }] },
+    { ...RECORDED, inputs: [{ member: 'api_key', value: null }] },
     { ...GAP, status: 'unavailable' },
   ]) {
     assert.ok(isRunStep(valid, valid.position, 2), JSON.stringify(valid));
@@ -1161,10 +1161,9 @@ test("a run's step records are admitted only for its own revision and one snapsh
     [{ ...RECORDED, duration_ms: -1 }, REPLAY_1],
     [{ ...RECORDED, duration_ms: 2 ** 53 }, REPLAY_1],
     [{ ...RECORDED, attempt: 0 }, REPLAY_1],
-    [{ ...RECORDED, recorded_at: 'yesterday' }, REPLAY_1],
-    [{ ...RECORDED, inputs: [{ member: 'page', source: 'secret', value: '1' }] }, REPLAY_1],
-    [{ ...RECORDED, inputs: [{ member: 'page', source: 'literal', value: 'a‮b' }] }, REPLAY_1],
-    [{ ...RECORDED, inputs: [{ member: 'a', source: 'literal', value: '1' }, { member: 'a', source: 'literal', value: '2' }] }, REPLAY_1],
+    [{ ...RECORDED, inputs: [{ member: 'page', value: '1', secret: true }] }, REPLAY_1],
+    [{ ...RECORDED, inputs: [{ member: 'page', value: 'a‮b' }] }, REPLAY_1],
+    [{ ...RECORDED, inputs: [{ member: 'a', value: '1' }, { member: 'a', value: '2' }] }, REPLAY_1],
     [{ ...RECORDED, raw_input: 'x' }, REPLAY_1],
     [{ ...GAP, attempt: 1 }, GAP.position],
     [{ ...GAP, status: 'skipped' }, GAP.position],
@@ -1184,7 +1183,6 @@ test("a run's step records are admitted only for its own revision and one snapsh
     [runPage(0, [RECORDED, ASTRAY], { total: 2 }), 'latest', 0],
     [runPage(0, steps, { snapshot: 'e'.repeat(32) }), SNAPSHOT, 0],
     [runPage(0, steps, { snapshot: 'latest' }), 'latest', 0],
-    [{ ...runPage(0, steps), ended: 'yes' }, 'latest', 0],
     [runPage(0, steps), 'latest', 1],
     [runPage(0, [GAP, RECORDED]), 'latest', 0],
   ]) {
@@ -1249,8 +1247,6 @@ test('a recovery card shows its recorded failure, offers exactly Rodar and Exclu
   const card = {
     team_id: 'team_1',
     run_id: INCIDENT.run_id,
-    routine_id: ROUTINE.routine_id,
-    revision: 2,
     assistant_id: 'shimpz-cloudflare',
     action: 'replace-dns-record',
     position: 2,

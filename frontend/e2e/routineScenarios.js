@@ -336,8 +336,6 @@ function card(state, runId) {
     json: {
       team_id: 'marketing',
       run_id: runId,
-      routine_id: held.routine_id,
-      revision: 1,
       assistant_id: held.assistant_id,
       action: held.action,
       position: held.position,
@@ -446,30 +444,29 @@ const record = (position, status, action, { attempt = 1, duration = 640 + positi
   action,
   attempt,
   duration_ms: status === 'recovered' ? null : duration,
-  recorded_at: new Date(Date.UTC(2026, 8, 30, 12, 0, 10 + position)).toISOString().replace('.000Z', 'Z'),
   inputs,
 });
 const RUN_RECORDS = {
   // The recovered run's DNS record list was rate limited once, and its recovery verified it.
   [id('e')]: [
-    record(1, 'done', 'list-zones', { inputs: [{ member: 'page', source: 'literal', value: '1' }] }),
-    record(2, 'recovered', 'list-dns-records', { attempt: 2, inputs: [{ member: 'zone_id', source: 'step_output', value: '"9a7806061c88ada191ed06f989cc3dac"' }] }),
-    record(3, 'done', 'update-dns-record', { inputs: [{ member: 'record_id', source: 'step_output', value: null }] }),
+    record(1, 'done', 'list-zones', { inputs: [{ member: 'page', value: '1' }] }),
+    record(2, 'recovered', 'list-dns-records', { attempt: 2, inputs: [{ member: 'zone_id', value: '"9a7806061c88ada191ed06f989cc3dac"' }] }),
+    record(3, 'done', 'update-dns-record', { inputs: [{ member: 'record_id', value: null }] }),
   ],
   [id('8')]: [
-    record(1, 'done', 'list-zones', { inputs: [{ member: 'page', source: 'literal', value: '1' }] }),
-    record(2, 'done', 'list-dns-records', { inputs: [{ member: 'zone_id', source: 'step_output', value: '"9a7806061c88ada191ed06f989cc3dac"' }] }),
+    record(1, 'done', 'list-zones', { inputs: [{ member: 'page', value: '1' }] }),
+    record(2, 'done', 'list-dns-records', { inputs: [{ member: 'zone_id', value: '"9a7806061c88ada191ed06f989cc3dac"' }] }),
   ],
   // The continuous watch's completed run shows nothing; each zone's records were listed.
   [id('c')]: WATCH.map((item) => record(item.position, 'done', item.action, {
-    inputs: item.position === 1 ? [{ member: 'page', source: 'literal', value: '1' }] : [{ member: 'zone_id', source: 'step_output', value: null }],
+    inputs: item.position === 1 ? [{ member: 'page', value: '1' }] : [{ member: 'zone_id', value: null }],
   })),
   // The failed run's zone list failed on its third attempt, so the run never started its second step.
   [FAILED_RUN]: [
-    record(1, 'failed', 'list-zones', { attempt: 3, inputs: [{ member: 'page', source: 'literal', value: '1' }] }),
+    record(1, 'failed', 'list-zones', { attempt: 3, inputs: [{ member: 'page', value: '1' }] }),
     {
       position: 2, status: 'not_run', assistant_id: null, action: null, attempt: null,
-      duration_ms: null, recorded_at: null, inputs: null,
+      duration_ms: null, inputs: null,
     },
   ],
 };
@@ -482,12 +479,12 @@ export function planPage(routineId, plan, steps, offset) {
 }
 
 /** One page of a run's records from `offset`, of one snapshot, bound to the revision its notice summarizes. */
-export function runStepsPage(runId, routineId, plan, records, { snapshot = SNAPSHOT, offset = 0, ended = true } = {}) {
+export function runStepsPage(runId, routineId, plan, records, { snapshot = SNAPSHOT, offset = 0 } = {}) {
   const page = records.slice(offset, offset + PAGE_STEPS);
   const next = offset + page.length === records.length ? null : offset + page.length;
   return {
     team_id: 'marketing', run_id: runId, routine_id: routineId, revision: plan.revision, plan_digest: plan.plan_digest,
-    total: records.length, snapshot, ended, offset, steps: page, next,
+    total: records.length, snapshot, offset, steps: page, next,
   };
 }
 
