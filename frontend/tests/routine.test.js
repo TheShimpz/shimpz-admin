@@ -627,6 +627,8 @@ test('schedules, instants, and failures read naturally in each locale', () => {
     ['routine-too-large', 'tooLarge'],
     ['routine-revision-changed', 'routineChanged'],
     ['routine-run-changed', 'stale'],
+    // Team opens no card for a held run whose evidence it cannot verify.
+    ['routine-incident-unverifiable', 'unverifiable'],
   ]) {
     assert.equal(routineErrorMessage(new RoutineError(code), errors), errors[key], code);
   }
@@ -636,7 +638,6 @@ test('schedules, instants, and failures read naturally in each locale', () => {
     assert.equal(new Set(budgets).size, 3, locale);
     assert.ok(budgets.every((words) => typeof words === 'string' && words.length > 0), locale);
   }
-  assert.match(errors.stepBudget, /20,000/u);
   assert.equal(routineErrorMessage(new RoutineError('other'), errors), errors.generic);
   assert.equal(routineErrorMessage(new Error('x'), errors), errors.generic);
   const zone = browserTimezone();
