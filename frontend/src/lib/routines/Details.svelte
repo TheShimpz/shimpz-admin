@@ -251,6 +251,7 @@
     }[entry.outcome];
   }
 
+  // Pause or Resume, whichever replaces the one pressed, keeps the focus that one lost.
   async function act(action) {
     busy = true;
     error = '';
@@ -262,6 +263,8 @@
     } finally {
       busy = false;
     }
+    await tick();
+    if (lost()) dialog.querySelector('.act--pause, .act--resume')?.focus();
   }
 
   async function removed(deleted) {

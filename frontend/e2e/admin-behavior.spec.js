@@ -5163,12 +5163,13 @@ test.describe('Team Routines', () => {
     await expect(item).toBeFocused();
     await item.click();
 
-    // Resume turns dispatch back on, and Pause turns it off again.
+    // Resume turns dispatch back on, and Pause turns it off again; focus stays on the button that replaced the one
+    // pressed.
     await panel.getByRole('button', { name: 'Resume' }).click();
-    await expect(panel.getByRole('button', { name: 'Pause' })).toBeVisible();
+    await expect(panel.getByRole('button', { name: 'Pause' })).toBeFocused();
     await expect.poll(() => calls.resumes).toEqual([ROUTINE_VIEW.routine_id]);
     await panel.getByRole('button', { name: 'Pause' }).click();
-    await expect(panel.getByRole('button', { name: 'Resume' })).toBeVisible();
+    await expect(panel.getByRole('button', { name: 'Resume' })).toBeFocused();
     await expect.poll(() => calls.pauses).toEqual([ROUTINE_VIEW.routine_id]);
 
     // A recent run, on the Runs page, opens its execution details.
