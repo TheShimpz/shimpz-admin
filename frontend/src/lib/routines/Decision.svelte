@@ -120,6 +120,14 @@
     return routineFailureWords(error, copy.errors, $t('shell.outcomeUnknown'));
   }
 
+  // An exit that keeps this decision open (its request dismissed or expired, refused, or answered frozen again) unmounts
+  // or disables what had focus; focus then moves to the decision's first enabled action, never to the document.
+  async function keepFocus() {
+    await tick();
+    if (!mounted || root?.closest('dialog')?.contains(document.activeElement)) return;
+    root?.querySelector('.actions button:not(:disabled)')?.focus();
+  }
+
   async function openCard() {
     try {
       card = await openRoutineCard(call, teamId, runId);
@@ -211,6 +219,7 @@
     } finally {
       challenge = null;
       working = false;
+      void keepFocus();
     }
   }
 
@@ -234,6 +243,8 @@
       challenge = null;
     } finally {
       working = false;
+      // An opened request takes focus itself; anything else leaves it here.
+      if (!challenge) void keepFocus();
     }
   }
 
@@ -254,6 +265,7 @@
       result = failed(error);
       challenge = null;
       working = false;
+      void keepFocus();
       return;
     }
     working = false;
@@ -265,6 +277,7 @@
     result = fill(copy.run.continued, { outcome: outcomeWords(answered.status) });
     if (answered.status !== 'frozen') finish(result, answered.status === 'held');
     challenge = null;
+    void keepFocus();
   }
 </script>
 
@@ -369,10 +382,10 @@
     {rejection}
     working={working || stale || !$commandsReady}
     onrespond={respond}
-    ondismiss={() => (challenge = null)}
+    ondismiss={() => { challenge = null; void keepFocus(); }}
     dismissLabel={copy.run.dismiss}
     onretry={() => (rejection = undefined)}
-    onexpire={() => { challenge = null; result = copy.errors.expired; }}
+    onexpire={() => { challenge = null; result = copy.errors.expired; void keepFocus(); }}
   />
 {/if}
 

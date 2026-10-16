@@ -7011,17 +7011,21 @@ test.describe('Team Routines', () => {
     await panel.getByRole('button', { name: 'Review' }).click();
     const dialog = page.getByRole('dialog', { name: 'Publish reviewed DNS changes?' });
     await expect(dialog).toBeVisible();
-    // Dismissing answers nothing: the run stays frozen and can be reviewed again.
+    // Dismissing answers nothing: the run stays frozen and can be reviewed again, with focus back on Review.
+    const review = panel.getByRole('button', { name: 'Review' });
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
-    await panel.getByRole('button', { name: 'Review' }).click();
+    await expect(review).toBeFocused();
+    await review.click();
     await dialog.getByRole('button', { name: 'Not now' }).click();
     await expect(dialog).toBeHidden();
+    await expect(review).toBeFocused();
     expect(answers).toEqual([]);
     const approval = { type: 'human-response', challenge_id: 'b'.repeat(32), decision: 'submit', value: true };
     await panel.getByRole('button', { name: 'Review' }).click();
     await dialog.getByRole('button', { name: 'Approve action' }).click();
     await expect(panel.getByRole('status')).toHaveText('The run continued: waiting for another answer');
+    await expect(review).toBeFocused();
     await panel.getByRole('button', { name: 'Review' }).click();
     await dialog.getByRole('button', { name: 'Approve action' }).click();
     await expect(panel.getByRole('status')).toContainText('The run continued: Done');
@@ -7036,6 +7040,7 @@ test.describe('Team Routines', () => {
     expect(resumes).toEqual([]);
     await auditPanel.getByRole('button', { name: 'Continue the run' }).click();
     await expect(auditPanel.getByRole('status')).toHaveText('The run continued: waiting for another answer');
+    await expect(auditPanel.getByRole('button', { name: 'Review' })).toBeFocused();
     expect(resumes).toEqual([waiting]);
     // Every opening names the interface language the request copy is rendered in (ADR-0091).
     expect(openings).toEqual(Array(5).fill({ locale: 'en' }));
