@@ -297,7 +297,6 @@ def _prepare_install(
 
 def _prepare_uninstall(
     team_id: str,
-    payload: dict[str, object],
     query: str,
     locale: str,
 ) -> Result:
@@ -349,7 +348,6 @@ def _classified_install(
 
 def _classified_uninstall(
     team_id: str,
-    payload: dict[str, object],
     classification: Route,
     locale: str,
     *,
@@ -364,7 +362,6 @@ def _classified_uninstall(
         )
     return _prepare_uninstall(
         team_id,
-        payload,
         classification.query,
         locale,
     )
@@ -378,7 +375,6 @@ def _lifecycle_result(
     team_id: str,
     payload: dict[str, object],
     classification: Route,
-    route_context: Context,
     catalog: store_catalog.StoreCatalog,
     *,
     allow_uninstall: bool,
@@ -398,7 +394,6 @@ def _lifecycle_result(
         )
     return _classified_uninstall(
         team_id,
-        payload,
         classification,
         locale,
         allow_uninstall=allow_uninstall,
@@ -491,7 +486,6 @@ def _prepare(
         team_id,
         payload,
         classification,
-        route_context,
         catalog,
         allow_uninstall=allow_uninstall,
     )
