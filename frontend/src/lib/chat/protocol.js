@@ -936,7 +936,7 @@ export function parseReceipt(value) {
 }
 
 // The Team steps a Routine's creation lists of the recording that made it (Team routine_notice.MAX_CREATION_STEPS).
-export const MAX_CREATION_STEPS = 64;
+const MAX_CREATION_STEPS = 64;
 
 /**
  * A Routine creation's steps as a receipt (ADR-0101): each a finished Team progress event numbered from 1 in order,

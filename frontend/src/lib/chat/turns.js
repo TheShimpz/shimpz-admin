@@ -121,8 +121,9 @@ export function historyTurn(entry, author, renderKey, words) {
     };
   }
   if (entry.kind === 'routine-run') {
-    // A Routine's creation shows what its recording spent, as a reply does: its usage line and its receipt.
-    const spent = entry.outcome === 'created' && entry.usage
+    // The chat's view holds only a Routine's creation (history.js), which shows what its recording spent, as a reply
+    // does: its usage line and its receipt.
+    const spent = entry.usage
       ? { usage: taskUsageSummary(entry.usage), receipt: entry.receipt }
       : {};
     return { ...stored, role: 'assistant', text: '', author, routineRun: entry, ...spent };

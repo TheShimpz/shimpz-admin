@@ -19,11 +19,11 @@
   let {
     teamId,
     position,
-    assistant = null,
-    action = null,
+    assistant,
+    action,
     readOnly = null,
-    inputs = [],
-    words = () => '',
+    inputs,
+    words,
     locked = [],
     copy,
     class: className = '',
@@ -32,7 +32,7 @@
   } = $props();
 
   // A step's Assistant opens its own page for the Team the step belongs to.
-  let href = $derived(`/assistants/${encodeURIComponent(assistant ?? '')}?team=${encodeURIComponent(teamId)}`);
+  let href = $derived(`/assistants/${encodeURIComponent(assistant)}?team=${encodeURIComponent(teamId)}`);
 </script>
 
 <li class={['routine-step', className]} tabindex="-1">
