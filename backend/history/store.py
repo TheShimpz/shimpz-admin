@@ -43,7 +43,6 @@ MAX_GUIDANCE_REPLY_CHARS = turn_contract.MAX_INTENT_ROUTE_REPLY_CHARS
 _MAX_POSITION = 2**63 - 1
 _TURN_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_INSTANT_RE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\Z")
 _GUIDANCE_CODES = frozenset(
     {
         "assistant-install-target-required",
@@ -103,12 +102,8 @@ def _now() -> str:
 
 
 def _instant(value: object) -> str:
-    if not isinstance(value, str) or _INSTANT_RE.fullmatch(value) is None:
+    if not routine_notice_contract.instant(value):
         raise HistoryUnavailableError("chat history entry time is invalid")
-    try:
-        datetime.datetime.fromisoformat(value)
-    except ValueError:
-        raise HistoryUnavailableError("chat history entry time is invalid") from None
     return value
 
 
@@ -142,7 +137,7 @@ def _initialize(database: sqlite3.Connection) -> None:
     if existing:
         raise HistoryUnavailableError("chat history schema is invalid")
     database.executescript(
-        """
+        f"""
         CREATE TABLE transcript (
             position INTEGER PRIMARY KEY AUTOINCREMENT,
             team_id TEXT NOT NULL,
@@ -160,7 +155,7 @@ def _initialize(database: sqlite3.Connection) -> None:
             team_id TEXT PRIMARY KEY,
             turn_id TEXT NOT NULL UNIQUE
         );
-        PRAGMA user_version = 13;
+        PRAGMA user_version = {SCHEMA_VERSION};
         """
     )
 
