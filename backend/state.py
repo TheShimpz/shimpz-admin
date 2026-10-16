@@ -780,12 +780,9 @@ def set_model_api_key(provider, api_key):
     topics.changed("space/models")
 
 
-def decision_credential() -> dict[str, object] | None:
-    """Return the private TypeSafe decision-key record for trusted backend callers only (ADR-0077)."""
-    record = _read().get("decision_credential")
-    if record is not None and not isinstance(record, dict):
-        raise RuntimeError(f"admin store {STORE_PATH} has an invalid decision credential")
-    return record
+def decision_credential() -> object:
+    """Return the private TypeSafe decision-key record, unchecked, for ``models.verified_secret`` only (ADR-0077)."""
+    return _read().get("decision_credential")
 
 
 def set_decision_api_key(api_key: str) -> None:

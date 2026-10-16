@@ -69,14 +69,16 @@ class DecisionProviderTests(unittest.TestCase):
         self.assertIsNone(self.decision.resolve())
 
     def test_a_malformed_record_fails_closed_naming_the_store(self) -> None:
-        records = ({"api_key": KEY}, {"api_key": KEY, "verified_at": 0}, {"api_key": "bad key", "verified_at": 1})
+        records = (
+            {"api_key": KEY},
+            {"api_key": KEY, "verified_at": 0},
+            {"api_key": "bad key", "verified_at": 1},
+            "broken",
+        )
         for record in records:
             self.state.STORE_PATH.write_text(json.dumps({"decision_credential": record}))
             with self.subTest(record=record), self.assertRaisesRegex(RuntimeError, "invalid typesafe credential"):
                 self.decision.resolve()
-        self.state.STORE_PATH.write_text(json.dumps({"decision_credential": "broken"}))
-        with self.assertRaises(RuntimeError):
-            self.decision.resolve()
 
     def test_a_save_validates_exactly_one_key_and_maps_failures(self) -> None:
         with mock.patch.object(self.decision, "configure", return_value={"configured": True}) as configure:
