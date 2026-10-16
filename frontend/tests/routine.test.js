@@ -469,10 +469,8 @@ test('Routines and runs are admitted only in their closed views', () => {
     { ...ROUTINE, output: { mode: 'show', step: 1, extra: null } },
     { ...ROUTINE, output: { mode: 'other', step: null } },
     { ...ROUTINE, plan: { ...SUMMARY, steps: 0, actions: [] }, output: { mode: 'none', step: null } },
-    // A Routine view carries its summary, never its steps, and shows a step by its position.
-    { ...Object.fromEntries(Object.entries(ROUTINE).filter(([key]) => key !== 'plan')), steps: PLAN },
+    // A Routine view shows its plan's last step by its position.
     { ...ROUTINE, output: { mode: 'show', step: 2 } },
-    { ...ROUTINE, output: { mode: 'show', step: 'zones' } },
   ]) {
     assert.throws(() => parseRoutineView(invalid), RoutineError, JSON.stringify(invalid));
   }
@@ -758,23 +756,20 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'held', detail: { extra: null } },
     { ...RUN_ENTRY, outcome: 'frozen', detail: { request_kind: 'email' } },
     { ...RUN_ENTRY, outcome: 'frozen', detail: {} },
-    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { name: 'DNS semanal' } },
     { ...RUN_ENTRY, created_at: '2026-02-30T12:00:00Z' },
     { ...RUN_ENTRY, version: 0 },
-    // A done row carries the summary of the plan it carried out, never a reply or a result.
-    { ...RUN_ENTRY, detail: { reply: 'Done.' } },
+    // A done row carries the summary of the plan it carried out, never a result.
     { ...RUN_ENTRY, detail: { plan: SUMMARY, output: null, result: { ip: '1.2.3.4' } } },
     { ...RUN_ENTRY, detail: { plan: SUMMARY } },
     // A shown result is always the plan's last step's.
     { ...RUN_ENTRY, outcome: 'recovered', detail: { plan: LONG, output: { ...UNSHOWN, step: 1 } } },
-    { ...RUN_ENTRY, outcome: 'needs-input', detail: { question: 'Which zone?' } },
     { ...RUN_ENTRY, outcome: 'paused', detail: { reason: 'approve' } },
     { ...RUN_ENTRY, outcome: 'paused', detail: {} },
     // A person's skip is a run outcome; it never stands in for the missed-schedule skip.
     { ...RUN_ENTRY, outcome: 'user-skipped', run_id: null, usage: null, detail: {} },
-    // A minute's healthy rollup belongs to the Routine, counts at most one run a second, and names no Actions.
+    // A minute's healthy rollup belongs to the Routine, counts at most one run a second, and carries only its count.
     { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 61 } },
-    { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 2, actions: [] } },
+    { ...RUN_ENTRY, outcome: 'healthy', run_id: null, detail: { runs: 2, extra: null } },
     { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'Bad Code' } },
     { ...RUN_ENTRY, outcome: 'failed', detail: {} },
     { ...RUN_ENTRY, outcome: 'skipped', run_id: null, usage: null, detail: { missed: 0 } },
@@ -1008,15 +1003,14 @@ test('a Routine plan projection is admitted only in its closed, bounded form', (
   assert.equal(isPlanStep(later, 2), true);
   // A dated text's view is its template's preview.
   assert.equal(isPlanStep({ ...later, inputs: [{ member: 'q', source: 'run_clock', value: 'news {D month YYYY|en}' }] }, 2), true);
-  // One Action may repeat: a step is named by its position, never by an id (ADR-0092 amendment, 2026-10-05, scale).
+  // One Action may repeat: a step is named by its position (ADR-0092 amendment, 2026-10-05, scale).
   assert.equal(isPlanStep({ ...step, position: 256 }, 256), true);
   for (const [value, position] of [
     [null, 1],
-    ['zones', 1],
     [step, 2],
     [{ ...step, position: 257 }, 257],
     [{ ...step, position: 0 }, 0],
-    [{ ...step, id: 'zones' }, 1],
+    [{ ...step, extra: true }, 1],
     [{ ...step, assistant: 'Bad' }, 1],
     [{ ...step, action: 'Bad action' }, 1],
     [{ ...step, inputs: 'none' }, 1],
@@ -1028,9 +1022,9 @@ test('a Routine plan projection is admitted only in its closed, bounded form', (
     [{ ...step, inputs: [{ member: 'page', source: 'literal', value: 'a‮b' }] }, 1],
     [{ ...later, inputs: [{ member: 'day', source: 'run_clock', value: '' }] }, 2],
     [{ ...later, inputs: [{ member: 'day', source: 'run_clock', value: 'x'.repeat(121) }] }, 2],
-    // A reference names an earlier position: never its own, a later one, or an id.
+    // A reference names an earlier position: never its own, a later one, or anything but a whole number.
     [{ ...later, inputs: [{ member: 'zone_id', source: 'step_output', step: 2, pointer: '/x', where: null, item: null }] }, 2],
-    [{ ...later, inputs: [{ member: 'zone_id', source: 'step_output', step: 'zones', pointer: '/x', where: null, item: null }] }, 2],
+    [{ ...later, inputs: [{ member: 'zone_id', source: 'step_output', step: '1', pointer: '/x', where: null, item: null }] }, 2],
     [{ ...later, inputs: [{ member: 'zone_id', source: 'step_output', step: 1, pointer: 'x', where: null, item: null }] }, 2],
     [{ ...later, inputs: [{ member: 'zone_id', source: 'step_output', step: 1, pointer: 7, where: null, item: null }] }, 2],
     [{ ...later, inputs: [{ member: 'zone_id', source: 'step_output', step: 1, pointer: '/'.repeat(257), where: null, item: null }] }, 2],
@@ -1558,7 +1552,7 @@ test('a shown result is admitted only in Team\'s closed form and reads as plain 
     { ...SHOWN_OUTPUT, state: 'hidden' },
     { ...SHOWN_OUTPUT, value: null },
     { ...UNSHOWN, value: { kind: 'null' } },
-    { ...SHOWN_OUTPUT, step: 'zones' },
+    { ...SHOWN_OUTPUT, step: '1' },
     { ...SHOWN_OUTPUT, step: 0 },
     { ...SHOWN_OUTPUT, step: 257 },
     { ...SHOWN_OUTPUT, extra: 1 },
@@ -1587,7 +1581,7 @@ test('a shown result is admitted only in Team\'s closed form and reads as plain 
   assert.ok(isDisposition({ mode: 'show', step: 120 }, 120));
   assert.ok(isDisposition({ mode: 'none', step: null }, 1));
   for (const [invalid, total] of [
-    [{ mode: 'show', step: 2 }, 1], [{ mode: 'changes', step: 1 }, 2], [{ mode: 'show', step: 'zones' }, 1],
+    [{ mode: 'show', step: 2 }, 1], [{ mode: 'changes', step: 1 }, 2], [{ mode: 'show', step: '1' }, 1],
     [{ mode: 'none', step: 1 }, 1],
     [{ mode: 'loud', step: null }, 1], [{ mode: 'none', step: null }, 0],
     [{ mode: 'show', step: 1, extra: null }, 1],

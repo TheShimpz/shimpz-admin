@@ -156,7 +156,7 @@ class RoutineManageTests(unittest.TestCase):
             (PAGE, (ID, "2", "1")),
             (PAGE, (routine, "3", "1")),
             (PAGE, (routine, "2", "0")),
-            ({**PAGE, "steps": [{**PAGE["steps"][0], "id": "zones"}]}, (routine, "2", "1")),
+            ({**PAGE, "steps": [{**PAGE["steps"][0], "extra": None}]}, (routine, "2", "1")),
         ):
             with self.subTest(asked=asked), self.call(answer(foreign)):
                 self.assertEqual(manage.plan_steps("team_1", *asked).status, 502)
