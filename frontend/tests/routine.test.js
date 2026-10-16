@@ -347,7 +347,7 @@ test('a Routine card is admitted only whole, and its inputs say where each value
     assert.throws(() => parseRoutineProposal(withInput(input({ origin: 'clock', value }))), RoutineError, String(value));
   }
   const fromStep = proposalInputValue(input({ origin: 'step', step: 1, pointer: '/result/0/id' }), copy.proposal, copy.plan);
-  assert.equal(fromStep, `${fill(copy.proposal.origins.step, { n: 1 })}: result › primeiro › id`);
+  assert.equal(fromStep, `${fill(copy.proposal.origins.step, { n: 1 })}: ${pointerWords('/result/0/id', copy.plan)}`);
   // Every documented refusal has its own sentence; a plan code reads as the plan's, any other code as the generic one.
   assert.equal(refusalWords(parseRoutineRefusal({ code: 'routine-secret-literal' }), copy.proposal), copy.proposal.refusals.secret);
   assert.equal(refusalWords({ code: 'plan-input-type' }, copy.proposal), copy.proposal.refusals.plan);
@@ -1432,9 +1432,10 @@ test('a plan reads in words: ids, result paths, and literal previews', () => {
   assert.equal(humanizeId('---'), '---');
   assert.equal(humanizeId('list-dns_zones.v2'), 'List DNS zones v2');
   for (const value of [undefined, null, 7, {}]) assert.equal(humanizeId(value), '');
-  const plan = routineMessages.pt.plan;
-  assert.equal(pointerWords('/zones/0/id', plan), 'zones › primeiro › id');
-  assert.equal(pointerWords('/items/2/a~1b~0c', plan), 'items › item 3 › a/b~c');
+  // A stub catalog whose every template names itself proves the logic.
+  const plan = { first: '<first>', item: '<item {n}>' };
+  assert.equal(pointerWords('/zones/0/id', plan), 'zones › <first> › id');
+  assert.equal(pointerWords('/items/2/a~1b~0c', plan), 'items › <item 3> › a/b~c');
   assert.equal(literalWords('"example.com"'), 'example.com');
   assert.equal(literalWords('1'), '1');
   assert.equal(literalWords('{"a":1}'), '{"a":1}');
@@ -1604,13 +1605,14 @@ test('a shown result is admitted only in Team\'s closed form and reads as plain 
   assert.equal(resultTable({ kind: 'list', items: [text('a')], omitted: 0 }, 8), null);
   assert.equal(resultTable(zones, 2), null);
   assert.equal(resultTable(SHOWN_OUTPUT.value, 8), null);
-  const words = copy.notice.output;
+  // A stub catalog whose every template names itself proves the logic; numbers still read in the viewer's locale.
+  const words = { yes: '<yes>', no: '<no>', redacted: '<redacted>', more: { one: '<one {count}>', other: '<other {count}>' } };
   assert.deepEqual(
     [text('<b>x</b>'), { kind: 'number', value: '1234.5' }, { kind: 'bool', value: true }, { kind: 'bool', value: false },
       { kind: 'redacted' }, { kind: 'elided' }, { kind: 'null' }].map((node) => outputScalarWords(node, words, 'pt')),
-    ['<b>x</b>', '1.234,5', 'sim', 'não', 'oculto', '…', '—'],
+    ['<b>x</b>', '1.234,5', '<yes>', '<no>', '<redacted>', '…', '—'],
   );
-  assert.equal(omittedWords(words, 1, 'pt'), 'mais 1');
+  assert.equal(omittedWords(words, 1, 'pt'), '<one 1>');
   // A number reads in the viewer's locale only while the browser holds it exactly; otherwise exactly as Team wrote it.
   const number = (value) => outputScalarWords({ kind: 'number', value }, words, 'pt');
   assert.deepEqual(
@@ -1626,7 +1628,7 @@ test('a shown result is admitted only in Team\'s closed form and reads as plain 
   // Labels read humanized only while that keeps them distinct.
   assert.deepEqual(outputLabels(['per_page', 'name']), ['Per page', 'Name']);
   assert.deepEqual(outputLabels(['a-b', 'a_b']), ['a-b', 'a_b']);
-  assert.equal(omittedWords(routineMessages.en.notice.output, 1200, 'en'), '1,200 more');
+  assert.equal(omittedWords(words, 1200, 'en'), '<other 1,200>');
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     for (const key of ['empty', 'yes', 'no', 'redacted', 'truncated']) {
       assert.equal(typeof catalog.notice.output[key], 'string', `${locale} ${key}`);
