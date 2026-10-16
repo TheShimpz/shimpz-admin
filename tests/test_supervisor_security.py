@@ -61,8 +61,10 @@ class SecondFactorFailureStateTests(unittest.TestCase):
         state.verify_totp(code(_secret(), unlocked + 90), ceremony="login", now=unlocked + 90, journal=unjournaled)
         self.assertEqual(state.unacknowledged_second_factor_failures(), totp.FAILURE_LIMIT + 2)
 
-        self.assertEqual(state.acknowledge_second_factor_failures(2), totp.FAILURE_LIMIT)
-        self.assertEqual(state.acknowledge_second_factor_failures(totp.FAILURE_LIMIT + 10), 0)
+        state.acknowledge_second_factor_failures(2)
+        self.assertEqual(state.unacknowledged_second_factor_failures(), totp.FAILURE_LIMIT)
+        state.acknowledge_second_factor_failures(totp.FAILURE_LIMIT + 10)
+        self.assertEqual(state.unacknowledged_second_factor_failures(), 0)
 
     def test_confirming_an_operation_is_no_sign_in(self) -> None:
         state.verify_totp("000000", ceremony="operation", now=NOW + 60, journal=unjournaled)

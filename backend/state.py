@@ -214,17 +214,16 @@ def unacknowledged_second_factor_failures() -> int:
     return int(data["second_factor_failures"]["unacknowledged"])
 
 
-def acknowledge_second_factor_failures(count: int) -> int:
-    """Acknowledge `count` reported failures, never more than are reported, and return how many remain."""
+def acknowledge_second_factor_failures(count: int) -> None:
+    """Acknowledge `count` reported failures, never more than are reported."""
 
-    def acknowledge(data: dict) -> int:
+    def acknowledge(data: dict) -> None:
         if _authentication_state(data) != auth.RECORD_STATE_CONFIGURED:
             raise auth.PasswordRecordError("Local Supervisor authentication is not configured")
         failures = data["second_factor_failures"]
         failures["unacknowledged"] = max(failures["unacknowledged"] - count, 0)
-        return int(failures["unacknowledged"])
 
-    return cast(int, _mutate(acknowledge))
+    _mutate(acknowledge)
 
 
 def _validated_passkey(record: object) -> dict[str, object]:
