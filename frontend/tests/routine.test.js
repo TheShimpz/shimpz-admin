@@ -963,6 +963,10 @@ test('a Routine plan projection bounds text in Unicode code points, as Team does
   ]) {
     assert.equal(isPlanStep(value, position), false, JSON.stringify(value));
   }
+  // Team's unsafe set holds a lone surrogate, which no text it projects carries; a paired one is one safe character.
+  assert.equal(isPlanStep(literal('"a\ud800b"'), 1), false);
+  assert.equal(isPlanStep({ ...step, inputs: [{ member: 'a\udc00', source: 'literal', value: '1' }] }, 1), false);
+  assert.equal(isPlanStep(literal(`"${emoji}"`), 1), true);
 });
 
 test('a Routine plan projection is admitted only in its closed, bounded form', () => {

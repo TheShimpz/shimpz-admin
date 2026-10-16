@@ -113,7 +113,9 @@ const MAX_PAGE_STEPS = 64;
 // A plan summary names its Actions as runs of consecutive equal Actions, at most this many.
 const MAX_SUMMARY_RUNS = 16;
 const POINTER_RE = /^(?:\/(?:[^/~]|~[01])*)*$/;
-const PLAN_UNSAFE_RE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/u;
+// Exactly Team's unsafe set (`routine.PLAN_UNSAFE_RE`): controls, bidi and zero-width formatting, line and paragraph
+// separators, the BOM, and, in this Unicode-mode class, a lone surrogate. No text Team projects carries one unescaped.
+const PLAN_UNSAFE_RE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ud800-\udfff\ufeff]/u;
 const INPUT_KEYS = {
   literal: ['member', 'source', 'value'],
   run_clock: ['member', 'source', 'value'],
@@ -583,9 +585,8 @@ export function pauseRoutine(call, teamId, routineId) {
   return setPaused(call, teamId, routineId, true);
 }
 
-// Exactly Team's unsafe set (`routine.escaped`): controls, bidi and zero-width formatting, line and paragraph
-// separators, the BOM, and, in this Unicode-mode class, a lone surrogate.
-const UNSAFE_TEXT_RE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ud800-\udfff\ufeff]/gu;
+// The unsafe set as a global pattern, which escaping replaces throughout.
+const UNSAFE_TEXT_RE = new RegExp(PLAN_UNSAFE_RE.source, 'gu');
 
 /** Text with every character in Team's unsafe set written back as its JSON unicode escape, as Team writes it. */
 export function escapedText(text) {
