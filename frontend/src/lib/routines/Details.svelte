@@ -1,6 +1,7 @@
 <script>
   import { Button, Notice } from '@shimpz/frontend';
   import { tick, untrack } from 'svelte';
+  import { beforeNavigate } from '$app/navigation';
 
   import {
     historyHead,
@@ -312,6 +313,13 @@
     page = PAGES[next].id;
     document.getElementById(`${id}-tab-${page}`)?.focus();
   }
+
+  // A link in the panel, such as a step's Assistant, leaves for its page: the panel closes as the page changes.
+  beforeNavigate(() => {
+    if (!dialog?.open) return;
+    dialog.close();
+    onclose();
+  });
 
   function back(event) {
     event?.preventDefault();

@@ -3,7 +3,7 @@
 
   import { call } from '#lib/session/socket.js';
   import RoutineIcon from '#lib/routines/Icon.svelte';
-  import Inputs from '#lib/routines/Inputs.svelte';
+  import RoutineStep from '#lib/routines/Step.svelte';
   import Paging from '#lib/routines/Paging.svelte';
   import { fill } from '#lib/i18n/fill.js';
   import { assistantName } from '#lib/assistants/names.js';
@@ -13,8 +13,9 @@
   import { attemptWords, conditionWords, countWords, literalWords } from '#lib/routines/words.js';
   import { durationWords } from '#lib/routines/reading.js';
 
-  // The steps of one Routine run as the run recorded them (ADR-0092 amendment, 2026-10-05, scale), numbered in order:
-  // each step's Action and Assistant, what happened to it, how long its attempt took, the inputs that attempt was
+  // The steps of one Routine run as the run recorded them (ADR-0092 amendment, 2026-10-05, scale), each laid out as a
+  // Routine card lists it (`Step.svelte`): its Assistant and Action, what happened to it, how long its attempt took, the
+  // inputs that attempt was
   // given as Team's redacted previews in the plan's own words (a hidden value as a lock chip), and the failed attempts
   // Team recorded for it. A step with no record says plainly that it did not run or that its record is unavailable.
   // The records are read page by page for one snapshot of them, bound to the run's historical `binding`
@@ -112,40 +113,29 @@
 
 <ol class="steps" bind:this={list}>
   {#each paging.shown as step (step.position)}
-    <li class={['step', `step--${step.status}`]} tabindex="-1">
-      <span class="number" aria-hidden="true">{String(step.position).padStart(2, '0')}</span>
-      <div class="body">
-        {#if step.action}
-          <div class="head">
-            <span class="action">{humanizeId(step.action)}</span>
-            <span class="assistant">{$assistantName(step.assistant_id)}</span>
-          </div>
-        {/if}
+    {@const shown = step.action && step.inputs?.length ? step.inputs : []}
+    <RoutineStep {teamId} class={`step--${step.status}`} position={step.position} assistant={step.assistant_id}
+      action={step.action} inputs={shown.filter((input) => input.value !== null)} words={(input) => literalWords(input.value)}
+      locked={shown.filter((input) => input.value === null).map((input) => hidden(input.member))} copy={copy.proposal}>
+      {#snippet status()}
         <div class="status">
           <RoutineIcon name={ICONS[step.status]} /><span class="word">{copy.result.status[step.status]}</span>
           {#if step.duration_ms !== null}<span class="when">{durationWords(step.duration_ms, locale)}</span>{/if}
           {#if step.attempt > 1}<span class="when">{fill(copy.result.attempt, { attempt: step.attempt })}</span>{/if}
         </div>
-        {#if step.action}
-          {#if step.inputs === null}
-            <div class="dim">{copy.result.inputsUnavailable}</div>
-          {:else if step.inputs.length > 0}
-            <div class="meta">
-              <Inputs inputs={step.inputs.filter((input) => input.value !== null)} words={(input) => literalWords(input.value)}
-                locked={step.inputs.filter((input) => input.value === null).map((input) => hidden(input.member))} />
-            </div>
-          {:else}
-            <div class="dim">{copy.result.noInputs}</div>
-          {/if}
-        {/if}
-        {#if attempts?.byStep.get(step.position)?.length}
-          <div class="attempts">
-            <div class="attempts-title">{countWords(copy.result.attempts, attempts.byStep.get(step.position).length, locale)}</div>
-            <ul>{#each attempts.byStep.get(step.position) as item (`${item.operation_id}:${item.attempt}`)}{@render attempt(item, false)}{/each}</ul>
-          </div>
-        {/if}
-      </div>
-    </li>
+      {/snippet}
+      {#if step.action && step.inputs === null}
+        <div class="dim">{copy.result.inputsUnavailable}</div>
+      {:else if step.action && step.inputs.length === 0}
+        <div class="dim">{copy.result.noInputs}</div>
+      {/if}
+      {#if attempts?.byStep.get(step.position)?.length}
+        <div class="attempts">
+          <div class="attempts-title">{countWords(copy.result.attempts, attempts.byStep.get(step.position).length, locale)}</div>
+          <ul>{#each attempts.byStep.get(step.position) as item (`${item.operation_id}:${item.attempt}`)}{@render attempt(item, false)}{/each}</ul>
+        </div>
+      {/if}
+    </RoutineStep>
   {/each}
 </ol>
 <Paging {paging} {remaining} unavailable={copy.result.stepsUnavailable} loading={copy.result.stepsLoading}
@@ -158,42 +148,17 @@
 {/if}
 
 <style>
-  /* Numbered rows joined by one hairline rail: a mono number, the Action with its Assistant, a quiet status, then
-     the parameters in the plan's one wrapping line of key and value pairs. */
+  /* Each step is a shared Routine step row; under it, its status in a quiet mono line, then its inputs and attempts. */
   .steps { display: grid; margin: 0; padding: 0; list-style: none; }
-  .step {
-    position: relative;
-    display: grid;
-    grid-template-columns: 2rem minmax(0, 1fr);
-    gap: var(--gap-item);
-    padding-block: 0 var(--gap-group);
-    outline-offset: 2px;
-  }
-  /* The rail's offsets follow the number column's geometry, not the spacing rhythm. */
-  .step:not(:last-child)::before {
-    position: absolute;
-    inset-block: 1.6rem 0.4rem;
-    inset-inline-start: 0.7rem;
-    width: 1px;
-    border-radius: 0;
-    background: var(--shimpz-color-border-subtle);
-    content: '';
-  }
-  .number { color: var(--shimpz-color-cyan); font: 600 0.75rem/1.6 var(--shimpz-font-mono); }
-  .body { display: grid; gap: var(--gap-item); min-width: 0; }
-  .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--gap-inside) var(--gap-item); }
-  .action { color: var(--shimpz-color-text); font-weight: 600; overflow-wrap: anywhere; }
-  .assistant { color: var(--shimpz-color-text-dim); font-size: 0.75rem; }
   .status { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--gap-inside) var(--gap-item); color: var(--shimpz-color-text-muted); font: 600 0.62rem/1.4 var(--shimpz-font-mono); letter-spacing: 0.08em; text-transform: uppercase; }
   .status .word { display: inline-flex; align-items: center; }
   .status .when { color: var(--shimpz-color-text-dim); font-weight: 400; letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
   .status :global(.routine-icon) { width: 0.8rem; height: 0.8rem; color: var(--shimpz-color-cyan); }
-  .step--failed .status :global(.routine-icon) { color: var(--shimpz-color-danger); }
-  .step--stopped .status :global(.routine-icon) { color: var(--shimpz-color-text-muted); }
-  .step--waiting .status :global(.routine-icon) { color: var(--shimpz-color-yellow); }
-  .step--not_run .status :global(.routine-icon),
-  .step--unavailable .status :global(.routine-icon) { color: var(--shimpz-color-text-dim); }
-  .meta { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--gap-inside) var(--gap-group); color: var(--shimpz-color-text-muted); font-size: 0.76rem; }
+  :global(.step--failed) .status :global(.routine-icon) { color: var(--shimpz-color-danger); }
+  :global(.step--stopped) .status :global(.routine-icon) { color: var(--shimpz-color-text-muted); }
+  :global(.step--waiting) .status :global(.routine-icon) { color: var(--shimpz-color-yellow); }
+  :global(.step--not_run) .status :global(.routine-icon),
+  :global(.step--unavailable) .status :global(.routine-icon) { color: var(--shimpz-color-text-dim); }
   .dim { color: var(--shimpz-color-text-dim); font-size: 0.75rem; }
   .attempts { display: grid; gap: var(--gap-item); margin-block-start: var(--gap-inside); padding: var(--gap-item) var(--gap-group); border-inline-start: 2px solid var(--shimpz-color-border); border-radius: 0; background: rgb(255 255 255 / 0.015); }
   .attempts.apart { margin-block-start: var(--gap-item); }

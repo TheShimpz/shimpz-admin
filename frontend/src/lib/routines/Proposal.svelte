@@ -1,22 +1,18 @@
 <script>
-  import { AssistantIcon, Disclosure, TextAreaField, TextLink } from '@shimpz/frontend';
+  import { Disclosure, TextAreaField } from '@shimpz/frontend';
   import { tick } from 'svelte';
 
   import DialogAction from '#lib/DialogAction.svelte';
   import RoutineIcon from '#lib/routines/Icon.svelte';
-  import Inputs from '#lib/routines/Inputs.svelte';
-  import Tag from '#lib/routines/Tag.svelte';
+  import RoutineStep from '#lib/routines/Step.svelte';
 
   import { call, commandsReady } from '#lib/session/socket.js';
-  import { installedIconUrl } from '#lib/assistants/icons.js';
-  import { assistantName } from '#lib/assistants/names.js';
   import { locale, t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
   import { refreshTeamRoutines } from '#lib/routines/context.js';
-  import { humanizeId } from '#lib/ids.js';
   import { confirmRoutineProposal, revokeRoutineProposal } from '#lib/routines/protocol.js';
   import {
-    fillParts, outputChoiceWords, proposalInputValue, proposalRequest, proposalWhen, routineFailureWords, stepTag,
+    outputChoiceWords, proposalInputValue, proposalRequest, proposalWhen, routineFailureWords,
   } from '#lib/routines/words.js';
   import { recoverFocus } from '#lib/shell/focus.js';
 
@@ -52,9 +48,6 @@
   let error = $state('');
   let now = $state(Date.now());
   let expired = $derived(now >= Date.parse(proposal.expires_at));
-
-  // A step's Assistant opens its own page for the Team the card belongs to.
-  const assistantHref = (id) => `/assistants/${encodeURIComponent(id)}?team=${encodeURIComponent(teamId)}`;
 
   // A card expires on its own; an idle page withdraws its buttons then.
   $effect(() => {
@@ -203,28 +196,9 @@
       {#if !editing && stepsOpen}
         <ol class="rows" aria-label={card.steps}>
           {#each proposal.steps as step (step.position)}
-            <li>
-              <div class="row">
-                <span class="index" aria-hidden="true">{String(step.position).padStart(2, '0')}</span>
-                <span class="what">
-                  {#each fillParts(card.stepLine, {
-                    assistant: $assistantName(step.assistant), action: humanizeId(step.action),
-                  }) as part, index (index)}
-                    {#if part.key === 'assistant'}<TextLink class="assistant glitch-host" href={assistantHref(step.assistant)}><AssistantIcon
-                        class="glitch-icon" assistant={step.assistant} src={installedIconUrl(teamId, step.assistant)} size={18}
-                      /><span class="glitch-text">{part.text}</span></TextLink>
-                    {:else}<span class={part.key || 'joint'}>{part.text}</span>{/if}
-                  {/each}
-                </span>
-                <!-- Each step reads or writes, each in its own color. -->
-                <Tag size="xs" {...stepTag(step.read_only, card)} />
-              </div>
-              {#if step.inputs.length}
-                <div class="inputs">
-                  <Inputs inputs={step.inputs} words={(input) => proposalInputValue(input, card, copy.plan)} />
-                </div>
-              {/if}
-            </li>
+            <RoutineStep {teamId} position={step.position} assistant={step.assistant} action={step.action}
+              readOnly={step.read_only} inputs={step.inputs} words={(input) => proposalInputValue(input, card, copy.plan)}
+              copy={card} />
           {/each}
         </ol>
       {/if}
@@ -241,8 +215,6 @@
      the steps' disclosure at its start and the buttons at its end, the steps opening below it. */
   .routine-proposal {
     --label: 600 0.6rem/1.5 var(--shimpz-font-mono);
-    /* The step number's column: just wide enough for two digits. */
-    --index: 1.1rem;
     display: grid;
     gap: var(--gap-item);
     max-width: 62ch;
@@ -295,35 +267,6 @@
   /* The steps render below the row, so the disclosure's own content box holds nothing. */
   .bar :global(.details > .content) { display: none; }
   .rows { display: grid; padding: 0; list-style: none; }
-  .rows > li { display: grid; gap: var(--gap-inside); padding-block: var(--shimpz-space-2); }
-  .rows > li + li { border-block-start: 1px dashed var(--shimpz-color-border-subtle); border-radius: 0; }
-  .row { display: grid; grid-template-columns: var(--index) minmax(0, 1fr) auto; align-items: center; gap: var(--shimpz-space-2); }
-  .index { color: var(--shimpz-color-cyan); font: 600 0.7rem/1 var(--shimpz-font-mono); }
-  .what { min-width: 0; overflow-wrap: anywhere; }
-  /* Each step's Assistant, its icon before its name, links to its page in the line's muted tone. */
-  .what :global(.assistant) {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--shimpz-space-2);
-    vertical-align: middle;
-    color: var(--shimpz-color-text-muted);
-    font-weight: inherit;
-  }
-  /* On hover it brightens and takes Admin's shared glitch (app.css), never an underline. */
-  .what :global(.assistant:hover) { color: var(--shimpz-color-text); }
-  .what :global(.assistant .shimpz-assistant-icon) { flex: none; }
-  .what .joint { color: var(--shimpz-color-text-dim); }
-  .what .action { color: var(--shimpz-color-text); font-weight: 600; }
-  /* A step's inputs wrap as one line of "Member: value" pairs under its Action, as a Routine's plan lists them. */
-  .inputs {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--gap-inside) var(--gap-group);
-    margin-inline-start: calc(var(--index) + var(--shimpz-space-2));
-    color: var(--shimpz-color-text-muted);
-    font-size: 0.76rem;
-  }
   /* Cancel and Edit each carry their own tone without a border: its text and icon at rest, its fill on hover. */
   .actions :global(.tone-cancel) {
     --button-color: var(--shimpz-color-danger);
@@ -346,7 +289,4 @@
   .notice { justify-self: end; }
   .routine-result { color: var(--shimpz-color-text-muted); }
   .error { color: var(--shimpz-color-danger); font-size: 0.75rem; }
-  @media (max-width: 420px) {
-    .inputs { margin-inline-start: 0; }
-  }
 </style>

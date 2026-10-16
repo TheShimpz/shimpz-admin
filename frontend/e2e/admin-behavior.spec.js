@@ -6486,7 +6486,11 @@ test.describe('Team Routines', () => {
     // A field set with nothing in it says so.
     await expect(result.getByText('Nothing', { exact: true })).toBeVisible();
     await expect(view).toContainText('Showing part of the result.');
-    await expect(view.locator('img, a, script')).toHaveCount(0);
+    // Nothing the run produced renders as markup: the view's one link is its step's Assistant, with that Assistant's icon.
+    await expect(result.locator('img, a, script')).toHaveCount(0);
+    await expect(view.locator('script')).toHaveCount(0);
+    await expect(view.getByRole('link')).toHaveCount(1);
+    await expect(view.getByRole('link')).toHaveAttribute('href', '/assistants/shimpz-cloudflare?team=marketing');
     // Two labels that would read alike stay as Team wrote them, and numbers read exactly, never rounded.
     await expect(result.getByText('a-b', { exact: true })).toBeVisible();
     await expect(result.getByText('a_b', { exact: true })).toBeVisible();
