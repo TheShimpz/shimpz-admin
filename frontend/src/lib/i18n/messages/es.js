@@ -351,7 +351,6 @@ export default {
     },
     plan: {
       title: 'Pasos',
-      step: '{assistant} · {action}',
       clock: '{format} de cada ejecución',
       clocks: {
         date: 'la fecha',
@@ -411,6 +410,7 @@ export default {
     card: {
       heldLead: 'Esta ejecución se detuvo con un error.',
       stoppedAt: 'Se detuvo en el paso {n} de {total} · {step}',
+      step: '{assistant} › {action}',
       choose: '¿Qué quieres hacer?',
       errorTitle: 'Ver el error técnico',
       causeTitles: {

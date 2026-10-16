@@ -351,7 +351,6 @@ export default {
     },
     plan: {
       title: 'Schritte',
-      step: '{assistant} · {action}',
       clock: '{format} jedes Laufs',
       clocks: {
         date: 'Datum',
@@ -411,6 +410,7 @@ export default {
     card: {
       heldLead: 'Diese Ausführung wurde durch einen Fehler angehalten.',
       stoppedAt: 'Angehalten bei Schritt {n} von {total} · {step}',
+      step: '{assistant} › {action}',
       choose: 'Was möchtest du tun?',
       errorTitle: 'Technischen Fehler ansehen',
       causeTitles: {

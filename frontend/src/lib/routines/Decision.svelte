@@ -71,10 +71,10 @@
     if (!recovery) return '';
     const step = card ?? detail;
     if (step.assistant_id === null) return copy.run.stoppedUnknown;
-    const words = fill(copy.plan.step, {
+    const words = fill(copy.card.step, {
       assistant: $assistantName(step.assistant_id),
       action: humanizeId(step.action),
-    }).replace(' · ', ' › ');
+    });
     return fill(copy.card.stoppedAt, { n: step.position, total: step.steps, step: words });
   });
   // What the person is asked to decide: a held run waits for them, and a frozen one names the approval it waits for.

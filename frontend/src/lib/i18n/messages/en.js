@@ -352,7 +352,6 @@ export default {
     // A Routine's plan in words, its details panel, and its status words (ADR-0086, ADR-0092).
     plan: {
       title: 'Steps',
-      step: '{assistant} · {action}',
       clock: 'each run\'s {format}',
       clocks: {
         date: 'date',
@@ -412,6 +411,7 @@ export default {
     card: {
       heldLead: 'This run stopped with an error.',
       stoppedAt: 'Stopped at step {n} of {total} · {step}',
+      step: '{assistant} › {action}',
       choose: 'What do you want to do?',
       errorTitle: 'See the technical error',
       causeTitles: {

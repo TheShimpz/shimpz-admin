@@ -351,7 +351,6 @@ export default {
     },
     plan: {
       title: '步骤',
-      step: '{assistant} · {action}',
       clock: '每次运行的{format}',
       clocks: {
         date: '日期',
@@ -411,6 +410,7 @@ export default {
     card: {
       heldLead: '本次运行因错误而停止。',
       stoppedAt: '停在第 {n} 步，共 {total} 步 · {step}',
+      step: '{assistant} › {action}',
       choose: '你想怎么做？',
       errorTitle: '查看技术错误',
       causeTitles: {

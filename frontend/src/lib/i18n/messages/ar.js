@@ -351,7 +351,6 @@ export default {
     },
     plan: {
       title: 'الخطوات',
-      step: '{assistant} · {action}',
       clock: '{format} لكل تشغيل',
       clocks: {
         date: 'التاريخ',
@@ -411,6 +410,7 @@ export default {
     card: {
       heldLead: 'توقّف هذا التشغيل بسبب خطأ.',
       stoppedAt: 'توقّف عند الخطوة {n} من {total} · {step}',
+      step: '{assistant} › {action}',
       choose: 'ماذا تريد أن تفعل؟',
       errorTitle: 'عرض الخطأ التقني',
       causeTitles: {

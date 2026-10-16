@@ -351,7 +351,6 @@ export default {
     },
     plan: {
       title: 'ステップ',
-      step: '{assistant} · {action}',
       clock: '各実行の{format}',
       clocks: {
         date: '日付',
@@ -411,6 +410,7 @@ export default {
     card: {
       heldLead: 'この実行はエラーで停止しました。',
       stoppedAt: 'ステップ {n}/{total} で停止 · {step}',
+      step: '{assistant} › {action}',
       choose: 'どうしますか？',
       errorTitle: '技術的なエラーを見る',
       causeTitles: {
