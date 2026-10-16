@@ -11,7 +11,7 @@
   // below move between pages of PAGE_SIZE items. The page starts on `initial` when it is listed, and a new search
   // starts on the first page. `copy` holds the field's label, its placeholder, the empty result, the page words, and
   // the two page buttons.
-  let { label, items = [], copy, initial = '', onchoose } = $props();
+  let { label, items, copy, initial, onchoose } = $props();
 
   const PAGE_SIZE = 3;
 

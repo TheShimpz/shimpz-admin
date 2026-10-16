@@ -8,7 +8,7 @@
   // says what it is or does, and a chevron. `variant="choice"` sets the label as a mono uppercase verb, `"item"` as a
   // plain name. The row is named by its label and described by its line, plus any `status` words that only assistive
   // technology reads. Text always wraps, never truncates; the hover glitch moves the label and icon, never the line.
-  let { label, title = '', items = [], variant = 'choice', disabled = false, onchoose } = $props();
+  let { label, title = '', items, variant = 'choice', disabled = false, onchoose } = $props();
 
   const id = $props.id();
 </script>
