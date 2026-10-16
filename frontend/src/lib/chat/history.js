@@ -6,6 +6,7 @@ import {
   MAX_GUIDANCE_REPLY_CHARS,
   MAX_MESSAGE_CHARS,
   MAX_REPLY_CHARS,
+  parseCreationReceipt,
   parseInstallPlanAssistant,
   parseUninstallAssistant,
   parseReceipt,
@@ -242,7 +243,9 @@ function historyEntry(value, status) {
   }
   if (value.kind === 'routine-run' && match[2] === 'routine') {
     try {
-      return parseRoutineRunEntry(value);
+      const entry = parseRoutineRunEntry(value);
+      // A creation's steps are the receipt its usage line opens, as a reply's are (ADR-0082).
+      return entry.outcome === 'created' ? { ...entry, receipt: parseCreationReceipt(entry.detail.steps) } : entry;
     } catch {
       throw invalidHistory(status);
     }

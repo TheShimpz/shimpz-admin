@@ -180,6 +180,13 @@ test('a stored row becomes the turn the live conversation showed, carrying the r
   });
   const run = { kind: 'routine-run', id: 'n' };
   assert.equal(historyTurn({ ...run, createdAt: at }, 'Marketing', 11, WORDS).routineRun.id, 'n');
+  // A Routine's creation shows what its recording spent, as a reply does.
+  const usage = { duration_ms: 6200, models: [{ provider: 'openai', model: 'gpt-6.1-sol', input_tokens: 9, output_tokens: 1 }] };
+  const receipt = [{ segment: 0, seq: 1, origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 900 }];
+  const created = historyTurn({ ...run, outcome: 'created', usage, receipt, createdAt: at }, 'Marketing', 12, WORDS);
+  assert.deepEqual([created.usage.tokens, created.usage.durationMs, created.receipt], [10, 6200, receipt]);
+  const spentNothing = historyTurn({ ...run, outcome: 'created', usage: null, receipt: [], createdAt: at }, 'Marketing', 13, WORDS);
+  assert.equal(Object.hasOwn(spentNothing, 'usage'), false);
   const uninstall = historyTurn({
     id: 'x', createdAt: at, kind: 'assistant-uninstall', state: 'uninstalled', uninstalled: false,
     assistant: { id: 'shimpz-cloudflare' },

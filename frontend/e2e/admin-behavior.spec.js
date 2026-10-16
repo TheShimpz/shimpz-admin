@@ -22,10 +22,12 @@ import {
   waitForRead,
 } from './scenarioRoutes.js';
 import {
-  CARD_SETTINGS, diagnostic, httpFailure, noticeRow, planPage, planSummary, ROUTINE_TEXT, routineChallenge,
+  CARD_SETTINGS, CREATION, CREATION_USAGE, diagnostic, httpFailure, noticeRow, planPage, planSummary, ROUTINE_TEXT,
+  routineChallenge,
   routineLifecycleStart, runStepsPage,
 } from './routineScenarios.js';
 import { outputChoiceWords, proposalRequest, proposalWhen } from '../src/lib/routines/words.js';
+import { formatTaskUsage, taskUsageSummary } from '../src/lib/chat/usage.js';
 import {
   authenticatedLocalSession,
   historyView,
@@ -5203,6 +5205,55 @@ test.describe('Team Routines', () => {
     expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toHaveLength(1);
   });
 
+  test("a Routine's creation opens its panel, whose steps read as the card's, and shows what its recording spent", async ({ page }) => {
+    await recordRoutine(page);
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    await card.getByText(messages.en.routine.proposal.steps).click();
+    const stepHeads = (list) => list.locator(':scope > li .row').allInnerTexts();
+    const cardSteps = await stepHeads(card.getByRole('list', { name: messages.en.routine.proposal.steps }));
+    expect(cardSteps.length).toBeGreaterThan(0);
+    await card.getByRole('button', { name: 'Create', exact: true }).click();
+
+    // The creation names its Routine and opens that Routine's panel, the one its Team's list opens.
+    const created = page.locator('.routine-run');
+    const opener = created.getByRole('button', {
+      name: messages.en.routine.proposal.answers.created.replace('{name}', ROUTINE_TEXT.en.card),
+    });
+    await opener.click();
+    const panel = page.getByRole('dialog', { name: ROUTINE_TEXT.en.card, exact: true });
+    await expect(panel).toBeVisible();
+    // Opened from the chat, the panel has no list to go back to.
+    await expect(panel.getByRole('button', { name: messages.en.routine.list.back })).toHaveCount(0);
+    await panel.getByRole('tab', { name: messages.en.routine.panel.steps }).click();
+    const planSteps = panel.getByRole('list', { name: messages.en.routine.plan.title });
+    // Each step lists its Assistant, linked to its page, its Action, and whether it reads or writes, as the card did.
+    await expect.poll(() => stepHeads(planSteps)).toEqual(cardSteps);
+    await expect(planSteps.getByRole('link', { name: 'Cloudflare', exact: true })).toHaveCount(cardSteps.length);
+    expect(await accessibilityViolations(page)).toEqual([]);
+    await page.keyboard.press('Escape');
+    await expect(panel).toHaveCount(0);
+    await expect(opener).toBeFocused();
+
+    // Its usage line totals every model turn of the recording, and opens the steps those turns took.
+    const message = page.getByRole('article').filter({ has: created });
+    const expected = formatTaskUsage(taskUsageSummary(CREATION_USAGE), 'en', messages.en.chatPage.usage);
+    const receipt = message.locator('.receipt summary');
+    const rows = CREATION.steps.length + 1;
+    await expect(receipt).toHaveAccessibleName(`${expected} · Execution stages recorded: ${rows}`);
+    await receipt.click();
+    await expect(message.locator('.receipt ol li')).toHaveCount(rows);
+    await page.reload();
+    await expect(page.getByRole('article').filter({ has: page.locator('.routine-run') }).locator('.receipt summary'))
+      .toHaveAccessibleName(`${expected} · Execution stages recorded: ${rows}`);
+
+    // A step's Assistant leaves for its page, and the panel closes with the chat.
+    await page.locator('.routine-run').getByRole('button').click();
+    await panel.getByRole('tab', { name: messages.en.routine.panel.steps }).click();
+    await planSteps.getByRole('link', { name: 'Cloudflare', exact: true }).first().click();
+    await expect(page).toHaveURL(/\/assistants\/shimpz-cloudflare\?team=marketing$/u);
+    await expect(panel).toHaveCount(0);
+  });
+
   test('a Routine card edited with its Edit button revokes it and sends the edited prompt as the next message', async ({ page }) => {
     const scenario = await recordRoutine(page);
     const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
@@ -6332,7 +6383,7 @@ test.describe('Team Routines', () => {
     await routeReadyChat(page, {
       history: {
         entries: [
-          entry('a'.repeat(32), 'created', {}, '2026-10-01T11:00:00Z'),
+          entry('a'.repeat(32), 'created', structuredClone(CREATION), '2026-10-01T11:00:00Z'),
           entry('f'.repeat(32), 'skipped', { missed: 2 }, '2026-10-01T11:30:00Z'),
           entry('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed' }),
           entry('d'.repeat(32), 'frozen', { request_kind: 'human' }),
@@ -6788,7 +6839,7 @@ test.describe('Team Routines', () => {
     await routeReadyChat(page, {
       history: {
         entries: [
-          row('b'.repeat(32), 'a'.repeat(32), 'created', {}),
+          row('b'.repeat(32), 'a'.repeat(32), 'created', structuredClone(CREATION)),
           row('c'.repeat(32), listed.routine_id, 'failed', { code: 'assistant-rpc-failed' }),
           row('d'.repeat(32), 'f'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: null }),
         ],
@@ -6832,7 +6883,7 @@ test.describe('Team Routines', () => {
 
   // A Routine's creation notice, the one Routine row the chat shows, naming the Routine `routine` was created as.
   function createdRow(id, routine = ROUTINE_VIEW) {
-    return routineRow(id, 'created', {}, { routine });
+    return routineRow(id, 'created', structuredClone(CREATION), { routine });
   }
 
   function choiceNames(panel) {

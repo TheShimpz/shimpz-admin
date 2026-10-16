@@ -81,7 +81,9 @@ import {
 import { resultTable } from '../src/lib/routines/reading.js';
 import { fill } from '../src/lib/i18n/fill.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
-import { diagnostic, httpFailure, noticeRow, planSummary, ROUTINE_TEXT, routineView } from '../e2e/routineScenarios.js';
+import {
+  CREATION, CREATION_USAGE, diagnostic, httpFailure, noticeRow, planSummary, ROUTINE_TEXT, routineView,
+} from '../e2e/routineScenarios.js';
 
 // Each interface language's own catalog of this copy.
 const routineMessages = Object.fromEntries(Object.entries(messages).map(([code, catalog]) => [code, catalog.routine]));
@@ -733,7 +735,8 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'failed', detail: { code: 'assistant-rpc-failed' } },
     { ...RUN_ENTRY, outcome: 'denied', detail: {} },
     { ...RUN_ENTRY, outcome: 'stopped', detail: {} },
-    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: {} },
+    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { steps: [] } },
+    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: CREATION_USAGE, detail: structuredClone(CREATION) },
     { ...RUN_ENTRY, outcome: 'streak-paused', run_id: null, usage: null, detail: { failures: 1 } },
     { ...RUN_ENTRY, outcome: 'streak-paused', run_id: null, usage: null, detail: { failures: 3 } },
   ];
@@ -774,6 +777,8 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
     { ...RUN_ENTRY, outcome: 'failed', detail: {} },
     { ...RUN_ENTRY, outcome: 'skipped', run_id: null, usage: null, detail: { missed: 0 } },
     { ...RUN_ENTRY, outcome: 'created', detail: {} },
+    // A creation carries its recording's model usage or none, never a run's active time.
+    { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: { duration_ms: 4120 }, detail: { steps: [] } },
     // A failure streak pauses its Routine after one to three failed runs in a row, and carries no usage.
     { ...RUN_ENTRY, outcome: 'streak-paused', run_id: null, usage: null, detail: { failures: 0 } },
     { ...RUN_ENTRY, outcome: 'streak-paused', run_id: null, usage: null, detail: { failures: 4 } },
@@ -793,7 +798,7 @@ test('a Routine transcript row is admitted only in its closed form', async () =>
 
 test("the chat's view admits each card's answer and only a Routine's creation, and a Routine's view only its own history", async () => {
   const page = (entries) => async () => ({ ok: true, status: 200, async json() { return { entries, before: null }; } });
-  const created = { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: {} };
+  const created = { ...RUN_ENTRY, outcome: 'created', run_id: null, usage: null, detail: { steps: [] } };
   const keyed = (letter) => ({ id: `${letter.repeat(32)}:routine`, notice_id: letter.repeat(32) });
   const missed = { ...RUN_ENTRY, ...keyed('c'), outcome: 'skipped', run_id: null, usage: null, detail: { missed: 2 } };
   const healthy = { ...RUN_ENTRY, ...keyed('d'), outcome: 'healthy', run_id: null, detail: { runs: 2 } };

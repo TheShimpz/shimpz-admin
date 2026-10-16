@@ -206,8 +206,26 @@ const ROUTINE_OUTCOMES = ['skipped', 'created', 'healthy', 'streak-paused'];
  * One Routine notice as Admin stores it: a run's notice names its run and carries its active duration; a Routine's
  * notice names no run and carries no usage, except the healthy rollup's summed duration.
  */
+// What a Routine's creation spent (ADR-0101): its recording's model usage and the Team steps of its turns.
+export const CREATION_USAGE = Object.freeze({
+  duration_ms: 8_400,
+  models: [{ provider: 'openai', model: 'gpt-6.1-sol', input_tokens: 12_480, output_tokens: 320 }],
+});
+export const CREATION = Object.freeze({
+  steps: [
+    { seq: 1, phase: 'team-context', state: 'finished', elapsed_ms: 40 },
+    { seq: 2, phase: 'model', state: 'finished', elapsed_ms: 3_100 },
+    {
+      seq: 3, phase: 'action', state: 'finished', elapsed_ms: 420,
+      assistant_id: 'shimpz-cloudflare', index: 1, action: 'list-zones', total: 1,
+    },
+    { seq: 4, phase: 'model', state: 'finished', elapsed_ms: 2_800 },
+  ],
+});
+
 export function noticeRow(noticeId, routine, outcome, detail, { at = '2026-10-01T12:00:00Z', version = 1, usage, lost = false } = {}) {
   const run = !ROUTINE_OUTCOMES.includes(outcome);
+  const created = outcome === 'created' ? structuredClone(CREATION_USAGE) : null;
   return {
     id: `${noticeId}:routine`,
     kind: 'routine-run',
@@ -219,7 +237,7 @@ export function noticeRow(noticeId, routine, outcome, detail, { at = '2026-10-01
     created_at: at,
     detail,
     version,
-    usage: usage ?? (run || outcome === 'healthy' ? structuredClone(RUN_USAGE) : null),
+    usage: usage ?? (run || outcome === 'healthy' ? structuredClone(RUN_USAGE) : created),
     protection_lost: lost,
   };
 }
@@ -267,7 +285,7 @@ function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now) {
   const yesterday = (offset) => at(offset - 86_400);
   const completed = (plan, output) => ({ plan, output });
   return [
-    noticeRow(id('a'), CONTINUOUS, 'created', {}, { at: yesterday(-120) }),
+    noticeRow(id('a'), CONTINUOUS, 'created', structuredClone(CREATION), { at: yesterday(-120) }),
     noticeRow(id('c'), CONTINUOUS, 'done', completed(CONTINUOUS.plan, null), { at: yesterday(-50) }),
     noticeRow(id('d'), CONTINUOUS, 'healthy', { runs: 9 }, { at: yesterday(0), version: 9, usage: { duration_ms: 37_080 } }),
     noticeRow(id('e'), HELD, 'recovered', completed(HELD.plan, SHOWN_UPDATE), { at: yesterday(20), usage: { duration_ms: 9800 } }),
@@ -715,7 +733,7 @@ function confirmProposal(state, { proposal_id: proposalId }) {
   state.routines = [...state.routines, routine];
   state.plans = { ...state.plans, [routine.routine_id]: CARD_STEPS };
   const noticeId = `7${proposalId.slice(-8)}`.padStart(32, '0');
-  state.history = [...state.history, noticeRow(noticeId, routine, 'created', {}, { at: instant(Date.now()) })];
+  state.history = [...state.history, noticeRow(noticeId, routine, 'created', structuredClone(CREATION), { at: instant(Date.now()) })];
   answered(state, proposalId, 'created');
   return { status: 200, json: { team_id: 'marketing', proposal_id: proposalId, routine_id: routine.routine_id, status: 'created' } };
 }

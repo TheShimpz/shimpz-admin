@@ -13,7 +13,7 @@ import {
   routineRuns,
 } from '../src/lib/chat/history.js';
 import { LocalApiError } from '../src/lib/api.js';
-import { noticeRow, planSummary } from '../e2e/routineScenarios.js';
+import { CREATION, CREATION_USAGE, noticeRow, planSummary } from '../e2e/routineScenarios.js';
 import { response } from './socketStub.js';
 
 const TURN_A = 'a'.repeat(32);
@@ -394,6 +394,30 @@ function runRow(noticeId, routineId) {
 function chatRow(index) {
   return { id: `${index.toString(16).padStart(32, '0')}:user`, created_at: AT, kind: 'message', role: 'user', text: 'Hi' };
 }
+
+test("a Routine's creation keeps what its recording spent: its model usage and its steps as its receipt", async () => {
+  const daily = { routine_id: '9'.repeat(32), name: 'Daily zones' };
+  const created = (detail, usage) => noticeRow('1'.repeat(32), daily, 'created', detail, { at: AT, usage });
+  const load = (row) => listChatHistory(async () => response(200, { entries: [row], before: null }), 'marketing');
+  const [entry] = (await load(created(structuredClone(CREATION)))).entries;
+  assert.deepEqual(entry.usage, CREATION_USAGE);
+  // Each step is a finished Team progress event of one delivery, numbered from 1, as a reply's receipt is.
+  assert.deepEqual(entry.receipt, CREATION.steps.map((step) => ({ ...step, origin: 'team', segment: 0 })));
+  // A recording whose turns reported no model usage keeps none; its steps stay.
+  assert.equal((await load({ ...created({ steps: [] }), usage: null })).entries[0].usage, null);
+  const step = CREATION.steps[1];
+  for (const [detail, usage] of [
+    [{}, CREATION_USAGE],
+    [{ steps: [{ ...step, state: 'started', elapsed_ms: undefined }] }, CREATION_USAGE],
+    [{ steps: [{ ...step, seq: 2 }] }, CREATION_USAGE],
+    [{ steps: [{ ...step, phase: 'admin-preparation' }] }, CREATION_USAGE],
+    [{ steps: Array.from({ length: 65 }, (_, index) => ({ ...step, seq: index + 1 })) }, CREATION_USAGE],
+    [structuredClone(CREATION), { duration_ms: 4120 }],
+  ]) {
+    const row = JSON.parse(JSON.stringify(created(detail, usage)));
+    await assert.rejects(load(row), LocalApiError);
+  }
+});
 
 test("a Routine's history is read from its own view, newest first, a page at a time with the cursor to older runs", async () => {
   const routine = '9'.repeat(32);

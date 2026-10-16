@@ -5,7 +5,7 @@
 // card Team recorded from a chat turn.
 
 import { isLocale } from '../i18n/locales.js';
-import { parseRunUsage } from '../chat/usage.js';
+import { parseRunUsage, parseTaskUsage } from '../chat/usage.js';
 import { exactKeys, jsonObject } from '../api.js';
 import { factorOffer, isFactorProof } from '../auth/factor.js';
 import { codePointLength, ERROR_CODE_RE, HIDDEN_RE, isInstant, isShownText } from '../grammar.js';
@@ -679,8 +679,9 @@ const NOTICE_DETAILS = {
   failed: [['code'], (detail) => typeof detail.code === 'string' && ERROR_CODE_RE.test(detail.code)],
   denied: NOTHING,
   stopped: NOTHING,
-  // A Routine's creation names it and says nothing else (ADR-0101).
-  created: NOTHING,
+  // A Routine's creation lists the Team steps of the recording that made it (ADR-0101), which the chat's history
+  // admits as its receipt.
+  created: [['steps'], (detail) => Array.isArray(detail.steps)],
   // Its consecutive failed runs paused the Routine, and how many.
   'streak-paused': [['failures'], (detail) => whole(detail.failures, 1, MAX_FAILURE_STREAK)],
 };
@@ -694,9 +695,16 @@ export function isName(value, maximum = MAX_NAME_CHARS) {
   return isShownText(value, maximum, HIDDEN_RE) && value.normalize('NFC') === value;
 }
 
-// A row's usage: every run outcome carries its run's, and the healthy rollup its runs' summed; no other Routine
-// outcome carries any.
+// A row's usage: every run outcome carries its run's, and the healthy rollup its runs' summed; a creation carries what
+// its recording's model turns spent, in a chat reply's shape, or null; no other Routine outcome carries any.
 function rowUsage(value) {
+  if (value.outcome === 'created') {
+    try {
+      return value.usage === null ? null : parseTaskUsage(value.usage);
+    } catch {
+      throw new RoutineError('routine-entry-invalid');
+    }
+  }
   const used = !ROUTINE_OUTCOMES.includes(value.outcome) || value.outcome === 'healthy';
   if (!used) {
     if (value.usage !== null) throw new RoutineError('routine-entry-invalid');

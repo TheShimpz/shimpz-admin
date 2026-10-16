@@ -121,7 +121,11 @@ export function historyTurn(entry, author, renderKey, words) {
     };
   }
   if (entry.kind === 'routine-run') {
-    return { ...stored, role: 'assistant', text: '', author, routineRun: entry };
+    // A Routine's creation shows what its recording spent, as a reply does: its usage line and its receipt.
+    const spent = entry.outcome === 'created' && entry.usage
+      ? { usage: taskUsageSummary(entry.usage), receipt: entry.receipt }
+      : {};
+    return { ...stored, role: 'assistant', text: '', author, routineRun: entry, ...spent };
   }
   if (entry.kind === 'routine-answer') {
     return { ...stored, role: 'assistant', text: '', author, routineAnswer: entry };

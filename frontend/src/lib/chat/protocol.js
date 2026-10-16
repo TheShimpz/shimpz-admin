@@ -935,6 +935,23 @@ export function parseReceipt(value) {
   return receipt;
 }
 
+// The Team steps a Routine's creation lists of the recording that made it (Team routine_notice.MAX_CREATION_STEPS).
+export const MAX_CREATION_STEPS = 64;
+
+/**
+ * A Routine creation's steps as a receipt (ADR-0101): each a finished Team progress event numbered from 1 in order,
+ * at most MAX_CREATION_STEPS, all in one delivery. Any other shape throws.
+ */
+export function parseCreationReceipt(value) {
+  if (!Array.isArray(value) || value.length > MAX_CREATION_STEPS) throw invalidResponse();
+  return value.map((item, index) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) throw invalidResponse();
+    const event = progressEvent({ ...item, origin: 'team' }, []);
+    if (event.state !== 'finished' || event.seq !== index + 1) throw invalidResponse();
+    return { ...event, segment: 0 };
+  });
+}
+
 function parseDoneEvent(value, expectedTeamId) {
   let clarification = null;
   let usage = null;
