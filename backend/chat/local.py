@@ -35,7 +35,6 @@ from protocol.http.v1 import websocket as chat_ws_common
 _MISSING_RUNTIME_STATUSES = frozenset({HTTPStatus.NOT_FOUND, HTTPStatus.METHOD_NOT_ALLOWED, HTTPStatus.NOT_IMPLEMENTED})
 MAX_REPLY_CHARS = turn_contract.MAX_REPLY_CHARS
 _ERROR_CODE_RE = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
-_REPLY_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification", "trace_id"})
 # A done event's public fields.
 DONE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification"})
@@ -702,7 +701,7 @@ def _project_turn(
         # A reply is empty only beside a Routine card, question, or refusal, which then says everything.
         or (not reply.strip() and (reply or not routine))
         or len(reply) > MAX_REPLY_CHARS
-        or _REPLY_CONTROL_RE.search(reply) is not None
+        or turn_contract.REPLY_CONTROL_RE.search(reply) is not None
         or any(value and value in shown for value in forbidden_values)
     ):
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})

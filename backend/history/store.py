@@ -42,7 +42,6 @@ MAX_REPLY_CHARS = turn_contract.MAX_REPLY_CHARS
 MAX_GUIDANCE_REPLY_CHARS = turn_contract.MAX_INTENT_ROUTE_REPLY_CHARS
 _MAX_POSITION = 2**63 - 1
 _TURN_ID_RE = re.compile(r"^[0-9a-f]{32}$")
-_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _GUIDANCE_CODES = frozenset(
     {
         "assistant-install-target-required",
@@ -78,12 +77,13 @@ def _turn_id(value: object) -> str:
 
 
 def _text(value: object, maximum: int, field: str) -> str:
+    """Stored chat text: trimmed, within its bound, and free of the control characters a Team reply never carries."""
     if (
         not isinstance(value, str)
         or not value
         or value != value.strip()
         or len(value) > maximum
-        or _CONTROL_RE.search(value) is not None
+        or turn_contract.REPLY_CONTROL_RE.search(value) is not None
     ):
         raise ValueError(f"chat history {field} is invalid")
     return value

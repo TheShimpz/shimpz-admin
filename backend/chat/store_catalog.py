@@ -9,7 +9,6 @@ import contextlib
 import hashlib
 import http.client
 import json
-import re
 import threading
 import time
 import unicodedata
@@ -37,10 +36,6 @@ MAX_CACHED_ICONS = 256
 MAX_CACHED_ICON_BYTES = 8 * 1024 * 1024
 VERSION_RE = team_contract.ASSISTANT_VERSION_RE
 CREATOR_RE = team_contract.DETAILS_CREATOR_RE
-_GITHUB = re.compile(
-    r"^https://github\.com/[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?/"
-    r"[A-Za-z0-9](?:[A-Za-z0-9_.-]{0,98}[A-Za-z0-9])?$"
-)
 _HUMAN_REQUEST_KINDS = frozenset(
     {
         "approval",
@@ -275,7 +270,7 @@ def _assistant(value: object) -> CatalogAssistant:
         raise ValueError("catalog icon digest is invalid")
     if value["platforms"] != ["linux/amd64", "linux/arm64"]:
         raise ValueError("catalog platforms are invalid")
-    if not isinstance(value["github"], str) or _GITHUB.fullmatch(value["github"]) is None:
+    if not isinstance(value["github"], str) or team_contract.GITHUB_REPOSITORY_RE.fullmatch(value["github"]) is None:
         raise ValueError("catalog repository is invalid")
     creators = _strings(value["creators"], 16, 39)
     if not creators or any(CREATOR_RE.fullmatch(creator) is None for creator in creators):
