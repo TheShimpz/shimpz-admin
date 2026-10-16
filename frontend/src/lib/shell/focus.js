@@ -5,9 +5,10 @@ import { tick } from 'svelte';
 // which keeps the element last focused inside a scope) and Radix's FocusScope (which takes focus back when the browser
 // drops it to the body):
 // - `recoverFocus`, an attachment on a dialog or panel, returns the focus to the element that last held it inside the
-//   scope once that element is usable again: enabled, connected, shown, and not inert. It waits through any number of
-//   renders while the request runs, and gives up once the person moves the focus anywhere, presses outside that
-//   element, or the element leaves the scope. Only the innermost scope around the element recovers.
+//   scope once it can take focus again (`focus()` does nothing while it is disabled, inert, hidden, or detached). It
+//   waits through any number of renders while the request runs, and gives up once the person moves the focus anywhere,
+//   presses outside that element, or the element leaves the scope. Only the innermost scope around the element
+//   recovers.
 // - `regainFocus` gives the focus to an explicit target once the pending render is done, where the outcome decides
 //   another place (the field a refusal names, the control that replaces the one pressed). Given the `focusMark` taken
 //   when its request began, it gives up once the person moved the focus or pressed elsewhere since, even when that
@@ -68,12 +69,6 @@ function press(event) {
   if (held && !held.element.contains(event.target)) held = null;
 }
 
-function usable(element) {
-  return (
-    element.isConnected && !element.matches(':disabled') && !element.closest('[inert]') && element.checkVisibility()
-  );
-}
-
 /** Attachment: within `node`, the element that last held the focus takes it back from the document once usable. */
 export function recoverFocus(node) {
   listen();
@@ -84,7 +79,7 @@ export function recoverFocus(node) {
     frame = requestAnimationFrame(() => {
       frame = 0;
       const element = held?.scope === node ? held.element : null;
-      if (element && focusLost() && node.contains(element) && usable(element)) element.focus();
+      if (element && focusLost() && node.contains(element)) element.focus();
     });
   });
   observer.observe(node, {
