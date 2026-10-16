@@ -11,7 +11,7 @@
   // Close and, unless `oncancel` handles it, Escape close the modal, then `onclose` hears that it closed.
   let {
     dialog = $bindable(),
-    class: className = '',
+    class: className,
     size = 'lg',
     title,
     frameClass = '',
