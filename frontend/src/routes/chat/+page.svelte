@@ -456,13 +456,15 @@
   }
 
   // The earlier history's Retry leaves while the page is read again, so the focus it held comes back: to the new Retry
-  // when the read fails again, to the composer once it succeeds. Focus the person moved or pressed elsewhere meanwhile
-  // stays where it is.
+  // when the read fails again, to the composer once it succeeds, both for the same Team. Focus the person moved or
+  // pressed elsewhere meanwhile stays where it is.
   let olderRetry = $state();
 
   async function retryOlder() {
+    const teamId = chatTeamId;
     const since = focusMark();
     await transcript.retryOlder();
+    if (chatTeamId !== teamId) return;
     if (transcript.olderFailed) await regainFocus(() => olderRetry, { since });
     else if (focusMark() === since) void focusComposer();
   }

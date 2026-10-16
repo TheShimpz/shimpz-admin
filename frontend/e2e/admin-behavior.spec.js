@@ -2096,6 +2096,44 @@ test('offers a retry only after automatic earlier history fails', async ({ page 
   await expect.poll(() => chat.historyRequests()).toEqual([null, cursor]);
 });
 
+test("an earlier-history retry that fails once the person went back to another Team gives that Team's Retry no focus", async ({ page }) => {
+  const cursor = 'AAAAAAAAAAI';
+  await routeReadyChat(page, { secondTeam: true, history: longHistory('f', 1, cursor), olderHistory: longHistory('e', 1, null) });
+  // Neither Team's earlier history can be read, and Support's model selection cannot be read either, so its composer
+  // never takes the focus; Marketing's second earlier read waits.
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  let marketingOlder = 0;
+  await routeRead(page, 'history.page', async (params) => {
+    if (params.team_id === 'support') {
+      return 'before' in params ? ok({ detail: 'offline' }, 503) : ok(longHistory('c', 1, cursor));
+    }
+    if (!('before' in params)) return undefined;
+    marketingOlder += 1;
+    if (marketingOlder === 2) await held;
+    return ok({ detail: 'offline' }, 503);
+  });
+  await routeRead(page, 'inference.read', ({ team_id: teamId }) => (
+    teamId === 'support' ? ok({ detail: 'unavailable' }, 503) : undefined
+  ));
+  await page.goto('/chat/?team=support');
+  const retry = page.getByRole('button', { name: 'Load older messages' });
+  await expect(retry).toBeVisible();
+  await page.getByRole('navigation').getByRole('link', { name: 'Marketing', exact: true }).click();
+  await expect(page).toHaveURL(/team=marketing/);
+  await expect.poll(() => marketingOlder).toBe(1);
+  await retry.click();
+  await expect.poll(() => marketingOlder).toBe(2);
+  // Going back to Support is nobody's move on the page; Marketing's discarded retry then gives Support's Retry nothing.
+  await page.goBack();
+  await expect(page).toHaveURL(/team=support/);
+  await expect(retry).toBeVisible();
+  release();
+  // Nothing on Support shows Marketing's answer: the wait bounds when it arrives.
+  await page.waitForTimeout(300);
+  await expect(retry).not.toBeFocused();
+});
+
 test('stops automatic earlier history when a page does not advance its cursor', async ({ page }) => {
   const cursor = 'AAAAAAAAAAI';
   const chat = await routeReadyChat(page, {
