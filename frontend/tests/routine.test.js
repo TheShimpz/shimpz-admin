@@ -1446,8 +1446,8 @@ test('a plan reads in words: ids, result paths, and literal previews', () => {
   assert.equal(literalWords('"line\\nbreak"'), 'line\\u000abreak');
   // A paired surrogate is one safe character and stays as it is.
   assert.equal(literalWords('"\\ud83d\\ude00"'), '\u{1F600}');
-  for (const preview of ['"a\\u202eb"', '"\\u2066x\\u2069"', '"\\u0000"']) {
-    assert.doesNotMatch(literalWords(preview), /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/u, preview);
+  for (const preview of ['"a\\u202eb"', '"\\u2066x\\u2069"', '"\\u0000"', '"\\ud800"']) {
+    assert.doesNotMatch(literalWords(preview), /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ud800-\udfff\ufeff]/u, preview);
   }
   assert.equal(inputWords({ member: 'x', source: 'literal', value: '"a\\u202eb"' }, routineMessages.en.plan), 'a\\u202eb');
 });
