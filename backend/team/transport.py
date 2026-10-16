@@ -289,12 +289,6 @@ def _endpoint() -> tuple[str, int]:
 
 
 def _decode_response(response: http.client.HTTPResponse, max_bytes: int = MAX_JSON_RESPONSE_BYTES) -> dict[str, object]:
-    if response.status == 204:
-        raw_length = response.getheader("Content-Length")
-        if raw_length not in {None, "0"} or response.read(1):
-            raise OSError("invalid team response")
-        return {}
-
     content_type = (response.getheader("Content-Type") or "").partition(";")[0].strip().lower()
     if content_type != "application/json":
         raise OSError("invalid team response")
@@ -311,8 +305,6 @@ def _decode_response(response: http.client.HTTPResponse, max_bytes: int = MAX_JS
     raw = response.read(max_bytes + 1)
     if len(raw) > max_bytes:
         raise OSError("invalid team response")
-    if not raw:
-        return {}
     try:
         body = json.loads(raw)
     except (json.JSONDecodeError, UnicodeError, RecursionError) as exc:

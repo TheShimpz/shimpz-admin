@@ -131,7 +131,8 @@ class TeamTransportEdgeTests(unittest.TestCase):
 
     def test_json_response_decoder_rejects_ambiguous_or_unbounded_bodies(self) -> None:
         cases = (
-            _Response(204, headers={"Content-Length": "1"}, body=b"x"),
+            _Response(204, headers={"Content-Length": "0"}, body=b""),
+            _Response(headers={"Content-Type": "application/json"}, body=b""),
             _Response(headers={"Content-Type": "application/json", "Content-Length": "bad"}),
             _Response(
                 headers={"Content-Type": "application/json"},
@@ -142,9 +143,6 @@ class TeamTransportEdgeTests(unittest.TestCase):
         for response in cases:
             with self.subTest(headers=response.headers), self.assertRaisesRegex(OSError, "invalid team response"):
                 transport._decode_response(response)
-
-        empty = _Response(headers={"Content-Type": "application/json"}, body=b"")
-        self.assertEqual(transport._decode_response(empty), {})
 
     def test_only_a_call_given_its_own_allowance_reads_past_the_json_response_cap(self) -> None:
         # A per-call allowance, such as a Routine list's protocol bound, replaces the default JSON response cap.

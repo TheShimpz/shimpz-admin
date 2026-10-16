@@ -225,17 +225,6 @@ class TeamTransportAuthorityTest(unittest.TestCase):
         )
         self.assertNotIn(content.decode(), json.dumps(claims))
 
-    def test_empty_no_content_response_is_preserved(self) -> None:
-        _Response.status = 204
-        _Response.body = b""
-
-        response = transport.call(
-            "DELETE",
-            "/v1/teams/team_1/assistant-integrations/social-publisher/x-integration",
-        )
-
-        self.assertEqual(response, transport.TeamResponse(204, {}))
-
 
 if __name__ == "__main__":
     unittest.main()
