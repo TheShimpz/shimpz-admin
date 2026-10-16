@@ -27,8 +27,8 @@
   // `onsettled` hears the outcome words once this decision is answered, and whether the same run was held again and
   // so waits for a fresh decision. A card Team cannot open yet (a held run listed before its incident) keeps Retry here
   // and `onunavailable` lets the host refresh; one whose evidence Team cannot verify or whose state it cannot read also
-  // offers Excluir, since the host hides its own Delete while a decision is pending. Every card reading but a first one
-  // the host did not ask to focus follows something the person did, so focus moves to what they act on next.
+  // offers Excluir, since the host hides its own Delete while a decision is pending. When a card reading leaves focus
+  // nowhere in the host's dialog, focus moves to what the person acts on next; focus they placed there stays.
   let {
     teamId,
     teamName,
@@ -39,7 +39,6 @@
     onsettled,
     onunavailable,
     ondelete,
-    focus = false,
   } = $props();
 
   // A response that arrives after this decision gave way to a newer one never speaks for that newer one.
@@ -66,7 +65,6 @@
   let unopenable = $state(false);
   // Whether the last card reading failed: its Retry stays in place, disabled, while the person's retry reads again.
   let unopened = $state(false);
-  let readings = 0;
   let root = $state();
   let retryButton = $state();
   const CHOICE_ICONS = { run: 'play', delete: 'trash' };
@@ -142,12 +140,11 @@
     if (recoverable && wanted && !working && $commandsReady) {
       wanted = false;
       working = true;
-      const focused = focus || readings > 0;
-      readings += 1;
       void openCard().finally(async () => {
         working = false;
-        if (!focused || !mounted) return;
+        if (!mounted) return;
         await tick();
+        if (root?.closest('dialog')?.contains(document.activeElement)) return;
         (card ? root?.querySelector('[data-choice="run"]') : retryButton)?.focus();
       });
     }

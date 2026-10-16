@@ -5442,6 +5442,93 @@ test.describe('Team Routines', () => {
     await expect(panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Run' })).toBeFocused();
   });
 
+  // Whatever a refresh puts in place of what had focus, focus moves to what the person acts on next, never to the
+  // document; focus the person placed elsewhere in the panel stays where it is.
+  async function routeDecisions(page, state, card = (params) => ok(recoveryCard(params.run_id))) {
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing'
+      ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: state.runs, incidents: state.incidents }) : undefined));
+    await routeRead(page, 'routines.card', card);
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+    return openRoutinePanel(page);
+  }
+
+  test('a held run that arrives while a tab has focus focuses its first choice', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
+    await routeReadyChat(page);
+    const state = { runs: [], incidents: [] };
+    const panel = await routeDecisions(page, state);
+    await panel.getByRole('tab', { name: 'Summary' }).click();
+    state.runs = [heldRun('d'.repeat(32))];
+    state.incidents = [heldIncident('d'.repeat(32))];
+    await raiseTopic(page, 'team/marketing/routines');
+    await expect(panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Run' })).toBeFocused();
+  });
+
+  test('a held run that arrives after one was held again leaves focus on Close', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
+    await routeReadyChat(page);
+    const run = 'd'.repeat(32);
+    const state = { runs: [frozenRun(run, 'integrations')], incidents: [] };
+    await routeRead(page, 'routines.challenge', (params) => ok({ team_id: 'marketing', run_id: params.run_id, status: 'integrations-required' }));
+    await routeRead(page, 'routines.integrations', (params) => {
+      state.runs = [heldRun(params.run_id)];
+      state.incidents = [heldIncident(params.run_id)];
+      return ok({ team_id: 'marketing', run_id: params.run_id, status: 'held' });
+    });
+    await routeRead(page, 'routines.card_answer', (params) => {
+      state.runs = [];
+      state.incidents = [];
+      return ok({ team_id: 'marketing', run_id: params.run_id });
+    });
+    const panel = await routeDecisions(page, state);
+    await panel.getByRole('button', { name: 'Review' }).click();
+    await panel.getByRole('button', { name: 'Continue the run' }).click();
+    const choices = panel.getByRole('group', { name: 'Recovery choices' });
+    await choices.getByRole('button', { name: 'Run' }).click();
+    await expect(panel.getByRole('tab', { name: 'Summary' })).toBeFocused();
+    const close = panel.getByRole('button', { name: 'Close' });
+    await close.focus();
+    state.runs = [heldRun('e'.repeat(32))];
+    state.incidents = [heldIncident('e'.repeat(32))];
+    await raiseTopic(page, 'team/marketing/routines');
+    await expect(choices.getByRole('button', { name: 'Run' })).toBeEnabled();
+    await expect(close).toBeFocused();
+  });
+
+  test('a retry Team answers with a settled run focuses the summary tab', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
+    await routeReadyChat(page);
+    const run = 'd'.repeat(32);
+    const state = { runs: [heldRun(run)], incidents: [heldIncident(run)] };
+    let openings = 0;
+    const panel = await routeDecisions(page, state, () => {
+      openings += 1;
+      if (openings === 1) return ok({ detail: 'unavailable' }, 503);
+      // The run settled elsewhere before the retry.
+      state.runs = [];
+      state.incidents = [];
+      return ok({ code: 'routine-incident-unavailable' }, 404);
+    });
+    await panel.getByRole('button', { name: 'Retry' }).click();
+    await expect(panel.getByRole('tab', { name: 'Summary' })).toBeFocused();
+  });
+
+  test('a run answered whose next run waits for approval focuses Review', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
+    await routeReadyChat(page);
+    const run = 'd'.repeat(32);
+    const state = { runs: [heldRun(run)], incidents: [heldIncident(run)] };
+    await routeRead(page, 'routines.card_answer', (params) => {
+      state.runs = [frozenRun('e'.repeat(32), 'human')];
+      state.incidents = [];
+      return ok({ team_id: 'marketing', run_id: params.run_id });
+    });
+    const panel = await routeDecisions(page, state);
+    await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Run' }).click();
+    await expect(panel.getByRole('button', { name: 'Review' })).toBeFocused();
+  });
+
   // Team cannot open a card for a held run whose evidence it cannot verify or whose state it cannot read; its Routine
   // can still be deleted from the decision, which hides the panel's own Delete.
   for (const code of ['routine-incident-unverifiable', 'routine-state-unavailable']) {
@@ -6132,6 +6219,11 @@ test.describe('Team Routines', () => {
       position: 2,
       steps: 3,
     };
+  }
+
+  // A held run of `routine` as Team lists it: its step is named only by its incident.
+  function heldRun(id, routine = ROUTINE_VIEW) {
+    return { run_id: id, routine_id: routine.routine_id, status: 'held', request_kind: null, assistant_id: null, action: null };
   }
 
   // A run of `routine` frozen for the person's answer.
