@@ -5231,26 +5231,29 @@ test.describe('Team Routines', () => {
     await expect(page.getByRole('menuitem', { name: 'Routines' })).toHaveCount(0);
   });
 
-  test('a Routine whose run is still ending stays listed as being deleted', async ({ page }, testInfo) => {
-    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
-    await routeReadyChat(page);
-    const calls = await routeRoutines(page, { runEnding: true, held: false });
-    await page.goto('/chat/?team=marketing');
-    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-    await openRoutinePanel(page);
-    // The deletion confirmation retitles the panel; it still names the Routine.
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
-    const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
-    await panel.getByRole('button', { name: 'Delete' }).click();
-    await panel.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
-    await panel.getByLabel('Six-digit code').fill('123456');
-    await panel.getByRole('button', { name: 'Delete' }).click();
-    await expect(panel).toContainText('Being deleted');
-    // Focus moves on to the page the panel shows again, never to the document.
-    await expect(panel.getByRole('tab', { name: 'Summary' })).toBeFocused();
-    await expect(panel.getByRole('button', { name: 'Delete' })).toHaveCount(0);
-    await expect.poll(() => calls.deletes).toEqual([{ code: '123456' }]);
-  });
+  // Deleted from its panel's own Delete, or from the decision of a held run, which the deletion sets aside.
+  for (const held of [false, true]) {
+    test(`a Routine whose run is still ending stays listed as being deleted (held run: ${held})`, async ({ page }, testInfo) => {
+      test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
+      await routeReadyChat(page);
+      const calls = await routeRoutines(page, { runEnding: true, held });
+      await page.goto('/chat/?team=marketing');
+      await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+      await openRoutinePanel(page);
+      // The deletion confirmation retitles the panel; it still names the Routine.
+      const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+      const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
+      await panel.getByRole('button', { name: 'Delete' }).click();
+      await panel.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
+      await panel.getByLabel('Six-digit code').fill('123456');
+      await panel.getByRole('button', { name: 'Delete' }).click();
+      await expect(panel).toContainText('Being deleted');
+      // Focus moves on to the page the panel shows again, never to the document.
+      await expect(panel.getByRole('tab', { name: 'Summary' })).toBeFocused();
+      await expect(panel.getByRole('button', { name: 'Delete' })).toHaveCount(0);
+      await expect.poll(() => calls.deletes).toEqual([{ code: '123456' }]);
+    });
+  }
 
   test('a Routine deletion shows the shared sign-in lockout and deletes nothing', async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');

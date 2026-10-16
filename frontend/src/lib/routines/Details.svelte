@@ -117,6 +117,14 @@
     (document.getElementById(`${id}-tab-${page}`) ?? dialog?.querySelector('[data-choice="delete"]'))?.focus();
   }
 
+  // Focus moves on at once, and again after the Routines are read if that read removed what took it, as it removes the
+  // decision of a Routine now being deleted.
+  async function refreshFocused() {
+    await focusTab();
+    await refreshTeamRoutines(teamId);
+    if (!dialog?.contains(document.activeElement)) await focusTab();
+  }
+
   async function settled(words, heldAgain) {
     decided = words;
     if (heldAgain) {
@@ -124,8 +132,8 @@
       refocus = true;
     } else dismissed = decisionKey;
     page = 'summary';
-    if (!heldAgain) await focusTab();
-    await refreshTeamRoutines(teamId);
+    if (heldAgain) await refreshTeamRoutines(teamId);
+    else await refreshFocused();
   }
 
   $effect(() => {
@@ -257,8 +265,7 @@
     }
     // A run is still ending: Team keeps the Routine as being deleted until it has.
     confirming = false;
-    await focusTab();
-    await refreshTeamRoutines(teamId);
+    await refreshFocused();
   }
 
   // Canceling returns to the panel, or to the decision it was opened from, with focus on the Delete it came from.
