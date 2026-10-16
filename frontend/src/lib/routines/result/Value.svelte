@@ -8,7 +8,7 @@
   // stays on one line and copies exactly the value Team projected, a number in tabular figures, a yes or no, a short
   // status word as a quiet badge, or plain text. A value Team hid or left out says so; one it cut short ends with
   // Team's own ellipsis and is never offered to copy as whole.
-  let { node, kind = 'text', copy, resultCopy, locale, oncopy = null } = $props();
+  let { node, kind = 'text', copy, resultCopy, locale, oncopy } = $props();
 
   let words = $derived(outputScalarWords(node, copy, locale));
   // Only a whole identifier is offered to copy; one Team cut short is never presented as complete.
@@ -22,7 +22,7 @@
     } catch {
       done = false;
     }
-    oncopy?.(done);
+    oncopy(done);
   }
 </script>
 

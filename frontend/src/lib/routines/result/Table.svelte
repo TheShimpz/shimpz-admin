@@ -7,7 +7,7 @@
   // A list of a run's shown result as the Admin's data table: mono column headings over zebra rows in one bordered
   // region that scrolls on its own, with its headings kept in view. Each cell reads by its column's kind; a list of
   // single values reads inline, and anything deeper falls back to plain nested rows. Every value is escaped text.
-  let { table, label, copy, resultCopy, locale, oncopy = null } = $props();
+  let { table, label, copy, resultCopy, locale, oncopy } = $props();
 </script>
 
 <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard scrolling for wide or long tables) -->

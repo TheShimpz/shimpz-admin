@@ -8,7 +8,7 @@
   // A run's shown result organized for reading (ADR-0092 amendment, 2026-10-05, output): its single values as one
   // compact summary strip, each small group of them under its own label, then each list as a table and each deeper
   // field set as a nested section. Every label and value is Team's projection, rendered as escaped text.
-  let { view, copy, resultCopy, locale, level = 4, oncopy = null } = $props();
+  let { view, copy, resultCopy, locale, level = 4, oncopy } = $props();
 
   let heading = $derived(`h${Math.min(level, 6)}`);
 </script>
