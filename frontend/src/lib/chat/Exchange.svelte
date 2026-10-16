@@ -19,8 +19,8 @@
   // One exchange of a Team's transcript: a person's message and the reply that answered it, either of them alone. The
   // page owns the turns and every action; this shows them. `words` are the chat's (chat/turns.js); `instantOf` dates a
   // turn; `sentAnswer` is the clarification answer this message sent, `givenAnswer` the one the reply's question got;
-  // `cardAnswer` is how the person already answered the reply's Routine card, if they did; `thinking`, when given, is
-  // the turn's live progress, shown after the exchange.
+  // `cardAnswer` is how the person already answered the reply's Routine card, if they did, and `onleave` hears that an
+  // answer took that card out of the chat; `thinking`, when given, is the turn's live progress, shown after the exchange.
   let {
     exchange,
     words,
@@ -33,6 +33,7 @@
     lifecycleDisabled,
     onanswer,
     onrewrite,
+    onleave,
     cardAnswer,
     ondecide,
     thinking,
@@ -161,7 +162,7 @@
         />
       {:else if assistantTurn.routineProposal}
         <RoutineProposal teamId={selectedTeamId} proposal={assistantTurn.routineProposal}
-          copy={$t('routine')} disabled={answerDisabled} answered={cardAnswer} {onrewrite} />
+          copy={$t('routine')} disabled={answerDisabled} answered={cardAnswer} {onrewrite} {onleave} />
       {:else if assistantTurn.routineRefusal}
         <p class="routine-refusal" role="note">{refusalWords(assistantTurn.routineRefusal, $t('routine').proposal)}</p>
       {/if}

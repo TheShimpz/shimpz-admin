@@ -25,7 +25,8 @@
   // again, and Create confirms it. All of it is escaped text. A card past its lifetime is no
   // longer shown.
   // `answered` is how the person already answered this card, kept in the transcript, so a reload never offers it again.
-  let { teamId, proposal, copy, disabled, answered, onrewrite } = $props();
+  // `onleave` hears that an answer here took the card out of the chat, with the focus its button had.
+  let { teamId, proposal, copy, disabled, answered, onrewrite, onleave } = $props();
 
   // Edit turns the description into the prompt that records the Routine again: sending it revokes this card and
   // sends the edited text as the person's next message, so the Routine's ordinary flow asks for anything it lacks.
@@ -34,6 +35,7 @@
   let stepsOpen = $state(false);
   let draft = $state('');
   let prompt = $state();
+  let section = $state();
 
   let card = $derived(copy.proposal);
   let working = $state(false);
@@ -64,6 +66,7 @@
     try {
       const result = await action(call, teamId, proposal.proposal_id);
       given = result.status;
+      void leave();
       if (result.status !== 'revoked') await refreshTeamRoutines(teamId);
     } catch (failure) {
       error = routineFailureWords(failure, copy.errors, $t('shell.outcomeUnknown'));
@@ -105,6 +108,7 @@
           // The card was already confirmed: its Routine exists, so the edited text is not sent again.
           editing = false;
           given = result.status;
+          void leave();
           return;
         }
         revoked = true;
@@ -120,10 +124,23 @@
     else error = card.rewriteUnsent;
   }
 
-  // Leaving the editor shows the card again, unless it was already revoked for a send that did not go out.
-  function stopEditing() {
+  // Once the card has left the chat, the host gives the focus its button had to the composer.
+  async function leave() {
+    await tick();
+    if (shown) onleave();
+  }
+
+  // Leaving the editor shows the card again with focus on its Edit button, unless it was already revoked for a send
+  // that did not go out: then the card leaves.
+  async function stopEditing() {
     editing = false;
-    if (revoked) given = 'revoked';
+    if (revoked) {
+      given = 'revoked';
+      void leave();
+      return;
+    }
+    await tick();
+    section?.querySelector('.tone-edit')?.focus();
   }
 </script>
 
@@ -133,7 +150,7 @@
 {:else if answer}
   <!-- Its Routine was created or changed; the answer's own message says so. -->
 {:else if !expired || revoked}
-<section class="routine-proposal" aria-label={card.title}>
+<section class="routine-proposal" aria-label={card.title} bind:this={section}>
   <div class="sheet admin-frame">
     <header>
       <p class="kicker"><RoutineIcon name="clock" />{editing ? card.editTitle : card.title}</p>

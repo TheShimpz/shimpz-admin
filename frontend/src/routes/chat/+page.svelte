@@ -1076,6 +1076,7 @@
               lifecycleDisabled={lifecycleDecisionDisabled}
               onanswer={(answer) => answerClarification(exchange, answer)}
               onrewrite={rewriteRoutine}
+              onleave={focusComposer}
               cardAnswer={answers.get(exchange.assistant?.routineProposal?.proposal_id) ?? ''}
               ondecide={uninstall.decide}
               thinking={index === exchanges.length - 1 && liveTurn.busy && !challengePending &&

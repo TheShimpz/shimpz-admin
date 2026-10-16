@@ -4824,9 +4824,10 @@ test.describe('Team Routines', () => {
     expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toEqual([]);
 
     await card.getByRole('button', { name: 'Create', exact: true }).click();
-    // Once created, the card is gone and nothing is left to answer.
+    // Once created, the card is gone and nothing is left to answer; the composer takes the focus its button had.
     await expect(card).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Create', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeFocused();
     await expect.poll(() => proposalCalls(page)).toEqual(['confirm']);
     const [routine] = scenario.call('routines.list', { team_id: 'marketing' }).json.routines;
     expect(routine.name).toBe(ROUTINE_TEXT.en.card);
@@ -4857,6 +4858,18 @@ test.describe('Team Routines', () => {
       `${ROUTINE_TEXT.en.cardDescription} Tell me only when something changed.`,
     );
     expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toEqual([]);
+  });
+
+  test('a Routine card whose editor is canceled shows the card again, with focus on its Edit button', async ({ page }) => {
+    await recordRoutine(page);
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    const edit = card.getByRole('button', { name: 'Edit', exact: true });
+    await edit.click();
+    await page.keyboard.type(' Tell me only when something changed.');
+    await card.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(card).toContainText(ROUTINE_TEXT.en.cardDescription);
+    await expect(edit).toBeFocused();
+    expect(await proposalCalls(page)).toEqual([]);
   });
 
   // The card's revocation waits until the test lets it answer; `answered()` says its answer went to the page.
@@ -4971,9 +4984,10 @@ test.describe('Team Routines', () => {
     const scenario = await recordRoutine(page);
     const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
     await card.getByRole('button', { name: 'Cancel', exact: true }).click();
-    // Once canceled, the card is gone and nothing is left to answer.
+    // Once canceled, the card is gone and nothing is left to answer; the composer takes the focus its button had.
     await expect(card).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Create', exact: true })).toHaveCount(0);
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeFocused();
     await expect.poll(() => proposalCalls(page)).toEqual(['revoke']);
     expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toEqual([]);
     await expect(page.locator('.routine-run')).toHaveCount(0);
