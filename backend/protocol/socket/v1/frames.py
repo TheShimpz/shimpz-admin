@@ -192,8 +192,8 @@ def topics(params: dict[str, object]) -> tuple[str, ...]:
     if (
         not isinstance(value, list)
         or not 1 <= len(value) <= MAX_SUBSCRIPTIONS
-        or len(set(value)) != len(value)
         or not all(is_topic(item) for item in value)
+        or len(set(value)) != len(value)
     ):
         raise ProtocolError("invalid session topics")
     return tuple(value)
@@ -233,8 +233,8 @@ def activity(frame: dict[str, object]) -> None:
 
 def chat_frame(frame: dict[str, object]) -> tuple[str, dict[str, object]]:
     """Split one chat-channel frame into its Team and the `shimpz.chat.v7` frame it carries."""
-    team_id = frame.get("team_id")
-    if frame.get("type") not in CHAT_TYPES or not is_team_id(team_id):
+    kind, team_id = frame.get("type"), frame.get("team_id")
+    if not isinstance(kind, str) or kind not in CHAT_TYPES or not is_team_id(team_id):
         raise ProtocolError("invalid chat channel frame")
     return team_id, {key: value for key, value in frame.items() if key != "team_id"}
 

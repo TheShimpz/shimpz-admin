@@ -42,6 +42,7 @@
       {"type": "call", "id": "c1", "method": "history.page", "params": {"team_id": 7}},
       {"type": "call", "id": "c1", "method": "subscribe", "params": {"topics": []}},
       {"type": "call", "id": "c1", "method": "subscribe", "params": {"topics": ["teams", "teams"]}},
+      {"type": "call", "id": "c1", "method": "subscribe", "params": {"topics": [["teams"]]}},
       {"type": "call", "id": "c1", "method": "subscribe", "params": {"topics": ["team/Marketing/history"]}},
       {"type": "call", "id": "c1", "method": "subscribe", "params": {"topics": ["team/marketing/files"]}},
       {"type": "call", "id": "c1", "method": "chat.attach", "params": {"team_id": "marketing"}},
@@ -64,7 +65,8 @@
     "invalid": [
       {"type": "stop"},
       {"type": "stop", "team_id": "Marketing"},
-      {"type": "done", "team_id": "marketing"}
+      {"type": "done", "team_id": "marketing"},
+      {"type": ["stop"], "team_id": "marketing"}
     ]
   },
   "server": {

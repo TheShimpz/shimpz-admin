@@ -275,7 +275,7 @@ class SessionSocket:
             await self._call(frame)
         elif kind == "activity":
             await self._activity(frame)
-        elif kind in frames.CHAT_TYPES:
+        elif isinstance(kind, str) and kind in frames.CHAT_TYPES:
             await self._chat(frame)
         else:
             raise frames.ProtocolError("unsupported session frame")

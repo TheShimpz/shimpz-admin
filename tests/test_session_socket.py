@@ -168,6 +168,8 @@ class SessionSocketFrameTests(SessionSocketCase):
                 {"type": "call", "id": "c1", "method": "teams.list", "params": {"extra": 1}},
                 {"type": "stop", "team_id": "team_1"},
                 {"type": "stop"},
+                {"type": ["stop"], "team_id": "marketing"},
+                {"type": "call", "id": "c1", "method": "subscribe", "params": {"topics": [["teams"]]}},
             ):
                 with self.subTest(frame=frame):
                     await closes(1008, text=json.dumps(frame))
