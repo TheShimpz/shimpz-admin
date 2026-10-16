@@ -7246,7 +7246,7 @@ test.describe('Team Routines', () => {
     await expect.poll(() => answers).toBe(1);
     await page.clock.fastForward(3_000);
     await expect(dialog).toBeHidden();
-    await expect(panel.getByRole('status')).toHaveText('This request expired. Review the run again.');
+    await expect(panel.getByRole('status')).toHaveText(messages.en.routine.errors.expired);
     release();
     await expect(review).toBeEnabled();
     await expect(review).toBeFocused();
