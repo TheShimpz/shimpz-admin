@@ -2001,7 +2001,7 @@ test('offers a retry only after automatic earlier history fails', async ({ page 
   await routeRead(page, 'history.page', (params) => {
     if (!('before' in params)) return undefined;
     olderAttempts += 1;
-    return olderAttempts > 1 ? undefined : ok({ detail: 'offline' }, 503);
+    return olderAttempts > 2 ? undefined : ok({ detail: 'offline' }, 503);
   });
   await page.goto('/chat/');
   const retry = page.getByRole('button', { name: 'Load older messages' });
@@ -2010,10 +2010,16 @@ test('offers a retry only after automatic earlier history fails', async ({ page 
   expect(olderAttempts).toBe(1);
   await expect(page.locator('.turns')).not.toHaveAttribute('aria-describedby');
 
+  // The Retry leaves while the page is read: a read that fails again offers a new Retry, which takes the focus back.
+  await retry.click();
+  await expect.poll(() => olderAttempts).toBe(2);
+  await expect(retry).toBeFocused();
+  // One that succeeds gives the focus to the composer.
   await retry.click();
   await expect(page.getByText('Earlier question 1', { exact: true })).toBeVisible();
   await expect(retry).toHaveCount(0);
-  expect(olderAttempts).toBe(2);
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeFocused();
+  expect(olderAttempts).toBe(3);
   await expect.poll(() => chat.historyRequests()).toEqual([null, cursor]);
 });
 

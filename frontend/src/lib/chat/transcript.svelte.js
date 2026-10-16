@@ -193,9 +193,10 @@ export class Transcript {
     }
   }
 
+  /** Reads the earlier page again after its failure; settles once that read did. */
   retryOlder() {
     this.olderFailed = false;
-    void this.loadOlder();
+    return this.loadOlder();
   }
 
   // Admin delivers Routine notices on its own schedule (ADR-0086) and says so on the session socket (ADR-0114): while a

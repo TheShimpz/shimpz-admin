@@ -455,6 +455,18 @@
     else inventoryRetry?.focus();
   }
 
+  // The earlier history's Retry leaves while the page is read again, so the focus it held comes back: to the new Retry
+  // when the read fails again, to the composer once it succeeds. Focus the person moved or pressed elsewhere meanwhile
+  // stays where it is.
+  let olderRetry = $state();
+
+  async function retryOlder() {
+    const since = focusMark();
+    await transcript.retryOlder();
+    if (transcript.olderFailed) await regainFocus(() => olderRetry, { since });
+    else if (focusMark() === since) void focusComposer();
+  }
+
   function retryBrain() {
     const teamId = chatTeamId;
     if (!teamId || brainSaving || !$commandsReady) return;
@@ -1075,8 +1087,8 @@
                   variant="ghost"
                   size="compact"
                   type="button"
-                  onclick={() => transcript.retryOlder()}
-                  disabled={transcript.working}
+                  bind:element={olderRetry}
+                  onclick={retryOlder}
                 >
                   {copy.olderMessages}
                 </Button>
