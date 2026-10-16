@@ -2,12 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { fetchPlatformRelease, isDeveloperRelease } from '../src/lib/space/release.js';
+import { response } from './socketStub.js';
 
 const release = `ghcr.io/theshimpz/shimpz-local-release@sha256:${'a'.repeat(64)}`;
-
-function response(status, body) {
-  return { ok: status >= 200 && status < 300, async json() { return body; } };
-}
 
 test('admits only the closed Local platform release status', async () => {
   const status = await fetchPlatformRelease(async (method, params) => {
