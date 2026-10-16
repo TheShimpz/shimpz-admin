@@ -5549,9 +5549,8 @@ test.describe('Team Routines', () => {
       if (reload) await page.reload();
       const notices = page.locator('.routine-run');
       await expect(notices).toHaveCount(created.length);
-      // Each is the creation Team froze its name into, and opens nothing: no run is reached from the chat.
+      // Each is the creation Team froze its name into; no run is reached from the chat.
       for (const [index, entry] of created.entries()) await expect(notices.nth(index)).toHaveAccessibleName(entry.name);
-      await expect(notices.getByRole('button')).toHaveCount(0);
     }
     // The chat reads its own view of the history, never a Routine's.
     const requested = (await readsOf(page, 'history.page')).map((params) => params.routine ?? null);
@@ -6344,11 +6343,11 @@ test.describe('Team Routines', () => {
     });
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     await page.goto('/chat/?team=marketing');
-    // The chat names the Routine once, where it was created, and offers nothing to open.
+    // The chat names the Routine once, where it was created, which opens only the Routine's own panel.
     const transcript = page.locator('.routine-run');
     await expect(transcript).toHaveCount(1);
     await expect(transcript).toHaveAccessibleName(ROUTINE_VIEW.name);
-    await expect(transcript.getByRole('button')).toHaveCount(0);
+    await expect(transcript.getByRole('button')).toHaveAttribute('aria-haspopup', 'dialog');
     // Its runs are its own history, newest first, each with what it did.
     const panel = await openRoutinePanel(page);
     await panel.getByRole('tab', { name: 'Runs' }).click();

@@ -11,6 +11,7 @@
   import { locale, t } from '#lib/i18n/index.js';
   import Markdown from '#lib/chat/Markdown.svelte';
   import { refusalWords } from '#lib/routines/words.js';
+  import RoutineCreated from '#lib/routines/Created.svelte';
   import RoutineProposal from '#lib/routines/Proposal.svelte';
   import RoutineQuestion from '#lib/routines/Question.svelte';
   import { formatTaskUsage, formatTaskUsageDetail } from '#lib/chat/usage.js';
@@ -101,12 +102,14 @@
           disabled={answerDisabled}
           {onanswer}
         />
-      {:else if assistantTurn.routineRun || assistantTurn.routineAnswer}
-        <!-- A Routine's creation, or a card's confirmed change, says so at its own time, naming the Routine only in the
-             words Team froze into it. -->
-        {@const said = assistantTurn.routineRun ?? assistantTurn.routineAnswer}
+      {:else if assistantTurn.routineRun}
+        <!-- A Routine's creation says so at its own time and opens that Routine's panel. -->
+        <RoutineCreated {teamId} teamName={assistantTurn.author} notice={assistantTurn.routineRun} />
+      {:else if assistantTurn.routineAnswer}
+        <!-- A card's confirmed change says so at its own time, naming the Routine only in the words Team froze into it. -->
+        {@const said = assistantTurn.routineAnswer}
         <p class="routine-run" role="group" aria-label={said.name} tabindex="-1">
-          {fill($t('routine').proposal.answers[assistantTurn.routineRun ? 'created' : said.status], { name: said.name })}
+          {fill($t('routine').proposal.answers[said.status], { name: said.name })}
         </p>
       {:else if assistantTurn.text && !assistantTurn.installPlan && (
         !assistantTurn.lifecycle || assistantTurn.lifecycle.state === 'proposed'
