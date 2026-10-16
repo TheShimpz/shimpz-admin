@@ -3,9 +3,12 @@ name = "shimpz-admin"
 version = "0.1.0"
 requires-python = ">=3.14"
 dependencies = [
+    # Admin imports starlette and anyio directly; both are pinned to the version fastapi resolves.
+    "anyio==4.14.2",
     "cryptography==50.0.2",
     "fastapi==0.143.0",
     "python-multipart==0.0.32",
+    "starlette==1.7.0",
     "uvicorn[standard]==0.54.0",
     "webauthn==3.0.1",
 ]
