@@ -1,118 +1,47 @@
 <script>
-  import { get } from 'svelte/store';
-
   import { call, commandsReady } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
-  import { focusMark, regainFocus } from '#lib/shell/focus.js';
   import { t } from '#lib/i18n/index.js';
-  import { authenticateWithPasskey, passkeyFailure } from '#lib/auth/passkey.js';
-  import { isFactorCode } from '#lib/auth/factor.js';
-  import { AUTHENTICATION_REFUSALS, secondFactorRefusal } from '#lib/auth/refusal.js';
+  import { Confirmation } from '#lib/auth/confirmation.svelte.js';
   import SecondFactor from '#lib/auth/SecondFactor.svelte';
   import { beginRoutineDeletion, deleteRoutine, RoutineError } from '#lib/routines/protocol.js';
   import { routineErrorMessage } from '#lib/routines/words.js';
-  import { sessionContext } from '#lib/session/context.js';
 
   // Deleting one Routine (ADR-0051, ADR-0086): the whole panel is this confirmation. Admin checks the Supervisor
   // password, then one second factor bound to this Routine, and only then asks Team to delete it. A code is the
-  // default; a passkey is offered beside it only where this address has one. Cancel returns to the panel.
+  // default; a passkey is offered beside it only where this address has one. Cancel returns to the panel. A failure
+  // once Team was asked empties what was typed.
   let { teamId, routineId, copy, errors, busy = $bindable(false), ondone, oncancel } = $props();
 
   const id = $props.id();
-  let password = $state('');
-  let code = $state('');
-  let method = $state('totp');
-  let passkeyOffered = $state(get(sessionContext).passkeyRegistered);
-  let passwordError = $state('');
-  let codeError = $state('');
-  let error = $state('');
-  let live = true;
-  let ready = $derived(password.length > 0 && (method === 'passkey' || isFactorCode(code)));
   // Every confirmation's words, with this deletion's own where it differs: its hints, expiry, code lock, and buttons.
-  let words = $derived({ ...$t('security'), ...copy });
-
-  $effect(() => {
-    document.getElementById(`${id}-password`)?.focus();
-    return () => { live = false; };
+  let words = $derived({ ...$t('security'), ...copy, outcomeUnknown: $t('shell.outcomeUnknown') });
+  const form = new Confirmation(id, {
+    words: () => words,
+    begin: (password) => beginRoutineDeletion(call, teamId, routineId, password),
+    complete: async (factor) => (await deleteRoutine(call, teamId, routineId, factor)).deleted,
+    ondone: (deleted) => ondone(deleted),
+    errorType: RoutineError,
+    failureWords: (failure) => routineErrorMessage(failure, errors),
+    spendsProof: true,
   });
 
-  // The field a refusal leaves to fix takes the focus once the controls the request disabled are enabled again; focus
-  // the person moved meanwhile stays where it is.
-  let refocus = '';
-  let mark = 0;
-
-  function regain() {
-    const field = refocus;
-    refocus = '';
-    void regainFocus(() => document.getElementById(`${id}-${field}`), { shown: () => live, since: mark });
-  }
-
-  // Each refusal says what to fix where it is fixed; nothing typed is ever echoed back.
-  function refused(failure) {
-    const reason = failure instanceof RoutineError ? failure.code : '';
-    const shown = secondFactorRefusal(failure, {
-      reason,
-      words: { ...words, outcomeUnknown: $t('shell.outcomeUnknown') },
-      operation: (other) => (other instanceof RoutineError ? routineErrorMessage(other, errors) : null),
-      ceremony: passkeyFailure,
-    });
-    if (shown.clear === 'password') password = '';
-    if (shown.clear === 'code') code = '';
-    passwordError = shown.passwordError ?? '';
-    codeError = shown.codeError ?? '';
-    error = shown.error ?? '';
-    // A refusal of the whole form names no field: the password, enabled again, takes the focus.
-    refocus = shown.focus ?? 'password';
-  }
-
-  async function proof(offer) {
-    if (method === 'totp') return { code };
-    if (!offer.passkey) {
-      passkeyOffered = false;
-      method = 'totp';
-      error = words.passkeyMissing;
-      refocus = 'code';
-      return null;
-    }
-    return { credential: await authenticateWithPasskey(offer.passkey) };
-  }
-
-  async function submit(event) {
-    event.preventDefault();
-    if (busy || !ready || !$commandsReady) return;
-    busy = true;
-    mark = focusMark();
-    passwordError = codeError = error = '';
-    let sent = false;
-    try {
-      const offer = await beginRoutineDeletion(call, teamId, routineId, password);
-      const factor = live ? await proof(offer) : null;
-      // A panel closed while the passkey was asked for never sends the deletion.
-      if (!factor || !live) return;
-      sent = true;
-      const { deleted } = await deleteRoutine(call, teamId, routineId, factor);
-      password = code = '';
-      ondone(deleted);
-    } catch (failure) {
-      // Admin refused the proof itself, so Team was never asked: what was typed stays for the next try.
-      if (sent && !(failure instanceof RoutineError && AUTHENTICATION_REFUSALS.has(failure.code))) password = code = '';
-      refused(failure);
-    } finally {
-      busy = false;
-      if (refocus) regain();
-    }
-  }
+  $effect(() => form.open());
+  $effect(() => {
+    busy = form.busy;
+  });
 </script>
 
-<form class="deletion" onsubmit={submit}>
+<form class="deletion" onsubmit={form.submit}>
   <div class="content">
     <p class="lead">{copy.lead}</p>
-    <SecondFactor {id} copy={words} {busy} {passkeyOffered} bind:password bind:code bind:method {passwordError} {codeError}
-      {error} />
+    <SecondFactor {id} copy={words} busy={form.busy} passkeyOffered={form.passkeyOffered} bind:password={form.password}
+      bind:code={form.code} bind:method={form.method} passwordError={form.passwordError} codeError={form.codeError}
+      error={form.error} />
   </div>
   <footer class="foot">
-    <DialogAction kind="cancel" type="button" disabled={busy} onclick={oncancel}>{$t('security.cancel')}</DialogAction>
-    <DialogAction kind="danger" type="submit" disabled={busy || !ready || !$commandsReady}>{busy ? copy.deleting : copy.delete}</DialogAction>
+    <DialogAction kind="cancel" type="button" disabled={form.busy} onclick={oncancel}>{$t('security.cancel')}</DialogAction>
+    <DialogAction kind="danger" type="submit" disabled={form.busy || !form.ready || !$commandsReady}>{form.busy ? copy.deleting : copy.delete}</DialogAction>
   </footer>
 </form>
 
