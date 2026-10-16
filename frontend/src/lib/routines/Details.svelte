@@ -49,7 +49,7 @@
   // Supervisor's password and a second factor, and nothing else until it is deleted or canceled.
   // `runs` and `incidents` are the Team's, which the panel reads for this Routine only. `onback` is its Back control,
   // which returns to the list the panel was opened from; Escape then goes back as well.
-  let { teamId, teamName, routine, runs = [], incidents = [], copy, onclose, ondeleted, onback } = $props();
+  let { teamId, teamName, routine, runs, incidents, copy, onclose, ondeleted, onback } = $props();
 
   const id = $props.id();
   let dialog = $state();

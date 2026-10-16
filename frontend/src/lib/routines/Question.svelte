@@ -6,7 +6,7 @@
   // composed with the original request as a clarification's answer is, and nothing is chosen for them: no option is
   // preselected or recommended. A target is sent as its exact JSON text, the only answer Team matches. Once the
   // exchange holds that answer, only the question and the answer remain.
-  let { question, original, copy, clarifyCopy, answered = null, disabled = false, onanswer } = $props();
+  let { question, original, copy, clarifyCopy, answered, disabled, onanswer } = $props();
 
   let words = $derived(questionWords(question, copy.questions));
   let options = $derived(words.answers.map((option, index) => ({

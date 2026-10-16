@@ -4,7 +4,7 @@
   // A Routine status tag (ADR-0086): one color per status for its text, border, and icon, the same in a transcript card
   // and the details panel. Its words always say the status; color only repeats it. Each color keeps at least 4.5:1
   // against the dark surfaces it sits on.
-  let { label, tone = 'neutral', icon = '', size = 'sm' } = $props();
+  let { label, tone, icon = '', size = 'sm' } = $props();
 </script>
 
 <span class={['tag', `tag--${tone}`, `tag--${size}`]}>{#if icon}<RoutineIcon name={icon} />{/if}{label}</span>

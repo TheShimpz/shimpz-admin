@@ -15,7 +15,7 @@
   // whose Back (or Escape) returns to the list on the same Routine. `onclose` hears when the person leaves, or when the
   // Team has no Routine left to list. While the Team's newest listing `failed`, the list says so above what it last knew
   // and offers to read it again.
-  let { teamName, teamId, routines = [], runs = [], incidents = [], failed = false, onclose } = $props();
+  let { teamName, teamId, routines, runs, incidents, failed, onclose } = $props();
 
   let copy = $derived($t('routine'));
   let dialog = $state();
