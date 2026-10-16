@@ -132,6 +132,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
     def test_json_response_decoder_rejects_ambiguous_or_unbounded_bodies(self) -> None:
         cases = (
             _Response(204, headers={"Content-Length": "0"}, body=b""),
+            _Response(204, headers={"Content-Type": "application/json", "Transfer-Encoding": "chunked"}),
             _Response(headers={"Content-Type": "application/json"}, body=b""),
             _Response(headers={"Content-Type": "application/json", "Content-Length": "bad"}),
             _Response(

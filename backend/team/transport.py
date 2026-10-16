@@ -289,6 +289,9 @@ def _endpoint() -> tuple[str, int]:
 
 
 def _decode_response(response: http.client.HTTPResponse, max_bytes: int = MAX_JSON_RESPONSE_BYTES) -> dict[str, object]:
+    # Team answers every request with one JSON object; a 204 carries none, whatever its framing claims.
+    if response.status == 204:
+        raise OSError("invalid team response")
     content_type = (response.getheader("Content-Type") or "").partition(";")[0].strip().lower()
     if content_type != "application/json":
         raise OSError("invalid team response")
