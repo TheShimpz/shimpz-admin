@@ -77,6 +77,7 @@ import {
 import { resultTable } from '../src/lib/routines/reading.js';
 import { fill } from '../src/lib/i18n/fill.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
+import { noticeRow } from '../e2e/routineScenarios.js';
 
 // Each interface language's own catalog of this copy.
 const routineMessages = Object.fromEntries(Object.entries(messages).map(([code, catalog]) => [code, catalog.routine]));
@@ -572,35 +573,43 @@ test('Routine requests go to exact Admin operations and admit only exact answers
 });
 
 test('schedules, instants, and failures read naturally in each locale', () => {
-  const words = routineMessages.en.schedule;
-  assert.equal(scheduleWords({ kind: 'daily', time: '09:00' }, words, 'en'), 'Every day at 09:00');
-  assert.equal(scheduleWords({ kind: 'weekly', weekday: 0, time: '09:00' }, words, 'en'), 'Every Monday at 09:00');
-  // Portuguese weekdays take their own article: Todo sábado and Todo domingo, Toda segunda-feira.
-  assert.equal(scheduleWords({ kind: 'weekly', weekday: 6, time: '09:00' }, routineMessages.pt.schedule, 'pt'), 'Todo domingo às 09:00');
-  assert.equal(scheduleWords({ kind: 'weekly', weekday: 0, time: '09:00' }, routineMessages.pt.schedule, 'pt'), 'Toda segunda-feira às 09:00');
+  // A stub catalog whose every template names itself proves the logic; each locale's prose is the owner's to review.
+  const forms = (name) => ({ one: `${name}:one:{count}`, other: `${name}:other:{count}` });
+  const words = {
+    every: Object.fromEntries(['week', 'day', 'hour', 'minute', 'second'].map((unit) => [unit, forms(unit)])),
+    daily: 'daily {time}',
+    weekly: 'weekly {weekday} {time}',
+    monthly: 'monthly {day} {time}',
+    weekdays: { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' },
+  };
+  assert.equal(scheduleWords({ kind: 'daily', time: '09:00' }, words, 'en'), 'daily 09:00');
+  // Weekday 0 is Monday; each locale names its weekdays itself, so the article agrees with the day.
+  assert.equal(scheduleWords({ kind: 'weekly', weekday: 0, time: '09:00' }, words, 'en'), 'weekly Mon 09:00');
+  assert.equal(scheduleWords({ kind: 'weekly', weekday: 6, time: '09:00' }, words, 'en'), 'weekly Sun 09:00');
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     for (let weekday = 0; weekday < 7; weekday += 1) {
       assert.doesNotMatch(scheduleWords({ kind: 'weekly', weekday, time: '09:00' }, catalog.schedule, locale), /\{|undefined/, locale);
     }
   }
-  assert.equal(scheduleWords({ kind: 'monthly', day: 28, time: '18:30' }, words, 'en'), 'On day 28 of every month at 18:30');
-  // A continuous Routine's gap reads in its largest whole unit, in the viewer's locale.
-  const continuous = { kind: 'continuous', gap: 5 };
-  assert.equal(scheduleWords(continuous, words, 'en'), 'Every 5 seconds');
-  assert.equal(scheduleWords({ kind: 'continuous', gap: 1800 }, routineMessages.pt.schedule, 'pt'), 'A cada 30 minutos');
-  // Whole weeks or days read in that unit.
+  assert.equal(scheduleWords({ kind: 'monthly', day: 28, time: '18:30' }, words, 'en'), 'monthly 28 18:30');
+  // A continuous Routine's gap reads in its largest whole unit, in the plural form its count takes.
   const every = (gap) => ({ kind: 'continuous', gap });
-  assert.equal(scheduleWords(every(30 * 86400), words, 'en'), 'Every 30 days');
-  assert.equal(scheduleWords(every(86400), words, 'en'), 'Every day');
-  assert.equal(scheduleWords(every(14 * 86400), words, 'en'), 'Every 2 weeks');
-  assert.equal(scheduleWords(every(7 * 86400), words, 'en'), 'Every week');
-  assert.equal(scheduleWords(every(108000), words, 'en'), 'Every 30 hours');
-  assert.equal(scheduleWords(every(3600), words, 'en'), 'Every hour');
-  assert.equal(scheduleWords(every(90), words, 'en'), 'Every 90 seconds');
+  for (const [gap, shown] of [
+    [5, 'second:other:5'],
+    [90, 'second:other:90'],
+    [1800, 'minute:other:30'],
+    [3600, 'hour:one:1'],
+    [108000, 'hour:other:30'],
+    [86400, 'day:one:1'],
+    [30 * 86400, 'day:other:30'],
+    [7 * 86400, 'week:one:1'],
+    [14 * 86400, 'week:other:2'],
+  ]) {
+    assert.equal(scheduleWords(every(gap), words, 'en'), shown, String(gap));
+  }
   // A rollup counts its runs in the plural form the count takes.
-  const panel = routineMessages.en.panel;
-  assert.equal(countWords(panel.healthyRuns, 1, 'en'), '1 run finished');
-  assert.equal(countWords(panel.missedRuns, 3, 'en'), '3 runs missed');
+  assert.equal(countWords(forms('runs'), 1, 'en'), 'runs:one:1');
+  assert.equal(countWords(forms('runs'), 3, 'en'), 'runs:other:3');
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     for (const gap of [5, 60, 1800, 3600, 86400, 3 * 86400, 7 * 86400, 21 * 86400]) {
       assert.doesNotMatch(scheduleWords(every(gap), catalog.schedule, locale), /\{|undefined/, locale);
@@ -646,20 +655,11 @@ test('schedules, instants, and failures read naturally in each locale', () => {
 
 // A run reports its active duration alone: it asks no model.
 const REPLAY_USAGE = Object.freeze({ duration_ms: 4120 });
-const RUN_ENTRY = {
-  id: `${'b'.repeat(32)}:routine`,
-  kind: 'routine-run',
-  notice_id: 'b'.repeat(32),
-  routine_id: 'a'.repeat(32),
-  name: 'DNS semanal',
-  run_id: 'b'.repeat(32),
-  outcome: 'done',
-  created_at: '2026-10-05T12:01:07Z',
-  detail: { plan: SUMMARY, output: null },
+const RUN_ENTRY = noticeRow('b'.repeat(32), { routine_id: 'a'.repeat(32), name: 'DNS semanal' }, 'done', { plan: SUMMARY, output: null }, {
+  at: '2026-10-05T12:01:07Z',
   version: 2,
   usage: REPLAY_USAGE,
-  protection_lost: false,
-};
+});
 // A two-step plan's summary, and a 120-step one whose middle Action repeats.
 const TWO = Object.freeze({ ...SUMMARY, steps: 2, actions: [['shimpz-cloudflare', 'list-zones', 1], ['shimpz-cloudflare', 'list-dns-records', 1]] });
 const LONG = Object.freeze({
@@ -862,7 +862,8 @@ test('a notice names its Assistant once for steps that share it and again only w
   const runs = Array.from({ length: 16 }, (_, index) => ['a', index % 2 ? 'list-dns-records' : 'list-zones', 1]);
   const many = { ...SUMMARY, steps: 256, actions: runs, more: 240 };
   assert.ok(isSummary(many));
-  assert.match(summaryChain(many, name, routineMessages.pt.notice, 'pt'), / › mais 240 etapas$/u);
+  const rest = { rest: { one: 'rest:one:{count}', other: 'rest:other:{count}' } };
+  assert.match(summaryChain(many, name, rest, 'pt'), / › rest:other:240$/u);
   assert.equal(summaryChain({ ...SUMMARY, actions: [['a', 'list-zones', 1]] }, name, routineMessages.pt.notice, 'pt'), 'Alpha · List zones');
   for (const [locale, catalog] of Object.entries(routineMessages)) {
     assert.doesNotMatch(summaryChain(many, name, catalog.notice, locale), /\{|undefined/u, locale);

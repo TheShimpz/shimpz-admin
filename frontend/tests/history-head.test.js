@@ -16,6 +16,7 @@ import {
   MAX_VIEW_ROWS,
 } from '../src/lib/chat/history.js';
 import { RETRY_FIRST_MS } from '../src/lib/session/synced.js';
+import { noticeRow } from '../e2e/routineScenarios.js';
 
 const EPOCH = 'a'.repeat(32);
 const AT = '2026-10-02T21:15:00Z';
@@ -26,24 +27,11 @@ function message(index) {
 }
 
 function run(index, routine = 'c'.repeat(32)) {
-  const notice = String(index).padStart(32, '0');
-  return {
-    id: `${notice}:routine`,
-    kind: 'routine-run',
-    notice_id: notice,
-    routine_id: routine,
-    name: 'Daily zones',
-    run_id: notice,
-    outcome: 'done',
-    created_at: AT,
-    detail: {
-      plan: { revision: 1, plan_digest: `sha256:${'d'.repeat(64)}`, steps: 1, actions: [['shimpz-cloudflare', 'list-zones', 1]], more: 0 },
-      output: null,
-    },
-    version: 1,
+  const plan = { revision: 1, plan_digest: `sha256:${'d'.repeat(64)}`, steps: 1, actions: [['shimpz-cloudflare', 'list-zones', 1]], more: 0 };
+  return noticeRow(String(index).padStart(32, '0'), { routine_id: routine, name: 'Daily zones' }, 'done', { plan, output: null }, {
+    at: AT,
     usage: { duration_ms: 812 },
-    protection_lost: false,
-  };
+  });
 }
 
 // The session socket as a history head sees it: its topic's listeners, and each `history.page` read held until the test
