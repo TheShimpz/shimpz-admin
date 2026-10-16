@@ -271,7 +271,7 @@ export default {
       monthly: 'كل شهر في اليوم {day} في {time}',
       monthDay: { one: '{day}', two: '{day}', few: '{day}', other: '{day}' },
       every: {
-        second: { one: 'كل ثانية', other: 'كل {count} ثوانٍ' },
+        second: { other: 'كل {count} ثوانٍ' },
         minute: { one: 'كل دقيقة', other: 'كل {count} دقائق' },
         hour: { one: 'كل ساعة', other: 'كل {count} ساعات' },
         day: { other: 'كل {count} أيام' },

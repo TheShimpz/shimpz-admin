@@ -165,7 +165,7 @@ export function scheduleWords(schedule, copy, locale) {
     // Each locale names its weekdays itself, so the article agrees with the day ("Todo domingo", "Toda segunda-feira").
     return fill(copy.weekly, { weekday: copy.weekdays[WEEKDAYS[schedule.weekday]], time: schedule.time });
   }
-  const ordinal = copy.monthDay[pluralRules(locale, { type: 'ordinal' }).select(schedule.day)] ?? copy.monthDay.other;
+  const ordinal = copy.monthDay[pluralRules(locale, { type: 'ordinal' }).select(schedule.day)];
   return fill(copy.monthly, { day: fill(ordinal, { day: schedule.day }), time: schedule.time });
 }
 

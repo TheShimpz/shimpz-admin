@@ -271,7 +271,7 @@ export default {
       monthly: '每月{day}日 {time}',
       monthDay: { one: '{day}', two: '{day}', few: '{day}', other: '{day}' },
       every: {
-        second: { one: '每秒', other: '每 {count} 秒' },
+        second: { other: '每 {count} 秒' },
         minute: { one: '每分钟', other: '每 {count} 分钟' },
         hour: { one: '每小时', other: '每 {count} 小时' },
         day: { other: '每 {count} 天' },

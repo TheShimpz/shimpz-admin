@@ -271,7 +271,7 @@ export default {
       monthly: '毎月{day}日 {time}',
       monthDay: { one: '{day}', two: '{day}', few: '{day}', other: '{day}' },
       every: {
-        second: { one: '1 秒ごと', other: '{count} 秒ごと' },
+        second: { other: '{count} 秒ごと' },
         minute: { one: '1 分ごと', other: '{count} 分ごと' },
         hour: { one: '1 時間ごと', other: '{count} 時間ごと' },
         day: { other: '{count} 日ごと' },

@@ -271,7 +271,7 @@ export default {
       monthly: 'Jeden Monat am {day}. um {time}',
       monthDay: { one: '{day}', two: '{day}', few: '{day}', other: '{day}' },
       every: {
-        second: { one: 'Jede Sekunde', other: 'Alle {count} Sekunden' },
+        second: { other: 'Alle {count} Sekunden' },
         minute: { one: 'Jede Minute', other: 'Alle {count} Minuten' },
         hour: { one: 'Jede Stunde', other: 'Alle {count} Stunden' },
         day: { other: 'Alle {count} Tage' },
