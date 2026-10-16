@@ -5800,6 +5800,50 @@ test.describe('Team Routines', () => {
     expect(calls.deletes).toEqual([]);
   });
 
+  test('a Routine deletion Team fails once it was asked empties what was typed, and focuses nothing the person pressed away from', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
+    await routeReadyChat(page);
+    await routeRoutines(page, { held: false });
+    // Team cannot be reached once the proof is accepted; the second deletion waits until the test releases it.
+    const deletes = [];
+    let release = () => {};
+    await routeRead(page, 'routines.delete', async ({ body: proof }) => {
+      deletes.push(proof);
+      if (deletes.length === 2) await new Promise((resolve) => { release = resolve; });
+      return ok({ code: 'team-unavailable' }, 503);
+    });
+    await page.goto('/chat/?team=marketing');
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+    await openRoutinePanel(page);
+    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    const password = panel.getByLabel('Supervisor password');
+    const sixDigits = panel.getByLabel('Six-digit code');
+    await password.fill(SUPERVISOR_PASSWORD);
+    await sixDigits.fill('123456');
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await expect(panel.getByRole('alert')).toBeVisible();
+    // Team was asked with this proof, so it is spent: both fields are empty for the next try.
+    await expect(password).toHaveValue('');
+    await expect(sixDigits).toHaveValue('');
+    await expect.poll(() => deletes).toEqual([{ code: '123456' }]);
+
+    await password.fill(SUPERVISOR_PASSWORD);
+    await sixDigits.fill('123456');
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    await expect.poll(() => deletes.length).toBe(2);
+    // A press on the confirmation's text is the person's move; the focus it gave the dialog then falls to the document,
+    // where the refusal must leave it.
+    await panel.getByText(messages.en.routine.deletion.lead).click();
+    await page.evaluate(() => document.activeElement.blur());
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+    release();
+    await expect(password).toBeEnabled();
+    await expect(password).toHaveValue('');
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  });
+
   async function openHeldPanel(page, options = {}) {
     await routeReadyChat(page);
     const calls = await routeRoutines(page, options);
