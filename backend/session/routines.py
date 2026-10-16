@@ -187,7 +187,7 @@ METHODS = {
     # Opening a frozen run's challenge mints a fresh one, which the browser never replays, but changes nothing the
     # Team's Routine list shows.
     "routines.challenge": _unlisted(answer, "open_challenge", "team_id", "run_id", "body"),
-    # Criar rotina: a created Routine is due soon.
+    # Confirming a recorded Routine's card creates it, and a created Routine is due soon.
     "routines.proposal_confirm": _proposal("confirm_proposal", wake=True),
     "routines.proposal_revoke": _proposal("revoke_proposal"),
 }
