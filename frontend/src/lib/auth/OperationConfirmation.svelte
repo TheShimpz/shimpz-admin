@@ -41,9 +41,7 @@
 
 <form class="regeneration" onsubmit={form.submit}>
   <p class="lead">{lead}</p>
-  <SecondFactor {id} copy={words} busy={form.busy} passkeyOffered={form.passkeyOffered} bind:password={form.password}
-    bind:code={form.code} bind:method={form.method} passwordError={form.passwordError} codeError={form.codeError}
-    error={form.error} />
+  <SecondFactor {id} copy={words} {form} />
   <footer class="foot">
     <DialogAction kind="cancel" type="button" disabled={form.busy} onclick={oncancel}>{$t('security.cancel')}</DialogAction>
     <DialogAction kind="confirm" type="submit" disabled={form.busy || !form.ready || !$commandsReady}>{form.busy ? working : action}</DialogAction>

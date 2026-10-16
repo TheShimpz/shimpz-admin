@@ -35,9 +35,7 @@
 <form class="deletion" onsubmit={form.submit}>
   <div class="content">
     <p class="lead">{copy.lead}</p>
-    <SecondFactor {id} copy={words} busy={form.busy} passkeyOffered={form.passkeyOffered} bind:password={form.password}
-      bind:code={form.code} bind:method={form.method} passwordError={form.passwordError} codeError={form.codeError}
-      error={form.error} />
+    <SecondFactor {id} copy={words} {form} />
   </div>
   <footer class="foot">
     <DialogAction kind="cancel" type="button" disabled={form.busy} onclick={oncancel}>{$t('security.cancel')}</DialogAction>
