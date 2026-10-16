@@ -138,6 +138,38 @@ test('announces a rejected TOTP and returns focus to password entry', async ({ p
   await expect(page.getByLabel('Password', { exact: true })).toBeFocused();
 });
 
+test('a refused code that arrives after the person moved the focus leaves it where they put it', async ({ page }) => {
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(localSession({ initialized: true, authentication_state: 'configured' })),
+  }));
+  await page.route('**/api/login', (route) => route.fulfill({
+    status: 202,
+    contentType: 'application/json',
+    body: JSON.stringify({ methods: ['totp', 'recovery-code'] }),
+  }));
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  let asked = false;
+  await page.route('**/api/login/totp', async (route) => {
+    asked = true;
+    await held;
+    await route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ detail: 'invalid' }) });
+  });
+
+  await page.goto('/');
+  await page.getByLabel('Password', { exact: true }).fill('violet otter lantern quartz 92');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByLabel('Six-digit code').fill('123456');
+  await page.getByRole('button', { name: 'Verify and continue' }).click();
+  await expect.poll(() => asked).toBe(true);
+  const language = page.getByRole('button', { name: 'Language: English' });
+  await language.focus();
+  release();
+  await expect(page.getByRole('alert')).toContainText('That code was not accepted');
+  await expect(language).toBeFocused();
+});
+
 test('registers and then uses a UV passkey through the browser ceremony', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'desktop', 'one real Chromium WebAuthn ceremony is sufficient');
   const client = await page.context().newCDPSession(page);

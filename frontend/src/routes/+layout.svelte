@@ -196,11 +196,6 @@
       : `HTTP ${response.status}`;
   }
 
-  async function focusPassword() {
-    await tick();
-    document.getElementById('admin-password')?.focus({ preventScroll: true });
-  }
-
   // Each sign-in step's own field, which takes the focus back when the step fails in place.
   const STEP_FIELDS = {
     setup: 'admin-password',
@@ -212,8 +207,9 @@
     'recovery-code': 'admin-recovery-code',
   };
 
-  // A step that failed in place disabled its controls meanwhile, which dropped the focus to the document: its field
-  // takes it back once enabled, while the screen still shows that step. Focus the person moved stays where it is.
+  // A step that failed disabled its controls meanwhile, which dropped the focus to the document: the field of the step
+  // shown next (the same one, or the password a refused second factor returns to) takes it back once enabled, while the
+  // screen still shows that step. Focus the person moved stays where it is.
   async function regainStep(step) {
     await tick();
     const focused = document.activeElement;
@@ -227,7 +223,7 @@
     clearCredentials();
     error = message;
     busy = false;
-    await focusPassword();
+    await regainStep(nextPhase);
   }
 
   // One sign-in step: a JSON body posted to Admin's own origin.
