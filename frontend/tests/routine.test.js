@@ -629,6 +629,8 @@ test('schedules, instants, and failures read naturally in each locale', () => {
     ['routine-run-changed', 'stale'],
     // Team opens no card for a held run whose evidence it cannot verify.
     ['routine-incident-unverifiable', 'unverifiable'],
+    // A password Admin could not check ended the run denied, so nothing asks to try again.
+    ['human-authentication-unavailable', 'authenticationUnavailable'],
   ]) {
     assert.equal(routineErrorMessage(new RoutineError(code), errors), errors[key], code);
   }

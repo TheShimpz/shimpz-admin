@@ -223,6 +223,8 @@ export function routineErrorMessage(error, copy) {
     'notices-full': copy.unavailable,
     'routine-state-unavailable': copy.unavailable,
     'team-context-unavailable': copy.unavailable,
+    // Admin could not check the Supervisor's password for the Action, so the run ended denied; trying again cannot help.
+    'human-authentication-unavailable': copy.authenticationUnavailable,
   };
   return byCode[code] ?? copy.generic;
 }

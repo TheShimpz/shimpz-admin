@@ -574,6 +574,7 @@ export default {
       busy: 'Une autre exécution de cette routine est toujours en cours. Réessayez quand elle sera terminée.',
       stillRunning: 'L’étape qui a échoué est peut-être encore en cours. Patientez un instant et réessayez.',
       contractsChanged: 'Les Assistants de cette routine ont changé depuis sa création. Redemandez-la dans la conversation.',
+      authenticationUnavailable: 'La vérification du mot de passe du Supervisor est indisponible. Cette action n’a pas été exécutée.',
     },
   },
   assistantPage: {

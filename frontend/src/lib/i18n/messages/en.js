@@ -583,6 +583,7 @@ export default {
       busy: 'Another run of this Routine is still going. Try again when it ends.',
       stillRunning: 'The step that failed may still be running. Wait a moment and try again.',
       contractsChanged: 'This Routine\'s Assistants changed since it was made. Ask for it again in the chat.',
+      authenticationUnavailable: 'Supervisor password verification is unavailable. This action was not executed.',
     },
   },
   // The Assistants catalog list and each Assistant's own page. "Assistant" and "Action" stay untranslated product terms;

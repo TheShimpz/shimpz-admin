@@ -574,6 +574,7 @@ export default {
       busy: '该例行任务的另一次运行仍在进行中。请在其结束后再试。',
       stillRunning: '失败的步骤可能仍在运行。请稍候再试。',
       contractsChanged: '此例行任务创建后，其助手已发生变化。请在对话中重新提出。',
+      authenticationUnavailable: 'Supervisor 密码验证当前不可用。此操作未执行。',
     },
   },
   assistantPage: {

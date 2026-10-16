@@ -574,6 +574,7 @@ export default {
       busy: 'Eine andere Ausführung dieser Routine läuft noch. Versuche es erneut, wenn sie beendet ist.',
       stillRunning: 'Der fehlgeschlagene Schritt läuft vielleicht noch. Warte einen Moment und versuche es erneut.',
       contractsChanged: 'Die Assistenten dieser Routine haben sich seit ihrer Erstellung geändert. Frag im Chat erneut danach.',
+      authenticationUnavailable: 'Die Prüfung des Supervisor-Passworts ist nicht verfügbar. Diese Aktion wurde nicht ausgeführt.',
     },
   },
   assistantPage: {

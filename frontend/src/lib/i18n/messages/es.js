@@ -574,6 +574,7 @@ export default {
       busy: 'Otra ejecución de esta rutina sigue en curso. Inténtalo de nuevo cuando termine.',
       stillRunning: 'El paso que falló puede seguir ejecutándose. Espera un momento e inténtalo de nuevo.',
       contractsChanged: 'Los Asistentes de esta rutina cambiaron desde que se creó. Pídela de nuevo en el chat.',
+      authenticationUnavailable: 'La verificación de la contraseña del Supervisor no está disponible. Esta acción no se ejecutó.',
     },
   },
   assistantPage: {

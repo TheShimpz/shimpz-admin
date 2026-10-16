@@ -574,6 +574,7 @@ export default {
       busy: 'このルーティンの別の実行がまだ進行中です。終わってからもう一度試してください。',
       stillRunning: '失敗したステップがまだ動いている可能性があります。少し待ってからもう一度試してください。',
       contractsChanged: 'このルーティンのアシスタントは作成後に変更されました。チャットでもう一度依頼してください。',
+      authenticationUnavailable: 'Supervisor のパスワード確認を現在利用できません。この操作は実行されていません。',
     },
   },
   assistantPage: {

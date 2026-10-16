@@ -574,6 +574,7 @@ export default {
       busy: 'Outra execução desta rotina ainda está em andamento. Tente de novo quando ela terminar.',
       stillRunning: 'A etapa que falhou pode ainda estar rodando. Aguarde um momento e tente de novo.',
       contractsChanged: 'Os Assistentes desta rotina mudaram desde que ela foi criada. Peça de novo na conversa.',
+      authenticationUnavailable: 'A verificação da senha do Supervisor está indisponível. Esta ação não foi executada.',
     },
   },
   assistantPage: {
