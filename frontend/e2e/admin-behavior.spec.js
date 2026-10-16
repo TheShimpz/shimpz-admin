@@ -3790,8 +3790,7 @@ test('a reply shows what its task used only when its done frame reports usage', 
   };
   const chat = await routeReadyChat(page, { usage, holdReply: true });
   await page.goto('/chat/');
-  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await sendMessage(page, 'List my DNS zones');
   // Admin's own step comes first, as the mock sends it when the chat frame arrives.
   await expect.poll(() => chat.chatFrames().length).toBe(1);
   chat.sendProgressEvent({ type: 'progress', seq: 2, origin: 'team', phase: 'model', state: 'started' });
@@ -3815,8 +3814,7 @@ test('a reply whose only observed steps are Admin\'s keeps its usage line', asyn
   const usage = { duration_ms: 6240, models: [{ provider: 'openai', model: 'gpt-6-luna', input_tokens: 11900, output_tokens: 580 }] };
   await routeReadyChat(page, { usage });
   await page.goto('/chat/');
-  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await sendMessage(page, 'List my DNS zones');
   const reply = page.getByRole('article', { name: 'Marketing' });
   await expect(reply).toContainText('Rendered answer');
   await expect(reply).toContainText('12,480 tokens');
@@ -3853,8 +3851,7 @@ test('a reply restored from history shows its usage line, and one stored without
 test('a reloaded reply opens the same recorded steps from its usage line', async ({ page }) => {
   await routeScenario(page, 'chat-receipt');
   await page.goto('/chat/?team=marketing');
-  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await sendMessage(page, 'List my DNS zones');
   const reply = page.getByRole('article', { name: 'Marketing' });
   await expect(reply).toHaveCount(1);
   // Team's four steps and the rest of its clock; Admin's own steps are not among them.
@@ -3873,8 +3870,7 @@ test('a reloaded reply opens the same recorded steps from its usage line', async
 test('a done frame with malformed usage is refused and shows no reply', async ({ page }) => {
   await routeReadyChat(page, { usage: { duration_ms: 1, models: [] } });
   await page.goto('/chat/');
-  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'List my DNS zones');
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await sendMessage(page, 'List my DNS zones');
   await expect(page.getByRole('alert')).toBeVisible();
   await expect(page.getByText('Rendered answer', { exact: true })).toHaveCount(0);
 });
