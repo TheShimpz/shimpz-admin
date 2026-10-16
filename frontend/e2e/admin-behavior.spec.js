@@ -6420,7 +6420,8 @@ test.describe('Team Routines', () => {
     await expect(runs.nth(3).getByRole('button')).toHaveCount(0);
   });
 
-  test("a Routine panel opened from its Team's list says which steps write, and closes when a step's Assistant leaves the page", async ({ page }) => {
+  test("a Routine panel opened from its Team's list says which steps write, and closes when a step's Assistant leaves the page", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     const steps = [
       ...ROUTINE_PLAN,
       { ...ROUTINE_PLAN[0], position: 2, action: 'create-dns-record', read_only: false, inputs: [] },
