@@ -19,6 +19,7 @@
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { clearModelContext, modelContext } from '#lib/brain/context.js';
   import { authenticateWithPasskey, passkeyFailure, registerPasskey } from '#lib/auth/passkey.js';
+  import { isFactorCode } from '#lib/auth/factor.js';
   import { clearTeamRoutines } from '#lib/routines/context.js';
   import { clearSecuritySummary, recoveryCodes as validRecoveryCodes } from '#lib/auth/security.js';
   import { clearSessionContext, readSession, SESSION_ENDED, setSessionContext } from '#lib/session/context.js';
@@ -271,7 +272,7 @@
 
   async function submitTotp() {
     const endpoint = TOTP_ENDPOINTS[phase];
-    if (busy || !endpoint || !/^[0-9]{6}$/.test(code)) return;
+    if (busy || !endpoint || !isFactorCode(code)) return;
     error = '';
     busy = true;
     const submittedPhase = phase;

@@ -5,6 +5,7 @@
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n/index.js';
   import { authenticateWithPasskey, passkeyFailure } from '#lib/auth/passkey.js';
+  import { isFactorCode } from '#lib/auth/factor.js';
   import { AUTHENTICATION_REFUSALS, secondFactorRefusal } from '#lib/auth/refusal.js';
   import SecondFactor from '#lib/auth/SecondFactor.svelte';
   import { beginRoutineDeletion, deleteRoutine, RoutineError } from '#lib/routines/protocol.js';
@@ -25,7 +26,7 @@
   let codeError = $state('');
   let error = $state('');
   let live = true;
-  let ready = $derived(password.length > 0 && (method === 'passkey' || /^[0-9]{6}$/.test(code)));
+  let ready = $derived(password.length > 0 && (method === 'passkey' || isFactorCode(code)));
   // Every confirmation's words, with this deletion's own where it differs: its hints, expiry, code lock, and buttons.
   let words = $derived({ ...$t('security'), ...copy });
 

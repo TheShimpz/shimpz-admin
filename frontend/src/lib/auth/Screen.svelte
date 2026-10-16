@@ -2,6 +2,7 @@
   import { Card, Notice, ShimpzBrand, TextField } from '@shimpz/frontend';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n/index.js';
+  import { isFactorCode } from '#lib/auth/factor.js';
   import RecoveryCodes from '#lib/auth/RecoveryCodes.svelte';
 
   let {
@@ -119,7 +120,7 @@
         <form onsubmit={(event) => (event.preventDefault(), onSubmitTotp())}>
           <TextField id="admin-totp" label={$t('auth.totpCode')} type="text" bind:value={code} autocomplete="one-time-code" inputmode="numeric" pattern={'[0-9]{6}'} minlength="6" maxlength="6" required disabled={busy} />
           {#if formError}<Notice variant="error">{formError}</Notice>{/if}
-          <DialogAction kind="confirm" type="submit" disabled={busy || !/^[0-9]{6}$/.test(code)}>{busy ? $t('auth.checking') : $t('auth.verify')}</DialogAction>
+          <DialogAction kind="confirm" type="submit" disabled={busy || !isFactorCode(code)}>{busy ? $t('auth.checking') : $t('auth.verify')}</DialogAction>
           {#if totpLogin}
             <div class="alternative"><span>{$t('auth.or')}</span></div>
             {#if passkeyAvailable}

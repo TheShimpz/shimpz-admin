@@ -7,7 +7,8 @@
 import { isLocale } from '../i18n/locales.js';
 import { parseRunUsage } from '../chat/usage.js';
 import { exactKeys, jsonObject } from '../api.js';
-import { codePointLength, isInstant } from '../grammar.js';
+import { factorOffer, isFactorProof } from '../auth/factor.js';
+import { codePointLength, ERROR_CODE_RE, isInstant } from '../grammar.js';
 import { DIGEST_RE, isActionId, isAssistantId, isIdentifier, OPAQUE_ID_RE, TEAM_ID_RE } from '../ids.js';
 
 const ENCODER = new TextEncoder();
@@ -357,8 +358,6 @@ export async function readRunSteps(call, teamId, runId, binding, snapshot, offse
     isPageOf(item, (step, index) => isRunStep(step, index, item.total)));
 }
 
-const ERROR_CODE_RE = /^[a-z][a-z0-9-]{0,63}$/;
-
 /**
  * Whether a page reader must read the next page before it can reveal `wanted` steps: fewer are loaded and Team named a
  * next offset.
@@ -553,21 +552,14 @@ export async function beginRoutineDeletion(call, teamId, routineId, password) {
     routine_id: opaque(routineId),
     body: { password },
   });
-  const methods = body.methods;
-  const passkey = Array.isArray(methods) && methods.length === 2 && methods[0] === 'totp' && methods[1] === 'passkey';
-  const totpOnly = Array.isArray(methods) && methods.length === 1 && methods[0] === 'totp';
-  if (totpOnly && exactKeys(body, ['methods'])) return { passkey: null };
-  if (passkey && exactKeys(body, ['methods', 'passkey_options']) && body.passkey_options && typeof body.passkey_options === 'object') {
-    return { passkey: body.passkey_options };
-  }
-  throw new RoutineError('routine-response-invalid');
+  const offer = factorOffer(body);
+  if (offer === null) throw new RoutineError('routine-response-invalid');
+  return offer;
 }
 
 /** Spend the started deletion on exactly one second factor, `{ code }` or `{ credential }`; Admin then asks Team. */
 export async function deleteRoutine(call, teamId, routineId, proof) {
-  const byCode = exactKeys(proof, ['code']) && /^[0-9]{6}$/.test(proof.code);
-  const byPasskey = exactKeys(proof, ['credential']) && proof.credential && typeof proof.credential === 'object';
-  if (!byCode && !byPasskey) throw new RoutineError('routine-request-invalid');
+  if (!isFactorProof(proof)) throw new RoutineError('routine-request-invalid');
   const params = { team_id: team(teamId), routine_id: opaque(routineId), body: proof };
   return deleted(await request(call, 'routines.delete', params), teamId, routineId);
 }
@@ -885,7 +877,7 @@ export async function readRunDiagnostics(call, teamId, runId) {
 }
 
 // The confirmation card of a recorded Routine (ADR-0101, amended 2026-10-15), mirroring Team's
-// `routine.canonical_proposal`: the recording agent's description, which states the schedule and the output, and every
+// `routine_proposal.canonical_proposal`: the recording agent's description, which states the schedule and the output, and every
 // step with its effect, every literal complete and escaped, every source and selector described completely. Nothing in
 // it is paged or cut.
 const INPUT_ORIGINS = ['request', 'assistant', 'clock', 'step', 'selector'];

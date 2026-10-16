@@ -1,7 +1,11 @@
 // The bounded value grammars every protocol parser shares: text measured in code points, the control characters no
-// shown text may hold, a UTC instant in whole seconds, a whole count, and a strictly ascending list.
+// shown text may hold, a stable error code, a UTC instant in whole seconds, a whole count, and a strictly ascending
+// list.
 
 export const CONTROL_RE = /[\u0000-\u001f\u007f]/;
+
+/** A stable refusal or error code an Admin or Team answer names. */
+export const ERROR_CODE_RE = /^[a-z][a-z0-9-]{0,63}$/;
 
 const INSTANT_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 

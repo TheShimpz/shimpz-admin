@@ -3,7 +3,8 @@ import { derived } from 'svelte/store';
 import { socketReads } from '../session/socket.js';
 import { synced } from '../session/synced.js';
 import { exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
-import { isInstant } from '../grammar.js';
+import { ERROR_CODE_RE, isInstant } from '../grammar.js';
+import { factorOffer, isFactorProof } from './factor.js';
 
 // The Supervisor's own sign-in security (ADR-0051): the refused second-factor attempts a sign-in reported, kept until
 // the Supervisor acknowledges them, and the single-use recovery codes left. Every read and change goes over the Admin
@@ -11,7 +12,6 @@ import { isInstant } from '../grammar.js';
 const MAX_COUNT = 1_000_000;
 const RECOVERY_CODE_COUNT = 10;
 const RECOVERY_CODE_RE = /^[0-9a-hjkmnp-tv-z]{4}-[0-9a-hjkmnp-tv-z]{4}-[0-9a-hjkmnp-tv-z]{4}$/;
-const REFUSAL_RE = /^[a-z][a-z0-9-]{0,63}$/;
 
 
 function count(value) {
@@ -122,7 +122,7 @@ async function confirmation(method, payload) {
   const response = await socketReads.call(method, { body: payload });
   const body = await jsonObject(response);
   if (!response.ok) {
-    const code = typeof body.code === 'string' && REFUSAL_RE.test(body.code) ? body.code : 'request-failed';
+    const code = typeof body.code === 'string' && ERROR_CODE_RE.test(body.code) ? body.code : 'request-failed';
     const retryAfter = Number.isInteger(body.retry_after) && body.retry_after > 0 && body.retry_after <= 86_400
       ? body.retry_after : 0;
     throw new SecurityError(code, response.status, retryAfter);
@@ -134,13 +134,9 @@ async function confirmation(method, payload) {
 async function beginOperation(method, password) {
   if (typeof password !== 'string' || password.length < 1) throw new SecurityError('request-invalid');
   const body = await confirmation(method, { password });
-  const methods = JSON.stringify(body.methods);
-  if (methods === '["totp"]' && exactKeys(body, ['methods'])) return { passkey: null };
-  if (methods === '["totp","passkey"]' && exactKeys(body, ['methods', 'passkey_options']) && body.passkey_options
-    && typeof body.passkey_options === 'object') {
-    return { passkey: body.passkey_options };
-  }
-  throw new SecurityError('response-invalid');
+  const offer = factorOffer(body);
+  if (offer === null) throw new SecurityError('response-invalid');
+  return offer;
 }
 
 /** Start replacing the recovery codes with the Supervisor password. */
@@ -150,9 +146,7 @@ export function beginRecoveryCodes(password) {
 
 // Spend a started confirmation on one second factor, `{ code }` or `{ credential }`.
 function completeOperation(method, proof) {
-  const byCode = exactKeys(proof, ['code']) && /^[0-9]{6}$/.test(proof.code);
-  const byPasskey = exactKeys(proof, ['credential']) && proof.credential && typeof proof.credential === 'object';
-  if (!byCode && !byPasskey) return Promise.reject(new SecurityError('request-invalid'));
+  if (!isFactorProof(proof)) return Promise.reject(new SecurityError('request-invalid'));
   return confirmation(method, proof);
 }
 

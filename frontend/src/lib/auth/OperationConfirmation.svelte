@@ -4,6 +4,7 @@
   import { commandsReady } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
   import { t } from '#lib/i18n/index.js';
+  import { isFactorCode } from '#lib/auth/factor.js';
   import { authenticateWithPasskey, passkeyFailure } from '#lib/auth/passkey.js';
   import { secondFactorRefusal } from '#lib/auth/refusal.js';
   import SecondFactor from '#lib/auth/SecondFactor.svelte';
@@ -38,7 +39,7 @@
   let error = $state('');
   let busy = $state(false);
   let live = true;
-  let ready = $derived(password.length > 0 && (method === 'passkey' || /^[0-9]{6}$/.test(code)));
+  let ready = $derived(password.length > 0 && (method === 'passkey' || isFactorCode(code)));
   let fields = $derived({ ...$t('security'), passkeyHint });
 
   $effect(() => {
