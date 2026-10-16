@@ -3,6 +3,7 @@
   import { flip } from 'svelte/animate';
   import { ActionLink, Button, ShimpzBrand, TextField } from '@shimpz/frontend';
 
+  import { focusLost } from '#lib/shell/focus.js';
   import { showAdminNotice } from '#lib/shell/notice.js';
 
   import { t } from '#lib/i18n/index.js';
@@ -104,10 +105,7 @@
     }
     renameSaving = true;
     // Focus returns only if the user left it in the field while the name was saving.
-    const stillHere = () => {
-      const active = document.activeElement;
-      return restoreFocus && (!active || active === document.body || active.id === renameFieldId(team.id));
-    };
+    const stillHere = () => restoreFocus && (focusLost() || document.activeElement.id === renameFieldId(team.id));
     try {
       await renameTeam(team.id, name);
       const restore = stillHere();

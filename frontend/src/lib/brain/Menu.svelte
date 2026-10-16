@@ -1,6 +1,7 @@
 <script>
   import { Button, ChoiceItem } from '@shimpz/frontend';
 
+  import { focusLost } from '#lib/shell/focus.js';
   import { showAdminNotice } from '#lib/shell/notice.js';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/brain/panel.js';
@@ -51,8 +52,7 @@
   $effect(() => {
     if (!restoreFocus || !trigger || (unavailable && !open)) return;
     restoreFocus = false;
-    const active = document.activeElement;
-    if (!active || active === document.body || root?.contains(active)) trigger.focus();
+    if (focusLost() || root?.contains(document.activeElement)) trigger.focus();
   });
 
   function close(restore = false) {
