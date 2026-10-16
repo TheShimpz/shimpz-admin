@@ -4932,6 +4932,43 @@ test.describe('Team Routines', () => {
     expect(await proposalCalls(page)).toEqual(['confirm', 'revoke']);
   });
 
+  test('a refusal that arrives after the person moved the focus to the composer leaves it there', async ({ page }) => {
+    await recordRoutine(page);
+    let release;
+    const held = new Promise((resolve) => { release = resolve; });
+    let asked = false;
+    await routeRead(page, 'routines.proposal_confirm', async () => {
+      asked = true;
+      await held;
+      return ok({ code: 'routine-limit' }, 409);
+    });
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    await card.getByRole('button', { name: 'Create', exact: true }).click();
+    await expect.poll(() => asked).toBe(true);
+    const composer = page.getByRole('textbox', { name: 'Send', exact: true });
+    await composer.focus();
+    release();
+    await expect(card.getByRole('alert')).toHaveText(messages.en.routine.errors.full);
+    await expect(composer).toBeFocused();
+  });
+
+  test('an edited Routine card whose text is too long for one message keeps its editor and gives the focus back to Send', async ({ page }) => {
+    const scenario = await recordRoutine(page);
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    await card.getByRole('button', { name: 'Edit', exact: true }).click();
+    const prompt = card.getByRole('textbox', { name: messages.en.routine.proposal.prompt });
+    // One character more than a chat message holds.
+    const text = 'a'.repeat(16_001);
+    await prompt.fill(text);
+    const send = card.getByRole('button', { name: 'Send', exact: true });
+    await send.click();
+    await expect(card.getByRole('alert')).toHaveText(messages.en.routine.proposal.rewriteUnsent);
+    await expect(prompt).toHaveValue(text);
+    await expect(send).toBeFocused();
+    const sent = scenario.chatFrames().filter((frame) => frame.type === 'chat').map((frame) => frame.message);
+    expect(sent).toEqual([ROUTINE_TEXT.en.request]);
+  });
+
   test('a refused revocation of an edited Routine card keeps its editor, sends nothing, and gives the focus back to Send', async ({ page }) => {
     const scenario = await recordRoutine(page);
     await routeRead(page, 'routines.proposal_revoke', () => ok({ code: 'routine-state-unavailable' }, 503));
