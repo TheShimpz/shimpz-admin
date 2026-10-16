@@ -66,11 +66,11 @@ def _read(operation: str, *names: str):
     return _unlisted(manage, operation, *names)
 
 
-def _change(owner: object, operation: str, *names: str, wake: bool = False):
+def _change(operation: str, *names: str, wake: bool = False):
     """A Routine change: Team's answer, the Team's `routines` topic on success, and the scheduler woken if asked."""
 
     def change(socket: SessionSocket, params: dict[str, object]) -> transport.TeamResponse:
-        response = _relayed(getattr(owner, operation), *(params[name] for name in names))
+        response = _relayed(getattr(manage, operation), *(params[name] for name in names))
         return _settled(socket, params["team_id"], response, wake=wake)
 
     async def method(socket: SessionSocket, params: dict[str, object]) -> Answer:
@@ -176,14 +176,14 @@ METHODS = {
     "routines.diagnostics": _read("diagnostics", "team_id", "run_id"),
     "routines.run_steps": _read("run_steps", "team_id", "run_id", "snapshot", "offset"),
     "routines.plan_steps": _read("plan_steps", "team_id", "routine_id", "revision", "offset"),
-    "routines.pause": _change(manage, "pause", "team_id", "routine_id"),
-    "routines.resume": _change(manage, "resume", "team_id", "routine_id"),
+    "routines.pause": _change("pause", "team_id", "routine_id"),
+    "routines.resume": _change("resume", "team_id", "routine_id"),
     "routines.deletion": _deletion,
     "routines.delete": _delete,
     # Opening a recovery card only reads the held run's state.
     "routines.card": _read("open_card", "team_id", "run_id"),
     # Rodar makes the Routine due again.
-    "routines.card_answer": _change(manage, "answer_card", "team_id", "run_id", "body", wake=True),
+    "routines.card_answer": _change("answer_card", "team_id", "run_id", "body", wake=True),
     # Opening a frozen run's challenge mints a fresh one, which the browser never replays, but changes nothing the
     # Team's Routine list shows.
     "routines.challenge": _unlisted(answer, "open_challenge", "team_id", "run_id", "body"),
