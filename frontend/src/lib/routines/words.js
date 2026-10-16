@@ -6,7 +6,7 @@ import { fill } from '../i18n/fill.js';
 import { dateFormat, numberFormat, pluralRules, relativeFormat } from '../i18n/formats.js';
 import { humanizeId } from '../ids.js';
 import { outcomeUnknown } from '../session/socket.js';
-import { escapedText, questionTarget, RoutineError } from './protocol.js';
+import { escapedText, OUTPUT_MODES, questionTarget, RoutineError } from './protocol.js';
 
 /**
  * How a listed Routine stands for the person, most urgent first: being deleted, held for recovery, waiting to be asked
@@ -450,12 +450,9 @@ export function proposalInputValue(input, copy, planCopy) {
   return path.length ? `${origin}: ${path.join(' › ')}` : origin;
 }
 
-// The output modes in the order Team's output question offers their labels (routines/questionMessages.js).
-const OUTPUT_CHOICES = ['show', 'changes', 'none'];
-
 /** A card's output in Team's own label for it, the one its output question offers in the interface language. */
 export function outputChoiceWords(mode, questions) {
-  return questions.output.answers[OUTPUT_CHOICES.indexOf(mode)];
+  return questions.output.answers[OUTPUT_MODES.indexOf(mode)];
 }
 
 /** When a card's Routine runs, in its zone; a Routine given no timezone runs in UTC and says so. */

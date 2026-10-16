@@ -372,8 +372,9 @@ export function needsPage(loaded, wanted, next) {
 
 // What a completed run does with its result (ADR-0092 amendment, 2026-10-05, output; ADR-0101), mirroring Team's
 // `routine.canonical_disposition` and `routine.canonical_output`: show one step's result after every run, only when it
-// changed, or show nothing; and a shown result as Team's bounded, redacted, ordered projection.
-const OUTPUT_MODES = ['show', 'changes', 'none'];
+// changed, or show nothing, in the order Team's output question offers their labels (routines/questionMessages.js);
+// and a shown result as Team's bounded, redacted, ordered projection.
+export const OUTPUT_MODES = ['show', 'changes', 'none'];
 const SHOWN_MODES = ['show', 'changes'];
 const OUTPUT_STATES = ['shown', 'unchanged', 'unavailable'];
 const MAX_OUTPUT_DEPTH = 4;
