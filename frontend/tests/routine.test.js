@@ -819,26 +819,24 @@ test("the chat's view admits each card's answer and only a Routine's creation, a
   assert.equal(requested.length, 1);
 });
 
-// A run opened in full as its notice shows it, in Portuguese.
-function noticeShown(entry) {
-  return routineNotice(parseRoutineRunEntry(entry), routineMessages.pt);
-}
-
 test('every run reads as one line: a status phrase colored by meaning', () => {
   const cases = [
-    [{ outcome: 'done', detail: { plan: SUMMARY, output: SHOWN_OUTPUT } }, ['healthy', 'concluída']],
-    [{ outcome: 'recovered', detail: { plan: LONG, output: UNSHOWN } }, ['healthy', 'concluída após recuperação']],
-    [{ outcome: 'failed', detail: { code: 'plan-input-type' } }, ['danger', 'falhou']],
-    [{ outcome: 'denied', detail: {} }, ['danger', 'negada']],
-    [{ outcome: 'held', detail: {} }, ['danger', 'parou com erro']],
-    [{ outcome: 'paused', detail: { reason: 'exhausted' } }, ['waiting', 'pausada']],
-    [{ outcome: 'frozen', detail: { request_kind: 'human' } }, ['waiting', 'aguardando aprovação']],
-    [{ outcome: 'frozen', detail: { request_kind: 'integrations' } }, ['waiting', 'aguardando conexão']],
-    [{ outcome: 'stopped', detail: {} }, ['neutral', 'interrompida']],
-    [{ outcome: 'user-skipped', detail: {} }, ['neutral', 'deixada de lado']],
+    [{ outcome: 'done', detail: { plan: SUMMARY, output: SHOWN_OUTPUT } }, ['healthy', 'done']],
+    [{ outcome: 'recovered', detail: { plan: LONG, output: UNSHOWN } }, ['healthy', 'recovered']],
+    [{ outcome: 'failed', detail: { code: 'plan-input-type' } }, ['danger', 'failed']],
+    [{ outcome: 'denied', detail: {} }, ['danger', 'denied']],
+    [{ outcome: 'held', detail: {} }, ['danger', 'held']],
+    [{ outcome: 'paused', detail: { reason: 'exhausted' } }, ['waiting', 'paused']],
+    [{ outcome: 'frozen', detail: { request_kind: 'human' } }, ['waiting', 'frozenHuman']],
+    [{ outcome: 'frozen', detail: { request_kind: 'integrations' } }, ['waiting', 'frozenIntegrations']],
+    [{ outcome: 'stopped', detail: {} }, ['neutral', 'stopped']],
+    [{ outcome: 'user-skipped', detail: {} }, ['neutral', 'userSkipped']],
   ];
-  for (const [change, [tone, status]] of cases) {
-    assert.deepEqual(noticeShown({ ...RUN_ENTRY, ...change }), { tone, status }, change.outcome);
+  // A stub catalog whose every status names itself proves the logic.
+  const stub = { notice: { status: Object.fromEntries(cases.map(([, [, key]]) => [key, `<${key}>`])) } };
+  for (const [change, [tone, key]] of cases) {
+    const shown = routineNotice(parseRoutineRunEntry({ ...RUN_ENTRY, ...change }), stub);
+    assert.deepEqual(shown, { tone, status: `<${key}>` }, change.outcome);
   }
   // Every shown outcome has its status words in every Admin language.
   for (const [locale, catalog] of Object.entries(routineMessages)) {

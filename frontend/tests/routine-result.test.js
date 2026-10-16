@@ -183,24 +183,33 @@ test('a long list reveals its items a page at a time', () => {
 });
 
 test('plan inputs and attempt conditions read in words', () => {
-  const plan = routineMessages.en.plan;
+  // Stub catalogs whose every template names itself prove the logic.
+  const plan = {
+    clock: '<clock {format}>',
+    clocks: { date: '<date>' },
+    fromStepWhole: '<whole {n}>',
+    fromStep: '<from {n} {path}>',
+    fromItem: '<selected {n} {path} {member} {value}>',
+    first: '<first>',
+    item: '<item {n}>',
+  };
   assert.equal(inputWords({ member: 'page', source: 'literal', value: '"1"' }, plan), '1');
-  assert.equal(inputWords({ member: 'at', source: 'run_clock', value: 'date' }, plan), "each run's date");
+  assert.equal(inputWords({ member: 'at', source: 'run_clock', value: 'date' }, plan), '<clock <date>>');
   const dated = inputWords({ member: 'q', source: 'run_clock', value: 'news {DD/MM/YYYY|+6}' }, plan);
   assert.equal(dated, 'news {DD/MM/YYYY|+6}');
   // A reference names the earlier step by its position.
   const from = (step, pointer, where = null, item = null) => ({ member: 'z', source: 'step_output', step, pointer, where, item });
-  assert.equal(inputWords(from(1, ''), plan), 'the whole result of step 1');
-  assert.equal(inputWords(from(1, '/zones/0/id'), plan), 'from step 1 (zones › first › id)');
+  assert.equal(inputWords(from(1, ''), plan), '<whole 1>');
+  assert.equal(inputWords(from(1, '/zones/0/id'), plan), '<from 1 zones › <first> › id>');
   // A selector names the one item whose member holds the constant, escaped.
   assert.equal(
-    inputWords(from(1, '/result', { member: 'name', value_json: '"shimpz.com"' }, '/id'), plan),
-    'from step 1 (result › id), the item whose Name is “shimpz.com”',
+    inputWords(from(1, '/result', { member: 'name', value_json: '"a\\u202eb"' }, '/id'), plan),
+    '<selected 1 result › id Name a\\u202eb>',
   );
-  const details = routineMessages.en.details;
-  assert.equal(conditionWords('exit-status:-9', details), 'The Action exited with status -9.');
-  assert.equal(conditionWords('timeout', details), 'The Action ran out of time.');
-  assert.equal(conditionWords('transport-failed', details), 'Team could not reach the Action.');
+  const details = { conditions: { exit: '<exit {code}>', timeout: '<timeout>', transport: '<transport>' } };
+  assert.equal(conditionWords('exit-status:-9', details), '<exit -9>');
+  assert.equal(conditionWords('timeout', details), '<timeout>');
+  assert.equal(conditionWords('transport-failed', details), '<transport>');
 });
 
 test("an attempt's heading names its recorded position, so one Action's attempts at two positions read apart", () => {
@@ -212,8 +221,8 @@ test("an attempt's heading names its recorded position, so one Action's attempts
     assert.match(fifth, /5/u, locale);
   }
   assert.equal(
-    attemptWords(attempt(2), routineMessages.en.details.attempt, { assistant: () => 'Shimpz Cloudflare', action: () => 'List DNS records' }),
-    'Step 2: Shimpz Cloudflare · List DNS records, attempt 1',
+    attemptWords(attempt(2), '<{step} {assistant} {action} {attempt}>', { assistant: () => 'Cloudflare', action: () => 'List' }),
+    '<2 Cloudflare List 1>',
   );
 });
 
