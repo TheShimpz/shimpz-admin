@@ -510,6 +510,28 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
                     lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
                 )
 
+    def test_rejects_a_dropped_supervisor_frame_or_chat_stream_vector_section(self) -> None:
+        def dropped(section: str, member: str | None = None):
+            def mutate(value: dict[str, object]) -> None:
+                if member is None:
+                    value.pop(section)
+                else:
+                    value[section].pop(member)
+
+            return mutate
+
+        mutations = (
+            dropped("local_supervisor", "valid"),
+            dropped("local_supervisor", "invalid"),
+            *(dropped(section) for section in ("frames", "human_response_frames", "chat_stream", "chat_stream_lines")),
+        )
+        for mutate in mutations:
+            with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
+                _execute(
+                    HTTP / "verify.py",
+                    lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation),
+                )
+
     def test_rejects_positive_supervisor_vectors_that_are_not_canonical(self) -> None:
         from backend.protocol.http.v1 import supervisor
 
