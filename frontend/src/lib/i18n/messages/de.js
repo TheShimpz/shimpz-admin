@@ -525,6 +525,11 @@ export default {
       stepRead: 'Lesen',
       stepWrite: 'Schreiben',
       changes: 'ändert bei jeder Ausführung etwas',
+      when: '{schedule}, in der Zeitzone {timezone}',
+      whenFallback: '{schedule}, in {timezone}, weil keine Zeitzone angegeben wurde',
+      whenLabel: 'Wann',
+      outputLabel: 'Ergebnis',
+      firstRun: 'Der erste Lauf startet, sobald du sie erstellst.',
       origins: {
         clock: 'das Datum jeder Ausführung',
         step: 'aus Schritt {n}',

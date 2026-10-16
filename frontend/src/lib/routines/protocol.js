@@ -907,10 +907,14 @@ function isCardStep(value, position) {
 
 /**
  * The Routine card a recording turn's reply carries, admitted exactly as Team's closed form, or a thrown
- * `routine-response-invalid`. It is the one thing the person confirms.
+ * `routine-response-invalid`. It is the one thing the person confirms: the agent's description of the work, Team's own
+ * schedule, zone, and output (a shown mode shows the last step's result), and every step.
  */
 export function parseRoutineProposal(value) {
-  const keys = ['proposal_id', 'expires_at', 'replaces', 'name', 'description', 'steps'];
+  const keys = [
+    'proposal_id', 'expires_at', 'replaces', 'name', 'description', 'schedule', 'timezone', 'timezone_source', 'output',
+    'steps',
+  ];
   return view(value, keys, (item) => {
     const { steps } = item;
     return (
@@ -919,6 +923,9 @@ export function parseRoutineProposal(value) {
       (item.replaces === null || (typeof item.replaces === 'string' && OPAQUE_ID_RE.test(item.replaces))) &&
       isName(item.name) &&
       isName(item.description, MAX_DESCRIPTION_CHARS) &&
+      isSchedule(item.schedule) &&
+      isZoned(item.timezone, item.timezone_source) &&
+      OUTPUT_MODES.includes(item.output) &&
       Array.isArray(steps) && steps.length > 0 && steps.length <= MAX_ROUTINE_STEPS &&
       steps.every((step, index) => isCardStep(step, index + 1))
     );

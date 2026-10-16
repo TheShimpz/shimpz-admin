@@ -10,27 +10,30 @@
   import { call, commandsReady } from '#lib/session/socket.js';
   import { installedIconUrl } from '#lib/assistants/icons.js';
   import { assistantName } from '#lib/assistants/names.js';
-  import { t } from '#lib/i18n/index.js';
+  import { locale, t } from '#lib/i18n/index.js';
   import { fill } from '#lib/i18n/fill.js';
   import { refreshTeamRoutines } from '#lib/routines/context.js';
   import { humanizeId } from '#lib/ids.js';
   import { confirmRoutineProposal, revokeRoutineProposal } from '#lib/routines/protocol.js';
-  import { fillParts, proposalInputValue, routineFailureWords, stepTag } from '#lib/routines/words.js';
+  import {
+    fillParts, outputChoiceWords, proposalInputValue, proposalRequest, proposalWhen, routineFailureWords, stepTag,
+  } from '#lib/routines/words.js';
   import { recoverFocus } from '#lib/shell/focus.js';
 
   // The card of a Routine a recording turn recorded (ADR-0101), under its reply, kept short for a person
-  // who is not technical: the recording agent's plain description of the work and a warning when a step changes
+  // who is not technical: the recording agent's plain description of the work, when it runs in its zone and what each
+  // run does with its result in Team's own fixed words (amendment 2026-10-16), and a warning when a step changes
   // something. Its footer row holds a closed disclosure that, once the person opens it, lists each step's Assistant,
   // linked to its page, its Action, whether it changes something, and every input's complete value, and at its end
-  // three buttons, none preselected: Cancel revokes the card, Edit turns its description into the prompt that records it
-  // again, and Create confirms it. All of it is escaped text. A card past its lifetime is no
-  // longer shown.
+  // three buttons, none preselected: Cancel revokes the card, Edit turns it into the prompt that records it again, and
+  // Create confirms it. All of it is escaped text. A card past its lifetime is no longer shown.
   // `answered` is how the person already answered this card, kept in the transcript, so a reload never offers it again.
   // `onleave` hears that an answer here took the card out of the chat, with the focus its button had.
   let { teamId, proposal, copy, disabled, answered, onrewrite, onleave } = $props();
 
-  // Edit turns the description into the prompt that records the Routine again: sending it revokes this card and
-  // sends the edited text as the person's next message, so the Routine's ordinary flow asks for anything it lacks.
+  // Edit turns the card into the prompt that records the Routine again: its description, then its schedule, zone, and
+  // output in words Team reads back as exactly the card's. Sending it revokes this card and sends the edited text as the
+  // person's next message, so the Routine's ordinary flow asks for anything it lacks.
   let editing = $state(false);
   // The steps stay closed until the person opens them.
   let stepsOpen = $state(false);
@@ -83,7 +86,7 @@
 
   // The field takes the keyboard at once, its caret after the text, so the person types straight away.
   async function edit() {
-    draft = proposal.description;
+    draft = proposalRequest(proposal, copy, $locale);
     editing = true;
     await tick();
     prompt?.focus();
@@ -161,6 +164,12 @@
           rows={4} bind:value={draft} bind:element={prompt} />
       {:else}
         <p class="description">{proposal.description}</p>
+        <dl class="settings">
+          <div><dt>{card.whenLabel}</dt><dd>{proposalWhen(proposal, copy, $locale)}</dd></div>
+          <div><dt>{card.outputLabel}</dt><dd>{outputChoiceWords(proposal.output, card.questions)}</dd></div>
+        </dl>
+        <!-- An interval starts at once, never at a time of day. -->
+        {#if proposal.schedule.kind === 'continuous'}<p class="note">{card.firstRun}</p>{/if}
       {/if}
       {#if changes}<p class="warning"><RoutineIcon name="warning" />{card.changes}</p>{/if}
     </header>
@@ -261,6 +270,11 @@
   .kicker :global(.routine-icon) { width: 0.8rem; height: 0.8rem; }
   .name { font: 700 1rem/1.3 var(--shimpz-font-mono); letter-spacing: -0.01em; overflow-wrap: anywhere; }
   .description { font-size: 0.86rem; line-height: 1.6; overflow-wrap: anywhere; }
+  /* When it runs and what it shows: Team's own words, each under its small label. */
+  .settings { display: grid; gap: var(--shimpz-space-1); margin: 0; }
+  .settings > div { display: flex; flex-wrap: wrap; gap: 0 var(--gap-item); }
+  .settings dt { color: var(--shimpz-color-text-dim); font: var(--label); letter-spacing: 0.12em; text-transform: uppercase; }
+  .settings dd { margin: 0; overflow-wrap: anywhere; }
   .warning { display: flex; align-items: center; gap: var(--gap-item); color: var(--shimpz-color-yellow); font-size: 0.75rem; }
   .warning :global(.routine-icon) { width: 0.85rem; height: 0.85rem; }
   /* Scoped under the card, so the chat's own paragraph color never overrides these gray notes. */

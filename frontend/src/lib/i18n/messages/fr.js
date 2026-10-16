@@ -525,6 +525,11 @@ export default {
       stepRead: 'Lecture',
       stepWrite: 'Écriture',
       changes: 'modifie quelque chose à chaque exécution',
+      when: '{schedule}, dans le fuseau horaire {timezone}',
+      whenFallback: '{schedule}, en {timezone} car aucun fuseau horaire n’a été indiqué',
+      whenLabel: 'Quand',
+      outputLabel: 'Résultat',
+      firstRun: 'La première exécution démarre dès que vous la créez.',
       origins: {
         clock: 'la date de chaque exécution',
         step: 'de l’étape {n}',

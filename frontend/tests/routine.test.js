@@ -60,7 +60,10 @@ import {
   outputLabels,
   outputScalarWords,
   pointerWords,
+  outputChoiceWords,
   proposalInputValue,
+  proposalRequest,
+  proposalWhen,
   questionWords,
   refusalWords,
   routineErrorMessage,
@@ -78,7 +81,7 @@ import {
 import { resultTable } from '../src/lib/routines/reading.js';
 import { fill } from '../src/lib/i18n/fill.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
-import { diagnostic, httpFailure, noticeRow, planSummary, routineView } from '../e2e/routineScenarios.js';
+import { diagnostic, httpFailure, noticeRow, planSummary, ROUTINE_TEXT, routineView } from '../e2e/routineScenarios.js';
 
 // Each interface language's own catalog of this copy.
 const routineMessages = Object.fromEntries(Object.entries(messages).map(([code, catalog]) => [code, catalog.routine]));
@@ -125,7 +128,11 @@ const PROPOSAL = Object.freeze({
   expires_at: '2026-10-05T12:16:07Z',
   replaces: null,
   name: 'DNS de shimpz.com',
-  description: 'A cada 30 segundos, lista as zonas da sua conta Cloudflare e lê os registros DNS de shimpz.com.',
+  description: 'Lista as zonas da sua conta Cloudflare e lê os registros DNS de shimpz.com.',
+  schedule: { kind: 'continuous', gap: 30 },
+  timezone: 'America/Sao_Paulo',
+  timezone_source: 'browser',
+  output: 'show',
   steps: [
     { position: 1, assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true, inputs: [] },
     {
@@ -320,6 +327,12 @@ test('a Routine card is admitted only whole, and its inputs say where each value
   for (const invalid of [
     { ...PROPOSAL, extra: 1 },
     { ...PROPOSAL, steps: [] },
+    // Team's own schedule, zone, and output are each in their closed form, and none of them is ever missing.
+    { ...PROPOSAL, schedule: { kind: 'continuous', gap: 4 } },
+    { ...PROPOSAL, timezone: '../etc' },
+    { ...PROPOSAL, timezone_source: 'model' },
+    { ...PROPOSAL, output: 'chain' },
+    Object.fromEntries(Object.entries(PROPOSAL).filter(([key]) => key !== 'output')),
     { ...PROPOSAL, name: ' padded ' },
     { ...PROPOSAL, steps: [{ ...PROPOSAL.steps[0], position: 2 }] },
     { ...PROPOSAL, steps: [PROPOSAL.steps[0], { ...PROPOSAL.steps[1], inputs: [{ ...PROPOSAL.steps[1].inputs[0], where: null }] }] },
@@ -1651,4 +1664,37 @@ test('a plan step\'s tag says whether it reads or writes, each in its own tone',
   const [read, write] = [stepTag(true, card), stepTag(false, card)];
   assert.deepEqual([read.label, write.label], ['reads', 'writes']);
   assert.notEqual(read.tone, write.tone);
+});
+
+// Every schedule form, the counts and days whose words change, and each output and zone source, in every language.
+function editedRequests() {
+  const schedules = [
+    ...[5, 30, 60, 90, 1001, 3600, 7200, 86399, 86400, 172800, 604800, 1209600, 31622399, 31622400]
+      .map((gap) => ({ kind: 'continuous', gap })),
+    ...['00:00', '09:00', '23:59'].map((time) => ({ kind: 'daily', time })),
+    ...[0, 1, 2, 3, 4, 5, 6].map((weekday) => ({ kind: 'weekly', weekday, time: '08:30' })),
+    ...[1, 2, 3, 4, 11, 12, 13, 21, 22, 23, 28].map((day) => ({ kind: 'monthly', day, time: '06:00' })),
+  ];
+  const zones = [['America/Sao_Paulo', 'browser'], ['Europe/Lisbon', 'person'], ['UTC', 'none']];
+  const outputs = ['show', 'changes', 'none'];
+  return Object.entries(routineMessages).flatMap(([locale, copy]) => schedules.map((schedule, index) => {
+    const [timezone, source] = zones[index % zones.length];
+    const output = outputs[Math.floor(index / zones.length) % outputs.length];
+    const card = { description: ROUTINE_TEXT[locale].cardDescription, schedule, timezone, timezone_source: source, output };
+    // A Routine given no timezone sends none, so the edited one takes the browser's zone as a new Routine would.
+    return { locale, schedule, output, zones: source === 'none' ? [] : [timezone], text: proposalRequest(card, copy, locale) };
+  }));
+}
+
+test("a card's Edit offers its work, schedule, zone, and output in words Team reads back as exactly the card's", async () => {
+  const { readFileSync } = await import('node:fs');
+  // Admin's backend reads each of these texts with Team's mirrored reader (tests/test_team_phrase_protocol.py), so this
+  // fixture is what both sides agree on: change the words, then write the fixture anew from editedRequests().
+  const fixture = JSON.parse(readFileSync(new URL('./routine-requests.json', import.meta.url), 'utf8'));
+  assert.deepEqual(editedRequests(), fixture);
+  // The card shows the same words: its schedule in its zone, or UTC by convention, and Team's own output label.
+  const card = { ...PROPOSAL, timezone: 'UTC', timezone_source: 'none', output: 'changes' };
+  const copy = routineMessages.en;
+  assert.equal(proposalWhen(card, copy, 'en'), fill(copy.proposal.whenFallback, { schedule: 'Every 30 seconds', timezone: 'UTC' }));
+  assert.equal(outputChoiceWords('changes', copy.proposal.questions), copy.proposal.questions.output.answers[1]);
 });

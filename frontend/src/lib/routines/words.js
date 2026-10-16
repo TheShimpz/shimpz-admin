@@ -449,3 +449,29 @@ export function proposalInputValue(input, copy, planCopy) {
     : fill(copy.origins.step, { n: input.step });
   return path.length ? `${origin}: ${path.join(' › ')}` : origin;
 }
+
+// The output modes in the order Team's output question offers their labels (routines/questionMessages.js).
+const OUTPUT_CHOICES = ['show', 'changes', 'none'];
+
+/** A card's output in Team's own label for it, the one its output question offers in the interface language. */
+export function outputChoiceWords(mode, questions) {
+  return questions.output.answers[OUTPUT_CHOICES.indexOf(mode)];
+}
+
+/** When a card's Routine runs, in its zone; a Routine given no timezone runs in UTC and says so. */
+export function proposalWhen(proposal, copy, locale) {
+  const template = proposal.timezone_source === 'none' ? copy.proposal.whenFallback : copy.proposal.when;
+  return fill(template, { schedule: scheduleWords(proposal.schedule, copy.schedule, locale), timezone: proposal.timezone });
+}
+
+/**
+ * The request a card's Edit offers to change and send again: its work, then its schedule and output in words Team's own
+ * reader reads back as exactly the card's (ADR-0101 amendment, 2026-10-16). The zone goes with them unless the Routine
+ * was given none, so the edited Routine keeps it wherever it is sent from.
+ */
+export function proposalRequest(proposal, copy, locale) {
+  const when = proposal.timezone_source === 'none'
+    ? scheduleWords(proposal.schedule, copy.schedule, locale)
+    : proposalWhen(proposal, copy, locale);
+  return [proposal.description, when, outputChoiceWords(proposal.output, copy.proposal.questions)].join('\n');
+}

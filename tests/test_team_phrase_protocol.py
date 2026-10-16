@@ -11,6 +11,8 @@ sys.path.insert(0, str(ROOT / "backend"))
 from protocol.http.v1 import phrase, routine_context, routine_proposal
 
 VECTORS = ROOT / "backend" / "protocol" / "http" / "v1" / "vectors.json"
+# The texts a card's Edit offers in every language, exactly as Admin writes them (frontend/tests/routine.test.js).
+EDITED_REQUESTS = ROOT / "frontend" / "tests" / "routine-requests.json"
 CARD = {
     "member": "note",
     "origin": "assistant",
@@ -41,6 +43,14 @@ class PhraseTests(unittest.TestCase):
         for text in ("Europe/Atlantis", "America/" + "X" * 40 + "/Yyyy"):
             with self.subTest(text=text):
                 self.assertEqual(phrase.zones(text), ())
+
+    def test_a_cards_edit_request_reads_back_as_exactly_the_cards_schedule_zone_and_output(self) -> None:
+        # Sent again, the edited request records the same Routine settings the card showed, with nothing to guess.
+        for case in json.loads(EDITED_REQUESTS.read_text(encoding="utf-8")):
+            with self.subTest(locale=case["locale"], schedule=case["schedule"], output=case["output"]):
+                self.assertEqual(phrase.stated(case["text"]), (case["schedule"],))
+                self.assertEqual(phrase.outputs(case["text"]), (case["output"],))
+                self.assertEqual(phrase.zones(case["text"]), tuple(case["zones"]))
 
     def test_a_card_input_with_an_unsafe_member_is_refused(self) -> None:
         self.assertIs(routine_proposal._card_input({**CARD, "member": "bad\x00member"}, 1), False)

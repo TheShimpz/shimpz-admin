@@ -532,6 +532,11 @@ export default {
       stepRead: 'Read',
       stepWrite: 'Write',
       changes: 'changes something on every run',
+      when: '{schedule}, in the {timezone} timezone',
+      whenFallback: '{schedule}, in {timezone} because no timezone was given',
+      whenLabel: 'When',
+      outputLabel: 'Result',
+      firstRun: 'The first run starts as soon as you create it.',
       origins: {
         clock: 'the date of each run',
         step: 'from step {n}',

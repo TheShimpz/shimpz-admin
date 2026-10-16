@@ -78,7 +78,11 @@ test('a recording turn carries the Cloudflare card; Criar creates its Routine an
     routineId: scenario.call('routines.list', { team_id: 'marketing' }).json.routines[0].routine_id,
   });
   const [routine] = (await listRoutines(reader(scenario), 'marketing')).routines;
-  assert.deepEqual([routine.name, routine.schedule], [card.name, { kind: 'continuous', gap: 30 }]);
+  // The Routine runs exactly as its card showed.
+  assert.deepEqual(
+    [routine.name, routine.schedule, routine.timezone, routine.output.mode],
+    [card.name, card.schedule, card.timezone, card.output],
+  );
   // A used card answers once; a second confirmation is refused as expired.
   await assert.rejects(
     confirmRoutineProposal(reader(scenario), 'marketing', card.proposal_id),

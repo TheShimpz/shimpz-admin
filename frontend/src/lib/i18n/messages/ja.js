@@ -525,6 +525,11 @@ export default {
       stepRead: '読み取り',
       stepWrite: '書き込み',
       changes: '実行のたびに何かを変更します',
+      when: '{schedule}、タイムゾーン {timezone}',
+      whenFallback: '{schedule}、タイムゾーンの指定がないため {timezone}',
+      whenLabel: '実行',
+      outputLabel: '結果',
+      firstRun: '最初の実行は作成するとすぐに始まります。',
       origins: {
         clock: '各実行の日付',
         step: 'ステップ {n} から',

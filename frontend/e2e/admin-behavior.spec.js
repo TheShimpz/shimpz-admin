@@ -22,9 +22,10 @@ import {
   waitForRead,
 } from './scenarioRoutes.js';
 import {
-  diagnostic, httpFailure, noticeRow, planPage, planSummary, ROUTINE_TEXT, routineChallenge, routineLifecycleStart,
-  runStepsPage,
+  CARD_SETTINGS, diagnostic, httpFailure, noticeRow, planPage, planSummary, ROUTINE_TEXT, routineChallenge,
+  routineLifecycleStart, runStepsPage,
 } from './routineScenarios.js';
+import { outputChoiceWords, proposalRequest, proposalWhen } from '../src/lib/routines/words.js';
 import {
   authenticatedLocalSession,
   historyView,
@@ -4960,11 +4961,23 @@ test.describe('Team Routines', () => {
       .concat((await readsOf(page, 'routines.proposal_revoke')).map(() => 'revoke'));
   }
 
+  // The card Team recorded, as its Edit offers it to change: its work, then its schedule, zone, and output.
+  const CARD = { ...CARD_SETTINGS, description: ROUTINE_TEXT.en.cardDescription };
+  const CARD_REQUEST = proposalRequest(CARD, messages.en.routine, 'en');
+
   test('a Routine card is confirmed with its Create button, which creates the Routine its notice then names', async ({ page }) => {
     const scenario = await recordRoutine(page);
     const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
     await expect(card.getByRole('heading')).toBeVisible();
     await expect(card).toContainText(ROUTINE_TEXT.en.cardDescription);
+    // The person confirms Team's own schedule, zone, and output, also once the transcript is read again.
+    for (let reads = 0; reads < 2; reads += 1) {
+      await expect(card.getByRole('definition')).toHaveText([
+        proposalWhen(CARD, messages.en.routine, 'en'),
+        outputChoiceWords(CARD.output, messages.en.routine.proposal.questions),
+      ]);
+      if (reads === 0) await page.reload();
+    }
     await expect(card.getByRole('button')).toHaveCount(3);
     for (const name of ['Cancel', 'Edit', 'Create']) {
       await expect(card.getByRole('button', { name, exact: true })).toBeEnabled();
@@ -4996,16 +5009,15 @@ test.describe('Team Routines', () => {
     const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
     await card.getByRole('button', { name: 'Edit', exact: true }).click();
     const prompt = card.getByRole('textbox', { name: messages.en.routine.proposal.prompt });
-    // The prompt takes the keyboard at once, holding the description to change.
+    // The prompt takes the keyboard at once, holding the card's work, schedule, zone, and output to change.
     await expect(prompt).toBeFocused();
-    await expect(prompt).toHaveValue(ROUTINE_TEXT.en.cardDescription);
+    await expect(prompt).toHaveValue(CARD_REQUEST);
     await expect(card.getByRole('button')).toHaveCount(2);
     await page.keyboard.type(' Tell me only when something changed.');
     await card.getByRole('button', { name: 'Send', exact: true }).click();
     await expect.poll(() => proposalCalls(page)).toEqual(['revoke']);
-    await expect(page.locator('.conversation')).toContainText(
-      `${ROUTINE_TEXT.en.cardDescription} Tell me only when something changed.`,
-    );
+    const sent = () => scenario.chatFrames().filter((frame) => frame.type === 'chat').map((frame) => frame.message);
+    await expect.poll(() => sent().at(-1)).toBe(`${CARD_REQUEST} Tell me only when something changed.`);
     expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toEqual([]);
   });
 
@@ -5101,7 +5113,7 @@ test.describe('Team Routines', () => {
     const send = card.getByRole('button', { name: 'Send', exact: true });
     await send.click();
     await expect(card.getByRole('alert')).toHaveText(messages.en.routine.errors.unavailable);
-    await expect(card.getByRole('textbox', { name: messages.en.routine.proposal.prompt })).toHaveValue(ROUTINE_TEXT.en.cardDescription);
+    await expect(card.getByRole('textbox', { name: messages.en.routine.proposal.prompt })).toHaveValue(CARD_REQUEST);
     await expect(send).toBeFocused();
     const sent = scenario.chatFrames().filter((frame) => frame.type === 'chat').map((frame) => frame.message);
     expect(sent).toEqual([ROUTINE_TEXT.en.request]);
@@ -5209,15 +5221,15 @@ test.describe('Team Routines', () => {
     await page.clock.install();
     const { composer, card, frames, held } = await unsentEdit(page);
     const prompt = card.getByRole('textbox', { name: messages.en.routine.proposal.prompt });
-    await expect(prompt).toHaveValue(ROUTINE_TEXT.en.cardDescription);
+    await expect(prompt).toHaveValue(CARD_REQUEST);
     // The card's lifetime ends, and the text is still there to send.
     await page.clock.runFor(16 * 60 * 1000);
-    await expect(prompt).toHaveValue(ROUTINE_TEXT.en.cardDescription);
+    await expect(prompt).toHaveValue(CARD_REQUEST);
     held();
     await expect(composer).toBeEnabled();
     await card.getByRole('button', { name: 'Send', exact: true }).click();
     await expect.poll(() => frames.filter((frame) => frame.type === 'chat').map((frame) => frame.message))
-      .toContain(ROUTINE_TEXT.en.cardDescription);
+      .toContain(CARD_REQUEST);
     // The card was revoked once; sending again sent only the text.
     expect(await proposalCalls(page)).toEqual(['revoke']);
   });
@@ -5230,7 +5242,7 @@ test.describe('Team Routines', () => {
     await card.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(page.getByRole('status').filter({ hasText: messages.en.routine.proposal.revoked })).toBeVisible();
     await expect(composer).toBeFocused();
-    expect(frames.filter((frame) => frame.type === 'chat').map((frame) => frame.message)).not.toContain(ROUTINE_TEXT.en.cardDescription);
+    expect(frames.filter((frame) => frame.type === 'chat').map((frame) => frame.message)).not.toContain(CARD_REQUEST);
     expect(await proposalCalls(page)).toEqual(['revoke']);
   });
 

@@ -525,6 +525,11 @@ export default {
       stepRead: '读取',
       stepWrite: '写入',
       changes: '每次运行都会更改内容',
+      when: '{schedule}，时区 {timezone}',
+      whenFallback: '{schedule}，未指定时区，因此使用 {timezone}',
+      whenLabel: '时间',
+      outputLabel: '结果',
+      firstRun: '创建后立即开始第一次运行。',
       origins: {
         clock: '每次运行的日期',
         step: '来自步骤 {n}',

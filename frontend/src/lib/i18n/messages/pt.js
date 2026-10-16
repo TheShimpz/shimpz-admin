@@ -525,6 +525,11 @@ export default {
       stepRead: 'Leitura',
       stepWrite: 'Escrita',
       changes: 'altera algo a cada execução',
+      when: '{schedule}, no fuso horário {timezone}',
+      whenFallback: '{schedule}, em {timezone} porque nenhum fuso horário foi informado',
+      whenLabel: 'Quando',
+      outputLabel: 'Resultado',
+      firstRun: 'A primeira execução começa assim que você criar a rotina.',
       origins: {
         clock: 'a data de cada execução',
         step: 'da etapa {n}',

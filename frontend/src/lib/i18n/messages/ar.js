@@ -525,6 +525,11 @@ export default {
       stepRead: 'قراءة',
       stepWrite: 'كتابة',
       changes: 'يغيّر شيئًا في كل تشغيل',
+      when: '{schedule}، بتوقيت {timezone}',
+      whenFallback: '{schedule}، بتوقيت {timezone} لأنه لم يُحدَّد أي توقيت',
+      whenLabel: 'متى',
+      outputLabel: 'النتيجة',
+      firstRun: 'يبدأ التشغيل الأول فور إنشائها.',
       origins: {
         clock: 'تاريخ كل تشغيل',
         step: 'من الخطوة {n}',
