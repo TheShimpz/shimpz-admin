@@ -5243,7 +5243,6 @@ test.describe('Team Routines', () => {
       await openRoutinePanel(page);
       // The deletion confirmation retitles the panel; it still names the Routine.
       const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
-      const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
       await panel.getByRole('button', { name: 'Delete' }).click();
       await panel.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
       await panel.getByLabel('Six-digit code').fill('123456');
@@ -5917,7 +5916,6 @@ test.describe('Team Routines', () => {
     });
     await page.goto('/chat/?team=marketing');
     const panel = await openRoutinePanel(page, watch.name);
-    const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
     await panel.getByRole('tab', { name: 'Steps' }).click();
     const steps = panel.getByRole('list', { name: 'Steps' }).locator(':scope > li');
     await expect(panel.getByText(messages.en.routine.plan.unavailable)).toBeVisible();
@@ -5943,7 +5941,6 @@ test.describe('Team Routines', () => {
     });
     await page.goto('/chat/?team=marketing');
     const panel = await openRoutinePanel(page, watch.name);
-    const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
     await panel.getByRole('tab', { name: 'Steps' }).click();
     const steps = panel.getByRole('list', { name: 'Steps' }).locator(':scope > li');
     // Only the first page is read; ten steps are shown.
