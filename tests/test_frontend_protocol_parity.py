@@ -14,6 +14,7 @@ from protocol.socket.v1 import frames as socket_frames
 from protocol.http.v1 import challenge as team_challenge
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import routine as team_routine
+from protocol.http.v1 import routine_run as team_routine_run
 from protocol.http.v1 import turn as turn_contract
 
 CHAT_PROTOCOL = ROOT / "frontend" / "src" / "lib" / "chat" / "protocol.js"
@@ -130,6 +131,11 @@ class FrontendUnsafeTextParityTests(unittest.TestCase):
     def test_the_browser_plan_unsafe_set_is_the_team_pattern_byte_for_byte(self) -> None:
         source = (LIB / "routines" / "protocol.js").read_text(encoding="utf-8")
         self.assertEqual(_definitions(source, "PLAN_UNSAFE_RE"), [f"/{team_routine.PLAN_UNSAFE_RE.pattern}/u"])
+
+    def test_the_browser_diagnostic_unsafe_set_is_the_team_pattern_byte_for_byte(self) -> None:
+        source = (LIB / "routines" / "protocol.js").read_text(encoding="utf-8")
+        expected = [f"/{team_routine_run._UNSAFE_TEXT_RE.pattern}/u"]
+        self.assertEqual(_definitions(source, "UNSAFE_DIAGNOSTIC_RE"), expected)
 
     def test_the_browser_reply_control_set_refuses_exactly_the_team_characters(self) -> None:
         found = _definitions(CHAT_PROTOCOL.read_text(encoding="utf-8"), "CHAT_TEXT_CONTROL_RE")
