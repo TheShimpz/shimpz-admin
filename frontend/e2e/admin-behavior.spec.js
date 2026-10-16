@@ -2104,13 +2104,17 @@ test("an earlier-history retry that fails once the person went back to another T
   let release;
   const held = new Promise((resolve) => { release = resolve; });
   let marketingOlder = 0;
+  let answered = false;
   await routeRead(page, 'history.page', async (params) => {
     if (params.team_id === 'support') {
       return 'before' in params ? ok({ detail: 'offline' }, 503) : ok(longHistory('c', 1, cursor));
     }
     if (!('before' in params)) return undefined;
     marketingOlder += 1;
-    if (marketingOlder === 2) await held;
+    if (marketingOlder === 2) {
+      await held;
+      answered = true;
+    }
     return ok({ detail: 'offline' }, 503);
   });
   await routeRead(page, 'inference.read', ({ team_id: teamId }) => (
@@ -2129,8 +2133,13 @@ test("an earlier-history retry that fails once the person went back to another T
   await expect(page).toHaveURL(/team=support/);
   await expect(retry).toBeVisible();
   release();
-  // Nothing on Support shows Marketing's answer: the wait bounds when it arrives.
-  await page.waitForTimeout(300);
+  await expect.poll(() => answered).toBe(true);
+  // The session socket delivers in order: once the page reads what a later change asks for, it has Marketing's answer.
+  const decisionReads = async () => (await readsOf(page, 'decision.read')).length;
+  const before = await decisionReads();
+  await raiseTopic(page, 'space/decision');
+  await expect.poll(decisionReads).toBeGreaterThan(before);
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   await expect(retry).not.toBeFocused();
 });
 
