@@ -54,6 +54,9 @@ _HUMAN_REQUEST_KINDS = frozenset(
 _GATE_KINDS = frozenset({"approval", "auth:password", "auth:totp", "auth:passkey"})
 # The Store's Integration scope grammar: 1 to 32 unique scopes of at most 128 characters.
 INTEGRATION_SCOPE_RE = re.compile(r"[a-z0-9][a-z0-9.:/_-]*")
+# The Store's allowed-host shape (Developers' valid_public_host): lowercase DNS labels under an alphabetic top-level
+# label, within 253 characters.
+ALLOWED_HOST_RE = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?")
 _ASSISTANT_FIELDS = frozenset(
     {
         "assistant_id",
@@ -266,7 +269,7 @@ def _assistant(value: object) -> CatalogAssistant:
     if not creators or any(CREATOR_RE.fullmatch(creator) is None for creator in creators):
         raise ValueError("catalog Creators are invalid")
     allowed_hosts = _strings(value["allowed_hosts"], 32, 253)
-    if any(host != host.lower() or "/" in host or ":" in host for host in allowed_hosts):
+    if any(ALLOWED_HOST_RE.fullmatch(host) is None for host in allowed_hosts):
         raise ValueError("catalog allowed hosts are invalid")
     actions = _actions(value["actions"])
     return CatalogAssistant(

@@ -315,6 +315,32 @@ class StoreCatalogTests(unittest.TestCase):
             with self.subTest(changes=changes), self.assertRaises(ValueError):
                 _validate({"version": 1, "locale": "en", "assistants": [_assistant(**changes)]})
 
+    def test_admits_only_lowercase_dns_allowed_hosts(self) -> None:
+        # The longest public host: four DNS labels and a top-level label, 253 characters in all.
+        longest = ".".join([label * 63 for label in "abc"] + ["d" * 57, "com"])
+
+        def catalog(*hosts: str) -> dict[str, object]:
+            return {"version": 1, "locale": "en", "assistants": [_assistant(allowed_hosts=list(hosts))]}
+
+        _validate(catalog(longest, "api-1.example.com"))
+        refused = (
+            "API.cloudflare.com",
+            "api.cloudflare.com:443",
+            "https://api.cloudflare.com",
+            "1.2.3.4",
+            "localhost",
+            "-api.cloudflare.com",
+            "api-.cloudflare.com",
+            "api..cloudflare.com",
+            "api_v1.cloudflare.com",
+            "not a host",
+            f"{'a' * 64}.cloudflare.com",
+            f"{longest}x",
+        )
+        for host in refused:
+            with self.subTest(host=host), self.assertRaises(ValueError):
+                _validate(catalog(host))
+
     def test_rejects_malformed_or_ambiguous_catalogs(self) -> None:
         mutations = (
             lambda value: value.update(extra=True),
