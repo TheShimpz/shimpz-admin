@@ -66,7 +66,6 @@
   // Whether the last card reading failed: its Retry stays in place, disabled, while the person's retry reads again.
   let unopened = $state(false);
   let root = $state();
-  let retryButton = $state();
   const CHOICE_ICONS = { run: 'play', delete: 'trash' };
   const HINTS = { run: 'runHint', delete: 'deleteHint' };
   let recovery = $derived(outcome === 'held');
@@ -120,12 +119,13 @@
     return routineFailureWords(error, copy.errors, $t('shell.outcomeUnknown'));
   }
 
-  // An exit that keeps this decision open (its request dismissed or expired, refused, or answered frozen again) unmounts
-  // or disables what had focus; focus then moves to the decision's first enabled action, never to the document.
-  async function keepFocus() {
+  // An exit that keeps this decision open (its request dismissed or expired, refused, or answered frozen again) or a card
+  // reading unmounts or disables what had focus; focus then moves to `target`, by default the decision's first enabled
+  // action, never to the document. Focus the person placed in the host's dialog stays.
+  async function keepFocus(target = '.actions button:not(:disabled)') {
     await tick();
     if (!mounted || root?.closest('dialog')?.contains(document.activeElement)) return;
-    root?.querySelector('.actions button:not(:disabled)')?.focus();
+    root?.querySelector(target)?.focus();
   }
 
   // A request that closes takes its refusal with it, so the next review never opens on an earlier refusal; focus stays
@@ -156,12 +156,9 @@
     if (recoverable && wanted && !working && $commandsReady) {
       wanted = false;
       working = true;
-      void openCard().finally(async () => {
+      void openCard().finally(() => {
         working = false;
-        if (!mounted) return;
-        await tick();
-        if (root?.closest('dialog')?.contains(document.activeElement)) return;
-        (card ? root?.querySelector('[data-choice="run"]') : retryButton)?.focus();
+        void keepFocus(card ? '[data-choice="run"]' : undefined);
       });
     }
   });
@@ -352,7 +349,7 @@
     {:else if unopened || !working}
       <div class="actions">
         <Button size="sm" variant="secondary" type="button" disabled={working || !$commandsReady}
-          bind:element={retryButton} onclick={() => (wanted = true)}>
+          onclick={() => (wanted = true)}>
           {copy.list.retry}
         </Button>
         {#if unopenable}
