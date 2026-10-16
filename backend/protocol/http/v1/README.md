@@ -479,18 +479,20 @@ zone of a Routine the message records when the person writes no zone of their ow
 A Routine run (ADR-0086) is started by a separate Local Routine identity, never a human Supervisor assertion. Its
 Ed25519 assertion travels in `X-Shimpz-Routine` with the JWT key id `local-routine-v1` and the audience
 `team-local-routine`; `supervisor.canonical_claims(value, audience=ROUTINE_AUDIENCE)` admits the same request, body,
-model, lifetime, and one-use nonce bindings as a Supervisor assertion, requires `authority: "routine"` with
-`authority_sha256` equal to the SHA-256 of the run's lease token, and refuses any human assurance or decision binding.
+lifetime, and one-use nonce bindings as a Supervisor assertion, requires `authority: "routine"` with
+`authority_sha256` equal to the SHA-256 of the run's lease token, and refuses any model, human assurance, or decision
+binding.
 Admin's scheduler claims under the Team bearer with `POST /v1/routines/claim` and exactly `{long}`
-(`routine_run.canonical_claim_request`): no model key gates a claim, because a healthy replayed run needs none (ADR-0092),
-and any Team with a configured model may be claimed. The answer (`routine_run.canonical_claim`) is one run with its lease
+(`routine_run.canonical_claim_request`): no model configuration or key gates a claim, because a healthy replayed run
+needs none (ADR-0092). The answer (`routine_run.canonical_claim`) is one run with its lease
 token and the Routine `revision` and `plan_digest` it was claimed at, or `null` with `next_due_at`, the
 earliest epoch second a Routine of a Team Admin can run becomes due (`null` when none will), so Admin wakes then while
 still reconciling on its own interval. The run's signed segment request, `POST
 /v1/teams/:team_id/routines/runs/:run_id/segment`, carries exactly that `{revision, plan_digest}`
 (`routine_run.canonical_segment_request`); any other is refused as `routine-revision-stale` before anything runs. The
 segment, and a person's answer that resumes a frozen run, answers `{team_id, run_id, status}` with one of
-`routine_run.SEGMENT_STATUSES`. Admin acknowledges delivered notices in requests of at most
+`routine_run.SEGMENT_STATUSES` (`routine_run.canonical_segment_answer`); Admin also requires its own Team and run there.
+Admin acknowledges delivered notices in requests of at most
 `routine_run.MAX_ACK_DELIVERIES` deliveries. No
 run, recovery, or frozen run's answer asks a model, so none carries a model credential (ADR-0092 amendment,
 2026-10-15).

@@ -101,7 +101,7 @@ class RoutineIdentityTests(unittest.TestCase):
             method="POST",
             path="/v1/teams/team_1/routines/runs/" + "b" * 32 + "/segment",
             body=supervisor.json_body(b"{}"),
-            model=supervisor.model_binding(("openai", "sk-test-0123456789")),
+            model=None,
         )
         token = supervisor.sign_routine_request(identity, "lease-token", request=request, now=2_200_000_000)
         header, payload, signature = token.split(".")
@@ -112,14 +112,15 @@ class RoutineIdentityTests(unittest.TestCase):
         self.assertEqual(claims["authority_sha256"], __import__("hashlib").sha256(b"lease-token").hexdigest())
         public = Ed25519PrivateKey.from_private_bytes(bytes.fromhex(identity.private_key_hex)).public_key()
         public.verify(_decode(signature), f"{header}.{payload}".encode("ascii"))
-        with self.assertRaises(supervisor.SupervisorAuthorityError):
-            supervisor.sign_routine_request(
-                identity,
-                "lease-token",
-                request=supervisor.RequestBinding(
-                    "POST", "/x", supervisor.empty_body(), None, {"kind": "auth:password"}
-                ),
-            )
+        # A run asks no model and no person, so its assertion binds neither.
+        for refused in (
+            supervisor.RequestBinding("POST", "/x", supervisor.empty_body(), None, {"kind": "auth:password"}),
+            supervisor.RequestBinding(
+                "POST", "/x", supervisor.empty_body(), supervisor.model_binding(("openai", "sk-test-0123456789"))
+            ),
+        ):
+            with self.subTest(refused=refused), self.assertRaises(supervisor.SupervisorAuthorityError):
+                supervisor.sign_routine_request(identity, "lease-token", request=refused)
 
     def test_the_run_segment_carries_only_the_routine_assertion_even_inside_a_session(self) -> None:
         identity = supervisor.new_identity()

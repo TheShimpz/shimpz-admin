@@ -266,8 +266,8 @@ def sign_routine_request(
     now: int | None = None,
 ) -> str:
     """Sign one Routine assertion: Admin's routine identity drives the run whose lease token it holds (ADR-0086)."""
-    if request.decision is not None or request.assurance is not None:
-        raise SupervisorAuthorityError("a Routine assertion binds no human decision or assurance")
+    if request.model is not None or request.decision is not None or request.assurance is not None:
+        raise SupervisorAuthorityError("a Routine assertion binds no model, human decision, or assurance")
     return _sign(
         identity,
         lease_token,
