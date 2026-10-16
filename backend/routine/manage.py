@@ -22,7 +22,7 @@ _COUNT_RE = re.compile(r"(?:0|[1-9][0-9]{0,9})\Z")
 
 
 def canonical_id(value: object, name: str) -> str:
-    if not isinstance(value, str) or routine_contract.ROUTINE_ID_RE.fullmatch(value) is None:
+    if not routine_contract.matches(value, routine_contract.ROUTINE_ID_RE):
         raise transport.TeamRequestError(f"{name} is invalid")
     return value
 

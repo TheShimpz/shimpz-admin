@@ -597,8 +597,7 @@ def _validate_stored_routine(payload: dict[str, object]) -> None:
 def _validate_stored_answer(payload: dict[str, object]) -> None:
     if (
         set(payload) != {"kind", "proposal_id", "status", "name"}
-        or not isinstance(payload["proposal_id"], str)
-        or routine_contract.ROUTINE_ID_RE.fullmatch(payload["proposal_id"]) is None
+        or not routine_contract.matches(payload["proposal_id"], routine_contract.ROUTINE_ID_RE)
         or payload["status"] not in routine_proposal_contract.PROPOSAL_STATUSES
         or not routine_contract.exact_name(payload["name"])
     ):
@@ -645,7 +644,7 @@ def _page_rows(
 def _routine_id(value: object) -> str | None:
     if value is None:
         return None
-    if not isinstance(value, str) or routine_contract.ROUTINE_ID_RE.fullmatch(value) is None:
+    if not routine_contract.matches(value, routine_contract.ROUTINE_ID_RE):
         raise ValueError("chat history Routine id is invalid")
     return value
 
