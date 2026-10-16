@@ -1,6 +1,6 @@
 """A Local Supervisor answers a frozen Routine run (ADR-0086) exactly as chat answers a paused turn.
 
-Opening a frozen run's notice asks Team for a fresh one-use challenge; Admin keeps its request until it expires, so an
+Opening a frozen run's decision asks Team for a fresh one-use challenge; Admin keeps its request until it expires, so an
 answer is checked against it and an authentication request is verified here, as in chat, before the run resumes under
 the Supervisor's session; a run asks no model, so the answer carries no model key (ADR-0092).
 """
@@ -120,7 +120,7 @@ def _opening(canonical: str) -> Iterator[bool]:
 
 
 def open_challenge(team_id: object, run_id: object, body: object) -> transport.TeamResponse:
-    """A person opened a frozen run's notice: its fresh challenge, or that it waits for an Integration.
+    """A person opened a frozen run's decision: its fresh challenge, or that it waits for an Integration.
 
     The browser names the Admin interface language, and Team renders the request copy in it (ADR-0091).
     """
