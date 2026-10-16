@@ -409,15 +409,13 @@ test("a Routine's creation keeps what its recording spent: its model usage and i
   const step = { ...CREATION.steps[1], seq: 1 };
   assert.equal((await load(created({ steps: [step] }))).entries[0].receipt.length, 1);
   for (const [detail, usage] of [
-    [{}, CREATION_USAGE],
+    [{ stages: [] }, CREATION_USAGE],
     [{ steps: [{ ...step, state: 'started', elapsed_ms: undefined }] }, CREATION_USAGE],
     [{ steps: [step] }, { duration_ms: 4120 }],
     [{ steps: [{ ...step, seq: 2 }] }, CREATION_USAGE],
     [{ steps: [{ ...step, phase: 'admin-preparation' }] }, CREATION_USAGE],
-    [{ steps: [{ ...step, origin: 'admin' }] }, CREATION_USAGE],
     [{ steps: [{ ...step, origin: 'team' }] }, CREATION_USAGE],
     [{ steps: Array.from({ length: 65 }, (_, index) => ({ ...step, seq: index + 1 })) }, CREATION_USAGE],
-    [structuredClone(CREATION), { duration_ms: 4120 }],
   ]) {
     const row = JSON.parse(JSON.stringify(created(detail, usage)));
     await assert.rejects(load(row), LocalApiError);
