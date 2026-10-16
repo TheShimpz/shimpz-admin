@@ -14,6 +14,7 @@ import {
 } from '../src/lib/chat/attachments/files.js';
 import { listChatHistory } from '../src/lib/chat/history.js';
 import { parseChatEvent } from '../src/lib/chat/protocol.js';
+import { response } from './socketStub.js';
 
 const MIB = 1024 * 1024;
 const HISTORY_AT = '2026-10-02T21:15:00Z';
@@ -107,10 +108,6 @@ test('admits only the exact file an authorization request discloses', () => {
     { ...DISCLOSED, id: 7 },
   ]) assert.throws(() => parseFileDisclosure(invalid), /response is invalid/, JSON.stringify(invalid));
 });
-
-function response(status, body) {
-  return { ok: status >= 200 && status < 300, status, async json() { return body; } };
-}
 
 const STORED = {
   team_id: 'marketing',

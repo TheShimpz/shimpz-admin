@@ -14,7 +14,7 @@ import {
   createSyncFrame,
   parseChatEvent,
 } from '../src/lib/chat/protocol.js';
-import { via } from './socketStub.js';
+import { response, via } from './socketStub.js';
 
 // The integration operations go over the session socket; each test's stub, passed first, answers them.
 const integrationCall = (name) => (stub, ...args) => via(stub, () => integrations[name](...args));
@@ -69,10 +69,6 @@ function integrationInventory(status = 'connected') {
       },
     ],
   };
-}
-
-function response(status, body) {
-  return { ok: status >= 200 && status < 300, status, async json() { return body; } };
 }
 
 test('chat builds only the versioned WebSocket contract', () => {

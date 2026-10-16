@@ -13,6 +13,7 @@ import {
   routineRuns,
 } from '../src/lib/chat/history.js';
 import { LocalApiError } from '../src/lib/api.js';
+import { response } from './socketStub.js';
 
 const TURN_A = 'a'.repeat(32);
 const TURN_B = 'b'.repeat(32);
@@ -22,14 +23,6 @@ const AT = '2026-10-02T21:15:00Z';
 // The parsed entry carries the row's time as createdAt, the same name a Routine notice's time has.
 function restored({ created_at: createdAt, ...entry }) {
   return { ...entry, createdAt };
-}
-
-function response(status, body) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    async json() { return body; },
-  };
 }
 
 function installedEntry() {

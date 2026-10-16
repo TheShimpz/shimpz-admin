@@ -3,7 +3,7 @@ import test from 'node:test';
 
 import * as api from '../src/lib/assistants/api.js';
 import { LocalApiError, safeApiError } from '../src/lib/api.js';
-import { via } from './socketStub.js';
+import { response, via } from './socketStub.js';
 
 // Each operation is answered by the stub its test passes first, as the session socket would answer it.
 const installLocalAssistant = (stub, ...args) => via(stub, () => api.installLocalAssistant(...args));
@@ -17,14 +17,6 @@ const uninstallAssistant = (stub, ...args) => via(stub, () => api.uninstallAssis
 
 const SOURCE_DIGEST = `sha256:${'a'.repeat(64)}`;
 const LOCAL_IMAGE_ID = `sha256:${'b'.repeat(64)}`;
-
-function response(status, body) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    async json() { return body; },
-  };
-}
 
 
 // The page copy every public catalog entry carries beside its identity (Assistant Spec v1 display copy).

@@ -7,6 +7,7 @@ import * as context from '../src/lib/teams/context.js';
 import { socketReads } from '../src/lib/session/socket.js';
 import { LocalApiError } from '../src/lib/api.js';
 import { RETRY_FIRST_MS } from '../src/lib/session/synced.js';
+import { response } from './socketStub.js';
 
 const { clearTeamContext, teamContext } = context;
 const EPOCH = 'a'.repeat(32);
@@ -71,14 +72,6 @@ const CATALOG = [
 ];
 const MARKETING = { team_id: 'marketing', team_name: 'Marketing', status: 'running' };
 const SUPPORT = { team_id: 'support', team_name: 'Support', status: 'running' };
-
-function response(status, body) {
-  return {
-    ok: status >= 200 && status < 300,
-    status,
-    async json() { return body; },
-  };
-}
 
 function installedAssistant(assistant, status = 'running') {
   return { assistant, assistant_version: '1.2.3', status, provenance: 'published' };
