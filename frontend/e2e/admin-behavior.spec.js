@@ -5489,7 +5489,12 @@ test.describe('Team Routines', () => {
       const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
       await list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
       const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
-      await panel.getByRole('button', { name: 'Delete' }).click();
+      const remove = panel.getByRole('button', { name: 'Delete' });
+      await remove.click();
+      // Cancel returns to the decision, focused on the Delete it came from.
+      await panel.getByRole('button', { name: 'Cancel' }).click();
+      await expect(remove).toBeFocused();
+      await remove.click();
       await panel.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
       await panel.getByLabel('Six-digit code').fill('123456');
       await panel.getByRole('button', { name: 'Delete' }).click();

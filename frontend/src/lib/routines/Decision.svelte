@@ -318,7 +318,9 @@
           {copy.list.retry}
         </Button>
         {#if unopenable}
-          <Button size="sm" variant="secondary" type="button" disabled={!$commandsReady} onclick={ondelete}>
+          <!-- Named as a choice row is, so Cancel on the deletion it opens returns focus here. -->
+          <Button size="sm" variant="secondary" type="button" data-choice="delete" disabled={!$commandsReady}
+            onclick={ondelete}>
             {copy.card.delete}
           </Button>
         {/if}
