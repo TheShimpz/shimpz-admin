@@ -67,8 +67,7 @@ function track(event) {
 // A press anywhere but on the focused element is the person's own move, also onto blank space that leaves the focus on
 // the document.
 function press(event) {
-  const focused = document.activeElement;
-  if (!focused || focused === document.body || !focused.contains(event.target)) moves += 1;
+  if (focusLost() || !document.activeElement.contains(event.target)) moves += 1;
   if (held && !held.element.contains(event.target)) held = null;
 }
 
