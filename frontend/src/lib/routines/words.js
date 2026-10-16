@@ -141,22 +141,32 @@ export function failureCause(diagnostic) {
 }
 
 const CONTINUOUS_UNITS = [['week', 604800], ['day', 86400], ['hour', 3600], ['minute', 60], ['second', 1]];
+// One day or one week alone names a calendar day, never an interval, so an interval counts them only from two on.
+const CALENDAR_UNITS = new Set(['week', 'day']);
 // Weekday 0 is Monday in the Routine grammar.
 const WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
 
-/** A schedule in words for the viewer's locale; wall-clock times are in the Routine's own timezone. */
+/**
+ * A schedule in words for the viewer's locale; wall-clock times are in the Routine's own timezone. These are words
+ * Team's own reader reads back as exactly this schedule (ADR-0101 amendment, 2026-10-16), so a card's Edit can send
+ * them: a count is never grouped ("1001", not "1,001"), and a day of the month takes its locale's ordinal form.
+ */
 export function scheduleWords(schedule, copy, locale) {
   if (schedule.kind === 'continuous') {
-    // The gap in its largest whole unit: "Every 30 minutes", "Every 90 seconds".
-    const [unit, seconds] = CONTINUOUS_UNITS.find(([, size]) => schedule.gap % size === 0);
-    return countWords(copy.every[unit], schedule.gap / seconds, locale);
+    // The gap in its largest whole unit: "Every 30 minutes", "Every 90 seconds", "Every 24 hours".
+    const [unit, seconds] = CONTINUOUS_UNITS.find(
+      ([name, size]) => schedule.gap % size === 0 && !(CALENDAR_UNITS.has(name) && schedule.gap === size),
+    );
+    const count = schedule.gap / seconds;
+    return fill(plural(copy.every[unit], count, locale), { count: numberFormat(locale, { useGrouping: false }).format(count) });
   }
   if (schedule.kind === 'daily') return fill(copy.daily, { time: schedule.time });
   if (schedule.kind === 'weekly') {
     // Each locale names its weekdays itself, so the article agrees with the day ("Todo domingo", "Toda segunda-feira").
     return fill(copy.weekly, { weekday: copy.weekdays[WEEKDAYS[schedule.weekday]], time: schedule.time });
   }
-  return fill(copy.monthly, { day: schedule.day, time: schedule.time });
+  const ordinal = copy.monthDay[pluralRules(locale, { type: 'ordinal' }).select(schedule.day)] ?? copy.monthDay.other;
+  return fill(copy.monthly, { day: fill(ordinal, { day: schedule.day }), time: schedule.time });
 }
 
 /** A UTC instant shown in a Routine's timezone for the viewer's locale. */

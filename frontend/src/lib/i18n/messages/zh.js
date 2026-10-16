@@ -268,13 +268,14 @@ export default {
         sat: '每周六',
         sun: '每周日',
       },
-      monthly: '每月 {day} 日 {time}',
+      monthly: '每月{day}日 {time}',
+      monthDay: { one: '{day}', two: '{day}', few: '{day}', other: '{day}' },
       every: {
         second: { one: '每秒', other: '每 {count} 秒' },
         minute: { one: '每分钟', other: '每 {count} 分钟' },
         hour: { one: '每小时', other: '每 {count} 小时' },
-        day: { one: '每天', other: '每 {count} 天' },
-        week: { one: '每周', other: '每 {count} 周' },
+        day: { other: '每 {count} 天' },
+        week: { other: '每 {count} 周' },
       },
     },
     list: {

@@ -268,13 +268,14 @@ export default {
         sat: 'كل يوم سبت',
         sun: 'كل يوم أحد',
       },
-      monthly: 'في اليوم {day} من كل شهر في {time}',
+      monthly: 'كل شهر في اليوم {day} في {time}',
+      monthDay: { one: '{day}', two: '{day}', few: '{day}', other: '{day}' },
       every: {
         second: { one: 'كل ثانية', other: 'كل {count} ثوانٍ' },
         minute: { one: 'كل دقيقة', other: 'كل {count} دقائق' },
         hour: { one: 'كل ساعة', other: 'كل {count} ساعات' },
-        day: { one: 'كل يوم', other: 'كل {count} أيام' },
-        week: { one: 'كل أسبوع', other: 'كل {count} أسابيع' },
+        day: { other: 'كل {count} أيام' },
+        week: { other: 'كل {count} أسابيع' },
       },
     },
     list: {

@@ -268,13 +268,14 @@ export default {
         sat: '毎週土曜日',
         sun: '毎週日曜日',
       },
-      monthly: '毎月 {day} 日 {time}',
+      monthly: '毎月{day}日 {time}',
+      monthDay: { one: '{day}', two: '{day}', few: '{day}', other: '{day}' },
       every: {
         second: { one: '1 秒ごと', other: '{count} 秒ごと' },
         minute: { one: '1 分ごと', other: '{count} 分ごと' },
         hour: { one: '1 時間ごと', other: '{count} 時間ごと' },
-        day: { one: '1 日ごと', other: '{count} 日ごと' },
-        week: { one: '1 週間ごと', other: '{count} 週間ごと' },
+        day: { other: '{count} 日ごと' },
+        week: { other: '{count} 週間ごと' },
       },
     },
     list: {

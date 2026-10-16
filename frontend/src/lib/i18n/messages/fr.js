@@ -268,13 +268,14 @@ export default {
         sat: 'Chaque samedi',
         sun: 'Chaque dimanche',
       },
-      monthly: 'Le {day} de chaque mois à {time}',
+      monthly: 'Chaque mois le {day} à {time}',
+      monthDay: { one: '{day}', two: '{day}', few: '{day}', other: '{day}' },
       every: {
         second: { one: 'Chaque seconde', other: 'Toutes les {count} secondes' },
         minute: { one: 'Chaque minute', other: 'Toutes les {count} minutes' },
         hour: { one: 'Chaque heure', other: 'Toutes les {count} heures' },
-        day: { one: 'Chaque jour', other: 'Tous les {count} jours' },
-        week: { one: 'Chaque semaine', other: 'Toutes les {count} semaines' },
+        day: { other: 'Tous les {count} jours' },
+        week: { other: 'Toutes les {count} semaines' },
       },
     },
     list: {

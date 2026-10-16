@@ -569,6 +569,7 @@ test('schedules, instants, and failures read naturally in each locale', () => {
     daily: 'daily {time}',
     weekly: 'weekly {weekday} {time}',
     monthly: 'monthly {day} {time}',
+    monthDay: { one: '{day}:one', two: '{day}:two', few: '{day}:few', other: '{day}:other' },
     weekdays: { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' },
   };
   assert.equal(scheduleWords({ kind: 'daily', time: '09:00' }, words, 'en'), 'daily 09:00');
@@ -580,7 +581,9 @@ test('schedules, instants, and failures read naturally in each locale', () => {
       assert.doesNotMatch(scheduleWords({ kind: 'weekly', weekday, time: '09:00' }, catalog.schedule, locale), /\{|undefined/, locale);
     }
   }
-  assert.equal(scheduleWords({ kind: 'monthly', day: 28, time: '18:30' }, words, 'en'), 'monthly 28 18:30');
+  // A day of the month takes its locale's ordinal form.
+  assert.equal(scheduleWords({ kind: 'monthly', day: 28, time: '18:30' }, words, 'en'), 'monthly 28:other 18:30');
+  assert.equal(scheduleWords({ kind: 'monthly', day: 22, time: '18:30' }, words, 'en'), 'monthly 22:two 18:30');
   // A continuous Routine's gap reads in its largest whole unit, in the plural form its count takes.
   const every = (gap) => ({ kind: 'continuous', gap });
   for (const [gap, shown] of [
@@ -589,10 +592,13 @@ test('schedules, instants, and failures read naturally in each locale', () => {
     [1800, 'minute:other:30'],
     [3600, 'hour:one:1'],
     [108000, 'hour:other:30'],
-    [86400, 'day:one:1'],
+    // One day or one week alone would name a calendar day, so an interval counts them only from two on.
+    [86400, 'hour:other:24'],
     [30 * 86400, 'day:other:30'],
-    [7 * 86400, 'week:one:1'],
+    [7 * 86400, 'day:other:7'],
     [14 * 86400, 'week:other:2'],
+    // A count is never grouped, so Team reads it back.
+    [1001, 'second:other:1001'],
   ]) {
     assert.equal(scheduleWords(every(gap), words, 'en'), shown, String(gap));
   }
