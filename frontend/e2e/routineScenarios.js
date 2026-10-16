@@ -202,10 +202,6 @@ const MODEL_USAGE = Object.freeze({
 // The outcomes of a Routine rather than of a run that Admin stores; of them only the healthy rollup sums its runs' usage.
 const ROUTINE_OUTCOMES = ['skipped', 'created', 'healthy', 'streak-paused'];
 
-/**
- * One Routine notice as Admin stores it: a run's notice names its run and carries its active duration; a Routine's
- * notice names no run and carries no usage, except the healthy rollup's summed duration.
- */
 // What a Routine's creation spent (ADR-0101): its recording's model usage and the Team steps of its turns.
 export const CREATION_USAGE = Object.freeze({
   duration_ms: 8_400,
@@ -222,6 +218,12 @@ export const CREATION = Object.freeze({
     { seq: 4, phase: 'model', state: 'finished', elapsed_ms: 2_800 },
   ],
 });
+
+/**
+ * One Routine notice as Admin stores it: a run's notice names its run and carries its active duration; a Routine's
+ * notice names no run and carries no usage, except the healthy rollup's summed duration and a creation's recording's
+ * model usage.
+ */
 
 export function noticeRow(noticeId, routine, outcome, detail, { at = '2026-10-01T12:00:00Z', version = 1, usage, lost = false } = {}) {
   const run = !ROUTINE_OUTCOMES.includes(outcome);

@@ -292,7 +292,8 @@
   }
 
   // Escape leaves the confirmation for the panel, and does nothing while the deletion is being confirmed; from the
-  // panel it goes back to the list it was opened from (`back`).
+  // panel it goes back to the list it was opened from (`back`), and closes a panel opened from anywhere else, such as
+  // the chat.
   function stay(event) {
     event?.preventDefault();
     if (!deleting) void keep();
