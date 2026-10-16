@@ -108,11 +108,23 @@
   let decisionKey = $derived(decision ? `${decision.runId}:${decision.outcome}` : '');
   let pending = $derived(decision && decisionKey !== dismissed ? decision : null);
 
+  // Once a decision or a deletion gives way to the pages, the selected tab takes focus, which never drops to the
+  // document; a decision still pending keeps it on its Delete. A run held again opens a fresh decision instead, which
+  // takes focus itself once its card opens (`refocus`).
+  let refocus = $state(false);
+  async function focusTab() {
+    await tick();
+    (document.getElementById(`${id}-tab-${page}`) ?? dialog?.querySelector('[data-choice="delete"]'))?.focus();
+  }
+
   async function settled(words, heldAgain) {
     decided = words;
-    if (heldAgain) round += 1;
-    else dismissed = decisionKey;
+    if (heldAgain) {
+      round += 1;
+      refocus = true;
+    } else dismissed = decisionKey;
     page = 'summary';
+    if (!heldAgain) await focusTab();
     await refreshTeamRoutines(teamId);
   }
 
@@ -245,6 +257,7 @@
     }
     // A run is still ending: Team keeps the Routine as being deleted until it has.
     confirming = false;
+    await focusTab();
     await refreshTeamRoutines(teamId);
   }
 
@@ -337,7 +350,7 @@
         {#if decided}<p class="note" role="status"><RoutineIcon name="check" />{decided}</p>{/if}
         {#key `${decisionKey}:${round}`}
           <RoutineDecision {teamId} {teamName} runId={pending.runId}
-            outcome={pending.outcome} detail={pending.detail} {copy} onsettled={settled}
+            outcome={pending.outcome} detail={pending.detail} {copy} onsettled={settled} focus={refocus}
             ondelete={() => (confirming = true)}
             onunavailable={() => refreshTeamRoutines(teamId)} />
         {/key}

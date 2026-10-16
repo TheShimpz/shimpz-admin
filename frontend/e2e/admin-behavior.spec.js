@@ -5246,7 +5246,8 @@ test.describe('Team Routines', () => {
     await panel.getByLabel('Six-digit code').fill('123456');
     await panel.getByRole('button', { name: 'Delete' }).click();
     await expect(panel).toContainText('Being deleted');
-    await expect(panel.getByRole('tab', { name: 'Summary' })).toBeVisible();
+    // Focus moves on to the page the panel shows again, never to the document.
+    await expect(panel.getByRole('tab', { name: 'Summary' })).toBeFocused();
     await expect(panel.getByRole('button', { name: 'Delete' })).toHaveCount(0);
     await expect.poll(() => calls.deletes).toEqual([{ code: '123456' }]);
   });
@@ -5407,6 +5408,7 @@ test.describe('Team Routines', () => {
     const choices = panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button');
     await expect.poll(() => choices.evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label'))))
       .toEqual(['Run', 'Delete']);
+    await expect(choices.first()).toBeFocused();
   });
 
   test('a held run listed before its incident keeps Retry in its panel until the card opens', async ({ page }, testInfo) => {
@@ -5433,6 +5435,8 @@ test.describe('Team Routines', () => {
     await panel.getByRole('button', { name: 'Retry' }).click();
     await expect(panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button')).toHaveCount(2);
     expect(openings).toHaveLength(2);
+    // The card it opened takes focus from the Retry it replaced.
+    await expect(panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Run' })).toBeFocused();
   });
 
   // Team cannot open a card for a held run whose evidence it cannot verify or whose state it cannot read; its Routine
@@ -5443,13 +5447,23 @@ test.describe('Team Routines', () => {
       await routeReadyChat(page);
       const weekly = { ...ROUTINE_VIEW, routine_id: 'c'.repeat(32), name: 'Certificate check' };
       const calls = await routeRoutines(page, { others: [weekly], heldCall: false });
-      await routeRead(page, 'routines.card', () => ok({ code }, 409));
+      let openings = 0;
+      await routeRead(page, 'routines.card', () => {
+        openings += 1;
+        return ok({ code }, 409);
+      });
       await page.goto('/chat/?team=marketing');
       await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
       await openRoutinePanel(page);
       // The deletion confirmation retitles the panel; it still names the Routine.
       const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
       const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
+      // A retry that fails again keeps focus on Retry.
+      const retry = panel.getByRole('button', { name: 'Retry' });
+      await retry.click();
+      await expect.poll(() => openings).toBe(2);
+      await expect(retry).toBeEnabled();
+      await expect(retry).toBeFocused();
       const remove = panel.getByRole('button', { name: 'Delete' });
       await remove.click();
       // Cancel returns to the decision, focused on the Delete it came from.
@@ -6192,8 +6206,9 @@ test.describe('Team Routines', () => {
     await panel.getByRole('button', { name: 'Run' }).click();
     await expect(panel.getByRole('status')).toContainText('Set aside. The Routine runs again now.');
     await expect(panel.getByRole('group', { name: 'Recovery choices' })).toHaveCount(0);
-    // Once settled, the panel returns to its pages, on its Summary.
+    // Once settled, the panel returns to its pages, on its Summary, which takes focus.
     await expect(panel.getByRole('tab', { name: 'Summary' })).toHaveAttribute('aria-selected', 'true');
+    await expect(panel.getByRole('tab', { name: 'Summary' })).toBeFocused();
     await panel.getByRole('button', { name: 'Close' }).click();
     await expect(panel).toHaveCount(0);
 
@@ -6203,6 +6218,8 @@ test.describe('Team Routines', () => {
     await auditPanel.getByRole('button', { name: 'Run' }).click();
     await expect(auditPanel.getByRole('status')).toHaveText(messages.en.routine.errors.cardChanged);
     await expect.poll(() => choiceNames(auditPanel)).toEqual(['Run', 'Delete']);
+    // The freshly opened card takes focus from the answer it replaced.
+    await expect(auditPanel.getByRole('button', { name: 'Run' })).toBeFocused();
     await auditPanel.getByRole('button', { name: 'Run' }).click();
     await expect(auditPanel.getByRole('status')).toContainText('Set aside. The Routine runs again now.');
     await expect(auditPanel.getByRole('group', { name: 'Recovery choices' })).toHaveCount(0);

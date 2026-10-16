@@ -1,5 +1,6 @@
 <script>
   import { Button, Disclosure } from '@shimpz/frontend';
+  import { tick } from 'svelte';
 
   import AssistantHumanRequestDialog from '#lib/assistants/HumanRequestDialog.svelte';
   import { assistantName } from '#lib/assistants/names.js';
@@ -26,7 +27,8 @@
   // `onsettled` hears the outcome words once this decision is answered, and whether the same run was held again and
   // so waits for a fresh decision. A card Team cannot open yet (a held run listed before its incident) keeps Retry here
   // and `onunavailable` lets the host refresh; one whose evidence Team cannot verify or whose state it cannot read also
-  // offers Excluir, since the host hides its own Delete while a decision is pending.
+  // offers Excluir, since the host hides its own Delete while a decision is pending. Every card reading but a first one
+  // the host did not ask to focus follows something the person did, so focus moves to what they act on next.
   let {
     teamId,
     teamName,
@@ -37,6 +39,7 @@
     onsettled,
     onunavailable,
     ondelete,
+    focus = false,
   } = $props();
 
   // A response that arrives after this decision gave way to a newer one never speaks for that newer one.
@@ -61,6 +64,11 @@
   // The card openings Team refuses for the run itself, which a retry may not change: Excluir stays possible.
   const UNOPENABLE = new Set(['routine-incident-unverifiable', 'routine-state-unavailable']);
   let unopenable = $state(false);
+  // Whether the last card reading failed: its Retry stays in place, disabled, while the person's retry reads again.
+  let unopened = $state(false);
+  let readings = 0;
+  let root = $state();
+  let retryButton = $state();
   const CHOICE_ICONS = { run: 'play', delete: 'trash' };
   const HINTS = { run: 'runHint', delete: 'deleteHint' };
   let recovery = $derived(outcome === 'held');
@@ -118,9 +126,11 @@
     try {
       card = await openRoutineCard(call, teamId, runId);
       unopenable = false;
+      unopened = false;
     } catch (error) {
       card = null;
       unopenable = UNOPENABLE.has(error?.code);
+      unopened = true;
       // A run already settled has nothing left to answer here; its newer notice replaces this one.
       if (error?.code !== 'routine-incident-unavailable') result = failed(error);
       else if (mounted) onunavailable();
@@ -132,7 +142,14 @@
     if (recoverable && wanted && !working && $commandsReady) {
       wanted = false;
       working = true;
-      void openCard().finally(() => { working = false; });
+      const focused = focus || readings > 0;
+      readings += 1;
+      void openCard().finally(async () => {
+        working = false;
+        if (!focused || !mounted) return;
+        await tick();
+        (card ? root?.querySelector('[data-choice="run"]') : retryButton)?.focus();
+      });
     }
   });
 
@@ -254,7 +271,7 @@
   }
 </script>
 
-<div class="decision">
+<div class="decision" bind:this={root}>
   {#if situation}
     <!-- One clear message: what happened, where, and that the person chooses how to go on. -->
     <!-- What happened, as the headline: the likely cause in plain words when the error says it, else that the run
@@ -312,14 +329,15 @@
         disabled={working || !$commandsReady}
         onchoose={recover}
       />
-    {:else if !working}
+    {:else if unopened || !working}
       <div class="actions">
-        <Button size="sm" variant="secondary" type="button" disabled={!$commandsReady} onclick={() => (wanted = true)}>
+        <Button size="sm" variant="secondary" type="button" disabled={working || !$commandsReady}
+          bind:element={retryButton} onclick={() => (wanted = true)}>
           {copy.list.retry}
         </Button>
         {#if unopenable}
           <!-- Named as a choice row is, so Cancel on the deletion it opens returns focus here. -->
-          <Button size="sm" variant="secondary" type="button" data-choice="delete" disabled={!$commandsReady}
+          <Button size="sm" variant="secondary" type="button" data-choice="delete" disabled={working || !$commandsReady}
             onclick={ondelete}>
             {copy.card.delete}
           </Button>
