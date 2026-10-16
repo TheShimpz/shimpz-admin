@@ -28,8 +28,8 @@ from protocol.http.v1 import turn as turn_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 STORE_PATH = Path("/data/chat-history.sqlite3")
-# Version 14 keeps each Routine card with the schedule, zone, and output it shows.
-SCHEMA_VERSION = 14
+# Version 15 keeps each Routine creation with what its recording spent: its model usage and its Team steps.
+SCHEMA_VERSION = 15
 # A row's provenance is server-owned: `attached` marks every row of a turn whose message carried attachments, which
 # never enters a conversation projection (ADR-0093); every other row is `plain`. An attached user row keeps the
 # references of the files its message carried, exactly what the transcript shows of them and never their content.
@@ -575,7 +575,6 @@ def _validate_stored_routine(payload: dict[str, object]) -> None:
         raise ValueError("invalid stored Routine notice")
     outcome, run_id = payload["outcome"], payload["run_id"]
     routine_outcome = outcome in routine_contract.ROUTINE_OUTCOMES
-    used = not routine_outcome or outcome == "healthy"
     valid = (
         _stored_detail(outcome, payload["detail"])
         and routine_contract.matches(payload["notice_id"], routine_contract.ROUTINE_ID_RE)
@@ -586,7 +585,7 @@ def _validate_stored_routine(payload: dict[str, object]) -> None:
         # A run's one notice is keyed by its run id; a Routine outcome names no run.
         and run_id == (None if routine_outcome else payload["notice_id"])
         and routine_notice_contract.instant(payload["created_at"])
-        and (routine_contract.canonical_run_usage(payload["usage"]) is not None if used else payload["usage"] is None)
+        and routine_notice_contract.notice_usage(outcome, payload["usage"])
         and type(payload["protection_lost"]) is bool
         and not (routine_outcome and payload["protection_lost"])
     )
