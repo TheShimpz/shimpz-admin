@@ -37,6 +37,15 @@ export function exactEnvelope(value, keys) {
     (!traced || (typeof value.trace_id === 'string' && OPAQUE_ID_RE.test(value.trace_id)));
 }
 
+// A stored key record Admin did not write: it never heals by itself, and only a Space reset replaces it, which its own
+// words say.
+export const CREDENTIAL_RECORD_INVALID = 'credential-record-invalid';
+
+/** The one refusal code a key screen words itself, a broken stored key record, or '' for any other answer. */
+export function credentialCode(body) {
+  return body?.code === CREDENTIAL_RECORD_INVALID ? CREDENTIAL_RECORD_INVALID : '';
+}
+
 export function safeApiError(body, fallback) {
   const candidate = body?.error ?? body?.detail;
   return typeof candidate === 'string' && candidate.length <= 300 ? candidate : fallback;

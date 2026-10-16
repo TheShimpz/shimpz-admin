@@ -20,6 +20,7 @@ from http import HTTPStatus
 
 import decision
 import models
+import state
 from history import context as conversation_context
 from team import bridge as team
 from team import transport
@@ -81,7 +82,7 @@ _CHAT_ERROR_DETAILS = {
     "invalid-files": "the selected files are invalid",
     "invalid-action-input": "an Assistant Action received invalid input",
     "model-credential-missing": "the selected model provider needs an API key",
-    "model-credential-store-invalid": "the model credential store is invalid",
+    "credential-record-invalid": "a stored key record is invalid; reset the Space with shimpz reset",
     "ownership-conflict": "the Team resource ownership check failed",
     "action-state-unavailable": "Team Action execution state is unavailable",
     "runtime-unavailable": "the local chat runtime is unavailable; update this Shimpz Space",
@@ -275,6 +276,11 @@ def _safe_error(response: transport.TeamResponse) -> transport.TeamResponse:
     return PublicResponse(response.status, {"code": code})
 
 
+def _credential_record_invalid() -> transport.TeamResponse:
+    """A stored key record Admin did not write refuses the turn; its public words name the reset remedy."""
+    return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "credential-record-invalid"})
+
+
 def model_credential(team_id: str) -> tuple[str, str] | transport.TeamResponse:
     # The bridge already admitted the answer as one exact catalog provider and model pair for this Team.
     response = team.get_inference(team_id)
@@ -285,8 +291,8 @@ def model_credential(team_id: str) -> tuple[str, str] | transport.TeamResponse:
     provider = response.body["provider"]
     try:
         api_key = models.resolve_api_key(provider)
-    except models.ModelProviderError:
-        return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "model-credential-store-invalid"})
+    except state.CredentialRecordError:
+        return _credential_record_invalid()
     if api_key is None:
         return PublicResponse(HTTPStatus.CONFLICT, {"code": "model-credential-missing"})
     return provider, api_key
@@ -501,7 +507,10 @@ def intent_route(
         return credential
     provider, api_key = credential
     # Only classification may try the Jev fast path; selection always runs the LLM route (ADR-0077).
-    decision_key = decision.resolve() if expected is None else None
+    try:
+        decision_key = decision.resolve() if expected is None else None
+    except state.CredentialRecordError:
+        return _credential_record_invalid()
     described = list(installable or ()) if decision_key is not None else []
     response = team.intent_route(
         canonical_id,

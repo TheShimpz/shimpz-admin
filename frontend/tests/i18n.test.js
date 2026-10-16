@@ -57,6 +57,12 @@ test('every Admin message is non-empty and keeps the English placeholders in eve
   }
 });
 
+test('a broken stored key record names its one remedy, the literal reset command, in every locale', () => {
+  for (const locale of expectedLocales) {
+    assert.match(messages[locale].shell.credentialRecordInvalid, /\bshimpz reset\b/u, locale);
+  }
+});
+
 test('integration confirmation emphasizes every dynamic authorization identity', () => {
   const values = {
     actions: 'list-zones',

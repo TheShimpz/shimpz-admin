@@ -1,6 +1,6 @@
 import { socketReads } from '../session/socket.js';
 import { synced } from '../session/synced.js';
-import { exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
+import { credentialCode, exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
 import { MASKED_RE } from './providers.js';
 
 // The Supervisor's optional TypeSafe key for the Jev intent fast path (ADR-0077). Only masked metadata crosses here.
@@ -18,7 +18,7 @@ function validState(body) {
 
 async function answered(response, fallback) {
   const body = await jsonObject(response);
-  if (!response.ok) throw new LocalApiError(safeApiError(body, fallback), response.status);
+  if (!response.ok) throw new LocalApiError(safeApiError(body, fallback), response.status, credentialCode(body));
   if (!validState(body)) throw new LocalApiError('Decision provider settings are invalid.', response.status);
   return { configured: body.configured, masked: body.masked };
 }

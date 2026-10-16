@@ -377,8 +377,10 @@ export function projectedChatError(status, detail, words) {
     return { message: words.authenticationUnavailable, detail: '' };
   }
   const resetting = status === 409 && typeof detail === 'string' && detail.startsWith('space-resetting:');
+  // A stored key record Admin did not write refuses every turn until the Space is reset, which its words say.
+  const broken = status === 502 && typeof detail === 'string' && detail.startsWith('credential-record-invalid:');
   return {
-    message: resetting ? words.spaceResetting : friendlyChatError(status, words),
+    message: resetting ? words.spaceResetting : broken ? words.credentialRecordInvalid : friendlyChatError(status, words),
     detail: `HTTP ${status} · ${detail}`,
   };
 }

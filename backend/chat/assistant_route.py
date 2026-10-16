@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 import decision
+import state
 from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context
 from history import context as conversation_context
 from team import transport
@@ -417,8 +418,15 @@ def _speculate(
 
 
 def _installable(gap_ready: Future) -> list[dict[str, str]] | None:
-    """The plan's shortlist for classification, when a decision key may receive it and it exists within the bound."""
-    if decision.resolve() is None:
+    """The plan's shortlist for classification, when a decision key may receive it and it exists within the bound.
+
+    A stored TypeSafe record Admin did not write describes nothing: the classification reads it again and refuses the
+    turn with the reset remedy.
+    """
+    try:
+        if decision.resolve() is None:
+            return None
+    except state.CredentialRecordError:
         return None
     try:
         if gap_ready.exception(timeout=GAP_WAIT_SECONDS) is not None:

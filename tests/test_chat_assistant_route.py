@@ -10,6 +10,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+import state
 from history import context as conversation_context
 from team import transport
 
@@ -285,6 +286,19 @@ class AssistantRouteTests(unittest.TestCase):
                 {"name": "Exa", "summary": "Up-to-date answers from the web."},
             ],
         )
+
+    def test_a_broken_typesafe_record_describes_nothing_and_classification_refuses_the_turn(self) -> None:
+        refused = local.PublicResponse(502, {"code": "credential-record-invalid"})
+        with (
+            mock.patch.object(assistant_route.decision, "resolve", side_effect=state.CredentialRecordError("broken")),
+            mock.patch.object(assistant_route.assistant_plan, "capability_gap", return_value=self._gap()),
+            mock.patch.object(assistant_route.assistant_plan, "plan_gap", return_value=assistant_plan.Preparation()),
+            mock.patch.object(assistant_route.local, "intent_route", return_value=refused) as route,
+            self.assertRaises(assistant_route.RouteError) as caught,
+        ):
+            assistant_route.prepare("team_1", payload("oi"), mock.sentinel.catalog)
+        self.assertEqual(caught.exception.status, 502)
+        self.assertIsNone(route.call_args.args[5])
 
     def test_a_possible_capability_waits_for_and_keeps_its_plan(self) -> None:
         prepared = assistant_plan.Preparation(plan=mock.sentinel.plan)

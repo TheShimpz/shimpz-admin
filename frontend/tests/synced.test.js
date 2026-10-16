@@ -254,6 +254,8 @@ test('only an outage, an overload, or a server failure is transient', () => {
   assert.equal(transientFailure(new LocalApiError('x', 429)), true);
   assert.equal(transientFailure(new LocalApiError('x', 503)), true);
   assert.equal(transientFailure(new LocalApiError('x', 409)), false);
+  // A broken stored key record never heals by itself, whatever its status.
+  assert.equal(transientFailure(new LocalApiError('x', 503, 'credential-record-invalid')), false);
   assert.equal(transientFailure(new TypeError('x')), true);
 });
 

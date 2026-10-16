@@ -463,6 +463,32 @@ test('a fast-routing key Admin refuses to read is said to be unavailable even af
   await expect(trigger).not.toHaveAccessibleName(/••••word/);
 });
 
+// A stored key record Admin did not write: only a Space reset replaces it, so each screen that reads it names that remedy
+// in the interface language, never as data that is only temporarily unavailable.
+const BROKEN_KEY_RECORD = {
+  status: 503,
+  json: { code: 'credential-record-invalid', detail: 'A stored key record is invalid; reset the Space with shimpz reset' },
+};
+
+test('a broken stored model key record names the Space reset over the composer', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  await routeRead(page, 'models.list', () => BROKEN_KEY_RECORD);
+  await page.goto('/chat/?team=marketing');
+  await expect(page.getByText(shell.credentialRecordInvalid)).toBeVisible();
+  await expect(page.getByText(shell.dataUnavailable)).toHaveCount(0);
+});
+
+test('a broken stored TypeSafe key record names the Space reset in the fast-routing panel', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  await routeRead(page, 'decision.read', () => BROKEN_KEY_RECORD);
+  await page.goto('/chat/?team=marketing');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: /^Fast routing \(Jev\)/ }).click();
+  const fast = page.getByRole('dialog', { name: 'Fast routing (Jev)' });
+  await expect(fast.getByRole('status')).toHaveText(shell.credentialRecordInvalid);
+  await expect(page.getByText(shell.dataUnavailable)).toHaveCount(0);
+});
+
 test('data Admin keeps failing to read is said once, over the page, and the page fills in once it reads', async ({ page }) => {
   await routeScenario(page, 'ready');
   let unavailable = true;

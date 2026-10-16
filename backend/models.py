@@ -94,7 +94,7 @@ def _records() -> dict:
     records = state.model_credentials()
     unknown = set(records) - set(PROVIDERS)
     if unknown:
-        raise RuntimeError("admin store has unsupported model credentials")
+        raise state.CredentialRecordError(f"admin store {state.STORE_PATH} has unsupported model credentials")
     return records
 
 
@@ -107,8 +107,7 @@ def verified_secret(record: object, name: str) -> str | None:
     """Return a stored record's verified key, or None when no key is stored.
 
     The writers store exactly a canonical key and the positive time its provider verified it, atomically, so any other
-    record is a broken store and fails closed, naming the remedy: the key screens read this record before they offer a
-    save, so they cannot replace it.
+    record is a broken store and fails closed with ``state.CredentialRecordError``.
     """
     if record is None:
         return None
@@ -119,9 +118,7 @@ def verified_secret(record: object, name: str) -> str | None:
         or record["verified_at"] <= 0
         or not _canonical(record["api_key"])
     ):
-        raise RuntimeError(
-            f"admin store {state.STORE_PATH} has an invalid {name} credential; reset the Space with `shimpz reset`"
-        )
+        raise state.CredentialRecordError(f"admin store {state.STORE_PATH} has an invalid {name} credential")
     return record["api_key"]
 
 

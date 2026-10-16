@@ -64,6 +64,7 @@ export default {
     offline: "You're offline. Shimpz reconnects when the connection is back.",
     dataUnavailable: 'Some Admin data is temporarily unavailable. Shimpz keeps retrying.',
     outcomeUnknown: 'Admin disconnected before it confirmed this change, so it may or may not have been made. What you see is read again once Admin is back.',
+    credentialRecordInvalid: 'A saved key record is damaged, so Admin cannot use it. Reset the Space with shimpz reset, then install it again.',
     sessionExpiring: {
       title: 'Your session is about to end',
       countdown: 'Your session is about to end in {time}',

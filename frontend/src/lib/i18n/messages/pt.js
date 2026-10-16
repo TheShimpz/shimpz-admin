@@ -66,6 +66,7 @@ export default {
     offline: "Você está offline. O Shimpz reconecta quando a conexão voltar.",
     dataUnavailable: 'Alguns dados do Admin estão temporariamente indisponíveis. O Shimpz continua tentando.',
     outcomeUnknown: 'O Admin se desconectou antes de confirmar esta alteração, então ela pode ou não ter sido feita. O que você vê é lido de novo assim que o Admin voltar.',
+    credentialRecordInvalid: 'Um registro de chave salvo está corrompido, então o Admin não pode usá-lo. Redefina o Space com shimpz reset e instale-o novamente.',
     sessionExpiring: {
       title: 'Sua sessão está prestes a terminar',
       countdown: 'Sua sessão está prestes a terminar em {time}',

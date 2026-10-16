@@ -10,6 +10,7 @@ import contextlib
 import logging
 from typing import TYPE_CHECKING
 
+import state
 import supervisor
 from protocol.socket.v1 import frames
 from session import budget, lane, methods, topics
@@ -23,6 +24,14 @@ if TYPE_CHECKING:
 log = logging.getLogger("shimpz-admin")
 
 UNAVAILABLE_AUTHORITY = (503, {"detail": "Supervisor authority is unavailable"})
+# A stored key record Admin did not write: fixed words with the one remedy, never the store's own details.
+CREDENTIAL_RECORD_INVALID = (
+    503,
+    {
+        "code": "credential-record-invalid",
+        "detail": "A stored key record is invalid; reset the Space with shimpz reset",
+    },
+)
 BODY_TOO_LARGE = (413, {"detail": "request body too large"})
 
 
@@ -55,6 +64,8 @@ async def _dispatch(socket: SessionSocket, call_id: str, method: str, params: di
         return UNAVAILABLE_AUTHORITY
     except auth.PasswordRecordError:
         return 503, {"code": "password-recovery-required", "detail": "Supervisor password recovery is required"}
+    except state.CredentialRecordError:
+        return CREDENTIAL_RECORD_INVALID
     except audit.AuditUnavailableError:
         return 503, {"detail": "Supervisor authentication audit is unavailable"}
     except Exception:

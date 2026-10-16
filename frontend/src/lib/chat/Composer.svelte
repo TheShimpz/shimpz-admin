@@ -7,6 +7,7 @@
   import FastRoutingMenu from '#lib/brain/FastRoutingMenu.svelte';
   import { t } from '#lib/i18n/index.js';
   import { modelContext } from '#lib/brain/context.js';
+  import { CREDENTIAL_RECORD_INVALID } from '#lib/api.js';
 
   // The chat's composer: the message with its files, or the Brain's key while the selected provider has none, and its
   // tools (attach, the Brain and fast-routing menus, Integrations), then Send, or Stop while a turn runs. The page owns
@@ -55,6 +56,11 @@
   let keyCopy = $derived($t('providerSetup'));
   let attachCopy = $derived($t('attachments'));
   let integrationsCopy = $derived($t('assistantIntegrations'));
+  // The Brain's failure in the interface language where Admin names it by code, else as Admin worded it.
+  let brainError = $derived({
+    'outcome-unknown': $t('shell.outcomeUnknown'),
+    [CREDENTIAL_RECORD_INVALID]: $t('shell.credentialRecordInvalid'),
+  }[$modelContext.errorCode] ?? $modelContext.error);
 </script>
 
 <form
@@ -69,7 +75,7 @@
   {#if (keyRequired || brainUnavailable) && $modelContext.error}
     <!-- The Brain's own failure sits on the composer it blocks, independent of any chat error. -->
     <Notice class="chat-brain-error" variant="error">
-      <strong>{$modelContext.errorCode === 'outcome-unknown' ? $t('shell.outcomeUnknown') : $modelContext.error}</strong>
+      <strong>{brainError}</strong>
       {#if brainUnavailable}
         <Button variant="secondary" size="compact" type="button" onclick={onretrybrain} disabled={brainSaving || !$commandsReady}>
           {keyCopy.retry}

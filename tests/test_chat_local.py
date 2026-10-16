@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 import models
+import state
 from team import bridge as team
 from team import transport
 
@@ -712,15 +713,32 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "get_inference",
                 return_value=OPENAI_INFERENCE,
             ),
-            mock.patch.object(models, "resolve_api_key", side_effect=models.ModelProviderError("invalid")),
+            mock.patch.object(
+                models, "resolve_api_key", side_effect=state.CredentialRecordError("admin store /data/x is invalid")
+            ),
         ):
             response = local.model_credential("team_1")
-        self.assertEqual(response, transport.TeamResponse(502, {"code": "model-credential-store-invalid"}))
+        self.assertEqual(response, transport.TeamResponse(502, {"code": "credential-record-invalid"}))
+        # The browser hears fixed words naming the reset remedy, never the store's own details.
+        event = response.websocket_event("team_1")
+        self.assertEqual(event["status"], 502)
+        self.assertIn("shimpz reset", event["detail"])
+        self.assertNotIn("/data", event["detail"])
 
         self.assertEqual(
             local._safe_error(transport.TeamResponse(500, {"code": "BAD CODE"})),
             transport.TeamResponse(500, {"code": "chat-request-failed"}),
         )
+
+    def test_a_broken_typesafe_record_refuses_classification_before_team_is_asked(self) -> None:
+        with (
+            mock.patch.object(local, "model_credential", return_value=("openai", "sk-test-0123456789")),
+            mock.patch.object(local.decision, "resolve", side_effect=state.CredentialRecordError("broken")),
+            mock.patch.object(team, "intent_route") as route,
+        ):
+            response = local.intent_route("team_1", "oi", None, [], local.IntentRouteContext(locale="pt"))
+        self.assertEqual(response, transport.TeamResponse(502, {"code": "credential-record-invalid"}))
+        route.assert_not_called()
 
     def test_integration_challenge_rejects_missing_identity_capabilities_and_action(self) -> None:
         requirement = integration_requirement()

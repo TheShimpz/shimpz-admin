@@ -66,6 +66,7 @@ export default {
     offline: "オフラインです。接続が戻ると Shimpz が再接続します。",
     dataUnavailable: '一部の Admin データが一時的に利用できません。Shimpz は再試行を続けています。',
     outcomeUnknown: 'Admin がこの変更を確認する前に切断されたため、変更が行われたかどうかは不明です。Admin が戻りしだい、表示内容を読み込み直します。',
+    credentialRecordInvalid: '保存されたキーの記録が破損しているため、Admin はそれを使用できません。shimpz reset で Space をリセットしてから再インストールしてください。',
     sessionExpiring: {
       title: 'まもなくセッションが終了します',
       countdown: 'セッションはあと{time}で終了します',

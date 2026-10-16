@@ -208,7 +208,8 @@ class ModelProviderTests(unittest.TestCase):
             state._write({"model_credentials": {"openai": record}})
             with self.subTest(record=record):
                 for read in (models.status, lambda: models.resolve_api_key("openai")):
-                    with self.assertRaisesRegex(RuntimeError, r"admin\.json has an invalid openai credential"):
+                    broken = r"admin\.json has an invalid openai credential"
+                    with self.assertRaisesRegex(state.CredentialRecordError, broken):
                         read()
         state._write({"model_credentials": {"openai": {"api_key": key, "verified_at": 1}}})
         self.assertEqual(models.resolve_api_key("openai"), key)

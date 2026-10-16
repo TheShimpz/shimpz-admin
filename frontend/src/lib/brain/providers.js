@@ -1,6 +1,6 @@
 import { socketReads } from '../session/socket.js';
 import MODEL_CATALOG from './catalog.json' with { type: 'json' };
-import { exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
+import { credentialCode, exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
 import { TEAM_ID_RE } from '../ids.js';
 
 // A stored provider key as Admin shows it: never the key, only four bullets and its last four characters.
@@ -52,7 +52,11 @@ export async function listModelProviders(call = socketReads.call) {
   const response = await call('models.list', {});
   const body = await jsonObject(response);
   if (!response.ok) {
-    throw new LocalApiError(safeApiError(body, 'Model provider settings are unavailable.'), response.status);
+    throw new LocalApiError(
+      safeApiError(body, 'Model provider settings are unavailable.'),
+      response.status,
+      credentialCode(body),
+    );
   }
   if (!Array.isArray(body.providers) || body.providers.length !== MAX_PROVIDERS) {
     throw new LocalApiError('Model provider settings are invalid.', response.status);
@@ -137,7 +141,11 @@ export async function saveModelSetup(teamId, setup, providers) {
     );
     const credentialBody = await jsonObject(credentialResponse);
     if (!credentialResponse.ok) {
-      throw new LocalApiError(safeApiError(credentialBody, 'The API key could not be saved.'), credentialResponse.status);
+      throw new LocalApiError(
+        safeApiError(credentialBody, 'The API key could not be saved.'),
+        credentialResponse.status,
+        credentialCode(credentialBody),
+      );
     }
     if (!validProvider(credentialBody) || credentialBody.id !== setup.provider || !credentialBody.configured) {
       throw new LocalApiError('The model provider response is invalid.', credentialResponse.status);

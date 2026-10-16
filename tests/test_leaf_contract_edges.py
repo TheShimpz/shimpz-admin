@@ -32,10 +32,10 @@ class ModelEdgeTests(unittest.TestCase):
     def test_unknown_and_invalid_stored_credentials_fail_closed(self) -> None:
         with (
             mock.patch.object(state, "model_credentials", return_value={"unknown": {}}),
-            self.assertRaisesRegex(RuntimeError, "unsupported model credentials"),
+            self.assertRaisesRegex(state.CredentialRecordError, "unsupported model credentials"),
         ):
             models.status()
-        with self.assertRaisesRegex(RuntimeError, "invalid openai credential"):
+        with self.assertRaisesRegex(state.CredentialRecordError, "invalid openai credential"):
             models.verified_secret({"verified_at": 1, "api_key": "short"}, "openai")
 
     def test_connection_construction_failure_is_unavailable(self) -> None:
@@ -78,9 +78,9 @@ class StateEdgeTests(unittest.TestCase):
             state.browser_origin()
 
         state._write({"model_credentials": []})
-        with self.assertRaisesRegex(RuntimeError, "invalid model credentials"):
+        with self.assertRaisesRegex(state.CredentialRecordError, "invalid model credentials"):
             state.model_credentials()
-        with self.assertRaisesRegex(RuntimeError, "invalid model credentials"):
+        with self.assertRaisesRegex(state.CredentialRecordError, "invalid model credentials"):
             state.set_model_api_key("openai", "sk-openai-0123456789")
 
     def test_password_initialization_rejects_an_ambiguous_existing_session_secret(self) -> None:

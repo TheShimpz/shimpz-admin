@@ -12,6 +12,7 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+import state
 from fastapi import HTTPException
 from session import budget, calls, lane, methods, outbound, registry, socket, topics, watcher
 from signin import audit, auth, local_auth
@@ -104,6 +105,7 @@ class SessionCallEdgeTests(unittest.TestCase):
             session_socket = _socket(_gate())
             for failure, expected in (
                 (auth.PasswordRecordError("bad"), (503, "password-recovery-required")),
+                (state.CredentialRecordError("store /data/admin.json is bad"), (503, "credential-record-invalid")),
                 (audit.AuditUnavailableError("down"), (503, None)),
                 (RuntimeError("unexpected"), (500, None)),
             ):
@@ -118,6 +120,8 @@ class SessionCallEdgeTests(unittest.TestCase):
                     else:
                         status, body = await calls._dispatch(session_socket, "c1", "teams.list", {})
                 self.assertEqual(status, expected[0])
+                # An answer never carries the failure's own text, such as the store's path.
+                self.assertNotIn("/data", body["detail"])
                 if expected[1] is not None:
                     self.assertEqual(body["code"], expected[1])
 

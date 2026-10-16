@@ -173,7 +173,11 @@
 
   let copy = $derived($t('chatPage'));
   // The chat's words for its transcript (chat/turns.js): its copy and the localized Assistant-limit refusal.
-  let words = $derived({ ...copy, limit: $t('store.assistantLimitReached', { maximum: String(MAX_TEAM_ASSISTANTS) }) });
+  let words = $derived({
+    ...copy,
+    limit: $t('store.assistantLimitReached', { maximum: String(MAX_TEAM_ASSISTANTS) }),
+    credentialRecordInvalid: $t('shell.credentialRecordInvalid'),
+  });
   let integrationsCopy = $derived($t('assistantIntegrations'));
   let humanRequestCopy = $derived($t('humanRequest'));
   // A request rendered in another language than the one selected now is never answered; a fresh one is requested.

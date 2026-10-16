@@ -66,6 +66,7 @@ export default {
     offline: "你已离线。连接恢复后 Shimpz 会重新连接。",
     dataUnavailable: '部分 Admin 数据暂时不可用。Shimpz 会继续重试。',
     outcomeUnknown: 'Admin 在确认此更改之前断开了连接，因此更改可能已完成，也可能未完成。Admin 恢复后会重新读取你看到的内容。',
+    credentialRecordInvalid: '已保存的密钥记录已损坏，Admin 无法使用它。请使用 shimpz reset 重置 Space，然后重新安装。',
     sessionExpiring: {
       title: '会话即将结束',
       countdown: '会话将在{time}后结束',

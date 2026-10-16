@@ -750,6 +750,14 @@ def local_routine_identity() -> supervisor.LocalIdentity:
     return cast(supervisor.LocalIdentity, _mutate(ensure, created))
 
 
+class CredentialRecordError(RuntimeError):
+    """A stored model or TypeSafe key record is not one Admin writes; only a Space reset replaces it.
+
+    The key screens read every record before they offer a save, so they cannot replace a broken one: callers answer it
+    with fixed public words naming `shimpz reset`, never with this exception's text.
+    """
+
+
 def model_credentials():
     """Return the private model-credential records for trusted backend callers only.
 
@@ -758,7 +766,7 @@ def model_credentials():
     """
     records = _read().get("model_credentials", {})
     if not isinstance(records, dict):
-        raise RuntimeError(f"admin store {STORE_PATH} has invalid model credentials")
+        raise CredentialRecordError(f"admin store {STORE_PATH} has invalid model credentials")
     return records
 
 
@@ -768,7 +776,7 @@ def set_model_api_key(provider, api_key):
     def set_key(data: dict) -> None:
         records = data.setdefault("model_credentials", {})
         if not isinstance(records, dict):
-            raise RuntimeError(f"admin store {STORE_PATH} has invalid model credentials")
+            raise CredentialRecordError(f"admin store {STORE_PATH} has invalid model credentials")
         verified_at = int(time.time())
         records[provider] = {
             "api_key": api_key,

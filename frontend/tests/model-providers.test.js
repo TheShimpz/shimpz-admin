@@ -121,6 +121,10 @@ test('treats unconfigured inference as empty', async () => {
 test('every refused or malformed answer fails closed with its own message', async () => {
   const answering = (status, body) => async () => response(status, body);
   await assert.rejects(listModelProviders(answering(503, { detail: 'Team is unavailable' })), /Team is unavailable/);
+  await assert.rejects(
+    listModelProviders(answering(503, { code: 'credential-record-invalid', detail: 'broken' })),
+    (error) => error.code === 'credential-record-invalid',
+  );
   await assert.rejects(listModelProviders(answering(200, { providers: [providers[0]] })), /invalid/);
   await assert.rejects(listModelProviders(answering(200, { providers: [providers[0], providers[0]] })), /invalid/);
 
@@ -137,6 +141,12 @@ test('every refused or malformed answer fails closed with its own message', asyn
   await assert.rejects(
     via(answering(400, { detail: 'API key was rejected by OpenAI' }), () => saveModelSetup('team_1', setup, providers)),
     /rejected by OpenAI/,
+  );
+  await assert.rejects(
+    via(answering(503, { code: 'credential-record-invalid', detail: 'broken' }), () => (
+      saveModelSetup('team_1', setup, providers)
+    )),
+    (error) => error.code === 'credential-record-invalid',
   );
   await assert.rejects(
     via(answering(200, { ...providers[0], configured: false }), () => saveModelSetup('team_1', setup, providers)),

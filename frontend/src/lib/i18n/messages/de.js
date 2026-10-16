@@ -66,6 +66,7 @@ export default {
     offline: "Sie sind offline. Shimpz verbindet sich neu, sobald die Verbindung zurück ist.",
     dataUnavailable: 'Einige Admin-Daten sind vorübergehend nicht verfügbar. Shimpz versucht es weiter.',
     outcomeUnknown: 'Admin wurde getrennt, bevor es diese Änderung bestätigt hat. Sie wurde daher vielleicht ausgeführt, vielleicht nicht. Was Sie sehen, wird neu gelesen, sobald Admin wieder erreichbar ist.',
+    credentialRecordInvalid: 'Ein gespeicherter Schlüsseldatensatz ist beschädigt, daher kann Admin ihn nicht verwenden. Setzen Sie den Space mit shimpz reset zurück und installieren Sie ihn erneut.',
     sessionExpiring: {
       title: 'Ihre Sitzung endet gleich',
       countdown: 'Ihre Sitzung endet in {time}',

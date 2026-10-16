@@ -66,6 +66,7 @@ export default {
     offline: "أنت غير متصل. سيعيد Shimpz الاتصال عند عودة الاتصال.",
     dataUnavailable: 'بعض بيانات Admin غير متاحة مؤقتًا. يواصل Shimpz المحاولة.',
     outcomeUnknown: 'انقطع اتصال Admin قبل أن يؤكد هذا التغيير، لذلك ربما تم أو لم يتم. سيُعاد تحميل ما تراه بمجرد عودة Admin.',
+    credentialRecordInvalid: 'سجل مفتاح محفوظ تالف، لذلك لا يمكن لـ Admin استخدامه. أعد تعيين Space باستخدام shimpz reset ثم ثبّته من جديد.',
     sessionExpiring: {
       title: 'جلستك على وشك الانتهاء',
       countdown: 'ستنتهي جلستك خلال {time}',

@@ -6,6 +6,7 @@
   import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/brain/panel.js';
   import { decisionProvider, removeDecisionKey, saveDecisionKey } from '#lib/brain/decision.js';
   import { t } from '#lib/i18n/index.js';
+  import { CREDENTIAL_RECORD_INVALID } from '#lib/api.js';
 
   // The optional Jev key (ADR-0077) in its own composer control. Only Local Admin custodies it; the caller renders
   // this control only there. Its state is the one Admin holds, read over the session socket and again whenever Admin
@@ -156,7 +157,10 @@
       {/if}
     </p>
     {#if fast.phase === 'unavailable'}
-      <p class="status" role="status">{copy.unavailable}</p>
+      <!-- A stored key record Admin did not write names its one remedy instead. -->
+      <p class="status" role="status">
+        {$decisionProvider.error?.code === CREDENTIAL_RECORD_INVALID ? $t('shell.credentialRecordInvalid') : copy.unavailable}
+      </p>
     {:else if fast.phase === 'loading'}
       <p class="status">…</p>
     {:else if fast.configured}

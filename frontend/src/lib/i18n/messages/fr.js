@@ -66,6 +66,7 @@ export default {
     offline: "Vous êtes hors ligne. Shimpz se reconnecte dès le retour de la connexion.",
     dataUnavailable: 'Certaines données d’Admin sont temporairement indisponibles. Shimpz continue d’essayer.',
     outcomeUnknown: 'Admin s’est déconnecté avant de confirmer cette modification : elle a pu être faite ou non. Ce que vous voyez est relu dès le retour d’Admin.',
+    credentialRecordInvalid: 'Un enregistrement de clé enregistré est endommagé : Admin ne peut pas l’utiliser. Réinitialisez le Space avec shimpz reset, puis réinstallez-le.',
     sessionExpiring: {
       title: 'Votre session va bientôt se terminer',
       countdown: 'Votre session va se terminer dans {time}',

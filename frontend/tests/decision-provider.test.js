@@ -39,6 +39,15 @@ test('loads only the closed masked TypeSafe state', async () => {
     await assert.rejects(loadDecisionProvider(recorder(200, body).call), /invalid/, JSON.stringify(body));
   }
   await assert.rejects(loadDecisionProvider(recorder(503, { detail: 'down' }).call), (error) => error.status === 503);
+  // Only a broken stored key record keeps its code, so the screen can name its remedy.
+  await assert.rejects(
+    loadDecisionProvider(recorder(503, { code: 'credential-record-invalid', detail: 'broken' }).call),
+    (error) => error.code === 'credential-record-invalid',
+  );
+  await assert.rejects(
+    loadDecisionProvider(recorder(503, { code: 'outcome-unknown', detail: 'down' }).call),
+    (error) => error.code === '',
+  );
 });
 
 /**

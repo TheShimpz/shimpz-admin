@@ -8,7 +8,7 @@
 import { derived, writable } from 'svelte/store';
 
 import { socketReads } from './socket.js';
-import { LocalApiError } from '../api.js';
+import { CREDENTIAL_RECORD_INVALID, LocalApiError } from '../api.js';
 
 export const RETRY_FIRST_MS = 1_000;
 const RETRY_MAX_MS = 30_000;
@@ -29,9 +29,13 @@ function markFailing(token, on) {
   });
 }
 
-/** A failure worth reading again on its own: Admin or Team briefly unavailable, busy, or the socket reconnecting. */
+/**
+ * A failure worth reading again on its own: Admin or Team briefly unavailable, busy, or the socket reconnecting. A
+ * broken stored key record is not one: reading it again cannot help.
+ */
 export function transientFailure(error) {
   if (!(error instanceof LocalApiError)) return true;
+  if (error.code === CREDENTIAL_RECORD_INVALID) return false;
   return error.status === 0 || error.status === 429 || error.status >= 500;
 }
 
