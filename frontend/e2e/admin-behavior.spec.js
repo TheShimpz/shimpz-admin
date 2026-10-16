@@ -4542,6 +4542,20 @@ test('opens the mobile Team list as a modal drawer and restores focus', { tag: '
   await expect(drawer).toBeHidden();
 });
 
+test('a Brain change closed with Escape while it saves gives its trigger the focus once it is saved', async ({ page }) => {
+  const chat = await routeReadyChat(page, { holdInferenceWrite: true });
+  await page.goto('/chat/');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+  await chooseBrainModel(page, 'GPT-6 Luna');
+  await expect.poll(chat.inferenceWrites).toBe(1);
+  // The panel that held the focus closes, leaving it on the document while the trigger stays disabled.
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog', { name: 'Brain settings' })).toBeHidden();
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+  chat.releaseInferenceWrite();
+  await expect(page.getByRole('button', { name: /^Brain: / })).toBeFocused();
+});
+
 test('holds Send while a Brain change is saving so the turn uses the saved selection', async ({ page }) => {
   const chat = await routeReadyChat(page, { holdInferenceWrite: true });
   await page.goto('/chat/');
@@ -4771,6 +4785,29 @@ test('a Local Team is renamed in place: Enter saves by id, Escape keeps the name
   await expect(again).not.toHaveAttribute('readonly', '');
   await expect(again).toBeFocused();
   await expect(again).toHaveValue('Sales');
+});
+
+test('a Team name saved once the focus fell from its field to the document gives the Team link the focus', async ({ page }) => {
+  await routeScenario(page, 'ready');
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await routeRead(page, 'teams.rename', async ({ team_id: teamId }) => {
+    if (teamId === 'marketing') await held;
+    return undefined;
+  });
+  await page.goto('/chat/?team=marketing');
+  await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
+  const navigation = page.locator('.shell-sidebar');
+  await navigation.getByRole('button', { name: 'Actions for Marketing' }).click();
+  await page.getByRole('menuitem', { name: 'Rename' }).click();
+  const field = navigation.getByRole('textbox', { name: 'Name for Marketing' });
+  await field.fill('Growth');
+  await page.keyboard.press('Enter');
+  await expect(field).toHaveAttribute('readonly', '');
+  // While the name saves, the field loses the focus to the document, which is nobody's move.
+  await field.evaluate((element) => element.blur());
+  release();
+  await expect(navigation.getByRole('link', { name: 'Growth', exact: true })).toBeFocused();
 });
 
 test('a Team name that cannot be saved is explained in the interface language and stays to be corrected', async ({ page }) => {
