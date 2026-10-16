@@ -2,7 +2,7 @@
 // original request, the question, and the chosen answer; that message remains the only Action authority.
 
 import { exactKeys } from '../../api.js';
-import { HIDDEN_RE, isShownText } from '../../grammar.js';
+import { codePointLength, HIDDEN_RE, isShownText } from '../../grammar.js';
 
 const MAX_QUESTION_CHARS = 240;
 const MAX_LABEL_CHARS = 80;
