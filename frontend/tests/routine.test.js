@@ -310,7 +310,7 @@ test('a timezone and its source are each in their closed forms', () => {
   assert.equal(isZoned('America/Sao_Paulo', 'browser'), true);
   assert.equal(isZoned('Europe/Paris', 'person'), true);
   assert.equal(isZoned('UTC', 'none'), true);
-  for (const [zone, source] of [['UTC', 'guess'], ['../etc', 'browser']]) {
+  for (const [zone, source] of [['UTC', 'guess'], ['../etc', 'browser'], ['Asia/Tokyo', 'none']]) {
     assert.equal(isZoned(zone, source), false);
   }
 });

@@ -47,9 +47,12 @@ export function isTimezone(value) {
 // Routine needs no zone and stores UTC only by convention, which Admin never shows as the person's zone.
 const TIMEZONE_SOURCES = ['browser', 'person', 'none'];
 
-/** Whether a timezone and its source are each in their closed forms (ADR-0101). */
+/**
+ * Whether a timezone and its source are each in their closed forms (ADR-0101), mirroring Team's `zoned`: a Routine
+ * given no timezone stores UTC.
+ */
 export function isZoned(timezone, source) {
-  return TIMEZONE_SOURCES.includes(source) && isTimezone(timezone);
+  return TIMEZONE_SOURCES.includes(source) && isTimezone(timezone) && (source !== 'none' || timezone === 'UTC');
 }
 
 const MAX_ROUTINES = 8;
