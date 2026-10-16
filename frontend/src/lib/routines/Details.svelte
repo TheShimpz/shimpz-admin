@@ -114,14 +114,17 @@
   }
 
   // Whatever a refresh or an answer puts in place of what had focus (a decision arriving, answered, or held again, or
-  // the deletion confirmation closing), focus never drops to the document: it moves to the selected tab, else to the
-  // decision's first enabled control. Focus the person placed anywhere in the panel stays where it is.
+  // the deletion confirmation closing), and a run's view or execution details closing after what opened them went,
+  // focus never drops to the document: it moves to the selected tab, else to the decision's first enabled control.
+  // Focus the person placed anywhere in the panel stays where it is.
+  function restore() {
+    if (lost()) (document.getElementById(`${id}-tab-${page}`) ?? dialog.querySelector('.decide button:not(:disabled)'))?.focus();
+  }
+
   let shown = $derived(confirming ? 'deletion' : pending ? `${decisionKey}:${round}` : 'pages');
   $effect(() => {
     void shown;
-    void tick().then(() => {
-      if (lost()) (document.getElementById(`${id}-tab-${page}`) ?? dialog.querySelector('.decide button:not(:disabled)'))?.focus();
-    });
+    void tick().then(restore);
   });
 
   async function settled(words, heldAgain) {
@@ -217,7 +220,14 @@
   async function closeRun() {
     viewedRun = null;
     await tick();
-    viewOpener?.focus();
+    if (viewOpener?.isConnected) viewOpener.focus();
+    else restore();
+  }
+
+  async function closeDetails() {
+    detailsRun = null;
+    await tick();
+    restore();
   }
 
   function outcomeWords(entry) {
@@ -433,7 +443,7 @@
 {/if}
 
 {#if detailsRun}
-  <RoutineRunDetails {teamId} entry={detailsRun} {copy} onclose={() => (detailsRun = null)} />
+  <RoutineRunDetails {teamId} entry={detailsRun} {copy} onclose={closeDetails} />
 {/if}
 
 <style>

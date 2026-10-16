@@ -5465,6 +5465,39 @@ test.describe('Team Routines', () => {
     await expect(panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Run' })).toBeFocused();
   });
 
+  for (const view of ['view', 'execution details']) {
+    test(`a held run that arrives while a run's ${view} is open focuses its first choice once it closes`, async ({ page }, testInfo) => {
+      test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
+      const failed = 'c'.repeat(32);
+      await routeReadyChat(page, {
+        history: { entries: [noticeRow(failed, ROUTINE_VIEW, 'failed', { code: 'assistant-rpc-failed' }, { at: NOTICE_AT })], before: null },
+      });
+      await routeRead(page, 'routines.diagnostics', (params) => ok({ team_id: 'marketing', run_id: params.run_id, diagnostics: [] }));
+      const state = { runs: [], incidents: [] };
+      const openings = [];
+      const panel = await routeDecisions(page, state, (params) => {
+        openings.push(params.run_id);
+        return ok(recoveryCard(params.run_id));
+      });
+      await panel.getByRole('tab', { name: 'Runs' }).click();
+      // The run's view is a second dialog named for the Routine, beside its panel.
+      const opened = view === 'view'
+        ? page.getByRole('dialog', { name: ROUTINE_VIEW.name })
+        : page.getByRole('dialog', { name: 'Execution details' });
+      const row = panel.getByRole('list', { name: 'Runs' }).getByRole('listitem');
+      await (view === 'view' ? row.getByRole('button').first() : row.getByRole('button', { name: 'Execution details' })).click();
+      await expect(opened).toHaveCount(view === 'view' ? 2 : 1);
+      // The decision replaces the Runs page, and with it what opened the run.
+      state.runs = [heldRun('d'.repeat(32))];
+      state.incidents = [heldIncident('d'.repeat(32))];
+      await raiseTopic(page, 'team/marketing/routines');
+      await expect.poll(() => openings).toEqual(['d'.repeat(32)]);
+      await page.keyboard.press('Escape');
+      await expect(opened).toHaveCount(view === 'view' ? 1 : 0);
+      await expect(panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Run' })).toBeFocused();
+    });
+  }
+
   test('a held run that arrives after one was held again leaves focus on Close', async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await routeReadyChat(page);
