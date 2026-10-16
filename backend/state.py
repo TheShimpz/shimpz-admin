@@ -186,13 +186,12 @@ def _factor_state(factor: str, data: dict) -> str:
     return auth.RECORD_STATE_RECOVERY_ENROLLMENT if factor == auth.RECORD_STATE_ENROLLMENT_REQUIRED else factor
 
 
-def _validated_second_factor_failures(record: object) -> dict[str, int]:
+def _validated_second_factor_failures(record: object) -> None:
     if not isinstance(record, dict) or set(record) != {"since_sign_in", "unacknowledged"}:
         raise totp.TotpStateError("stored second-factor failures are invalid")
     for value in record.values():
         if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= MAX_SECOND_FACTOR_FAILURES:
             raise totp.TotpStateError("stored second-factor failures are invalid")
-    return record
 
 
 def _second_factor_refused(data: dict) -> None:
