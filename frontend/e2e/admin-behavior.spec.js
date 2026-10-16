@@ -2096,6 +2096,42 @@ test('offers a retry only after automatic earlier history fails', async ({ page 
   await expect.poll(() => chat.historyRequests()).toEqual([null, cursor]);
 });
 
+test('an earlier-history retry gives nothing the focus once the person pressed elsewhere while it was read', async ({ page }) => {
+  await routeReadyChat(page, { history: longHistory('f', 1, 'AAAAAAAAAAI'), olderHistory: longHistory('e', 1, null) });
+  // The automatic read fails; each retry waits until the test releases it, and only the second one succeeds.
+  let olderAttempts = 0;
+  let release = () => {};
+  await routeRead(page, 'history.page', async (params) => {
+    if (!('before' in params)) return undefined;
+    olderAttempts += 1;
+    if (olderAttempts > 1) await new Promise((resolve) => { release = resolve; });
+    return olderAttempts > 2 ? undefined : ok({ detail: 'offline' }, 503);
+  });
+  await page.goto('/chat/');
+  const retry = page.getByRole('button', { name: 'Load older messages' });
+  await expect(retry).toBeVisible();
+  const onDocument = async () => {
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    return page.evaluate(() => document.activeElement === document.body);
+  };
+
+  // A press on the Admin version, which nothing focuses, leaves the focus on the document, as the person chose: the
+  // new Retry of a read that fails again does not take it.
+  await retry.click();
+  await expect.poll(() => olderAttempts).toBe(2);
+  await page.getByText(/^Admin (?:dev|v\d)/).click();
+  release();
+  await expect(retry).toBeVisible();
+  expect(await onDocument()).toBe(true);
+  // Nor does the composer once a read succeeds.
+  await retry.click();
+  await expect.poll(() => olderAttempts).toBe(3);
+  await page.getByText(/^Admin (?:dev|v\d)/).click();
+  release();
+  await expect(page.getByText('Earlier question 1', { exact: true })).toBeVisible();
+  expect(await onDocument()).toBe(true);
+});
+
 test("an earlier-history retry that fails once the person went back to another Team gives that Team's Retry no focus", async ({ page }) => {
   const cursor = 'AAAAAAAAAAI';
   await routeReadyChat(page, { secondTeam: true, history: longHistory('f', 1, cursor), olderHistory: longHistory('e', 1, null) });
