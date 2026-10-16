@@ -131,11 +131,6 @@
     void shown;
     void tick().then(restore);
   });
-  // A reconnect disables every command, and the one that had focus drops it to the document; once Admin is back, the
-  // focus returns to the panel.
-  $effect(() => {
-    if ($commandsReady) void tick().then(restore);
-  });
 
   async function settled(words, heldAgain) {
     decided = words;

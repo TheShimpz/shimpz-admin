@@ -7271,6 +7271,30 @@ test.describe('Team Routines', () => {
     await expect(review).toBeFocused();
   });
 
+  test("a Routine panel's Pause that a reconnect disabled takes back the focus once Admin is back", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
+    await routeReadyChat(page);
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
+    // While refusing, Admin is unreachable: each socket the page opens fails before it is upgraded.
+    let refusing = false;
+    await routeConnect(page, (socket) => {
+      if (!refusing) return true;
+      socket.connectToServer();
+      return false;
+    });
+    await page.goto('/chat/?team=marketing');
+    const panel = await openRoutinePanel(page);
+    const pause = panel.getByRole('button', { name: 'Pause' });
+    await pause.focus();
+    refusing = true;
+    await dropSessions(page);
+    await expect(pause).toBeDisabled();
+    refusing = false;
+    await expect(pause).toBeEnabled({ timeout: 20_000 });
+    await expect(pause).toBeFocused();
+    expect(await readsOf(page, 'routines.pause')).toEqual([]);
+  });
+
   test("a deletion confirmation's Delete that a reconnect disabled takes back the focus once Admin is back", async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
     await routeReadyChat(page);
