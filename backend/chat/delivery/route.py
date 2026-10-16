@@ -24,7 +24,6 @@ async def _deliver_guidance(
     turn: Turn,
     team_id: str,
     guidance: assistant_route.Guidance,
-    operations: plan_delivery.Operations,
 ) -> None:
     try:
         await history_delivery.guidance(team_id, turn.history_id, guidance.code, guidance.reply)
@@ -73,7 +72,7 @@ async def _deliver_result(
         await operations.finish_turn(websocket, connection, turn, {"type": "stopped"})
         return
     if result.guidance is not None:
-        await _deliver_guidance(websocket, connection, turn, team_id, result.guidance, operations)
+        await _deliver_guidance(websocket, connection, turn, team_id, result.guidance)
         return
     if result.error_status is not None or result.intent == "unresolved":
         await operations.finish_turn(
