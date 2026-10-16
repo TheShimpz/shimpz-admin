@@ -163,23 +163,23 @@ class StoreCatalogTests(unittest.TestCase):
 
     def test_admits_the_store_integration_and_action_bounds(self) -> None:
         # The Store serves 16 ascending Integrations of 32 scopes, and Actions with 4 Integrations and 8 requests.
-        scopes = [f"scope:{index}/a_b-c.{index}" for index in range(32)]
+        scopes = [f"scope:{index}/a_b-c.{index}" for index in range(31)] + ["s" * 128]
         identifiers = [f"integration-{index:02d}" for index in range(16)]
         integrations = [{"id": item, "provider": item, "scopes": scopes} for item in identifiers]
         inputs = sorted(kind for kind in store_catalog._HUMAN_REQUEST_KINDS if kind.startswith("input:"))
         requests = ["approval", *inputs]
-        actions = [
-            {
-                "id": "list-zones",
-                "integrations": identifiers[:4],
-                "human_requests": requests,
-                "effect": "read_only",
-                "description": "List your zones.",
-            }
-        ]
+        action = {
+            "integrations": identifiers[:4],
+            "human_requests": requests,
+            "effect": "read_only",
+            "description": "List your zones.",
+        }
+        # Action identifiers are unique in their declared order, not sorted.
+        actions = [{"id": "zeta", **action}, {"id": "alpha", **action}]
         value = _assistant(integrations=integrations, actions=actions)
         (assistant,) = _validate({"version": 1, "locale": "en", "assistants": [value]})
         self.assertEqual(assistant.integrations, tuple(identifiers))
+        self.assertEqual(assistant.actions, ("zeta", "alpha"))
         self.assertEqual(len(requests), 8)
 
     def test_refuses_integrations_and_actions_outside_the_store_bounds(self) -> None:
@@ -201,6 +201,8 @@ class StoreCatalogTests(unittest.TestCase):
             ({"integrations": [integration("cloudflare", ["Zone.Read"])]}, "Integration scopes"),
             ({"integrations": [integration("cloudflare", ["-zone"])]}, "Integration scopes"),
             ({"integrations": [integration("cloudflare", ["zone read"])]}, "Integration scopes"),
+            ({"integrations": [integration("cloudflare", [f"zone-{index}" for index in range(33)])]}, "collection"),
+            ({"integrations": [integration("cloudflare", ["s" * 129])]}, "catalog text"),
             ({"integrations": [integration("github", ["repo"]), integration("cloudflare", ["zone"])]}, "ordering"),
             (
                 {"integrations": [integration(f"integration-{index:02d}", ["read"]) for index in range(17)]},
