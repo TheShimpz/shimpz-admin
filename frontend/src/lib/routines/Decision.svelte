@@ -128,11 +128,9 @@
     root?.querySelector(target)?.focus();
   }
 
-  // A request that closes takes its refusal with it, so the next review never opens on an earlier refusal; focus stays
-  // with the decision.
+  // A request that closes leaves focus with the decision; the next review's opening clears any earlier refusal.
   function closeChallenge() {
     challenge = null;
-    rejection = undefined;
     void keepFocus();
   }
 
@@ -246,7 +244,6 @@
     } catch (error) {
       result = failed(error);
       challenge = null;
-      rejection = undefined;
     } finally {
       working = false;
       // An opened request takes focus itself; anything else leaves it here.
@@ -277,9 +274,9 @@
     working = false;
     if (answered.rejection) {
       // A wrong password keeps the dialog open for another attempt, as in chat. A refusal of a request that closed
-      // meanwhile has no dialog left to show it: focus stays with the decision, or with a newer request.
+      // meanwhile has no dialog left to show it: focus stays with the decision.
       if (challenge === asked) rejection = answered.rejection;
-      else if (!challenge) void keepFocus();
+      else void keepFocus();
       return;
     }
     result = fill(copy.run.continued, { outcome: outcomeWords(answered.status) });
