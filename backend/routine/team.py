@@ -70,11 +70,9 @@ def run(claimed: dict[str, object], identity: supervisor.LocalIdentity) -> str:
         bindings=transport.RequestBindings(routine=(identity, claimed["lease_token"])),
         progress=lambda _event: None,
     )
-    body = _answer(response)
-    if set(body) != {"team_id", "run_id", "status"} or (body["team_id"], body["run_id"]) != (team_id, run_id):
+    body = routine_run_contract.canonical_segment_answer(_answer(response))
+    if body is None or (body["team_id"], body["run_id"]) != (team_id, run_id):
         raise RoutineTeamError("Routine run answer is invalid")
-    if body["status"] not in routine_run_contract.SEGMENT_STATUSES:
-        raise RoutineTeamError("Routine run status is invalid")
     return body["status"]
 
 

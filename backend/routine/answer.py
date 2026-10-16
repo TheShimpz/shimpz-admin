@@ -169,12 +169,9 @@ def _open(canonical: str, run: str, opening: dict[str, str]) -> transport.TeamRe
 
 def _resumed(response: transport.TeamResponse, canonical: str, run: str) -> transport.TeamResponse:
     def admit(value: dict[str, object]) -> dict[str, object] | None:
-        valid = (
-            set(value) == {"team_id", "run_id", "status"}
-            and (value["team_id"], value["run_id"]) == (canonical, run)
-            and value["status"] in routine_run_contract.SEGMENT_STATUSES
-        )
-        return value if valid else None
+        admitted = routine_run_contract.canonical_segment_answer(value)
+        own = admitted is not None and (admitted["team_id"], admitted["run_id"]) == (canonical, run)
+        return admitted if own else None
 
     return manage.projected(response, admit)
 
