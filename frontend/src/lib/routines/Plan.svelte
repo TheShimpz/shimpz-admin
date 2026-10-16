@@ -4,6 +4,7 @@
   import { call } from '#lib/session/socket.js';
   import Inputs from '#lib/routines/Inputs.svelte';
   import Paging from '#lib/routines/Paging.svelte';
+  import Tag from '#lib/routines/Tag.svelte';
   import { fill } from '#lib/i18n/fill.js';
   import { assistantName } from '#lib/assistants/names.js';
   import { humanizeId } from '#lib/ids.js';
@@ -14,7 +15,7 @@
   // A Routine plan's safe projection (ADR-0092) in words. Its revision's summary shows at once: how many steps, their
   // Actions in order, and what each run does with its result. The steps themselves are read page by page for exactly
   // that revision (ADR-0092 amendment, 2026-10-05, scale) and revealed a few at a time: numbered steps naming the
-  // Assistant and its Action, each input as a friendly key and value, references to an earlier step's result as a path,
+  // Assistant and its Action and whether it reads or writes, as the card did, each input as a friendly key and value, references to an earlier step's result as a path,
   // and the saved keys an Action uses by name only. A revision that changed while it was read is never mixed with the
   // new one: `onchanged` reads the Routine again, which brings its new summary. Every value is Team's escaped preview,
   // rendered as text, never as Markdown or HTML.
@@ -71,6 +72,8 @@
         <p class="head">
           <span class="action">{humanizeId(step.action)}</span>
           <span class="assistant">{$assistantName(step.assistant)}</span>
+          <Tag size="xs" tone={step.read_only ? 'accent' : 'warning'}
+            label={step.read_only ? copy.proposal.stepRead : copy.proposal.stepWrite} />
         </p>
         {#if step.inputs.length > 0 || step.stored_inputs.length > 0}
           <div class="meta">
