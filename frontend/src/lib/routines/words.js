@@ -290,6 +290,11 @@ export function routineNotice(entry, copy) {
   return { tone: NOTICE_TONES[entry.outcome], status };
 }
 
+/** Whether a plan step reads or writes, as its tag shows it: each in its own tone, in the card's words. */
+export function stepTag(readOnly, card) {
+  return readOnly ? { tone: 'accent', label: card.stepRead } : { tone: 'warning', label: card.stepWrite };
+}
+
 /** What a Routine does with each run's result, in words: the shown step is named by its place in the plan. */
 export function dispositionWords(output, copy) {
   return fill(copy.output[output.mode], { n: output.step });

@@ -15,7 +15,7 @@
   import { refreshTeamRoutines } from '#lib/routines/context.js';
   import { humanizeId } from '#lib/ids.js';
   import { confirmRoutineProposal, revokeRoutineProposal } from '#lib/routines/protocol.js';
-  import { fillParts, proposalInputValue, routineFailureWords } from '#lib/routines/words.js';
+  import { fillParts, proposalInputValue, routineFailureWords, stepTag } from '#lib/routines/words.js';
 
   // The card of a Routine a recording turn recorded (ADR-0101), under its reply, kept short for a person
   // who is not technical: the recording agent's plain description of the work and a warning when a step changes
@@ -193,7 +193,7 @@
                   {/each}
                 </span>
                 <!-- Each step reads or writes, each in its own color. -->
-                <Tag size="xs" tone={step.read_only ? 'accent' : 'warning'} label={step.read_only ? card.stepRead : card.stepWrite} />
+                <Tag size="xs" {...stepTag(step.read_only, card)} />
               </div>
               {#if step.inputs.length}
                 <div class="inputs">

@@ -70,6 +70,7 @@ import {
   STATUS_TAGS,
   STATUS_WORDS,
   stepChain,
+  stepTag,
   summaryChain,
   untilWords,
 } from '../src/lib/routines/words.js';
@@ -1646,4 +1647,11 @@ test("a failed Routine change's words say its outcome is unknown only when the s
   const errors = routineMessages.en.errors;
   assert.equal(routineFailureWords(new LocalApiError('lost', 0, 'outcome-unknown'), errors, 'unknown'), 'unknown');
   assert.equal(routineFailureWords(new RoutineError('routine-busy'), errors, 'unknown'), errors.busy);
+});
+
+test('a plan step\'s tag says whether it reads or writes, each in its own tone', () => {
+  const card = { stepRead: 'reads', stepWrite: 'writes' };
+  const [read, write] = [stepTag(true, card), stepTag(false, card)];
+  assert.deepEqual([read.label, write.label], ['reads', 'writes']);
+  assert.notEqual(read.tone, write.tone);
 });

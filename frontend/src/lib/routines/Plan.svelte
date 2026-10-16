@@ -10,15 +10,15 @@
   import { humanizeId } from '#lib/ids.js';
   import { PAGE_SIZE, PagedList } from '#lib/routines/paging.svelte.js';
   import { readPlanSteps } from '#lib/routines/protocol.js';
-  import { countWords, dispositionWords, inputWords, summaryChain } from '#lib/routines/words.js';
+  import { countWords, dispositionWords, inputWords, stepTag, summaryChain } from '#lib/routines/words.js';
 
   // A Routine plan's safe projection (ADR-0092) in words. Its revision's summary shows at once: how many steps, their
   // Actions in order, and what each run does with its result. The steps themselves are read page by page for exactly
   // that revision (ADR-0092 amendment, 2026-10-05, scale) and revealed a few at a time: numbered steps naming the
-  // Assistant and its Action and whether it reads or writes, as the card did, each input as a friendly key and value, references to an earlier step's result as a path,
-  // and the saved keys an Action uses by name only. A revision that changed while it was read is never mixed with the
-  // new one: `onchanged` reads the Routine again, which brings its new summary. Every value is Team's escaped preview,
-  // rendered as text, never as Markdown or HTML.
+  // Assistant and its Action and whether it reads or writes, as the card did, each input as a friendly key and value,
+  // references to an earlier step's result as a path, and the saved keys an Action uses by name only. A revision that
+  // changed while it was read is never mixed with the new one: `onchanged` reads the Routine again, which brings its
+  // new summary. Every value is Team's escaped preview, rendered as text, never as Markdown or HTML.
   let { teamId, routine, copy, locale, onchanged } = $props();
 
   // Only the newest read of the newest revision may apply.
@@ -72,8 +72,7 @@
         <p class="head">
           <span class="action">{humanizeId(step.action)}</span>
           <span class="assistant">{$assistantName(step.assistant)}</span>
-          <Tag size="xs" tone={step.read_only ? 'accent' : 'warning'}
-            label={step.read_only ? copy.proposal.stepRead : copy.proposal.stepWrite} />
+          <Tag size="xs" {...stepTag(step.read_only, copy.proposal)} />
         </p>
         {#if step.inputs.length > 0 || step.stored_inputs.length > 0}
           <div class="meta">
