@@ -27,11 +27,16 @@ def canonical_id(value: object, name: str) -> str:
     return value
 
 
-def _count(value: object, name: str, minimum: int, bound: int) -> int:
-    """A path count in its canonical decimal form, from ``minimum`` and below ``bound``."""
-    if not isinstance(value, str) or _COUNT_RE.fullmatch(value) is None or not minimum <= int(value) < bound:
+def _count(value: object, name: str, admitted: Callable[[int], bool]) -> int:
+    """A path count in its canonical decimal form that ``admitted`` accepts."""
+    if not isinstance(value, str) or _COUNT_RE.fullmatch(value) is None or not admitted(int(value)):
         raise transport.TeamRequestError(f"{name} is invalid")
     return int(value)
+
+
+def _offset(value: object) -> int:
+    """A page's first step: one of a plan's steps."""
+    return _count(value, "Routine step offset", lambda start: 0 <= start < routine_contract.MAX_ROUTINE_STEPS)
 
 
 def projected(
@@ -42,7 +47,7 @@ def projected(
     if not 200 <= response.status < 300:
         code = body.get("code")
         status = response.status if 400 <= response.status <= 599 else HTTPStatus.BAD_GATEWAY
-        safe = isinstance(code, str) and routine_contract.ERROR_CODE_RE.fullmatch(code) is not None
+        safe = routine_contract.matches(code, routine_contract.ERROR_CODE_RE)
         return transport.TeamResponse(status, {"code": code if safe else "routine-request-failed"})
     trace_id = body.pop("trace_id", None)
     if not transport.is_trace_id(trace_id):
@@ -184,8 +189,8 @@ def plan_steps(team_id: object, routine_id: object, revision: object, offset: ob
     """
     canonical = payloads.canonical_team_id(team_id)
     routine = canonical_id(routine_id, "Routine")
-    number = _count(revision, "Routine revision", 1, 2**31)
-    start = _count(offset, "Routine step offset", 0, routine_contract.MAX_ROUTINE_STEPS)
+    number = _count(revision, "Routine revision", routine_contract.valid_revision)
+    start = _offset(offset)
     response = transport.call("GET", f"/v1/teams/{canonical}/routines/{routine}/revisions/{number}/steps/{start}")
     admit = _bound(routine_contract.canonical_page, routine_id=routine, revision=number, offset=start)
     return projected(response, admit)
@@ -199,12 +204,10 @@ def run_steps(team_id: object, run_id: object, snapshot: object, offset: object)
     """
     canonical = payloads.canonical_team_id(team_id)
     run = canonical_id(run_id, "Routine run")
-    if snapshot != "latest" and (
-        not isinstance(snapshot, str) or routine_run_contract.SNAPSHOT_RE.fullmatch(snapshot) is None
-    ):
+    if snapshot != "latest" and not routine_contract.matches(snapshot, routine_run_contract.SNAPSHOT_RE):
         raise transport.TeamRequestError("Routine run snapshot is invalid")
     # A run's page lists its replay steps.
-    start = _count(offset, "Routine step offset", 0, routine_contract.MAX_ROUTINE_STEPS)
+    start = _offset(offset)
     response = transport.call("GET", f"/v1/teams/{canonical}/routines/runs/{run}/steps/{snapshot}/{start}")
 
     bound = _bound(routine_run_contract.canonical_run_steps, team_id=canonical, run_id=run, offset=start)
