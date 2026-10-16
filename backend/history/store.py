@@ -28,8 +28,8 @@ from protocol.http.v1 import turn as turn_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 STORE_PATH = Path("/data/chat-history.sqlite3")
-# Version 13 keeps of a Routine's notices only those a view shows, each with only the detail it renders.
-SCHEMA_VERSION = 13
+# Version 14 keeps each Routine card with the schedule, zone, and output it shows.
+SCHEMA_VERSION = 14
 # A row's provenance is server-owned: `attached` marks every row of a turn whose message carried attachments, which
 # never enters a conversation projection (ADR-0093); every other row is `plain`. An attached user row keeps the
 # references of the files its message carried, exactly what the transcript shows of them and never their content.
