@@ -29,8 +29,6 @@ CATALOG_TTL_SECONDS = 60
 MAX_CATALOG_BYTES = 4 * 1024 * 1024
 MAX_ICON_BYTES = 1024 * 1024
 MAX_ASSISTANTS = 1000
-# The producer contract: Developers' install protocol admits up to 128 Actions per Assistant.
-MAX_ACTIONS = 128
 # Icons stay a bounded process-memory cache, independent of the catalog size.
 MAX_CACHED_ICONS = 256
 # Catalogs above this admitted byte budget intentionally retain only their most-recently-used subset.
@@ -77,20 +75,6 @@ _ASSISTANT_FIELDS = frozenset(
 )
 _ACTION_FIELDS = frozenset({"id", "integrations", "human_requests", "effect", "description"})
 _ACTION_EFFECTS = ("read_only", "mutating")
-# Localized display copy bounds (Assistant Spec v1): the description, and one line for an Action description or a
-# Stored Input label.
-DESCRIPTION_CHARS = 500
-LINE_CHARS = 120
-MAX_LINK_CHARS = 256
-# Creator links in display order, each with the exact https origins its kind admits; `site` admits any public host.
-LINK_PREFIXES: dict[str, tuple[str, ...]] = {
-    "site": ("https://",),
-    "github": ("https://github.com/",),
-    "x": ("https://x.com/",),
-    "youtube": ("https://youtube.com/", "https://www.youtube.com/"),
-    "linkedin": ("https://linkedin.com/", "https://www.linkedin.com/"),
-    "instagram": ("https://instagram.com/", "https://www.instagram.com/"),
-}
 
 
 class CatalogUnavailableError(OSError):
@@ -165,23 +149,16 @@ def display_text(value: object, maximum: int) -> str:
     return text
 
 
-def creator_links(value: object) -> tuple[tuple[str, str], ...]:
+def _creator_links(value: object) -> tuple[tuple[str, str], ...]:
     """The Creator's declared links in display order: each an https help-page URL on its kind's own host."""
-    if not isinstance(value, dict) or not set(value) <= set(LINK_PREFIXES):
+    links = team_contract.canonical_creator_links(value)
+    if links is None:
         raise ValueError("catalog links are invalid")
-    for kind, url in value.items():
-        if (
-            not isinstance(url, str)
-            or len(url) > MAX_LINK_CHARS
-            or team_contract.canonical_help_url(url) is None
-            or not url.startswith(LINK_PREFIXES[kind])
-        ):
-            raise ValueError("catalog link is invalid")
-    return tuple((kind, value[kind]) for kind in LINK_PREFIXES if kind in value)
+    return tuple(links.items())
 
 
 def _stored_inputs(value: object) -> tuple[CatalogStoredInput, ...]:
-    if not isinstance(value, list) or len(value) > 8:
+    if not isinstance(value, list) or len(value) > team_contract.MAX_DETAILS_STORED_INPUTS:
         raise ValueError("catalog Stored Inputs are invalid")
     output: list[CatalogStoredInput] = []
     for item in value:
@@ -195,8 +172,8 @@ def _stored_inputs(value: object) -> tuple[CatalogStoredInput, ...]:
         output.append(
             CatalogStoredInput(
                 item["id"],
-                display_text(item["label"], LINE_CHARS),
-                display_text(item["description"], DESCRIPTION_CHARS),
+                display_text(item["label"], team_contract.MAX_DETAILS_LINE_CHARS),
+                display_text(item["description"], team_contract.MAX_STORED_INPUT_HELP_CHARS),
                 item["help_url"],
             )
         )
@@ -216,7 +193,7 @@ def _strings(value: object, maximum: int, item_maximum: int) -> tuple[str, ...]:
 
 def _integrations(value: object) -> tuple[str, ...]:
     """The declared Integrations' providers; their scopes are admitted, yet only Team authorizes them on install."""
-    if not isinstance(value, list) or len(value) > 16:
+    if not isinstance(value, list) or len(value) > team_contract.MAX_DETAILS_INTEGRATIONS:
         raise ValueError("catalog Integrations are invalid")
     output: list[str] = []
     for item in value:
@@ -237,7 +214,7 @@ def _integrations(value: object) -> tuple[str, ...]:
 
 
 def _actions(value: object) -> tuple[CatalogAction, ...]:
-    if not isinstance(value, list) or not 1 <= len(value) <= MAX_ACTIONS:
+    if not isinstance(value, list) or not 1 <= len(value) <= team_contract.MAX_DETAILS_ACTIONS:
         raise ValueError("catalog Actions are invalid")
     output: list[CatalogAction] = []
     for item in value:
@@ -253,7 +230,11 @@ def _actions(value: object) -> tuple[CatalogAction, ...]:
             or len(_GATE_KINDS.intersection(requests)) > 1
         ):
             raise ValueError("catalog Action is invalid")
-        output.append(CatalogAction(action_id, item["effect"], display_text(item["description"], LINE_CHARS)))
+        output.append(
+            CatalogAction(
+                action_id, item["effect"], display_text(item["description"], team_contract.MAX_DETAILS_LINE_CHARS)
+            )
+        )
     if len({action.id for action in output}) != len(output):
         raise ValueError("catalog Actions are duplicated")
     return tuple(output)
@@ -281,7 +262,7 @@ def _assistant(value: object) -> CatalogAssistant:
         raise ValueError("catalog platforms are invalid")
     if not isinstance(value["github"], str) or team_contract.GITHUB_REPOSITORY_RE.fullmatch(value["github"]) is None:
         raise ValueError("catalog repository is invalid")
-    creators = _strings(value["creators"], 16, 39)
+    creators = _strings(value["creators"], team_contract.MAX_DETAILS_CREATORS, 39)
     if not creators or any(CREATOR_RE.fullmatch(creator) is None for creator in creators):
         raise ValueError("catalog Creators are invalid")
     allowed_hosts = _strings(value["allowed_hosts"], 32, 253)
@@ -290,8 +271,8 @@ def _assistant(value: object) -> CatalogAssistant:
     actions = _actions(value["actions"])
     return CatalogAssistant(
         assistant_id=assistant_id,
-        name=catalog_text(value["name"], 80),
-        summary=catalog_text(value["summary"], 80),
+        name=catalog_text(value["name"], team_contract.MAX_DETAILS_NAME_CHARS),
+        summary=catalog_text(value["summary"], team_contract.MAX_SNAPSHOT_SUMMARY_CHARS),
         source_digest=value["source_digest"],
         icon_digest=value["icon_digest"],
         integrations=_integrations(value["integrations"]),
@@ -299,8 +280,8 @@ def _assistant(value: object) -> CatalogAssistant:
         assistant_version=value["assistant_version"],
         creators=creators,
         page=CatalogPage(
-            description=display_text(value["description"], DESCRIPTION_CHARS),
-            links=creator_links(value["links"]),
+            description=display_text(value["description"], team_contract.MAX_DETAILS_DESCRIPTION_CHARS),
+            links=_creator_links(value["links"]),
             actions=actions,
             stored_inputs=_stored_inputs(value["stored_inputs"]),
         ),

@@ -6,7 +6,6 @@ from datetime import datetime
 from team import bridge as team
 from team import transport
 
-from chat import store_catalog
 from protocol.http.v1 import payload as team_contract
 
 MAX_ASSISTANTS = team_contract.MAX_LOCAL_ASSISTANTS
@@ -47,8 +46,8 @@ def _assistant(entry: dict[str, object]) -> tuple[LocalAssistant, bool]:
     """One labeled staged snapshot, and whether Team's verdict lets a plan offer it."""
     assistant = LocalAssistant(
         assistant_id=str(entry["assistant_id"]),
-        name=store_catalog.catalog_text(entry["name"], 80),
-        summary=store_catalog.catalog_text(entry["summary"], 80),
+        name=str(entry["name"]),
+        summary=str(entry["summary"]),
         image_id=str(entry["image_id"]),
         integrations=tuple(entry["integrations"]),
         actions=tuple(entry["actions"]),
@@ -121,4 +120,4 @@ def localized_summary(assistant: LocalAssistant, locale: str) -> str:
     summary = team_contract.canonical_snapshot_summary(body)
     if summary is None or summary["locale"] != locale:
         raise ValueError("Local Assistant summary is invalid")
-    return store_catalog.catalog_text(summary["summary"], 80)
+    return str(summary["summary"])

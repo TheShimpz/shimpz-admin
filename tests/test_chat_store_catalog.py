@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from chat import store_catalog
+from protocol.http.v1 import payload as team_contract
 
 DIGEST = "sha256:" + ("a" * 64)
 ICON_DIGEST = "sha256:" + ("b" * 64)
@@ -243,7 +244,7 @@ class StoreCatalogTests(unittest.TestCase):
         )
         (assistant,) = _validate({"version": 1, "locale": "en", "assistants": [value]})
         self.assertEqual(len(assistant.page.description), 500)
-        self.assertEqual([kind for kind, _ in assistant.page.links], list(store_catalog.LINK_PREFIXES))
+        self.assertEqual([kind for kind, _ in assistant.page.links], list(team_contract.CREATOR_LINK_PREFIXES))
         self.assertEqual(assistant.page.actions[0].effect, "mutating")
         self.assertEqual(assistant.actions, ("list-zones",))
 
