@@ -22,7 +22,8 @@ import {
   waitForRead,
 } from './scenarioRoutes.js';
 import {
-  diagnostic, httpFailure, noticeRow, planPage, planSummary, ROUTINE_TEXT, routineLifecycleStart, runStepsPage,
+  diagnostic, httpFailure, noticeRow, planPage, planSummary, ROUTINE_TEXT, routineChallenge, routineLifecycleStart,
+  runStepsPage,
 } from './routineScenarios.js';
 import {
   authenticatedLocalSession,
@@ -4280,6 +4281,35 @@ function recoveryCard(runId, { tag = 'f'.repeat(64), action = 'replace-dns-recor
   };
 }
 
+// An unresolved incident that holds a run of `routine` for recovery (ADR-0092); it shares the run's id.
+function heldIncident(id, routine = ROUTINE_VIEW) {
+  return {
+    run_id: id,
+    routine_id: routine.routine_id,
+    assistant_id: 'shimpz-cloudflare',
+    action: 'replace-dns-record',
+    position: 2,
+    steps: 3,
+  };
+}
+
+// A held run of `routine` as Team lists it: its step is named only by its incident.
+function heldRun(id, routine = ROUTINE_VIEW) {
+  return { run_id: id, routine_id: routine.routine_id, status: 'held', request_kind: null, assistant_id: null, action: null };
+}
+
+// A run of `routine` frozen for the person's answer.
+function frozenRun(id, requestKind, routine = ROUTINE_VIEW) {
+  return {
+    run_id: id,
+    routine_id: routine.routine_id,
+    status: 'frozen',
+    request_kind: requestKind,
+    assistant_id: 'shimpz-cloudflare',
+    action: 'replace-dns-record',
+  };
+}
+
 // Admin's deletion ceremony (ADR-0051): the Supervisor password first, then one six-digit code; `000000` is wrong.
 const SUPERVISOR_PASSWORD = 'correct supervisor passphrase';
 
@@ -4316,10 +4346,10 @@ async function routeRoutines(
   // its incident names; a run held before it sealed a plan names none.
   let routines = [{ ...ROUTINE_VIEW, state: 'paused' }, ...others];
   let runs = [];
-  const call = heldCall
-    ? { assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }
-    : { assistant_id: null, action: null, position: null, steps: null };
-  let incidents = held ? [{ run_id: 'b'.repeat(32), routine_id: ROUTINE_VIEW.routine_id, ...call }] : [];
+  const incident = heldIncident('b'.repeat(32));
+  let incidents = held
+    ? [heldCall ? incident : { ...incident, assistant_id: null, action: null, position: null, steps: null }]
+    : [];
   // Every listed Routine's current revision projects the same plan, read page by page.
   await routeRead(page, 'routines.plan_steps', ({ team_id: teamId, routine_id: routineId, offset }) => {
     if (teamId !== 'marketing') return undefined;
@@ -5364,19 +5394,7 @@ test.describe('Team Routines', () => {
     let runs = [frozenRun(run, 'human')];
     let incidents = [];
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
-    await routeRead(page, 'routines.challenge', () => ok({
-      team_id: 'marketing',
-      run_id: run,
-      status: 'human-required',
-      challenge: {
-        type: 'human-required',
-        challenge_id: 'b'.repeat(32),
-        expires_in: 300,
-        assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
-        action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
-        ...localizedChallenge(humanRequest('approval')),
-      },
-    }));
+    await routeRead(page, 'routines.challenge', () => ok(routineChallenge(run, localizedChallenge(humanRequest('approval')))));
     // Approving resumes the run, which Team then holds at a step whose effect is unknown.
     await routeRead(page, 'routines.human', (params) => {
       if (params.run_id !== run) return undefined;
@@ -6248,35 +6266,6 @@ test.describe('Team Routines', () => {
     return routineRow(id, 'created', {}, { routine });
   }
 
-  // An unresolved incident that holds a run of `routine` for recovery (ADR-0092); it shares the run's id.
-  function heldIncident(id, routine = ROUTINE_VIEW) {
-    return {
-      run_id: id,
-      routine_id: routine.routine_id,
-      assistant_id: 'shimpz-cloudflare',
-      action: 'replace-dns-record',
-      position: 2,
-      steps: 3,
-    };
-  }
-
-  // A held run of `routine` as Team lists it: its step is named only by its incident.
-  function heldRun(id, routine = ROUTINE_VIEW) {
-    return { run_id: id, routine_id: routine.routine_id, status: 'held', request_kind: null, assistant_id: null, action: null };
-  }
-
-  // A run of `routine` frozen for the person's answer.
-  function frozenRun(id, requestKind, routine = ROUTINE_VIEW) {
-    return {
-      run_id: id,
-      routine_id: routine.routine_id,
-      status: 'frozen',
-      request_kind: requestKind,
-      assistant_id: 'shimpz-cloudflare',
-      action: 'replace-dns-record',
-    };
-  }
-
   function choiceNames(panel) {
     return panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button')
       .evaluateAll((buttons) => buttons.map((button) => button.getAttribute('aria-label')));
@@ -6907,19 +6896,7 @@ test.describe('Team Routines', () => {
       },
     });
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [frozenRun(run, 'human')], incidents: [] }) : undefined));
-    await routeRead(page, 'routines.challenge', () => ok({
-      team_id: 'marketing',
-      run_id: run,
-      status: 'human-required',
-      challenge: {
-        type: 'human-required',
-        challenge_id: 'b'.repeat(32),
-        expires_in: 300,
-        assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
-        action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
-        ...localizedChallenge(humanRequest('approval')),
-      },
-    }));
+    await routeRead(page, 'routines.challenge', () => ok(routineChallenge(run, localizedChallenge(humanRequest('approval')))));
     // While refusing, Admin is unreachable: each socket the page opens fails before it is upgraded.
     let refusing = false;
     await routeConnect(page, (socket) => {
@@ -6958,19 +6935,7 @@ test.describe('Team Routines', () => {
     await routeRead(page, 'routines.challenge', ({ run_id: runId, body }) => {
       openings.push(body);
       return ok(runId === run
-        ? {
-          team_id: 'marketing',
-          run_id: run,
-          status: 'human-required',
-          challenge: {
-            type: 'human-required',
-            challenge_id: 'b'.repeat(32),
-            expires_in: 300,
-            assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
-            action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
-            ...localizedChallenge(humanRequest('approval')),
-          },
-        }
+        ? routineChallenge(run, localizedChallenge(humanRequest('approval')))
         : { team_id: 'marketing', run_id: runId, status: 'integrations-required' });
     });
     await routeRead(page, 'routines.human', ({ run_id: runId, body }) => {
@@ -7045,19 +7010,7 @@ test.describe('Team Routines', () => {
     });
     let runs = [frozenRun(run, 'human')];
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents: [] }) : undefined));
-    await routeRead(page, 'routines.challenge', () => ok({
-      team_id: 'marketing',
-      run_id: run,
-      status: 'human-required',
-      challenge: {
-        type: 'human-required',
-        challenge_id: 'b'.repeat(32),
-        expires_in: 300,
-        assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
-        action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
-        ...localizedChallenge(humanRequest('auth:password')),
-      },
-    }));
+    await routeRead(page, 'routines.challenge', () => ok(routineChallenge(run, localizedChallenge(humanRequest('auth:password')))));
     // The first password is refused and keeps the challenge open; the second authorizes the run, which completes.
     const answered = [];
     await routeRead(page, 'routines.human', ({ run_id: runId, body }) => {
@@ -7109,19 +7062,7 @@ test.describe('Team Routines', () => {
     // view each request asks for.
     await routeRead(page, 'history.page', (params) => (params.team_id === 'marketing' ? ok({ ...history, entries: historyView(history.entries, params.routine ?? null) }) : undefined));
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents: [] }) : undefined));
-    await routeRead(page, 'routines.challenge', () => ok({
-      team_id: 'marketing',
-      run_id: run,
-      status: 'human-required',
-      challenge: {
-        type: 'human-required',
-        challenge_id: 'b'.repeat(32),
-        expires_in: 300,
-        assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
-        action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
-        ...localizedChallenge(humanRequest('approval')),
-      },
-    }));
+    await routeRead(page, 'routines.challenge', () => ok(routineChallenge(run, localizedChallenge(humanRequest('approval')))));
     const answers = [];
     await routeRead(page, 'routines.human', ({ body }) => {
       answers.push(body);
@@ -7402,40 +7343,21 @@ test('a frozen Routine run opens in the interface language and answers with the 
   await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({
       team_id: 'marketing',
       routines: [ROUTINE_VIEW],
-      runs: [{
-        run_id: run,
-        routine_id: ROUTINE_VIEW.routine_id,
-        status: 'frozen',
-        request_kind: 'human',
-        assistant_id: 'shimpz-cloudflare',
-        action: 'replace-dns-record',
-      }],
+      runs: [frozenRun(run, 'human')],
       incidents: [],
     }) : undefined));
   const openings = [];
   const answers = [];
   await routeRead(page, 'routines.challenge', ({ body: opening }) => {
     openings.push(opening);
-    return ok({
-      team_id: 'marketing',
-      run_id: run,
-      status: 'human-required',
-      challenge: {
-        type: 'human-required',
-        challenge_id: 'b'.repeat(32),
-        expires_in: 300,
-        assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
-        action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
-        // A Routine challenge carries no purpose: Team renders its request copy in the opening's language.
-        ...localizedChallenge(humanRequest('approval'), {
-          locale: opening.locale,
-          shown: {
-            title: 'Publicar as alterações de DNS revisadas?',
-            description: 'O Shimpz Cloudflare pausou antes de continuar esta Ação exata.',
-          },
-        }),
+    // A Routine challenge carries no purpose: Team renders its request copy in the opening's language.
+    return ok(routineChallenge(run, localizedChallenge(humanRequest('approval'), {
+      locale: opening.locale,
+      shown: {
+        title: 'Publicar as alterações de DNS revisadas?',
+        description: 'O Shimpz Cloudflare pausou antes de continuar esta Ação exata.',
       },
-    });
+    })));
   });
   await routeRead(page, 'routines.human', ({ body }) => {
     answers.push(body);

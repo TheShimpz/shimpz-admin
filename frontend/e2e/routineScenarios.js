@@ -377,6 +377,24 @@ export function diagnostic(changes) {
   };
 }
 
+// Team's opening of a Marketing run frozen at a Cloudflare call's human request (ADR-0091): `request` is the
+// localized request it carries.
+export function routineChallenge(runId, request, { challengeId = 'b'.repeat(32), expiresIn = 300 } = {}) {
+  return {
+    team_id: 'marketing',
+    run_id: runId,
+    status: 'human-required',
+    challenge: {
+      type: 'human-required',
+      challenge_id: challengeId,
+      expires_in: expiresIn,
+      assistant: { id: 'shimpz-cloudflare', name: 'Shimpz Cloudflare', version: '0.4.1' },
+      action: { id: 'replace-dns-record', summary: 'Replace one reviewed DNS record.' },
+      ...request,
+    },
+  };
+}
+
 // A Cloudflare HTTP error as Team sanitizes it, with `changes` applied.
 export function httpFailure(changes) {
   return {
