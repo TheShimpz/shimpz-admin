@@ -3,7 +3,7 @@
   import '../app.css';
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
-  import { onMount, setContext, tick } from 'svelte';
+  import { onMount, setContext } from 'svelte';
   import { writable } from 'svelte/store';
   import AdminShell from '#lib/shell/Shell.svelte';
   import AuthScreen from '#lib/auth/Screen.svelte';
@@ -11,6 +11,7 @@
   import { dataUnavailable } from '#lib/session/synced.js';
   import BootScreen from '#lib/shell/BootScreen.svelte';
   import { clearAdminNotice } from '#lib/shell/notice.js';
+  import { regainFocus } from '#lib/shell/focus.js';
   import { clearAssistantSources } from '#lib/assistants/sources.js';
   import { clearChatHistories } from '#lib/chat/history.js';
   import { clearPreviews } from '#lib/chat/attachments/previews.js';
@@ -210,11 +211,8 @@
   // A step that failed disabled its controls meanwhile, which dropped the focus to the document: the field of the step
   // shown next (the same one, or the password a refused second factor returns to) takes it back once enabled, while the
   // screen still shows that step. Focus the person moved stays where it is.
-  async function regainStep(step) {
-    await tick();
-    const focused = document.activeElement;
-    if (phase !== step || (focused && focused !== document.body)) return;
-    document.getElementById(STEP_FIELDS[step])?.focus({ preventScroll: true });
+  function regainStep(step) {
+    return regainFocus(() => document.getElementById(STEP_FIELDS[step]), () => phase === step, { preventScroll: true });
   }
 
   // A refused second factor starts the sign-in again from the password, with the reason said.

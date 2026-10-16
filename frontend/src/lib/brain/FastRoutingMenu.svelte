@@ -7,6 +7,7 @@
   import { decisionProvider, removeDecisionKey, saveDecisionKey } from '#lib/brain/decision.js';
   import { t } from '#lib/i18n/index.js';
   import { CREDENTIAL_RECORD_INVALID } from '#lib/api.js';
+  import { regainFocus } from '#lib/shell/focus.js';
 
   // The optional Jev key (ADR-0077) in its own composer control. Only Local Admin custodies it; the caller renders
   // this control only there. Its state is the one Admin holds, read over the session socket and again whenever Admin
@@ -88,9 +89,7 @@
       target = 'input, .fast-remove';
     }
     changing = false;
-    await tick();
-    const focused = document.activeElement;
-    if (open && (!focused || focused === document.body)) panel?.querySelector(target)?.focus();
+    void regainFocus(() => panel?.querySelector(target), () => open);
   }
 
   function saveFast(event) {

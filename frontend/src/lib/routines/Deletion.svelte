@@ -1,9 +1,9 @@
 <script>
-  import { tick } from 'svelte';
   import { get } from 'svelte/store';
 
   import { call, commandsReady } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
+  import { regainFocus } from '#lib/shell/focus.js';
   import { t } from '#lib/i18n/index.js';
   import { authenticateWithPasskey, passkeyFailure } from '#lib/auth/passkey.js';
   import { isFactorCode } from '#lib/auth/factor.js';
@@ -40,12 +40,10 @@
   // the person moved meanwhile stays where it is.
   let refocus = '';
 
-  async function regain() {
+  function regain() {
     const field = refocus;
     refocus = '';
-    await tick();
-    const focused = document.activeElement;
-    if (live && (!focused || focused === document.body)) document.getElementById(`${id}-${field}`)?.focus();
+    void regainFocus(() => document.getElementById(`${id}-${field}`), () => live);
   }
 
   // Each refusal says what to fix where it is fixed; nothing typed is ever echoed back.
@@ -99,7 +97,7 @@
       refused(failure);
     } finally {
       busy = false;
-      if (refocus) void regain();
+      if (refocus) regain();
     }
   }
 </script>
