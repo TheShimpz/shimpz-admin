@@ -147,6 +147,27 @@ class ChatHistoryTests(ChatHistoryCase):
         )
         self.assertEqual(history.page("marketing")["entries"][3]["outcome"], "already-installed")
 
+    def test_an_install_refused_at_the_assistant_limit_reads_back_with_its_code(self) -> None:
+        turn_id = history.new_turn_id()
+        event = {
+            "type": "assistant-install-plan",
+            "state": "failed",
+            "plan_id": "b" * 32,
+            "team_id": "marketing",
+            "assistants": [{**installed_event()["assistants"][0], "status": "failed"}],
+            "status": 409,
+            "code": "assistant_limit_reached",
+        }
+
+        self.assertTrue(history.append_user("marketing", turn_id, "Install Cloudflare"))
+        self.assertTrue(history.append_install("marketing", turn_id, event))
+
+        failed = history.page("marketing")["entries"][1]
+        self.assertEqual(
+            (failed["state"], failed["status"], failed["code"]),
+            ("failed", 409, "assistant_limit_reached"),
+        )
+
     def test_finishing_one_resumable_turn_never_releases_its_successor(self) -> None:
         first = history.new_turn_id()
         second = history.new_turn_id()
@@ -687,6 +708,18 @@ class ChatHistoryTests(ChatHistoryCase):
                         "state": "failed",
                         "assistants": [{**installed_event()["assistants"][0], "status": "failed"}],
                         "status": True,
+                    },
+                ),
+            ),
+            (
+                lifecycle.validate_stored_install,
+                (
+                    {
+                        "kind": "assistant-install",
+                        "state": "failed",
+                        "assistants": [{**installed_event()["assistants"][0], "status": "failed"}],
+                        "status": 503,
+                        "code": "assistant_limit_reached",
                     },
                 ),
             ),

@@ -165,6 +165,8 @@ def validate_stored_install(payload: dict[str, object]) -> None:
     expected = {"kind", "state", "assistants"} | ({"status"} if state == "failed" else set())
     if "outcome" in payload:
         expected.add("outcome")
+    if "code" in payload:
+        expected.add("code")
     assistants = payload.get("assistants")
     if set(payload) != expected or state not in {"installed", "failed", "stopped"}:
         raise ValueError("invalid stored install")
@@ -182,6 +184,13 @@ def validate_stored_install(payload: dict[str, object]) -> None:
         status = payload.get("status")
         if isinstance(status, bool) or not isinstance(status, int) or not 400 <= status <= 599:
             raise ValueError("invalid stored install")
+    # Only an install refused at the Assistant limit stores a code, and only beside its 409.
+    if "code" in payload and (state, payload.get("status"), payload["code"]) != (
+        "failed",
+        409,
+        assistant_install.ASSISTANT_LIMIT_REACHED,
+    ):
+        raise ValueError("invalid stored install")
 
 
 def validate_stored_uninstall(payload: dict[str, object]) -> None:
