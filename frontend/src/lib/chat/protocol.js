@@ -945,7 +945,10 @@ export const MAX_CREATION_STEPS = 64;
 export function parseCreationReceipt(value) {
   if (!Array.isArray(value) || value.length > MAX_CREATION_STEPS) throw invalidResponse();
   return value.map((item, index) => {
-    if (!item || typeof item !== 'object' || Array.isArray(item)) throw invalidResponse();
+    // A step names no origin: every one is Team's own.
+    if (!item || typeof item !== 'object' || Array.isArray(item) || Object.hasOwn(item, 'origin')) {
+      throw invalidResponse();
+    }
     const event = progressEvent({ ...item, origin: 'team' }, []);
     if (event.state !== 'finished' || event.seq !== index + 1) throw invalidResponse();
     return { ...event, segment: 0 };

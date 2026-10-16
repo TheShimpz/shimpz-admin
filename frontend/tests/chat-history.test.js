@@ -411,6 +411,8 @@ test("a Routine's creation keeps what its recording spent: its model usage and i
     [{ steps: [{ ...step, state: 'started', elapsed_ms: undefined }] }, CREATION_USAGE],
     [{ steps: [{ ...step, seq: 2 }] }, CREATION_USAGE],
     [{ steps: [{ ...step, phase: 'admin-preparation' }] }, CREATION_USAGE],
+    [{ steps: [{ ...step, origin: 'admin' }] }, CREATION_USAGE],
+    [{ steps: [{ ...step, origin: 'team' }] }, CREATION_USAGE],
     [{ steps: Array.from({ length: 65 }, (_, index) => ({ ...step, seq: index + 1 })) }, CREATION_USAGE],
     [structuredClone(CREATION), { duration_ms: 4120 }],
   ]) {
