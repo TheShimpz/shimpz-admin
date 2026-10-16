@@ -5247,12 +5247,13 @@ test.describe('Team Routines', () => {
     const expected = formatTaskUsage(taskUsageSummary(CREATION_USAGE), 'en', messages.en.chatPage.usage);
     const receipt = message.locator('.receipt summary');
     const rows = CREATION.steps.length + 1;
-    await expect(receipt).toHaveAccessibleName(`${expected} · Execution stages recorded: ${rows}`);
+    const recorded = `${expected} · ${messages.en.chatPage.progressStagesExecuted.replace('{count}', rows)}`;
+    await expect(receipt).toHaveAccessibleName(recorded);
     await receipt.click();
     await expect(message.locator('.receipt ol li')).toHaveCount(rows);
     await page.reload();
     await expect(page.getByRole('article').filter({ has: page.locator('.routine-run') }).locator('.receipt summary'))
-      .toHaveAccessibleName(`${expected} · Execution stages recorded: ${rows}`);
+      .toHaveAccessibleName(recorded);
 
     // A step's Assistant leaves for its page, and the panel closes with the chat.
     await page.locator('.routine-run').getByRole('button').click();
