@@ -511,6 +511,10 @@ class ChatHistoryTests(ChatHistoryCase):
             ),
             (
                 lifecycle.install_payload,
+                ({**installed_event(), "plan_id": int("1" * 32)}, "marketing"),
+            ),
+            (
+                lifecycle.install_payload,
                 ({**installed_event(), "assistants": []}, "marketing"),
             ),
             (
@@ -608,6 +612,10 @@ class ChatHistoryTests(ChatHistoryCase):
             (
                 lifecycle.uninstall_payload,
                 ({**base_event, "proposal_id": "invalid"}, "marketing", assistant),
+            ),
+            (
+                lifecycle.uninstall_payload,
+                ({**base_event, "proposal_id": int("1" * 32)}, "marketing", assistant),
             ),
             (
                 lifecycle.uninstall_payload,

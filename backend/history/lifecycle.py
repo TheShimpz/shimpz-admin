@@ -19,6 +19,10 @@ def _version(value: object) -> bool:
     return isinstance(value, str) and store_catalog.VERSION_RE.fullmatch(value) is not None
 
 
+def _hex_id(value: object) -> bool:
+    return isinstance(value, str) and chat_ws_common.HEX_ID_RE.fullmatch(value) is not None
+
+
 def _install_assistant(value: object) -> dict[str, object]:
     expected = {"id", "name", "summary", "creator", "version", "providers", "provenance", "status"}
     if not isinstance(value, Mapping) or set(value) != expected:
@@ -68,11 +72,7 @@ def install_payload(event: object, team_id: str) -> dict[str, object]:
             expected.add("code")
     elif state != "stopped":
         raise ValueError("chat history Assistant install event is not terminal")
-    if (
-        set(event) != expected
-        or event.get("team_id") != team_id
-        or chat_ws_common.HEX_ID_RE.fullmatch(str(event.get("plan_id"))) is None
-    ):
+    if set(event) != expected or event.get("team_id") != team_id or not _hex_id(event.get("plan_id")):
         raise ValueError("chat history Assistant install event is invalid")
     assistants = event.get("assistants")
     if not isinstance(assistants, list) or not 1 <= len(assistants) <= 4:
@@ -139,7 +139,7 @@ def uninstall_payload(event: object, team_id: str, assistant: object) -> dict[st
     canonical_assistant = _uninstall_assistant(assistant)
     if (
         set(event) != expected
-        or chat_ws_common.HEX_ID_RE.fullmatch(str(event.get("proposal_id"))) is None
+        or not _hex_id(event.get("proposal_id"))
         or event.get("assistant_id") != canonical_assistant["id"]
     ):
         raise ValueError("chat history uninstall event is invalid")
