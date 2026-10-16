@@ -7011,11 +7011,11 @@ test.describe('Team Routines', () => {
     let runs = [frozenRun(run, 'human')];
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents: [] }) : undefined));
     await routeRead(page, 'routines.challenge', () => ok(routineChallenge(run, localizedChallenge(humanRequest('auth:password')))));
-    // The first password is refused and keeps the challenge open; the second authorizes the run, which completes.
+    // The first two passwords are refused and keep the challenge open; the third authorizes the run, which completes.
     const answered = [];
     await routeRead(page, 'routines.human', ({ run_id: runId, body }) => {
       answered.push([runId, body]);
-      if (answered.length === 1) {
+      if (answered.length <= 2) {
         const rejection = { type: 'human-response-rejected', challenge_id: 'b'.repeat(32), reason: 'authentication-denied', attempts_remaining: 2, retry_after: 0 };
         return ok({ code: 'authentication-denied', ...rejection }, 409);
       }
@@ -7033,21 +7033,76 @@ test.describe('Team Routines', () => {
     const password = dialog.getByLabel('Supervisor password');
     await expect(password).toHaveAttribute('type', 'password');
     expect(await accessibilityViolations(page)).toEqual([]);
-    // A wrong password settles nothing: the run still waits, and the person tries again in the same request.
+    // A wrong password settles nothing: the run still waits. Leaving the refusal answers nothing either, and the next
+    // review asks for the password again instead of repeating the refusal.
     await password.fill('wrong-password');
     await dialog.getByRole('button', { name: 'Confirm authorization' }).click();
     await expect.poll(() => answered.length).toBe(1);
     const validation = page.getByRole('dialog', { name: 'Supervisor password not confirmed' });
+    await validation.getByRole('button', { name: 'Not now' }).click();
+    await expect(validation).toBeHidden();
+    const review = panel.getByRole('button', { name: 'Review' });
+    await expect(review).toBeFocused();
+    await review.click();
+    await expect(password).toBeVisible();
+    // Another wrong password is refused again, and the person tries again in the same request.
+    await password.fill('wrong-password');
+    await dialog.getByRole('button', { name: 'Confirm authorization' }).click();
+    await expect.poll(() => answered.length).toBe(2);
     await validation.getByRole('button', { name: 'Try again' }).click();
     await expect(panel.getByRole('status')).toHaveCount(0);
     await password.fill('supervisor-password');
     await dialog.getByRole('button', { name: 'Confirm authorization' }).click();
     await expect(panel.getByRole('status')).toContainText('The run continued: Done');
-    // Both answers went to exactly this run, each with the one challenge it opened.
+    // Every answer went to exactly this run, each with the one challenge it opened.
     expect(answered.map(([runId, frame]) => [runId, frame.challenge_id, frame.decision])).toEqual([
       [run, 'b'.repeat(32), 'submit'],
       [run, 'b'.repeat(32), 'submit'],
+      [run, 'b'.repeat(32), 'submit'],
     ]);
+  });
+
+  test("a password refusal that arrives after its request expired leaves focus on Review, and the next review asks again", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
+    await freezeClock(page, new Date('2026-10-01T12:00:00Z'));
+    const run = 'd'.repeat(32);
+    await routeReadyChat(page);
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [frozenRun(run, 'human')], incidents: [] }) : undefined));
+    // Each opening is a fresh challenge; the first expires in three seconds.
+    let openings = 0;
+    await routeRead(page, 'routines.challenge', () => {
+      openings += 1;
+      return ok(routineChallenge(run, localizedChallenge(humanRequest('auth:password')), {
+        challengeId: (openings === 1 ? 'b' : 'c').repeat(32),
+        expiresIn: openings === 1 ? 3 : 300,
+      }));
+    });
+    // The refusal of the first password arrives only after its request expired.
+    let release;
+    const late = new Promise((resolve) => { release = resolve; });
+    let answers = 0;
+    await routeRead(page, 'routines.human', async ({ body }) => {
+      answers += 1;
+      await late;
+      return ok({ code: 'authentication-denied', type: 'human-response-rejected', challenge_id: body.challenge_id, reason: 'authentication-denied', attempts_remaining: 2, retry_after: 0 }, 409);
+    });
+    await page.goto('/chat/?team=marketing');
+    const panel = await openRoutinePanel(page);
+    const review = panel.getByRole('button', { name: 'Review' });
+    await review.click();
+    const dialog = page.getByRole('dialog', { name: 'Confirm with your Supervisor password' });
+    await dialog.getByLabel('Supervisor password').fill('wrong-password');
+    await dialog.getByRole('button', { name: 'Confirm authorization' }).click();
+    await expect.poll(() => answers).toBe(1);
+    await page.clock.fastForward(3_000);
+    await expect(dialog).toBeHidden();
+    await expect(panel.getByRole('status')).toHaveText('This request expired. Review the run again.');
+    release();
+    await expect(review).toBeEnabled();
+    await expect(review).toBeFocused();
+    await review.click();
+    await expect(dialog.getByLabel('Supervisor password')).toBeVisible();
+    expect(openings).toBe(2);
   });
 
   test("a Routine's creation delivered after the chat opened appears without a reload, and its runs never do", { tag: '@mobile' }, async ({ page }) => {

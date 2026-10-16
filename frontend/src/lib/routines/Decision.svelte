@@ -128,6 +128,14 @@
     root?.querySelector('.actions button:not(:disabled)')?.focus();
   }
 
+  // A request that closes takes its refusal with it, so the next review never opens on an earlier refusal; focus stays
+  // with the decision.
+  function closeChallenge() {
+    challenge = null;
+    rejection = undefined;
+    void keepFocus();
+  }
+
   async function openCard() {
     try {
       card = await openRoutineCard(call, teamId, runId);
@@ -217,9 +225,8 @@
     } catch (error) {
       result = failed(error);
     } finally {
-      challenge = null;
       working = false;
-      void keepFocus();
+      closeChallenge();
     }
   }
 
@@ -238,9 +245,11 @@
       // Each opening replaces what the last one showed, so a stale challenge never keeps reopening the run.
       waitingIntegration = opened.status === 'integrations-required';
       challenge = waitingIntegration ? null : opened.challenge;
+      rejection = undefined;
     } catch (error) {
       result = failed(error);
       challenge = null;
+      rejection = undefined;
     } finally {
       working = false;
       // An opened request takes focus itself; anything else leaves it here.
@@ -256,28 +265,29 @@
   });
 
   async function respond(response) {
-    const frame = createHumanResponseFrame(teamId, challenge.challenge_id, response.decision, response.value);
+    const asked = challenge;
+    const frame = createHumanResponseFrame(teamId, asked.challenge_id, response.decision, response.value);
     working = true;
     let answered;
     try {
       answered = await answerRoutineChallenge(call, teamId, runId, frame);
     } catch (error) {
       result = failed(error);
-      challenge = null;
       working = false;
-      void keepFocus();
+      closeChallenge();
       return;
     }
     working = false;
     if (answered.rejection) {
-      // A wrong password keeps the dialog open for another attempt, as in chat.
-      rejection = answered.rejection;
+      // A wrong password keeps the dialog open for another attempt, as in chat. A refusal of a request that closed
+      // meanwhile has no dialog left to show it: focus stays with the decision, or with a newer request.
+      if (challenge === asked) rejection = answered.rejection;
+      else if (!challenge) void keepFocus();
       return;
     }
     result = fill(copy.run.continued, { outcome: outcomeWords(answered.status) });
     if (answered.status !== 'frozen') finish(result, answered.status === 'held');
-    challenge = null;
-    void keepFocus();
+    closeChallenge();
   }
 </script>
 
@@ -382,10 +392,10 @@
     {rejection}
     working={working || stale || !$commandsReady}
     onrespond={respond}
-    ondismiss={() => { challenge = null; void keepFocus(); }}
+    ondismiss={closeChallenge}
     dismissLabel={copy.run.dismiss}
     onretry={() => (rejection = undefined)}
-    onexpire={() => { challenge = null; result = copy.errors.expired; void keepFocus(); }}
+    onexpire={() => { result = copy.errors.expired; closeChallenge(); }}
   />
 {/if}
 
