@@ -4892,6 +4892,50 @@ test.describe('Team Routines', () => {
     expect(await proposalCalls(page)).toEqual([]);
   });
 
+  test('a refused Create or Cancel keeps the Routine card, says why, and gives the focus back to the button pressed', async ({ page }) => {
+    await recordRoutine(page);
+    await routeRead(page, 'routines.proposal_confirm', () => ok({ code: 'routine-limit' }, 409));
+    await routeRead(page, 'routines.proposal_revoke', () => ok({ code: 'routine-state-unavailable' }, 503));
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    // Each refusal says its own words, so the second is told apart from the first.
+    for (const [name, words] of [['Create', messages.en.routine.errors.full], ['Cancel', messages.en.routine.errors.unavailable]]) {
+      const button = card.getByRole('button', { name, exact: true });
+      await button.click();
+      await expect(card.getByRole('alert')).toHaveText(words);
+      await expect(button).toBeFocused();
+    }
+    expect(await proposalCalls(page)).toEqual(['confirm', 'revoke']);
+  });
+
+  test('a refused revocation of an edited Routine card keeps its editor, sends nothing, and gives the focus back to Send', async ({ page }) => {
+    const scenario = await recordRoutine(page);
+    await routeRead(page, 'routines.proposal_revoke', () => ok({ code: 'routine-state-unavailable' }, 503));
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    await card.getByRole('button', { name: 'Edit', exact: true }).click();
+    const send = card.getByRole('button', { name: 'Send', exact: true });
+    await send.click();
+    await expect(card.getByRole('alert')).toHaveText(messages.en.routine.errors.unavailable);
+    await expect(card.getByRole('textbox', { name: messages.en.routine.proposal.prompt })).toHaveValue(ROUTINE_TEXT.en.cardDescription);
+    await expect(send).toBeFocused();
+    const sent = scenario.chatFrames().filter((frame) => frame.type === 'chat').map((frame) => frame.message);
+    expect(sent).toEqual([ROUTINE_TEXT.en.request]);
+  });
+
+  test('an edited Routine card already confirmed elsewhere leaves without sending its text, and the composer takes the focus', async ({ page }) => {
+    const scenario = await recordRoutine(page);
+    // The card was confirmed meanwhile, so its revocation answers with the Routine that confirmation created.
+    await routeRead(page, 'routines.proposal_revoke', (params) => scenario.call('routines.proposal_confirm', params));
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    await card.getByRole('button', { name: 'Edit', exact: true }).click();
+    await page.keyboard.type(' Tell me only when something changed.');
+    await card.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(card).toHaveCount(0);
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeFocused();
+    const sent = scenario.chatFrames().filter((frame) => frame.type === 'chat').map((frame) => frame.message);
+    expect(sent).toEqual([ROUTINE_TEXT.en.request]);
+    expect(await proposalCalls(page)).toEqual(['revoke']);
+  });
+
   // The card's revocation waits until the test lets it answer; `answered()` says its answer went to the page.
   async function holdRevocation(page) {
     let release;
@@ -4939,8 +4983,9 @@ test.describe('Team Routines', () => {
     expect(sent(scenario.chatFrames())).toEqual([ROUTINE_TEXT.en.request]);
   });
 
-  test('an edited prompt the chat cannot take yet stays in its field, past the card’s lifetime, to send again', async ({ page }) => {
-    await page.clock.install();
+  // A card revoked for an edit whose text the chat could not take yet, so the text stays in the card's editor; `held()`
+  // answers the person's own next message, which kept the chat busy.
+  async function unsentEdit(page) {
     const release = await holdRevocation(page);
     const scenario = await routeScenario(page, 'routine-card');
     // The person's own next message is answered only when the test says, so the chat is busy when the text would go.
@@ -4971,6 +5016,12 @@ test.describe('Team Routines', () => {
     await expect.poll(() => held !== null).toBe(true);
     release();
     await expect(card.getByRole('alert')).toHaveText(messages.en.routine.proposal.rewriteUnsent);
+    return { composer, card, frames, held };
+  }
+
+  test('an edited prompt the chat cannot take yet stays in its field, past the card’s lifetime, to send again', async ({ page }) => {
+    await page.clock.install();
+    const { composer, card, frames, held } = await unsentEdit(page);
     const prompt = card.getByRole('textbox', { name: messages.en.routine.proposal.prompt });
     await expect(prompt).toHaveValue(ROUTINE_TEXT.en.cardDescription);
     // The card's lifetime ends, and the text is still there to send.
@@ -4982,6 +5033,18 @@ test.describe('Team Routines', () => {
     await expect.poll(() => frames.filter((frame) => frame.type === 'chat').map((frame) => frame.message))
       .toContain(ROUTINE_TEXT.en.cardDescription);
     // The card was revoked once; sending again sent only the text.
+    expect(await proposalCalls(page)).toEqual(['revoke']);
+  });
+
+  test('an editor whose card was revoked for text that never went out leaves on Cancel, and the composer takes the focus', async ({ page }) => {
+    const { composer, card, frames, held } = await unsentEdit(page);
+    held();
+    // The chat is free again, and its composer took back the focus its busy turn had dropped.
+    await expect(composer).toBeFocused();
+    await card.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(page.getByRole('status').filter({ hasText: messages.en.routine.proposal.revoked })).toBeVisible();
+    await expect(composer).toBeFocused();
+    expect(frames.filter((frame) => frame.type === 'chat').map((frame) => frame.message)).not.toContain(ROUTINE_TEXT.en.cardDescription);
     expect(await proposalCalls(page)).toEqual(['revoke']);
   });
 
