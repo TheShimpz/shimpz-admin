@@ -62,6 +62,32 @@ test('an acknowledgment that fails after the person pressed elsewhere gives noth
   expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
 });
 
+test('an acknowledgment that fails after the person moved the focus out of the alert gives nothing the focus', async ({ page }) => {
+  await routeScenario(page, 'security-alert');
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await routeRead(page, 'security.acknowledge', async () => {
+    await held;
+    return { status: 503, json: { detail: 'unavailable' } };
+  });
+
+  await page.goto('/chat/');
+  const report = page.getByRole('status').filter({ hasText: 'Failed sign-in attempts' });
+  const acknowledge = report.getByRole('button');
+  await acknowledge.click();
+  await expect(acknowledge).toBeDisabled();
+  // The person moved the focus out of the alert; once it falls to the document again without a press, the alert's
+  // Acknowledge, enabled again, still leaves it there.
+  const supervisor = page.getByRole('button', { name: 'Supervisor' });
+  await supervisor.focus();
+  await supervisor.evaluate((element) => element.blur());
+  release();
+  await expect(page.getByRole('alert')).toContainText('couldn’t be saved');
+  await expect(acknowledge).toBeEnabled();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+});
+
 test('Security names the previous sign-in, where it came from, and the failed attempts since', async ({ page }) => {
   await routeScenario(page, 'security-alert');
   await page.goto('/chat/');

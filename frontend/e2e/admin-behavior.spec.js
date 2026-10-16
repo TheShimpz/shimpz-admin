@@ -1595,6 +1595,79 @@ test('keeps a saved key when the model selection fails and retries only the sele
   ]);
 });
 
+test('a saved key whose model selection fails after the person pressed elsewhere gives its Try again no focus', async ({ page }) => {
+  await routeReadyChat(page, {
+    unconfiguredProviders: ['anthropic'],
+    failInferenceWrite: true,
+    history: KEYLESS_HISTORY,
+  });
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  let asked = false;
+  await routeRead(page, 'inference.save', async () => {
+    asked = true;
+    await held;
+    return ok({ detail: 'The Team model selection could not be saved.' }, 502);
+  });
+  await page.goto('/chat/');
+  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'Wait for the retry');
+  await chooseBrainModel(page, 'Claude Opus 5.5');
+  await page.getByLabel('API key').fill('sk-ant-browser-contract-1234567890');
+  await page.getByRole('button', { name: 'Save key' }).click();
+  await expect.poll(() => asked).toBe(true);
+  // A press on the Admin version, which nothing focuses, leaves the focus on the document, as the person chose.
+  await page.getByText(/^Admin (?:dev|v\d)/).click();
+  release();
+  await expect(page.getByRole('button', { name: 'Try again' })).toBeVisible();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
+});
+
+test("a Brain retry that fails once the person went back to another Team gives that Team's Try again no focus", async ({ page }) => {
+  await routeReadyChat(page, {
+    unconfiguredProviders: ['anthropic'],
+    failInferenceWrite: true,
+    history: KEYLESS_HISTORY,
+    secondTeam: true,
+  });
+  // Support's model selection cannot be read, so its Brain notice offers a Try again too.
+  await routeRead(page, 'inference.read', ({ team_id: teamId }) => (
+    teamId === 'support' ? ok({ detail: 'unavailable' }, 503) : undefined
+  ));
+  await page.goto('/chat/?team=support');
+  const retry = page.getByRole('button', { name: 'Try again' });
+  await expect(retry).toBeVisible();
+  await page.getByRole('navigation').getByRole('link', { name: 'Marketing', exact: true }).click();
+  await expect(page).toHaveURL(/team=marketing/);
+  await fillWhenReady(page, page.getByRole('textbox', { name: 'Send', exact: true }), 'Wait for the retry');
+  await chooseBrainModel(page, 'Claude Opus 5.5');
+  await page.getByLabel('API key').fill('sk-ant-browser-contract-1234567890');
+  await page.getByRole('button', { name: 'Save key' }).click();
+  await expect(retry).toBeFocused();
+
+  // Marketing's retry waits, and fails once the person went back to Support, which is nobody's move on the page.
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  let asked = false;
+  await routeRead(page, 'inference.save', async () => {
+    asked = true;
+    await held;
+    return ok({ detail: 'The Team model selection could not be saved.' }, 502);
+  });
+  await page.keyboard.press('Enter');
+  await expect.poll(() => asked).toBe(true);
+  await page.goBack();
+  await expect(page).toHaveURL(/team=support/);
+  await expect(retry).toBeVisible();
+  // The failed save reads the providers again before its Try again would take the focus.
+  const providerReads = async () => (await readsOf(page, 'models.list')).length;
+  const before = await providerReads();
+  release();
+  await expect.poll(providerReads).toBeGreaterThan(before);
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await expect(retry).not.toBeFocused();
+});
+
 test('compiled Chat renders Markdown and its execution receipt', async ({ page }) => {
   await routeReadyChat(page, {
     reply: `**Rendered answer** with a [safe link](https://example.com), [your bank](https://evil.example/c?d=1) and [https://pаypal.com](https://pаypal.com).
