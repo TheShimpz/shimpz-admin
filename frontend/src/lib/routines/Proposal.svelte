@@ -124,10 +124,11 @@
     else error = card.rewriteUnsent;
   }
 
-  // Once the card has left the chat, the host gives the focus its button had to the composer.
+  // Once the card has left the chat, the host gives the focus its button had to the composer, also when the
+  // transcript took the card out before its answer returned; the host's own guard keeps focus the person moved.
   async function leave() {
     await tick();
-    if (shown) onleave();
+    onleave();
   }
 
   // Leaving the editor shows the card again with focus on its Edit button, unless it was already revoked for a send

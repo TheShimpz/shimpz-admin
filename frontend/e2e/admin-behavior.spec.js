@@ -4860,6 +4860,26 @@ test.describe('Team Routines', () => {
     expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toEqual([]);
   });
 
+  test('a Routine card that leaves with its answer before its result returns still hands the focus to the composer', async ({ page }) => {
+    const scenario = await recordRoutine(page, 'routine-question');
+    const words = messages.en.routine.proposal.questions.schedule;
+    await page.getByRole('radiogroup', { name: words.question }).getByRole('radio', { name: 'Every hour' }).check();
+    await page.getByRole('button', { name: 'Answer', exact: true }).click();
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    await expect(card).toBeVisible();
+    // Admin keeps the answer in the transcript before Team's result returns, so the history read first already holds
+    // it: the card, whose reply has no text, leaves the chat before its result arrives.
+    await routeRead(page, 'routines.proposal_confirm', async (params) => {
+      const answer = scenario.call('routines.proposal_confirm', params);
+      await routineNotice(page);
+      await expect(card).toHaveCount(0);
+      return answer;
+    });
+    await card.getByRole('button', { name: 'Create', exact: true }).click();
+    await expect(page.locator('.routine-run')).toHaveAccessibleName(ROUTINE_TEXT.en.card);
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeFocused();
+  });
+
   test('a Routine card whose editor is canceled shows the card again, with focus on its Edit button', async ({ page }) => {
     await recordRoutine(page);
     const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
