@@ -1,4 +1,5 @@
 import { humanizeId } from '../../ids.js';
+import { fill } from '../../i18n/fill.js';
 
 const MAX_DISPLAY_DURATION_MS = 24 * 60 * 60 * 1000;
 
@@ -91,13 +92,6 @@ function isolate(value) {
   return `\u2068${value}\u2069`;
 }
 
-// One pass over the template: each value is inserted isolated and as written, never read for placeholders.
-function fillNarrative(template, values) {
-  return template.replace(/\{([a-zA-Z]+)\}/g, (placeholder, name) => (
-    Object.hasOwn(values, name) ? isolate(String(values[name])) : placeholder
-  ));
-}
-
 function displayAssistant(step, context) {
   return (context.assistantName ?? humanizeId)(step.assistant_id);
 }
@@ -126,14 +120,15 @@ function narrativeKey(step) {
 /** One step in the person's language: every phase has a narrative in every catalog. */
 export function localizedStepLabel(step, labels, context = {}) {
   const template = labels.narrative[narrativeKey(step)];
-  let label = fillNarrative(template, {
-    assistant: displayAssistant(step, context),
-    action: humanizeId(step.action),
+  // Each value is inserted isolated, so a name in another script never reorders the sentence around it.
+  let label = fill(template, {
+    assistant: isolate(displayAssistant(step, context)),
+    action: isolate(humanizeId(step.action)),
   });
   if (step.phase === 'action' && step.total > 1) {
-    label += ` ${fillNarrative(labels.narrative.actionPosition, {
-      index: step.index,
-      total: step.total,
+    label += ` ${fill(labels.narrative.actionPosition, {
+      index: isolate(step.index),
+      total: isolate(step.total),
     })}`;
   }
   return label;
