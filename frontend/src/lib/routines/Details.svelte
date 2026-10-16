@@ -108,24 +108,12 @@
   let decisionKey = $derived(decision ? `${decision.runId}:${decision.outcome}` : '');
   let pending = $derived(decision && decisionKey !== dismissed ? decision : null);
 
-  // Once an answered decision or a deletion gives way to the pages, the selected tab takes focus; a decision still
-  // pending keeps it on its Delete. The Routines are read after that.
-  async function focusTab() {
-    await tick();
-    (document.getElementById(`${id}-tab-${page}`) ?? dialog?.querySelector('[data-choice="delete"]'))?.focus();
-  }
-
-  async function refreshFocused() {
-    await focusTab();
-    await refreshTeamRoutines(teamId);
-  }
-
   // Whether focus has left the open panel for the document, as when what had it unmounts or is disabled.
   function lost() {
     return Boolean(dialog?.open) && !dialog.contains(document.activeElement);
   }
 
-  // Whatever a refresh or an answer puts in place of what had focus (a decision arriving, giving way, or held again, or
+  // Whatever a refresh or an answer puts in place of what had focus (a decision arriving, answered, or held again, or
   // the deletion confirmation closing), focus never drops to the document: it moves to the selected tab, else to the
   // decision's first enabled control. Focus the person placed anywhere in the panel stays where it is.
   let shown = $derived(confirming ? 'deletion' : pending ? `${decisionKey}:${round}` : 'pages');
@@ -141,8 +129,7 @@
     if (heldAgain) round += 1;
     else dismissed = decisionKey;
     page = 'summary';
-    if (heldAgain) await refreshTeamRoutines(teamId);
-    else await refreshFocused();
+    await refreshTeamRoutines(teamId);
   }
 
   $effect(() => {
@@ -277,7 +264,7 @@
     }
     // A run is still ending: Team keeps the Routine as being deleted until it has.
     confirming = false;
-    await refreshFocused();
+    await refreshTeamRoutines(teamId);
   }
 
   // Canceling returns to the panel, or to the decision it was opened from, with focus on the Delete it came from.

@@ -5496,6 +5496,28 @@ test.describe('Team Routines', () => {
     await expect(close).toBeFocused();
   });
 
+  test('an answer that settles after the person moved to Close leaves focus on Close', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
+    await routeReadyChat(page);
+    const run = 'd'.repeat(32);
+    const state = { runs: [heldRun(run)], incidents: [heldIncident(run)] };
+    let release;
+    const answered = new Promise((resolve) => { release = resolve; });
+    await routeRead(page, 'routines.card_answer', async (params) => {
+      await answered;
+      state.runs = [];
+      state.incidents = [];
+      return ok({ team_id: 'marketing', run_id: params.run_id });
+    });
+    const panel = await routeDecisions(page, state);
+    await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Run' }).click();
+    const close = panel.getByRole('button', { name: 'Close' });
+    await close.focus();
+    release();
+    await expect(panel.getByRole('tab', { name: 'Summary' })).toBeVisible();
+    await expect(close).toBeFocused();
+  });
+
   test('a retry Team answers with a settled run focuses the summary tab', async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await routeReadyChat(page);
