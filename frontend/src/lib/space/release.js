@@ -1,7 +1,7 @@
 import { exactKeys, jsonObject } from '../api.js';
 import { isInstant } from '../grammar.js';
 
-// A published release set, or a developer release built on this host (ADR-0099).
+// A published release set, or a developer release built on this host (ADR-0102).
 const RELEASE = /^(?:ghcr\.io\/theshimpz|localhost)\/shimpz-local-release@sha256:[0-9a-f]{64}$/;
 const OUTCOMES = new Set(['current', 'updated', 'rollback-needed']);
 
