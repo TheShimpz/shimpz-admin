@@ -410,7 +410,13 @@
     try {
       await configureModelContext(teamId, apiKey);
     } catch {
-      // The model context carries the public error shown above the composer.
+      // The model context carries the public error shown above the composer. The save disabled the key field, which
+      // dropped the focus to the document: the emptied field takes it back for the same Team and provider, unless the
+      // person moved it meanwhile.
+      await tick();
+      const focused = document.activeElement;
+      if (keySelection !== selection || !keyRequired || (focused && focused !== document.body)) return;
+      document.getElementById('chat-provider-key')?.focus({ preventScroll: true });
       return;
     }
     if (keySelection === selection) void focusComposer();

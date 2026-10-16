@@ -71,21 +71,25 @@
     openPanel(trigger, panel, () => panel?.querySelector('input, .fast-remove'));
   }
 
+  // A change disables the panel's controls meanwhile, which drops the focus to the document: once it ends, `focus`
+  // takes it back in the panel still open, or on a refusal the control it left in place (the key typed, or Remove).
+  // The panel stays open when Tab leaves it, so focus the person moved stays where it is.
   async function changeKey(action, failure, focus) {
     changing = true;
     error = '';
+    let target = focus;
     try {
       await action();
+      fastKey = '';
     } catch (failed) {
       // A change whose answer was lost shows so; Admin's state is read again once it is back.
-      changing = false;
       error = outcomeUnknown(failed) ? $t('shell.outcomeUnknown') : failure(failed);
-      return;
+      target = 'input, .fast-remove';
     }
     changing = false;
-    fastKey = '';
     await tick();
-    panel?.querySelector(focus)?.focus();
+    const focused = document.activeElement;
+    if (open && (!focused || focused === document.body)) panel?.querySelector(target)?.focus();
   }
 
   function saveFast(event) {

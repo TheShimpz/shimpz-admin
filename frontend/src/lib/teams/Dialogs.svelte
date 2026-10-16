@@ -1,6 +1,7 @@
 <script>
   import { goto } from '$app/navigation';
   import { page } from '$app/state';
+  import { tick } from 'svelte';
 
   import { DialogFrame, Modal, Notice, TextField } from '@shimpz/frontend';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
@@ -52,6 +53,14 @@
     if (!deleteDialog?.open) deleteDialog?.showModal();
   }
 
+  // A refused request gives the field to fix the focus once the controls it disabled are enabled again, while its
+  // dialog is still open; focus the person moved meanwhile stays where it is.
+  async function regain(dialog, field) {
+    await tick();
+    const focused = document.activeElement;
+    if (dialog?.open && (!focused || focused === document.body)) document.getElementById(field)?.focus();
+  }
+
   function closeCreate() {
     if (creating || requiresTeam) return;
     createDialog?.close();
@@ -82,6 +91,7 @@
       onsettled();
     } catch (error) {
       createError = outcomeUnknown(error) ? $t('shell.outcomeUnknown') : copy.createFailed;
+      void regain(createDialog, 'team-create-name');
     } finally {
       creating = false;
     }
@@ -123,6 +133,7 @@
         ? `${error.status > 0 ? `HTTP ${error.status} · ` : ''}${error.message}`
         : '';
       supervisorPassword = '';
+      void regain(deleteDialog, 'team-delete-password');
     } finally {
       deleting = false;
     }

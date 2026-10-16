@@ -78,6 +78,7 @@ test('a recovery code signs in only through a new authenticator and shows a new 
   await page.getByLabel('Six-digit code').fill('000000');
   await page.getByRole('button', { name: 'Verify and continue' }).click();
   await expect(page.getByRole('alert')).toContainText('That code was not accepted');
+  await expect(page.getByLabel('Six-digit code')).toBeFocused();
   await page.getByLabel('Six-digit code').fill('654321');
   await page.getByRole('button', { name: 'Verify and continue' }).click();
 

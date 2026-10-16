@@ -1,4 +1,5 @@
 <script>
+  import { tick } from 'svelte';
   import { get } from 'svelte/store';
 
   import { commandsReady } from '#lib/session/socket.js';
@@ -47,8 +48,16 @@
     return () => { live = false; };
   });
 
-  function focus(field) {
-    queueMicrotask(() => document.getElementById(`${id}-${field}`)?.focus());
+  // The field a refusal leaves to fix takes the focus once the controls the request disabled are enabled again; focus
+  // the person moved meanwhile stays where it is.
+  let refocus = '';
+
+  async function regain() {
+    const field = refocus;
+    refocus = '';
+    await tick();
+    const focused = document.activeElement;
+    if (live && (!focused || focused === document.body)) document.getElementById(`${id}-${field}`)?.focus();
   }
 
   // Each refusal says what to fix where it is fixed; nothing typed is ever echoed back.
@@ -68,7 +77,8 @@
     passwordError = shown.passwordError ?? '';
     codeError = shown.codeError ?? '';
     error = shown.error ?? '';
-    if (shown.focus) focus(shown.focus);
+    // A refusal of the whole form names no field: the password, enabled again, takes the focus.
+    refocus = shown.focus ?? 'password';
   }
 
   async function proof(offer) {
@@ -77,7 +87,7 @@
       passkeyOffered = false;
       method = 'totp';
       error = $t('security.passkeyMissing');
-      focus('code');
+      refocus = 'code';
       return null;
     }
     return { credential: await authenticateWithPasskey(offer.passkey) };
@@ -100,6 +110,7 @@
       refused(failure);
     } finally {
       busy = false;
+      if (refocus) void regain();
     }
   }
 </script>

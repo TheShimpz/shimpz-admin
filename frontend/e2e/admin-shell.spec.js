@@ -16,6 +16,7 @@ import {
 } from './scenarioRoutes.js';
 import { authenticatedLocalSession, localSession } from './scenarios.js';
 import { recoveryCodeSet } from './securityScenarios.js';
+import { messages } from '../src/lib/i18n/catalogs.js';
 
 const ok = (json, status = 200) => ({ status, json });
 // The Admin version the sidebar names: its commit date and short revision, or dev for a build that names no revision.
@@ -260,6 +261,32 @@ test('renders bounded Local login feedback instead of the raw API error', async 
 
   await expect(page.getByText('Too many attempts. Wait one minute and try again.')).toBeVisible();
   await expect(page.getByText('too many login attempts')).toHaveCount(0);
+  // The refusal gives the field the request disabled its focus back.
+  await expect(page.getByLabel('Password', { exact: true })).toBeFocused();
+});
+
+test('a sign-in step that cannot reach Admin keeps its own field focused for another try', async ({ page }) => {
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(localSession({ initialized: true, authentication_state: 'configured' })),
+  }));
+  await page.route('**/api/login', (route) => route.fulfill({
+    status: 202,
+    contentType: 'application/json',
+    body: JSON.stringify({ methods: ['totp', 'recovery-code'] }),
+  }));
+  await page.route('**/api/login/recovery', (route) => route.abort());
+
+  await page.goto('/');
+  await page.getByLabel('Password', { exact: true }).fill('violet otter lantern quartz 92');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByRole('button', { name: 'Use a recovery code' }).click();
+  const recoveryCode = page.getByRole('textbox', { name: 'Recovery code' });
+  await recoveryCode.fill('aaaa-bbbb-cccc');
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByRole('alert')).toContainText(messages.en.auth.unreachable);
+  await expect(recoveryCode).toHaveValue('aaaa-bbbb-cccc');
+  await expect(recoveryCode).toBeFocused();
 });
 
 test('renders the terminal recovery action for an unsupported password record', async ({ page }) => {

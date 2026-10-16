@@ -1016,6 +1016,20 @@ test('asks for a missing provider key in the composer without leaving the conver
   expect(JSON.stringify(chat.chatFrames())).not.toContain(secret);
 });
 
+test('a provider key the provider refuses is said so and its field takes the focus back', async ({ page }) => {
+  await routeReadyChat(page, { missingInference: true, unconfiguredProviders: ['openai', 'anthropic'] });
+  await routeRead(page, 'models.save', () => ok({ detail: 'The provider rejected this API key' }, 400));
+  await page.goto('/chat/');
+  const apiKey = page.getByLabel('API key');
+  await expect(apiKey).toBeFocused();
+  await apiKey.fill('sk-browser-contract-1234567890');
+  await page.getByRole('button', { name: 'Save key' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'The provider rejected this API key' })).toBeVisible();
+  // The key never stays on the page; its emptied field takes the focus for the next one.
+  await expect(apiKey).toHaveValue('');
+  await expect(apiKey).toBeFocused();
+});
+
 // Text typed into the composer is never dropped: once the visible composer accepts input it stays editable while the
 // Team's history loads, its connection opens, and its first sync settles, so a message typed at any moment can be sent.
 test('the visible composer never turns read-only again before the first message', async ({ page }) => {
@@ -1105,6 +1119,7 @@ test('a rejected Jev key is reported and an unsent one never outlives the panel'
   await fast.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(fast.getByRole('alert')).toHaveText('TypeSafe rejected this key.');
   await expect(fast.getByLabel('TypeSafe API key')).toHaveValue('tsk-rejected-contract-0123456789');
+  await expect(fast.getByLabel('TypeSafe API key')).toBeFocused();
 
   await page.keyboard.press('Escape');
   await expect(page.getByLabel('TypeSafe API key')).toHaveCount(0);
@@ -2535,6 +2550,8 @@ test('a Team that could not be created leaves the chat able to send to the selec
   await create.getByLabel('Team name').fill('Growth');
   await create.getByRole('button', { name: 'Create Team' }).click();
   await expect(create.getByText('The Team could not be created.')).toBeVisible();
+  // The refusal gives the name field the request disabled its focus back.
+  await expect(create.getByLabel('Team name')).toBeFocused();
   await create.getByRole('button', { name: 'Cancel' }).click();
 
   await fillWhenReady(page, composer, 'List my zones');
@@ -3926,8 +3943,10 @@ test('deletes a Team with its exact confirmation and reports the deletion', { ta
             { team_id: 'support', team_name: 'Support', status: 'running' },
           ],
     }));
+  let refusals = 1;
   await routeRead(page, 'teams.delete', ({ team_id: teamId, body }) => {
     if (teamId !== 'support') return undefined;
+    if (refusals-- > 0) return ok({ detail: 'Team is unavailable' }, 503);
     deletionBody = body;
     deleted = true;
     return ok({
@@ -3945,7 +3964,13 @@ test('deletes a Team with its exact confirmation and reports the deletion', { ta
   await page.getByRole('menuitem', { name: 'Delete', exact: true }).click();
   const deleteDialog = page.getByRole('dialog', { name: 'Delete Team' });
   await deleteDialog.getByLabel('Confirm Team name').fill('Support');
-  await deleteDialog.getByLabel('Supervisor password').fill('private-password');
+  const password = deleteDialog.getByLabel('Supervisor password');
+  await password.fill('private-password');
+  await deleteDialog.getByRole('button', { name: 'Delete Team' }).click();
+  // A refused deletion clears the password and gives its field the focus to type it again.
+  await expect(password).toHaveValue('');
+  await expect(password).toBeFocused();
+  await password.fill('private-password');
   await deleteDialog.getByRole('button', { name: 'Delete Team' }).click();
 
   await expect(deleteDialog).toBeHidden();
@@ -5403,6 +5428,8 @@ test.describe('Team Routines', () => {
     await password.fill(SUPERVISOR_PASSWORD);
     await panel.getByRole('button', { name: 'Delete' }).click();
     await expect(panel.getByRole('alert')).toHaveText('Too many attempts. Try again in 42 seconds.');
+    // A refusal of the whole form gives the password field the request disabled its focus back.
+    await expect(password).toBeFocused();
     expect(calls.deletes).toEqual([]);
   });
 

@@ -201,6 +201,26 @@
     document.getElementById('admin-password')?.focus({ preventScroll: true });
   }
 
+  // Each sign-in step's own field, which takes the focus back when the step fails in place.
+  const STEP_FIELDS = {
+    setup: 'admin-password',
+    'enrollment-resume': 'admin-password',
+    login: 'admin-password',
+    'totp-enrollment': 'admin-totp',
+    'totp-reenrollment': 'admin-totp',
+    'totp-login': 'admin-totp',
+    'recovery-code': 'admin-recovery-code',
+  };
+
+  // A step that failed in place disabled its controls meanwhile, which dropped the focus to the document: its field
+  // takes it back once enabled, while the screen still shows that step. Focus the person moved stays where it is.
+  async function regainStep(step) {
+    await tick();
+    const focused = document.activeElement;
+    if (phase !== step || (focused && focused !== document.body)) return;
+    document.getElementById(STEP_FIELDS[step])?.focus({ preventScroll: true });
+  }
+
   // A refused second factor starts the sign-in again from the password, with the reason said.
   async function backToPassword(nextPhase, message) {
     phase = nextPhase;
@@ -261,6 +281,7 @@
       error = $t('auth.unreachable');
     } finally {
       busy = false;
+      void regainStep(submittedPhase);
     }
   }
 
@@ -305,6 +326,7 @@
       error = $t('auth.unreachable');
     } finally {
       busy = false;
+      void regainStep(submittedPhase);
     }
   }
 
@@ -327,6 +349,7 @@
       error = $t('auth.unreachable');
     } finally {
       busy = false;
+      void regainStep('recovery-code');
     }
   }
 
@@ -352,6 +375,7 @@
       error = $t(`auth.passkey${passkeyFailure(failure) === 'canceled' ? 'Canceled' : 'Failed'}`);
     } finally {
       busy = false;
+      void regainStep('totp-login');
     }
   }
 
