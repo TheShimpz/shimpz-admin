@@ -195,22 +195,23 @@ class ModelProviderTests(unittest.TestCase):
             if response is not None:
                 response.read.assert_not_called()
 
-    def test_unverified_or_secretless_records_are_not_configured_or_resolved(self) -> None:
-        unverified_secret = "sk-unverified-0123456789"
-        state._write(
-            {
-                "model_credentials": {
-                    "openai": {"api_key": unverified_secret, "updated": 1_784_400_000},
-                    "anthropic": {"verified_at": 1_784_400_000},
-                }
-            }
-        )
-
-        providers = {item["id"]: item for item in models.status()["providers"]}
-        self.assertFalse(providers["openai"]["configured"])
-        self.assertIsNone(providers["openai"]["masked"])
-        self.assertFalse(providers["anthropic"]["configured"])
-        self.assertIsNone(models.resolve_api_key("openai"))
+    def test_a_record_other_than_the_verified_key_fails_closed_naming_the_store(self) -> None:
+        key = "sk-test-token-0123456789"
+        for record in (
+            {"api_key": key},
+            {"api_key": key, "verified_at": 0},
+            {"api_key": key, "verified_at": True},
+            {"api_key": "bad key", "verified_at": 1},
+            {"api_key": key, "verified_at": 1, "extra": 1},
+            "broken",
+        ):
+            state._write({"model_credentials": {"openai": record}})
+            with self.subTest(record=record):
+                for read in (models.status, lambda: models.resolve_api_key("openai")):
+                    with self.assertRaisesRegex(RuntimeError, r"admin\.json has an invalid openai credential"):
+                        read()
+        state._write({"model_credentials": {"openai": {"api_key": key, "verified_at": 1}}})
+        self.assertEqual(models.resolve_api_key("openai"), key)
         self.assertIsNone(models.resolve_api_key("anthropic"))
 
     def test_model_must_belong_to_its_provider(self) -> None:

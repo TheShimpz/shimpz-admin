@@ -15,7 +15,7 @@ VALIDATION_PATH = "/v1/models"
 
 
 def _verified_secret() -> str | None:
-    return models.verified_secret(state.decision_credential())
+    return models.verified_secret(state.decision_credential(), PROVIDER)
 
 
 def status() -> dict[str, object]:

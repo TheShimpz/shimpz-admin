@@ -103,18 +103,34 @@ def masked(secret: str) -> str:
     return f"••••{secret[-4:]}"
 
 
-def verified_secret(record: object) -> str | None:
-    """Return a record's canonical key only once a provider has verified it."""
-    if not isinstance(record, dict):
+def verified_secret(record: object, name: str) -> str | None:
+    """Return a stored record's verified key, or None when no key is stored.
+
+    The writers store exactly a canonical key and the positive time its provider verified it, atomically, so any other
+    record is a broken store and fails closed, naming the remedy: the key screens read this record before they offer a
+    save, so they cannot replace it.
+    """
+    if record is None:
         return None
-    verified_at = record.get("verified_at")
-    secret = record.get("api_key")
-    if type(verified_at) is not int or verified_at <= 0 or not isinstance(secret, str):
-        return None
+    if (
+        not isinstance(record, dict)
+        or set(record) != {"api_key", "verified_at"}
+        or type(record["verified_at"]) is not int
+        or record["verified_at"] <= 0
+        or not _canonical(record["api_key"])
+    ):
+        raise RuntimeError(
+            f"admin store {state.STORE_PATH} has an invalid {name} credential; reset the Space with `shimpz reset`"
+        )
+    return record["api_key"]
+
+
+def _canonical(secret: object) -> bool:
     try:
-        return canonical_api_key(secret)
+        canonical_api_key(secret)
     except ModelProviderError:
-        return None
+        return False
+    return True
 
 
 def _validation_headers(provider: str, secret: str) -> dict[str, str]:
@@ -174,8 +190,7 @@ def status() -> dict[str, list[dict[str, object]]]:
     records = _records()
     providers = []
     for provider, metadata in PROVIDERS.items():
-        record = records.get(provider)
-        secret = verified_secret(record)
+        secret = verified_secret(records.get(provider), provider)
         configured = secret is not None
         providers.append(
             {
@@ -209,5 +224,4 @@ def configure(provider: object, api_key: object) -> dict[str, object]:
 def resolve_api_key(provider: object) -> str | None:
     """A verified provider key in cleartext, only for the Team turn chat.local delivers it to; never to a browser."""
     selected = canonical_provider(provider)
-    record = _records().get(selected)
-    return verified_secret(record)
+    return verified_secret(_records().get(selected), selected)

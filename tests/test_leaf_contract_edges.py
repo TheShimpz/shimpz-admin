@@ -35,7 +35,8 @@ class ModelEdgeTests(unittest.TestCase):
             self.assertRaisesRegex(RuntimeError, "unsupported model credentials"),
         ):
             models.status()
-        self.assertIsNone(models.verified_secret({"verified_at": 1, "api_key": "short"}))
+        with self.assertRaisesRegex(RuntimeError, "invalid openai credential"):
+            models.verified_secret({"verified_at": 1, "api_key": "short"}, "openai")
 
     def test_connection_construction_failure_is_unavailable(self) -> None:
         with (

@@ -68,11 +68,12 @@ class DecisionProviderTests(unittest.TestCase):
         probe.assert_not_called()
         self.assertIsNone(self.decision.resolve())
 
-    def test_an_unverified_or_malformed_record_resolves_to_no_key(self) -> None:
-        for record in ({"api_key": KEY}, {"api_key": KEY, "verified_at": 0}, {"api_key": "bad key", "verified_at": 1}):
+    def test_a_malformed_record_fails_closed_naming_the_store(self) -> None:
+        records = ({"api_key": KEY}, {"api_key": KEY, "verified_at": 0}, {"api_key": "bad key", "verified_at": 1})
+        for record in records:
             self.state.STORE_PATH.write_text(json.dumps({"decision_credential": record}))
-            with self.subTest(record=record):
-                self.assertIsNone(self.decision.resolve())
+            with self.subTest(record=record), self.assertRaisesRegex(RuntimeError, "invalid typesafe credential"):
+                self.decision.resolve()
         self.state.STORE_PATH.write_text(json.dumps({"decision_credential": "broken"}))
         with self.assertRaises(RuntimeError):
             self.decision.resolve()
