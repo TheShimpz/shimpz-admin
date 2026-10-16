@@ -21,7 +21,7 @@
     teamIntegrations,
   } from '#lib/assistants/integrations.js';
   import { refreshTeamInventory, teamContext } from '#lib/teams/context.js';
-  import { recoverFocus, regainFocus } from '#lib/shell/focus.js';
+  import { focusMark, recoverFocus, regainFocus } from '#lib/shell/focus.js';
 
   let {
     open = false,
@@ -168,6 +168,7 @@
       ))
     ) return;
     storedInputWorking = key;
+    const mark = focusMark();
     const read = sources;
     let cleared = false;
     try {
@@ -188,7 +189,10 @@
     // The Clear pressed left with the input it cleared: the next input's Clear takes the focus it had, else the
     // drawer's Close. A Clear that failed stays and takes the focus back itself (`recoverFocus`).
     if (cleared && teamId === clearedTeamId) {
-      void regainFocus(() => storedSection?.querySelector('button:not(:disabled)') ?? closeButton, () => open);
+      void regainFocus(() => storedSection?.querySelector('button:not(:disabled)') ?? closeButton, {
+        shown: () => open,
+        since: mark,
+      });
     }
   }
 

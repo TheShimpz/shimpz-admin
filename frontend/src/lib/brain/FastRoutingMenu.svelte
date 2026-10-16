@@ -7,7 +7,7 @@
   import { decisionProvider, removeDecisionKey, saveDecisionKey } from '#lib/brain/decision.js';
   import { t } from '#lib/i18n/index.js';
   import { CREDENTIAL_RECORD_INVALID } from '#lib/api.js';
-  import { regainFocus } from '#lib/shell/focus.js';
+  import { focusMark, regainFocus } from '#lib/shell/focus.js';
 
   // The optional Jev key (ADR-0077) in its own composer control. Only Local Admin custodies it; the caller renders
   // this control only there. Its state is the one Admin holds, read over the session socket and again whenever Admin
@@ -78,6 +78,7 @@
   // The panel stays open when Tab leaves it, so focus the person moved stays where it is.
   async function changeKey(action, failure, focus) {
     changing = true;
+    const mark = focusMark();
     error = '';
     let target = focus;
     try {
@@ -89,7 +90,7 @@
       target = 'input, .fast-remove';
     }
     changing = false;
-    void regainFocus(() => panel?.querySelector(target), () => open);
+    void regainFocus(() => panel?.querySelector(target), { shown: () => open, since: mark });
   }
 
   function saveFast(event) {

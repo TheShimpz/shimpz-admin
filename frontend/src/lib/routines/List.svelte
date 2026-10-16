@@ -9,7 +9,7 @@
   import RoutineDetailsDialog from '#lib/routines/Details.svelte';
   import RoutineModal from '#lib/routines/Modal.svelte';
   import { refreshTeamRoutines } from '#lib/routines/context.js';
-  import { regainFocus } from '#lib/shell/focus.js';
+  import { focusMark, regainFocus } from '#lib/shell/focus.js';
 
   // One Team's Routines as a choice modal (ADR-0086): each its clock tinted by its status, its name, and when it runs;
   // the status is said in words only to assistive technology. Choosing one turns the modal into that Routine's panel,
@@ -57,12 +57,13 @@
   // replaces it with the list, whose Routine takes the focus the Retry had, or closes an empty one.
   async function retry() {
     retrying = true;
+    const mark = focusMark();
     try {
       await refreshTeamRoutines(teamId);
     } finally {
       retrying = false;
     }
-    void regainFocus(() => (failed ? null : listTarget()), () => Boolean(dialog?.open));
+    void regainFocus(() => (failed ? null : listTarget()), { shown: () => Boolean(dialog?.open), since: mark });
   }
 
   function choose(routineId) {

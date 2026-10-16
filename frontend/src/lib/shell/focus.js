@@ -9,8 +9,10 @@ import { tick } from 'svelte';
 //   renders while the request runs, and gives up once the person moves the focus anywhere, presses outside that
 //   element, or the element leaves the scope. Only the innermost scope around the element recovers.
 // - `regainFocus` gives the focus to an explicit target once the pending render is done, where the outcome decides
-//   another place (the field a refusal names, the control that replaces the one pressed). It runs before
-//   `recoverFocus`, which acts a frame later and so finds the focus already placed.
+//   another place (the field a refusal names, the control that replaces the one pressed). Given the `focusMark` taken
+//   when its request began, it gives up once the person moved the focus or pressed elsewhere since, even when that
+//   left the focus on the document. It runs before `recoverFocus`, which acts a frame later and so finds the focus
+//   already placed.
 
 /** Whether focus has fallen to the document: nothing, or the body, holds it. */
 export function focusLost() {
@@ -18,20 +20,39 @@ export function focusLost() {
   return !focused || focused === document.body;
 }
 
-/**
- * Once the pending render is done, focuses `target()` when focus has fallen to the document and `shown()` still holds;
- * focus the person placed anywhere stays where it is.
- */
-export async function regainFocus(target, shown = () => true, options = undefined) {
-  await tick();
-  if (focusLost() && shown()) target()?.focus(options);
-}
-
 const scopes = new Set();
 // The element that last took focus and the innermost scope around it, or null once focus went outside every scope.
 let held = null;
+// How many times focus moved or the person pressed away from the focused element.
+let moves = 0;
+let listening = false;
 
+function listen() {
+  if (listening) return;
+  listening = true;
+  document.addEventListener('focusin', track, true);
+  document.addEventListener('pointerdown', press, true);
+}
+
+/** A mark of the focus moves so far, taken when a request begins, for its `regainFocus`. */
+export function focusMark() {
+  listen();
+  return moves;
+}
+
+/**
+ * Once the pending render is done, focuses `target()` when focus has fallen to the document, `shown()` still holds,
+ * and focus never moved since `since` (a `focusMark`); focus the person placed or pressed anywhere stays where it is.
+ */
+export async function regainFocus(target, { shown = () => true, since = focusMark(), ...options } = {}) {
+  await tick();
+  if (moves === since && focusLost() && shown()) target()?.focus(options);
+}
+
+// The window taking the focus back (after a passkey prompt, say) focuses the body again: that is nobody's move.
 function track(event) {
+  if (event.target === document.body) return;
+  moves += 1;
   let scope = null;
   for (const candidate of scopes) {
     if (candidate.contains(event.target) && (!scope || scope.contains(candidate))) scope = candidate;
@@ -42,6 +63,8 @@ function track(event) {
 // A press anywhere but on the focused element is the person's own move, also onto blank space that leaves the focus on
 // the document.
 function press(event) {
+  const focused = document.activeElement;
+  if (!focused || focused === document.body || !focused.contains(event.target)) moves += 1;
   if (held && !held.element.contains(event.target)) held = null;
 }
 
@@ -53,10 +76,7 @@ function usable(element) {
 
 /** Attachment: within `node`, the element that last held the focus takes it back from the document once usable. */
 export function recoverFocus(node) {
-  if (scopes.size === 0) {
-    document.addEventListener('focusin', track, true);
-    document.addEventListener('pointerdown', press, true);
-  }
+  listen();
   scopes.add(node);
   let frame = 0;
   const observer = new MutationObserver(() => {
@@ -78,9 +98,5 @@ export function recoverFocus(node) {
     cancelAnimationFrame(frame);
     scopes.delete(node);
     if (held?.scope === node) held = null;
-    if (scopes.size === 0) {
-      document.removeEventListener('focusin', track, true);
-      document.removeEventListener('pointerdown', press, true);
-    }
   };
 }

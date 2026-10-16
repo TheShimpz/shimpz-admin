@@ -14,7 +14,7 @@
     localizedIntegrationList,
   } from '#lib/assistants/integrationMessages.js';
   import { assistantIntegrationProviderLabel } from '#lib/assistants/integrations.js';
-  import { recoverFocus, regainFocus } from '#lib/shell/focus.js';
+  import { focusMark, recoverFocus, regainFocus } from '#lib/shell/focus.js';
 
   let {
     open = false,
@@ -94,12 +94,16 @@
   // and again when a code is refused. A control a request disabled otherwise takes back the focus it dropped once
   // enabled again (`recoverFocus`).
   const CODE_FIELD = 'assistant-integration-completion-code';
-  const focusCode = () => regainFocus(() => document.getElementById(CODE_FIELD), () => Boolean(dialog?.open));
+  const focusCode = (since) => regainFocus(() => document.getElementById(CODE_FIELD), {
+    shown: () => Boolean(dialog?.open),
+    since,
+  });
   $effect(() => (dialog ? recoverFocus(dialog) : undefined));
 
   async function authorize(requirement) {
     if (submitting || !challenge) return;
     submitting = true;
+    const mark = focusMark();
     activeRequirement = requirement;
     submitError = '';
     try {
@@ -107,7 +111,7 @@
       if (result?.completion_mode === 'code') {
         awaitingCompletion = true;
         submitting = false;
-        void focusCode();
+        void focusCode(mark);
       }
     } catch {
       submitError = copy.authorizationFailed;
@@ -118,13 +122,14 @@
   async function complete() {
     if (submitting || !challenge) return;
     submitting = true;
+    const mark = focusMark();
     submitError = '';
     try {
       await oncomplete(challenge.challenge_id, completionCode.trim());
     } catch {
       submitError = copy.completionFailed;
       submitting = false;
-      void focusCode();
+      void focusCode(mark);
     }
   }
 

@@ -5,7 +5,7 @@
   import { DialogFrame, Modal, Notice, TextField } from '@shimpz/frontend';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
-  import { regainFocus } from '#lib/shell/focus.js';
+  import { focusMark, regainFocus } from '#lib/shell/focus.js';
   import { showAdminNotice } from '#lib/shell/notice.js';
   import { t } from '#lib/i18n/index.js';
   import { LocalApiError } from '#lib/api.js';
@@ -55,8 +55,10 @@
 
   // A refused request gives the field to fix the focus once the controls it disabled are enabled again, while its
   // dialog is still open; focus the person moved meanwhile stays where it is.
+  let mark = 0;
+
   function regain(dialog, field) {
-    void regainFocus(() => document.getElementById(field), () => Boolean(dialog?.open));
+    void regainFocus(() => document.getElementById(field), { shown: () => Boolean(dialog?.open), since: mark });
   }
 
   function closeCreate() {
@@ -81,6 +83,7 @@
     event.preventDefault();
     if (creating || !$commandsReady || !teamName.trim()) return;
     creating = true;
+    mark = focusMark();
     createError = '';
     try {
       const created = await createTeam(teamName);
@@ -116,6 +119,7 @@
     const target = deletingTeam;
     if (deleting || !$commandsReady || !target || deleteName !== target.name || !supervisorPassword) return;
     deleting = true;
+    mark = focusMark();
     deleteError = '';
     deleteErrorDetail = '';
     let deleted = false;

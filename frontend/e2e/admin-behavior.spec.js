@@ -1561,7 +1561,7 @@ test('keeps a saved key when the model selection fails and retries only the sele
 
   // A retry that fails again leaves while the selection is saved, then its new Try again takes the focus back.
   let release;
-  const held = new Promise((resolve) => { release = resolve; });
+  let held = new Promise((resolve) => { release = resolve; });
   let refusals = 1;
   await routeRead(page, 'inference.save', async () => {
     if (refusals === 0) return undefined;
@@ -1573,6 +1573,17 @@ test('keeps a saved key when the model selection fails and retries only the sele
   await expect(retry).toHaveCount(0);
   release();
   await expect(retry).toBeFocused();
+
+  // One that fails after the person pressed elsewhere, leaving the focus on the document, leaves it there.
+  held = new Promise((resolve) => { release = resolve; });
+  refusals = 1;
+  await retry.click();
+  await expect(retry).toHaveCount(0);
+  await page.getByText(/^Admin (?:dev|v\d)/).click();
+  release();
+  await expect(retry).toBeVisible();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
 
   await retry.click();
   await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled();
@@ -3134,6 +3145,28 @@ test('renders and clears a persistent Action input without exposing its value', 
   expect(chat.storedInputClears()).toBe(1);
   // The Clear pressed left with the input it cleared; with no other input to clear, the drawer's Close takes the focus.
   await expect(drawer.getByRole('button', { name: 'Close integrations' })).toBeFocused();
+});
+
+test('a Stored Input cleared after the person pressed elsewhere gives nothing the focus', async ({ page }) => {
+  await routeReadyChat(page, { whatsappInstalled: true, storedInputStatus: 'stored' });
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await routeRead(page, 'stored_inputs.clear', async () => {
+    await held;
+    return undefined;
+  });
+  await page.goto('/chat/');
+  await page.getByRole('button', { name: 'Assistant integrations' }).click();
+  const drawer = page.getByRole('complementary', { name: 'Connected integrations' });
+  const storedInputs = drawer.getByRole('region', { name: 'Stored Action inputs' });
+  await storedInputs.getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(storedInputs.getByRole('button', { name: 'Clearing…' })).toBeDisabled();
+  // A press on the Admin version, which nothing focuses, leaves the focus on the document, as the person chose.
+  await page.getByText(/^Admin (?:dev|v\d)/).click();
+  release();
+  await expect(storedInputs.getByText('Requested just in time on first use.', { exact: true })).toBeVisible();
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true);
 });
 
 test('a Stored Input that could not be cleared keeps its Clear, which takes the focus back', async ({ page }) => {

@@ -11,7 +11,7 @@
   import { dataUnavailable } from '#lib/session/synced.js';
   import BootScreen from '#lib/shell/BootScreen.svelte';
   import { clearAdminNotice } from '#lib/shell/notice.js';
-  import { regainFocus } from '#lib/shell/focus.js';
+  import { focusMark, regainFocus } from '#lib/shell/focus.js';
   import { clearAssistantSources } from '#lib/assistants/sources.js';
   import { clearChatHistories } from '#lib/chat/history.js';
   import { clearPreviews } from '#lib/chat/attachments/previews.js';
@@ -210,9 +210,16 @@
 
   // A step that failed disabled its controls meanwhile, which dropped the focus to the document: the field of the step
   // shown next (the same one, or the password a refused second factor returns to) takes it back once enabled, while the
-  // screen still shows that step. Focus the person moved stays where it is.
+  // screen still shows that step. Focus the person moved or pressed elsewhere since the step was sent (`stepMark`) stays
+  // where it is.
+  let stepMark = 0;
+
   function regainStep(step) {
-    return regainFocus(() => document.getElementById(STEP_FIELDS[step]), () => phase === step, { preventScroll: true });
+    return regainFocus(() => document.getElementById(STEP_FIELDS[step]), {
+      shown: () => phase === step,
+      since: stepMark,
+      preventScroll: true,
+    });
   }
 
   // A refused second factor starts the sign-in again from the password, with the reason said.
@@ -246,6 +253,7 @@
     }
 
     busy = true;
+    stepMark = focusMark();
     const submittedPhase = phase;
     try {
       const endpoint = submittedPhase === 'login' ? '/api/login' : '/api/admin/setup';
@@ -290,6 +298,7 @@
     if (busy || !endpoint || !isFactorCode(code)) return;
     error = '';
     busy = true;
+    stepMark = focusMark();
     const submittedPhase = phase;
     try {
       const response = await post(endpoint, { code });
@@ -328,6 +337,7 @@
     if (busy || phase !== 'recovery-code' || !recoveryCode.trim()) return;
     error = '';
     busy = true;
+    stepMark = focusMark();
     try {
       const response = await post('/api/login/recovery', { code: recoveryCode });
       const body = await response.json().catch(() => ({}));
@@ -356,6 +366,7 @@
     if (busy || phase !== 'totp-login' || !passkeyOptions) return;
     error = '';
     busy = true;
+    stepMark = focusMark();
     try {
       const credential = await authenticateWithPasskey(passkeyOptions);
       const response = await post('/api/login/passkey', { credential });

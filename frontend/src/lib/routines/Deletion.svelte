@@ -3,7 +3,7 @@
 
   import { call, commandsReady } from '#lib/session/socket.js';
   import DialogAction from '#lib/DialogAction.svelte';
-  import { regainFocus } from '#lib/shell/focus.js';
+  import { focusMark, regainFocus } from '#lib/shell/focus.js';
   import { t } from '#lib/i18n/index.js';
   import { authenticateWithPasskey, passkeyFailure } from '#lib/auth/passkey.js';
   import { isFactorCode } from '#lib/auth/factor.js';
@@ -39,11 +39,12 @@
   // The field a refusal leaves to fix takes the focus once the controls the request disabled are enabled again; focus
   // the person moved meanwhile stays where it is.
   let refocus = '';
+  let mark = 0;
 
   function regain() {
     const field = refocus;
     refocus = '';
-    void regainFocus(() => document.getElementById(`${id}-${field}`), () => live);
+    void regainFocus(() => document.getElementById(`${id}-${field}`), { shown: () => live, since: mark });
   }
 
   // Each refusal says what to fix where it is fixed; nothing typed is ever echoed back.
@@ -80,6 +81,7 @@
     event.preventDefault();
     if (busy || !ready || !$commandsReady) return;
     busy = true;
+    mark = focusMark();
     passwordError = codeError = error = '';
     let sent = false;
     try {
