@@ -875,10 +875,10 @@ export async function readRunDiagnostics(call, teamId, runId) {
     distinct(item.diagnostics.map((entry) => `${entry.operation_id}:${entry.attempt}`))).diagnostics;
 }
 
-// The confirmation card of a recorded Routine (ADR-0101, amended 2026-10-15), mirroring Team's
-// `routine_proposal.canonical_proposal`: the recording agent's description, which states the schedule and the output, and every
-// step with its effect, every literal complete and escaped, every source and selector described completely. Nothing in
-// it is paged or cut.
+// The confirmation card of a recorded Routine (ADR-0101, amended 2026-10-16), mirroring Team's
+// `routine_proposal.canonical_proposal`: the recording agent's description of the work alone; Team's own schedule,
+// zone and where it came from, and output, which Admin shows in its fixed words; and every step with its effect, every
+// literal complete and escaped, every source and selector described completely. Nothing in it is paged or cut.
 const INPUT_ORIGINS = ['request', 'assistant', 'clock', 'step', 'selector'];
 const CARD_INPUT_KEYS = ['member', 'origin', 'value', 'step', 'pointer', 'where', 'item'];
 
