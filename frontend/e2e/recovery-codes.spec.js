@@ -4,6 +4,7 @@ import { expect, test } from '@playwright/test';
 
 import { accessibilityViolations } from './axe.js';
 import { routeRead, routeScenario, sessionCalls } from './scenarioRoutes.js';
+import { authenticatedLocalSession } from './scenarios.js';
 import { recoveryCodeSet } from './securityScenarios.js';
 
 // Recovery codes (ADR-0051) against the built Admin with scenario fixtures (ADR-0087): shown once at enrollment, a sign-in
@@ -180,4 +181,79 @@ test('Security stays open while new recovery codes are generated and then shows 
   await expect(dialog).toContainText('10 of 10');
   await page.keyboard.press('Escape');
   await expect(dialog).toBeHidden();
+});
+
+test('a confirmation closed while its passkey was asked for never replaces the recovery codes', async ({ page }) => {
+  // The browser's passkey prompt stays open until the test answers it with a well-formed assertion.
+  await page.addInitScript(() => {
+    navigator.credentials.get = () => new Promise((resolve) => {
+      window.answerPasskey = () => {
+        const bytes = (text) => new TextEncoder().encode(text).buffer;
+        const response = Object.create(AuthenticatorAssertionResponse.prototype);
+        Object.defineProperties(response, {
+          authenticatorData: { value: bytes('authenticator-data') },
+          clientDataJSON: { value: bytes('{}') },
+          signature: { value: bytes('signature') },
+          userHandle: { value: null },
+        });
+        const credential = Object.create(PublicKeyCredential.prototype);
+        Object.defineProperties(credential, {
+          id: { value: 'Y3JlZA' },
+          rawId: { value: bytes('cred') },
+          type: { value: 'public-key' },
+          authenticatorAttachment: { value: null },
+          response: { value: response },
+          getClientExtensionResults: { value: () => ({}) },
+        });
+        resolve(credential);
+      };
+    });
+  });
+  await routeScenario(page, 'recovery-codes');
+  // This address has a passkey, and the first confirmation offers it beside the code.
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(authenticatedLocalSession({ authentication_method: 'totp' })),
+  }));
+  let offered = false;
+  await routeRead(page, 'recovery_codes.confirmation', () => {
+    if (offered) return undefined;
+    offered = true;
+    return {
+      status: 202,
+      json: {
+        methods: ['totp', 'passkey'],
+        passkey_options: { challenge: 'Y2hhbGxlbmdl', allowCredentials: [], rpId: 'localhost', timeout: 180000, userVerification: 'required' },
+      },
+    };
+  });
+  await page.goto('/chat/');
+  await page.getByRole('button', { name: 'Supervisor' }).click();
+  await page.getByRole('menuitem', { name: 'Security' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Sign-in security' });
+  await dialog.getByRole('button', { name: 'Generate new codes' }).click();
+  await dialog.getByRole('group', { name: 'Confirm with' }).getByRole('radio', { name: 'Passkey' }).check();
+  await dialog.getByLabel('Supervisor password').fill(PASSWORD);
+  await dialog.getByRole('button', { name: 'Generate', exact: true }).click();
+  await expect.poll(() => page.evaluate(() => typeof window.answerPasskey)).toBe('function');
+  // Nothing is replaced while the passkey is asked for, so Security closes; the passkey answered afterwards is dropped.
+  await dialog.getByRole('button', { name: 'Close' }).click();
+  await expect(dialog).toBeHidden();
+  await page.evaluate(() => window.answerPasskey());
+
+  // The session socket delivers in order, so a replacement the closed confirmation sent would precede this one.
+  await page.getByRole('button', { name: 'Supervisor' }).click();
+  await page.getByRole('menuitem', { name: 'Security' }).click();
+  await dialog.getByRole('button', { name: 'Generate new codes' }).click();
+  await dialog.getByLabel('Supervisor password').fill(PASSWORD);
+  await dialog.getByLabel('Six-digit code').fill('123456');
+  await dialog.getByRole('button', { name: 'Generate', exact: true }).click();
+  await expect(page.getByRole('list', { name: 'Recovery codes' }).getByRole('listitem')).toHaveText(recoveryCodeSet(1));
+  const sent = (await sessionCalls(page)).filter((call) => call.method.startsWith('recovery_codes.'))
+    .map((call) => [call.method, call.params.body]);
+  expect(sent).toEqual([
+    ['recovery_codes.confirmation', { password: PASSWORD }],
+    ['recovery_codes.confirmation', { password: PASSWORD }],
+    ['recovery_codes.replace', { code: '123456' }],
+  ]);
 });
