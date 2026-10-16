@@ -73,6 +73,9 @@ test('a replacement Team has not answered says the new key is kept and stays in 
   await expect(dialog.getByRole('alert')).toContainText(copy.rotatePending);
   // The refusal gives the password field the request disabled its focus back.
   await expect(dialog.getByLabel(copy.password)).toBeFocused();
+  // Unlike a Routine deletion, a refused replacement keeps what was typed for the next try.
+  await expect(dialog.getByLabel(copy.password)).toHaveValue(PASSWORD);
+  await expect(dialog.getByLabel(copy.code)).toHaveValue('123456');
   await expect(dialog.getByRole('button', { name: copy.rotate, exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: copy.cancel }).click();
   await expect(dialog.getByRole('region', { name: copy.keyLabel }).getByRole('status')).toHaveCount(0);
