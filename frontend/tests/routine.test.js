@@ -78,7 +78,7 @@ import {
 import { resultTable } from '../src/lib/routines/reading.js';
 import { fill } from '../src/lib/i18n/fill.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
-import { diagnostic, httpFailure, noticeRow, planSummary } from '../e2e/routineScenarios.js';
+import { diagnostic, httpFailure, noticeRow, planSummary, routineView } from '../e2e/routineScenarios.js';
 
 // Each interface language's own catalog of this copy.
 const routineMessages = Object.fromEntries(Object.entries(messages).map(([code, catalog]) => [code, catalog.routine]));
@@ -403,19 +403,14 @@ const PLAN = [
 const DIGEST = `sha256:${'d'.repeat(64)}`;
 // The summary every list view and notice carries instead of the steps.
 const SUMMARY = Object.freeze(planSummary([{ assistant: 'shimpz-cloudflare', action: 'list-zones' }]));
-const ROUTINE = {
+const ROUTINE = routineView({
   routine_id: 'a'.repeat(32),
   name: 'DNS semanal',
   plan: SUMMARY,
   output: { mode: 'show', step: 1 },
   schedule: WEEKLY,
-  timezone: 'America/Sao_Paulo',
-  timezone_source: 'browser',
   next_run_at: '2026-10-05T12:00:00Z',
-  needs_reconfirm: false,
-  deleting: false,
-  state: 'active',
-};
+});
 const LEASED = {
   run_id: 'b'.repeat(32),
   routine_id: ROUTINE.routine_id,
@@ -655,12 +650,13 @@ const RUN_ENTRY = noticeRow('b'.repeat(32), { routine_id: 'a'.repeat(32), name: 
   usage: REPLAY_USAGE,
 });
 // A two-step plan's summary, and a 120-step one whose middle Action repeats.
-const TWO = Object.freeze({ ...SUMMARY, steps: 2, actions: [['shimpz-cloudflare', 'list-zones', 1], ['shimpz-cloudflare', 'list-dns-records', 1]] });
-const LONG = Object.freeze({
-  ...SUMMARY,
-  steps: 120,
-  actions: [['shimpz-cloudflare', 'list-zones', 1], ['shimpz-cloudflare', 'list-dns-records', 118], ['shimpz-cloudflare', 'purge-cache', 1]],
-});
+const cloudflare = (action) => ({ assistant: 'shimpz-cloudflare', action });
+const TWO = Object.freeze(planSummary([cloudflare('list-zones'), cloudflare('list-dns-records')]));
+const LONG = Object.freeze(planSummary([
+  cloudflare('list-zones'),
+  ...Array.from({ length: 118 }, () => cloudflare('list-dns-records')),
+  cloudflare('purge-cache'),
+]));
 // A run's shown result: Team's bounded projection of the zones it listed, one cut, and a value Team redacted.
 const SHOWN_OUTPUT = Object.freeze({
   step: 1,

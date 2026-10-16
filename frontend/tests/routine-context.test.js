@@ -12,26 +12,15 @@ import {
   showTeamRoutines,
 } from '../src/lib/routines/context.js';
 import { RETRY_FIRST_MS } from '../src/lib/session/synced.js';
+import { routineView } from '../e2e/routineScenarios.js';
 
-const ROUTINE = {
+const ROUTINE = routineView({
   routine_id: 'a'.repeat(32),
   name: 'Daily DNS zones',
-  plan: {
-    revision: 1,
-    plan_digest: `sha256:${'d'.repeat(64)}`,
-    steps: 1,
-    actions: [['shimpz-cloudflare', 'list-zones', 1]],
-    more: 0,
-  },
   output: { mode: 'show', step: 1 },
   schedule: { kind: 'weekly', weekday: 0, time: '09:00' },
-  timezone: 'America/Sao_Paulo',
-  timezone_source: 'browser',
   next_run_at: '2026-10-05T12:00:00Z',
-  needs_reconfirm: false,
-  deleting: false,
-  state: 'active',
-};
+}, [{ assistant: 'shimpz-cloudflare', action: 'list-zones' }]);
 const OTHER = { ...ROUTINE, routine_id: 'c'.repeat(32), name: 'Weekly certificates' };
 const RUN = {
   run_id: 'b'.repeat(32),
