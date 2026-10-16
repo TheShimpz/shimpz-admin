@@ -366,6 +366,46 @@ test("an uninstall's Install takes the focus once its staged build's page arrive
   await expect(install).toBeFocused();
 });
 
+test("an uninstall's Install hand-off never focuses another Assistant the browser went back to", async ({ page }) => {
+  let installed = true;
+  let release = () => {};
+  let hold = false;
+  await routePage(page, {
+    published: [publicAssistant({ assistant_id: 'shimpz-github', name: 'Shimpz GitHub' })],
+    inventory: () => (installed
+      ? [{ assistant: 'shimpz-cloudflare', assistant_version: '0.5.2', status: 'running', provenance: 'local' }]
+      : []),
+    detailsGate: () => (hold ? new Promise((resolve) => { release = resolve; }) : undefined),
+  });
+  await routeRead(page, 'assistants.uninstall', () => {
+    installed = false;
+    hold = true;
+    return { status: 200, json: { assistant: 'shimpz-cloudflare', uninstalled: true } };
+  });
+  // The browser's history holds another Assistant's page, the catalog, then this one, reached through the catalog.
+  await page.goto('/assistants/shimpz-github?team=marketing');
+  const sheet = page.getByRole('article');
+  const other = sheet.getByRole('button', { name: 'Install', exact: true });
+  await expect(other).toBeEnabled();
+  await sheet.getByRole('link', { name: messages.en.assistantPage.back }).click();
+  await page.getByRole('link', { name: /^Cloudflare/ }).click();
+  await expect(page).toHaveURL(/\/assistants\/shimpz-cloudflare\?/);
+  await sheet.getByRole('button', { name: 'Uninstall', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Uninstall Assistant' }).click();
+  await expect(page.getByText('Assistant uninstalled', { exact: true })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Install', exact: true })).toBeDisabled();
+  // Going back two pages from the browser's history is nobody's move on the page, and the page is the same component.
+  await page.evaluate(() => history.go(-2));
+  await expect(page).toHaveURL(/\/assistants\/shimpz-github\?/);
+  await expect(other).toBeEnabled();
+  const settle = () => page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+  await settle();
+  await expect(other).not.toBeFocused();
+  release();
+  await settle();
+  await expect(other).not.toBeFocused();
+});
+
 test("an uninstall's Install gets no focus once the person pressed elsewhere while its staged build's page was read", async ({ page }) => {
   let installed = true;
   let release = () => {};
