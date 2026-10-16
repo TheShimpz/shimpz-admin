@@ -13,6 +13,7 @@ from protocol.socket.v1 import frames as socket_frames
 
 from protocol.http.v1 import challenge as team_challenge
 from protocol.http.v1 import payload as team_contract
+from protocol.http.v1 import routine as team_routine
 from protocol.http.v1 import turn as turn_contract
 
 CHAT_PROTOCOL = ROOT / "frontend" / "src" / "lib" / "chat" / "protocol.js"
@@ -121,6 +122,26 @@ def _integer(source: str, expression: str, depth: int = 0) -> int:
         else:
             raise AssertionError(f"{expression} is not a literal browser bound")
     return product
+
+
+class FrontendUnsafeTextParityTests(unittest.TestCase):
+    """The browser's sets of characters Team refuses in text are Team's own, so a drift fails here."""
+
+    def test_the_browser_plan_unsafe_set_is_the_team_pattern_byte_for_byte(self) -> None:
+        source = (LIB / "routines" / "protocol.js").read_text(encoding="utf-8")
+        self.assertEqual(_definitions(source, "PLAN_UNSAFE_RE"), [f"/{team_routine.PLAN_UNSAFE_RE.pattern}/u"])
+
+    def test_the_browser_reply_control_set_refuses_exactly_the_team_characters(self) -> None:
+        found = _definitions(CHAT_PROTOCOL.read_text(encoding="utf-8"), "CHAT_TEXT_CONTROL_RE")
+        self.assertEqual(len(found), 1)
+        literal = re.fullmatch(r"/(\[[^/]+\])/", found[0])
+        self.assertIsNotNone(literal)
+        browser = re.compile(literal[1])
+        characters = [chr(code) for code in range(0x110000)]
+        self.assertEqual(
+            [item for item in characters if browser.fullmatch(item)],
+            [item for item in characters if turn_contract.REPLY_CONTROL_RE.fullmatch(item)],
+        )
 
 
 class FrontendTurnBoundParityTests(unittest.TestCase):

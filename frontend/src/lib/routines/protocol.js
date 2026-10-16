@@ -115,7 +115,7 @@ const MAX_SUMMARY_RUNS = 16;
 const POINTER_RE = /^(?:\/(?:[^/~]|~[01])*)*$/;
 // Exactly Team's unsafe set (`routine.PLAN_UNSAFE_RE`): controls, bidi and zero-width formatting, line and paragraph
 // separators, the BOM, and, in this Unicode-mode class, a lone surrogate. No text Team projects carries one unescaped.
-const PLAN_UNSAFE_RE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ud800-\udfff\ufeff]/u;
+export const PLAN_UNSAFE_RE = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ud800-\udfff\ufeff]/u;
 const INPUT_KEYS = {
   literal: ['member', 'source', 'value'],
   run_clock: ['member', 'source', 'value'],

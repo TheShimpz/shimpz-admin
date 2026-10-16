@@ -33,6 +33,7 @@ import {
   parseRoutineView,
   parseRunView,
   pauseRoutine,
+  PLAN_UNSAFE_RE,
   QUESTION_CODES,
   questionTarget,
   readPlanSteps,
@@ -1430,7 +1431,7 @@ test('a plan reads in words: ids, result paths, and literal previews', () => {
   // A paired surrogate is one safe character and stays as it is.
   assert.equal(literalWords('"\\ud83d\\ude00"'), '\u{1F600}');
   for (const preview of ['"a\\u202eb"', '"\\u2066x\\u2069"', '"\\u0000"', '"\\ud800"']) {
-    assert.doesNotMatch(literalWords(preview), /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ud800-\udfff\ufeff]/u, preview);
+    assert.doesNotMatch(literalWords(preview), PLAN_UNSAFE_RE, preview);
   }
   assert.equal(inputWords({ member: 'x', source: 'literal', value: '"a\\u202eb"' }, routineMessages.en.plan), 'a\\u202eb');
 });
