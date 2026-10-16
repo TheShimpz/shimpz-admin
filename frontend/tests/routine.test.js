@@ -77,7 +77,7 @@ import {
 import { resultTable } from '../src/lib/routines/reading.js';
 import { fill } from '../src/lib/i18n/fill.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
-import { noticeRow } from '../e2e/routineScenarios.js';
+import { diagnostic, httpFailure, noticeRow, planSummary } from '../e2e/routineScenarios.js';
 
 // Each interface language's own catalog of this copy.
 const routineMessages = Object.fromEntries(Object.entries(messages).map(([code, catalog]) => [code, catalog.routine]));
@@ -401,7 +401,7 @@ const PLAN = [
   ];
 const DIGEST = `sha256:${'d'.repeat(64)}`;
 // The summary every list view and notice carries instead of the steps.
-const SUMMARY = Object.freeze({ revision: 1, plan_digest: DIGEST, steps: 1, actions: [['shimpz-cloudflare', 'list-zones', 1]], more: 0 });
+const SUMMARY = Object.freeze(planSummary([{ assistant: 'shimpz-cloudflare', action: 'list-zones' }]));
 const ROUTINE = {
   routine_id: 'a'.repeat(32),
   name: 'DNS semanal',
@@ -426,24 +426,17 @@ const LEASED = {
 const FROZEN = { ...LEASED, status: 'frozen', request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'list-zones' };
 const HELD = { ...LEASED, status: 'held' };
 // One recorded handled failure of a held step, in Team's sanitized diagnostic view (ADR-0092 section 8).
-const ATTEMPT_FAILURE = Object.freeze({
-  operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
-  attempt: 1,
-  assistant_id: 'shimpz-cloudflare',
+const ATTEMPT_FAILURE = Object.freeze(diagnostic({
   action: 'list-zones',
   position: 1,
   recorded_at: '2026-10-05T12:01:05Z',
-  failure: Object.freeze({
-    error_type: 'httpx.HTTPStatusError',
+  failure: Object.freeze(httpFailure({
     message: "Client error '402 Payment Required'",
-    provider: 'api.cloudflare.com',
     http_status: 402,
     response_excerpt: '{"success":false}',
     redacted: false,
-    truncated: false,
-  }),
-  condition: null,
-});
+  })),
+}));
 
 const INCIDENT = {
   run_id: 'b'.repeat(32),
@@ -1351,24 +1344,14 @@ test('a recorded failure is explained by its likely cause and never guessed from
 });
 
 // Team's diagnostics view (ADR-0092 section 8), as its golden vectors state it.
-const ATTEMPT = Object.freeze({
-  operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
-  attempt: 1,
-  assistant_id: 'shimpz-cloudflare',
-  action: 'replace-dns-record',
-  position: 2,
+const ATTEMPT = Object.freeze(diagnostic({
   recorded_at: '2026-10-05T12:00:03Z',
-  failure: {
-    error_type: 'httpx.HTTPStatusError',
+  failure: httpFailure({
     message: "Client error '404 Not Found' for url 'https://api.cloudflare.com/client/v4/zones/[REDACTED]'",
-    provider: 'api.cloudflare.com',
     http_status: 404,
     response_excerpt: '{"success":false,"errors":[{"code":7003}]}',
-    redacted: true,
-    truncated: false,
-  },
-  condition: null,
-});
+  }),
+}));
 const RUN_ID = 'b'.repeat(32);
 
 test("a run's execution details admit exactly Team's diagnostics view for that run", async () => {

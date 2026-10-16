@@ -16,7 +16,7 @@ import {
   MAX_VIEW_ROWS,
 } from '../src/lib/chat/history.js';
 import { RETRY_FIRST_MS } from '../src/lib/session/synced.js';
-import { noticeRow } from '../e2e/routineScenarios.js';
+import { noticeRow, planSummary } from '../e2e/routineScenarios.js';
 
 const EPOCH = 'a'.repeat(32);
 const AT = '2026-10-02T21:15:00Z';
@@ -27,7 +27,7 @@ function message(index) {
 }
 
 function run(index, routine = 'c'.repeat(32)) {
-  const plan = { revision: 1, plan_digest: `sha256:${'d'.repeat(64)}`, steps: 1, actions: [['shimpz-cloudflare', 'list-zones', 1]], more: 0 };
+  const plan = planSummary([{ assistant: 'shimpz-cloudflare', action: 'list-zones' }]);
   return noticeRow(String(index).padStart(32, '0'), { routine_id: routine, name: 'Daily zones' }, 'done', { plan, output: null }, {
     at: AT,
     usage: { duration_ms: 812 },

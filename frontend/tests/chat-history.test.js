@@ -13,7 +13,7 @@ import {
   routineRuns,
 } from '../src/lib/chat/history.js';
 import { LocalApiError } from '../src/lib/api.js';
-import { noticeRow } from '../e2e/routineScenarios.js';
+import { noticeRow, planSummary } from '../e2e/routineScenarios.js';
 import { response } from './socketStub.js';
 
 const TURN_A = 'a'.repeat(32);
@@ -384,7 +384,7 @@ test('a reloaded user message keeps the references of the files it carried, and 
 });
 
 function runRow(noticeId, routineId) {
-  const plan = { revision: 1, plan_digest: `sha256:${'d'.repeat(64)}`, steps: 1, actions: [['shimpz-cloudflare', 'list-zones', 1]], more: 0 };
+  const plan = planSummary([{ assistant: 'shimpz-cloudflare', action: 'list-zones' }]);
   return noticeRow(noticeId, { routine_id: routineId, name: 'Daily zones' }, 'done', { plan, output: null }, {
     at: AT,
     usage: { duration_ms: 812 },
