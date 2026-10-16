@@ -405,10 +405,13 @@ test("a Routine's creation keeps what its recording spent: its model usage and i
   assert.deepEqual(entry.receipt, CREATION.steps.map((step) => ({ ...step, origin: 'team', segment: 0 })));
   // A recording whose turns reported no model usage keeps none; its steps stay.
   assert.equal((await load({ ...created({ steps: [] }), usage: null })).entries[0].usage, null);
-  const step = CREATION.steps[1];
+  // One step, first in its receipt, so each case below is refused for its own change alone.
+  const step = { ...CREATION.steps[1], seq: 1 };
+  assert.equal((await load(created({ steps: [step] }))).entries[0].receipt.length, 1);
   for (const [detail, usage] of [
     [{}, CREATION_USAGE],
     [{ steps: [{ ...step, state: 'started', elapsed_ms: undefined }] }, CREATION_USAGE],
+    [{ steps: [step] }, { duration_ms: 4120 }],
     [{ steps: [{ ...step, seq: 2 }] }, CREATION_USAGE],
     [{ steps: [{ ...step, phase: 'admin-preparation' }] }, CREATION_USAGE],
     [{ steps: [{ ...step, origin: 'admin' }] }, CREATION_USAGE],
