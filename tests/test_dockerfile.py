@@ -116,7 +116,12 @@ class StaticDockerfileDeliveryTests(unittest.TestCase):
         runtime = dockerfile.split(" AS runtime\n", 1)[1]
         copied = set(re.findall(r"\bbackend(?:/[a-z][a-z0-9_]*)+\.py\b", re.sub(r"\\\n\s*", " ", runtime)))
         expected = {path.relative_to(ROOT).as_posix() for path in (ROOT / "backend").rglob("*.py")}
-        expected.remove("backend/protocol/http/v1/verify.py")
+        # The mirror's reference validator and the modules only it imports stay out of the image.
+        expected -= {
+            "backend/protocol/http/v1/phrase.py",
+            "backend/protocol/http/v1/routine_context.py",
+            "backend/protocol/http/v1/verify.py",
+        }
         # The blocklist generator is a maintainer tool; the image carries only the list it writes.
         expected.remove("backend/signin/blocklist/generate.py")
 
