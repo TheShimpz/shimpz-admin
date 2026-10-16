@@ -6,6 +6,7 @@
   import { page } from '$app/state';
   import { getContext, untrack } from 'svelte';
   import { ActionLink, AssistantIcon, Button, Disclosure, Notice, Skeleton, TextLink } from '@shimpz/frontend';
+  import { focusMark, regainFocus } from '#lib/shell/focus.js';
   import { showAdminNotice } from '#lib/shell/notice.js';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import AssistantActionDialog from '#lib/assistants/ActionDialog.svelte';
@@ -322,9 +323,38 @@
       : fallback;
   }
 
+  // The page's Install or Uninstall, which opened the dialog: a change that succeeds closes the dialog while the request
+  // still disables it, and swaps it for the other, so the dialog cannot give it the focus back. The one that replaced
+  // it takes the focus once it is enabled (an Install waits for its staged build's page), for the same Team and
+  // Assistant, unless the person moved the focus or pressed elsewhere since the change began (`focusMark`).
+  let cta = $state();
+  let ctaDisabled = $derived(
+    busy ||
+      !$commandsReady ||
+      (target.mode !== 'installed' && (refused || (target.mode === 'local' && detailsPhase === 'loading'))),
+  );
+  let ctaFocus = $state(null);
+
+  function giveCtaFocus(frozen, since) {
+    ctaFocus = { teamId: frozen.team.id, assistantId: frozen.assistantId, since };
+  }
+
+  $effect(() => {
+    if (!ctaFocus) return;
+    if (ctaFocus.teamId !== activeTeam?.id || ctaFocus.assistantId !== assistantId) {
+      ctaFocus = null;
+      return;
+    }
+    if (!cta || ctaDisabled) return;
+    const { since } = ctaFocus;
+    ctaFocus = null;
+    void regainFocus(() => cta, { since });
+  });
+
   async function confirmInstall() {
     const frozen = dialogTarget;
     if (busy || !frozen || dialogAction !== 'install' || !['install', 'error'].includes(dialogMode)) return;
+    const since = focusMark();
     busy = true;
     dialogError = '';
     try {
@@ -337,6 +367,7 @@
       await installAssistant(frozen.team.id, frozen.assistantId, frozen.publication.source_digest);
       await refreshInventory(frozen.team);
       dialogOpen = false;
+      giveCtaFocus(frozen, since);
       showAdminNotice({
         tone: 'success',
         label: storeCopy.assistantInstalledLabel,
@@ -354,6 +385,7 @@
   async function confirmUninstall() {
     const frozen = dialogTarget;
     if (busy || !frozen || dialogAction !== 'uninstall') return;
+    const since = focusMark();
     busy = true;
     dialogError = '';
     try {
@@ -370,6 +402,7 @@
         refreshed = await refreshInventory(frozen.team);
       }
       dialogOpen = false;
+      giveCtaFocus(frozen, since);
       showAdminNotice({
         tone: refreshed ? 'success' : 'info',
         label: refreshed ? storeCopy.assistantUninstalledLabel : storeCopy.assistantUninstallRefreshLabel,
@@ -410,6 +443,7 @@
     const frozen = localDialogTarget;
     const snapshot = localSnapshot;
     if (busy || !frozen || !snapshot) return;
+    const since = focusMark();
     busy = true;
     installingImage = snapshot.image_id;
     localDialogError = '';
@@ -422,6 +456,7 @@
       const result = await installLocalAssistant(frozen.team.id, snapshot.image_id);
       await refreshInventory(frozen.team);
       localDialogOpen = false;
+      giveCtaFocus(frozen, since);
       showAdminNotice({
         tone: 'success',
         label: storeCopy.localInstalledLabel,
@@ -507,14 +542,15 @@
         <div class="cta">
           <span class="target"><span class="team-label">{pageCopy.team}</span><span class="team-name">{activeTeam.name}</span></span>
           {#if target.mode === 'installed'}
-            <Button variant="danger" size="lg" disabled={busy || !$commandsReady} onclick={beginUninstall}>
+            <Button variant="danger" size="lg" bind:element={cta} disabled={ctaDisabled} onclick={beginUninstall}>
               {pageCopy.uninstall}<svg class="cta-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.5h5.8l.6-8.5" /></svg>
             </Button>
           {:else}
             <Button
               variant="primary"
               size="lg"
-              disabled={busy || refused || !$commandsReady || (target.mode === 'local' && detailsPhase === 'loading')}
+              bind:element={cta}
+              disabled={ctaDisabled}
               aria-busy={Boolean(installingImage)}
               onclick={target.mode === 'local' ? beginLocalInstall : beginInstall}
             >

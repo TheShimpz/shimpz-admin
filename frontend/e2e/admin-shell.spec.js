@@ -1133,14 +1133,15 @@ test('installs an exact unpublished Local Assistant snapshot into the selected T
   await expect(page.getByText('Local Assistant installed', { exact: true })).toBeVisible();
   await expect(page.getByText('whatsapp is ready in Marketing', { exact: false })).toBeVisible();
 
-  // Installed, the page shows the exact binding and offers its removal.
+  // Installed, the page shows the exact binding and offers its removal, which takes the focus Install held.
   const uninstall = sheet.getByRole('button', { name: 'Uninstall', exact: true });
+  await expect(uninstall).toBeFocused();
   await press(uninstall, testInfo);
   const uninstallDialog = page.getByRole('dialog', { name: 'Uninstall WhatsApp Automation?' });
   await expect(uninstallDialog).toBeVisible();
   await uninstallDialog.getByRole('button', { name: 'Uninstall Assistant' }).click();
   await expect(page.getByText('Assistant uninstalled', { exact: true })).toBeVisible();
-  await expect(sheet.getByRole('button', { name: 'Install', exact: true })).toBeVisible();
+  await expect(install).toBeFocused();
 });
 
 test('removes an installed publication before its staged build is installed', async ({ page }, testInfo) => {

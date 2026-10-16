@@ -309,6 +309,63 @@ test('reports an install Team refused at its Assistant limit in the interface la
   await expect(page.getByRole('dialog').getByRole('button', { name: copy.store.localInstall, exact: true })).toBeFocused();
 });
 
+test('an install and its uninstall give the focus to the action that replaced the one that opened the dialog @browser-sensitive', async ({ page }) => {
+  let installed = false;
+  await routePage(page, {
+    staged: [],
+    published: [publicAssistant()],
+    inventory: () => (installed
+      ? [{ assistant: 'shimpz-cloudflare', assistant_version: '0.4.5', status: 'running', provenance: 'published' }]
+      : []),
+  });
+  await routeRead(page, 'assistants.install', () => {
+    installed = true;
+    return { status: 200, json: { assistant: 'shimpz-cloudflare', installed: true } };
+  });
+  await routeRead(page, 'assistants.uninstall', () => {
+    installed = false;
+    return { status: 200, json: { assistant: 'shimpz-cloudflare', uninstalled: true } };
+  });
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  const sheet = page.getByRole('article');
+  await sheet.getByRole('button', { name: 'Install', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: messages.en.assistantStore.confirm, exact: true }).click();
+  await expect(page.getByText('Assistant installed', { exact: true })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Uninstall', exact: true })).toBeFocused();
+
+  await sheet.getByRole('button', { name: 'Uninstall', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Uninstall Assistant' }).click();
+  await expect(page.getByText('Assistant uninstalled', { exact: true })).toBeVisible();
+  await expect(sheet.getByRole('button', { name: 'Install', exact: true })).toBeFocused();
+});
+
+test("an uninstall's Install takes the focus once its staged build's page arrives", async ({ page }) => {
+  let installed = true;
+  let release = () => {};
+  let hold = false;
+  await routePage(page, {
+    inventory: () => (installed
+      ? [{ assistant: 'shimpz-cloudflare', assistant_version: '0.5.2', status: 'running', provenance: 'local' }]
+      : []),
+    detailsGate: () => (hold ? new Promise((resolve) => { release = resolve; }) : undefined),
+  });
+  await routeRead(page, 'assistants.uninstall', () => {
+    installed = false;
+    hold = true;
+    return { status: 200, json: { assistant: 'shimpz-cloudflare', uninstalled: true } };
+  });
+  await page.goto('/assistants/shimpz-cloudflare?team=marketing');
+  const sheet = page.getByRole('article');
+  await sheet.getByRole('button', { name: 'Uninstall', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Uninstall Assistant' }).click();
+  await expect(page.getByText('Assistant uninstalled', { exact: true })).toBeVisible();
+  const install = sheet.getByRole('button', { name: 'Install', exact: true });
+  await expect(install).toBeDisabled();
+  release();
+  await expect(install).toBeEnabled();
+  await expect(install).toBeFocused();
+});
+
 test('never shows a page read for the previous language once the language changed', async ({ page }) => {
   const portuguese = "Configure o DNS dos seus domínios sem abrir um painel.";
   const portugueseHelp = 'Uma chave que permite a este Assistente alterar seu DNS. Abra Meu perfil > Tokens de API e crie um token.';

@@ -15,10 +15,13 @@ import { tick } from 'svelte';
 //   left the focus on the document. It runs before `recoverFocus`, which acts a frame later and so finds the focus
 //   already placed.
 
-/** Whether focus has fallen to the document: nothing, or the body, holds it. */
+/**
+ * Whether focus has fallen to the document: nothing, or the body, holds it, or what holds it is no longer rendered
+ * (Firefox and WebKit leave it on a control of a dialog that closed until a later render).
+ */
 export function focusLost() {
   const focused = document.activeElement;
-  return !focused || focused === document.body;
+  return !focused || focused === document.body || !focused.checkVisibility();
 }
 
 const scopes = new Set();
