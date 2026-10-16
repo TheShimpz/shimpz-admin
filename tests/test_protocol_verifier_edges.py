@@ -468,6 +468,31 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
                     HTTP / "verify.py", lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation)
                 )
 
+    def test_rejects_drifted_routine_listing_bounds_date_words_and_number_tokens(self) -> None:
+        def unbounded(root: Path) -> None:
+            module = root / "routine_context.py"
+            text = module.read_text(encoding="utf-8")
+            module.write_text(text.replace("sum(sizes) > MAX_LISTING_STEPS_BYTES", "False"), encoding="utf-8")
+            _rehash(root, "routine_context.py")
+
+        with self.assertRaisesRegex(SystemExit, "byte bounds"):
+            _execute(HTTP / "verify.py", unbounded)
+
+        def missing_words(value: dict[str, object]) -> None:
+            value.pop("routine_date_words")
+
+        def drifted_word(value: dict[str, object]) -> None:
+            value["routine_date_words"][0]["text"] = "zone-123456"
+
+        def drifted_tokens(value: dict[str, object]) -> None:
+            value["routine_number_tokens"][0]["tokens"] = []
+
+        for mutate in (missing_words, drifted_word, drifted_tokens):
+            with self.subTest(mutate=mutate.__name__), self.assertRaises(SystemExit):
+                _execute(
+                    HTTP / "verify.py", lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation)
+                )
+
     def test_rejects_supervisor_and_identifier_vector_drift(self) -> None:
         def accepted_supervisor(value: dict[str, object]) -> None:
             value["local_supervisor"]["invalid"] = [value["local_supervisor"]["valid"][0]]
