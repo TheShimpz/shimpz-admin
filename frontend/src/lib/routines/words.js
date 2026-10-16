@@ -196,6 +196,8 @@ export function routineErrorMessage(error, copy) {
     'team-context-changed': copy.changed,
     // The run's request no longer renders against the Team's reviewed Assistant; it stays frozen (ADR-0091).
     'human-request-invalid': copy.changed,
+    // The run's request expired before its answer arrived; it stays frozen and is reviewed again.
+    'human-request-expired': copy.expired,
     'assistant-language-drift': copy.unavailable,
     'routine-limit': copy.full,
     // The Team's Routines' daily Action steps together, or their definitions together, would outgrow its budget.

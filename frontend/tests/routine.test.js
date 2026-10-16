@@ -618,6 +618,8 @@ test('schedules, instants, and failures read naturally in each locale', () => {
     ['routine-workload-unquiesced', 'stillRunning'],
     ['routine-contracts-changed', 'contractsChanged'],
     ['routine-proposal-expired', 'proposalExpired'],
+    // A frozen run's request that expired before its answer arrived is reviewed again.
+    ['human-request-expired', 'expired'],
     ['notices-full', 'unavailable'],
     // A Team's daily step and definition budgets each say their own fact, never the run ceiling's.
     ['routine-step-budget', 'stepBudget'],
