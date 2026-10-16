@@ -5736,11 +5736,10 @@ test.describe('Team Routines', () => {
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     // Each run's own step records: the inputs its attempt was given, as Team's redacted previews.
     const record = (position, action, inputs) => ({
-      position: position, status: 'done', assistant_id: 'shimpz-cloudflare', action, attempt: 1, duration_ms: 812,
-      recorded_at: '2026-10-01T12:00:02Z', inputs,
+      position: position, status: 'done', assistant_id: 'shimpz-cloudflare', action, attempt: 1, duration_ms: 812, inputs,
     });
     const records = {
-      [run]: [record(1, 'list-zones', [{ member: 'page', source: 'literal', value: '1' }, { member: 'token', source: 'literal', value: null }])],
+      [run]: [record(1, 'list-zones', [{ member: 'page', value: '1' }, { member: 'token', value: null }])],
       ['c'.repeat(32)]: [record(1, 'list-zones', [])],
       [other]: [record(1, 'list-zones', []), record(2, 'list-dns-records', null)],
     };
