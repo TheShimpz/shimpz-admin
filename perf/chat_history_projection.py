@@ -114,7 +114,7 @@ def _case(path: Path, name: str, eligible: int, long_text: str | None) -> dict[s
             _rows(eligible, long_text, anchor),
         )
         version = database.execute("PRAGMA user_version").fetchone()[0]
-    if version != store.SCHEMA_VERSION or version != 7:
+    if version != store.SCHEMA_VERSION:
         raise ConfoundedMeasurementError("history schema changed")
     expected = _expected(eligible, long_text)
     first_ms = _timed(anchor, expected)
