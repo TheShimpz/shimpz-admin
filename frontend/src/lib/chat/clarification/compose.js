@@ -2,22 +2,18 @@
 // original request, the question, and the chosen answer; that message remains the only Action authority.
 
 import { exactKeys } from '../../api.js';
-import { codePointLength } from '../../grammar.js';
+import { HIDDEN_RE, isShownText } from '../../grammar.js';
 
 const MAX_QUESTION_CHARS = 240;
 const MAX_LABEL_CHARS = 80;
 const MAX_DESCRIPTION_CHARS = 160;
 export const MAX_COMPOSED_CHARS = 16000;
-const FORBIDDEN_RE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\u2028\u2029]/u;
 
 function closedText(value, maximum, empty = false) {
   return (
     typeof value === 'string' &&
     value.normalize('NFC') === value &&
-    value.trim() === value &&
-    codePointLength(value) <= maximum &&
-    (empty || value.length > 0) &&
-    !FORBIDDEN_RE.test(value)
+    (value === '' ? empty : isShownText(value, maximum, HIDDEN_RE))
   );
 }
 

@@ -13,7 +13,7 @@ import {
 } from '../routines/protocol.js';
 import { isLocale } from '../i18n/locales.js';
 import { ASSISTANT_LIMIT_REACHED, exactKeys, LocalApiError } from '../api.js';
-import { codePointLength, isAscending, isShownText } from '../grammar.js';
+import { codePointLength, HIDDEN_RE, isAscending, isShownText } from '../grammar.js';
 import {
   DIGEST_RE,
   isActionId,
@@ -32,7 +32,6 @@ function invalidResponse() {
 }
 
 export const CHAT_TEXT_CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
-const SECRET_CONTROL_RE = /[\p{C}\p{Zl}\p{Zp}]/u;
 export const MAX_MESSAGE_CHARS = 16_000;
 const MAX_FILES = 8;
 const MAX_ASSISTANTS = 16;
@@ -136,7 +135,7 @@ export function canonicalId(value, message = 'The local chat response is invalid
 }
 
 export function canonicalPublicText(value, maximum) {
-  if (!isShownText(value, maximum, SECRET_CONTROL_RE)) {
+  if (!isShownText(value, maximum, HIDDEN_RE)) {
     throw invalidResponse();
   }
   return value;

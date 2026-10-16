@@ -8,12 +8,11 @@ import { isLocale } from '../i18n/locales.js';
 import { parseRunUsage } from '../chat/usage.js';
 import { exactKeys, jsonObject } from '../api.js';
 import { factorOffer, isFactorProof } from '../auth/factor.js';
-import { codePointLength, ERROR_CODE_RE, isInstant } from '../grammar.js';
+import { codePointLength, ERROR_CODE_RE, HIDDEN_RE, isInstant, isShownText } from '../grammar.js';
 import { DIGEST_RE, isActionId, isAssistantId, isIdentifier, OPAQUE_ID_RE, TEAM_ID_RE } from '../ids.js';
 
 const ENCODER = new TextEncoder();
 
-const FORBIDDEN_RE = /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\u2028\u2029]/u;
 const TIME_RE = /^(?:[01][0-9]|2[0-3]):[0-5][0-9]$/;
 const TIMEZONE_RE = /^[A-Za-z][A-Za-z0-9_+-]{0,31}(?:\/[A-Za-z0-9][A-Za-z0-9_+-]{0,31}){0,2}$/;
 const SCHEDULE_FIELDS = {
@@ -649,10 +648,6 @@ const MAX_NAME_CHARS = 80;
 const MAX_DESCRIPTION_CHARS = 600;
 const PAUSE_REASONS = ['exhausted', 'policy', 'evidence'];
 
-function closedText(value, maximum) {
-  return typeof value === 'string' && value.length > 0 && [...value].length <= maximum && value.trim() === value;
-}
-
 // The summary of the plan a completed run carried out, never an input, and the result it shows, if any.
 function isCompleted(detail) {
   return isSummary(detail.plan) && (detail.output === null || isOutput(detail.output));
@@ -690,7 +685,7 @@ const ROUTINE_OUTCOMES = ['skipped', 'created', 'healthy', 'streak-paused'];
 
 /** Whether a value is a Routine name in Team's closed form: one plain NFC line of at most 80 characters. */
 export function isName(value, maximum = MAX_NAME_CHARS) {
-  return closedText(value, maximum) && !FORBIDDEN_RE.test(value) && value.normalize('NFC') === value;
+  return isShownText(value, maximum, HIDDEN_RE) && value.normalize('NFC') === value;
 }
 
 // A row's usage: every run outcome carries its run's, and the healthy rollup its runs' summed; no other Routine

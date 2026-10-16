@@ -16,14 +16,13 @@ import { parseTaskUsage } from './usage.js';
 import { sessionFamily } from '../session/family.js';
 import { synced } from '../session/synced.js';
 import { ASSISTANT_LIMIT_REACHED, exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
-import { isAscending, isInstant, isShownText } from '../grammar.js';
+import { HIDDEN_RE, isAscending, isInstant, isShownText } from '../grammar.js';
 import {
   MAX_TEAM_NAME_CHARS,
   OPAQUE_ID_RE,
   TEAM_ID_RE,
 } from '../ids.js';
 
-const PUBLIC_TEXT_CONTROL_RE = /[\p{C}\p{Zl}\p{Zp}]/u;
 const ENTRY_ID_RE = /^([0-9a-f]{32}):(user|reply|install|uninstall|guidance|routine|answer)$/;
 const HISTORY_CURSOR_RE = /^(?!A{11}$)[A-Za-z0-9_-]{10}[AEIMQUYcgkosw048]$/;
 const MAX_PAGE_ENTRIES = 64;
@@ -40,7 +39,7 @@ function boundedText(value, maximum, controls, status) {
 }
 
 function publicText(value, maximum, status) {
-  return boundedText(value, maximum, PUBLIC_TEXT_CONTROL_RE, status);
+  return boundedText(value, maximum, HIDDEN_RE, status);
 }
 
 function storedUninstallTarget(value, status) {

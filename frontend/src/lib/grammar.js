@@ -4,6 +4,12 @@
 
 export const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 
+/**
+ * The characters no text shown exactly as a producer wrote it may hold: every Unicode control, format, surrogate,
+ * private-use, and unassigned code point, and the line and paragraph separators, as Team's and Brain's checks refuse.
+ */
+export const HIDDEN_RE = /[\p{C}\p{Zl}\p{Zp}]/u;
+
 /** A stable refusal or error code an Admin or Team answer names. */
 export const ERROR_CODE_RE = /^[a-z][a-z0-9-]{0,63}$/;
 
