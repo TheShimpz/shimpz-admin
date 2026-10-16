@@ -627,6 +627,7 @@ test('schedules, instants, and failures read naturally in each locale', () => {
     ['routine-too-large', 'tooLarge'],
     ['routine-revision-changed', 'routineChanged'],
     ['routine-run-changed', 'stale'],
+    ['routine-run-not-frozen', 'stale'],
     // Team opens no card for a held run whose evidence it cannot verify.
     ['routine-incident-unverifiable', 'unverifiable'],
     // A password Admin could not check ended the run denied, so nothing asks to try again.

@@ -7282,6 +7282,31 @@ test.describe('Team Routines', () => {
     expect(openings).toBe(2);
   });
 
+  test('Review of a run another window already resumed reads the Routines again and the panel keeps the focus', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
+    const run = 'd'.repeat(32);
+    await routeReadyChat(page);
+    let runs = [frozenRun(run, 'human')];
+    let reads = 0;
+    await routeRead(page, 'routines.list', (params) => {
+      if (params.team_id !== 'marketing') return undefined;
+      reads += 1;
+      return ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents: [] });
+    });
+    // Another window answered the run's request first, so it no longer waits for one.
+    await routeRead(page, 'routines.challenge', () => {
+      runs = [];
+      return ok({ code: 'routine-run-not-frozen' }, 409);
+    });
+    await page.goto('/chat/?team=marketing');
+    const panel = await openRoutinePanel(page);
+    const before = reads;
+    await panel.getByRole('button', { name: 'Review' }).click();
+    await expect.poll(() => reads).toBeGreaterThan(before);
+    await expect(panel.getByRole('button', { name: 'Review' })).toHaveCount(0);
+    await expect(panel.getByRole('tab', { name: 'Summary' })).toBeFocused();
+  });
+
   test("a Routine's creation delivered after the chat opened appears without a reload, and its runs never do", { tag: '@mobile' }, async ({ page }) => {
     await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
     const run = 'd'.repeat(32);

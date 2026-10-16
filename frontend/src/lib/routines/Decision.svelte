@@ -26,9 +26,10 @@
   // Rodar and Excluir; Excluir is the Routine's own confirmed deletion, which `ondelete` opens in the host.
   // `onsettled` hears the outcome words once this decision is answered, and whether the same run was held again and
   // so waits for a fresh decision. A card Team cannot open yet (a held run listed before its incident) keeps Retry here
-  // and `onunavailable` lets the host refresh; one whose evidence Team cannot verify or whose state it cannot read also
-  // offers Excluir, since the host hides its own Delete while a decision is pending. When a card reading leaves focus
-  // nowhere in the host's dialog, focus moves to what the person acts on next; focus they placed there stays.
+  // and `onunavailable` lets the host refresh, as does a frozen run another window already resumed; a card whose
+  // evidence Team cannot verify or whose state it cannot read also offers Excluir, since the host hides its own Delete
+  // while a decision is pending. When a card reading leaves focus nowhere in the host's dialog, focus moves to what the
+  // person acts on next; focus they placed there stays.
   let {
     teamId,
     teamName,
@@ -244,6 +245,8 @@
     } catch (error) {
       result = failed(error);
       challenge = null;
+      // A run another window already resumed waits for nothing here: the host reads its Routines again.
+      if (error?.code === 'routine-run-not-frozen' && mounted) onunavailable();
     } finally {
       working = false;
       // An opened request takes focus itself; anything else leaves it here.

@@ -207,6 +207,8 @@ export function routineErrorMessage(error, copy) {
     // The Routine changed while its steps were read; it is read again, never mixed with the other revision.
     'routine-revision-changed': copy.routineChanged,
     'routine-run-changed': copy.stale,
+    // Another window answered the frozen run's request first, so the run no longer waits for one here.
+    'routine-run-not-frozen': copy.stale,
     'routine-run-not-found': copy.ended,
     'routine-incident-unavailable': copy.ended,
     // Team cannot verify a held run's evidence, so it opens no card for it; its Routine can still be deleted.
