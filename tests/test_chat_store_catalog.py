@@ -161,6 +161,60 @@ class StoreCatalogTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "catalog Actions are invalid"):
             _validate(catalog(129))
 
+    def test_admits_the_store_integration_and_action_bounds(self) -> None:
+        # The Store serves 16 ascending Integrations of 32 scopes, and Actions with 4 Integrations and 8 requests.
+        scopes = [f"scope:{index}/a_b-c.{index}" for index in range(32)]
+        identifiers = [f"integration-{index:02d}" for index in range(16)]
+        integrations = [{"id": item, "provider": item, "scopes": scopes} for item in identifiers]
+        inputs = sorted(kind for kind in store_catalog._HUMAN_REQUEST_KINDS if kind.startswith("input:"))
+        requests = ["approval", *inputs]
+        actions = [
+            {
+                "id": "list-zones",
+                "integrations": identifiers[:4],
+                "human_requests": requests,
+                "effect": "read_only",
+                "description": "List your zones.",
+            }
+        ]
+        value = _assistant(integrations=integrations, actions=actions)
+        (assistant,) = _validate({"version": 1, "locale": "en", "assistants": [value]})
+        self.assertEqual(assistant.integrations, tuple(identifiers))
+        self.assertEqual(len(requests), 8)
+
+    def test_refuses_integrations_and_actions_outside_the_store_bounds(self) -> None:
+        def integration(identifier: str, scopes: list[str]) -> dict[str, object]:
+            return {"id": identifier, "provider": identifier, "scopes": scopes}
+
+        def action(**changes: object) -> list[dict[str, object]]:
+            value = {
+                "id": "list-zones",
+                "integrations": [],
+                "human_requests": [],
+                "effect": "read_only",
+                "description": "List your zones.",
+            }
+            return [{**value, **changes}]
+
+        refused = (
+            ({"integrations": [integration("cloudflare", [])]}, "Integration scopes"),
+            ({"integrations": [integration("cloudflare", ["Zone.Read"])]}, "Integration scopes"),
+            ({"integrations": [integration("cloudflare", ["-zone"])]}, "Integration scopes"),
+            ({"integrations": [integration("cloudflare", ["zone read"])]}, "Integration scopes"),
+            ({"integrations": [integration("github", ["repo"]), integration("cloudflare", ["zone"])]}, "ordering"),
+            (
+                {"integrations": [integration(f"integration-{index:02d}", ["read"]) for index in range(17)]},
+                "Integrations are invalid",
+            ),
+            ({"actions": action(integrations=["a", "b", "c", "d", "e"])}, "string collection"),
+            ({"actions": action(human_requests=["approval", "auth:totp"])}, "Action is invalid"),
+            ({"actions": action(human_requests=["auth:password", "auth:passkey"])}, "Action is invalid"),
+            ({"actions": action(human_requests=sorted(store_catalog._HUMAN_REQUEST_KINDS)[:9])}, "string collection"),
+        )
+        for changes, message in refused:
+            with self.subTest(changes=changes), self.assertRaisesRegex(ValueError, message):
+                _validate({"version": 1, "locale": "en", "assistants": [_assistant(**changes)]})
+
     def test_admits_the_page_copy_at_its_bounds_and_every_link_kind(self) -> None:
         links = {
             "site": "https://example.org/" + "a" * 236,
@@ -288,12 +342,12 @@ class StoreCatalogTests(unittest.TestCase):
             lambda value: value["assistants"][0].update(creators=["@shimpz", "@shimpz"]),
             lambda value: value["assistants"][0].update(integrations={}),
             lambda value: value["assistants"][0].update(
-                integrations=[{"id": "other", "provider": "cloudflare", "scopes": []}]
+                integrations=[{"id": "other", "provider": "cloudflare", "scopes": ["zone.read"]}]
             ),
             lambda value: value["assistants"][0].update(
                 integrations=[
-                    {"id": "cloudflare", "provider": "cloudflare", "scopes": []},
-                    {"id": "cloudflare", "provider": "cloudflare", "scopes": []},
+                    {"id": "cloudflare", "provider": "cloudflare", "scopes": ["zone.read"]},
+                    {"id": "cloudflare", "provider": "cloudflare", "scopes": ["zone.read"]},
                 ]
             ),
             lambda value: value["assistants"][0].update(actions=[{}]),

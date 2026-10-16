@@ -9,6 +9,7 @@ import contextlib
 import hashlib
 import http.client
 import json
+import re
 import threading
 import time
 import unicodedata
@@ -51,6 +52,10 @@ _HUMAN_REQUEST_KINDS = frozenset(
         "auth:passkey",
     }
 )
+# The Store serves at most one approval or authentication request per Action.
+_GATE_KINDS = frozenset({"approval", "auth:password", "auth:totp", "auth:passkey"})
+# The Store's Integration scope grammar: 1 to 32 unique scopes of at most 128 characters.
+INTEGRATION_SCOPE_RE = re.compile(r"[a-z0-9][a-z0-9.:/_-]*")
 _ASSISTANT_FIELDS = frozenset(
     {
         "assistant_id",
@@ -221,10 +226,13 @@ def _integrations(value: object) -> tuple[str, ...]:
         provider = item["provider"]
         if team_contract.canonical_identifier(integration_id) is None or integration_id != provider:
             raise ValueError("catalog Integration identity is invalid")
-        _strings(item["scopes"], 32, 128)
+        scopes = _strings(item["scopes"], 32, 128)
+        if not scopes or any(INTEGRATION_SCOPE_RE.fullmatch(scope) is None for scope in scopes):
+            raise ValueError("catalog Integration scopes are invalid")
         output.append(provider)
-    if len(set(output)) != len(output):
-        raise ValueError("catalog Integrations are duplicated")
+    # The Store serves the Integrations unique, in ascending identifier order.
+    if output != sorted(set(output)):
+        raise ValueError("catalog Integration ordering is invalid")
     return tuple(output)
 
 
@@ -236,12 +244,13 @@ def _actions(value: object) -> tuple[CatalogAction, ...]:
         if not isinstance(item, dict) or set(item) != _ACTION_FIELDS or item["effect"] not in _ACTION_EFFECTS:
             raise ValueError("catalog Action is invalid")
         action_id = item["id"]
-        integrations = _strings(item["integrations"], 16, 64)
-        requests = _strings(item["human_requests"], 11, 25)
+        integrations = _strings(item["integrations"], 4, 64)
+        requests = _strings(item["human_requests"], 8, 25)
         if (
             team_contract.canonical_identifier(action_id) is None
             or any(team_contract.canonical_identifier(integration) is None for integration in integrations)
-            or any(request not in _HUMAN_REQUEST_KINDS for request in requests)
+            or not _HUMAN_REQUEST_KINDS.issuperset(requests)
+            or len(_GATE_KINDS.intersection(requests)) > 1
         ):
             raise ValueError("catalog Action is invalid")
         output.append(CatalogAction(action_id, item["effect"], display_text(item["description"], LINE_CHARS)))
