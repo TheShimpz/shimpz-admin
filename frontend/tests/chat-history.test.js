@@ -422,13 +422,9 @@ test("a Routine's history is read from its own view, newest first, a page at a t
 
 test('a continuous Routine\'s healthy rollups and its missed runs count as its runs, with no run of their own', async () => {
   const routine = '9'.repeat(32);
-  const rollup = (digit, runs) => ({
-    ...runRow(digit.repeat(32), routine),
-    run_id: null,
-    outcome: 'healthy',
-    detail: { runs },
-  });
-  const missed = { ...runRow('c'.repeat(32), routine), run_id: null, usage: null, outcome: 'skipped', detail: { missed: 2 } };
+  const daily = { routine_id: routine, name: 'Daily zones' };
+  const rollup = (digit, runs) => noticeRow(digit.repeat(32), daily, 'healthy', { runs }, { at: AT });
+  const missed = noticeRow('c'.repeat(32), daily, 'skipped', { missed: 2 }, { at: AT });
   const page = { entries: [missed, rollup('1', 12), runRow('2'.repeat(32), routine), rollup('3', 4)], before: null };
   const found = await routineRuns(async () => response(200, page), 'marketing', routine);
   // The rollups, the run, and the runs it missed are its history, found newest first.

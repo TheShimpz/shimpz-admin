@@ -5361,14 +5361,7 @@ test.describe('Team Routines', () => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await routeReadyChat(page);
     const run = 'd'.repeat(32);
-    let runs = [{
-      run_id: run,
-      routine_id: ROUTINE_VIEW.routine_id,
-      status: 'frozen',
-      request_kind: 'human',
-      assistant_id: 'shimpz-cloudflare',
-      action: 'replace-dns-record',
-    }];
+    let runs = [frozenRun(run, 'human')];
     let incidents = [];
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
     await routeRead(page, 'routines.challenge', () => ok({
@@ -5387,15 +5380,8 @@ test.describe('Team Routines', () => {
     // Approving resumes the run, which Team then holds at a step whose effect is unknown.
     await routeRead(page, 'routines.human', (params) => {
       if (params.run_id !== run) return undefined;
-      runs = [{ ...runs[0], status: 'held', request_kind: null, assistant_id: null, action: null }];
-      incidents = [{
-        run_id: run,
-        routine_id: ROUTINE_VIEW.routine_id,
-        assistant_id: 'shimpz-cloudflare',
-        action: 'replace-dns-record',
-        position: 2,
-        steps: 3,
-      }];
+      runs = [heldRun(run)];
+      incidents = [heldIncident(run)];
       return ok({ team_id: 'marketing', run_id: run, status: 'held' });
     });
     await routeRead(page, 'routines.card', () => ok(recoveryCard(run, { tag: 'e'.repeat(64) })));
@@ -5418,7 +5404,7 @@ test.describe('Team Routines', () => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     await routeReadyChat(page);
     const run = 'd'.repeat(32);
-    const runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', request_kind: null, assistant_id: null, action: null }];
+    const runs = [heldRun(run)];
     let incidents = [];
     const openings = [];
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents }) : undefined));
@@ -5426,7 +5412,7 @@ test.describe('Team Routines', () => {
       openings.push(params.run_id);
       // Team has not indexed the incident at the first opening; it is listed from then on.
       if (openings.length === 1) {
-        incidents = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }];
+        incidents = [heldIncident(run)];
         return ok({ code: 'routine-incident-unavailable' }, 404);
       }
       return ok(recoveryCard(run, { tag: 'e'.repeat(64) }));
@@ -5652,7 +5638,7 @@ test.describe('Team Routines', () => {
     await page.clock.fastForward(61_000);
 
     // A run is held while nobody watches: the panel opens its decision on its own.
-    runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', request_kind: null, assistant_id: null, action: null }];
+    runs = [heldRun(run)];
     await routineNotice(page);
     await expect.poll(() => cards.length).toBeGreaterThan(0);
     // The run ended on its own as well: the plan the person was reading shows again.
@@ -5668,8 +5654,8 @@ test.describe('Team Routines', () => {
     await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
     await routeReadyChat(page);
     const run = 'd'.repeat(32);
-    let runs = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, status: 'held', request_kind: null, assistant_id: null, action: null }];
-    let incidents = [{ run_id: run, routine_id: ROUTINE_VIEW.routine_id, assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record', position: 2, steps: 3 }];
+    let runs = [heldRun(run)];
+    let incidents = [heldIncident(run)];
     let release;
     const answered = new Promise((resolve) => { release = resolve; });
     const openings = [];
@@ -5681,7 +5667,7 @@ test.describe('Team Routines', () => {
     // Rodar starts a fresh run, which freezes for an approval that the Team lists before the answer itself is
     // delivered.
     await routeRead(page, 'routines.card_answer', async () => {
-      runs = [{ ...runs[0], status: 'frozen', request_kind: 'human', assistant_id: 'shimpz-cloudflare', action: 'replace-dns-record' }];
+      runs = [frozenRun(run, 'human')];
       incidents = [];
       await answered;
       return ok({ team_id: 'marketing', run_id: run });
