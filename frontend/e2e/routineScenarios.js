@@ -202,7 +202,11 @@ const MODEL_USAGE = Object.freeze({
 // The outcomes of a Routine rather than of a run that Admin stores; of them only the healthy rollup sums its runs' usage.
 const ROUTINE_OUTCOMES = ['skipped', 'created', 'healthy', 'streak-paused'];
 
-function row(noticeId, routine, outcome, detail, { at = '2026-10-01T12:00:00Z', version = 1, usage, lost = false } = {}) {
+/**
+ * One Routine notice as Admin stores it: a run's notice names its run and carries its active duration; a Routine's
+ * notice names no run and carries no usage, except the healthy rollup's summed duration.
+ */
+export function noticeRow(noticeId, routine, outcome, detail, { at = '2026-10-01T12:00:00Z', version = 1, usage, lost = false } = {}) {
   const run = !ROUTINE_OUTCOMES.includes(outcome);
   return {
     id: `${noticeId}:routine`,
@@ -234,7 +238,7 @@ const zone = (zoneId, name, paused, status, type) => fields(
   ['type', text(type)],
 );
 // Cloudflare's zone list as Team projects it: its paging as single values, then each zone with its nested account.
-export const SHOWN_ZONES = Object.freeze({
+const SHOWN_ZONES = Object.freeze({
   step: 1,
   state: 'shown',
   value: fields(
@@ -278,20 +282,20 @@ function history([CONTINUOUS, HELD, PAUSED, PAUSED_HELD], now) {
   const yesterday = (offset) => at(offset - 86_400);
   const completed = (plan, output) => ({ plan, output });
   return [
-    row(id('a'), CONTINUOUS, 'created', {}, { at: yesterday(-120) }),
-    row(id('c'), CONTINUOUS, 'done', completed(CONTINUOUS.plan, null), { at: yesterday(-50) }),
-    row(id('d'), CONTINUOUS, 'healthy', { runs: 9 }, { at: yesterday(0), version: 9, usage: { duration_ms: 37_080 } }),
-    row(id('e'), HELD, 'recovered', completed(HELD.plan, SHOWN_RECORDS), { at: yesterday(20), usage: { duration_ms: 9800 } }),
-    row(id('8'), PAUSED, 'done', completed(PAUSED.plan, SHOWN_ZONES), { at: yesterday(40) }),
-    row(id('f'), HELD, 'user-skipped', {}, { at: at(-180) }),
+    noticeRow(id('a'), CONTINUOUS, 'created', {}, { at: yesterday(-120) }),
+    noticeRow(id('c'), CONTINUOUS, 'done', completed(CONTINUOUS.plan, null), { at: yesterday(-50) }),
+    noticeRow(id('d'), CONTINUOUS, 'healthy', { runs: 9 }, { at: yesterday(0), version: 9, usage: { duration_ms: 37_080 } }),
+    noticeRow(id('e'), HELD, 'recovered', completed(HELD.plan, SHOWN_RECORDS), { at: yesterday(20), usage: { duration_ms: 9800 } }),
+    noticeRow(id('8'), PAUSED, 'done', completed(PAUSED.plan, SHOWN_ZONES), { at: yesterday(40) }),
+    noticeRow(id('f'), HELD, 'user-skipped', {}, { at: at(-180) }),
     // A run resumed after a Team restart lost the protection of its secret values, and says so.
-    row(FAILED_RUN, PAUSED, 'failed', { code: 'assistant-rpc-failed' }, {
+    noticeRow(FAILED_RUN, PAUSED, 'failed', { code: 'assistant-rpc-failed' }, {
       at: at(-150), lost: true,
     }),
     // Its consecutive failed runs paused the Routine.
-    row(STREAK_PAUSE, PAUSED, 'streak-paused', { failures: 3 }, { at: at(-140) }),
-    row(HELD_RUN, HELD, 'held', {}, { at: at(-120), version: 2 }),
-    row(PAUSED_RUN, PAUSED_HELD, 'paused', { reason: 'exhausted' }, {
+    noticeRow(STREAK_PAUSE, PAUSED, 'streak-paused', { failures: 3 }, { at: at(-140) }),
+    noticeRow(HELD_RUN, HELD, 'held', {}, { at: at(-120), version: 2 }),
+    noticeRow(PAUSED_RUN, PAUSED_HELD, 'paused', { reason: 'exhausted' }, {
       at: at(-90), version: 3,
     }),
   ];
@@ -551,7 +555,7 @@ export const ROUTINE_QUESTIONS = Object.freeze({
   },
 });
 
-export function cloudflareCard(proposalId, locale = 'en', now = Date.now()) {
+function cloudflareCard(proposalId, locale = 'en', now = Date.now()) {
   return {
     proposal_id: proposalId,
     expires_at: instant(now + CARD_LIFETIME_MS),
@@ -685,7 +689,7 @@ function confirmProposal(state, { proposal_id: proposalId }) {
   state.routines = [...state.routines, routine];
   state.plans = { ...state.plans, [routine.routine_id]: CARD_STEPS };
   const noticeId = `7${proposalId.slice(-8)}`.padStart(32, '0');
-  state.history = [...state.history, row(noticeId, routine, 'created', {}, { at: instant(Date.now()) })];
+  state.history = [...state.history, noticeRow(noticeId, routine, 'created', {}, { at: instant(Date.now()) })];
   answered(state, proposalId, 'created');
   return { status: 200, json: { team_id: 'marketing', proposal_id: proposalId, routine_id: routine.routine_id, status: 'created' } };
 }

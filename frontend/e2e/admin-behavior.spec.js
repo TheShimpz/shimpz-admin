@@ -21,7 +21,7 @@ import {
   nextRead,
   waitForRead,
 } from './scenarioRoutes.js';
-import { planPage, planSummary, ROUTINE_TEXT, routineLifecycleStart, runStepsPage } from './routineScenarios.js';
+import { noticeRow, planPage, planSummary, ROUTINE_TEXT, routineLifecycleStart, runStepsPage } from './routineScenarios.js';
 import {
   authenticatedLocalSession,
   historyView,
@@ -4257,12 +4257,34 @@ test('holds Send while a Brain change is saving so the turn uses the saved selec
 });
 
 
-// A Routine notice's usage and protection as Team writes them (ADR-0101): a run's notice carries its active duration;
-// a Routine's notice carries none, except the healthy rollup's summed duration.
-const ROUTINE_OUTCOMES = ['skipped', 'created', 'healthy', 'streak-paused'];
-function noticeExtras(outcome) {
-  const used = !ROUTINE_OUTCOMES.includes(outcome) || outcome === 'healthy';
-  return { usage: used ? { duration_ms: 4120 } : null, protection_lost: false };
+// When the notices these journeys store were written.
+const NOTICE_AT = '2026-10-01T12:01:07Z';
+
+// One recorded attempt of a Cloudflare call as Team keeps it (ADR-0092 section 8), with `changes` applied.
+function diagnostic(changes) {
+  return {
+    operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
+    attempt: 1,
+    assistant_id: 'shimpz-cloudflare',
+    action: 'replace-dns-record',
+    position: 2,
+    recorded_at: '2026-10-01T12:00:03Z',
+    failure: null,
+    condition: null,
+    ...changes,
+  };
+}
+
+// A Cloudflare HTTP error as Team sanitizes it, with `changes` applied.
+function httpFailure(changes) {
+  return {
+    error_type: 'httpx.HTTPStatusError',
+    provider: 'api.cloudflare.com',
+    response_excerpt: null,
+    redacted: true,
+    truncated: false,
+    ...changes,
+  };
 }
 
 // A held run's card as Team opens it (ADR-0092 section 7, ADR-0101): the call, its recorded failure (a Cloudflare
@@ -4278,25 +4300,11 @@ function recoveryCard(runId, { tag = 'f'.repeat(64), action = 'replace-dns-recor
     position: 2,
     steps: 3,
     evidence: 'recorded',
-    diagnostic: {
-      operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
-      attempt: 1,
-      assistant_id: 'shimpz-cloudflare',
+    diagnostic: diagnostic({
       action,
-      position: 2,
       recorded_at: '2026-10-01T12:01:05Z',
-      failure: {
-        error_type: 'httpx.HTTPStatusError',
-        message: CREDITS_MESSAGE,
-        provider: 'api.cloudflare.com',
-        http_status: 402,
-        response_excerpt: null,
-        redacted: true,
-        truncated: false,
-        ...failure,
-      },
-      condition: null,
-    },
+      failure: httpFailure({ message: CREDITS_MESSAGE, http_status: 402, ...failure }),
+    }),
     tag,
   };
 }
@@ -5136,19 +5144,7 @@ test.describe('Team Routines', () => {
     const failed = 'c'.repeat(32);
     await routeReadyChat(page, {
       history: {
-        entries: [{
-          id: `${failed}:routine`,
-          kind: 'routine-run',
-          notice_id: failed,
-          routine_id: ROUTINE_VIEW.routine_id,
-          name: ROUTINE_VIEW.name,
-          run_id: failed,
-          outcome: 'failed',
-          created_at: '2026-10-01T12:01:07Z',
-          detail: { code: 'assistant-rpc-failed' },
-          version: 1,
-          ...noticeExtras('failed'),
-        }],
+        entries: [noticeRow(failed, ROUTINE_VIEW, 'failed', { code: 'assistant-rpc-failed' }, { at: NOTICE_AT })],
         before: null,
       },
     });
@@ -5648,24 +5644,12 @@ test.describe('Team Routines', () => {
 
   test("a Routine's runs never reach the chat, which shows its creation, and are listed in the Routine's history", async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
-    const entry = (id, outcome, detail, runId = id, createdAt = '2026-10-01T12:01:07Z') => ({
-      id: `${id}:routine`,
-      kind: 'routine-run',
-      notice_id: id,
-      routine_id: ROUTINE_VIEW.routine_id,
-      name: ROUTINE_VIEW.name,
-      run_id: runId,
-      outcome,
-      created_at: createdAt,
-      detail,
-      version: 1,
-      ...noticeExtras(outcome),
-    });
+    const entry = (id, outcome, detail, at = NOTICE_AT) => noticeRow(id, ROUTINE_VIEW, outcome, detail, { at });
     await routeReadyChat(page, {
       history: {
         entries: [
-          entry('a'.repeat(32), 'created', {}, null, '2026-10-01T11:00:00Z'),
-          entry('f'.repeat(32), 'skipped', { missed: 2 }, null, '2026-10-01T11:30:00Z'),
+          entry('a'.repeat(32), 'created', {}, '2026-10-01T11:00:00Z'),
+          entry('f'.repeat(32), 'skipped', { missed: 2 }, '2026-10-01T11:30:00Z'),
           entry('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed' }),
           entry('d'.repeat(32), 'frozen', { request_kind: 'human' }),
           entry('b'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: null }),
@@ -5723,19 +5707,7 @@ test.describe('Team Routines', () => {
       },
       truncated: true,
     };
-    const entry = (id, detail) => ({
-      id: `${id}:routine`,
-      kind: 'routine-run',
-      notice_id: id,
-      routine_id: ROUTINE_VIEW.routine_id,
-      name: ROUTINE_VIEW.name,
-      run_id: id,
-      outcome: 'done',
-      created_at: '2026-10-01T12:01:07Z',
-      detail,
-      version: 1,
-      ...noticeExtras('done'),
-    });
+    const entry = (id, detail) => noticeRow(id, ROUTINE_VIEW, 'done', detail, { at: NOTICE_AT });
     const run = 'b'.repeat(32);
     const other = 'd'.repeat(32);
     const plan = ROUTINE_VIEW.plan;
@@ -5774,24 +5746,15 @@ test.describe('Team Routines', () => {
         {
           team_id: 'marketing',
           run_id: runId,
-          diagnostics: [{
-            operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
-            attempt: 1,
-            assistant_id: 'shimpz-cloudflare',
+          diagnostics: [diagnostic({
             action: 'list-zones',
             position: 1,
-            recorded_at: '2026-10-01T12:00:03Z',
-            failure: {
-              error_type: 'httpx.HTTPStatusError',
+            failure: httpFailure({
               message: "Client error '429 Too Many Requests' <b>escaped</b>",
-              provider: 'api.cloudflare.com',
               http_status: 429,
-              response_excerpt: null,
-              redacted: true,
               truncated: true,
-            },
-            condition: null,
-          }],
+            }),
+          })],
         },
       );
     });
@@ -6012,19 +5975,10 @@ test.describe('Team Routines', () => {
     const status = messages.en.routine.result.status;
     await routeReadyChat(page, {
       history: {
-        entries: [{
-          id: `${run}:routine`,
-          kind: 'routine-run',
-          notice_id: run,
-          routine_id: ROUTINE_VIEW.routine_id,
-          name: ROUTINE_VIEW.name,
-          run_id: run,
-          outcome: 'done',
-          created_at: '2026-10-01T12:01:07Z',
-          detail: { plan, output: { step: 1, state: 'shown', value: { kind: 'text', value: 'ok', cut: false }, truncated: false } },
-          version: 1,
-          ...noticeExtras('done'),
-        }],
+        entries: [noticeRow(run, ROUTINE_VIEW, 'done', {
+          plan,
+          output: { step: 1, state: 'shown', value: { kind: 'text', value: 'ok', cut: false }, truncated: false },
+        }, { at: NOTICE_AT })],
         before: null,
       },
     });
@@ -6154,23 +6108,11 @@ test.describe('Team Routines', () => {
     const name = '[x](https://e.test) ![i](https://e.test/a.png) <img src=x onerror=alert(1)>**b**';
     // Team lists the Routine under a newer name now; each notice keeps the name it was written with.
     const listed = { ...ROUTINE_VIEW, routine_id: 'e'.repeat(32), name: 'Renamed later' };
-    const row = (id, routineId, outcome, detail, runId = id) => ({
-      id: `${id}:routine`,
-      kind: 'routine-run',
-      notice_id: id,
-      routine_id: routineId,
-      name,
-      run_id: runId,
-      outcome,
-      created_at: '2026-10-01T12:01:07Z',
-      detail,
-      version: 1,
-      ...noticeExtras(outcome),
-    });
+    const row = (id, routineId, outcome, detail) => noticeRow(id, { routine_id: routineId, name }, outcome, detail, { at: NOTICE_AT });
     await routeReadyChat(page, {
       history: {
         entries: [
-          row('b'.repeat(32), 'a'.repeat(32), 'created', {}, null),
+          row('b'.repeat(32), 'a'.repeat(32), 'created', {}),
           row('c'.repeat(32), listed.routine_id, 'failed', { code: 'assistant-rpc-failed' }),
           row('d'.repeat(32), 'f'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: null }),
         ],
@@ -6209,24 +6151,12 @@ test.describe('Team Routines', () => {
 
   // A Routine row of the transcript (ADR-0086), for one listed Routine.
   function routineRow(id, outcome, detail, { routine = ROUTINE_VIEW, version = 1 } = {}) {
-    return {
-      id: `${id}:routine`,
-      kind: 'routine-run',
-      notice_id: id,
-      routine_id: routine.routine_id,
-      name: routine.name,
-      run_id: id,
-      outcome,
-      created_at: '2026-10-01T12:01:07Z',
-      detail,
-      version,
-      ...noticeExtras(outcome),
-    };
+    return noticeRow(id, routine, outcome, detail, { at: NOTICE_AT, version });
   }
 
   // A Routine's creation notice, the one Routine row the chat shows, naming the Routine `routine` was created as.
   function createdRow(id, routine = ROUTINE_VIEW) {
-    return { ...routineRow(id, 'created', {}, { routine }), run_id: null };
+    return routineRow(id, 'created', {}, { routine });
   }
 
   // An unresolved incident that holds a run of `routine` for recovery (ADR-0092); it shares the run's id.
@@ -6367,29 +6297,16 @@ test.describe('Team Routines', () => {
     });
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     const requested = [];
-    const attempt = (number, failure, condition = null) => ({
-      operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
-      attempt: number,
-      assistant_id: 'shimpz-cloudflare',
-      action: 'replace-dns-record',
-      position: 2,
-      recorded_at: '2026-10-01T12:00:03Z',
-      failure,
-      condition,
-    });
+    const attempt = (number, failure, condition = null) => diagnostic({ attempt: number, failure, condition });
     let answer = {
       team_id: 'marketing',
       run_id: failed,
       diagnostics: [
-        attempt(1, {
-          error_type: 'httpx.HTTPStatusError',
+        attempt(1, httpFailure({
           message: '<img src=x onerror="window.leaked=1"> **not markdown**',
-          provider: 'api.cloudflare.com',
           http_status: 404,
           response_excerpt: '{"success":false}',
-          redacted: true,
-          truncated: false,
-        }),
+        })),
         attempt(2, null, 'exit-status:1'),
       ],
     };
@@ -6432,14 +6349,10 @@ test.describe('Team Routines', () => {
     });
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     // The same Action's first attempt failed at steps 2, 5, and 7: one operation per position.
-    const attempt = (operation, position) => ({
+    const attempt = (operation, position) => diagnostic({
       operation_id: `6f1c2b8e-3a4d-4c5e-9f60-${operation}`,
-      attempt: 1,
-      assistant_id: 'shimpz-cloudflare',
       action: 'list-dns-records',
       position,
-      recorded_at: '2026-10-01T12:00:03Z',
-      failure: null,
       condition: 'timeout',
     });
     await routeRead(page, 'routines.diagnostics', () => ok({ team_id: 'marketing', run_id: failed, diagnostics: [
@@ -6772,7 +6685,7 @@ test.describe('Team Routines', () => {
   test("a continuous Routine's healthy minutes are its runs, each with its count and no execution details", async ({ page }, testInfo) => {
     test.skip(testInfo.project.use.hasTouch, 'the Team drawer on a phone is proven by the Team list journeys kept on the phone projects');
     const continuous = { ...ROUTINE_VIEW, schedule: { kind: 'continuous', gap: 5 } };
-    const rollup = (id, runs) => ({ ...routineRow(id, 'healthy', { runs }, { routine: continuous }), run_id: null });
+    const rollup = (id, runs) => routineRow(id, 'healthy', { runs }, { routine: continuous });
     await routeReadyChat(page, { history: { entries: [rollup('c'.repeat(32), 12), rollup('d'.repeat(32), 1)], before: null } });
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [continuous], runs: [], incidents: [] }) : undefined));
     await page.goto('/chat/?team=marketing');
@@ -6794,7 +6707,7 @@ test.describe('Team Routines', () => {
     const text = (value) => ({ kind: 'text', value, cut: false });
     const shown = { step: 1, state: 'shown', value: { kind: 'fields', fields: [['zone', text('example.com')]], omitted: 0 }, truncated: false };
     const at = (row, createdAt) => ({ ...row, created_at: createdAt });
-    const missed = { ...at(routineRow('a'.repeat(32), 'skipped', { missed: 2 }), '2026-10-01T11:00:00Z'), run_id: null };
+    const missed = at(routineRow('a'.repeat(32), 'skipped', { missed: 2 }), '2026-10-01T11:00:00Z');
     const lost = {
       ...at(routineRow('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed' }), '2026-10-01T11:30:00Z'),
       protection_lost: true,
@@ -6807,10 +6720,7 @@ test.describe('Team Routines', () => {
     const paused = at(routineRow('e'.repeat(32), 'paused', {
       reason: 'policy',
     }), '2026-10-01T11:10:00Z');
-    const streak = {
-      ...at(routineRow('f'.repeat(32), 'streak-paused', { failures: 3 }), '2026-10-01T11:20:00Z'),
-      run_id: null,
-    };
+    const streak = at(routineRow('f'.repeat(32), 'streak-paused', { failures: 3 }), '2026-10-01T11:20:00Z');
     await routeReadyChat(page, { history: { entries: [missed, paused, streak, lost, done], before: null } });
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     await page.goto('/chat/?team=marketing');
@@ -7405,19 +7315,7 @@ test('a frozen Routine run opens in the interface language and answers with the 
   const run = 'd'.repeat(32);
   await routeReadyChat(page, {
     history: {
-      entries: [{
-        id: `${run}:routine`,
-        kind: 'routine-run',
-        notice_id: run,
-        routine_id: 'a'.repeat(32),
-        name: ROUTINE_VIEW.name,
-        run_id: run,
-        outcome: 'frozen',
-        created_at: '2026-10-01T12:01:07Z',
-        detail: { request_kind: 'human' },
-        version: 1,
-        ...noticeExtras('frozen'),
-      }],
+      entries: [noticeRow(run, { routine_id: 'a'.repeat(32), name: ROUTINE_VIEW.name }, 'frozen', { request_kind: 'human' }, { at: NOTICE_AT })],
       before: null,
     },
   });
