@@ -13,7 +13,7 @@ import {
 } from '../routines/protocol.js';
 import { isLocale } from '../i18n/locales.js';
 import { ASSISTANT_LIMIT_REACHED, exactKeys, LocalApiError } from '../api.js';
-import { codePointLength, HIDDEN_RE, isAscending, isShownText } from '../grammar.js';
+import { codePointLength, HIDDEN_RE, isAscending, isShownText, UNPRINTABLE_RE } from '../grammar.js';
 import {
   DIGEST_RE,
   isActionId,
@@ -109,8 +109,6 @@ const INPUT_PROJECTION_MAX_FIELDS = 16;
 const INPUT_PROJECTION_NAME_CHARS = 128;
 const INPUT_PROJECTION_VALUE_CHARS = 400;
 const INPUT_PROJECTION_MAX_OMITTED = 4096;
-// Python's str.isprintable: no control, format, surrogate, private-use, unassigned, or separator but the space.
-const UNPRINTABLE_RE = /[\p{C}\p{Zl}\p{Zp}]|[^\P{Zs} ]/u;
 const HUMAN_LENGTH_LIMITS = new Map([
   ['input:text', 4096],
   ['input:textarea', 16_000],

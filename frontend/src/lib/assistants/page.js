@@ -3,7 +3,7 @@
 // them from Team's details (a staged snapshot or an installed binding) and from the public catalog entry alike.
 import { isHelpUrl } from '../chat/protocol.js';
 import { exactKeys } from '../api.js';
-import { codePointLength, isAscending } from '../grammar.js';
+import { isAscending, isShownText, UNPRINTABLE_RE } from '../grammar.js';
 import { isIdentifier, TEAM_ID_RE } from '../ids.js';
 
 // The Creator's link kinds in their display order.
@@ -24,9 +24,6 @@ const MAX_ACTIONS = 128;
 const MAX_INTEGRATIONS = 16;
 const MAX_STORED_INPUTS = 8;
 const EFFECTS = ['read_only', 'mutating'];
-// Displayed copy is printable as Team admits it: no control, format (bidi, zero-width), surrogate, private-use, or
-// unassigned character, and no separator other than the ASCII space.
-const NON_PRINTABLE_RE = /[\p{C}\p{Zl}\p{Zp}]|(?! )\p{Zs}/u;
 
 export class AssistantPageError extends Error {}
 
@@ -36,14 +33,7 @@ function invalid() {
 
 /** Whether a value is one line of displayed public text of at most `maximum` characters. */
 export function isDisplayText(value, maximum) {
-  return (
-    typeof value === 'string' &&
-    value.length > 0 &&
-    value === value.trim() &&
-    value === value.normalize('NFC') &&
-    codePointLength(value) <= maximum &&
-    !NON_PRINTABLE_RE.test(value)
-  );
+  return isShownText(value, maximum, UNPRINTABLE_RE) && value === value.normalize('NFC');
 }
 
 /**

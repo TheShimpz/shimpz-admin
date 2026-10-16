@@ -10,6 +10,12 @@ export const CONTROL_RE = /[\u0000-\u001f\u007f]/;
  */
 export const HIDDEN_RE = /[\p{C}\p{Zl}\p{Zp}]/u;
 
+/**
+ * The characters Python's str.isprintable refuses, as Team admits printable copy: every hidden character and every
+ * space separator but the ASCII space.
+ */
+export const UNPRINTABLE_RE = new RegExp(String.raw`${HIDDEN_RE.source}|[^\P{Zs} ]`, 'u');
+
 /** A stable refusal or error code an Admin or Team answer names. */
 export const ERROR_CODE_RE = /^[a-z][a-z0-9-]{0,63}$/;
 
