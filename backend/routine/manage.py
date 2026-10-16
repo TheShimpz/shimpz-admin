@@ -162,12 +162,12 @@ def _proposal(team_id: object, proposal_id: object, method: str, statuses: froze
 
 
 def confirm_proposal(team_id: object, proposal_id: object) -> transport.TeamResponse:
-    """Criar rotina: the person's one tap that creates or changes the Routine its card shows (ADR-0101)."""
+    """Confirm a card: the person's one tap that creates or changes the Routine it shows (ADR-0101)."""
     return _proposal(team_id, proposal_id, "POST", frozenset({"created", "changed"}))
 
 
 def revoke_proposal(team_id: object, proposal_id: object) -> transport.TeamResponse:
-    """Cancelar: revoke the card, so nothing it shows can ever be created; an absent card is already revoked.
+    """Revoke the card, so nothing it shows can ever be created; an absent card is already revoked.
 
     A card already confirmed answers with the Routine its confirmation created or changed instead.
     """
