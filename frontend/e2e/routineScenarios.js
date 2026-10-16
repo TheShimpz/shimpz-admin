@@ -362,30 +362,42 @@ function answer(state, runId, body) {
   return { status: 200, json: { team_id: 'marketing', run_id: runId } };
 }
 
+// One recorded attempt of a Cloudflare call as Team keeps it (ADR-0092 section 8), with `changes` applied.
+export function diagnostic(changes) {
+  return {
+    operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
+    attempt: 1,
+    assistant_id: 'shimpz-cloudflare',
+    action: 'replace-dns-record',
+    position: 2,
+    recorded_at: '2026-10-01T12:00:03Z',
+    failure: null,
+    condition: null,
+    ...changes,
+  };
+}
+
+// A Cloudflare HTTP error as Team sanitizes it, with `changes` applied.
+export function httpFailure(changes) {
+  return {
+    error_type: 'httpx.HTTPStatusError',
+    provider: 'api.cloudflare.com',
+    response_excerpt: null,
+    redacted: true,
+    truncated: false,
+    ...changes,
+  };
+}
+
 // Each held step's execution details. The weekly Routine's update hit a Cloudflare account out of credits; the monthly
 // Routine's delete was refused its permission; the failed run's attempts show a handled failure whose text is shown
 // escaped, then transport conditions.
 function diagnostics(runId) {
   const POSITIONS = { 'list-zones': 1, 'list-dns-records': 2, 'update-dns-record': 3, 'delete-dns-record': 3 };
-  const attempt = (count, action, failure, condition) => ({
-    operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
-    attempt: count,
-    assistant_id: 'shimpz-cloudflare',
-    action,
-    position: POSITIONS[action],
-    recorded_at: `2026-10-01T11:5${count}:03Z`,
-    failure,
-    condition,
+  const attempt = (count, action, failure, condition) => diagnostic({
+    attempt: count, action, position: POSITIONS[action], recorded_at: `2026-10-01T11:5${count}:03Z`, failure, condition,
   });
-  const failure = (status, message, excerpt) => ({
-    error_type: 'httpx.HTTPStatusError',
-    message,
-    provider: 'api.cloudflare.com',
-    http_status: status,
-    response_excerpt: excerpt,
-    redacted: true,
-    truncated: false,
-  });
+  const failure = (status, message, excerpt) => httpFailure({ message, http_status: status, response_excerpt: excerpt });
   const url = 'https://api.cloudflare.com/client/v4/zones/[REDACTED]/dns_records/[REDACTED]';
   const items = {
     // The recovered run's DNS record list was refused once before its recovery completed it.

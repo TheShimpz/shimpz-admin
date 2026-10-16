@@ -21,7 +21,9 @@ import {
   nextRead,
   waitForRead,
 } from './scenarioRoutes.js';
-import { noticeRow, planPage, planSummary, ROUTINE_TEXT, routineLifecycleStart, runStepsPage } from './routineScenarios.js';
+import {
+  diagnostic, httpFailure, noticeRow, planPage, planSummary, ROUTINE_TEXT, routineLifecycleStart, runStepsPage,
+} from './routineScenarios.js';
 import {
   authenticatedLocalSession,
   historyView,
@@ -4256,33 +4258,6 @@ test('holds Send while a Brain change is saving so the turn uses the saved selec
 // When the notices these journeys store were written.
 const NOTICE_AT = '2026-10-01T12:01:07Z';
 
-// One recorded attempt of a Cloudflare call as Team keeps it (ADR-0092 section 8), with `changes` applied.
-function diagnostic(changes) {
-  return {
-    operation_id: '6f1c2b8e-3a4d-4c5e-9f60-718293a4b5c6',
-    attempt: 1,
-    assistant_id: 'shimpz-cloudflare',
-    action: 'replace-dns-record',
-    position: 2,
-    recorded_at: '2026-10-01T12:00:03Z',
-    failure: null,
-    condition: null,
-    ...changes,
-  };
-}
-
-// A Cloudflare HTTP error as Team sanitizes it, with `changes` applied.
-function httpFailure(changes) {
-  return {
-    error_type: 'httpx.HTTPStatusError',
-    provider: 'api.cloudflare.com',
-    response_excerpt: null,
-    redacted: true,
-    truncated: false,
-    ...changes,
-  };
-}
-
 // A held run's card as Team opens it (ADR-0092 section 7, ADR-0101): the call, its recorded failure (a Cloudflare
 // account out of credits), and exactly Rodar and Excluir.
 const CREDITS_MESSAGE = "Client error '402 Payment Required' for url 'https://api.cloudflare.com/client/v4/zones/[REDACTED]'";
@@ -5262,11 +5237,10 @@ test.describe('Team Routines', () => {
     const calls = await routeRoutines(page, { runEnding: true, held: false });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
-    await list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    await openRoutinePanel(page);
+    // The deletion confirmation retitles the panel; it still names the Routine.
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
     await panel.getByRole('button', { name: 'Delete' }).click();
     await panel.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
     await panel.getByLabel('Six-digit code').fill('123456');
@@ -5283,9 +5257,8 @@ test.describe('Team Routines', () => {
     const calls = await routeRoutines(page, { held: false, lockAfter: 2 });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    await openRoutinePanel(page);
+    // The deletion confirmation retitles the panel; it still names the Routine.
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('button', { name: 'Delete' }).click();
     const password = panel.getByLabel('Supervisor password');
@@ -5316,10 +5289,8 @@ test.describe('Team Routines', () => {
     });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
-    await list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+    await openRoutinePanel(page);
+    // The deletion confirmation retitles the panel; it still names the Routine.
     const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
     await panel.getByRole('button', { name: 'Delete' }).click();
     // This address has a passkey, so it is offered beside the code; the code stays the default.
@@ -5351,10 +5322,7 @@ test.describe('Team Routines', () => {
     const calls = await routeRoutines(page, options);
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
-    return { calls, panel: page.getByRole('dialog', { name: ROUTINE_VIEW.name }) };
+    return { calls, panel: await openRoutinePanel(page) };
   }
 
   test('Delete in a decision opens the deletion confirmation, Cancel returns to the decision, and confirming deletes', async ({ page }, testInfo) => {
@@ -5429,10 +5397,7 @@ test.describe('Team Routines', () => {
     await routeRead(page, 'routines.card', () => ok(recoveryCard(run, { tag: 'e'.repeat(64) })));
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const panel = await openRoutinePanel(page);
     await expect(panel).toContainText('Waiting for your approval of Replace DNS record');
     // Review is the one action besides going back to the list and closing the panel.
     await expect(panel.getByRole('button')).toHaveCount(3);
@@ -5463,10 +5428,7 @@ test.describe('Team Routines', () => {
     });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const panel = await openRoutinePanel(page);
     // The decision is not dismissed: it waits for the person to try again, never reopening on its own.
     await panel.getByRole('button', { name: 'Retry' }).click();
     await expect(panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button')).toHaveCount(2);
@@ -5484,11 +5446,10 @@ test.describe('Team Routines', () => {
       await routeRead(page, 'routines.card', () => ok({ code }, 409));
       await page.goto('/chat/?team=marketing');
       await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-      const navigation = await openTeamNavigation(page);
-      await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-      const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
-      await list.getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
+      await openRoutinePanel(page);
+      // The deletion confirmation retitles the panel; it still names the Routine.
       const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+      const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
       const remove = panel.getByRole('button', { name: 'Delete' });
       await remove.click();
       // Cancel returns to the decision, focused on the Delete it came from.
@@ -5524,10 +5485,7 @@ test.describe('Team Routines', () => {
     });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const panel = await openRoutinePanel(page);
     await panel.getByRole('tab', { name: 'Steps' }).click();
     await expect.poll(() => steps.length).toBe(1);
     // The person's clicks were reported once; then a minute passes with nobody at the page.
@@ -5571,10 +5529,7 @@ test.describe('Team Routines', () => {
     });
     await page.goto('/chat/?team=marketing');
     await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeEnabled();
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' }).getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const panel = await openRoutinePanel(page);
     await panel.getByRole('group', { name: 'Recovery choices' }).getByRole('button', { name: 'Run' }).click();
     await routineNotice(page);
     await expect(panel.getByRole('button', { name: 'Review' })).toBeVisible();
@@ -5856,11 +5811,8 @@ test.describe('Team Routines', () => {
       return ok({ detail: 'unavailable' }, 503);
     });
     await page.goto('/chat/?team=marketing');
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    const panel = await openRoutinePanel(page, watch.name);
     const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
-    await list.getByRole('button', { name: new RegExp(watch.name) }).click();
-    const panel = page.getByRole('dialog', { name: watch.name });
     await panel.getByRole('tab', { name: 'Steps' }).click();
     const steps = panel.getByRole('list', { name: 'Steps' }).locator(':scope > li');
     await expect(panel.getByText(messages.en.routine.plan.unavailable)).toBeVisible();
@@ -5885,11 +5837,8 @@ test.describe('Team Routines', () => {
       return undefined;
     });
     await page.goto('/chat/?team=marketing');
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
+    const panel = await openRoutinePanel(page, watch.name);
     const list = page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' });
-    await list.getByRole('button', { name: new RegExp(watch.name) }).click();
-    const panel = page.getByRole('dialog', { name: watch.name });
     await panel.getByRole('tab', { name: 'Steps' }).click();
     const steps = panel.getByRole('list', { name: 'Steps' }).locator(':scope > li');
     // Only the first page is read; ten steps are shown.
@@ -5954,11 +5903,7 @@ test.describe('Team Routines', () => {
       ? ok({ ...listed, routines: listed.routines.map((item) => (item.routine_id === watch.routine_id ? { ...item, plan: revised } : item)) })
       : undefined));
     await page.goto('/chat/?team=marketing');
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
-      .getByRole('button', { name: new RegExp(watch.name) }).click();
-    const panel = page.getByRole('dialog', { name: watch.name });
+    const panel = await openRoutinePanel(page, watch.name);
     await panel.getByRole('tab', { name: 'Steps' }).click();
     await expect(panel.getByRole('list', { name: 'Steps' }).locator(':scope > li')).toHaveCount(3);
     await expect.poll(() => read).toEqual(['1/0', '2/0']);
@@ -6151,8 +6096,8 @@ test.describe('Team Routines', () => {
   });
 
   // A Routine row of the transcript (ADR-0086), for one listed Routine.
-  function routineRow(id, outcome, detail, { routine = ROUTINE_VIEW, version = 1 } = {}) {
-    return noticeRow(id, routine, outcome, detail, { at: NOTICE_AT, version });
+  function routineRow(id, outcome, detail, { routine = ROUTINE_VIEW, version = 1, at = NOTICE_AT, usage, lost = false } = {}) {
+    return noticeRow(id, routine, outcome, detail, { at, version, usage, lost });
   }
 
   // A Routine's creation notice, the one Routine row the chat shows, naming the Routine `routine` was created as.
@@ -6318,11 +6263,7 @@ test.describe('Team Routines', () => {
     await page.goto('/chat/?team=marketing');
     // The run never reaches the transcript; its details are in its Routine's panel.
     await expect(page.locator('.routine-run')).toHaveCount(0);
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
-      .getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const panel = await openRoutinePanel(page);
     await panel.getByRole('tab', { name: 'Runs' }).click();
     const runDetails = panel.getByRole('button', { name: 'Execution details' });
     await runDetails.click();
@@ -6362,11 +6303,7 @@ test.describe('Team Routines', () => {
       attempt('718293a4b5c8', 7),
     ] }));
     await page.goto('/chat/?team=marketing');
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
-      .getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const panel = await openRoutinePanel(page);
     await panel.getByRole('tab', { name: 'Runs' }).click();
     await panel.getByRole('button', { name: 'Execution details' }).click();
     const dialog = page.getByRole('dialog', { name: 'Execution details' });
@@ -6690,11 +6627,7 @@ test.describe('Team Routines', () => {
     await routeReadyChat(page, { history: { entries: [rollup('c'.repeat(32), 12), rollup('d'.repeat(32), 1)], before: null } });
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [continuous], runs: [], incidents: [] }) : undefined));
     await page.goto('/chat/?team=marketing');
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
-      .getByRole('button', { name: new RegExp(continuous.name) }).click();
-    const panel = page.getByRole('dialog', { name: continuous.name });
+    const panel = await openRoutinePanel(page, continuous.name);
     await panel.getByRole('tab', { name: 'Runs' }).click();
     const runs = panel.getByRole('list', { name: 'Runs' });
     // Newest first, each minute with how many runs it finished; a rollup is no single run with details to open.
@@ -6707,29 +6640,19 @@ test.describe('Team Routines', () => {
   test("a Routine's history gives each run its outcome, usage, and time, and opens the result it showed", { tag: '@mobile' }, async ({ page }) => {
     const text = (value) => ({ kind: 'text', value, cut: false });
     const shown = { step: 1, state: 'shown', value: { kind: 'fields', fields: [['zone', text('example.com')]], omitted: 0 }, truncated: false };
-    const at = (row, createdAt) => ({ ...row, created_at: createdAt });
-    const missed = at(routineRow('a'.repeat(32), 'skipped', { missed: 2 }), '2026-10-01T11:00:00Z');
-    const lost = {
-      ...at(routineRow('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed' }), '2026-10-01T11:30:00Z'),
-      protection_lost: true,
-    };
-    const done = {
-      ...at(routineRow('d'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: shown }), '2026-10-01T12:01:07Z'),
+    const missed = routineRow('a'.repeat(32), 'skipped', { missed: 2 }, { at: '2026-10-01T11:00:00Z' });
+    const lost = routineRow('c'.repeat(32), 'failed', { code: 'assistant-rpc-failed' }, { at: '2026-10-01T11:30:00Z', lost: true });
+    const done = routineRow('d'.repeat(32), 'done', { plan: ROUTINE_VIEW.plan, output: shown }, {
+      at: '2026-10-01T12:01:07Z',
       usage: { duration_ms: 7400 },
-    };
+    });
     // A run paused for a safety rule, and the pause its Routine's consecutive failed runs caused, which is no run.
-    const paused = at(routineRow('e'.repeat(32), 'paused', {
-      reason: 'policy',
-    }), '2026-10-01T11:10:00Z');
-    const streak = at(routineRow('f'.repeat(32), 'streak-paused', { failures: 3 }), '2026-10-01T11:20:00Z');
+    const paused = routineRow('e'.repeat(32), 'paused', { reason: 'policy' }, { at: '2026-10-01T11:10:00Z' });
+    const streak = routineRow('f'.repeat(32), 'streak-paused', { failures: 3 }, { at: '2026-10-01T11:20:00Z' });
     await routeReadyChat(page, { history: { entries: [missed, paused, streak, lost, done], before: null } });
     await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
     await page.goto('/chat/?team=marketing');
-    const navigation = await openTeamNavigation(page);
-    await navigation.getByRole('button', { name: /^Routines for Marketing/ }).click();
-    await page.getByRole('dialog', { name: 'Which Marketing Routine do you want to open?' })
-      .getByRole('button', { name: new RegExp(ROUTINE_VIEW.name) }).click();
-    const panel = page.getByRole('dialog', { name: ROUTINE_VIEW.name });
+    const panel = await openRoutinePanel(page);
     await panel.getByRole('tab', { name: 'Runs' }).click();
     const rows = panel.getByRole('list', { name: 'Runs' }).getByRole('listitem');
     await expect(rows).toHaveCount(5);
