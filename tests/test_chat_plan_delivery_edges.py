@@ -283,7 +283,26 @@ class PlanDeliveryEdges(unittest.TestCase):
                 operations,
             )
             operations.finish_turn.assert_awaited_once()
+            self.assertEqual(
+                operations.finish_turn.await_args.args[3],
+                error_terminal(503, "Assistant routing is unavailable; retry the message"),
+            )
             self.assertIsNone(connection.active)
+
+            # A refusal that names its own remedy, such as the Space reset for a broken key record, ends the turn as is.
+            operations = _operations()
+            refusal = {"type": "error", "status": 502, "detail": "credential-record-invalid: reset the Space"}
+            refused = concurrent.futures.Future()
+            refused.set_exception(assistant_route.RouteError(502, refusal))
+            await route_delivery.deliver(
+                mock.sentinel.websocket,
+                Connection(),
+                Turn(refused, "assistant-route"),
+                "team_1",
+                {},
+                operations,
+            )
+            self.assertIs(operations.finish_turn.await_args.args[3], refusal)
 
             operations = _operations()
             closed = Connection(closed=True)

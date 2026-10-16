@@ -162,9 +162,18 @@ class Result:
 
 
 class RouteError(RuntimeError):
-    def __init__(self, status: int) -> None:
+    def __init__(self, status: int, event: dict[str, object] | None = None) -> None:
         super().__init__("structured Assistant routing failed")
         self.status = status
+        # Chat's own public refusal the turn ends with instead of the routing failure, when it names a remedy.
+        self.event = event
+
+
+def _refusal(response: object, team_id: str) -> dict[str, object] | None:
+    """Chat's refusal of a broken stored key record, whose public words name the Space reset that repairs it."""
+    if isinstance(response, local.PublicResponse) and response.body.get("code") == "credential-record-invalid":
+        return response.websocket_event(team_id)
+    return None
 
 
 def _valid_guidance_reply(value: str) -> bool:
@@ -188,7 +197,7 @@ def _route(
 ) -> Route:
     response = local.intent_route(team_id, objective, expected_intent, candidates, context, installable)
     if not isinstance(response, transport.TeamResponse) or not 200 <= response.status < 300:
-        raise RouteError(_safe_status(response))
+        raise RouteError(_safe_status(response), _refusal(response, team_id))
     body = response.body
     if not isinstance(body, dict):
         raise RouteError(502)
@@ -420,8 +429,8 @@ def _speculate(
 def _installable(gap_ready: Future) -> list[dict[str, str]] | None:
     """The plan's shortlist for classification, when a decision key may receive it and it exists within the bound.
 
-    A stored TypeSafe record Admin did not write describes nothing: the classification reads it again and refuses the
-    turn with the reset remedy.
+    A stored TypeSafe record Admin did not write describes nothing: the classification reads it again, and the turn ends
+    with chat's refusal that names the Space reset (RouteError.event).
     """
     try:
         if decision.resolve() is None:

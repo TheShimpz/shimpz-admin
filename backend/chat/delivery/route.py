@@ -147,7 +147,7 @@ async def deliver(
                 websocket,
                 connection,
                 turn,
-                error_terminal(exc.status, "Assistant routing is unavailable; retry the message"),
+                exc.event or error_terminal(exc.status, "Assistant routing is unavailable; retry the message"),
             )
     finally:
         if connection.active is turn and turn.operation == "assistant-route":

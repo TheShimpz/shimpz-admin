@@ -298,6 +298,17 @@ class AssistantRouteTests(unittest.TestCase):
         ):
             assistant_route.prepare("team_1", payload("oi"), mock.sentinel.catalog)
         self.assertEqual(caught.exception.status, 502)
+        # The turn ends with chat's own refusal, which names the Space reset, never the generic routing failure.
+        self.assertEqual(
+            caught.exception.event,
+            {
+                "type": "error",
+                "status": 502,
+                "detail": (
+                    "credential-record-invalid: a stored key record is invalid; reset the Space with shimpz reset"
+                ),
+            },
+        )
         self.assertIsNone(route.call_args.args[5])
 
     def test_a_possible_capability_waits_for_and_keeps_its_plan(self) -> None:
@@ -435,10 +446,12 @@ class AssistantRouteTests(unittest.TestCase):
                 return_value=local.PublicResponse(503, {"code": "intent-route-unavailable"}),
             ),
             mock.patch.object(assistant_route.assistant_plan, "prepare_capability") as gate,
-            self.assertRaises(assistant_route.RouteError),
+            self.assertRaises(assistant_route.RouteError) as caught,
         ):
             assistant_route.prepare("team_1", payload("hello"), mock.sentinel.catalog)
         gate.assert_not_called()
+        # Any other refusal is the routing failure the delivery words itself.
+        self.assertIsNone(caught.exception.event)
 
     def test_install_opens_only_the_catalog_directory_and_is_terminal(self) -> None:
         assistant = cloudflare()
