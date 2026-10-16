@@ -220,6 +220,8 @@
       waitingIntegration = false;
     } catch (error) {
       result = failed(error);
+      // A run another window already continued waits for nothing here: the host reads its Routines again.
+      if (error?.code === 'routine-run-not-frozen' && mounted) onunavailable();
     } finally {
       working = false;
       closeChallenge();

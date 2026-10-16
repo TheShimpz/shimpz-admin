@@ -7344,6 +7344,35 @@ test.describe('Team Routines', () => {
     await expect(panel.getByRole('tab', { name: 'Summary' })).toBeFocused();
   });
 
+  test('Continue on an Integration wait another window already continued reads the Routines again and the panel keeps the focus', async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
+    const run = 'd'.repeat(32);
+    await routeReadyChat(page);
+    let runs = [frozenRun(run, 'integrations')];
+    let reads = 0;
+    await routeRead(page, 'routines.list', (params) => {
+      if (params.team_id !== 'marketing') return undefined;
+      reads += 1;
+      return ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs, incidents: [] });
+    });
+    await routeRead(page, 'routines.challenge', (params) => ok({ team_id: 'marketing', run_id: params.run_id, status: 'integrations-required' }));
+    await page.goto('/chat/?team=marketing');
+    const panel = await openRoutinePanel(page);
+    await panel.getByRole('button', { name: 'Review' }).click();
+    const proceed = panel.getByRole('button', { name: 'Continue the run' });
+    await expect(proceed).toBeVisible();
+    // Another window connected the Integration and continued the run first: Team no longer holds it frozen.
+    await routeRead(page, 'routines.integrations', () => {
+      runs = [];
+      return ok({ code: 'routine-run-not-frozen' }, 409);
+    });
+    const before = reads;
+    await proceed.click();
+    await expect.poll(() => reads).toBeGreaterThan(before);
+    await expect(proceed).toHaveCount(0);
+    await expect(panel.getByRole('tab', { name: 'Summary' })).toBeFocused();
+  });
+
   test("a Routine's creation delivered after the chat opened appears without a reload, and its runs never do", { tag: '@mobile' }, async ({ page }) => {
     await page.clock.install({ time: new Date('2026-10-01T12:00:00Z') });
     const run = 'd'.repeat(32);
