@@ -7039,6 +7039,34 @@ test.describe('Team Routines', () => {
     await expect(review).toBeFocused();
   });
 
+  test("a deletion confirmation's Delete that a reconnect disabled takes back the focus once Admin is back", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
+    await routeReadyChat(page);
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [], incidents: [] }) : undefined));
+    // While refusing, Admin is unreachable: each socket the page opens fails before it is upgraded.
+    let refusing = false;
+    await routeConnect(page, (socket) => {
+      if (!refusing) return true;
+      socket.connectToServer();
+      return false;
+    });
+    await page.goto('/chat/?team=marketing');
+    const panel = await openRoutinePanel(page);
+    await panel.getByRole('button', { name: 'Delete' }).click();
+    const confirm = page.getByRole('dialog', { name: `Delete “${ROUTINE_VIEW.name}”?` });
+    await confirm.getByLabel('Supervisor password').fill(SUPERVISOR_PASSWORD);
+    await confirm.getByLabel('Six-digit code').fill('123456');
+    const remove = confirm.getByRole('button', { name: 'Delete' });
+    await remove.focus();
+    refusing = true;
+    await dropSessions(page);
+    await expect(remove).toBeDisabled();
+    refusing = false;
+    await expect(remove).toBeEnabled({ timeout: 20_000 });
+    await expect(remove).toBeFocused();
+    expect(await readsOf(page, 'routines.deletion')).toEqual([]);
+  });
+
   test("a frozen run lights its Team's Routines button and is approved in its Routine's panel, with the chat approval dialog", { tag: '@mobile' }, async ({ page }) => {
     const run = 'd'.repeat(32);
     const waiting = 'e'.repeat(32);

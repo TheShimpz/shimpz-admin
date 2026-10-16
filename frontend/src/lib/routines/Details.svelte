@@ -115,10 +115,15 @@
 
   // Whatever a refresh or an answer puts in place of what had focus (a decision arriving, answered, or held again, or
   // the deletion confirmation closing), and a run's view or execution details closing after what opened them went,
-  // focus never drops to the document: it moves to the selected tab, else to the decision's first enabled control.
-  // Focus the person placed anywhere in the panel stays where it is.
+  // focus never drops to the document: it moves to the selected tab, else to the decision's first enabled control;
+  // during the deletion confirmation, to its enabled Delete. Focus the person placed anywhere in the panel stays where
+  // it is.
   function restore() {
-    if (lost()) (document.getElementById(`${id}-tab-${page}`) ?? dialog.querySelector('.decide button:not(:disabled)'))?.focus();
+    if (!lost()) return;
+    const target = confirming
+      ? dialog.querySelector('.deletion [type="submit"]:not(:disabled)')
+      : (document.getElementById(`${id}-tab-${page}`) ?? dialog.querySelector('.decide button:not(:disabled)'));
+    target?.focus();
   }
 
   let shown = $derived(confirming ? 'deletion' : pending ? `${decisionKey}:${round}` : 'pages');
