@@ -6931,6 +6931,31 @@ test.describe('Team Routines', () => {
     expect(await readsOf(page, 'routines.human')).toEqual([]);
   });
 
+  test("a Routine panel's focus that a reconnect dropped returns to the panel once Admin is back", async ({ page }, testInfo) => {
+    test.skip(testInfo.project.use.hasTouch, 'the drawer path to a Routine panel on a phone is proven by the panel journeys kept on the phone projects');
+    const run = 'd'.repeat(32);
+    await routeReadyChat(page);
+    await routeRead(page, 'routines.list', (params) => (params.team_id === 'marketing' ? ok({ team_id: 'marketing', routines: [ROUTINE_VIEW], runs: [frozenRun(run, 'human')], incidents: [] }) : undefined));
+    // While refusing, Admin is unreachable: each socket the page opens fails before it is upgraded.
+    let refusing = false;
+    await routeConnect(page, (socket) => {
+      if (!refusing) return true;
+      socket.connectToServer();
+      return false;
+    });
+    await page.goto('/chat/?team=marketing');
+    const panel = await openRoutinePanel(page);
+    const review = panel.getByRole('button', { name: 'Review' });
+    await review.focus();
+    // Reconnecting disables Review, which loses the focus; it comes back once Review is offered again.
+    refusing = true;
+    await dropSessions(page);
+    await expect(review).toBeDisabled();
+    refusing = false;
+    await expect(review).toBeEnabled({ timeout: 20_000 });
+    await expect(review).toBeFocused();
+  });
+
   test("a frozen run lights its Team's Routines button and is approved in its Routine's panel, with the chat approval dialog", { tag: '@mobile' }, async ({ page }) => {
     const run = 'd'.repeat(32);
     const waiting = 'e'.repeat(32);
