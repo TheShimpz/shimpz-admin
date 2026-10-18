@@ -15,6 +15,7 @@
     watchBrowser(teamId, {
       signal: controller.signal,
       onframe(blob) {
+        if (controller.signal.aborted) return;
         const next = URL.createObjectURL(blob);
         if (shown) URL.revokeObjectURL(shown);
         shown = next;

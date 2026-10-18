@@ -551,6 +551,9 @@ def _decode_page_preview(response: http.client.HTTPResponse) -> TeamAssetRespons
 def _decode_browser_frame(response: http.client.HTTPResponse) -> TeamAssetResponse:
     """A Browser view frame: no content when none came, or exactly one PNG within its bound, numbered in its header."""
     if response.status == HTTPStatus.NO_CONTENT:
+        length = response.getheader("Content-Length")
+        if (length is not None and length != "0") or response.getheader("Transfer-Encoding") is not None:
+            raise OSError("invalid Team browser frame response")
         if response.read(1):
             raise OSError("invalid Team browser frame response")
         return TeamAssetResponse(HTTPStatus.NO_CONTENT, None, {})

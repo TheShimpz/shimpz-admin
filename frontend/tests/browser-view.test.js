@@ -101,6 +101,21 @@ test('watching shows each newer frame, waits out a busy view, and ends with the 
   assert.deepEqual(shown, [PNG.length, PNG.length]);
 });
 
+test('a frame that arrives after the view closed is never shown', async () => {
+  const controller = new AbortController();
+  await assert.rejects(watchBrowser('team_1', {
+    signal: controller.signal,
+    onframe: () => assert.fail('a closed view shows nothing'),
+    call: recorder(200, { view_id: VIEW }).call,
+    fetcher: async () => {
+      const answer = frame(1);
+      await answer.clone().blob();
+      controller.abort(new Error('closed while answered'));
+      return answer;
+    },
+  }), /closed while answered/);
+});
+
 test('closing the view stops watching at once, even during a pause', async () => {
   const controller = new AbortController();
   const watching = watchBrowser('team_1', {

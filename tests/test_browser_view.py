@@ -5,6 +5,8 @@ Team's exact framing, the closed refusals, Fetch Metadata, and the bounded frame
 
 import asyncio
 import gc
+import http.client
+import io
 import json
 import sys
 import unittest
@@ -61,13 +63,52 @@ class BrowserViewTransportTests(unittest.TestCase):
         with self.assertRaises(OSError):
             transport._decode_browser_frame(missing)
 
-
     def test_a_frame_is_asked_for_as_png_with_no_body(self) -> None:
         answer = transport.TeamAssetResponse(204, None, {})
         with mock.patch.object(transport, "_request_asset", return_value=answer) as asked:
             self.assertIs(transport.call_browser_frame("/v1/teams/team_1/browser/views/x/frames/0"), answer)
         path, reading = asked.call_args.args
         self.assertEqual((path, reading.accept), ("/v1/teams/team_1/browser/views/x/frames/0", "image/png"))
+
+
+class _Wire:
+    """A socket holding one raw HTTP answer, for the real `http.client` parser."""
+
+    def __init__(self, raw: bytes) -> None:
+        self.raw = raw
+
+    def makefile(self, _mode: str) -> io.BytesIO:
+        return io.BytesIO(self.raw)
+
+
+def _parsed(raw: bytes) -> http.client.HTTPResponse:
+    response = http.client.HTTPResponse(_Wire(raw), method="GET")
+    response.begin()
+    return response
+
+
+class BrowserViewWireTests(unittest.TestCase):
+    def test_a_no_content_answer_admits_no_body_framing_on_the_wire(self) -> None:
+        empty = _parsed(b"HTTP/1.1 204 No Content\r\nCache-Control: no-store\r\n\r\n")
+        self.assertEqual(transport._decode_browser_frame(empty), transport.TeamAssetResponse(204, None, {}))
+        zero = _parsed(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n")
+        self.assertEqual(transport._decode_browser_frame(zero).status, 204)
+        for raw in (
+            b"HTTP/1.1 204 No Content\r\nContent-Length: 1\r\n\r\nx",
+            b"HTTP/1.1 204 No Content\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nx\r\n0\r\n\r\n",
+        ):
+            with self.subTest(raw=raw), self.assertRaises(OSError):
+                transport._decode_browser_frame(_parsed(raw))
+        body = PNG
+        framed = _parsed(
+            b"HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: "
+            + str(len(body)).encode()
+            + b"\r\nX-Shimpz-Browser-Frame: 4\r\n\r\n"
+            + body
+        )
+        self.assertEqual(
+            transport._decode_browser_frame(framed), transport.TeamAssetResponse(200, PNG, {}, "image/png", frame=4)
+        )
 
 
 class BrowserViewBridgeTests(unittest.TestCase):

@@ -71,6 +71,8 @@ export async function watchBrowser(teamId, { signal, onframe, call = socketReads
   for (;;) {
     signal.throwIfAborted();
     const frame = await fetchBrowserFrame(teamId, viewId, after, signal, fetcher);
+    // A view closed while the answer arrived shows nothing more.
+    signal.throwIfAborted();
     if (frame === 'busy') {
       await pause(BUSY_RETRY_MS, signal);
     } else if (frame === null) {
