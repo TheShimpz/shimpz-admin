@@ -1108,6 +1108,7 @@
               elapsedText={copy.elapsed}
               progressLabels={copy.progress}
               startedAt={liveTurn.startedAt}
+              teamId={chatTeamId}
             />
           {/snippet}
           {#each exchanges as exchange, index (exchange.key)}

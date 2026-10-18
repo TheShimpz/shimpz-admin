@@ -56,6 +56,16 @@ const DOWNLOAD = [
   '',
 ].join('\n');
 
+// A watched Browser task's screen: each request waits a moment, then answers the next frame, a page whose shades shift,
+// numbered as Team numbers them.
+const BROWSER_FRAME_RE = /^\/api\/teams\/[a-z0-9_]{1,40}\/browser\/views\/[0-9a-f]{32}\/frames\/(0|[1-9][0-9]{0,9})$/u;
+const FRAME_MS = 700;
+
+function browserFrame(number) {
+  const shade = (number * 37) % 160;
+  return png(1280, 800, [244, 244, 240], [60 + shade, 120, 220 - shade]);
+}
+
 function apiPath(url) {
   const path = new URL(url ?? '/', 'http://preview.invalid').pathname;
   return path === '/api' || path.startsWith('/api/') ? path : null;
@@ -84,6 +94,17 @@ export function adminPreview() {
           response.setHeader('cache-control', 'no-store');
           response.setHeader('x-page-count', String(PAGE_COUNT));
           response.end(sheet);
+          return;
+        }
+        const watched = request.method === 'GET' ? BROWSER_FRAME_RE.exec(path) : null;
+        if (watched) {
+          const number = Number(watched[1]) + 1;
+          setTimeout(() => {
+            response.setHeader('content-type', 'image/png');
+            response.setHeader('cache-control', 'no-store');
+            response.setHeader('x-shimpz-browser-frame', String(number));
+            response.end(browserFrame(number));
+          }, FRAME_MS);
           return;
         }
         if (request.method === 'GET' && DOWNLOAD_RE.test(path)) {

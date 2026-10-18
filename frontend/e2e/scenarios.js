@@ -283,6 +283,14 @@ const STARTS = {
     history: webFilesHistory(),
     acknowledged: [],
   }),
+  // A sent message starts a Browser task that keeps running, so its screen can be watched (ADR-0117, M2 Watch).
+  'browser-watch': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    browserTask: true,
+  }),
   // More sent images than the session keeps thumbnails of, one per message down a long chat.
   'attachment-many-images': () => ({
     session: authenticatedLocalSession(),
@@ -791,7 +799,27 @@ const TEAM_METHODS = Object.freeze({
   'integrations.list': () => ok({ integrations: [] }),
   'stored_inputs.list': () => ok({ stored_inputs: [] }),
   'files.acknowledge': acknowledgeFile,
+  'browser.view': (state, params) => (state.browserTask && params.team_id === 'marketing'
+    ? ok({ view_id: BROWSER_VIEW })
+    : { status: 404, json: { detail: 'browser view unavailable', code: 'browser-not-running' } }),
 });
+
+// The view of the running Browser task a scenario's chat starts; its frames come over HTTP.
+export const BROWSER_VIEW = 'b'.repeat(32);
+
+// A turn whose Browser task keeps running: Admin prepares the request, Team gathers its context and calls its model,
+// then starts the Browser, and no reply comes until the person stops the turn.
+function browserTurn() {
+  return [
+    { origin: 'admin', phase: 'admin-preparation', state: 'started' },
+    { origin: 'admin', phase: 'admin-preparation', state: 'finished', elapsed_ms: 20 },
+    { origin: 'team', phase: 'team-context', state: 'started' },
+    { origin: 'team', phase: 'team-context', state: 'finished', elapsed_ms: 9 },
+    { origin: 'team', phase: 'model', state: 'started' },
+    { origin: 'team', phase: 'model', state: 'finished', elapsed_ms: 900 },
+    { origin: 'team', phase: 'browser', state: 'started' },
+  ].map((step, index) => ({ type: 'progress', seq: index + 1, ...step }));
+}
 
 // Like Team, only a file the Browser downloaded can be acknowledged, and an acknowledgement is kept.
 function acknowledgeFile(state, params) {
@@ -881,6 +909,7 @@ export function createScenario(name = 'ready', locale = 'en') {
           return [reply];
         }
         if (frame?.type === 'chat' && state.receipt) return receiptTurn(state, frame);
+        if (frame?.type === 'chat' && state.browserTask) return browserTurn();
         if (frame?.type === 'chat') return [structuredClone(chatReply(state, frame))];
         return [];
       },

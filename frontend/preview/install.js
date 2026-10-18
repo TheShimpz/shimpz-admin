@@ -98,6 +98,8 @@ async function requestBody(request) {
 
 // A file's page rendition or download is read as bytes; the preview server answers it from fixtures (plugin.js).
 const FILE_BYTES_RE = /^\/api\/teams\/[a-z0-9_]{1,40}\/files\/[0-9a-f]{32}\/(?:pages\/[1-9][0-9]?\/preview|download)$/u;
+// A watched Browser task's frames are PNGs the preview server draws (plugin.js).
+const BROWSER_FRAME_RE = /^\/api\/teams\/[a-z0-9_]{1,40}\/browser\/views\/[0-9a-f]{32}\/frames\/(?:0|[1-9][0-9]{0,9})$/u;
 
 window.fetch = async (input, init = {}) => {
   const request = new Request(input, init);
@@ -106,7 +108,9 @@ window.fetch = async (input, init = {}) => {
   if (!api) return realFetch(input, init);
   // An Admin API request anywhere but this origin never leaves the browser.
   if (url.origin !== location.origin) return jsonResponse(503, { detail: 'The preview refuses a cross-origin API.' });
-  if (request.method === 'GET' && FILE_BYTES_RE.test(url.pathname)) return realFetch(input, init);
+  if (request.method === 'GET' && (FILE_BYTES_RE.test(url.pathname) || BROWSER_FRAME_RE.test(url.pathname))) {
+    return realFetch(input, init);
+  }
   const body = await requestBody(request);
   const answer = scenario.respond({ method: request.method, path: url.pathname, query: url.searchParams, body });
   return answer

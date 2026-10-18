@@ -21,7 +21,8 @@ import { failureCause, questionWords, refusalWords } from '../src/lib/routines/w
 import { messages } from '../src/lib/i18n/catalogs.js';
 import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from '../src/lib/assistants/api.js';
 import { loadAssistantDetails, loadLocalAssistantDetails, loadLocalAssistantSummary } from '../src/lib/assistants/preview.js';
-import { CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
+import { BROWSER_VIEW, CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
+import { BrowserViewEndedError, openBrowserView } from '../src/lib/chat/browser/view.js';
 import { ROUTINE_TEXT, routineLifecycleStart } from '../e2e/routineScenarios.js';
 import { via } from './socketStub.js';
 
@@ -500,3 +501,13 @@ test("the catalog scenario's Assistants and pages pass Admin's own admission in 
   assert.equal(scenario.call('assistants.details', { team_id: 'marketing', assistant_id: 'meta-ads', locale: 'en' }), null);
 });
 
+
+test('the watch scenario keeps its Browser task running and opens its view as Admin does', async () => {
+  const scenario = createScenario('browser-watch');
+  assert.equal(await openBrowserView('marketing', reader(scenario)), BROWSER_VIEW);
+  const frames = scenario.chat.message({ type: 'chat', message: 'Open example.com.' });
+  assert.deepEqual(frames.at(-1), { type: 'progress', seq: frames.length, origin: 'team', phase: 'browser', state: 'started' });
+  assert.ok(frames.every((frame) => frame.type === 'progress'));
+  // Without a running task, the view is refused as Team refuses it.
+  await assert.rejects(openBrowserView('marketing', reader(createScenario('ready'))), BrowserViewEndedError);
+});

@@ -1,6 +1,8 @@
 <script>
   import { onMount } from 'svelte';
+  import { Button } from '@shimpz/frontend';
   import { assistantName } from '#lib/assistants/names.js';
+  import BrowserWatch from '#lib/chat/browser/Watch.svelte';
   import { localizedStepLabel } from './projection.js';
 
   let {
@@ -11,10 +13,19 @@
     progressLabels,
     // When the turn started (ms since the epoch): the turn owns it, so the count survives this view being shown again.
     startedAt,
+    // The Team the turn runs in: while its Browser task runs, the person may watch its screen (ADR-0117, M2 Watch).
+    teamId = '',
   } = $props();
   let elapsed = $state(0);
+  let watching = $state(false);
 
   let current = $derived(currentIndex >= 0 ? steps[currentIndex] : null);
+  let watchable = $derived(current?.phase === 'browser' && Boolean(teamId));
+
+  // A view belongs to one Browser task: it closes when the task does.
+  $effect(() => {
+    if (!watchable) watching = false;
+  });
   // The seconds since the turn started, counting, right after the signal bars; the time's name is only its hover title.
   let formattedElapsed = $derived(`${elapsed} s`);
 
@@ -31,7 +42,15 @@
     <span class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
     <span class="elapsed" title={elapsedText} aria-hidden="true">{formattedElapsed} ·</span>
     <span class="step-copy">{current ? localizedStepLabel(current, progressLabels, { assistantName: $assistantName }) : progressLabels.awaiting}</span>
+    {#if watchable}
+      <Button class="watch" variant="ghost" size="compact" type="button" aria-expanded={watching} onclick={() => (watching = !watching)}>
+        {watching ? progressLabels.watch.close : progressLabels.watch.open}
+      </Button>
+    {/if}
   </div>
+  {#if watchable && watching}
+    <BrowserWatch {teamId} labels={progressLabels.watch} />
+  {/if}
 </div>
 
 <style>
@@ -50,7 +69,7 @@
     display: grid;
     min-width: 0;
     align-items: center;
-    grid-template-columns: auto auto minmax(0, auto);
+    grid-template-columns: auto auto minmax(0, auto) auto;
     justify-content: start;
     gap: var(--gap-item);
   }
