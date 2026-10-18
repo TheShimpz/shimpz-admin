@@ -81,6 +81,23 @@ class LocalChatTerminalProjectionTests(unittest.TestCase):
                 self.assertEqual(turn(usage=invalid).body, {"code": "chat-response-invalid"})
         self.assertEqual(turn(usage=usage, cost=1).body, {"code": "chat-response-invalid"})
 
+    def test_relays_only_a_closed_browser_terminal_free_of_forbidden_values(self) -> None:
+        reference = {"id": "f" * 32, "name": "edital.pdf", "media_type": "application/pdf", "size": 2048}
+        browser = {"files": [reference], "lost": [{"name": "anexo.zip", "reason": "over-limit"}], "skipped": 1}
+
+        turn = partial(_turn, "O prazo é 30/11.", "Qual o prazo?", "pt")
+
+        self.assertEqual(turn(browser=browser).websocket_event("team_1")["browser"], browser)
+        self.assertNotIn("browser", turn().body)
+        for invalid in (
+            None,
+            {**browser, "skipped": -1},
+            {**browser, "extra": 1},
+            {**browser, "files": [{**reference, "name": "sk-test-0123456789abcdef"}]},
+        ):
+            with self.subTest(invalid=invalid):
+                self.assertEqual(turn(browser=invalid).body, {"code": "chat-response-invalid"})
+
     def test_relays_one_closed_routine_card_or_refusal_free_of_forbidden_values(self) -> None:
         """A recording turn ends with its Routine card or why it made none, never both and never beside a question."""
         card = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())["routine_proposal"]["valid"][0]

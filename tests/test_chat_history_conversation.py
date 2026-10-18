@@ -1,6 +1,7 @@
 """Bounded semantic conversation projection from durable Local chat history."""
 
 import asyncio
+import json
 import sqlite3
 import sys
 import unicodedata
@@ -217,6 +218,33 @@ class ChatHistoryConversationTests(ChatHistoryCase):
                 "INSERT INTO transcript (team_id, event_key, payload, provenance, created_at) "
                 "VALUES ('m', 'k', '{}', 'other', '2026-10-03T12:00:00Z')"
             )
+
+    def test_a_turn_that_read_the_web_never_enters_the_projection_but_keeps_its_files_for_reload(self) -> None:
+        browser = {"files": [FILE], "lost": [{"name": "edital.zip", "reason": "over-limit"}], "skipped": 0}
+        plain = history.new_turn_id()
+        web = history.new_turn_id()
+        current = history.new_turn_id()
+        self.assertTrue(history.append_user("marketing", plain, "Quais zonas temos?"))
+        self.assertTrue(history.append_reply("marketing", plain, done_event("Duas zonas.")))
+        self.assertTrue(history.append_user("marketing", web, "Qual o prazo do edital?"))
+        self.assertTrue(history.append_reply("marketing", web, {**done_event("Prazo: 30/11."), "browser": browser}))
+        self.assertTrue(history.append_user("marketing", current, "E agora?"))
+
+        # Neither the person's message nor the reply of a web turn reaches routing or the bridge (ADR-0117 §6).
+        projected = history.conversation("marketing", current)
+        self.assertEqual([entry.text for entry in projected], ["Quais zonas temos?", "Duas zonas."])
+        entry = history.page("marketing")["entries"][-2]
+        self.assertEqual((entry["text"], entry["browser"]), ("Prazo: 30/11.", browser))
+        for invalid in (None, {**browser, "skipped": -1}, {**browser, "files": [{**FILE, "size": 0}]}):
+            with self.subTest(browser=invalid), self.assertRaises(ValueError):
+                history.append_reply("marketing", history.new_turn_id(), {**done_event("x"), "browser": invalid})
+        tampered = {"kind": "message", "role": "assistant", "text": "x", "author": "Marketing", "browser": {}}
+        with sqlite3.connect(self.path) as database:
+            database.execute(
+                "UPDATE transcript SET payload = ? WHERE event_key = ?", (json.dumps(tampered), f"{web}:reply")
+            )
+        with self.assertRaises(history.HistoryUnavailableError):
+            history.page("marketing")
 
     def test_conversation_projection_keeps_only_the_newest_eight_eligible_entries(self) -> None:
         for index in range(5):

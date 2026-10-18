@@ -27,6 +27,7 @@ from team import transport
 
 from chat import assistant_proposal, human, payloads
 from integrations import assistants as integration_assistants
+from protocol.http.v1 import browser as browser_contract
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import progress as progress_contract
 from protocol.http.v1 import routine_proposal as routine_proposal_contract
@@ -51,7 +52,9 @@ ROUTINE_FIELDS = {
     REFUSAL_FIELD: routine_proposal_contract.canonical_refusal,
     QUESTION_FIELD: routine_proposal_contract.canonical_question,
 }
-_OPTIONAL_DONE_FIELDS = frozenset({USAGE_FIELD, *ROUTINE_FIELDS})
+# A turn that ran the Browser names the files it kept and the ones it did not (ADR-0117).
+BROWSER_FIELD = "browser"
+_OPTIONAL_DONE_FIELDS = frozenset({USAGE_FIELD, BROWSER_FIELD, *ROUTINE_FIELDS})
 _STOP_RESPONSE_FIELDS = frozenset({"team_id", "requested", "accepted", "confirmed", "forced_restart"})
 _INTEGRATION_CHALLENGE_RESPONSE_FIELDS = frozenset(
     {"team_id", "status", "turn_id", "challenge_id", "expires_in", "requirements", "trace_id"}
@@ -694,11 +697,17 @@ def _project_turn(
     routine = admit_routine_fields(response.body, clarification)
     if routine is None:
         return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
+    browser = response.body.get(BROWSER_FIELD)
+    if BROWSER_FIELD in response.body:
+        browser = browser_contract.canonical_terminal(browser)
+        if browser is None:
+            return PublicResponse(HTTPStatus.BAD_GATEWAY, {"code": "chat-response-invalid"})
     shown = " ".join(
         (
             f"{team_name} {reply} {_clarification_text(clarification)}",
             *(f"{model['provider']} {model['model']}" for model in (usage["models"] if usage else ())),
             json.dumps(routine, ensure_ascii=False),
+            json.dumps(browser, ensure_ascii=False),
         )
     )
     if (
@@ -722,6 +731,7 @@ def _project_turn(
             "reply": reply,
             "clarification": clarification,
             **({USAGE_FIELD: usage} if usage is not None else {}),
+            **({BROWSER_FIELD: browser} if browser is not None else {}),
             **routine,
         },
     )

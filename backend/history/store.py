@@ -20,6 +20,7 @@ from history import reply as reply_payload
 from session import topics
 
 from chat import local as chat_local
+from protocol.http.v1 import browser as browser_contract
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import routine as routine_contract
 from protocol.http.v1 import routine_notice as routine_notice_contract
@@ -400,7 +401,7 @@ def append_reply(team_id: object, turn_id: object, event: object, *, receipt: ob
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
     fields = {"type", "team_id", "team_name", "reply", "clarification"}
-    optional = {"usage", *chat_local.ROUTINE_FIELDS}
+    optional = {"usage", chat_local.BROWSER_FIELD, *chat_local.ROUTINE_FIELDS}
     if not isinstance(event, Mapping) or set(event) - optional != fields:
         raise ValueError("chat history reply event is invalid")
     if event["type"] != "done" or event["team_id"] != canonical_team:
@@ -420,6 +421,12 @@ def append_reply(team_id: object, turn_id: object, event: object, *, receipt: ob
             raise ValueError("chat history reply event is invalid")
         # Stored so a reload shows what the turn consumed under its reply; it never enters the Brain window.
         entry["usage"] = usage
+    if chat_local.BROWSER_FIELD in event:
+        browser = browser_contract.canonical_terminal(event[chat_local.BROWSER_FIELD])
+        if browser is None:
+            raise ValueError("chat history reply event is invalid")
+        # Stored so a reload shows the reply's downloaded files; its turn never enters the Brain window (ADR-0117).
+        entry[chat_local.BROWSER_FIELD] = browser
     # Stored so a reload shows the same Routine card or refusal under the reply (ADR-0101).
     entry.update(reply_payload.routine_reply(event, entry.get("clarification")))
     if receipt is not None:
@@ -545,6 +552,10 @@ def _validate_stored_message(payload: dict[str, object]) -> None:
         expected.add("receipt")
         # Only an exact receipt is admitted, so a stored one is valid exactly as written.
         reply_payload.receipt(payload["receipt"])
+    if role == "assistant" and chat_local.BROWSER_FIELD in payload:
+        expected.add(chat_local.BROWSER_FIELD)
+        if browser_contract.canonical_terminal(payload[chat_local.BROWSER_FIELD]) != payload[chat_local.BROWSER_FIELD]:
+            raise ValueError("invalid stored message")
     if role == "assistant":
         expected.update(reply_payload.routine_reply(payload, payload.get("clarification")))
     if role == "user" and "files" in payload:
@@ -754,7 +765,19 @@ def conversation(team_id: object, before_turn_id: object) -> tuple[conversation_
         rows = database.execute(
             CONVERSATION_QUERY, (canonical_team, anchor[0], conversation_context.MAX_ENTRIES)
         ).fetchall()
-    projected = (_conversation_entry(event_key, _decoded(raw)) for event_key, raw in reversed(rows))
+    decoded = [(event_key, _decoded(raw)) for event_key, raw in reversed(rows)]
+    # Every row of a turn that read the web leaves the projection, the person's message included (ADR-0117 §6): its
+    # reply alone says so, and a turn's message always precedes its reply inside the window.
+    browser_turns = {
+        str(event_key).rpartition(":")[0]
+        for event_key, payload in decoded
+        if str(event_key).endswith(":reply") and chat_local.BROWSER_FIELD in payload
+    }
+    projected = (
+        _conversation_entry(event_key, payload)
+        for event_key, payload in decoded
+        if str(event_key).rpartition(":")[0] not in browser_turns
+    )
     return tuple(entry for entry in projected if entry is not None)
 
 
