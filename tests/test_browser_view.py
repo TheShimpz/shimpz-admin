@@ -298,6 +298,27 @@ class BrowserStreamTests(ChatWebSocketCase):
         [connection] = reached
         connection.close.assert_called_once_with()
 
+    def test_a_team_reached_as_the_session_ends_is_closed(self) -> None:
+        team = mock.Mock()
+        team.close = mock.AsyncMock()
+
+        async def reached(*_args):
+            return team, None
+
+        async def ended(*_args):
+            return None
+
+        async def scenario() -> int:
+            # The opening and the session's end finish together; the opening's Team is closed all the same.
+            with (
+                mock.patch.object(team_browser_view, "_open_team", side_effect=reached),
+                mock.patch.object(team_browser_view, "_session_holds", side_effect=ended),
+            ):
+                return await team_browser_view._relay(mock.Mock(cookies={}), mock.Mock(), "origin", "/x")
+
+        self.assertEqual(asyncio.run(scenario()), registry.SIGNED_OUT)
+        team.close.assert_awaited_once_with()
+
     def test_a_page_whose_close_stalls_still_frees_its_stream(self) -> None:
         async def scenario() -> bool:
             with mock.patch.object(team_browser_view, "CLOSE_SECONDS", 0.1):

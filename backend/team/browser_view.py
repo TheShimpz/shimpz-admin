@@ -130,6 +130,9 @@ async def _relay(websocket: WebSocket, gate: session_socket.Gate, origin: str, p
         watch.cancel()
         opening.cancel()
         await asyncio.gather(watch, opening, return_exceptions=True)
+        # An opening that reached Team although the stream ended first, even in the same instant, is closed too.
+        if team is None and not opening.cancelled() and opening.exception() is None:
+            team = opening.result()[0]
         if team is not None:
             with contextlib.suppress(Exception):
                 await asyncio.wait_for(team.close(), CLOSE_SECONDS)
