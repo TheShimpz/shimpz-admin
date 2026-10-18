@@ -163,6 +163,7 @@ export default {
         actionAgain: 'J’essaie à nouveau d’exécuter l’Action {action} avec l’Assistant {assistant}',
         actionPosition: '· action {index} sur {total}',
         actionDelivery: 'J’enregistre les résultats que j’ai déjà utilisés',
+        browser: 'Je parcours des sites publics dans un navigateur isolé',
         rest: 'Coordination et attente entre les étapes',
       },
       states: {
@@ -632,6 +633,18 @@ export default {
     sending: 'Envoi',
     pdfText: 'PDF : texte seulement',
     notRead: 'N\'a pas pu être lu',
+    web: {
+      origin: 'Du web',
+      list: 'Fichiers du web',
+      kicker: 'Du web',
+      title: 'Télécharger un fichier du web',
+      lead: 'Le navigateur de ce Team a téléchargé {name} depuis un site public.',
+      risk: 'Shimpz n’a pas vérifié ce fichier. Ouvrez-le seulement si vous faites confiance au site d’où il vient.',
+      download: 'Télécharger',
+      downloading: 'Téléchargement…',
+      cancel: 'Annuler',
+      failed: 'Le fichier n’a pas pu être téléchargé. Réessayez.',
+    },
     kinds: {
       image: 'Image',
       pdf: 'PDF',

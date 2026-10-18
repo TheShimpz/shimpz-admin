@@ -163,6 +163,7 @@ export default {
         actionAgain: 'Assistant {assistant} で Action {action} の実行を再度試みます',
         actionPosition: '· {total} 件中 {index} 件目のアクション',
         actionDelivery: 'すでに使った結果を記録します',
+        browser: '隔離されたブラウザーで公開ウェブサイトを閲覧します',
         rest: 'ステップ間の調整と待機',
       },
       states: {
@@ -632,6 +633,18 @@ export default {
     sending: 'アップロード中',
     pdfText: 'PDF：テキストのみ',
     notRead: '読み取れませんでした',
+    web: {
+      origin: 'Web から',
+      list: 'Web からのファイル',
+      kicker: 'Web から',
+      title: 'Web からファイルをダウンロード',
+      lead: 'このチームのブラウザーが公開ウェブサイトから {name} をダウンロードしました。',
+      risk: 'Shimpz はこのファイルを確認していません。取得元のウェブサイトを信頼できる場合のみ開いてください。',
+      download: 'ダウンロード',
+      downloading: 'ダウンロード中…',
+      cancel: 'キャンセル',
+      failed: 'ファイルをダウンロードできませんでした。もう一度お試しください。',
+    },
     kinds: {
       image: '画像',
       pdf: 'PDF',

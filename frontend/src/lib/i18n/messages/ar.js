@@ -163,6 +163,7 @@ export default {
         actionAgain: 'أحاول مجددًا تنفيذ Action {action} باستخدام Assistant {assistant}',
         actionPosition: '· الإجراء {index} من {total}',
         actionDelivery: 'أسجّل النتائج التي استخدمتها بالفعل',
+        browser: 'أتصفح مواقع ويب عامة في متصفح معزول',
         rest: 'التنسيق والانتظار بين الخطوات',
       },
       states: {
@@ -632,6 +633,18 @@ export default {
     sending: 'جارٍ الرفع',
     pdfText: 'PDF: النص فقط',
     notRead: 'تعذّرت قراءته',
+    web: {
+      origin: 'من الويب',
+      list: 'ملفات من الويب',
+      kicker: 'من الويب',
+      title: 'تنزيل ملف من الويب',
+      lead: 'نزّل متصفح هذا الفريق {name} من موقع ويب عام.',
+      risk: 'لم يفحص Shimpz هذا الملف. افتحه فقط إذا كنت تثق بالموقع الذي جاء منه.',
+      download: 'تنزيل',
+      downloading: 'جارٍ التنزيل…',
+      cancel: 'إلغاء',
+      failed: 'تعذّر تنزيل الملف. حاول مرة أخرى.',
+    },
     kinds: {
       image: 'صورة',
       pdf: 'PDF',

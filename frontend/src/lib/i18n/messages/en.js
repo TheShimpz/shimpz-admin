@@ -161,6 +161,7 @@ export default {
         actionAgain: 'I try to run the {action} Action again with the {assistant} Assistant',
         actionPosition: '· action {index} of {total}',
         actionDelivery: 'I record the results I already used',
+        browser: 'I browse public websites in an isolated browser',
         rest: 'Coordination and waiting between steps',
       },
       states: {
@@ -645,6 +646,18 @@ export default {
     sending: 'Uploading',
     pdfText: 'PDF: text only',
     notRead: 'Couldn\'t be read',
+    web: {
+      origin: 'From the web',
+      list: 'Files from the web',
+      kicker: 'From the web',
+      title: 'Download a file from the web',
+      lead: 'This Team\'s browser downloaded {name} from a public website.',
+      risk: 'Shimpz didn\'t check this file. Open it only if you trust the website it came from.',
+      download: 'Download',
+      downloading: 'Downloading…',
+      cancel: 'Cancel',
+      failed: 'The file couldn\'t be downloaded. Try again.',
+    },
     kinds: {
       image: 'Image',
       pdf: 'PDF',

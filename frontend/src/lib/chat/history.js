@@ -1,4 +1,4 @@
-import { parseFileReferences } from './attachments/files.js';
+import { parseBrowserTerminal, parseFileReferences } from './attachments/files.js';
 import { parseClarification, renderClarification } from './clarification/compose.js';
 import {
   CHAT_TEXT_CONTROL_RE,
@@ -69,6 +69,8 @@ function messageEntry(value, suffix, status) {
   const used = assistant && Object.hasOwn(value, 'usage');
   // The steps its page was shown are kept with a reply, so a reload lists them under its usage line again (ADR-0082).
   const recorded = assistant && Object.hasOwn(value, 'receipt');
+  // A reply whose turn ran the Browser keeps the files it downloaded, so a reload shows their cards again (ADR-0117).
+  const browsed = assistant && Object.hasOwn(value, 'browser');
   // A recording turn's Routine card, question, or refusal is kept with its reply, so a reload shows it again (ADR-0101).
   const routineKeys = assistant
     ? ['routine_proposal', 'routine_refusal', 'routine_question'].filter((key) => Object.hasOwn(value, key))
@@ -85,14 +87,17 @@ function messageEntry(value, suffix, status) {
       ...(clarified ? ['clarification'] : []),
       ...(used ? ['usage'] : []),
       ...(recorded ? ['receipt'] : []),
+      ...(browsed ? ['browser'] : []),
       ...routineKeys,
     ]
     : ['id', 'kind', 'role', 'text', ...(attached ? ['files'] : [])];
   let usage = null;
   let receipt = null;
   let files = null;
+  let browser = null;
   let routine = {};
   try {
+    if (browsed) browser = parseBrowserTerminal(value.browser);
     if (used) usage = parseTaskUsage(value.usage);
     if (recorded) receipt = parseReceipt(value.receipt);
     if (attached) files = parseFileReferences(value.files);
@@ -130,6 +135,7 @@ function messageEntry(value, suffix, status) {
     ...(usage ? { usage } : {}),
     ...(receipt ? { receipt } : {}),
     ...(files ? { files } : {}),
+    ...(browser ? { browser } : {}),
     ...routine,
   };
 }

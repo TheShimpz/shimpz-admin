@@ -8,6 +8,8 @@ import {
   recordAttachedTurn,
   manyImagesHistory,
   sentImagesHistory,
+  WEB_FILES,
+  webFilesHistory,
   uploadFile,
 } from './attachmentScenarios.js';
 import { catalogBindingAnswer, catalogImageAnswer, catalogInventory, catalogSnapshots } from './catalogScenario.js';
@@ -271,6 +273,15 @@ const STARTS = {
     routines: [],
     runs: [],
     history: sentImagesHistory(),
+  }),
+  // A reply whose Browser task downloaded two files from the web; each is saved only once acknowledged (ADR-0117 §7).
+  'browser-files': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    history: webFilesHistory(),
+    acknowledged: [],
   }),
   // More sent images than the session keeps thumbnails of, one per message down a long chat.
   'attachment-many-images': () => ({
@@ -779,7 +790,18 @@ const TEAM_METHODS = Object.freeze({
   },
   'integrations.list': () => ok({ integrations: [] }),
   'stored_inputs.list': () => ok({ stored_inputs: [] }),
+  'files.acknowledge': acknowledgeFile,
 });
+
+// Like Team, only a file the Browser downloaded can be acknowledged, and an acknowledgement is kept.
+function acknowledgeFile(state, params) {
+  const web = Object.values(WEB_FILES).some((file) => file.id === params.file_id);
+  if (!state.acknowledged || params.team_id !== 'marketing' || !web) {
+    return { status: 409, json: { detail: 'file acknowledgement unavailable', code: 'file-not-from-web' } };
+  }
+  state.acknowledged = [...new Set([...state.acknowledged, params.file_id])];
+  return ok({ file_id: params.file_id, acknowledged: true });
+}
 
 /**
  * A fresh scenario; `respond` returns `{ status, json }` or null for an HTTP request this scenario does not answer, and

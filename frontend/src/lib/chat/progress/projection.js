@@ -112,6 +112,7 @@ function narrativeKey(step) {
   return {
     'admin-preparation': 'adminPreparation',
     'action-delivery': 'actionDelivery',
+    browser: 'browser',
     'reply-validation': 'replyValidation',
     rest: 'rest',
   }[step.phase];

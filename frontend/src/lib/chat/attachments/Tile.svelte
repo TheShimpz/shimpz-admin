@@ -2,6 +2,7 @@
   import { ActionLink, Button } from '@shimpz/frontend';
   import { downloadUrl, formatFileSize, saveFile } from '#lib/chat/attachments/files.js';
   import FileViewer from '#lib/chat/attachments/FileViewer.svelte';
+  import WebDownload from '#lib/chat/attachments/WebDownload.svelte';
   import { acquirePreview, PreviewCapacityError, previewable, stored } from '#lib/chat/attachments/previews.js';
   import { locale, t } from '#lib/i18n/index.js';
 
@@ -11,12 +12,15 @@
   // the card comes within NEAR_PX of its scrolling region, and an image Team cannot read is reported through
   // `onunavailable`, so its message can leave it out. Once Team stored the file, the whole card but its actions opens it
   // in the viewer, which moves through `files`, the message's files, this one among them. A stored file can be
-  // downloaded from its card's end; in the composer the card can also be removed from the message.
+  // downloaded from its card's end; in the composer the card can also be removed from the message. A `web` file, which
+  // the Browser downloaded (ADR-0117 §7), says so, opens only where Team shows it through a sanitized rendition, and is
+  // saved only through the dialog that records the Supervisor's acknowledgement first.
   let {
     teamId,
     file,
     files = [file],
     status = 'ready',
+    web = false,
     onremove = null,
     onunavailable = () => {},
   } = $props();
@@ -34,7 +38,10 @@
   let kindText = $derived(copy.kinds[file.kind] ?? copy.kinds.file);
   let noteText = $derived(file.note === 'pdf-text' ? copy.pdfText : file.note === 'unreadable' ? copy.notRead : '');
   let statusText = $derived(status === 'queued' ? copy.queued : status === 'uploading' ? copy.sending : '');
-  let details = $derived([kindText, formatFileSize(file.size, $locale), noteText, statusText].filter(Boolean).join(' · '));
+  let webText = $derived(web ? copy.web.origin : '');
+  let details = $derived(
+    [kindText, formatFileSize(file.size, $locale), webText, noteText, statusText].filter(Boolean).join(' · '),
+  );
   let nameParts = $derived(
     [...file.name].length > TAIL_CHARS
       ? [[...file.name].slice(0, -TAIL_CHARS).join(''), [...file.name].slice(-TAIL_CHARS).join('')]
@@ -43,6 +50,8 @@
   let canPreview = $derived(status === 'ready' && previewable(teamId, file));
   // Only a file Team stored, of a valid Team, can be opened or downloaded.
   let openable = $derived(status === 'ready' && stored(teamId, file));
+  // A file from the web is shown only through Team's renditions, never its own text.
+  let viewable = $derived(openable && (!web || file.kind === 'image' || file.kind === 'pdf'));
   // The badge: the file's extension, at most four characters, or its type when it has none.
   let badge = $derived.by(() => {
     const dot = file.name.lastIndexOf('.');
@@ -92,9 +101,14 @@
   // The link names the file's download route; a click saves it through the session's own read, as every browser sends
   // that alike, and the link stays busy until the save was handed to the browser. A save that fails leaves nothing.
   let saving = $state(false);
+  let guarding = $state(false);
 
   function save(event) {
     event.preventDefault();
+    if (web) {
+      guarding = true;
+      return;
+    }
     if (saving) return;
     saving = true;
     saveFile(teamId, file).catch(() => {}).finally(() => (saving = false));
@@ -123,7 +137,7 @@
       <span class="card-details">{details}</span>
     </span>
   {/snippet}
-  {#if openable}
+  {#if viewable}
     <Button
       bind:element={opener}
       class="card-open"
@@ -175,8 +189,12 @@
       files={files.some((item) => item.id === file.id) ? files : [file]}
       start={Math.max(0, files.findIndex((item) => item.id === file.id))}
       thumbnail={shown}
+      {web}
       onclose={closeViewer}
     />
+  {/if}
+  {#if guarding}
+    <WebDownload {teamId} {file} onclose={() => (guarding = false)} />
   {/if}
 </li>
 

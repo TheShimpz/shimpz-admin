@@ -117,6 +117,14 @@
         <!-- A reply beside a Routine card, question, or refusal may have no text: the card then says everything. -->
         <Markdown markdown={assistantTurn.text} variant="chat" />
       {/if}
+      {#if assistantTurn.webFiles}
+        <!-- The files the reply's Browser task downloaded from the web, one card each (ADR-0117 §7). -->
+        <ul class="sent-attachments" aria-label={$t('attachments').web.list}>
+          {#each assistantTurn.webFiles as file (file.key)}
+            <AttachmentTile {teamId} {file} files={assistantTurn.webFiles} web />
+          {/each}
+        </ul>
+      {/if}
       {#if assistantTurn.installPlan}
         <InstallPlan plan={assistantTurn.installPlan} {teamId} {words} />
       {/if}
@@ -249,7 +257,7 @@
     text-transform: uppercase;
   }
 
-  /* A sent message's files, under its text, one card under another. */
+  /* A sent message's files, and a reply's downloaded ones, under its text, one card under another. */
   .sent-attachments {
     display: grid;
     width: 100%;

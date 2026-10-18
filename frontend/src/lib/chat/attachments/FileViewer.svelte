@@ -13,8 +13,9 @@
   // its thumbnail; a PDF is Team's rendition of each of its pages; a text file is its own text; any other file says it
   // has no preview. The arrow keys and the arrows along the frame's sides move to the previous or the next file; the
   // thumbnail the viewer opened from stands in only when its rendition cannot load, and any other image that cannot load
-  // says so. Esc, a click on the backdrop, and Close each close it; whoever opened it gets focus back in `onclose`.
-  let { teamId, files, start = 0, thumbnail = null, onclose } = $props();
+  // says so. Esc, a click on the backdrop, and Close each close it; whoever opened it gets focus back in `onclose`. A
+  // file from the web (`web`) shows only Team's renditions: its text would be read from its original (ADR-0117 §7).
+  let { teamId, files, start = 0, thumbnail = null, web = false, onclose } = $props();
 
   const id = $props.id();
   let dialog = $state();
@@ -30,7 +31,7 @@
   let shows = $derived(
     previewable(teamId, current) ? 'image'
       : paged(teamId, current) ? 'pdf'
-      : kind === 'text' && stored(teamId, current) ? 'text'
+      : kind === 'text' && !web && stored(teamId, current) ? 'text'
       : 'none',
   );
 

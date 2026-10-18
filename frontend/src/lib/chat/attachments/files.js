@@ -5,6 +5,7 @@ import { exactKeys, jsonObject, LocalApiError } from '../../api.js';
 import { codePointLength, CONTROL_RE } from '../../grammar.js';
 import { OPAQUE_ID_RE, TEAM_ID_RE } from '../../ids.js';
 import { numberFormat } from '../../i18n/formats.js';
+import { socketReads } from '../../session/socket.js';
 
 const KIB = 1024;
 const MIB = 1024 * KIB;
@@ -180,6 +181,63 @@ export function parseFileReferences(value) {
     throw new LocalApiError('The Team chat history is invalid.');
   }
   return references;
+}
+
+// What a reply's Browser task did not keep, each with its closed reason (Team protocol browser.TERMINAL_LOSSES).
+const BROWSER_LOSSES = new Set([
+  'incomplete', 'over-limit', 'empty', 'quota-exceeded', 'name-refused', 'store-unavailable', 'browser-lost',
+]);
+const MAX_BROWSER_LOSSES = 128;
+const MAX_BROWSER_SKIPPED = 1_000;
+
+function browserLoss(item) {
+  if (
+    !exactKeys(item, ['name', 'reason']) ||
+    typeof item.name !== 'string' ||
+    item.name === '' ||
+    encoder.encode(item.name).length > MAX_FILENAME_BYTES ||
+    CONTROL_RE.test(item.name) ||
+    !BROWSER_LOSSES.has(item.reason)
+  ) throw new LocalApiError('The Team chat history is invalid.');
+  return { name: item.name, reason: item.reason };
+}
+
+/**
+ * A reply's `browser` field (Team protocol browser.canonical_terminal, ADR-0117 §7): the at most eight files its
+ * Browser task kept, each a reference like a message's, the named files it did not keep with their reasons, and how
+ * many it did not name. Anything else throws.
+ */
+export function parseBrowserTerminal(value) {
+  if (
+    !exactKeys(value, ['files', 'lost', 'skipped']) ||
+    !Array.isArray(value.files) ||
+    value.files.length > MAX_ATTACHMENTS ||
+    !Array.isArray(value.lost) ||
+    value.lost.length > MAX_BROWSER_LOSSES ||
+    !Number.isSafeInteger(value.skipped) ||
+    value.skipped < 0 ||
+    value.skipped > MAX_BROWSER_SKIPPED
+  ) throw new LocalApiError('The Team chat history is invalid.');
+  return {
+    files: value.files.length ? parseFileReferences(value.files) : [],
+    lost: value.lost.map(browserLoss),
+    skipped: value.skipped,
+  };
+}
+
+/**
+ * Record that the Supervisor accepts the risk of saving one file the Browser downloaded from the web: Team then
+ * releases its original to them (ADR-0117 §7). Anything but Team's exact acknowledgement of that file throws.
+ */
+export async function acknowledgeWebFile(teamId, fileId, call = socketReads.call) {
+  if (typeof teamId !== 'string' || !TEAM_ID_RE.test(teamId) || typeof fileId !== 'string' || !OPAQUE_ID_RE.test(fileId)) {
+    throw new LocalApiError('The file acknowledgement is invalid.');
+  }
+  const response = await call('files.acknowledge', { team_id: teamId, file_id: fileId });
+  const body = await jsonObject(response);
+  if (!response.ok || !exactKeys(body, ['file_id', 'acknowledged']) || body.file_id !== fileId || body.acknowledged !== true) {
+    throw new LocalApiError('The file acknowledgement failed.', response.status);
+  }
 }
 
 /** Why an upload failed, in the closed words the composer explains: quota, size, type, or anything else. */

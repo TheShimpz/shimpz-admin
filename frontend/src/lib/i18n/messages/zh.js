@@ -163,6 +163,7 @@ export default {
         actionAgain: '我再次尝试用 Assistant {assistant} 执行 Action {action}',
         actionPosition: '· 第 {index}/{total} 个操作',
         actionDelivery: '我记录刚才已经使用的结果',
+        browser: '我在隔离的浏览器中浏览公共网站',
         rest: '步骤之间的协调与等待',
       },
       states: {
@@ -632,6 +633,18 @@ export default {
     sending: '上传中',
     pdfText: 'PDF：仅文本',
     notRead: '无法读取',
+    web: {
+      origin: '来自网页',
+      list: '来自网页的文件',
+      kicker: '来自网页',
+      title: '从网页下载文件',
+      lead: '此团队的浏览器从公共网站下载了 {name}。',
+      risk: 'Shimpz 未检查此文件。只有在信任其来源网站时才打开它。',
+      download: '下载',
+      downloading: '正在下载…',
+      cancel: '取消',
+      failed: '无法下载该文件。请重试。',
+    },
     kinds: {
       image: '图片',
       pdf: 'PDF',

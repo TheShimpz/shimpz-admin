@@ -163,6 +163,7 @@ export default {
         actionAgain: 'Ich versuche erneut, die Action {action} mit dem Assistant {assistant} auszuführen',
         actionPosition: '· Aktion {index} von {total}',
         actionDelivery: 'Ich erfasse die Ergebnisse, die ich bereits verwendet habe',
+        browser: 'Ich besuche öffentliche Websites in einem isolierten Browser',
         rest: 'Koordination und Warten zwischen den Schritten',
       },
       states: {
@@ -632,6 +633,18 @@ export default {
     sending: 'Wird hochgeladen',
     pdfText: 'PDF: nur Text',
     notRead: 'Konnte nicht gelesen werden',
+    web: {
+      origin: 'Aus dem Web',
+      list: 'Dateien aus dem Web',
+      kicker: 'Aus dem Web',
+      title: 'Eine Datei aus dem Web herunterladen',
+      lead: 'Der Browser dieses Teams hat {name} von einer öffentlichen Website heruntergeladen.',
+      risk: 'Shimpz hat diese Datei nicht geprüft. Öffne sie nur, wenn du der Website vertraust, von der sie stammt.',
+      download: 'Herunterladen',
+      downloading: 'Wird heruntergeladen…',
+      cancel: 'Abbrechen',
+      failed: 'Die Datei konnte nicht heruntergeladen werden. Versuche es erneut.',
+    },
     kinds: {
       image: 'Bild',
       pdf: 'PDF',

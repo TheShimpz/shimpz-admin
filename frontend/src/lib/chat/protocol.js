@@ -2,7 +2,7 @@
 // Stop, a sync, and a human response send, and every frame Team answers parsed into its closed form, with the
 // human-request challenge Routines reuse for frozen runs. Any other shape throws.
 
-import { parseFileDisclosure } from './attachments/files.js';
+import { parseBrowserTerminal, parseFileDisclosure } from './attachments/files.js';
 import { parseClarification, renderClarification } from './clarification/compose.js';
 import { parseTaskUsage } from './usage.js';
 import {
@@ -82,6 +82,8 @@ export const CHAT_PROGRESS_PHASES = Object.freeze([
   'action-preparation',
   'action',
   'action-delivery',
+  // One Browser task of the turn (ADR-0117): metadata only, never a URL or page text.
+  'browser',
 ]);
 const CHAT_PROGRESS_PHASE_SET = new Set(CHAT_PROGRESS_PHASES);
 const ADMIN_PROGRESS_PHASES = new Set(['admin-preparation', 'reply-validation']);
@@ -959,10 +961,12 @@ function parseDoneEvent(value, expectedTeamId) {
   let clarification = null;
   let usage = null;
   let routine = {};
+  let browser = null;
   try {
     clarification = parseClarification(value.clarification);
     usage = parseTaskUsage(value.usage);
     routine = parseRoutineReply(value, clarification);
+    if (Object.hasOwn(value, 'browser')) browser = parseBrowserTerminal(value.browser);
   } catch {
     throw invalidResponse();
   }
@@ -972,6 +976,8 @@ function parseDoneEvent(value, expectedTeamId) {
   const doneKeys = ['type', 'team_id', 'team_name', 'reply', 'clarification'];
   // `usage` is optional: Team reports it only when a model call of the turn reported usage.
   if (Object.hasOwn(value, 'usage')) doneKeys.push('usage');
+  // `browser` is optional: only a turn that ran the Browser names the files it kept and the ones it did not.
+  if (browser) doneKeys.push('browser');
   doneKeys.push(...Object.keys(routine));
   if (
     !exactKeys(value, doneKeys) ||
@@ -994,6 +1000,7 @@ function parseDoneEvent(value, expectedTeamId) {
     reply: value.reply,
     clarification,
     ...(usage ? { usage } : {}),
+    ...(browser ? { browser } : {}),
     ...routine,
   };
 }

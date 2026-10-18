@@ -163,6 +163,7 @@ export default {
         actionAgain: 'Intento ejecutar de nuevo la Action {action} con el Assistant {assistant}',
         actionPosition: '· acción {index} de {total}',
         actionDelivery: 'Registro los resultados que ya usé',
+        browser: 'Navego por sitios web públicos en un navegador aislado',
         rest: 'Coordinación y espera entre etapas',
       },
       states: {
@@ -632,6 +633,18 @@ export default {
     sending: 'Subiendo',
     pdfText: 'PDF: solo texto',
     notRead: 'No se pudo leer',
+    web: {
+      origin: 'De la web',
+      list: 'Archivos de la web',
+      kicker: 'De la web',
+      title: 'Descargar un archivo de la web',
+      lead: 'El navegador de este Team descargó {name} de un sitio web público.',
+      risk: 'Shimpz no revisó este archivo. Ábrelo solo si confías en el sitio del que vino.',
+      download: 'Descargar',
+      downloading: 'Descargando…',
+      cancel: 'Cancelar',
+      failed: 'No se pudo descargar el archivo. Inténtalo de nuevo.',
+    },
     kinds: {
       image: 'Imagen',
       pdf: 'PDF',

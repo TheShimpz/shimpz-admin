@@ -123,6 +123,40 @@ export function sentImagesHistory() {
   ];
 }
 
+// The files the reply's Browser task downloaded from the web (ADR-0117 §7): a PDF Team renders and a text file whose
+// own text the viewer never reads.
+export const WEB_FILES = Object.freeze({
+  pdf: { id: '1'.repeat(32), name: 'Edital 2026.pdf', media_type: 'application/pdf', size: 482_133 },
+  text: { id: '2'.repeat(32), name: 'Anexo.txt', media_type: 'text/plain', size: 2_140 },
+});
+
+/** A completed turn whose Browser task kept two files and could not keep a third, as Admin's history keeps it. */
+export function webFilesHistory() {
+  const at = '2026-10-17T09:30:00Z';
+  return [
+    {
+      id: `${'d'.repeat(32)}:user`,
+      created_at: at,
+      kind: 'message',
+      role: 'user',
+      text: 'What is the deadline in the city notice?',
+    },
+    {
+      id: `${'d'.repeat(32)}:reply`,
+      created_at: at,
+      kind: 'message',
+      role: 'assistant',
+      text: 'The deadline is November 30 (https://example.com/edital). I downloaded the notice and its annex.',
+      author: 'Marketing',
+      browser: {
+        files: [WEB_FILES.pdf, WEB_FILES.text],
+        lost: [{ name: 'Plantas.zip', reason: 'over-limit' }],
+        skipped: 0,
+      },
+    },
+  ];
+}
+
 /**
  * A long conversation whose every message carried two images: more images than the session keeps thumbnails of, in
  * one history page (64 entries at most).

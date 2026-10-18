@@ -55,6 +55,19 @@ export function shownUsage(turn) {
   return { usage: { ...turn.usage, seconds: Math.max(total, turn.usage.durationMs) / 1000 }, steps };
 }
 
+/** One stored file as its card shows it, from the reference a message or a reply keeps. */
+function fileCard(file) {
+  return {
+    key: file.id,
+    id: file.id,
+    name: file.name,
+    mediaType: file.media_type,
+    size: file.size,
+    kind: attachmentKind(file.media_type),
+    note: '',
+  };
+}
+
 /** What a reply carries beside its text, the same from a live `done` frame and from its stored history row. */
 export function replyFields(source) {
   return {
@@ -65,6 +78,8 @@ export function replyFields(source) {
     ...(source.routine_proposal ? { routineProposal: source.routine_proposal } : {}),
     ...(source.routine_refusal ? { routineRefusal: source.routine_refusal } : {}),
     ...(source.routine_question ? { routineQuestion: source.routine_question } : {}),
+    // The files a reply's Browser task downloaded, as cards under it; each came from the web (ADR-0117).
+    ...(source.browser?.files.length ? { webFiles: source.browser.files.map(fileCard) } : {}),
   };
 }
 
@@ -88,15 +103,7 @@ export function historyTurn(entry, author, renderKey, words) {
       // A reloaded message shows the files it carried as it did when sent, from their saved references.
       ...(entry.files
         ? {
-          files: entry.files.map((file) => ({
-            key: file.id,
-            id: file.id,
-            name: file.name,
-            mediaType: file.media_type,
-            size: file.size,
-            kind: attachmentKind(file.media_type),
-            note: '',
-          })),
+          files: entry.files.map(fileCard),
         }
         : {}),
     };
