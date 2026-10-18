@@ -111,6 +111,36 @@ test('a stream that ends while the task still runs is unavailable, not a task th
   await assert.rejects(watching, (error) => !(error instanceof BrowserViewEndedError) && /unavailable/.test(error.message));
 });
 
+test('the check after a stream ended still settles when the view closes, and in time when unanswered', async (t) => {
+  const { RFB, made } = fakeRFB();
+  let first = true;
+  const call = async (method, params) => {
+    if (first) {
+      first = false;
+      return recorder(200, { view_id: VIEW }).call(method, params);
+    }
+    return new Promise(() => {});
+  };
+  const closing = new AbortController();
+  const closed = watchBrowser('team_1', { signal: closing.signal, target: {}, RFB, call, location: LOCATION });
+  await settled();
+  made[0].dispatchEvent(new Event('disconnect'));
+  closing.abort(new Error('closed during the check'));
+  await assert.rejects(closed, /closed during the check/);
+  assert.equal(made[0].disconnected, 0);
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  first = true;
+  const waiting = watchBrowser('team_1', {
+    signal: new AbortController().signal, target: {}, RFB, call, location: LOCATION,
+  });
+  await settled();
+  made[1].dispatchEvent(new Event('disconnect'));
+  const outcome = assert.rejects(waiting, (error) => !(error instanceof BrowserViewEndedError));
+  await settled();
+  t.mock.timers.tick(10_000);
+  await outcome;
+});
+
 test('closing the view disconnects the stream at once and asks for nothing more', async () => {
   const { RFB, made } = fakeRFB();
   const opened = recorder(200, { view_id: VIEW });

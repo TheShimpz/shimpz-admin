@@ -12,6 +12,8 @@ const NOT_RUNNING = 'browser-not-running';
 // view is asked for again until it opens or this long passed.
 const OPEN_RETRY_MS = 500;
 const OPEN_WAIT_MS = 60_000;
+// How long the view is asked for once its stream ended, to tell a task that ended from a stream that failed.
+const CHECK_WAIT_MS = 10_000;
 // The display sends JPEG at this quality and compresses its other encodings at this level (noVNC's 0-9 scales).
 const QUALITY = 8;
 const COMPRESSION = 2;
@@ -63,20 +65,21 @@ export async function watchBrowser(
     rfb.showDotCursor = false;
     rfb.qualityLevel = QUALITY;
     rfb.compressionLevel = COMPRESSION;
+    let connected = true;
     const abort = () => {
-      rfb.disconnect();
+      if (connected) rfb.disconnect();
       reject(signal.reason);
     };
     signal.addEventListener('abort', abort, { once: true });
     rfb.addEventListener('connect', () => onconnect());
     rfb.addEventListener('disconnect', () => {
-      signal.removeEventListener('abort', abort);
+      connected = false;
       if (signal.aborted) return;
       // The stream ended: the task's view answering again means the stream failed, its absence that the task ended.
-      openBrowserView(teamId, call).then(
-        () => reject(new LocalApiError('The Browser view is unavailable.')),
-        reject,
-      );
+      // Closing the view still settles at once, and an answer that never comes is unavailable in time.
+      bounded(openBrowserView(teamId, call), CHECK_WAIT_MS, signal)
+        .then(() => reject(new LocalApiError('The Browser view is unavailable.')), reject)
+        .finally(() => signal.removeEventListener('abort', abort));
     });
   });
 }
