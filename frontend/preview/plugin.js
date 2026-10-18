@@ -1,7 +1,7 @@
 // `vite dev --mode scenarios` only (ADR-0087): the owner's presentation preview. The browser answers the Admin API
 // from a scenario (install.js); this server answers only the images a page loads (icons and sent images' renditions,
-// from fixtures, and a stand-in for a downloaded file) and refuses every other `/api` request and socket, so an image, navigation, or frame never reaches a
-// backend. Nothing here is part of `vite build`.
+// from fixtures, and a stand-in for a downloaded file) and refuses every other `/api` request and socket, so an image or
+// navigation never reaches a backend. Nothing here is part of `vite build`.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -56,16 +56,6 @@ const DOWNLOAD = [
   '',
 ].join('\n');
 
-// A watched Browser task's screen: each request waits a moment, then answers the next frame, a page whose shades shift,
-// numbered as Team numbers them.
-const BROWSER_FRAME_RE = /^\/api\/teams\/[a-z0-9_]{1,40}\/browser\/views\/[0-9a-f]{32}\/frames\/(0|[1-9][0-9]{0,9})$/u;
-const FRAME_MS = 700;
-
-function browserFrame(number) {
-  const shade = (number * 37) % 160;
-  return png(1280, 800, [244, 244, 240], [60 + shade, 120, 220 - shade]);
-}
-
 function apiPath(url) {
   const path = new URL(url ?? '/', 'http://preview.invalid').pathname;
   return path === '/api' || path.startsWith('/api/') ? path : null;
@@ -94,17 +84,6 @@ export function adminPreview() {
           response.setHeader('cache-control', 'no-store');
           response.setHeader('x-page-count', String(PAGE_COUNT));
           response.end(sheet);
-          return;
-        }
-        const watched = request.method === 'GET' ? BROWSER_FRAME_RE.exec(path) : null;
-        if (watched) {
-          const number = Number(watched[1]) + 1;
-          setTimeout(() => {
-            response.setHeader('content-type', 'image/png');
-            response.setHeader('cache-control', 'no-store');
-            response.setHeader('x-shimpz-browser-frame', String(number));
-            response.end(browserFrame(number));
-          }, FRAME_MS);
           return;
         }
         if (request.method === 'GET' && DOWNLOAD_RE.test(path)) {

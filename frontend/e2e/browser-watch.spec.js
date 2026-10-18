@@ -1,89 +1,110 @@
-// Watching a running Browser task's screen in the built Admin (ADR-0117, M2 Watch): while the turn's current step is the
-// Browser, Watch opens an inline view of its frames under the progress, with Stop still in reach; the view only shows,
-// Close stops asking for frames, and a task that ended says so.
+// Watching a running Browser task's screen in the built Admin (ADR-0117, over KasmVNC): while the turn's current step is
+// the Browser, Watch opens an inline view of its display under the progress, with Stop still in reach; the view only
+// shows and sends the display no key, pointer, or clipboard, Close ends the stream, and a task that ended says so.
 import { expect, test } from '@playwright/test';
 
-import { png } from './png.js';
+import { CLIENT_MESSAGES, rfbServer, solid } from './rfbServer.js';
 import { BROWSER_VIEW } from './scenarios.js';
-import { routeScenario, sessionCalls } from './scenarioRoutes.js';
+import { routeRead, routeScenario, sessionCalls } from './scenarioRoutes.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 
 const EN = messages.en.chatPage;
 const WATCH = EN.progress.watch;
-const FRAMES = `**/api/teams/marketing/browser/views/${BROWSER_VIEW}/frames/*`;
-const FRAME = png(1280, 800, [240, 240, 236], [40, 120, 200]);
+const STREAM = `**/api/teams/marketing/browser/views/${BROWSER_VIEW}/stream`;
+const PAGE = [40, 120, 200];
+const INPUT = new Set(Object.values(CLIENT_MESSAGES));
 
-// Start a turn whose Browser task keeps running; Team's frames answer each cursor with the next frame, after a short
-// wait as Team's own wait for a newer frame, until the test ends the task.
+// Start a turn whose Browser task keeps running; its display draws one screen of PAGE and records what the page sends,
+// until the test ends the task.
 async function startTask(page) {
-  const scenario = await routeScenario(page, 'browser-watch');
-  const asked = [];
-  let ended = false;
-  await page.route(FRAMES, async (route) => {
-    const after = Number(new URL(route.request().url()).pathname.split('/').at(-1));
-    asked.push(after);
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    if (ended) {
-      return route.fulfill({
-        status: 404,
-        contentType: 'application/json',
-        body: JSON.stringify({ detail: 'browser view unavailable', code: 'browser-not-running' }),
-      });
-    }
-    return route.fulfill({
-      status: 200,
-      contentType: 'image/png',
-      headers: { 'x-shimpz-browser-frame': String(after + 1), 'cache-control': 'no-store' },
-      body: FRAME,
+  await routeScenario(page, 'browser-watch');
+  const display = { streams: [], closed: 0, ended: false };
+  await routeRead(page, 'browser.view', () => (display.ended
+    ? { status: 404, json: { detail: 'browser view unavailable', code: 'browser-not-running' } }
+    : undefined));
+  await page.routeWebSocket(STREAM, (socket) => {
+    const server = rfbServer({ screen: ({ incremental }) => (incremental ? null : [solid(1280, 800, PAGE)]) });
+    display.streams.push({ socket, server });
+    socket.onMessage((message) => {
+      for (const answer of server.receive(new Uint8Array(message))) socket.send(Buffer.from(answer));
     });
+    socket.onClose(() => { display.closed += 1; });
+    socket.send(Buffer.from(server.greeting));
   });
   await page.goto('/chat/?team=marketing');
+  // noVNC admits a socket only when its own class names its methods and handlers, as the browser's WebSocket does;
+  // Playwright's routed socket inherits them from a base class, so they are named on its own class too.
+  await page.evaluate(() => {
+    const own = window.WebSocket.prototype;
+    const base = Object.getPrototypeOf(own);
+    for (const [name, property] of Object.entries(Object.getOwnPropertyDescriptors(base))) {
+      if (!Object.hasOwn(own, name)) Object.defineProperty(own, name, property);
+    }
+  });
   const composer = page.getByRole('textbox', { name: EN.send, exact: true });
   await expect(composer).toBeEnabled({ timeout: 20_000 });
   await composer.fill('Open example.com and tell me its title.');
   await composer.press('Enter');
   // The Watch button appears once the turn's current step is the Browser task.
   await expect(page.getByRole('button', { name: WATCH.open, exact: true })).toBeVisible();
-  return { scenario, asked, end: () => { ended = true; } };
+  return {
+    display,
+    end() {
+      display.ended = true;
+      for (const { socket } of display.streams) socket.close({ code: 4404, reason: '' });
+    },
+  };
 }
 
-test('watching shows the running task\'s screen while Stop stays in reach @browser-sensitive', async ({ page }) => {
-  const { asked } = await startTask(page);
-  const watch = page.getByRole('button', { name: WATCH.open, exact: true });
-  await watch.click();
+// The colour noVNC drew at the middle of the view's screen.
+function middlePixel(page) {
+  return page.getByRole('img', { name: WATCH.alt }).locator('canvas').evaluate((canvas) => {
+    const { data } = canvas.getContext('2d').getImageData(canvas.width / 2, canvas.height / 2, 1, 1);
+    return [...data.slice(0, 3)];
+  });
+}
+
+test('watching shows the running task\'s screen and sends it no input @browser-sensitive', async ({ page }) => {
+  const { display } = await startTask(page);
+  await page.getByRole('button', { name: WATCH.open, exact: true }).click();
   const view = page.getByRole('figure', { name: WATCH.title });
-  await expect(view.getByRole('img', { name: WATCH.alt })).toBeVisible();
-  await expect.poll(() => asked.length).toBeGreaterThan(2);
-  // Each request names the last frame the page shows, so it only ever receives a newer one.
-  expect(asked.slice(0, 3)).toEqual([0, 1, 2]);
+  const screen = view.getByRole('img', { name: WATCH.alt });
+  await expect(screen).toBeVisible();
+  await expect.poll(() => middlePixel(page)).toEqual(PAGE);
   expect((await sessionCalls(page)).filter((call) => call.method === 'browser.view')).toEqual([
     { method: 'browser.view', params: { team_id: 'marketing' } },
   ]);
-  // The view only shows the page: nothing in it can be pressed or typed into.
+  // Clicking, scrolling, and typing over the screen reach nothing in the task's page.
+  const box = await screen.boundingBox();
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.wheel(0, 300);
+  await page.keyboard.type('typed');
+  await page.keyboard.press('Control+V');
+  await page.waitForTimeout(300);
+  expect(display.streams).toHaveLength(1);
+  expect(display.streams[0].server.received.filter((type) => INPUT.has(type))).toEqual([]);
   await expect(view.getByRole('button')).toHaveCount(0);
   await expect(view.getByRole('textbox')).toHaveCount(0);
   await expect(page.getByRole('button', { name: EN.stop, exact: true })).toBeEnabled();
   await expect(page.getByRole('button', { name: WATCH.close, exact: true })).toHaveAttribute('aria-expanded', 'true');
 });
 
-test('closing the view stops asking for frames', async ({ page }) => {
-  const { asked } = await startTask(page);
+test('closing the view ends its stream', async ({ page }) => {
+  const { display } = await startTask(page);
   await page.getByRole('button', { name: WATCH.open, exact: true }).click();
-  await expect(page.getByRole('img', { name: WATCH.alt })).toBeVisible();
+  await expect.poll(() => middlePixel(page)).toEqual(PAGE);
   await page.getByRole('button', { name: WATCH.close, exact: true }).click();
   await expect(page.getByRole('figure', { name: WATCH.title })).toHaveCount(0);
-  const settled = asked.length;
-  await page.waitForTimeout(1_000);
-  expect(asked.length).toBeLessThanOrEqual(settled + 1);
+  await expect.poll(() => display.closed).toBe(1);
+  expect(display.streams).toHaveLength(1);
 });
 
-test('a task that ended says so and asks for nothing more', async ({ page }) => {
-  const { asked, end } = await startTask(page);
+test('a task that ended says so and opens nothing more', async ({ page }) => {
+  const { display, end } = await startTask(page);
   await page.getByRole('button', { name: WATCH.open, exact: true }).click();
-  await expect(page.getByRole('img', { name: WATCH.alt })).toBeVisible();
+  await expect.poll(() => middlePixel(page)).toEqual(PAGE);
   end();
   await expect(page.getByRole('figure', { name: WATCH.title }).getByRole('status')).toHaveText(WATCH.ended);
-  const settled = asked.length;
   await page.waitForTimeout(1_000);
-  expect(asked.length).toBe(settled);
+  expect(display.streams).toHaveLength(1);
 });

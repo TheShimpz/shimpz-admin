@@ -2,6 +2,7 @@
 // application boots. A request or socket the scenario does not answer fails here; nothing reaches a backend.
 import { get } from 'svelte/store';
 
+import { rfbServer, solid } from '../e2e/rfbServer.js';
 import { createScenario, SCENARIOS } from '../e2e/scenarios.js';
 import { serveSession, SESSION_PROTOCOL, SESSION_SOCKET_PATH } from '../e2e/sessionSocket.js';
 import { locale } from '../src/lib/i18n/index.js';
@@ -98,8 +99,6 @@ async function requestBody(request) {
 
 // A file's page rendition or download is read as bytes; the preview server answers it from fixtures (plugin.js).
 const FILE_BYTES_RE = /^\/api\/teams\/[a-z0-9_]{1,40}\/files\/[0-9a-f]{32}\/(?:pages\/[1-9][0-9]?\/preview|download)$/u;
-// A watched Browser task's frames are PNGs the preview server draws (plugin.js).
-const BROWSER_FRAME_RE = /^\/api\/teams\/[a-z0-9_]{1,40}\/browser\/views\/[0-9a-f]{32}\/frames\/(?:0|[1-9][0-9]{0,9})$/u;
 
 window.fetch = async (input, init = {}) => {
   const request = new Request(input, init);
@@ -108,7 +107,7 @@ window.fetch = async (input, init = {}) => {
   if (!api) return realFetch(input, init);
   // An Admin API request anywhere but this origin never leaves the browser.
   if (url.origin !== location.origin) return jsonResponse(503, { detail: 'The preview refuses a cross-origin API.' });
-  if (request.method === 'GET' && (FILE_BYTES_RE.test(url.pathname) || BROWSER_FRAME_RE.test(url.pathname))) {
+  if (request.method === 'GET' && FILE_BYTES_RE.test(url.pathname)) {
     return realFetch(input, init);
   }
   const body = await requestBody(request);
@@ -293,11 +292,86 @@ class SessionSocket extends EventTarget {
   }
 }
 
+// A watched Browser task's display (ADR-0117): a scripted RFB server draws a page, then a bar under its header that
+// fills in steps, as a page that loads; noVNC reads it exactly as it reads the Browser's display.
+const BROWSER_STREAM_RE = /^\/api\/teams\/[a-z0-9_]{1,40}\/browser\/views\/[0-9a-f]{32}\/stream$/u;
+const STREAM_STEP_MS = 400;
+const BAR_STEP = 80;
+
+function previewScreen() {
+  let bar = 0;
+  return ({ incremental }) => {
+    if (!incremental) {
+      return [
+        solid(1280, 800, [246, 246, 242]),
+        solid(1280, 64, [28, 59, 63]),
+        solid(520, 40, [40, 120, 200], 96, 128),
+        ...[0, 1, 2, 3, 4, 5].map((line) => solid(line % 3 === 2 ? 640 : 1000, 14, [196, 198, 204], 96, 220 + line * 40)),
+        solid(480, 220, [222, 228, 236], 96, 480),
+        solid(480, 220, [236, 224, 214], 704, 480),
+      ];
+    }
+    bar = bar >= 1280 ? 0 : bar + BAR_STEP;
+    return bar === 0 ? [solid(1280, 4, [246, 246, 242], 0, 64)] : [solid(BAR_STEP, 4, [232, 140, 72], bar - BAR_STEP, 64)];
+  };
+}
+
+class StreamSocket extends EventTarget {
+  constructor(url) {
+    super();
+    this.url = url;
+    this.protocol = 'binary';
+    this.binaryType = 'blob';
+    this.readyState = 0;
+    this.onopen = null;
+    this.onmessage = null;
+    this.onclose = null;
+    this.onerror = null;
+    this.server = rfbServer({ screen: previewScreen() });
+    this.drawn = false;
+    setTimeout(() => {
+      this.readyState = 1;
+      this.#emit('open', new Event('open'));
+      this.#deliver(this.server.greeting, 0);
+    }, 0);
+  }
+
+  #emit(type, event) {
+    this.dispatchEvent(event);
+    this[`on${type}`]?.(event);
+  }
+
+  // Each answer after the first screen waits a step, as a display sends a change only once the page changed.
+  #deliver(bytes, delay) {
+    setTimeout(() => {
+      if (this.readyState === 1) this.#emit('message', new MessageEvent('message', { data: bytes.slice().buffer }));
+    }, delay);
+  }
+
+  send(data) {
+    if (this.readyState !== 1) return;
+    const bytes = data instanceof ArrayBuffer ? new Uint8Array(data) : new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+    for (const answer of this.server.receive(bytes)) {
+      this.#deliver(answer, this.drawn ? STREAM_STEP_MS : 0);
+      this.drawn = this.drawn || answer.length > 4 * 1024;
+    }
+  }
+
+  close(code = 1000, reason = '') {
+    if (this.readyState === 3) return;
+    this.readyState = 3;
+    setTimeout(() => this.#emit('close', new CloseEvent('close', { code, reason, wasClean: true })), 0);
+  }
+}
+
 window.WebSocket = function PreviewWebSocket(url, protocols) {
   const target = new URL(url, location.href);
   const sameHost = target.host === location.host;
   if (sameHost && target.pathname === SESSION_SOCKET_PATH && [protocols].flat().includes(SESSION_PROTOCOL)) {
     return new SessionSocket(target.href);
+  }
+  if (sameHost && BROWSER_STREAM_RE.test(target.pathname) && [protocols].flat().includes('binary')) {
+    return new StreamSocket(target.href);
   }
   // Only Vite's own hot-reload socket stays real; every other socket is refused.
   if (sameHost && [protocols].flat().some((name) => ['vite-hmr', 'vite-ping'].includes(name))) {

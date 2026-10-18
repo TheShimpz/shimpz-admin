@@ -1,23 +1,20 @@
-// Watching a Browser task's screen (ADR-0117, M2 Watch): the view of the task the Team runs now is opened over the
-// session socket, and its frames, PNGs Team built itself, come over HTTP. Only Admin's exact answers are admitted.
+// Watching a Browser task's screen (ADR-0117, over KasmVNC): the view of the task the Team runs now is opened over the
+// session socket, and its screen is one binary WebSocket that Admin relays to the Browser's display, drawn by noVNC on a
+// bare canvas in view-only mode. Only Admin's exact answers are admitted.
 
 import { exactKeys, jsonObject, LocalApiError } from '../../api.js';
 import { TEAM_ID_RE } from '../../ids.js';
 import { socketReads } from '../../session/socket.js';
 
 const VIEW_ID_RE = /^[0-9a-f]{32}$/;
-const FRAME_NUMBER_RE = /^[1-9][0-9]{0,9}$/;
-const MAX_FRAME_NUMBER = 2 ** 31 - 1;
-const MAX_FRAME_BYTES = 4 * 1024 * 1024;
-const FRAME_HEADER = 'x-shimpz-browser-frame';
 const NOT_RUNNING = 'browser-not-running';
-// How long a busy view waits before it asks again, and the pause after an answer that brought no newer frame.
-const BUSY_RETRY_MS = 250;
-const UNCHANGED_PAUSE_MS = 100;
 // The Browser step shows before Team has created the Browser (seconds, at most its egress restart and readiness): the
 // view is asked for again until it opens or this long passed.
 const OPEN_RETRY_MS = 500;
 const OPEN_WAIT_MS = 60_000;
+// The display sends JPEG at this quality and compresses its other encodings at this level (noVNC's 0-9 scales).
+const QUALITY = 8;
+const COMPRESSION = 2;
 
 /** The Browser task ended, or the Team runs none: there is nothing more to watch. */
 export class BrowserViewEndedError extends Error {
@@ -39,53 +36,49 @@ export async function openBrowserView(teamId, call = socketReads.call) {
   throw new LocalApiError('The Browser view is unavailable.', response.status);
 }
 
-/**
- * The view's next frame after `after`: `{ number, blob }`, `null` when none came in time, `'busy'` when the view is
- * busy, or BrowserViewEndedError once the task ended.
- */
-export async function fetchBrowserFrame(teamId, viewId, after, signal, fetcher = globalThis.fetch) {
-  const url = `/api/teams/${encodeURIComponent(teamId)}/browser/views/${viewId}/frames/${after}`;
-  const response = await fetcher(url, { signal, cache: 'no-store', credentials: 'same-origin' });
-  if (response.status === 204) return null;
-  if (response.status === 200) {
-    const raw = response.headers.get(FRAME_HEADER) ?? '';
-    const number = FRAME_NUMBER_RE.test(raw) ? Number(raw) : 0;
-    const type = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
-    const blob = await response.blob();
-    if (number > after && number <= MAX_FRAME_NUMBER && type === 'image/png' && blob.size > 0 &&
-      blob.size <= MAX_FRAME_BYTES) {
-      return { number, blob };
-    }
-    throw new LocalApiError('The Browser frame is invalid.');
-  }
-  const body = await jsonObject(response);
-  if (response.status === 404 && body.code === NOT_RUNNING) throw new BrowserViewEndedError();
-  if (response.status === 503 && body.code === 'browser-view-busy') return 'busy';
-  throw new LocalApiError('The Browser frame is unavailable.', response.status);
+/** The screen's WebSocket address on this page's own origin. */
+export function streamUrl(teamId, viewId, location = globalThis.location) {
+  const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${scheme}//${location.host}/api/teams/${encodeURIComponent(teamId)}/browser/views/${viewId}/stream`;
 }
 
 /**
- * Watch the Team's running Browser task until `signal` aborts or the task ends: each newer frame is handed to `onframe`
- * as a PNG Blob. Team holds each request until a newer frame or its short wait passes, so the next is asked at once.
- * Rejects with BrowserViewEndedError when the task ended, or with the failure that stopped it.
+ * Watch the Team's running Browser task on `target` until `signal` aborts or the stream ends. `RFB` is noVNC's client,
+ * which shows the screen and sends no input. Calls `onconnect` once the screen shows; rejects with
+ * BrowserViewEndedError when the task ended, the abort reason when closed, or the failure that ended it.
  */
-export async function watchBrowser(teamId, { signal, onframe, call = socketReads.call, fetcher = globalThis.fetch }) {
+export async function watchBrowser(
+  teamId,
+  { signal, target, RFB, onconnect = () => {}, call = socketReads.call, location = globalThis.location },
+) {
   const viewId = await openWhenRunning(teamId, signal, call);
-  let after = 0;
-  for (;;) {
-    signal.throwIfAborted();
-    const frame = await fetchBrowserFrame(teamId, viewId, after, signal, fetcher);
-    // A view closed while the answer arrived shows nothing more.
-    signal.throwIfAborted();
-    if (frame === 'busy') {
-      await pause(BUSY_RETRY_MS, signal);
-    } else if (frame === null) {
-      await pause(UNCHANGED_PAUSE_MS, signal);
-    } else {
-      after = frame.number;
-      onframe(frame.blob);
-    }
-  }
+  signal.throwIfAborted();
+  return new Promise((_resolve, reject) => {
+    const rfb = new RFB(target, streamUrl(teamId, viewId, location), { wsProtocols: ['binary'] });
+    rfb.viewOnly = true;
+    rfb.focusOnClick = false;
+    rfb.scaleViewport = true;
+    rfb.clipViewport = false;
+    rfb.resizeSession = false;
+    rfb.showDotCursor = false;
+    rfb.qualityLevel = QUALITY;
+    rfb.compressionLevel = COMPRESSION;
+    const abort = () => {
+      rfb.disconnect();
+      reject(signal.reason);
+    };
+    signal.addEventListener('abort', abort, { once: true });
+    rfb.addEventListener('connect', () => onconnect());
+    rfb.addEventListener('disconnect', () => {
+      signal.removeEventListener('abort', abort);
+      if (signal.aborted) return;
+      // The stream ended: the task's view answering again means the stream failed, its absence that the task ended.
+      openBrowserView(teamId, call).then(
+        () => reject(new LocalApiError('The Browser view is unavailable.')),
+        reject,
+      );
+    });
+  });
 }
 
 // The task's view once Team holds its Browser. Each ask is bounded by the time left and by closing the view, whose

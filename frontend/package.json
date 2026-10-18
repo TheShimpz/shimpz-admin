@@ -18,6 +18,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@novnc/novnc": "1.7.0",
     "@shimpz/frontend": "https://codeload.github.com/TheShimpz/shimpz-frontend/tar.gz/c9593e186e4db8398d0f4611c1638c2aa8113e55",
     "qrcode": "1.5.4"
   },

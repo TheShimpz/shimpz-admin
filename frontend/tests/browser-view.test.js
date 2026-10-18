@@ -3,26 +3,40 @@ import test from 'node:test';
 
 import {
   BrowserViewEndedError,
-  fetchBrowserFrame,
   openBrowserView,
+  streamUrl,
   watchBrowser,
 } from '../src/lib/chat/browser/view.js';
 import { recorder } from './socketStub.js';
 
-// Watching a Browser task's screen (ADR-0117, M2 Watch): the view opened over the socket and its frames over HTTP.
+// Watching a Browser task's screen (ADR-0117, over KasmVNC): the view opened over the socket and its display streamed
+// to noVNC over one WebSocket.
 const VIEW = 'a'.repeat(32);
-const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2]);
+const LOCATION = { protocol: 'https:', host: 'local.example' };
 
-function frame(number, { type = 'image/png', body = PNG } = {}) {
-  return new Response(body, { status: 200, headers: { 'content-type': type, 'x-shimpz-browser-frame': String(number) } });
+// noVNC's client as watchBrowser drives it: it records how it was made and set, and the test says when it connects or
+// disconnects.
+function fakeRFB() {
+  const made = [];
+  class RFB extends EventTarget {
+    constructor(target, url, options) {
+      super();
+      this.target = target;
+      this.url = url;
+      this.options = options;
+      this.disconnected = 0;
+      made.push(this);
+    }
+
+    disconnect() {
+      this.disconnected += 1;
+      this.dispatchEvent(new Event('disconnect'));
+    }
+  }
+  return { RFB, made };
 }
 
-function refusal(status, code) {
-  return new Response(JSON.stringify({ detail: 'browser view unavailable', code }), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-}
+const settled = () => new Promise((resolve) => setImmediate(resolve));
 
 test('a view opens only for the exact running task Admin names', async () => {
   const opened = recorder(200, { view_id: VIEW });
@@ -47,58 +61,76 @@ test('a view opens only for the exact running task Admin names', async () => {
   assert.deepEqual(untouched.calls, []);
 });
 
-test('a frame is admitted only newer, numbered, and a bounded PNG', async () => {
-  const asked = [];
-  const fetcher = async (url, options) => {
-    asked.push({ url, options });
-    return frame(3);
-  };
-  const answer = await fetchBrowserFrame('team_1', VIEW, 2, undefined, fetcher);
-  assert.equal(answer.number, 3);
-  assert.equal(answer.blob.size, PNG.length);
-  assert.deepEqual(asked, [{
-    url: `/api/teams/team_1/browser/views/${VIEW}/frames/2`,
-    options: { signal: undefined, cache: 'no-store', credentials: 'same-origin' },
-  }]);
-  assert.equal(await fetchBrowserFrame('team_1', VIEW, 0, undefined, async () => new Response(null, { status: 204 })), null);
-  assert.equal(await fetchBrowserFrame('team_1', VIEW, 0, undefined, async () => refusal(503, 'browser-view-busy')), 'busy');
-  await assert.rejects(
-    fetchBrowserFrame('team_1', VIEW, 0, undefined, async () => refusal(404, 'browser-not-running')),
-    BrowserViewEndedError,
+test('the stream is on the page\'s own origin, secure when the page is', () => {
+  assert.equal(streamUrl('team_1', VIEW, LOCATION), `wss://local.example/api/teams/team_1/browser/views/${VIEW}/stream`);
+  assert.equal(
+    streamUrl('team_1', VIEW, { protocol: 'http:', host: '127.0.0.1:5173' }),
+    `ws://127.0.0.1:5173/api/teams/team_1/browser/views/${VIEW}/stream`,
   );
-  for (const answered of [
-    () => frame(2),
-    () => frame('03'),
-    () => frame(2 ** 31),
-    () => frame(3, { type: 'image/jpeg' }),
-    () => frame(3, { body: new Uint8Array() }),
-    () => frame(3, { body: new Uint8Array(4 * 1024 * 1024 + 1) }),
-    () => refusal(503, 'browser-view-unavailable'),
-    () => refusal(404, 'team-not-found'),
-    () => new Response('denied', { status: 403 }),
-  ]) {
-    await assert.rejects(fetchBrowserFrame('team_1', VIEW, 2, undefined, async () => answered()), (error) => (
-      !(error instanceof BrowserViewEndedError)
-    ));
-  }
 });
 
-test('watching shows each newer frame, waits out a busy view, and ends with the task', async () => {
-  const answers = [frame(1), new Response(null, { status: 204 }), refusal(503, 'browser-view-busy'), frame(2),
-    refusal(404, 'browser-not-running')];
-  const cursors = [];
-  const shown = [];
-  await assert.rejects(watchBrowser('team_1', {
-    signal: new AbortController().signal,
-    onframe: (blob) => shown.push(blob.size),
-    call: recorder(200, { view_id: VIEW }).call,
-    fetcher: async (url) => {
-      cursors.push(Number(url.split('/').at(-1)));
-      return answers.shift();
-    },
-  }), BrowserViewEndedError);
-  assert.deepEqual(cursors, [0, 1, 1, 1, 2]);
-  assert.deepEqual(shown, [PNG.length, PNG.length]);
+test('watching draws the display view-only on the target and ends with the task', async () => {
+  const { RFB, made } = fakeRFB();
+  const target = {};
+  let connected = 0;
+  const answers = [[200, { view_id: VIEW }], [404, { code: 'browser-not-running' }]];
+  const asked = [];
+  const call = async (method, params) => {
+    asked.push(method);
+    const [status, body] = answers.shift();
+    return recorder(status, body).call(method, params);
+  };
+  const watching = watchBrowser('team_1', {
+    signal: new AbortController().signal, target, RFB, call, location: LOCATION, onconnect: () => { connected += 1; },
+  });
+  await settled();
+  assert.equal(made.length, 1);
+  const [rfb] = made;
+  assert.equal(rfb.target, target);
+  assert.equal(rfb.url, streamUrl('team_1', VIEW, LOCATION));
+  assert.deepEqual(rfb.options, { wsProtocols: ['binary'] });
+  assert.equal(rfb.viewOnly, true);
+  assert.equal(rfb.focusOnClick, false);
+  assert.equal(rfb.resizeSession, false);
+  assert.equal(rfb.scaleViewport, true);
+  rfb.dispatchEvent(new Event('connect'));
+  assert.equal(connected, 1);
+  // The stream ended and the task's view is gone: the task ended.
+  rfb.dispatchEvent(new Event('disconnect'));
+  await assert.rejects(watching, BrowserViewEndedError);
+  assert.deepEqual(asked, ['browser.view', 'browser.view']);
+});
+
+test('a stream that ends while the task still runs is unavailable, not a task that ended', async () => {
+  const { RFB, made } = fakeRFB();
+  const watching = watchBrowser('team_1', {
+    signal: new AbortController().signal, target: {}, RFB, call: recorder(200, { view_id: VIEW }).call, location: LOCATION,
+  });
+  await settled();
+  made[0].dispatchEvent(new Event('disconnect'));
+  await assert.rejects(watching, (error) => !(error instanceof BrowserViewEndedError) && /unavailable/.test(error.message));
+});
+
+test('closing the view disconnects the stream at once and asks for nothing more', async () => {
+  const { RFB, made } = fakeRFB();
+  const opened = recorder(200, { view_id: VIEW });
+  const controller = new AbortController();
+  const watching = watchBrowser('team_1', { signal: controller.signal, target: {}, RFB, call: opened.call, location: LOCATION });
+  await settled();
+  controller.abort(new Error('closed'));
+  await assert.rejects(watching, /closed/);
+  assert.equal(made[0].disconnected, 1);
+  await settled();
+  assert.equal(opened.calls.length, 1);
+  const closed = new AbortController();
+  closed.abort(new Error('closed before'));
+  const untouched = recorder(200, { view_id: VIEW });
+  await assert.rejects(
+    watchBrowser('team_1', { signal: closed.signal, target: {}, RFB, call: untouched.call, location: LOCATION }),
+    /closed before/,
+  );
+  assert.deepEqual(untouched.calls, []);
+  assert.equal(made.length, 1);
 });
 
 test('a view asked for before Team holds the Browser is asked for again until it opens', async (t) => {
@@ -110,90 +142,61 @@ test('a view asked for before Team holds the Browser is asked for again until it
     const [status, body] = answers.shift();
     return recorder(status, body).call(method, params);
   };
+  const { RFB, made } = fakeRFB();
   const controller = new AbortController();
-  const shown = [];
-  const watching = watchBrowser('team_1', {
-    signal: controller.signal,
-    onframe: (blob) => { shown.push(blob.size); controller.abort(new Error('seen')); },
-    call,
-    fetcher: async () => frame(1),
-  });
+  const watching = watchBrowser('team_1', { signal: controller.signal, target: {}, RFB, call, location: LOCATION });
   const outcome = assert.rejects(watching, /seen/);
   for (let tick = 0; tick < 4; tick += 1) {
-    await new Promise((resolve) => setImmediate(resolve));
+    await settled();
     t.mock.timers.tick(500);
   }
+  assert.equal(made.length, 1);
+  controller.abort(new Error('seen'));
   await outcome;
   assert.deepEqual(asked, ['browser.view', 'browser.view', 'browser.view']);
-  assert.deepEqual(shown, [PNG.length]);
 });
 
 test('a view whose opening Admin never answers stops at once when closed, and is unavailable in time', async (t) => {
+  const { RFB, made } = fakeRFB();
   const closing = new AbortController();
   const silent = async () => new Promise(() => {});
-  const closed = watchBrowser('team_1', {
-    signal: closing.signal, onframe: () => assert.fail('no frame came'), call: silent, fetcher: async () => frame(1),
-  });
+  const closed = watchBrowser('team_1', { signal: closing.signal, target: {}, RFB, call: silent, location: LOCATION });
   closing.abort(new Error('closed while opening'));
   await assert.rejects(closed, /closed while opening/);
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   const waiting = watchBrowser('team_1', {
-    signal: new AbortController().signal, onframe: () => assert.fail('no frame came'), call: silent,
-    fetcher: async () => frame(1),
+    signal: new AbortController().signal, target: {}, RFB, call: silent, location: LOCATION,
   });
   const outcome = assert.rejects(waiting, (error) => !(error instanceof BrowserViewEndedError) && /did not open/.test(error.message));
-  await new Promise((resolve) => setImmediate(resolve));
+  await settled();
   t.mock.timers.tick(60_000);
   await outcome;
+  assert.equal(made.length, 0);
 });
 
 test('a view that never opens is unavailable, not a task that ended', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const { RFB, made } = fakeRFB();
   const watching = watchBrowser('team_1', {
-    signal: new AbortController().signal,
-    onframe: () => assert.fail('no frame came'),
-    call: recorder(404, { code: 'browser-not-running' }).call,
-    fetcher: async () => assert.fail('nothing is asked before the view opens'),
+    signal: new AbortController().signal, target: {}, RFB, call: recorder(404, { code: 'browser-not-running' }).call,
+    location: LOCATION,
   });
   const outcome = assert.rejects(watching, (error) => !(error instanceof BrowserViewEndedError) && /did not open/.test(error.message));
   for (let tick = 0; tick < 130; tick += 1) {
-    await new Promise((resolve) => setImmediate(resolve));
+    await settled();
     t.mock.timers.tick(500);
   }
   await outcome;
+  assert.equal(made.length, 0);
 });
 
-test('a frame that arrives after the view closed is never shown', async () => {
-  const controller = new AbortController();
-  await assert.rejects(watchBrowser('team_1', {
-    signal: controller.signal,
-    onframe: () => assert.fail('a closed view shows nothing'),
-    call: recorder(200, { view_id: VIEW }).call,
-    fetcher: async () => {
-      const answer = frame(1);
-      await answer.clone().blob();
-      controller.abort(new Error('closed while answered'));
-      return answer;
-    },
-  }), /closed while answered/);
-});
-
-test('closing the view stops watching at once, even during a pause', async () => {
+test('closing the view during a pause between asks stops at once', async () => {
+  const { RFB, made } = fakeRFB();
   const controller = new AbortController();
   const watching = watchBrowser('team_1', {
-    signal: controller.signal,
-    onframe: () => assert.fail('no frame came'),
-    call: recorder(200, { view_id: VIEW }).call,
-    fetcher: async () => refusal(503, 'browser-view-busy'),
+    signal: controller.signal, target: {}, RFB, call: recorder(404, { code: 'browser-not-running' }).call, location: LOCATION,
   });
   setTimeout(() => controller.abort(new Error('closed')), 10);
   await assert.rejects(watching, /closed/);
-  const closed = new AbortController();
-  closed.abort(new Error('closed before'));
-  await assert.rejects(watchBrowser('team_1', {
-    signal: closed.signal,
-    onframe: () => assert.fail('no frame came'),
-    call: recorder(200, { view_id: VIEW }).call,
-    fetcher: async () => assert.fail('nothing is asked once closed'),
-  }), /closed before/);
+  assert.equal(made.length, 0);
 });
