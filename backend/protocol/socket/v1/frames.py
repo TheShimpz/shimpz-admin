@@ -74,6 +74,7 @@ METHODS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "stored_inputs.list": (_TEAM, _NONE),
     "stored_inputs.clear": (frozenset({"team_id", "assistant_id", "stored_input_id"}), _NONE),
     "files.acknowledge": (frozenset({"team_id", "file_id"}), _NONE),
+    "browser.view": (_TEAM, _NONE),
     "store.catalog": (frozenset({"locale"}), frozenset({"cursor"})),
     "routines.pause": (frozenset({"team_id", "routine_id"}), _NONE),
     "routines.resume": (frozenset({"team_id", "routine_id"}), _NONE),

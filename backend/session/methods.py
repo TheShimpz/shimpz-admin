@@ -259,6 +259,8 @@ METHODS: dict[str, Method] = {
     ),
     # The Supervisor accepts the risk of saving one file the Browser downloaded from the web (ADR-0117 §7).
     "files.acknowledge": _team_call(team, "acknowledge_file", "team_id", "file_id"),
+    # The view id of the Browser task a Team runs now, whose screen the Supervisor watches (ADR-0117, M2 Watch).
+    "browser.view": _team_call(team, "open_browser_view", "team_id"),
     "store.catalog": _catalog,
     "subscribe": _subscribe,
     "unsubscribe": _unsubscribe,

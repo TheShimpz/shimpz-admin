@@ -108,9 +108,11 @@ COPY --link backend/routine/answer.py backend/routine/delivery.py backend/routin
 COPY --link backend/session/budget.py backend/session/calls.py backend/session/lane.py backend/session/methods.py \
     backend/session/outbound.py backend/session/registry.py backend/session/routines.py backend/session/socket.py \
     backend/session/stepup.py backend/session/topics.py backend/session/watcher.py ./session/
-COPY --link backend/team/assets.py backend/team/bridge.py backend/team/files.py backend/team/http.py backend/team/inference.py backend/team/names.py \
-    backend/team/order.py backend/team/snapshots.py backend/team/summary.py backend/team/transport.py ./team/
-COPY --link backend/protocol/http/v1/browser.py backend/protocol/http/v1/challenge.py \
+COPY --link backend/team/assets.py backend/team/bridge.py backend/team/browser_view.py backend/team/files.py \
+    backend/team/http.py backend/team/inference.py backend/team/names.py backend/team/order.py backend/team/snapshots.py \
+    backend/team/summary.py backend/team/transport.py ./team/
+COPY --link backend/protocol/http/v1/browser.py backend/protocol/http/v1/browser_view.py \
+    backend/protocol/http/v1/challenge.py \
     backend/protocol/http/v1/content.py \
     backend/protocol/http/v1/identifiers.py \
     backend/protocol/http/v1/payload.py backend/protocol/http/v1/preview.py \

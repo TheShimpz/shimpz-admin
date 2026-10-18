@@ -76,6 +76,7 @@ SAMPLES = {
     "stored_inputs.list": {"team_id": "team_1"},
     "stored_inputs.clear": {"team_id": "team_1", "assistant_id": "whatsapp", "stored_input_id": "whatsapp-token"},
     "files.acknowledge": {"team_id": "team_1", "file_id": "f" * 32},
+    "browser.view": {"team_id": "team_1"},
     "store.catalog": {"locale": "en"},
     "routines.pause": {"team_id": "team_1", "routine_id": ROUTINE},
     "routines.resume": {"team_id": "team_1", "routine_id": ROUTINE},
@@ -649,6 +650,11 @@ class SessionMethodAnswerTests(SessionMethodCase):
             result = self._answers("files.acknowledge", SAMPLES["files.acknowledge"])
         acknowledge.assert_called_once_with("team_1", "f" * 32)
         self.assertEqual((result["status"], result["body"]), (200, acknowledged.body))
+        opened = self.transport.TeamResponse(200, {"view_id": "a" * 32})
+        with mock.patch.object(self.methods.team, "open_browser_view", return_value=opened) as open_view:
+            result = self._answers("browser.view", SAMPLES["browser.view"])
+        open_view.assert_called_once_with("team_1")
+        self.assertEqual((result["status"], result["body"]), (200, opened.body))
         result = self._answers("stored_inputs.clear", {**SAMPLES["stored_inputs.clear"], "stored_input_id": "Bad"})
         self.assertEqual(result["status"], 400)
         result = self._answers("assistants.summary", {**SAMPLES["assistants.summary"], "locale": "it"})

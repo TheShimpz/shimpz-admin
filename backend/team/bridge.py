@@ -16,6 +16,7 @@ from session import topics
 from team import transport
 
 from chat import payloads
+from protocol.http.v1 import browser_view as view_contract
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import preview as preview_contract
 from protocol.http.v1 import turn as team_turn
@@ -684,3 +685,37 @@ def file_content(team_id: object, file_id: object) -> transport.TeamAssetRespons
     """One Team file's original, verified against its digest, or its closed refusal (ADR-0093)."""
     response = transport.call_content(f"{_files_path(team_id, file_id)}/content")
     return _file_bytes(response, _CONTENT_REFUSALS, "file download unavailable")
+
+
+# The closed refusals of a Browser view: the Team runs no Browser task or no such Team exists, or the view is busy or
+# unavailable (ADR-0117, M2 Watch).
+_VIEW_REFUSALS = {
+    404: frozenset({view_contract.NOT_RUNNING, "team-not-found"}),
+    503: frozenset({view_contract.BUSY, view_contract.UNAVAILABLE}),
+}
+
+
+def open_browser_view(team_id: object) -> transport.TeamResponse:
+    """The view id of the Browser task the Team runs now, for the Supervisor to watch its screen."""
+    canonical_id = payloads.canonical_team_id(team_id)
+    response = transport.call("POST", f"/v1/teams/{canonical_id}/browser/view")
+    if response.status == 200 and view_contract.canonical_view(response.body) is not None:
+        return response
+    code = response.body.get("code")
+    if response.status in _VIEW_REFUSALS and code in _VIEW_REFUSALS[response.status]:
+        return transport.TeamResponse(response.status, {"detail": "browser view unavailable", "code": code})
+    return transport.TeamResponse(502, {"detail": "team unavailable"})
+
+
+def browser_view_frame(team_id: object, view_id: object, after: object) -> transport.TeamAssetResponse:
+    """The view's next frame after `after`, no content when none came, or its closed refusal."""
+    canonical_id = payloads.canonical_team_id(team_id)
+    if not isinstance(view_id, str) or view_contract.VIEW_ID_RE.fullmatch(view_id) is None:
+        raise transport.TeamRequestError("view_id must be a Browser view id")
+    cursor = view_contract.canonical_cursor(after)
+    if cursor is None:
+        raise transport.TeamRequestError("after must be a frame number")
+    response = transport.call_browser_frame(f"/v1/teams/{canonical_id}/browser/views/{view_id}/frames/{cursor}")
+    if response.status == 204:
+        return response
+    return _file_bytes(response, _VIEW_REFUSALS, "browser view unavailable")

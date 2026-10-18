@@ -20,6 +20,7 @@ from urllib.parse import quote, urlparse
 import models
 import supervisor as local_supervisor
 
+from protocol.http.v1 import browser_view as view_contract
 from protocol.http.v1 import content as content_contract
 from protocol.http.v1 import preview as preview_contract
 from protocol.http.v1 import progress as progress_contract
@@ -131,6 +132,8 @@ class TeamAssetResponse:
     media_type: str = "image/png"
     # A PDF page's rendition also names its document's page count.
     page_count: int | None = None
+    # A Browser view frame names its number.
+    frame: int | None = None
 
 
 ProgressSink = Callable[[dict[str, object]], None]
@@ -545,6 +548,22 @@ def _decode_page_preview(response: http.client.HTTPResponse) -> TeamAssetRespons
     return TeamAssetResponse(result.status, result.contents, {}, result.media_type, page_count)
 
 
+def _decode_browser_frame(response: http.client.HTTPResponse) -> TeamAssetResponse:
+    """A Browser view frame: no content when none came, or exactly one PNG within its bound, numbered in its header."""
+    if response.status == HTTPStatus.NO_CONTENT:
+        if response.read(1):
+            raise OSError("invalid Team browser frame response")
+        return TeamAssetResponse(HTTPStatus.NO_CONTENT, None, {})
+    result = _decode_image(response, frozenset({"image/png"}), view_contract.MAX_FRAME_BYTES)
+    if result.contents is None:
+        return result
+    number = view_contract.canonical_cursor(response.getheader(view_contract.FRAME_HEADER))
+    framing = {"frame": number, "length": len(result.contents)}
+    if view_contract.canonical_frame(framing) is None or not result.contents.startswith(view_contract.PNG_SIGNATURE):
+        raise OSError("invalid Team browser frame response")
+    return TeamAssetResponse(HTTPStatus.OK, result.contents, {}, "image/png", frame=number)
+
+
 def _decode_content(response: http.client.HTTPResponse) -> TeamAssetResponse:
     """A file's original: exactly an octet stream of its declared length whose SHA-256 is its declared digest.
 
@@ -579,6 +598,9 @@ _PAGE_PREVIEW_READING = _Reading(
 _CONTENT_READING = _Reading(
     "application/octet-stream", _decode_content, _asset_unavailable, "Team file content request"
 )
+
+
+_BROWSER_FRAME_READING = _Reading("image/png", _decode_browser_frame, _asset_unavailable, "Team browser frame request")
 
 
 def _request_asset(path: str, reading: _Reading[TeamAssetResponse] = _ASSET_READING) -> TeamAssetResponse:
@@ -689,6 +711,10 @@ def call_page_preview(path: str) -> TeamAssetResponse:
 
 def call_content(path: str) -> TeamAssetResponse:
     return _request_asset(path, _CONTENT_READING)
+
+
+def call_browser_frame(path: str) -> TeamAssetResponse:
+    return _request_asset(path, _BROWSER_FRAME_READING)
 
 
 def call_stream(

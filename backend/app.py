@@ -33,6 +33,7 @@ from space import host_reset, supervisor_key
 from space import reset as space_reset
 from team import assets as team_assets
 from team import bridge as team
+from team import browser_view as team_browser_view
 from team import files as team_files
 from team import http as team_http
 from team import order as team_order
@@ -565,6 +566,7 @@ async def oauth_cloudflare_callback(request: Request):
 
 
 team_files.register(app)
+team_browser_view.register(app)
 
 
 @app.api_route(
