@@ -94,6 +94,7 @@ test('watching draws the display view-only on the target and ends with the task'
   assert.equal(rfb.resizeSession, false);
   assert.equal(rfb.scaleViewport, true);
   assert.equal(rfb.background, 'transparent');
+  assert.equal(rfb.qualityLevel, 9);
   rfb.dispatchEvent(new Event('connect'));
   assert.equal(connected, 1);
   // The stream ended and the task's view is gone: the task ended.

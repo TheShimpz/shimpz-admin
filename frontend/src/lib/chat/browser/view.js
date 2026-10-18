@@ -14,8 +14,9 @@ const OPEN_RETRY_MS = 500;
 const OPEN_WAIT_MS = 60_000;
 // How long the view is asked for once its stream ended, to tell a task that ended from a stream that failed.
 const CHECK_WAIT_MS = 10_000;
-// The display sends JPEG at this quality and compresses its other encodings at this level (noVNC's 0-9 scales).
-const QUALITY = 8;
+// The display sends JPEG at this quality and compresses its other encodings at this level (noVNC's 0-9 scales); the
+// display itself never drops below the top quality (ADR-0117).
+const QUALITY = 9;
 const COMPRESSION = 2;
 
 /** The Browser task ended, or the Team runs none: there is nothing more to watch. */
