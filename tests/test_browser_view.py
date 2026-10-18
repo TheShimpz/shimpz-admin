@@ -467,12 +467,21 @@ class RelayEdgeTests(unittest.IsolatedAsyncioTestCase):
 class BrowserViewBridgeTests(unittest.TestCase):
     def test_opening_passes_on_exactly_a_view_or_a_closed_refusal(self) -> None:
         cases = (
-            (transport.TeamResponse(200, {"view_id": VIEW}), (200, {"view_id": VIEW})),
+            (transport.TeamResponse(200, {"view_id": VIEW, "trace_id": "f" * 32}), (200, {"view_id": VIEW})),
+            (transport.TeamResponse(200, {"view_id": VIEW}), (502, {"detail": "team unavailable"})),
+            (transport.TeamResponse(200, {"view_id": VIEW, "trace_id": "x"}), (502, {"detail": "team unavailable"})),
             (
                 transport.TeamResponse(404, {"error": "x", "code": "browser-not-running", "trace_id": "t"}),
                 (404, {"detail": "browser view unavailable", "code": "browser-not-running"}),
             ),
-            (transport.TeamResponse(200, {"view_id": VIEW.upper()}), (502, {"detail": "team unavailable"})),
+            (
+                transport.TeamResponse(200, {"view_id": VIEW.upper(), "trace_id": "f" * 32}),
+                (502, {"detail": "team unavailable"}),
+            ),
+            (
+                transport.TeamResponse(200, {"view_id": VIEW, "extra": 1, "trace_id": "f" * 32}),
+                (502, {"detail": "team unavailable"}),
+            ),
             (transport.TeamResponse(409, {"code": "browser-not-running"}), (502, {"detail": "team unavailable"})),
         )
         for answer, expected in cases:

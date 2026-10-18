@@ -699,8 +699,11 @@ def open_browser_view(team_id: object) -> transport.TeamResponse:
     """The view id of the Browser task the Team runs now, for the Supervisor to watch its screen."""
     canonical_id = payloads.canonical_team_id(team_id)
     response = transport.call("POST", f"/v1/teams/{canonical_id}/browser/view")
-    if response.status == 200 and view_contract.canonical_view(response.body) is not None:
-        return response
+    # Team names its trace beside the view; the page receives the view alone.
+    if response.status == 200 and transport.is_closed_traced(response.body, {"view_id"}):
+        view = view_contract.canonical_view({"view_id": response.body["view_id"]})
+        if view is not None:
+            return transport.TeamResponse(200, view)
     code = response.body.get("code")
     if response.status in _VIEW_REFUSALS and code in _VIEW_REFUSALS[response.status]:
         return transport.TeamResponse(response.status, {"detail": "browser view unavailable", "code": code})
