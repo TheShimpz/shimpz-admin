@@ -88,7 +88,7 @@ def _refusal(status: str) -> int:
     return UNAVAILABLE if status == "unavailable" else SIGNED_OUT
 
 
-def _admitted_origin(websocket: WebSocket, origins: frozenset[str]) -> str | None:
+def admitted_origin(websocket: WebSocket, origins: frozenset[str]) -> str | None:
     """The one exact admitted Origin the page opened the socket from, under the HTTP gate's own page check."""
     sent = websocket.headers.getlist("origin")
     if len(sent) != 1 or not browser.from_admin_page(websocket, lambda: origins):
@@ -104,7 +104,7 @@ async def _admit(websocket: WebSocket, gate: Gate) -> tuple[str, str] | None:
         log.exception("session socket origin authority is unavailable")
         await websocket.close(code=UNAVAILABLE)
         return None
-    origin = _admitted_origin(websocket, origins)
+    origin = admitted_origin(websocket, origins)
     if origin is None:
         await websocket.close(code=ORIGIN_REFUSED)
         return None

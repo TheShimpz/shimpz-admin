@@ -27,7 +27,8 @@ class ModelProviderOperationTests(unittest.TestCase):
         websocket_paths = {
             route.path for route in self.admin_app.app.routes if route.__class__.__name__ == "APIWebSocketRoute"
         }
-        self.assertEqual(websocket_paths, {"/api/session/ws"})
+        # The session socket, and the binary screen of a watched Browser task (ADR-0117), which carries no key.
+        self.assertEqual(websocket_paths, {"/api/session/ws", "/api/teams/{team_id}/browser/views/{view_id}/stream"})
 
     def test_a_save_validates_the_key_with_its_provider(self) -> None:
         secret = "sk-test-" + str(123456789).zfill(10)

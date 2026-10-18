@@ -1,13 +1,11 @@
-"""A Browser task's screen through Admin: the view opened over the socket and its frames over HTTP (ADR-0117, M2 Watch).
+"""A Browser task's screen through Admin (ADR-0117): the view, and the screen's WebSocket relayed to Team.
 
-Team's exact framing, the closed refusals, Fetch Metadata, and the bounded frame slots, in process.
+Admission, the bounded streams, Team's refusals, both directions, and the session's end.
 """
 
 import asyncio
-import gc
-import http.client
-import io
-import json
+import contextlib
+import socket
 import sys
 import unittest
 from pathlib import Path
@@ -17,100 +15,297 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(ROOT))
 
-from fastapi import HTTPException
 from protocol.socket.v1 import frames
 from session import methods as session_methods
+from session import registry
 from team import bridge, transport
 from team import browser_view as team_browser_view
-from test_file_preview import browser_request
-from test_team_transport_edges import _Response
-
-from protocol.http.v1 import browser_view as view_contract
+from tests.chat_socket_case import ChatWebSocketCase
+from websockets.asyncio.server import serve
+from websockets.datastructures import Headers
+from websockets.http11 import Response
 
 VIEW = "a" * 32
-PNG = view_contract.PNG_SIGNATURE + b"frame"
-IMAGE_READ = {"sec-fetch-site": "same-origin", "sec-fetch-dest": "empty"}
+PATH = f"/api/teams/team_1/browser/views/{VIEW}/stream"
 
 
-def _frame(body: bytes = PNG, **headers: str) -> _Response:
-    sent = {"Content-Type": "image/png", "Content-Length": str(len(body)), view_contract.FRAME_HEADER: "7"}
-    return _Response(headers={**sent, **headers}, body=body)
+class Page:
+    """An in-memory ASGI client of the stream route, as Admin's own page opens it."""
+
+    def __init__(self, application, *, token="", origin="http://localhost:7777", protocols=("binary",), path=PATH):
+        headers = [(b"host", b"localhost:7777")]
+        if origin is not None:
+            headers.append((b"origin", origin.encode()))
+        if protocols:
+            headers.append((b"sec-websocket-protocol", ", ".join(protocols).encode()))
+        if token:
+            headers.append((b"cookie", f"shimpz_admin={token}".encode()))
+        self.scope = {
+            "type": "websocket",
+            "asgi": {"version": "3.0", "spec_version": "2.5"},
+            "http_version": "1.1",
+            "scheme": "ws",
+            "path": path,
+            "raw_path": path.encode(),
+            "query_string": b"",
+            "root_path": "",
+            "headers": headers,
+            "client": ("127.0.0.1", 12345),
+            "server": ("127.0.0.1", 7777),
+            "subprotocols": list(protocols),
+            "state": {},
+            "extensions": {},
+        }
+        self.application = application
+        self.incoming: asyncio.Queue = asyncio.Queue()
+        self.outgoing: asyncio.Queue = asyncio.Queue()
+        self.task = None
+
+    async def start(self) -> dict:
+        await self.incoming.put({"type": "websocket.connect"})
+        self.task = asyncio.create_task(self.application(self.scope, self.incoming.get, self.outgoing.put))
+        return await self.next()
+
+    async def next(self) -> dict:
+        return await asyncio.wait_for(self.outgoing.get(), 5)
+
+    async def send(self, data: bytes) -> None:
+        await self.incoming.put({"type": "websocket.receive", "bytes": data})
+
+    async def send_text(self, text: str) -> None:
+        await self.incoming.put({"type": "websocket.receive", "text": text})
+
+    async def close(self) -> None:
+        await self.incoming.put({"type": "websocket.disconnect", "code": 1000})
+        if self.task is not None:
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(self.task, 5)
 
 
-class BrowserViewTransportTests(unittest.TestCase):
-    def test_only_an_exactly_framed_png_or_no_content_passes(self) -> None:
-        self.assertEqual(
-            transport._decode_browser_frame(_frame()), transport.TeamAssetResponse(200, PNG, {}, "image/png", frame=7)
+class FakeTeam:
+    """Team's stream route: it checks the exact path and the Supervisor's assertion, then plays the display."""
+
+    def __init__(self, *, refuse: int | None = None, greeting: bytes = b"RFB 003.008\n", text: bool = False):
+        self.refuse, self.greeting, self.text = refuse, greeting, text
+        self.requests: list[tuple[str, Headers]] = []
+        self.received: list[bytes] = []
+
+    def process_request(self, connection, request):
+        self.requests.append((request.path, request.headers))
+        if self.refuse is not None:
+            return Response(self.refuse, "Refused", Headers([("Content-Length", "0")]), b"")
+        return None
+
+    async def handler(self, connection):
+        await connection.send("text frame" if self.text else self.greeting)
+        with contextlib.suppress(Exception):
+            async for message in connection:
+                self.received.append(message)
+                await connection.send(b"echo:" + message)
+
+    @contextlib.asynccontextmanager
+    async def running(self):
+        async with serve(
+            self.handler, "127.0.0.1", 0, process_request=self.process_request, subprotocols=["binary"]
+        ) as server:
+            port = server.sockets[0].getsockname()[1]
+
+            def connection(path):
+                return (
+                    socket.create_connection(("127.0.0.1", port)),
+                    {"Authorization": "Bearer test-token"},
+                    (f"ws://127.0.0.1:{port}{path}"),
+                )
+
+            with mock.patch.object(transport, "stream_connection", side_effect=connection):
+                yield
+
+
+class BrowserStreamTests(ChatWebSocketCase):
+    def page(self, **options) -> Page:
+        return Page(self.admin_app.app, token=options.pop("token", self.token), **options)
+
+    def test_the_page_and_team_exchange_binary_through_admin_until_team_ends(self) -> None:
+        team = FakeTeam()
+
+        async def scenario():
+            async with team.running():
+                page = self.page()
+                accepted = await page.start()
+                self.assertEqual(accepted, {"type": "websocket.accept", "subprotocol": "binary", "headers": []})
+                self.assertEqual((await page.next())["bytes"], b"RFB 003.008\n")
+                await page.send(b"\x01")
+                self.assertEqual((await page.next())["bytes"], b"echo:\x01")
+                await page.close()
+            return team
+
+        asyncio.run(scenario())
+        [(path, headers)] = team.requests
+        self.assertEqual(path, f"/v1/teams/team_1/browser/views/{VIEW}/stream")
+        self.assertEqual(headers["Sec-WebSocket-Protocol"], "binary")
+        self.assertNotIn("Sec-WebSocket-Extensions", headers)
+        self.assertEqual(team.received, [b"\x01"])
+
+    def test_only_admins_own_page_with_a_session_and_the_binary_subprotocol_is_admitted(self) -> None:
+        async def refused(**options) -> dict:
+            async with FakeTeam().running():
+                page = self.page(**options)
+                return await page.start()
+
+        cases = (
+            ({"token": ""}, registry.SIGNED_OUT),
+            ({"origin": "https://elsewhere.example"}, 4403),
+            ({"origin": None}, 4403),
+            ({"protocols": ("shimpz.admin.v1",)}, 4406),
+            ({"path": "/api/teams/team_1/browser/views/notaview/stream"}, team_browser_view.ENDED),
         )
-        self.assertEqual(
-            transport._decode_browser_frame(_Response(204, headers={}, body=b"")),
-            transport.TeamAssetResponse(204, None, {}),
-        )
-        refusal = transport._decode_browser_frame(_Response(404, body=b'{"code":"browser-not-running"}'))
-        self.assertEqual((refusal.status, refusal.error), (404, {"code": "browser-not-running"}))
-        for response in (
-            _Response(204, headers={}, body=b"x"),
-            # A body after a framing that announced none is refused too.
-            _Response(204, headers={"Content-Length": "0"}, body=b"x"),
-            _frame(**{view_contract.FRAME_HEADER: "0"}),
-            _frame(**{view_contract.FRAME_HEADER: "07"}),
-            _frame(**{"Content-Type": "image/jpeg"}),
-            _frame(b"GIF89a-frame"),
-            _Response(headers={"Content-Type": "image/png", view_contract.FRAME_HEADER: "7"}, body=PNG),
-        ):
-            with self.subTest(headers=response.headers), self.assertRaises(OSError):
-                transport._decode_browser_frame(response)
-        missing = _frame()
-        del missing.headers[view_contract.FRAME_HEADER]
-        with self.assertRaises(OSError):
-            transport._decode_browser_frame(missing)
+        for options, code in cases:
+            with self.subTest(options=options):
+                self.assertEqual(asyncio.run(refused(**options))["code"], code)
 
-    def test_a_frame_is_asked_for_as_png_with_no_body(self) -> None:
-        answer = transport.TeamAssetResponse(204, None, {})
-        with mock.patch.object(transport, "_request_asset", return_value=answer) as asked:
-            self.assertIs(transport.call_browser_frame("/v1/teams/team_1/browser/views/x/frames/0"), answer)
-        path, reading = asked.call_args.args
-        self.assertEqual((path, reading.accept), ("/v1/teams/team_1/browser/views/x/frames/0", "image/png"))
+    def test_two_streams_at_most_run_at_once(self) -> None:
+        async def scenario():
+            held = [team_browser_view._STREAMS.acquire(blocking=False) for _ in range(team_browser_view.MAX_STREAMS)]
+            try:
+                async with FakeTeam().running():
+                    return held, await self.page().start()
+            finally:
+                for taken in held:
+                    if taken:
+                        team_browser_view._STREAMS.release()
 
+        held, answer = asyncio.run(scenario())
+        self.assertEqual(held, [True] * team_browser_view.MAX_STREAMS)
+        self.assertEqual(answer["code"], team_browser_view.BUSY)
 
-class _Wire:
-    """A socket holding one raw HTTP answer, for the real `http.client` parser."""
+    def test_teams_refusals_reach_the_page_as_closed_codes(self) -> None:
+        async def scenario(team: FakeTeam) -> dict:
+            async with team.running():
+                page = self.page()
+                self.assertEqual((await page.start())["type"], "websocket.accept")
+                return await page.next()
 
-    def __init__(self, raw: bytes) -> None:
-        self.raw = raw
+        for status, code in ((404, team_browser_view.ENDED), (503, team_browser_view.UNAVAILABLE), (500, 1013)):
+            with self.subTest(status=status):
+                self.assertEqual(asyncio.run(scenario(FakeTeam(refuse=status)))["code"], code)
 
-    def makefile(self, _mode: str) -> io.BytesIO:
-        return io.BytesIO(self.raw)
+        async def unreachable() -> dict:
+            with mock.patch.object(transport, "stream_connection", side_effect=OSError("down")):
+                page = self.page()
+                await page.start()
+                return await page.next()
 
+        self.assertEqual(asyncio.run(unreachable())["code"], team_browser_view.UNAVAILABLE)
 
-def _parsed(raw: bytes) -> http.client.HTTPResponse:
-    response = http.client.HTTPResponse(_Wire(raw), method="GET")
-    response.begin()
-    return response
+    def test_a_text_message_on_either_side_ends_the_stream(self) -> None:
+        async def from_team() -> dict:
+            async with FakeTeam(text=True).running():
+                page = self.page()
+                await page.start()
+                return await page.next()
 
+        self.assertEqual(asyncio.run(from_team())["code"], team_browser_view.ENDED)
 
-class BrowserViewWireTests(unittest.TestCase):
-    def test_a_no_content_answer_admits_no_body_framing_on_the_wire(self) -> None:
-        empty = _parsed(b"HTTP/1.1 204 No Content\r\nCache-Control: no-store\r\n\r\n")
-        self.assertEqual(transport._decode_browser_frame(empty), transport.TeamAssetResponse(204, None, {}))
-        zero = _parsed(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n")
-        self.assertEqual(transport._decode_browser_frame(zero).status, 204)
-        for raw in (
-            b"HTTP/1.1 204 No Content\r\nContent-Length: 1\r\n\r\nx",
-            b"HTTP/1.1 204 No Content\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nx\r\n0\r\n\r\n",
-        ):
-            with self.subTest(raw=raw), self.assertRaises(OSError):
-                transport._decode_browser_frame(_parsed(raw))
-        body = PNG
-        framed = _parsed(
-            b"HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: "
-            + str(len(body)).encode()
-            + b"\r\nX-Shimpz-Browser-Frame: 4\r\n\r\n"
-            + body
-        )
-        self.assertEqual(
-            transport._decode_browser_frame(framed), transport.TeamAssetResponse(200, PNG, {}, "image/png", frame=4)
-        )
+        async def from_page() -> dict:
+            async with FakeTeam().running():
+                page = self.page()
+                await page.start()
+                await page.next()
+                await page.send_text("not binary")
+                return await page.next()
+
+        self.assertEqual(asyncio.run(from_page())["code"], team_browser_view.ENDED)
+
+    def test_the_session_ending_ends_the_stream(self) -> None:
+        answers = iter(["active", "active", "invalid"])
+
+        async def status(*_args) -> str:
+            return next(answers, "invalid")
+
+        async def scenario() -> dict:
+            with (
+                mock.patch.object(team_browser_view, "SESSION_CHECK_SECONDS", 0.05),
+                mock.patch.object(registry, "session_status", side_effect=status),
+            ):
+                async with FakeTeam().running():
+                    page = self.page()
+                    await page.start()
+                    await page.next()
+                    return await page.next()
+
+        self.assertEqual(asyncio.run(scenario())["code"], registry.SIGNED_OUT)
+
+    def test_origin_authority_that_fails_refuses_the_stream_or_ends_it(self) -> None:
+        async def refused() -> dict:
+            with mock.patch.object(self.admin_app, "_allowed_browser_origins", side_effect=RuntimeError("down")):
+                async with FakeTeam().running():
+                    return await self.page().start()
+
+        self.assertEqual(asyncio.run(refused())["code"], team_browser_view.UNAVAILABLE)
+        origins = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
+        answers = iter([origins, origins, RuntimeError("down")])
+
+        def allowed():
+            answer = next(answers, RuntimeError("down"))
+            if isinstance(answer, Exception):
+                raise answer
+            return answer
+
+        async def ended() -> dict:
+            with (
+                mock.patch.object(team_browser_view, "SESSION_CHECK_SECONDS", 0.05),
+                mock.patch.object(self.admin_app, "_allowed_browser_origins", side_effect=allowed),
+            ):
+                async with FakeTeam().running():
+                    page = self.page()
+                    await page.start()
+                    await page.next()
+                    return await page.next()
+
+        self.assertEqual(asyncio.run(ended())["code"], registry.SIGNED_OUT)
+
+    def test_a_team_that_answers_without_the_binary_subprotocol_is_unavailable(self) -> None:
+        team = FakeTeam()
+
+        @contextlib.asynccontextmanager
+        async def without_subprotocol():
+            async with serve(team.handler, "127.0.0.1", 0) as server:
+                port = server.sockets[0].getsockname()[1]
+
+                def connection(path):
+                    return socket.create_connection(("127.0.0.1", port)), {}, f"ws://127.0.0.1:{port}{path}"
+
+                with mock.patch.object(transport, "stream_connection", side_effect=connection):
+                    yield
+
+        async def scenario() -> dict:
+            async with without_subprotocol():
+                page = self.page()
+                await page.start()
+                return await page.next()
+
+        self.assertEqual(asyncio.run(scenario())["code"], team_browser_view.UNAVAILABLE)
+
+    def test_a_team_that_drops_the_handshake_is_unavailable(self) -> None:
+        async def scenario() -> dict:
+            async def drop(_reader, writer):
+                writer.close()
+
+            server = await asyncio.start_server(drop, "127.0.0.1", 0)
+            port = server.sockets[0].getsockname()[1]
+
+            def connection(path):
+                return socket.create_connection(("127.0.0.1", port)), {}, f"ws://127.0.0.1:{port}{path}"
+
+            try:
+                with mock.patch.object(transport, "stream_connection", side_effect=connection):
+                    page = self.page()
+                    await page.start()
+                    return await page.next()
+            finally:
+                server.close()
+
+        self.assertEqual(asyncio.run(scenario())["code"], team_browser_view.UNAVAILABLE)
 
 
 class BrowserViewBridgeTests(unittest.TestCase):
@@ -130,104 +325,22 @@ class BrowserViewBridgeTests(unittest.TestCase):
                 self.assertEqual((response.status, response.body), expected)
                 call.assert_called_once_with("POST", "/v1/teams/team_1/browser/view")
 
-    def test_a_frame_request_names_its_view_and_cursor_exactly(self) -> None:
-        frame = transport.TeamAssetResponse(200, PNG, {}, "image/png", frame=3)
-        with mock.patch.object(transport, "call_browser_frame", return_value=frame) as call:
-            self.assertIs(bridge.browser_view_frame("team_1", VIEW, "2"), frame)
-        call.assert_called_once_with(f"/v1/teams/team_1/browser/views/{VIEW}/frames/2")
-        nothing = transport.TeamAssetResponse(204, None, {})
-        with mock.patch.object(transport, "call_browser_frame", return_value=nothing):
-            self.assertIs(bridge.browser_view_frame("team_1", VIEW, "0"), nothing)
-        busy = transport.TeamAssetResponse(503, None, {"code": "browser-view-busy", "retry_after_ms": 250})
-        with mock.patch.object(transport, "call_browser_frame", return_value=busy):
-            refused = bridge.browser_view_frame("team_1", VIEW, "0")
-        self.assertEqual(
-            (refused.status, refused.error), (503, {"detail": "browser view unavailable", "code": "browser-view-busy"})
-        )
-        for view_id, after in ((VIEW.upper(), "0"), (7, "0"), (VIEW, "01"), (VIEW, "-1")):
-            with self.subTest(view_id=view_id, after=after), self.assertRaises(transport.TeamRequestError):
-                bridge.browser_view_frame("team_1", view_id, after)
-
     def test_the_socket_opens_a_view_with_the_team_alone(self) -> None:
         self.assertEqual(frames.METHODS["browser.view"], (frozenset({"team_id"}), frozenset()))
         self.assertIn("browser.view", session_methods.METHODS)
 
-
-class BrowserFrameRouteTests(unittest.TestCase):
-    def tearDown(self) -> None:
-        gc.collect()
-        held = [team_browser_view._VIEWS.acquire(blocking=False) for _ in range(team_browser_view.MAX_VIEWS)]
-        for taken in held:
-            if taken:
-                team_browser_view._VIEWS.release()
-        self.assertEqual(held, [True] * team_browser_view.MAX_VIEWS)
-
-    def _frame(self, outcome: object, headers: dict[str, str] = IMAGE_READ) -> object:
-        side_effect = outcome if isinstance(outcome, BaseException) else None
-        with mock.patch.object(
-            team_browser_view.team,
-            "browser_view_frame",
-            return_value=None if side_effect else outcome,
-            side_effect=side_effect,
+    def test_a_stream_reaches_team_with_the_supervisors_assertion_for_its_exact_path(self) -> None:
+        with (
+            mock.patch.object(transport, "_endpoint", return_value=("127.0.0.1", 7077)),
+            mock.patch.object(transport, "_request_headers", return_value={"Authorization": "x"}) as signed,
+            mock.patch.object(transport.socket, "create_connection", return_value="connection") as connected,
         ):
-            return asyncio.run(team_browser_view.browser_frame("team_1", VIEW, "0", browser_request(headers)))
-
-    def _send(self, response: object, send: object | None = None) -> list[dict[str, object]]:
-        messages: list[dict[str, object]] = []
-
-        async def sent(message: dict[str, object]) -> None:
-            messages.append(message)
-
-        async def receive() -> dict[str, object]:
-            return {"type": "http.disconnect"}
-
-        asyncio.run(response({"type": "http", "method": "GET"}, receive, send or sent))
-        return messages
-
-    def test_a_frame_holds_its_slot_until_its_response_ends(self) -> None:
-        frame = transport.TeamAssetResponse(200, PNG, {}, "image/png", frame=3)
-        first = self._frame(frame)
-        self.assertEqual(first.headers[view_contract.FRAME_HEADER], "3")
-        self.assertEqual(first.headers["cache-control"], "no-store")
-        self.assertEqual(first.media_type, "image/png")
-        second = self._frame(frame)
-        busy = self._frame(frame)
-        self.assertEqual((busy.status_code, json.loads(busy.body)["code"]), (503, "browser-view-busy"))
-        self.assertEqual(b"".join(message.get("body", b"") for message in self._send(first)), PNG)
-        self._send(second)
-
-    def test_every_other_outcome_releases_its_slot_at_once(self) -> None:
-        refusal = transport.TeamAssetResponse(404, None, {"detail": "browser view unavailable", "code": "x"})
-        for _ in range(team_browser_view.MAX_VIEWS + 1):
-            self.assertEqual(self._frame(transport.TeamAssetResponse(204, None, {})).status_code, 204)
-            answer = self._frame(refusal)
-            self.assertEqual((answer.status_code, answer.headers["cache-control"]), (404, "no-store"))
-            with self.assertRaises(HTTPException):
-                self._frame(transport.TeamRequestError("after must be a frame number"))
-        for headers in (
-            {"sec-fetch-site": "cross-site", "sec-fetch-dest": "image"},
-            {"sec-fetch-site": "same-origin", "sec-fetch-dest": "iframe"},
-            {},
-        ):
-            with self.subTest(headers=headers):
-                self.assertEqual(self._frame(refusal, headers).status_code, 403)
-
-    def test_a_frame_that_fails_or_outlives_its_deadline_releases_its_slot(self) -> None:
-        frame = transport.TeamAssetResponse(200, PNG, {}, "image/png", frame=1)
-
-        async def stalled(_message: dict[str, object]) -> None:
-            await asyncio.sleep(5)
-
-        with mock.patch.object(team_browser_view, "VIEW_SEND_SECONDS", 0.01):
-            self._send(self._frame(frame), stalled)
-        for _ in range(team_browser_view.MAX_VIEWS + 1):
-            slot = team_browser_view._Slot()
-            self.assertTrue(team_browser_view._VIEWS.acquire(blocking=False))
-            response = team_browser_view._Frame(PNG, 1, slot)
-            del response
-            gc.collect()
-            self.assertFalse(slot.held)
-            slot.release()
+            self.assertEqual(
+                transport.stream_connection("/v1/teams/team_1/browser/views/a/stream"),
+                ("connection", {"Authorization": "x"}, "ws://127.0.0.1:7077/v1/teams/team_1/browser/views/a/stream"),
+            )
+        self.assertEqual(signed.call_args.args, ("GET", "/v1/teams/team_1/browser/views/a/stream", None))
+        connected.assert_called_once_with(("127.0.0.1", 7077), timeout=transport.STREAM_CONNECT_SECONDS)
 
 
 if __name__ == "__main__":

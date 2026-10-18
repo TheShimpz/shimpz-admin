@@ -514,6 +514,11 @@ async def session_ws(websocket: WebSocket):
     await session_socket.serve(websocket, _session_gate())
 
 
+@app.websocket("/api/teams/{team_id}/browser/views/{view_id}/stream")
+async def browser_stream_ws(websocket: WebSocket, team_id: str, view_id: str):
+    await team_browser_view.serve(websocket, _session_gate(), team_id, view_id)
+
+
 @app.get("/api/oauth/cloudflare/start")
 async def oauth_cloudflare_start(request: Request, handoff: str = ""):
     request_mode = _oauth_request_mode(request)
@@ -566,7 +571,6 @@ async def oauth_cloudflare_callback(request: Request):
 
 
 team_files.register(app)
-team_browser_view.register(app)
 
 
 @app.api_route(

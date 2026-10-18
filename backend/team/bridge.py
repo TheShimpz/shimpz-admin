@@ -705,17 +705,3 @@ def open_browser_view(team_id: object) -> transport.TeamResponse:
     if response.status in _VIEW_REFUSALS and code in _VIEW_REFUSALS[response.status]:
         return transport.TeamResponse(response.status, {"detail": "browser view unavailable", "code": code})
     return transport.TeamResponse(502, {"detail": "team unavailable"})
-
-
-def browser_view_frame(team_id: object, view_id: object, after: object) -> transport.TeamAssetResponse:
-    """The view's next frame after `after`, no content when none came, or its closed refusal."""
-    canonical_id = payloads.canonical_team_id(team_id)
-    if not isinstance(view_id, str) or view_contract.VIEW_ID_RE.fullmatch(view_id) is None:
-        raise transport.TeamRequestError("view_id must be a Browser view id")
-    cursor = view_contract.canonical_cursor(after)
-    if cursor is None:
-        raise transport.TeamRequestError("after must be a frame number")
-    response = transport.call_browser_frame(f"/v1/teams/{canonical_id}/browser/views/{view_id}/frames/{cursor}")
-    if response.status == 204:
-        return response
-    return _file_bytes(response, _VIEW_REFUSALS, "browser view unavailable")

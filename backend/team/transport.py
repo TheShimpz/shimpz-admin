@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import socket
 import threading
 from collections.abc import Callable
 from contextlib import contextmanager
@@ -20,7 +21,6 @@ from urllib.parse import quote, urlparse
 import models
 import supervisor as local_supervisor
 
-from protocol.http.v1 import browser_view as view_contract
 from protocol.http.v1 import content as content_contract
 from protocol.http.v1 import preview as preview_contract
 from protocol.http.v1 import progress as progress_contract
@@ -36,6 +36,8 @@ MAX_JSON_BODY_BYTES = 16 * 1024
 MAX_JSON_RESPONSE_BYTES = 256 * 1024
 MAX_ASSISTANT_ICON_BYTES = 1024 * 1024
 CONTROL_TIMEOUT_SECONDS = 180
+# The longest Admin waits to reach Team for one upgraded stream.
+STREAM_CONNECT_SECONDS = 5
 FILE_NAME_HEADER = "X-Shimpz-Filename"
 # A file original's SHA-256 as Team sends it (RFC 9530): exactly one standard base64 digest.
 _REPR_DIGEST = re.compile(r"sha-256=:([A-Za-z0-9+/]{43}=):")
@@ -132,8 +134,6 @@ class TeamAssetResponse:
     media_type: str = "image/png"
     # A PDF page's rendition also names its document's page count.
     page_count: int | None = None
-    # A Browser view frame names its number.
-    frame: int | None = None
 
 
 ProgressSink = Callable[[dict[str, object]], None]
@@ -548,25 +548,6 @@ def _decode_page_preview(response: http.client.HTTPResponse) -> TeamAssetRespons
     return TeamAssetResponse(result.status, result.contents, {}, result.media_type, page_count)
 
 
-def _decode_browser_frame(response: http.client.HTTPResponse) -> TeamAssetResponse:
-    """A Browser view frame: no content when none came, or exactly one PNG within its bound, numbered in its header."""
-    if response.status == HTTPStatus.NO_CONTENT:
-        length = response.getheader("Content-Length")
-        if (length is not None and length != "0") or response.getheader("Transfer-Encoding") is not None:
-            raise OSError("invalid Team browser frame response")
-        if response.read(1):
-            raise OSError("invalid Team browser frame response")
-        return TeamAssetResponse(HTTPStatus.NO_CONTENT, None, {})
-    result = _decode_image(response, frozenset({"image/png"}), view_contract.MAX_FRAME_BYTES)
-    if result.contents is None:
-        return result
-    number = view_contract.canonical_cursor(response.getheader(view_contract.FRAME_HEADER))
-    framing = {"frame": number, "length": len(result.contents)}
-    if view_contract.canonical_frame(framing) is None or not result.contents.startswith(view_contract.PNG_SIGNATURE):
-        raise OSError("invalid Team browser frame response")
-    return TeamAssetResponse(HTTPStatus.OK, result.contents, {}, "image/png", frame=number)
-
-
 def _decode_content(response: http.client.HTTPResponse) -> TeamAssetResponse:
     """A file's original: exactly an octet stream of its declared length whose SHA-256 is its declared digest.
 
@@ -601,9 +582,6 @@ _PAGE_PREVIEW_READING = _Reading(
 _CONTENT_READING = _Reading(
     "application/octet-stream", _decode_content, _asset_unavailable, "Team file content request"
 )
-
-
-_BROWSER_FRAME_READING = _Reading("image/png", _decode_browser_frame, _asset_unavailable, "Team browser frame request")
 
 
 def _request_asset(path: str, reading: _Reading[TeamAssetResponse] = _ASSET_READING) -> TeamAssetResponse:
@@ -716,8 +694,15 @@ def call_content(path: str) -> TeamAssetResponse:
     return _request_asset(path, _CONTENT_READING)
 
 
-def call_browser_frame(path: str) -> TeamAssetResponse:
-    return _request_asset(path, _BROWSER_FRAME_READING)
+def stream_connection(path: str) -> tuple[socket.socket, dict[str, str], str]:
+    """A connection to Team for one upgraded stream at `path`, the headers that authorize it, and its URI.
+
+    The headers bind a GET of `path` with no body to the request's Supervisor session, as every Team call is bound.
+    """
+    host, port = _endpoint()
+    headers = _request_headers("GET", path, None, accept="*/*", content_type=None, filename=None, bindings=_NO_BINDINGS)
+    connection = socket.create_connection((host, port), timeout=STREAM_CONNECT_SECONDS)
+    return connection, headers, f"ws://{host}:{port}{path}"
 
 
 def call_stream(

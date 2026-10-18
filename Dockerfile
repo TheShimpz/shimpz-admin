@@ -134,5 +134,8 @@ RUN python -c "import app" && \
     python -m compileall -q -f --invalidation-mode checked-hash /app/backend
 USER admin
 EXPOSE 4600
+# Every WebSocket's inbound message is bounded below the session socket's own 128 KiB, a few wait at most, and none is
+# compressed: the session socket's JSON is small and the Browser screen's updates are compressed already.
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "4600", "--workers", "1", "--log-level", "warning", \
-     "--no-access-log", "--no-server-header"]
+     "--no-access-log", "--no-server-header", "--ws-max-size", "131072", "--ws-max-queue", "4", \
+     "--ws-per-message-deflate", "false"]
