@@ -50,6 +50,8 @@ class BrowserViewTransportTests(unittest.TestCase):
         self.assertEqual((refusal.status, refusal.error), (404, {"code": "browser-not-running"}))
         for response in (
             _Response(204, headers={}, body=b"x"),
+            # A body after a framing that announced none is refused too.
+            _Response(204, headers={"Content-Length": "0"}, body=b"x"),
             _frame(**{view_contract.FRAME_HEADER: "0"}),
             _frame(**{view_contract.FRAME_HEADER: "07"}),
             _frame(**{"Content-Type": "image/jpeg"}),
