@@ -128,6 +128,7 @@ export function sentImagesHistory() {
 export const WEB_FILES = Object.freeze({
   pdf: { id: '1'.repeat(32), name: 'Edital 2026.pdf', media_type: 'application/pdf', size: 482_133 },
   text: { id: '2'.repeat(32), name: 'Anexo.txt', media_type: 'text/plain', size: 2_140 },
+  copy: { id: '3'.repeat(32), name: 'Minha cópia.pdf', media_type: 'application/pdf', size: 482_133 },
 });
 
 /** A completed turn whose Browser task kept two files and could not keep a third, as Admin's history keeps it. */
@@ -139,7 +140,9 @@ export function webFilesHistory() {
       created_at: at,
       kind: 'message',
       role: 'user',
-      text: 'What is the deadline in the city notice?',
+      text: 'What is the deadline in the city notice? Here is the copy I kept.',
+      // The person's own copy of the notice, the same bytes the Browser downloads: Team marks it from the web too.
+      files: [WEB_FILES.copy],
     },
     {
       id: `${'d'.repeat(32)}:reply`,

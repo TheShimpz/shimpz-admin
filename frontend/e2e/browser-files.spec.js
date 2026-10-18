@@ -70,6 +70,26 @@ test('a refused acknowledgement keeps the dialog open and saves nothing', async 
   expect(downloads).toBe(0);
 });
 
+test('an attachment Team holds as from the web asks for the same acknowledgement before it is saved', async ({
+  page,
+}) => {
+  await openChat(page);
+  // Team refuses the person's own copy, whose bytes the Browser downloaded too, until it is acknowledged.
+  await page.route(`**/api/teams/marketing/files/${WEB_FILES.copy.id}/download`, (route) => route.fulfill({
+    status: 403,
+    contentType: 'application/json',
+    body: JSON.stringify({ detail: 'file download unavailable', code: 'file-acknowledgement-required' }),
+  }));
+  const sent = page.locator('.conversation').getByRole('list', { name: EN.attachments.list });
+  await downloadLink(sent, WEB_FILES.copy.name).click();
+  const dialog = page.getByRole('dialog', { name: WEB.title });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: WEB.cancel }).click();
+  // From then on the card says where its bytes came from.
+  await expect(sent.getByRole('listitem').filter({ hasText: WEB_FILES.copy.name })).toContainText(WEB.origin);
+  expect(await acknowledgements(page)).toEqual([]);
+});
+
 test('a file from the web opens only through Team renditions, never its own text', async ({ page }) => {
   const files = await openChat(page);
   // The PDF opens over the chat; the text file, whose viewer would read its original, has no viewer.

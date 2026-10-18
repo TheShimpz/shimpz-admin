@@ -352,15 +352,28 @@ function delay(ms, signal) {
   });
 }
 
+/** Team holds this file's original until the Supervisor acknowledges that it came from the web (ADR-0117 §7). */
+export class FileAcknowledgementRequiredError extends Error {
+  constructor() {
+    super('The file came from the web and needs an acknowledgement.');
+    this.name = 'FileAcknowledgementRequiredError';
+  }
+}
+
 /**
  * One of a stored file's byte routes, read with the session from Admin's own page: the successful response, after
- * waiting out a busy Team's named delay at most FILE_RETRIES times, or an error.
+ * waiting out a busy Team's named delay at most FILE_RETRIES times, or an error; a file from the web that was not
+ * acknowledged throws FileAcknowledgementRequiredError.
  */
 export async function fetchFileBytes(url, signal) {
   for (let attempt = 0; ; attempt += 1) {
     const response = await fetch(url, { signal, cache: 'no-store', credentials: 'same-origin' });
     if (response.ok) return response;
-    const retry = response.status === 503 ? (await response.json().catch(() => null))?.retry_after_ms : null;
+    const body = [403, 503].includes(response.status) ? await response.json().catch(() => null) : null;
+    if (response.status === 403 && body?.code === 'file-acknowledgement-required') {
+      throw new FileAcknowledgementRequiredError();
+    }
+    const retry = response.status === 503 ? body?.retry_after_ms : null;
     if (attempt >= FILE_RETRIES || !Number.isSafeInteger(retry) || retry < 1 || retry > FILE_RETRY_LIMIT_MS) {
       throw new Error('The file could not be read.');
     }

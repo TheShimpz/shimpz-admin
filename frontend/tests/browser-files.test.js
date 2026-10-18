@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { acknowledgeWebFile, parseBrowserTerminal } from '../src/lib/chat/attachments/files.js';
+import {
+  acknowledgeWebFile,
+  fetchFileBytes,
+  FileAcknowledgementRequiredError,
+  parseBrowserTerminal,
+} from '../src/lib/chat/attachments/files.js';
 import { listChatHistory } from '../src/lib/chat/history.js';
 import { parseChatEvent, parseReceipt } from '../src/lib/chat/protocol.js';
 import { historyTurn, replyFields } from '../src/lib/chat/turns.js';
@@ -83,4 +88,19 @@ test('an acknowledgement names exactly its file and admits only Team’s exact a
     await assert.rejects(acknowledgeWebFile(teamId, fileId, refused.call), /acknowledgement is invalid/);
     assert.deepEqual(refused.calls, []);
   }
+});
+
+test('a download Team holds for an acknowledgement says so, and any other refusal does not', async (t) => {
+  const answers = [
+    { status: 403, body: { detail: 'file download unavailable', code: 'file-acknowledgement-required' } },
+    { status: 403, body: { detail: 'denied', code: 'invalid-supervisor' } },
+  ];
+  t.mock.method(globalThis, 'fetch', async () => {
+    const { status, body } = answers.shift();
+    return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  });
+  await assert.rejects(fetchFileBytes('/api/teams/team_1/files/x/download'), FileAcknowledgementRequiredError);
+  await assert.rejects(fetchFileBytes('/api/teams/team_1/files/x/download'), (error) => (
+    !(error instanceof FileAcknowledgementRequiredError) && /could not be read/.test(error.message)
+  ));
 });

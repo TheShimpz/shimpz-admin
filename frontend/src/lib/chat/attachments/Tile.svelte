@@ -1,6 +1,11 @@
 <script>
   import { ActionLink, Button } from '@shimpz/frontend';
-  import { downloadUrl, formatFileSize, saveFile } from '#lib/chat/attachments/files.js';
+  import {
+    downloadUrl,
+    FileAcknowledgementRequiredError,
+    formatFileSize,
+    saveFile,
+  } from '#lib/chat/attachments/files.js';
   import FileViewer from '#lib/chat/attachments/FileViewer.svelte';
   import WebDownload from '#lib/chat/attachments/WebDownload.svelte';
   import { acquirePreview, PreviewCapacityError, previewable, stored } from '#lib/chat/attachments/previews.js';
@@ -14,7 +19,8 @@
   // in the viewer, which moves through `files`, the message's files, this one among them. A stored file can be
   // downloaded from its card's end; in the composer the card can also be removed from the message. A `web` file, which
   // the Browser downloaded (ADR-0117 §7), says so, opens only where Team shows it through a sanitized rendition, and is
-  // saved only through the dialog that records the Supervisor's acknowledgement first.
+  // saved only through the dialog that records the Supervisor's acknowledgement first. A file Team refuses to release
+  // until such an acknowledgement, because the same bytes came from the web, is one from then on.
   let {
     teamId,
     file,
@@ -38,7 +44,9 @@
   let kindText = $derived(copy.kinds[file.kind] ?? copy.kinds.file);
   let noteText = $derived(file.note === 'pdf-text' ? copy.pdfText : file.note === 'unreadable' ? copy.notRead : '');
   let statusText = $derived(status === 'queued' ? copy.queued : status === 'uploading' ? copy.sending : '');
-  let webText = $derived(web ? copy.web.origin : '');
+  let learned = $state(false);
+  let fromWeb = $derived(web || learned);
+  let webText = $derived(fromWeb ? copy.web.origin : '');
   let details = $derived(
     [kindText, formatFileSize(file.size, $locale), webText, noteText, statusText].filter(Boolean).join(' · '),
   );
@@ -51,7 +59,7 @@
   // Only a file Team stored, of a valid Team, can be opened or downloaded.
   let openable = $derived(status === 'ready' && stored(teamId, file));
   // A file from the web is shown only through Team's renditions, never its own text.
-  let viewable = $derived(openable && (!web || file.kind === 'image' || file.kind === 'pdf'));
+  let viewable = $derived(openable && (!fromWeb || file.kind === 'image' || file.kind === 'pdf'));
   // The badge: the file's extension, at most four characters, or its type when it has none.
   let badge = $derived.by(() => {
     const dot = file.name.lastIndexOf('.');
@@ -105,13 +113,19 @@
 
   function save(event) {
     event.preventDefault();
-    if (web) {
+    if (fromWeb) {
       guarding = true;
       return;
     }
     if (saving) return;
     saving = true;
-    saveFile(teamId, file).catch(() => {}).finally(() => (saving = false));
+    saveFile(teamId, file)
+      .catch((error) => {
+        if (!(error instanceof FileAcknowledgementRequiredError)) return;
+        learned = true;
+        guarding = true;
+      })
+      .finally(() => (saving = false));
   }
 
   function closeViewer() {
@@ -189,7 +203,7 @@
       files={files.some((item) => item.id === file.id) ? files : [file]}
       start={Math.max(0, files.findIndex((item) => item.id === file.id))}
       thumbnail={shown}
-      {web}
+      web={fromWeb}
       onclose={closeViewer}
     />
   {/if}
