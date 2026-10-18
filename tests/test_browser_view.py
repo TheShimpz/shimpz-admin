@@ -7,6 +7,7 @@ import asyncio
 import contextlib
 import socket
 import sys
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -23,6 +24,7 @@ from team import browser_view as team_browser_view
 from tests.chat_socket_case import ChatWebSocketCase
 from websockets.asyncio.server import serve
 from websockets.datastructures import Headers
+from websockets.exceptions import ConnectionClosedError
 from websockets.http11 import Response
 
 VIEW = "a" * 32
@@ -69,6 +71,13 @@ class Page:
     async def next(self) -> dict:
         return await asyncio.wait_for(self.outgoing.get(), 5)
 
+    async def closed(self) -> tuple[list[bytes], int]:
+        """The bytes the page received until its stream closed, and the close code."""
+        received = []
+        while (message := await self.next())["type"] != "websocket.close":
+            received.append(message["bytes"])
+        return received, message["code"]
+
     async def send(self, data: bytes) -> None:
         await self.incoming.put({"type": "websocket.receive", "bytes": data})
 
@@ -85,8 +94,10 @@ class Page:
 class FakeTeam:
     """Team's stream route: it checks the exact path and the Supervisor's assertion, then plays the display."""
 
-    def __init__(self, *, refuse: int | None = None, greeting: bytes = b"RFB 003.008\n", text: bool = False):
-        self.refuse, self.greeting, self.text = refuse, greeting, text
+    def __init__(
+        self, *, refuse: int | None = None, greeting: bytes = b"RFB 003.008\n", text: bool = False, end: bool = False
+    ):
+        self.refuse, self.greeting, self.text, self.end = refuse, greeting, text, end
         self.requests: list[tuple[str, Headers]] = []
         self.received: list[bytes] = []
 
@@ -98,6 +109,8 @@ class FakeTeam:
 
     async def handler(self, connection):
         await connection.send("text frame" if self.text else self.greeting)
+        if self.end:
+            return
         with contextlib.suppress(Exception):
             async for message in connection:
                 self.received.append(message)
@@ -157,26 +170,38 @@ class BrowserStreamTests(ChatWebSocketCase):
             ({"origin": "https://elsewhere.example"}, 4403),
             ({"origin": None}, 4403),
             ({"protocols": ("shimpz.admin.v1",)}, 4406),
-            ({"path": "/api/teams/team_1/browser/views/notaview/stream"}, team_browser_view.ENDED),
         )
         for options, code in cases:
             with self.subTest(options=options):
-                self.assertEqual(asyncio.run(refused(**options))["code"], code)
+                refusal = {"type": "websocket.close", "code": code, "reason": ""}
+                self.assertEqual(asyncio.run(refused(**options)), refusal)
+
+        async def not_a_view() -> tuple[dict, tuple[list[bytes], int]]:
+            async with FakeTeam().running():
+                page = self.page(path="/api/teams/team_1/browser/views/notaview/stream")
+                return await page.start(), await page.closed()
+
+        # An admitted page hears why its stream does not run, on an accepted stream.
+        accepted, closed = asyncio.run(not_a_view())
+        self.assertEqual(accepted["type"], "websocket.accept")
+        self.assertEqual(closed, ([], team_browser_view.ENDED))
 
     def test_two_streams_at_most_run_at_once(self) -> None:
         async def scenario():
             held = [team_browser_view._STREAMS.acquire(blocking=False) for _ in range(team_browser_view.MAX_STREAMS)]
             try:
                 async with FakeTeam().running():
-                    return held, await self.page().start()
+                    page = self.page()
+                    return held, await page.start(), await page.closed()
             finally:
                 for taken in held:
                     if taken:
                         team_browser_view._STREAMS.release()
 
-        held, answer = asyncio.run(scenario())
+        held, accepted, closed = asyncio.run(scenario())
         self.assertEqual(held, [True] * team_browser_view.MAX_STREAMS)
-        self.assertEqual(answer["code"], team_browser_view.BUSY)
+        self.assertEqual(accepted["type"], "websocket.accept")
+        self.assertEqual(closed, ([], team_browser_view.BUSY))
 
     def test_teams_refusals_reach_the_page_as_closed_codes(self) -> None:
         async def scenario(team: FakeTeam) -> dict:
@@ -204,7 +229,7 @@ class BrowserStreamTests(ChatWebSocketCase):
                 await page.start()
                 return await page.next()
 
-        self.assertEqual(asyncio.run(from_team())["code"], team_browser_view.ENDED)
+        self.assertEqual(asyncio.run(from_team())["code"], team_browser_view.UNAVAILABLE)
 
         async def from_page() -> dict:
             async with FakeTeam().running():
@@ -214,26 +239,88 @@ class BrowserStreamTests(ChatWebSocketCase):
                 await page.send_text("not binary")
                 return await page.next()
 
-        self.assertEqual(asyncio.run(from_page())["code"], team_browser_view.ENDED)
+        self.assertEqual(asyncio.run(from_page())["code"], team_browser_view.UNAVAILABLE)
 
-    def test_the_session_ending_ends_the_stream(self) -> None:
-        answers = iter(["active", "active", "invalid"])
+        async def ending() -> tuple[list[bytes], int]:
+            async with FakeTeam(end=True).running():
+                page = self.page()
+                await page.start()
+                return await page.closed()
+
+        # A stream Team ends just ends: the page asks for the view again to learn whether the task did.
+        self.assertEqual(asyncio.run(ending()), ([b"RFB 003.008\n"], team_browser_view.FINISHED))
+
+    def session_answers(self, *answers: str):
+        remaining = iter(answers)
 
         async def status(*_args) -> str:
-            return next(answers, "invalid")
+            return next(remaining, "invalid")
 
-        async def scenario() -> dict:
-            with (
-                mock.patch.object(team_browser_view, "SESSION_CHECK_SECONDS", 0.05),
-                mock.patch.object(registry, "session_status", side_effect=status),
-            ):
+        return mock.patch.object(registry, "session_status", side_effect=status)
+
+    def test_the_session_ending_ends_the_stream(self) -> None:
+        async def scenario(*answers: str) -> tuple[list[bytes], int]:
+            with mock.patch.object(team_browser_view, "SESSION_CHECK_SECONDS", 0.05), self.session_answers(*answers):
                 async with FakeTeam().running():
                     page = self.page()
                     await page.start()
-                    await page.next()
-                    return await page.next()
+                    return await page.closed()
 
-        self.assertEqual(asyncio.run(scenario())["code"], registry.SIGNED_OUT)
+        # Admission, the watch's first check, the check before the first byte, then the watch again.
+        self.assertEqual(
+            asyncio.run(scenario("active", "active", "active", "invalid")), ([b"RFB 003.008\n"], registry.SIGNED_OUT)
+        )
+        # A session that ended while Team was reached passes nothing at all.
+        self.assertEqual(asyncio.run(scenario("active", "active", "invalid")), ([], registry.SIGNED_OUT))
+
+    def test_a_session_that_ends_while_team_is_reached_ends_the_opening(self) -> None:
+        reached = []
+
+        def slow(path):
+            time.sleep(0.3)
+            reached.append(mock.Mock())
+            return reached[-1], {}, f"ws://127.0.0.1:1{path}"
+
+        async def scenario() -> tuple[list[bytes], int]:
+            with (
+                mock.patch.object(team_browser_view, "SESSION_CHECK_SECONDS", 0.05),
+                self.session_answers("active", "active", "invalid"),
+                mock.patch.object(transport, "stream_connection", side_effect=slow),
+            ):
+                page = self.page()
+                await page.start()
+                closed = await page.closed()
+                await asyncio.sleep(0.5)
+                return closed
+
+        self.assertEqual(asyncio.run(scenario()), ([], registry.SIGNED_OUT))
+        # The connection the cancelled opening still made is closed once it arrives.
+        [connection] = reached
+        connection.close.assert_called_once_with()
+
+    def test_a_page_whose_close_stalls_still_frees_its_stream(self) -> None:
+        async def scenario() -> bool:
+            with mock.patch.object(team_browser_view, "CLOSE_SECONDS", 0.1):
+                async with FakeTeam(end=True).running():
+                    page = self.page()
+                    stalled = asyncio.Event()
+                    sent = page.outgoing.put
+
+                    async def stalls(message):
+                        if message["type"] == "websocket.close":
+                            await stalled.wait()
+                        await sent(message)
+
+                    page.application = lambda scope, receive, _send: self.admin_app.app(scope, receive, stalls)
+                    await page.start()
+                    await asyncio.wait_for(page.task, 5)
+                    stalled.set()
+                    free = team_browser_view._STREAMS.acquire(blocking=False)
+                    if free:
+                        team_browser_view._STREAMS.release()
+                    return free
+
+        self.assertTrue(asyncio.run(scenario()))
 
     def test_origin_authority_that_fails_refuses_the_stream_or_ends_it(self) -> None:
         async def refused() -> dict:
@@ -243,7 +330,7 @@ class BrowserStreamTests(ChatWebSocketCase):
 
         self.assertEqual(asyncio.run(refused())["code"], team_browser_view.UNAVAILABLE)
         origins = frozenset({"http://localhost:7777", "http://127.0.0.1:7777"})
-        answers = iter([origins, origins, RuntimeError("down")])
+        answers = iter([origins, origins, origins, RuntimeError("down")])
 
         def allowed():
             answer = next(answers, RuntimeError("down"))
@@ -259,10 +346,9 @@ class BrowserStreamTests(ChatWebSocketCase):
                 async with FakeTeam().running():
                     page = self.page()
                     await page.start()
-                    await page.next()
-                    return await page.next()
+                    return await page.closed()
 
-        self.assertEqual(asyncio.run(ended())["code"], registry.SIGNED_OUT)
+        self.assertEqual(asyncio.run(ended()), ([b"RFB 003.008\n"], registry.SIGNED_OUT))
 
     def test_a_team_that_answers_without_the_binary_subprotocol_is_unavailable(self) -> None:
         team = FakeTeam()
@@ -306,6 +392,55 @@ class BrowserStreamTests(ChatWebSocketCase):
                 server.close()
 
         self.assertEqual(asyncio.run(scenario())["code"], team_browser_view.UNAVAILABLE)
+
+
+class RelayEdgeTests(unittest.IsolatedAsyncioTestCase):
+    """The relay's failure paths that a live peer reaches only by timing."""
+
+    async def test_a_side_that_fails_mid_stream_leaves_the_stream_unavailable(self) -> None:
+        page = mock.Mock()
+        page.receive = mock.AsyncMock(return_value={"type": "websocket.receive", "bytes": b"\x01"})
+        team = mock.Mock()
+        team.send = mock.AsyncMock(side_effect=ConnectionClosedError(None, None))
+        self.assertEqual(await team_browser_view._to_team(page, team), team_browser_view.UNAVAILABLE)
+
+        class Dropped:
+            def __aiter__(self):
+                return self
+
+            async def __anext__(self):
+                raise ConnectionClosedError(None, None)
+
+        self.assertEqual(await team_browser_view._to_page(page, Dropped()), team_browser_view.UNAVAILABLE)
+
+    async def test_an_opening_cancelled_during_teams_handshake_closes_its_connection(self) -> None:
+        connection = mock.Mock()
+        handshaking = asyncio.Event()
+
+        async def never(*_args, **_kwargs):
+            handshaking.set()
+            await asyncio.Event().wait()
+
+        gate = mock.Mock()
+        gate.request_scope.return_value = contextlib.nullcontext()
+        with (
+            mock.patch.object(transport, "stream_connection", return_value=(connection, {}, "ws://127.0.0.1:1/x")),
+            mock.patch.object(team_browser_view, "connect", side_effect=never),
+        ):
+            opening = asyncio.create_task(team_browser_view._open_team(gate, {}, "/x"))
+            await asyncio.wait_for(handshaking.wait(), 5)
+            opening.cancel()
+            with self.assertRaises(asyncio.CancelledError):
+                await opening
+        connection.close.assert_called_once_with()
+
+    async def test_a_cancelled_opening_that_never_reached_team_closes_nothing(self) -> None:
+        failed = asyncio.get_running_loop().create_future()
+        failed.set_exception(OSError("down"))
+        team_browser_view._close_reached(failed)
+        cancelled = asyncio.get_running_loop().create_future()
+        cancelled.cancel()
+        team_browser_view._close_reached(cancelled)
 
 
 class BrowserViewBridgeTests(unittest.TestCase):

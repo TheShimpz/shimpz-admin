@@ -6,7 +6,7 @@ session — and stays bound to that Origin and session, checked again every few 
 connection of its own (no proxy, no redirect followed) with the Supervisor's assertion for that exact path, and relays
 binary messages both ways through bounded queues with send deadlines. The screen's bytes are never read, stored, or
 logged. At most MAX_STREAMS streams run at once, and either side ending, the session ending, or its Origin no longer
-being admitted ends the stream.
+being admitted ends the stream; the session and Origin are watched from the moment the stream is accepted.
 """
 
 import asyncio
@@ -39,11 +39,13 @@ OPEN_SECONDS = 10
 SEND_SECONDS = 10
 CLOSE_SECONDS = 2
 SESSION_CHECK_SECONDS = 5
-# Close codes the page reads: the task no longer runs, the view is busy or unavailable, or the session ended.
+# Close codes the page reads once its stream was accepted: Team answered that the task no longer runs, the view is busy
+# or unavailable, the session ended, or the stream simply ended (the page then asks for the view again).
 ENDED = 4404
 BUSY = 4429
 SIGNED_OUT = registry.SIGNED_OUT
 UNAVAILABLE = 1013
+FINISHED = 1000
 _TEAM_REFUSALS = {404: ENDED, 503: UNAVAILABLE}
 _VIEW_ID = re.compile(r"[0-9a-f]{32}")
 
@@ -54,16 +56,17 @@ async def serve(websocket: WebSocket, gate: session_socket.Gate, team_id: str, v
     if origin is None:
         return
     canonical_team = payloads.canonical_team_id(team_id)
+    # Past admission the page hears why its stream did not run, as a close code on an accepted stream.
+    await websocket.accept(subprotocol=view_contract.SUBPROTOCOL)
     if canonical_team is None or _VIEW_ID.fullmatch(view_id) is None:
-        await websocket.close(code=ENDED)
+        await _close(websocket, ENDED)
         return
     if not _STREAMS.acquire(blocking=False):
-        await websocket.close(code=BUSY)
+        await _close(websocket, BUSY)
         return
     try:
-        await websocket.accept(subprotocol=view_contract.SUBPROTOCOL)
         path = f"/v1/teams/{canonical_team}/browser/views/{view_id}/stream"
-        await _relay(websocket, gate, origin, path)
+        await _close(websocket, await _relay(websocket, gate, origin, path))
     finally:
         _STREAMS.release()
 
@@ -90,18 +93,64 @@ async def _admit(websocket: WebSocket, gate: session_socket.Gate) -> str | None:
     return origin
 
 
-async def _relay(websocket: WebSocket, gate: session_socket.Gate, origin: str, path: str) -> None:
+async def _close(websocket: WebSocket, code: int) -> None:
+    """Close the page's stream with `code`, waiting no longer than CLOSE_SECONDS for it."""
+    with contextlib.suppress(Exception):
+        await asyncio.wait_for(websocket.close(code=code), CLOSE_SECONDS)
+
+
+async def _relay(websocket: WebSocket, gate: session_socket.Gate, origin: str, path: str) -> int:
+    """Relay the stream until it ends; the close code for the page.
+
+    The session and Origin are watched from the start, so a revocation while Team is reached ends the opening, and
+    they are checked once more before the first byte passes.
+    """
     cookies = dict(websocket.cookies)
+    watch = asyncio.create_task(_session_holds(gate, origin, cookies))
+    opening = asyncio.create_task(_open_team(gate, cookies, path))
+    team = None
+    try:
+        await asyncio.wait({watch, opening}, return_when=asyncio.FIRST_COMPLETED)
+        if watch.done():
+            return SIGNED_OUT
+        team, refusal = opening.result()
+        if team is None:
+            return refusal
+        if not await _session_admitted(gate, origin, cookies):
+            return SIGNED_OUT
+        pumps = {asyncio.create_task(_to_team(websocket, team)), asyncio.create_task(_to_page(websocket, team))}
+        try:
+            done, _ = await asyncio.wait({watch, *pumps}, return_when=asyncio.FIRST_COMPLETED)
+            return SIGNED_OUT if watch in done else next(iter(done)).result()
+        finally:
+            for task in pumps:
+                task.cancel()
+            await asyncio.gather(*pumps, return_exceptions=True)
+    finally:
+        watch.cancel()
+        opening.cancel()
+        await asyncio.gather(watch, opening, return_exceptions=True)
+        if team is not None:
+            with contextlib.suppress(Exception):
+                await asyncio.wait_for(team.close(), CLOSE_SECONDS)
+
+
+async def _open_team(gate: session_socket.Gate, cookies: dict[str, str], path: str):
+    """Team's side of the stream, or None and the close code its refusal or failure means for the page."""
 
     def reach_team():
         with gate.request_scope(cookies):
             return transport.stream_connection(path)
 
+    reaching = asyncio.ensure_future(run_in_threadpool(reach_team))
     try:
-        connection, headers, uri = await run_in_threadpool(reach_team)
+        connection, headers, uri = await asyncio.shield(reaching)
+    except asyncio.CancelledError:
+        # The connection a cancelled opening still makes is closed once it arrives.
+        reaching.add_done_callback(_close_reached)
+        raise
     except OSError:
-        await websocket.close(code=UNAVAILABLE)
-        return
+        return None, UNAVAILABLE
     try:
         team = await connect(
             uri,
@@ -120,65 +169,65 @@ async def _relay(websocket: WebSocket, gate: session_socket.Gate, origin: str, p
         )
     except InvalidStatus as exc:
         connection.close()
-        await websocket.close(code=_TEAM_REFUSALS.get(exc.response.status_code, UNAVAILABLE))
-        return
+        return None, _TEAM_REFUSALS.get(exc.response.status_code, UNAVAILABLE)
     except InvalidHandshake, OSError, TimeoutError:
         connection.close()
-        await websocket.close(code=UNAVAILABLE)
-        return
+        return None, UNAVAILABLE
+    except asyncio.CancelledError:
+        connection.close()
+        raise
     if team.subprotocol != view_contract.SUBPROTOCOL:
         # Team answers exactly one upgrade, with the binary subprotocol; anything else is not the display.
         with contextlib.suppress(Exception):
             await asyncio.wait_for(team.close(), CLOSE_SECONDS)
-        await websocket.close(code=UNAVAILABLE)
-        return
-    ended = asyncio.Event()
-    tasks = [
-        asyncio.create_task(_to_team(websocket, team)),
-        asyncio.create_task(_to_page(websocket, team)),
-        asyncio.create_task(_session_holds(websocket, gate, origin, cookies, ended)),
-    ]
-    try:
-        await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
-    finally:
-        for task in tasks:
-            task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        with contextlib.suppress(Exception):
-            await asyncio.wait_for(team.close(), CLOSE_SECONDS)
-        code = SIGNED_OUT if ended.is_set() else ENDED
-        with contextlib.suppress(Exception):
-            await websocket.close(code=code)
+        return None, UNAVAILABLE
+    return team, None
 
 
-async def _to_team(websocket: WebSocket, team) -> None:
+def _close_reached(reaching: asyncio.Future) -> None:
+    if not reaching.cancelled() and reaching.exception() is None:
+        reaching.result()[0].close()
+
+
+async def _to_team(websocket: WebSocket, team) -> int:
     """The page's messages to Team: binary only, within the bound, each sent before its deadline."""
-    with contextlib.suppress(WebSocketDisconnect, ConnectionClosed, TimeoutError):
+    try:
         while True:
             message = await websocket.receive()
+            if message.get("type") == "websocket.disconnect":
+                return FINISHED
             data = message.get("bytes")
-            if message.get("type") == "websocket.disconnect" or data is None or len(data) > MAX_MESSAGE_BYTES:
-                return
+            if data is None or len(data) > MAX_MESSAGE_BYTES:
+                return UNAVAILABLE
             await asyncio.wait_for(team.send(data), SEND_SECONDS)
+    except ConnectionClosed, TimeoutError:
+        return UNAVAILABLE
 
 
-async def _to_page(websocket: WebSocket, team) -> None:
+async def _to_page(websocket: WebSocket, team) -> int:
     """Team's messages to the page: binary only, each sent before its deadline."""
-    with contextlib.suppress(WebSocketDisconnect, ConnectionClosed, TimeoutError, RuntimeError):
+    try:
         async for message in team:
             if not isinstance(message, bytes):
-                return
+                return UNAVAILABLE
             await asyncio.wait_for(websocket.send_bytes(message), SEND_SECONDS)
+    except WebSocketDisconnect, ConnectionClosed, TimeoutError, RuntimeError:
+        return UNAVAILABLE
+    return FINISHED
 
 
-async def _session_holds(websocket, gate, origin: str, cookies: dict[str, str], ended: asyncio.Event) -> None:
-    """Return once the session is no longer current or its Origin no longer admitted, marking why."""
+async def _session_admitted(gate: session_socket.Gate, origin: str, cookies: dict[str, str]) -> bool:
+    """Whether the session is still current and its Origin still admitted."""
+    try:
+        admitted = origin in gate.allowed_origins()
+    except RuntimeError, OSError:
+        admitted = False
+    return admitted and await registry.session_status(gate.session_current, cookies) == "active"
+
+
+async def _session_holds(gate: session_socket.Gate, origin: str, cookies: dict[str, str]) -> None:
+    """Return once the session is no longer current or its Origin no longer admitted."""
     while True:
-        await asyncio.sleep(SESSION_CHECK_SECONDS)
-        try:
-            admitted = origin in gate.allowed_origins()
-        except RuntimeError, OSError:
-            admitted = False
-        if not admitted or await registry.session_status(gate.session_current, cookies) != "active":
-            ended.set()
+        if not await _session_admitted(gate, origin, cookies):
             return
+        await asyncio.sleep(SESSION_CHECK_SECONDS)
