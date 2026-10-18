@@ -4,7 +4,6 @@ import threading
 import weakref
 
 import anyio
-import browser
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response
 from python_multipart.exceptions import ParseError
@@ -16,6 +15,7 @@ from team import bridge as team
 from team import http as team_http
 from team import transport
 
+import browser
 from protocol.http.v1 import preview as preview_contract
 
 MAX_MULTIPART_OVERHEAD_BYTES = 64 * 1024
@@ -102,6 +102,14 @@ def register(app: FastAPI) -> None:
         "/api/teams/{team_id}/files/{file_id}/pages/{page}/preview", team_file_page_preview, methods=["GET"]
     )
     app.add_api_route("/api/teams/{team_id}/files/{file_id}/download", team_file_download, methods=["GET"])
+    app.add_api_route(
+        "/api/teams/{team_id}/files/{file_id}/acknowledgement", team_file_acknowledgement, methods=["POST"]
+    )
+
+
+async def team_file_acknowledgement(team_id: str, file_id: str):
+    """The Supervisor accepts the risk of saving one file the Browser downloaded from the web (ADR-0117 §7)."""
+    return await run_in_threadpool(team_http.response, lambda: team.acknowledge_file(team_id, file_id))
 
 
 async def team_file_upload(team_id: str, request: Request):

@@ -617,8 +617,10 @@ _PREVIEW_REFUSALS = {
     422: frozenset({"file-preview-unsupported"}),
     503: frozenset({"file-preview-busy", "file-preview-unavailable"}),
 }
-# The closed refusals of a file download: the file is absent or collected, or Team's downloads are all under way.
+# The closed refusals of a file download: the file came from the web and its Supervisor has not acknowledged it, it is
+# absent or collected, or Team's downloads are all under way.
 _CONTENT_REFUSALS = {
+    403: frozenset({"file-acknowledgement-required"}),
     404: frozenset({"file-not-found", "team-not-found"}),
     503: frozenset({"file-download-busy"}),
 }
@@ -655,6 +657,27 @@ def file_page_preview(team_id: object, file_id: object, page: object) -> transpo
         raise transport.TeamRequestError("page must be a number from 1 to 50")
     response = transport.call_page_preview(f"{_files_path(team_id, file_id)}/pages/{canonical_page}/preview")
     return _file_bytes(response, _PREVIEW_REFUSALS, "file preview unavailable")
+
+
+# The closed refusals of an acknowledgement: no Supervisor made the request, the file is absent or collected, or it did
+# not come from the web.
+_ACKNOWLEDGEMENT_REFUSALS = {
+    403: frozenset({"file-acknowledgement-required"}),
+    404: frozenset({"file-not-found", "team-not-found"}),
+    409: frozenset({"file-not-from-web"}),
+}
+
+
+def acknowledge_file(team_id: object, file_id: object) -> transport.TeamResponse:
+    """Record the Supervisor's acknowledgement of one file from the web before its original is saved (ADR-0117 §7)."""
+    canonical_file = payloads.canonical_file_id(file_id)
+    response = transport.call("POST", f"{_files_path(team_id, canonical_file)}/acknowledgement")
+    if response.status == 200 and response.body == {"file_id": canonical_file, "acknowledged": True}:
+        return response
+    code = response.body.get("code")
+    if response.status in _ACKNOWLEDGEMENT_REFUSALS and code in _ACKNOWLEDGEMENT_REFUSALS[response.status]:
+        return transport.TeamResponse(response.status, {"detail": "file acknowledgement unavailable", "code": code})
+    return transport.TeamResponse(502, {"detail": "team unavailable"})
 
 
 def file_content(team_id: object, file_id: object) -> transport.TeamAssetResponse:
