@@ -45,13 +45,14 @@
     max-width: 100%;
   }
 
-  /* noVNC fills this box and scales the screen to it; the page receives no pointer or focus from here. */
+  /* noVNC fills this box and scales the screen to it; the page receives no pointer or focus from here. Until the
+     first screen arrives, the box shows a soft diagonal blend. */
   .screen {
     width: 100%;
     aspect-ratio: 1280 / 800;
     overflow: hidden;
     border: 1px solid var(--border);
-    background: var(--surface-1);
+    background: linear-gradient(135deg, #f4f4f0 0%, #3c78dc 100%);
     pointer-events: none;
     user-select: none;
   }

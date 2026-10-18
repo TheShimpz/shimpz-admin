@@ -63,6 +63,8 @@ export async function watchBrowser(
     rfb.clipViewport = false;
     rfb.resizeSession = false;
     rfb.showDotCursor = false;
+    // The box's own background shows until the first screen arrives.
+    rfb.background = 'transparent';
     rfb.qualityLevel = QUALITY;
     rfb.compressionLevel = COMPRESSION;
     let connected = true;

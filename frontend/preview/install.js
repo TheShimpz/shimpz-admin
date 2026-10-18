@@ -295,6 +295,8 @@ class SessionSocket extends EventTarget {
 // A watched Browser task's display (ADR-0117): a scripted RFB server draws a page, then a bar under its header that
 // fills in steps, as a page that loads; noVNC reads it exactly as it reads the Browser's display.
 const BROWSER_STREAM_RE = /^\/api\/teams\/[a-z0-9_]{1,40}\/browser\/views\/[0-9a-f]{32}\/stream$/u;
+// `?display=waiting` (preview only): the display never answers, so the screen's waiting state stays in view.
+const DISPLAY_WAITING = PREVIEW_PARAMS.get('display') === 'waiting';
 const STREAM_STEP_MS = 400;
 const BAR_STEP = 80;
 
@@ -332,7 +334,7 @@ class StreamSocket extends EventTarget {
     setTimeout(() => {
       this.readyState = 1;
       this.#emit('open', new Event('open'));
-      this.#deliver(this.server.greeting, 0);
+      if (!DISPLAY_WAITING) this.#deliver(this.server.greeting, 0);
     }, 0);
   }
 
