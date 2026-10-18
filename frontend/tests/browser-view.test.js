@@ -128,7 +128,26 @@ test('a view asked for before Team holds the Browser is asked for again until it
   assert.deepEqual(shown, [PNG.length]);
 });
 
-test('a view that never opens means the task ended', async (t) => {
+test('a view whose opening Admin never answers stops at once when closed, and is unavailable in time', async (t) => {
+  const closing = new AbortController();
+  const silent = async () => new Promise(() => {});
+  const closed = watchBrowser('team_1', {
+    signal: closing.signal, onframe: () => assert.fail('no frame came'), call: silent, fetcher: async () => frame(1),
+  });
+  closing.abort(new Error('closed while opening'));
+  await assert.rejects(closed, /closed while opening/);
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const waiting = watchBrowser('team_1', {
+    signal: new AbortController().signal, onframe: () => assert.fail('no frame came'), call: silent,
+    fetcher: async () => frame(1),
+  });
+  const outcome = assert.rejects(waiting, (error) => !(error instanceof BrowserViewEndedError) && /did not open/.test(error.message));
+  await new Promise((resolve) => setImmediate(resolve));
+  t.mock.timers.tick(60_000);
+  await outcome;
+});
+
+test('a view that never opens is unavailable, not a task that ended', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   const watching = watchBrowser('team_1', {
     signal: new AbortController().signal,
@@ -136,7 +155,7 @@ test('a view that never opens means the task ended', async (t) => {
     call: recorder(404, { code: 'browser-not-running' }).call,
     fetcher: async () => assert.fail('nothing is asked before the view opens'),
   });
-  const outcome = assert.rejects(watching, BrowserViewEndedError);
+  const outcome = assert.rejects(watching, (error) => !(error instanceof BrowserViewEndedError) && /did not open/.test(error.message));
   for (let tick = 0; tick < 130; tick += 1) {
     await new Promise((resolve) => setImmediate(resolve));
     t.mock.timers.tick(500);

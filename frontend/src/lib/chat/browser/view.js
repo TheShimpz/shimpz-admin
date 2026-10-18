@@ -88,18 +88,36 @@ export async function watchBrowser(teamId, { signal, onframe, call = socketReads
   }
 }
 
-// The task's view once Team holds its Browser; still not running after OPEN_WAIT_MS, the task has ended.
+// The task's view once Team holds its Browser. Each ask is bounded by the time left and by closing the view, whose
+// late answer is discarded; a view still not open after OPEN_WAIT_MS is unavailable, never a task that ended.
 async function openWhenRunning(teamId, signal, call) {
   const until = Date.now() + OPEN_WAIT_MS;
   for (;;) {
     signal.throwIfAborted();
+    const left = until - Date.now();
+    if (left <= 0) throw new LocalApiError('The Browser view did not open.');
     try {
-      return await openBrowserView(teamId, call);
+      return await bounded(openBrowserView(teamId, call), left, signal);
     } catch (error) {
-      if (!(error instanceof BrowserViewEndedError) || Date.now() >= until) throw error;
+      if (!(error instanceof BrowserViewEndedError)) throw error;
     }
     await pause(OPEN_RETRY_MS, signal);
   }
+}
+
+// `promise`'s answer, unless `ms` pass or `signal` aborts first.
+function bounded(promise, ms, signal) {
+  return new Promise((resolve, reject) => {
+    const settle = (finish) => (value) => {
+      globalThis.clearTimeout(timer);
+      signal.removeEventListener('abort', abort);
+      finish(value);
+    };
+    const abort = () => settle(reject)(signal.reason);
+    const timer = globalThis.setTimeout(() => settle(reject)(new LocalApiError('The Browser view did not open.')), ms);
+    signal.addEventListener('abort', abort, { once: true });
+    promise.then(settle(resolve), settle(reject));
+  });
 }
 
 function pause(ms, signal) {
