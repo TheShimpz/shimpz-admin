@@ -15,12 +15,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(ROOT))
 
-import browser
 from starlette.requests import Request
 from team import bridge, transport
 from team import files as team_files
 from test_team_bridge_assistants import _LiveTeamCase, _probe_session
 from test_team_transport_edges import _Response
+
+import browser
 
 PNG = b"\x89PNG\r\n\x1a\n" + b"preview"
 JPEG = b"\xff\xd8\xff" + b"preview"

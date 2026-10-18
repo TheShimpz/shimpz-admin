@@ -23,7 +23,6 @@ from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import browser
 import state
 import supervisor
 from history import http as chat_history_http
@@ -39,6 +38,7 @@ from team import http as team_http
 from team import order as team_order
 from team import transport
 
+import browser
 from chat import assets as chat_assets
 from chat import human as chat_human
 from integrations import assistants as integrations

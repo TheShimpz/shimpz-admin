@@ -8,7 +8,6 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import cast
 
-import browser
 import request_body
 import state
 import supervisor
@@ -18,6 +17,7 @@ from mfa import passkeys, recovery, tickets, totp
 from signin import audit, auth
 from space import supervisor_key
 
+import browser
 from protocol.http.v1.websocket import canonical_origin
 
 log = logging.getLogger("shimpz-admin")

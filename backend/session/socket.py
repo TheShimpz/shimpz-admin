@@ -18,7 +18,6 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
-import browser
 from fastapi import WebSocket, WebSocketDisconnect
 from mfa import tickets
 from protocol.socket.v1 import frames
@@ -26,6 +25,7 @@ from session import budget, calls, registry, topics, watcher
 from session.outbound import Outbound, OutboundOverflowError
 from signin import auth, local_auth
 
+import browser
 from chat import socket as chat_channel
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common

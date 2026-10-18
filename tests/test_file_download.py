@@ -19,7 +19,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 sys.path.insert(0, str(ROOT))
 
-import browser
 from fastapi import HTTPException
 from starlette.requests import Request
 from team import bridge, transport
@@ -27,6 +26,8 @@ from team import files as team_files
 from test_file_preview import PNG, AnsweringTeam, _raw_request, browser_request
 from test_team_bridge_assistants import _LiveTeamCase, _probe_session
 from test_team_transport_edges import _Response
+
+import browser
 
 ORIGINAL = b"%PDF-1.7 <html><script>alert(1)</script></html>"
 
