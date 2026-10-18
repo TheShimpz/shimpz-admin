@@ -1,6 +1,6 @@
-// Watching a running Browser task's screen in the built Admin (ADR-0117, over KasmVNC): while the turn's current step is
-// the Browser, Watch opens an inline view of its display under the progress, with Stop still in reach; the view only
-// shows and sends the display no key, pointer, or clipboard, Close ends the stream, and a task that ended says so.
+// A running Browser task's screen in the built Admin (ADR-0117, over KasmVNC): while the turn's current step is the
+// Browser, its display shows by itself under the progress, beside End; the view only shows and sends the display no key,
+// pointer, or clipboard, End stops the turn as Stop does, and a task that ended says so.
 import { expect, test } from '@playwright/test';
 
 import { CLIENT_MESSAGES, rfbServer, solid } from './rfbServer.js';
@@ -17,7 +17,7 @@ const INPUT = new Set(Object.values(CLIENT_MESSAGES));
 // Start a turn whose Browser task keeps running; its display draws one screen of PAGE and records what the page sends,
 // until the test ends the task.
 async function startTask(page) {
-  await routeScenario(page, 'browser-watch');
+  const scenario = await routeScenario(page, 'browser-watch');
   const display = { streams: [], closed: 0, ended: false };
   await routeRead(page, 'browser.view', () => (display.ended
     ? { status: 404, json: { detail: 'browser view unavailable', code: 'browser-not-running' } }
@@ -45,9 +45,10 @@ async function startTask(page) {
   await expect(composer).toBeEnabled({ timeout: 20_000 });
   await composer.fill('Open example.com and tell me its title.');
   await composer.press('Enter');
-  // The Watch button appears once the turn's current step is the Browser task.
-  await expect(page.getByRole('button', { name: WATCH.open, exact: true })).toBeVisible();
+  // The screen shows by itself once the turn's current step is the Browser task.
+  await expect(page.getByRole('figure', { name: WATCH.title })).toBeVisible();
   return {
+    scenario,
     display,
     end() {
       display.ended = true;
@@ -64,9 +65,8 @@ function middlePixel(page) {
   });
 }
 
-test('watching shows the running task\'s screen and sends it no input @browser-sensitive', async ({ page }) => {
+test('the running task\'s screen shows by itself and is sent no input @browser-sensitive', async ({ page }) => {
   const { display } = await startTask(page);
-  await page.getByRole('button', { name: WATCH.open, exact: true }).click();
   const view = page.getByRole('figure', { name: WATCH.title });
   const screen = view.getByRole('img', { name: WATCH.alt });
   await expect(screen).toBeVisible();
@@ -86,22 +86,20 @@ test('watching shows the running task\'s screen and sends it no input @browser-s
   await expect(view.getByRole('button')).toHaveCount(0);
   await expect(view.getByRole('textbox')).toHaveCount(0);
   await expect(page.getByRole('button', { name: EN.stop, exact: true })).toBeEnabled();
-  await expect(page.getByRole('button', { name: WATCH.close, exact: true })).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.getByRole('button', { name: WATCH.end, exact: true })).toBeEnabled();
 });
 
-test('closing the view ends its stream', async ({ page }) => {
-  const { display } = await startTask(page);
-  await page.getByRole('button', { name: WATCH.open, exact: true }).click();
+test('End stops the turn that runs the Browser task', async ({ page }) => {
+  const { scenario } = await startTask(page);
   await expect.poll(() => middlePixel(page)).toEqual(PAGE);
-  await page.getByRole('button', { name: WATCH.close, exact: true }).click();
-  await expect(page.getByRole('figure', { name: WATCH.title })).toHaveCount(0);
-  await expect.poll(() => display.closed).toBe(1);
-  expect(display.streams).toHaveLength(1);
+  const end = page.getByRole('button', { name: WATCH.end, exact: true });
+  await end.click();
+  await expect.poll(() => scenario.chatFrames().filter((frame) => frame.type === 'stop').length).toBe(1);
+  await expect(end).toBeDisabled();
 });
 
 test('a task that ended says so and opens nothing more', async ({ page }) => {
   const { display, end } = await startTask(page);
-  await page.getByRole('button', { name: WATCH.open, exact: true }).click();
   await expect.poll(() => middlePixel(page)).toEqual(PAGE);
   end();
   await expect(page.getByRole('figure', { name: WATCH.title }).getByRole('status')).toHaveText(WATCH.ended);

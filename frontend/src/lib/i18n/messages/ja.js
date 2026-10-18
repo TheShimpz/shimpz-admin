@@ -171,8 +171,7 @@ export default {
         finished: '完了',
       },
       watch: {
-        open: '見る',
-        close: '閉じる',
+        end: '終了',
         title: '分離されたブラウザーのライブ表示',
         alt: '分離されたブラウザーの現在の表示',
         waiting: '最初の画像を待っています…',

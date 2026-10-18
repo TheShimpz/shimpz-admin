@@ -171,8 +171,7 @@ export default {
         finished: 'Abgeschlossen',
       },
       watch: {
-        open: 'Ansehen',
-        close: 'Schließen',
+        end: 'Beenden',
         title: 'Live-Ansicht des isolierten Browsers',
         alt: 'Was der isolierte Browser gerade zeigt',
         waiting: 'Warten auf das erste Bild…',

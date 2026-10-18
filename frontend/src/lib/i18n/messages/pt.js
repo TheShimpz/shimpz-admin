@@ -171,8 +171,7 @@ export default {
         finished: 'Concluído',
       },
       watch: {
-        open: 'Assistir',
-        close: 'Fechar',
+        end: 'Encerrar',
         title: 'Visualização ao vivo do navegador isolado',
         alt: 'O que o navegador isolado mostra agora',
         waiting: 'Aguardando a primeira imagem…',

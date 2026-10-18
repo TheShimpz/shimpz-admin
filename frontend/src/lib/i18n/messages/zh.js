@@ -171,8 +171,7 @@ export default {
         finished: '已完成',
       },
       watch: {
-        open: '观看',
-        close: '关闭',
+        end: '结束',
         title: '隔离浏览器的实时画面',
         alt: '隔离浏览器当前显示的内容',
         waiting: '正在等待第一张图像…',

@@ -169,8 +169,7 @@ export default {
         finished: 'Complete',
       },
       watch: {
-        open: 'Watch',
-        close: 'Close',
+        end: 'End',
         title: 'Live view of the isolated browser',
         alt: 'What the isolated browser shows now',
         waiting: 'Waiting for the first image…',
