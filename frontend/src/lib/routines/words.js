@@ -424,6 +424,7 @@ const REFUSAL_KEYS = {
   'routine-step-budget': 'stepBudget',
   'routine-proposal-too-large': 'tooLarge',
   'routine-record-again': 'recordAgain',
+  'routine-description-conflict': 'recordAgain',
   'routine-recording-cyclic': 'unverified',
   'routine-recording-conflict': 'unverified',
   'routine-recording-unverified': 'unverified',
