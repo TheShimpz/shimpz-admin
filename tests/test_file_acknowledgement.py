@@ -1,7 +1,5 @@
 """The Supervisor's acknowledgement of one file from the web, and the download refusal asking for it (ADR-0117 §7)."""
 
-import asyncio
-import json
 import sys
 import unittest
 from pathlib import Path
@@ -11,7 +9,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
 from team import bridge, transport
-from team import files as team_files
 
 FILE_ID = "f" * 32
 
@@ -20,9 +17,8 @@ class FileAcknowledgementTests(unittest.TestCase):
     def test_an_acknowledgement_reaches_team_as_the_supervisor_and_answers_exactly_its_file(self) -> None:
         acknowledged = transport.TeamResponse(200, {"file_id": FILE_ID, "acknowledged": True})
         with mock.patch.object(transport, "call", return_value=acknowledged) as call:
-            response = asyncio.run(team_files.team_file_acknowledgement("team_1", FILE_ID))
+            self.assertIs(bridge.acknowledge_file("team_1", FILE_ID), acknowledged)
         call.assert_called_once_with("POST", f"/v1/teams/team_1/files/{FILE_ID}/acknowledgement")
-        self.assertEqual((response.status_code, json.loads(response.body)), (200, acknowledged.body))
 
     def test_only_the_closed_refusals_pass_and_anything_else_is_team_unavailable(self) -> None:
         cases = (

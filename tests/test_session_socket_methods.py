@@ -75,6 +75,7 @@ SAMPLES = {
     "integrations.cancel": {"team_id": "team_1", "challenge_id": CHALLENGE},
     "stored_inputs.list": {"team_id": "team_1"},
     "stored_inputs.clear": {"team_id": "team_1", "assistant_id": "whatsapp", "stored_input_id": "whatsapp-token"},
+    "files.acknowledge": {"team_id": "team_1", "file_id": "f" * 32},
     "store.catalog": {"locale": "en"},
     "routines.pause": {"team_id": "team_1", "routine_id": ROUTINE},
     "routines.resume": {"team_id": "team_1", "routine_id": ROUTINE},
@@ -643,6 +644,11 @@ class SessionMethodAnswerTests(SessionMethodCase):
             result = self._answers("stored_inputs.clear", SAMPLES["stored_inputs.clear"])
         clear.assert_called_once_with("team_1", "whatsapp", "whatsapp-token")
         self.assertEqual((result["status"], result["body"]), (200, {"cleared": True}))
+        acknowledged = self.transport.TeamResponse(200, {"file_id": "f" * 32, "acknowledged": True})
+        with mock.patch.object(self.methods.team, "acknowledge_file", return_value=acknowledged) as acknowledge:
+            result = self._answers("files.acknowledge", SAMPLES["files.acknowledge"])
+        acknowledge.assert_called_once_with("team_1", "f" * 32)
+        self.assertEqual((result["status"], result["body"]), (200, acknowledged.body))
         result = self._answers("stored_inputs.clear", {**SAMPLES["stored_inputs.clear"], "stored_input_id": "Bad"})
         self.assertEqual(result["status"], 400)
         result = self._answers("assistants.summary", {**SAMPLES["assistants.summary"], "locale": "it"})

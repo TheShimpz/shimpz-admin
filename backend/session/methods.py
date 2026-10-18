@@ -257,6 +257,8 @@ METHODS: dict[str, Method] = {
     "stored_inputs.clear": _team_call(
         stored_input, "clear_assistant_stored_input", "team_id", "assistant_id", "stored_input_id"
     ),
+    # The Supervisor accepts the risk of saving one file the Browser downloaded from the web (ADR-0117 §7).
+    "files.acknowledge": _team_call(team, "acknowledge_file", "team_id", "file_id"),
     "store.catalog": _catalog,
     "subscribe": _subscribe,
     "unsubscribe": _unsubscribe,
