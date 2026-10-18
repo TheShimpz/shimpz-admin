@@ -101,6 +101,49 @@ test('watching shows each newer frame, waits out a busy view, and ends with the 
   assert.deepEqual(shown, [PNG.length, PNG.length]);
 });
 
+test('a view asked for before Team holds the Browser is asked for again until it opens', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const answers = [[404, { code: 'browser-not-running' }], [404, { code: 'browser-not-running' }], [200, { view_id: VIEW }]];
+  const asked = [];
+  const call = async (method, params) => {
+    asked.push(method);
+    const [status, body] = answers.shift();
+    return recorder(status, body).call(method, params);
+  };
+  const controller = new AbortController();
+  const shown = [];
+  const watching = watchBrowser('team_1', {
+    signal: controller.signal,
+    onframe: (blob) => { shown.push(blob.size); controller.abort(new Error('seen')); },
+    call,
+    fetcher: async () => frame(1),
+  });
+  const outcome = assert.rejects(watching, /seen/);
+  for (let tick = 0; tick < 4; tick += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(500);
+  }
+  await outcome;
+  assert.deepEqual(asked, ['browser.view', 'browser.view', 'browser.view']);
+  assert.deepEqual(shown, [PNG.length]);
+});
+
+test('a view that never opens means the task ended', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
+  const watching = watchBrowser('team_1', {
+    signal: new AbortController().signal,
+    onframe: () => assert.fail('no frame came'),
+    call: recorder(404, { code: 'browser-not-running' }).call,
+    fetcher: async () => assert.fail('nothing is asked before the view opens'),
+  });
+  const outcome = assert.rejects(watching, BrowserViewEndedError);
+  for (let tick = 0; tick < 130; tick += 1) {
+    await new Promise((resolve) => setImmediate(resolve));
+    t.mock.timers.tick(500);
+  }
+  await outcome;
+});
+
 test('a frame that arrives after the view closed is never shown', async () => {
   const controller = new AbortController();
   await assert.rejects(watchBrowser('team_1', {

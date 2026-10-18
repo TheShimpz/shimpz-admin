@@ -14,6 +14,10 @@ const NOT_RUNNING = 'browser-not-running';
 // How long a busy view waits before it asks again, and the pause after an answer that brought no newer frame.
 const BUSY_RETRY_MS = 250;
 const UNCHANGED_PAUSE_MS = 100;
+// The Browser step shows before Team has created the Browser (seconds, at most its egress restart and readiness): the
+// view is asked for again until it opens or this long passed.
+const OPEN_RETRY_MS = 500;
+const OPEN_WAIT_MS = 60_000;
 
 /** The Browser task ended, or the Team runs none: there is nothing more to watch. */
 export class BrowserViewEndedError extends Error {
@@ -66,7 +70,7 @@ export async function fetchBrowserFrame(teamId, viewId, after, signal, fetcher =
  * Rejects with BrowserViewEndedError when the task ended, or with the failure that stopped it.
  */
 export async function watchBrowser(teamId, { signal, onframe, call = socketReads.call, fetcher = globalThis.fetch }) {
-  const viewId = await openBrowserView(teamId, call);
+  const viewId = await openWhenRunning(teamId, signal, call);
   let after = 0;
   for (;;) {
     signal.throwIfAborted();
@@ -81,6 +85,20 @@ export async function watchBrowser(teamId, { signal, onframe, call = socketReads
       after = frame.number;
       onframe(frame.blob);
     }
+  }
+}
+
+// The task's view once Team holds its Browser; still not running after OPEN_WAIT_MS, the task has ended.
+async function openWhenRunning(teamId, signal, call) {
+  const until = Date.now() + OPEN_WAIT_MS;
+  for (;;) {
+    signal.throwIfAborted();
+    try {
+      return await openBrowserView(teamId, call);
+    } catch (error) {
+      if (!(error instanceof BrowserViewEndedError) || Date.now() >= until) throw error;
+    }
+    await pause(OPEN_RETRY_MS, signal);
   }
 }
 
