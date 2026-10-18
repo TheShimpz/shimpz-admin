@@ -32,6 +32,7 @@ class TeamHttpProtocolTests(unittest.TestCase):
 
     def test_the_verifier_imports_the_mirrored_modules_flat_from_their_directory(self) -> None:
         names = (
+            "browser",
             "identifiers",
             "payload",
             "progress",

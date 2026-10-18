@@ -43,6 +43,7 @@ def _execute(source: Path, mutate=None, *, modules: dict[str, object] | None = N
             return mirror / source.name if path.resolve() == source.resolve() else path
 
         module_names = (
+            "browser",
             "identifiers",
             "payload",
             "progress",
@@ -564,6 +565,33 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
         for fake in modules:
             with self.subTest(fake=fake), self.assertRaises(SystemExit):
                 _execute(HTTP / "verify.py", modules={"payload": fake})
+
+    def test_rejects_missing_drifted_or_unbounded_browser_vectors(self) -> None:
+        def section(change):
+            return lambda value: change(value["browser"])
+
+        mutations = (
+            section(lambda browser: browser.pop("url")),
+            section(lambda browser: browser["step"].update({"invalid": []})),
+            section(lambda browser: browser["step"]["valid"].append({"kind": "wait", "url": None})),
+            section(lambda browser: browser["url"]["invalid"].append("https://example.com")),
+            # A kept terminal with nothing in it can never pass its bounds once repeated.
+            section(lambda browser: browser["terminal"]["valid"].insert(0, {"files": [], "lost": [], "skipped": 0})),
+        )
+        for mutate in mutations:
+            with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
+                _execute(
+                    HTTP / "verify.py", lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation)
+                )
+
+        def exclusive_history(root: Path) -> None:
+            module = root / "browser.py"
+            source = module.read_text(encoding="utf-8")
+            module.write_text(source.replace("len(value) > MAX_HISTORY", "len(value) >= MAX_HISTORY"), encoding="utf-8")
+            _rehash(root, "browser.py")
+
+        with self.assertRaises(SystemExit):
+            _execute(HTTP / "verify.py", exclusive_history)
 
 
 if __name__ == "__main__":
