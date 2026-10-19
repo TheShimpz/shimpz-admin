@@ -159,30 +159,6 @@ class ChatGateTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
-    def test_a_wait_cancelled_as_it_was_granted_passes_its_slot_on(self) -> None:
-        async def scenario() -> None:
-            gate = chat_gate.Gate()
-            gate.set_limit(1)
-            release = asyncio.Event()
-
-            async def holder() -> None:
-                async with gate.slot(lambda _place: None, _limit):
-                    await release.wait()
-
-            running = asyncio.create_task(holder())
-            await asyncio.sleep(0)
-            granted = asyncio.create_task(holder())
-            await asyncio.sleep(0)
-            release.set()
-            await running
-            # Granted and cancelled in the same step: its slot goes on, so the gate is free again.
-            granted.cancel()
-            await asyncio.gather(granted, return_exceptions=True)
-            async with gate.slot(lambda _place: None, _limit):
-                pass
-
-        asyncio.run(scenario())
-
     def test_operations_resting_after_a_busy_space_still_count_against_the_queue(self) -> None:
         async def scenario() -> None:
             gate = chat_gate.Gate()

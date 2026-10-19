@@ -177,9 +177,6 @@ class Run:
             # Only the latest steps are kept: a page that attaches is shown them and continues from the last one.
             self.live.append(dict(event))
             del self.live[:-LIVE_STEPS]
-        elif kind == "running":
-            position = event.get("position")
-            self.position = position if isinstance(position, int) else None
         for observer in tuple(self.observers):
             self.push(observer, event)
 

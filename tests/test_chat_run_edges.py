@@ -592,14 +592,26 @@ class ReviewEdgeTests(unittest.TestCase):
             future: concurrent.futures.Future[object] = concurrent.futures.Future()
             future.set_running_or_notify_cancel()
             run.connection.active = self.socket.Turn(future, "chat")
-            continuation: concurrent.futures.Future[object] = concurrent.futures.Future()
+            awaited = asyncio.Event()
+            loop = asyncio.get_running_loop()
+
+            class Continuation(concurrent.futures.Future):
+                def add_done_callback(self, fn) -> None:
+                    super().add_done_callback(fn)
+                    loop.call_soon_threadsafe(awaited.set)
+
+            continuation = Continuation()
             continuation.set_running_or_notify_cancel()
             run.connection.continuation = continuation
             stopped = self.socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
             answer = threading.Event()
+            calls = []
 
             def stop(_team_id: str) -> object:
-                answer.wait(timeout=5)
+                calls.append(_team_id)
+                # The Stop sent as the run closes stays under way; the run's own Stop answers at once.
+                if len(calls) == 1:
+                    answer.wait(timeout=5)
                 return stopped
 
             with (
@@ -607,16 +619,12 @@ class ReviewEdgeTests(unittest.TestCase):
                 mock.patch.object(self.socket, "STOP_RESULT_WAIT_SECONDS", 0.01),
             ):
                 ending = asyncio.create_task(run.end())
-                await asyncio.sleep(0.1)
-                self.assertIs(self.runs.RUNS.get("team_1"), run)
-                future.set_result(object())
-                await asyncio.sleep(0.05)
-                # Its Stop is still under way.
-                self.assertIs(self.runs.RUNS.get("team_1"), run)
-                answer.set()
-                # Its continuation still runs in Team: the ending waits on it.
-                while not continuation._done_callbacks:
-                    await asyncio.sleep(0.01)
+                # The ending waits on its Team call, its Stop, and its continuation, each still under way.
+                await awaited.wait()
+                for finish in (lambda: future.set_result(object()), answer.set):
+                    self.assertIs(self.runs.RUNS.get("team_1"), run)
+                    finish()
+                    await asyncio.sleep(0.02)
                 self.assertIs(self.runs.RUNS.get("team_1"), run)
                 continuation.set_result(object())
                 await ending
