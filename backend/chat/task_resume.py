@@ -3,6 +3,7 @@
 import asyncio
 
 from chat.connection import Connection, request_identity
+from chat.delivery import gated
 from chat.delivery import plan as plan_delivery
 from chat.delivery import route as route_delivery
 from chat.executor import ExecutorSaturatedError
@@ -103,12 +104,20 @@ async def dispatch(
         await operations.send_event(websocket, error_terminal(503, "Admin chat history is unavailable"))
         return
     connection.admitted_history_id = history_id
-    try:
-        preparation = lifecycle.submit_resume(team_id, objective)
-    except ExecutorSaturatedError:
-        await operations.send_event(websocket, error_terminal(429, "Assistant routing capacity reached"))
-        return
-    turn = route_delivery.begin(connection, preparation, objective["locale"], conversation, identity)
-    turn.delivery = asyncio.create_task(
-        route_delivery.deliver(websocket, connection, turn, team_id, objective, operations, fallback_payload=payload)
-    )
+    turn = route_delivery.begin(connection, None, objective["locale"], conversation, identity)
+    turn.operation = "queued"
+
+    async def route() -> None:
+        try:
+            turn.future = lifecycle.submit_resume(team_id, objective)
+        except ExecutorSaturatedError:
+            await operations.finish_turn(
+                websocket, connection, turn, error_terminal(429, "Assistant routing capacity reached")
+            )
+            return
+        turn.operation = "assistant-route"
+        await route_delivery.deliver(
+            websocket, connection, turn, team_id, objective, operations, fallback_payload=payload
+        )
+
+    turn.delivery = asyncio.create_task(gated.run(websocket, connection, turn, route, operations.finish_turn))

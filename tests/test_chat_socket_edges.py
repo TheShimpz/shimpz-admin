@@ -122,7 +122,10 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
                     side_effect=socket.ExecutorSaturatedError,
                 ),
             ):
-                await socket._dispatch_chat(websocket, socket.Connection(), "team_1", frame)
+                connection = socket.Connection(team_id="team_1")
+                await socket._dispatch_chat(websocket, connection, "team_1", frame)
+                # The route is asked for once the turn holds a slot of the Space's chat gate.
+                await connection.active.delivery
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 429)
 
         asyncio.run(scenario())
@@ -233,13 +236,15 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
                     side_effect=socket.ExecutorSaturatedError,
                 ) as prepare,
             ):
+                saturated = socket.Connection(team_id="team_1")
                 await task_resume.dispatch(
                     websocket,
-                    socket.Connection(),
+                    saturated,
                     "team_1",
                     frame,
                     resume_operations(),
                 )
+                await saturated.active.delivery
             objective = {
                 "message": frame["objective"],
                 "files": [],
@@ -348,7 +353,9 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
             future.set_exception(transport.TeamRequestError("invalid"))
             turn = socket.Turn(future, "chat", asyncio.Queue())
             connection.active = turn
-            await socket._deliver_turn(websocket, connection, turn, "team_1")
+            response = await socket._turn_response(websocket, connection, turn)
+            self.assertEqual(response, transport.TeamResponse(400, {}))
+            await socket._deliver_turn(websocket, connection, turn, "team_1", response)
             self.assertIsNone(connection.active)
 
             challenge = _empty_integration_challenge()
@@ -357,7 +364,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
             turn = socket.Turn(future, "chat", asyncio.Queue())
             connection = socket.Connection(active=turn)
             websocket.send_json.side_effect = RuntimeError("closed")
-            await socket._deliver_turn(websocket, connection, turn, "team_1")
+            await socket._deliver_turn(websocket, connection, turn, "team_1", challenge)
             self.assertTrue(connection.closed)
 
         asyncio.run(scenario())
@@ -520,7 +527,9 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
 
             websocket = mock.AsyncMock()
             detached = socket.Connection()
-            await socket._deliver_turn(websocket, detached, socket.Turn(None, "chat"), "team_1")
+            turn = socket.Turn(None, "chat")
+            response = await socket._turn_response(websocket, detached, turn)
+            await socket._deliver_turn(websocket, detached, turn, "team_1", response)
 
             failure = local.PublicResponse(503, {"team_id": "team_1"})
             self.assertEqual(sync_delivery.pending_error(failure, "team_1", "human")["status"], 503)
@@ -548,7 +557,14 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
     def test_sync_loader_and_delivery_cover_empty_closed_and_send_failure_results(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            with mock.patch.object(socket, "_await_progress_result", new=mock.AsyncMock(return_value=None)):
+            with mock.patch.object(socket, "_sync_snapshot", side_effect=RuntimeError("down")):
+                self.assertIsNone(await socket._load_sync_snapshot(websocket, socket.Connection(), "team_1", "en"))
+            # A granted Integration resumes under the gate; one that ends without a result restores nothing.
+            resumable = socket.SyncSnapshot("integration", object(), resume="c" * 32)
+            with (
+                mock.patch.object(socket, "_sync_snapshot", return_value=resumable),
+                mock.patch.object(socket, "_gated_continuation", new=mock.AsyncMock(return_value=None)),
+            ):
                 self.assertIsNone(await socket._load_sync_snapshot(websocket, socket.Connection(), "team_1", "en"))
 
             with mock.patch.object(socket, "_load_sync_snapshot", new=mock.AsyncMock(return_value=None)):
@@ -597,29 +613,26 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
         async def scenario() -> None:
             websocket = mock.AsyncMock()
             future: concurrent.futures.Future[object] = concurrent.futures.Future()
-            progress: asyncio.Queue[dict[str, object]] = asyncio.Queue()
             with mock.patch.object(socket, "_await_progress_result", new=mock.AsyncMock(return_value=None)):
                 await socket._deliver_human_response(
                     websocket,
                     socket.Connection(),
                     "team_1",
-                    future,
-                    progress,
+                    lambda _report: future,
                     None,
                 )
                 await socket._deliver_human_response(
                     websocket,
                     socket.Connection(closed=True),
                     "team_1",
-                    future,
-                    progress,
+                    lambda _report: future,
                     None,
                 )
 
             challenge = human_challenge("approval")
             connection = socket.Connection()
             with mock.patch.object(socket, "_await_progress_result", new=mock.AsyncMock(return_value=challenge)):
-                await socket._deliver_human_response(websocket, connection, "team_1", future, progress, None)
+                await socket._deliver_human_response(websocket, connection, "team_1", lambda _report: future, None)
             self.assertEqual(connection.pending_challenge_type, "human")
 
             frame = human_response(True)
@@ -667,7 +680,6 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
             self.assertFalse(socket._authenticated_denial(local.PublicResponse(409, {})))
 
             future: concurrent.futures.Future[object] = concurrent.futures.Future()
-            progress: asyncio.Queue[dict[str, object]] = asyncio.Queue()
             completed = chat_socket_fixtures.completed_turn("Completed.")
             for result, field, expected in ((denied_response, "status", 503), (completed, "type", "done")):
                 send_terminal = mock.AsyncMock(return_value=True)
@@ -677,7 +689,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
                     mock.patch.object(socket, "_send_sync_terminal_once", send_terminal),
                 ):
                     await socket._deliver_human_response(
-                        mock.AsyncMock(), socket.Connection(), "team_1", future, progress, failure
+                        mock.AsyncMock(), socket.Connection(), "team_1", lambda _report: future, failure
                     )
                     self.assertEqual(send_terminal.await_args.args[2][field], expected)
 
@@ -706,24 +718,31 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
 
         asyncio.run(scenario())
 
-    def test_channel_cleanup_accepts_an_already_finished_turn_without_tasks(self) -> None:
+    def test_a_closed_page_leaves_the_run_and_only_ending_the_run_stops_its_work(self) -> None:
         async def scenario() -> None:
             future: concurrent.futures.Future[object] = concurrent.futures.Future()
             future.set_result(object())
-            transport = socket.Transport(mock.Mock(), mock.Mock())
-            channel = socket.Channel(
-                transport,
-                "team_1",
-                request_scope=contextlib.nullcontext,
+            sent = []
+            transport = socket.Transport(sent.append, mock.Mock())
+            authority = socket.Authority(
+                session="s" * 64,
+                scope=contextlib.nullcontext,
+                current=mock.AsyncMock(return_value=True),
                 authenticate=mock.AsyncMock(return_value=human.AuthenticationResult("verified")),
-                authorized=mock.AsyncMock(return_value=True),
             )
+            channel = socket.Channel(transport, "team_1", lambda: authority)
+            run = channel.run
             channel.connection.active = socket.Turn(future, "chat")
             await channel.close()
+            # The page stopped watching; the turn's run goes on.
+            self.assertFalse(channel.connection.closed)
+            self.assertIs(socket.RUNS["team_1"], run)
+            await run.end()
             self.assertTrue(channel.connection.closed)
-            # A closed channel admits no further frame.
-            channel.submit({"type": "stop"})
-            self.assertTrue(channel._frames.empty())
+            self.assertNotIn("team_1", socket.RUNS)
+            # An ended run admits no further frame.
+            self.assertTrue(run.submit({"type": "stop"}, authority))
+            self.assertTrue(run._frames.empty())
 
         asyncio.run(scenario())
 

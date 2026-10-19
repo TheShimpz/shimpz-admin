@@ -8,11 +8,14 @@ import asyncio
 import concurrent.futures
 import contextlib
 import logging
+import time
 from collections.abc import Awaitable, Callable, Mapping
+from dataclasses import dataclass
 
 import supervisor as local_supervisor
 from chat.connection import Connection, SyncSnapshot, Turn, forget_challenge, remember_challenge, request_identity
 from chat.delivery import challenge as challenge_delivery
+from chat.delivery import gated
 from chat.delivery import plan as plan_delivery
 from chat.delivery import progress as progress_transport
 from chat.delivery import route as route_delivery
@@ -23,6 +26,7 @@ from chat.projection import error_terminal, first_challenge, integration_challen
 from fastapi import WebSocket, WebSocketDisconnect
 from history import delivery as history_delivery
 from history import store as history
+from signin import auth
 from team import transport
 
 from chat import (
@@ -34,6 +38,7 @@ from chat import (
     payloads,
     task_resume,
 )
+from chat import gate as chat_gate
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
@@ -113,19 +118,26 @@ async def _await_turn_response(
     return transport.TeamResponse(502, {}) if result is None else result
 
 
-async def _deliver_turn(websocket: WebSocket, connection: Connection, turn: Turn, team_id: str) -> None:
+async def _turn_response(websocket: WebSocket, connection: Connection, turn: Turn) -> object:
+    """The Team's answer to the submitted turn, its progress delivered first."""
+    response = transport.TeamResponse(502, {})
+    # A provider callback may raise any ordinary exception. This process boundary must fail
+    # closed while cancellation and process-control BaseExceptions continue to propagate.
+    with contextlib.suppress(Exception):
+        try:
+            if turn.future is not None:
+                response = await _await_turn_response(websocket, connection, turn)
+        except asyncio.CancelledError:
+            raise
+        except transport.TeamRequestError:
+            response = transport.TeamResponse(400, {})
+    return response
+
+
+async def _deliver_turn(
+    websocket: WebSocket, connection: Connection, turn: Turn, team_id: str, response: object
+) -> None:
     try:
-        response = transport.TeamResponse(502, {})
-        # A provider callback may raise any ordinary exception. This process boundary must fail
-        # closed while cancellation and process-control BaseExceptions continue to propagate.
-        with contextlib.suppress(Exception):
-            try:
-                if turn.future is not None:
-                    response = await _await_turn_response(websocket, connection, turn)
-            except asyncio.CancelledError:
-                raise
-            except transport.TeamRequestError:
-                response = transport.TeamResponse(400, {})
         if turn.stop_requested and turn.stop_task is not None:
             with contextlib.suppress(asyncio.CancelledError, TimeoutError):
                 await asyncio.wait_for(
@@ -189,16 +201,36 @@ async def _continue_team_turn(
     if turn.stop_requested or connection.closed:
         await _finish_active_turn(websocket, connection, turn, {"type": "stopped"})
         return
-    try:
-        future, progress = _submit_team_turn(team_id, payload, turn)
-    except ExecutorSaturatedError:
-        await _finish_active_turn(websocket, connection, turn, error_terminal(429, "local chat capacity reached"))
-        return
-    turn.future = future
-    turn.progress = progress
-    turn.operation = "chat"
-    turn.lifecycle_stop = None
-    await _deliver_turn(websocket, connection, turn, team_id)
+    while True:
+        try:
+            future, progress = _submit_team_turn(team_id, payload, turn)
+        except ExecutorSaturatedError:
+            await _finish_active_turn(websocket, connection, turn, error_terminal(429, "local chat capacity reached"))
+            return
+        turn.future = future
+        turn.progress = progress
+        turn.operation = "chat"
+        turn.lifecycle_stop = None
+        response = await _turn_response(websocket, connection, turn)
+        if not _space_busy(response, turn, connection):
+            break
+        # Team runs as many turns as the Space's limit, some of them unknown here: this one waits at the head of the
+        # queue and asks again; Stop meanwhile ends it there (ADR-0119).
+        turn.operation = "queued"
+        await turn.slot.busy()
+    await _deliver_turn(websocket, connection, turn, team_id, response)
+
+
+def _space_busy(response: object, turn: Turn, connection: Connection) -> bool:
+    """Whether Team refused the turn only because the Space runs as many chat turns as its limit, and it may wait."""
+    return (
+        isinstance(response, transport.TeamResponse)
+        and response.status == 429
+        and response.body == {"code": "space-busy"}
+        and turn.slot is not None
+        and not turn.stop_requested
+        and not connection.closed
+    )
 
 
 async def _finish_active_turn(
@@ -212,18 +244,14 @@ async def _finish_active_turn(
         connection.active = None
 
 
-def _sync_snapshot(
-    team_id: str,
-    locale: str,
-    progress: Callable[[dict[str, object]], None],
-) -> SyncSnapshot:
+def _sync_snapshot(team_id: str, locale: str) -> SyncSnapshot:
     pending_integration = local.pending_integrations(team_id)
     integration_challenge = integration_challenge_event(pending_integration, team_id)
     if integration_challenge is not None:
         # Continuation is explicit and one-use. The OAuth callback only stores the grant; this
-        # exact pending challenge remains the controller-owned binding for the paused turn.
-        resumed = local.resume_integrations(team_id, integration_challenge["challenge_id"], progress)
-        return SyncSnapshot("integration", pending_integration, resumed)
+        # exact pending challenge remains the controller-owned binding for the paused turn, which resumes under the
+        # Space's chat gate (ADR-0119).
+        return SyncSnapshot("integration", pending_integration, resume=integration_challenge["challenge_id"])
     if not sync_delivery.is_empty_pending(pending_integration, team_id):
         return SyncSnapshot("integration", pending_integration)
     # A pending human request is restored in the interface language the browser selected (ADR-0091).
@@ -236,9 +264,8 @@ async def _load_sync_snapshot(
     team_id: str,
     locale: str,
 ) -> SyncSnapshot | None:
-    progress, report = _progress_channel()
     try:
-        future = submit_in_context(lanes.SYNC, _sync_snapshot, team_id, locale, report)
+        future = submit_in_context(lanes.SYNC, _sync_snapshot, team_id, locale)
     except ExecutorSaturatedError:
         await _send_sync_terminal_once(
             websocket,
@@ -248,17 +275,68 @@ async def _load_sync_snapshot(
         return None
     snapshot = None
     with contextlib.suppress(Exception):
-        snapshot = await _await_progress_result(
+        snapshot = await asyncio.wrap_future(future)
+    if isinstance(snapshot, SyncSnapshot) and snapshot.resume is not None:
+        challenge_id = snapshot.resume
+        resumed = await _gated_continuation(
             websocket,
             connection,
-            future,
-            progress,
-            lambda: connection.closed or connection.sync_terminal_sent,
-            progress_transport.receipt_delivery(connection.receipt, connection.pending_history_id, fresh=False),
+            lambda report: submit_in_context(lanes.SYNC, local.resume_integrations, team_id, challenge_id, report),
         )
+        snapshot = None if resumed is None else SyncSnapshot("integration", snapshot.pending, resumed)
     if snapshot is None and not connection.closed:
         await _send_sync_terminal_once(websocket, connection, error_terminal(502))
     return snapshot
+
+
+async def _gated_continuation(
+    websocket: WebSocket,
+    connection: Connection,
+    submit: Callable[[Callable[[dict[str, object]], None]], concurrent.futures.Future],
+) -> object | None:
+    """Run one continuation of a paused turn under a slot of the Space's chat gate (ADR-0119).
+
+    Team's answer that the Space is busy puts it back at the head of the queue and asks again; None means it ended
+    without a result, its terminal sent when it had one to send.
+    """
+    try:
+        async with chat_gate.GATE.slot(gated.position(websocket), gated.read_limit) as held:
+            while True:
+                progress, report = _progress_channel()
+                try:
+                    future = submit(report)
+                except ExecutorSaturatedError:
+                    await _send_sync_terminal_once(
+                        websocket, connection, error_terminal(429, "local chat capacity reached")
+                    )
+                    return None
+                response = None
+                with contextlib.suppress(Exception):
+                    response = await _await_progress_result(
+                        websocket,
+                        connection,
+                        future,
+                        progress,
+                        lambda: connection.closed or connection.sync_terminal_sent,
+                        progress_transport.receipt_delivery(
+                            connection.receipt, connection.pending_history_id, fresh=False
+                        ),
+                    )
+                busy = (
+                    isinstance(response, transport.TeamResponse)
+                    and response.status == 429
+                    and response.body == {"code": "space-busy"}
+                )
+                if not busy or connection.closed:
+                    return response
+                await held.busy()
+    except chat_gate.QueueFullError:
+        await _send_sync_terminal_once(websocket, connection, error_terminal(429, "the chat queue is full"))
+    except gated.LimitUnavailableError:
+        await _send_sync_terminal_once(
+            websocket, connection, error_terminal(503, "the Space chat limit is unavailable")
+        )
+    return None
 
 
 async def _deliver_sync(websocket: WebSocket, connection: Connection, team_id: str, locale: str) -> None:
@@ -376,6 +454,13 @@ def _request_stop(
     if turn.stop_requested:
         return turn.stop_task
     turn.stop_requested = True
+    if turn.operation == "queued":
+        # Nothing of it runs while it waits for the gate: it leaves the queue at once.
+        if turn.delivery is not None:
+            turn.delivery.cancel()
+        if emit and not connection.closed:
+            turn.stop_task = asyncio.create_task(_finish_cancelled_turn(websocket, connection, turn))
+        return turn.stop_task
     if turn.lifecycle_stop is not None:
         turn.lifecycle_stop.set()
         if turn.operation == "assistant-plan":
@@ -414,22 +499,12 @@ async def _deliver_human_response(
     websocket: WebSocket,
     connection: Connection,
     team_id: str,
-    future: concurrent.futures.Future,
-    progress: asyncio.Queue[dict[str, object]],
+    submit: Callable[[Callable[[dict[str, object]], None]], concurrent.futures.Future],
     authentication_failure: tuple[int, str] | None,
 ) -> None:
     task = asyncio.current_task()
     try:
-        response = None
-        with contextlib.suppress(Exception):
-            response = await _await_progress_result(
-                websocket,
-                connection,
-                future,
-                progress,
-                lambda: connection.closed or connection.sync_terminal_sent,
-                progress_transport.receipt_delivery(connection.receipt, connection.pending_history_id, fresh=False),
-            )
+        response = await _gated_continuation(websocket, connection, submit)
         if response is None or connection.closed:
             if not connection.closed:
                 await _send_sync_terminal_once(websocket, connection, error_terminal(502))
@@ -493,31 +568,16 @@ async def _dispatch_human_response(
             return
         if payload is None:
             raise FrameError(503, "authentication is unavailable")
-        progress, report = _progress_channel()
-        future = submit_in_context(
-            lanes.SYNC,
-            local.resume_human,
-            team_id,
-            payload,
-            report,
-            assurance=assurance,
-        )
     except FrameError as exc:
         await _send_event(websocket, error_terminal(exc.status, exc.detail))
         return
-    except ExecutorSaturatedError:
-        await _send_event(websocket, error_terminal(429, "local chat capacity reached"))
-        return
+
+    def submit(report: Callable[[dict[str, object]], None]) -> concurrent.futures.Future:
+        return submit_in_context(lanes.SYNC, local.resume_human, team_id, payload, report, assurance=assurance)
+
     connection.sync_terminal_sent = False
     connection.sync_task = asyncio.create_task(
-        _deliver_human_response(
-            websocket,
-            connection,
-            team_id,
-            future,
-            progress,
-            authentication_failure,
-        )
+        _deliver_human_response(websocket, connection, team_id, submit, authentication_failure)
     )
 
 
@@ -613,15 +673,21 @@ async def _dispatch_chat(
         reference=connection.assistant_reference,
         conversation=conversation,
     )
-    try:
-        preparation = lifecycle.submit_route(team_id, payload, route_context)
-    except ExecutorSaturatedError:
-        await _send_event(websocket, error_terminal(429, "Assistant routing capacity reached"))
-        return
-    turn = route_delivery.begin(connection, preparation, payload["locale"], conversation, identity)
-    turn.delivery = asyncio.create_task(
-        route_delivery.deliver(websocket, connection, turn, team_id, payload, _plan_operations())
-    )
+    turn = route_delivery.begin(connection, None, payload["locale"], conversation, identity)
+    turn.operation = "queued"
+
+    async def route() -> None:
+        try:
+            turn.future = lifecycle.submit_route(team_id, payload, route_context)
+        except ExecutorSaturatedError:
+            await _finish_active_turn(
+                websocket, connection, turn, error_terminal(429, "Assistant routing capacity reached")
+            )
+            return
+        turn.operation = "assistant-route"
+        await route_delivery.deliver(websocket, connection, turn, team_id, payload, _plan_operations())
+
+    turn.delivery = asyncio.create_task(gated.run(websocket, connection, turn, route, _finish_active_turn))
 
 
 async def _dispatch_stop(websocket: WebSocket, connection: Connection, team_id: str) -> None:
@@ -726,90 +792,285 @@ async def _close_connection(
 
 
 class Transport:
-    """One attached Team's chat channel on its session socket, as the `shimpz.chat.v7` delivery code writes to it.
+    """One attached page's view of a Team's chat run: the session socket's frames of that Team.
 
-    The session socket's `send` adds the Team's `team_id` to every frame. When the delivery code closes its
-    connection, the whole session socket closes.
+    The session socket's `send` adds the Team's `team_id` to every frame; `close` ends the whole session socket.
     """
 
     def __init__(self, send: Callable[[dict[str, object]], None], close: Callable[[int], None]) -> None:
         self._send = send
         self._close = close
 
-    async def send_json(self, event: dict[str, object]) -> None:
+    def push(self, event: dict[str, object]) -> None:
+        """Queue one event now; it raises when the page's socket can take no more."""
         self._send(event)
 
-    async def close(self, code: int = 1000) -> None:
+    def close(self, code: int = 1000) -> None:
         self._close(code)
 
 
-class Channel:
-    """One Team's logical chat connection on a session socket, with today's per-connection state (ADR-0114).
+@dataclass(frozen=True, slots=True)
+class Authority:
+    """The Supervisor authority one chat frame was admitted under, held in memory only (ADR-0119).
 
-    Frames run in arrival order, one at a time, under the current Supervisor authority bound again for each frame, so
-    a long dispatch never holds the session socket's receive loop. A waiting frame runs only if its socket's bound
-    Origin and session are still current when its turn comes; otherwise the socket closes and nothing more runs.
-    Closing the channel asks Team to stop its active turn and ends every local operation it runs.
+    `current` checks it again without its socket: the same Origin still admitted and the same session still current by
+    the full rule (signature, absolute and idle expiry, rotation, suspension), never renewing it.
     """
 
-    def __init__(
-        self,
-        transport: Transport,
-        team_id: str,
-        *,
-        request_scope: Callable[[], contextlib.AbstractContextManager[None]],
-        authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]],
-        authorized: Callable[[], Awaitable[bool]],
-    ) -> None:
-        self.transport = transport
-        self.team_id = team_id
-        self.connection = Connection()
-        self._scope = request_scope
-        self._authorized = authorized
-        self._authenticate = authenticate
-        self._frames: asyncio.Queue[dict[str, object]] = asyncio.Queue()
-        self._task = asyncio.create_task(self._run())
+    session: str
+    scope: Callable[[], contextlib.AbstractContextManager[None]]
+    current: Callable[[], Awaitable[bool]]
+    authenticate: Callable[[str, str], Awaitable[human.AuthenticationResult]]
 
-    def submit(self, frame: dict[str, object]) -> bool:
-        """Queue one admitted chat frame for this Team in arrival order; refuse one beyond the waiting bound."""
+
+class Relay(gated.Observed):
+    """What a run's delivery code writes to: every event goes to each page attached now, or to none.
+
+    A page that cannot take an event is detached; nothing a page does ends the run's work.
+    """
+
+    def __init__(self, run: Run) -> None:
+        self.run = run
+
+    async def send_json(self, event: dict[str, object]) -> None:
+        self.run.publish(event)
+
+    async def close(self, code: int = 1000) -> None:
+        for observer in tuple(self.run.observers):
+            observer.close(code)
+
+
+class Run:
+    """One Team's chat in Admin: its state, its frames in arrival order, and the pages that watch it (ADR-0119).
+
+    It outlives every page: a page attaches to watch and detaches without stopping anything; only Stop, a revoked
+    authority, the Team's deletion, or a Space reset ends its work. Frames run one at a time, each under the authority
+    it was admitted with, checked again when its turn comes, so a long dispatch never holds any page's receive loop.
+    """
+
+    def __init__(self, team_id: str) -> None:
+        self.team_id = team_id
+        self.connection = Connection(team_id=team_id)
+        self.relay = Relay(self)
+        self.observers: set[Transport] = set()
+        # The authority of the operation the run does now, which a revocation of its session ends.
+        self.authority: Authority | None = None
+        # The progress frames of the running delivery, in order, and when its operation started: a page that attaches
+        # meanwhile is shown both, and the queue position while it waits.
+        self.live: list[dict[str, object]] = []
+        self.started: float | None = None
+        self.position: int | None = None
+        self._frames: asyncio.Queue[tuple[dict[str, object], Authority]] = asyncio.Queue()
+        self._task = asyncio.create_task(self._loop())
+
+    # Pages
+
+    def attach(self, observer: Transport, authority: Authority, locale: str) -> None:
+        """Let one more page watch; a busy run shows it where it is, an idle one synchronizes as a fresh page does."""
+        self.observers.add(observer)
+        if self.busy():
+            self._push(observer, self.snapshot())
+        else:
+            self.submit({"type": "sync", "locale": locale}, authority)
+
+    def detach(self, observer: Transport) -> None:
+        """One page stops watching; a proposal that waited for a page's decision expires with the last one."""
+        self.observers.discard(observer)
+        if not self.observers:
+            self.connection.lifecycle_proposal = None
+            if not self.busy():
+                self.retire()
+
+    def busy(self) -> bool:
+        connection = self.connection
+        return (
+            connection.active is not None
+            or connection.sync_task is not None
+            or connection.lifecycle is not None
+            or not self._frames.empty()
+        )
+
+    def snapshot(self) -> dict[str, object]:
+        """Where the run is now, as one `running` event: how long it has run, its queue place, and its steps so far."""
+        elapsed = 0 if self.started is None else int((time.monotonic() - self.started) * 1000)
+        return {"type": "running", "elapsed_ms": max(0, elapsed), "position": self.position, "events": list(self.live)}
+
+    def publish(self, event: dict[str, object]) -> None:
+        """Record what a page attaching later must see, then hand the event to every page attached now."""
+        kind = event.get("type")
+        if kind == "progress":
+            if event.get("seq") == 1:
+                self.live = []
+            if len(self.live) <= local.MAX_PUBLIC_PROGRESS_EVENTS:
+                self.live.append(dict(event))
+        elif kind == "running":
+            position = event.get("position")
+            self.position = position if isinstance(position, int) else None
+        for observer in tuple(self.observers):
+            self._push(observer, event)
+
+    def _push(self, observer: Transport, event: dict[str, object]) -> None:
+        try:
+            observer.push(dict(event))
+        except RuntimeError, ValueError, OSError:
+            # An overflowing or closed socket, or a frame it cannot carry: that page stops watching.
+            self.observers.discard(observer)
+
+    # Frames
+
+    def submit(self, frame: dict[str, object], authority: Authority) -> bool:
+        """Queue one admitted chat frame with the authority it was admitted under; refuse one beyond the bound."""
         if self.connection.closed:
             return True
         if self._frames.qsize() >= MAX_WAITING_FRAMES:
             return False
-        self._frames.put_nowait(frame)
+        self._frames.put_nowait((frame, authority))
         return True
 
-    async def _run(self) -> None:
+    async def _loop(self) -> None:
         try:
             while True:
-                frame = await self._frames.get()
-                if not await self._authorized():
-                    # The socket closes for its refused Origin or session: no waiting frame runs any more.
-                    self.connection.closed = True
-                    return
+                frame, authority = await self._frames.get()
+                if not await authority.current():
+                    # Its session or Origin ended before its turn came: it runs nothing.
+                    continue
+                if frame.get("type") != "stop":
+                    self.authority = authority
+                if frame.get("type") in {"chat", "resume-task", "human-response", "sync"}:
+                    self.live, self.started, self.position = [], time.monotonic(), None
                 try:
-                    with self._scope():
-                        await _dispatch(self.transport, self.connection, self.team_id, frame, self._authenticate)
+                    with authority.scope():
+                        await _dispatch(self.relay, self.connection, self.team_id, frame, authority.authenticate)
                 except transport.TeamRequestError, local_supervisor.SupervisorAuthorityError, RuntimeError:
                     # The current Supervisor authority is unavailable: the frame is refused as the HTTP gate refuses.
-                    log.warning("chat channel frame refused: Supervisor authority is unavailable")
-                    await _send_event(self.transport, error_terminal(503, "Supervisor authority is unavailable"))
+                    log.warning("chat run frame refused: Supervisor authority is unavailable")
+                    self.publish(error_terminal(503, "Supervisor authority is unavailable"))
         except WebSocketDisconnect:
-            self.connection.closed = True
+            # A protocol refusal closed the pages; the run's work ends with them, as Stop would end it.
+            asyncio.get_running_loop().create_task(self.end())
 
-    def halt(self) -> None:
-        """Dispatch nothing more, at once: no waiting frame starts once the channel's socket is closing."""
-        self.connection.closed = True
+    # Ending
+
+    def retire(self) -> None:
+        """Forget an idle run nobody watches; Team keeps any pending request, which a page's sync restores."""
+        if RUNS.get(self.team_id) is self:
+            del RUNS[self.team_id]
         self._task.cancel()
 
-    async def close(self) -> None:
-        """Stop the channel: Team stops its active turn and every local operation it runs ends."""
-        self.halt()
+    async def end(self) -> None:
+        """Stop the run's work, keep how its turn ended, and forget the run (revocation, deletion, reset)."""
+        if RUNS.get(self.team_id) is self:
+            del RUNS[self.team_id]
+        self._task.cancel()
         await asyncio.gather(self._task, return_exceptions=True)
+        active = self.connection.active
+        unfinished = None if active is None or active.terminal_sent else active.history_id
+        authority = self.authority
         try:
-            with self._scope():
-                await _close_connection(self.transport, self.connection, self.team_id)
+            with authority.scope() if authority is not None else contextlib.nullcontext():
+                await _close_connection(self.relay, self.connection, self.team_id)
         except transport.TeamRequestError, local_supervisor.SupervisorAuthorityError, RuntimeError:
-            # Without current authority Team refuses the Stop, but every local operation still ends here.
-            log.warning("chat channel closed without Supervisor authority")
-            await _close_connection(self.transport, self.connection, self.team_id)
+            log.warning("chat run ended without Supervisor authority")
+            await _close_connection(self.relay, self.connection, self.team_id)
+        if unfinished is not None:
+            with contextlib.suppress(Exception):
+                await history_delivery.terminal(self.team_id, unfinished, {"type": "stopped"}, finish_history=True)
+            self.publish({"type": "stopped"})
+
+
+# Each Team's chat run in this Admin process (ADR-0119): an Admin restart ends them all, never replaying any.
+RUNS: dict[str, Run] = {}
+# How often a run's authority and idleness are checked again while no page or session event says so.
+SWEEP_SECONDS = 30.0
+
+
+def run_for(team_id: str) -> Run:
+    """The Team's run, created on first need."""
+    run = RUNS.get(team_id)
+    if run is None:
+        run = RUNS[team_id] = Run(team_id)
+        _start_sweep()
+    return run
+
+
+def end_runs(team_id: str | None = None) -> None:
+    """End one Team's run, or every run: its Team was deleted, or the Space reset (on the event loop)."""
+    for run in [run for key, run in RUNS.items() if team_id is None or key == team_id]:
+        asyncio.get_running_loop().create_task(run.end())
+
+
+def sessions_ended(sessions: frozenset[str] | None) -> None:
+    """Sessions stopped being tracked (any thread): end the work each of them authorized."""
+    loop = _SWEEP_LOOP[0]
+    if loop is None:
+        return
+    with contextlib.suppress(RuntimeError):
+        loop.call_soon_threadsafe(_end_sessions, sessions)
+
+
+def _end_sessions(sessions: frozenset[str] | None) -> None:
+    for run in tuple(RUNS.values()):
+        authority = run.authority
+        if run.busy() and authority is not None and (sessions is None or authority.session in sessions):
+            asyncio.get_running_loop().create_task(run.end())
+
+
+_SWEEP_LOOP: list[asyncio.AbstractEventLoop | None] = [None]
+_SWEEP_TASK: list[asyncio.Task | None] = [None]
+
+
+def _start_sweep() -> None:
+    loop = asyncio.get_running_loop()
+    task = _SWEEP_TASK[0]
+    if _SWEEP_LOOP[0] is loop and task is not None and not task.done():
+        return
+    _SWEEP_LOOP[0] = loop
+    _SWEEP_TASK[0] = loop.create_task(_sweep())
+
+
+async def _sweep() -> None:
+    """End work whose authority expired meanwhile, and forget idle runs nobody watches."""
+    while RUNS:
+        await asyncio.sleep(SWEEP_SECONDS)
+        for run in tuple(RUNS.values()):
+            authority = run.authority
+            if run.busy():
+                if authority is not None and not await authority.current():
+                    await run.end()
+            elif not run.observers:
+                run.retire()
+
+
+class Channel:
+    """One page watching one Team's chat run over its session socket (ADR-0114, ADR-0119).
+
+    Its frames run on the run under the authority they were admitted with; closing it stops watching, never the work.
+    """
+
+    def __init__(self, transport: Transport, team_id: str, authority: Callable[[], Authority]) -> None:
+        self.transport = transport
+        self.team_id = team_id
+        self._authority = authority
+        self.run = run_for(team_id)
+
+    @property
+    def connection(self) -> Connection:
+        return self.run.connection
+
+    def attach(self, locale: str) -> None:
+        self.run.attach(self.transport, self._authority(), locale)
+
+    def submit(self, frame: dict[str, object]) -> bool:
+        """Queue one admitted chat frame for the Team's run in arrival order; refuse one beyond the waiting bound."""
+        return self.run.submit(frame, self._authority())
+
+    def halt(self) -> None:
+        """Stop watching at once: the socket is closing."""
+        self.run.detach(self.transport)
+
+    async def close(self) -> None:
+        """Stop watching; the run's work goes on (ADR-0119)."""
+        self.halt()
+
+
+auth.SESSIONS.listen(sessions_ended)

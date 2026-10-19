@@ -286,13 +286,22 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
         )
         response.assert_called_once_with(self.admin_app.team.reset_space)
 
-        with mock.patch.object(
-            self.admin_app.host_reset,
-            "reset",
-            new=mock.AsyncMock(return_value=sentinel),
-        ) as reset:
-            self.assertIs(asyncio.run(self.admin_app.local_space_host_reset(request)), sentinel)
-        reset.assert_awaited_once()
+        with (
+            mock.patch.object(
+                self.admin_app.host_reset,
+                "reset",
+                new=mock.AsyncMock(return_value=self.admin_app.JSONResponse({"reset": True})),
+            ) as reset,
+            mock.patch.object(self.admin_app.chat_socket, "end_runs") as end_runs,
+        ):
+            self.assertEqual(asyncio.run(self.admin_app.local_space_host_reset(request)).status_code, 200)
+            # A host reset that went through ends every Team's chat run (ADR-0119); a refused one ends none.
+            end_runs.assert_called_once_with()
+            refused = self.admin_app.JSONResponse({"detail": "refused"}, status_code=403)
+            reset.return_value = refused
+            self.assertIs(asyncio.run(self.admin_app.local_space_host_reset(request)), refused)
+            end_runs.assert_called_once_with()
+        reset.assert_awaited()
         self.assertIs(reset.await_args.kwargs["setup_lock"], self.admin_app._ADMIN_SETUP_LOCK)
         self.assertIs(reset.await_args.kwargs["verify_password"], self.admin_app._host_reset_password)
 

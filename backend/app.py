@@ -42,6 +42,7 @@ from team import transport
 import browser
 from chat import assets as chat_assets
 from chat import human as chat_human
+from chat import socket as chat_socket
 from integrations import assistants as integrations
 from integrations import authorization
 from integrations import handoff as handoff_store
@@ -471,24 +472,31 @@ def _established_host_reset(capability_digest: str) -> JSONResponse:
 
 
 async def local_space_host_reset(request: Request):
-    return await host_reset.reset(
+    response = await host_reset.reset(
         request,
         setup_lock=_ADMIN_SETUP_LOCK,
         verify_password=_host_reset_password,
         bootstrap_reset=lambda: _space_reset_response(team.bootstrap_reset_space),
         established_reset=_established_host_reset,
     )
+    if response.status_code == 200:
+        chat_socket.end_runs()
+    return response
 
 
 app.add_api_route("/api/space/host", local_space_host_reset, methods=["DELETE"])
 
 
 async def local_space_reset(request: Request):
-    return await space_reset.authenticated(
+    response = await space_reset.authenticated(
         request,
         recheck_password=partial(local_auth.recheck_password, context=_LOCAL_AUTH_CONTEXT),
         team_response=_space_reset_response,
     )
+    if response.status_code == 200:
+        # Every Team's chat run ends with the reset Space (ADR-0119).
+        chat_socket.end_runs()
+    return response
 
 
 app.add_api_route("/api/space", local_space_reset, methods=["DELETE"])

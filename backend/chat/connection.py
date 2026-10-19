@@ -29,6 +29,8 @@ class Turn:
     conversation: tuple[history_context.Entry, ...] = field(default=(), repr=False)
     # The identity Team binds a Routine change of this turn to (ADR-0092), issued once per sent message.
     request: dict[str, object] | None = field(default=None, repr=False)
+    # The turn's hold on the Space's chat gate while it runs (ADR-0119).
+    slot: object | None = field(default=None, repr=False)
 
 
 @dataclass(slots=True)
@@ -46,6 +48,8 @@ class Receipt:
 
 @dataclass(slots=True)
 class Connection:
+    # The Team whose chat this is; every terminal it persists is that Team's.
+    team_id: str | None = None
     active: Turn | None = None
     pending_challenge_id: str | None = None
     pending_challenge_type: str | None = None
@@ -66,6 +70,8 @@ class SyncSnapshot:
     challenge_type: str
     pending: object
     resumed: object | None = None
+    # The pending Integration challenge whose granted continuation resumes under the Space's chat gate.
+    resume: str | None = None
 
 
 def remember_challenge(

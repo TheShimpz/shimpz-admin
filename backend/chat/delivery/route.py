@@ -156,7 +156,7 @@ async def deliver(
 
 def begin(
     connection: Connection,
-    preparation: concurrent.futures.Future,
+    preparation: concurrent.futures.Future | None,
     locale: str,
     conversation: tuple[history_context.Entry, ...],
     request: dict[str, object],

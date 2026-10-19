@@ -245,20 +245,32 @@ class SessionSocket:
         if len(self.channels) >= frames.MAX_ATTACHED_TEAMS:
             return 409, {"detail": "a session socket attaches at most 4 Teams"}
         transport = chat_channel.Transport(lambda event: self.send(frames.chat_event(team_id, event)), self._end)
-        channel = chat_channel.Channel(
-            transport,
-            team_id,
-            request_scope=lambda: self.gate.request_scope(self.cookies),
-            authenticate=self.gate.authenticate,
-            authorized=self.authorized,
-        )
+        channel = chat_channel.Channel(transport, team_id, self._chat_authority)
         self.channels[team_id] = channel
-        # Today's sync, after the attach result: the pending gate, an Integration resume, or `sync-empty`.
-        self.loop.call_soon(channel.submit, {"type": "sync", "locale": canonical_locale})
+        # After the attach result: where the Team's running chat is, or today's sync (the pending gate, an Integration
+        # resume, or `sync-empty`) when nothing runs.
+        self.loop.call_soon(channel.attach, canonical_locale)
         return 200, {"team_id": team_id}
 
+    def _chat_authority(self) -> chat_channel.Authority:
+        """The authority a chat frame admitted on this socket keeps after the socket closes (ADR-0119)."""
+        return chat_channel.Authority(
+            session=self.session,
+            scope=lambda: self.gate.request_scope(self.cookies),
+            current=self._still_authorized,
+            authenticate=self.gate.authenticate,
+        )
+
+    async def _still_authorized(self) -> bool:
+        """The bound Origin still admitted and the session still current, checked without this socket or a renewal."""
+        try:
+            admitted = self.origin in self.gate.allowed_origins()
+        except RuntimeError, OSError:
+            return False
+        return admitted and await registry.session_status(self.gate.session_current, self.cookies) == "active"
+
     def detach(self, team_id: object) -> tuple[int, object]:
-        """End one Team's chat connection; its channel closes and its active work stops."""
+        """Stop watching one Team's chat; its work goes on (ADR-0119)."""
         channel = self.channels.pop(team_id, None) if isinstance(team_id, str) else None
         if channel is None:
             return 409, {"detail": "the Team's chat is not attached"}

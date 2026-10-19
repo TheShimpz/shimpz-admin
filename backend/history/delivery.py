@@ -74,6 +74,12 @@ async def terminal(
         if not committed:
             raise store.HistoryUnavailableError("chat history reply was not committed")
         return
+    if event.get("type") in {"error", "stopped"}:
+        # The ending is kept whether or not a page watched it (ADR-0119).
+        committed = await asyncio.to_thread(store.append_status, team_id, turn_id, event, finish=finish_history)
+        if not committed:
+            raise store.HistoryUnavailableError("chat history status was not committed")
+        return
     if finish_history:
         await asyncio.to_thread(store.finish_resumable_turn, turn_id)
 
@@ -109,6 +115,7 @@ async def abandon(turn_id: str | None) -> None:
 
 
 async def resumed_terminal(
+    team_id: str | None,
     turn_id: str | None,
     event: Mapping[str, object],
     *,
@@ -117,10 +124,15 @@ async def resumed_terminal(
     if turn_id is None:
         raise store.HistoryUnavailableError("chat history resumable turn is unavailable")
     if event.get("type") == "done":
-        team_id = event.get("team_id")
-        committed = await asyncio.to_thread(store.append_reply, team_id, turn_id, event, receipt=receipt)
+        committed = await asyncio.to_thread(store.append_reply, event.get("team_id"), turn_id, event, receipt=receipt)
         if not committed:
             raise store.HistoryUnavailableError("chat history resumed reply was not committed")
+        return
+    if event.get("type") in {"error", "stopped"}:
+        # The ending is kept whether or not a page watched it (ADR-0119).
+        committed = await asyncio.to_thread(store.append_status, team_id, turn_id, event, finish=True)
+        if not committed:
+            raise store.HistoryUnavailableError("chat history resumed status was not committed")
         return
     await asyncio.to_thread(store.finish_resumable_turn, turn_id)
 

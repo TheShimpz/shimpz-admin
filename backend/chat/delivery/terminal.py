@@ -34,14 +34,17 @@ async def turn(
     projected = event
     # Every terminal ends the turn's receipt, as it does on the page; a reply keeps the steps its page was shown.
     receipt = take_receipt(connection.receipt, active.history_id)
+    # A Stop of a paused turn that failed leaves that turn waiting: nothing of it ended, so nothing is kept.
+    unended = active.operation == "pending-stop" and event.get("type") == "error"
     try:
-        await history_delivery.terminal(
-            event.get("team_id"),
-            active.history_id,
-            event,
-            finish_history=finish_history,
-            receipt=receipt,
-        )
+        if not unended:
+            await history_delivery.terminal(
+                connection.team_id,
+                active.history_id,
+                event,
+                finish_history=finish_history,
+                receipt=receipt,
+            )
     except Exception:
         # Whatever stops the commit, the turn still ends with a terminal the browser sees, never a silence.
         log.exception("Admin chat reply history commit failed")
@@ -69,7 +72,9 @@ async def resumed(
     receipt = take_receipt(connection.receipt, connection.pending_history_id)
     if finish_history:
         try:
-            await history_delivery.resumed_terminal(connection.pending_history_id, event, receipt=receipt)
+            await history_delivery.resumed_terminal(
+                connection.team_id, connection.pending_history_id, event, receipt=receipt
+            )
         except Exception:
             log.exception("Admin resumed chat reply history commit failed")
             projected = error_terminal(503, "Admin chat history is unavailable")

@@ -41,6 +41,9 @@ MAX_PAGE_BYTES = 512 * 1024
 MAX_ENTRY_BYTES = 256 * 1024
 MAX_REPLY_CHARS = turn_contract.MAX_REPLY_CHARS
 MAX_GUIDANCE_REPLY_CHARS = turn_contract.MAX_INTENT_ROUTE_REPLY_CHARS
+# A turn that ended without a reply keeps how it ended (ADR-0119): stopped, or failed with the HTTP status and the short
+# detail the page was shown, so a page that was closed meanwhile learns it too.
+MAX_STATUS_DETAIL_CHARS = 200
 _MAX_POSITION = 2**63 - 1
 _TURN_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 _GUIDANCE_CODES = frozenset(
@@ -454,6 +457,44 @@ def append_install(team_id: object, turn_id: object, event: object) -> bool:
     )
 
 
+def append_status(team_id: object, turn_id: object, event: object, *, finish: bool) -> bool:
+    """Keep how one turn ended without a reply; `finish` also ends its resumable state, as its terminal did."""
+    canonical_team = _team_id(team_id)
+    canonical_turn = _turn_id(turn_id)
+    payload = _status_payload(event)
+    return _append(
+        canonical_team,
+        f"{canonical_turn}:status",
+        payload,
+        anchor_turn=canonical_turn,
+        finish_turn=canonical_turn if finish else None,
+    )
+
+
+def _status_payload(event: object) -> dict[str, object]:
+    if not isinstance(event, Mapping):
+        raise ValueError("chat history status is invalid")
+    if event.get("type") == "stopped" and set(event) == {"type"}:
+        return {"kind": "status", "state": "stopped"}
+    if event.get("type") == "error" and set(event) == {"type", "status", "detail"}:
+        payload = {"kind": "status", "state": "failed", "status": event["status"], "detail": _status_detail(event)}
+        _validate_stored_status(payload)
+        return payload
+    raise ValueError("chat history status is invalid")
+
+
+def _status_detail(event: Mapping[str, object]) -> str:
+    """The detail the page was shown, on one line within its bound, or a plain one when it is not public text."""
+    detail = event["detail"]
+    if isinstance(detail, str):
+        line = " ".join(detail.split())[:MAX_STATUS_DETAIL_CHARS].strip()
+        try:
+            return chat_ws_common.public_text(line, MAX_STATUS_DETAIL_CHARS, field="status detail")
+        except ValueError:
+            pass
+    return "the turn failed"
+
+
 def append_guidance(team_id: object, turn_id: object, code: object, reply: object) -> bool:
     canonical_team = _team_id(team_id)
     canonical_turn = _turn_id(turn_id)
@@ -519,6 +560,7 @@ def _decoded(raw: object) -> dict[str, object]:
         "assistant-install",
         "assistant-uninstall",
         "guidance",
+        "status",
         "routine-run",
         "routine-answer",
     }:
@@ -576,6 +618,20 @@ def _validate_stored_guidance(payload: dict[str, object]) -> None:
     _text(payload.get("reply"), MAX_GUIDANCE_REPLY_CHARS, "stored guidance reply")
 
 
+def _validate_stored_status(payload: dict[str, object]) -> None:
+    if payload.get("state") == "stopped" and set(payload) == {"kind", "state"}:
+        return
+    status = payload.get("status")
+    if (
+        payload.get("state") != "failed"
+        or set(payload) != {"kind", "state", "status", "detail"}
+        or type(status) is not int
+        or not 400 <= status <= 599
+    ):
+        raise ValueError("invalid stored status")
+    chat_ws_common.public_text(payload.get("detail"), MAX_STATUS_DETAIL_CHARS, field="status detail")
+
+
 def _stored_detail(outcome: object, detail: object) -> bool:
     """Whether a stored notice's detail is exactly Team's closed form for an outcome a view shows."""
     return outcome in _STORED_OUTCOMES and routine_notice_contract.canonical_notice_detail(outcome, detail) == detail
@@ -622,6 +678,7 @@ def _validate_stored_payload(payload: dict[str, object]) -> None:
         "assistant-install": lifecycle.validate_stored_install,
         "assistant-uninstall": lifecycle.validate_stored_uninstall,
         "guidance": _validate_stored_guidance,
+        "status": _validate_stored_status,
     }
     validators[payload["kind"]](payload)
 

@@ -61,6 +61,7 @@ class ChatWebSocketCase(unittest.TestCase):
         route.start()
         self.addCleanup(route.stop)
         chat_socket_fixtures.live_team(self)
+        chat_socket_fixtures.fresh_runs(self)
 
     def _install_candidate(self):
         return self.chat_socket.lifecycle.store_catalog.CatalogAssistant(
@@ -163,4 +164,5 @@ class ChatDeliveryCase(unittest.TestCase):
     def setUp(self) -> None:
         socket = importlib.import_module("chat.socket")
         chat_socket_fixtures.live_team(self)
+        chat_socket_fixtures.fresh_runs(self)
         socket.history.STORE_PATH.unlink(missing_ok=True)

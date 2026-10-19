@@ -93,8 +93,7 @@ class ChatHistoryFailureEdgeTests(ChatDeliveryCase):
                     websocket,
                     connection,
                     "team_1",
-                    future,
-                    asyncio.Queue(),
+                    lambda _report: future,
                     (401, "authentication failed"),
                 )
             self.assertEqual(connection.pending_challenge_id, "a" * 32)

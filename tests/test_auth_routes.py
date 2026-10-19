@@ -378,13 +378,28 @@ class AuthRouteTests(unittest.TestCase):
         reset.scope["method"] = "DELETE"
         expected = transport.TeamResponse(200, {"reset": True})
 
-        with mock.patch.object(self.admin_app.team, "reset_space", return_value=expected) as team_reset:
+        with (
+            mock.patch.object(self.admin_app.team, "reset_space", return_value=expected) as team_reset,
+            mock.patch.object(self.admin_app.chat_socket, "end_runs") as end_runs,
+        ):
             response = asyncio.run(self.admin_app.local_space_reset(reset))
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(json.loads(response.body), {"reset": True})
         team_reset.assert_called_once_with()
+        # Every Team's chat run ends with the reset Space (ADR-0119).
+        end_runs.assert_called_once_with()
         self.assertEqual(self._journal()[-1], "space-reset")
+        failed = self._request("/api/space", {"password": password})
+        failed.scope["method"] = "DELETE"
+        with (
+            mock.patch.object(
+                self.admin_app.team, "reset_space", return_value=transport.TeamResponse(503, {"detail": "busy"})
+            ),
+            mock.patch.object(self.admin_app.chat_socket, "end_runs") as kept,
+        ):
+            self.assertNotEqual(asyncio.run(self.admin_app.local_space_reset(failed)).status_code, 200)
+        kept.assert_not_called()
 
         wrong = self._request("/api/space", {"password": "definitely wrong"})
         wrong.scope["method"] = "DELETE"

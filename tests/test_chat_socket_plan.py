@@ -228,25 +228,15 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
 
         asyncio.run(scenario())
 
-    def test_disconnect_discards_unstarted_plan_items_and_never_replays_the_task(self) -> None:
+    def test_a_plan_goes_on_after_its_page_closes_and_a_returning_page_sees_its_end(self) -> None:
         async def scenario() -> None:
             plan = self._automatic_plan()
             preparation = self._route_future(self.assistant_plan.Preparation(plan))
             job: concurrent.futures.Future = concurrent.futures.Future()
-            stopped_seen = threading.Event()
+            stops: list[threading.Event] = []
 
             def submit(_plan, stopped, _progress):
-                def finish() -> None:
-                    stopped.wait(timeout=2)
-                    stopped_seen.set()
-                    job.set_result(
-                        self.assistant_plan.Result(
-                            "stopped",
-                            self.assistant_plan.initial_items(plan),
-                        )
-                    )
-
-                threading.Thread(target=finish, daemon=True).start()
+                stops.append(stopped)
                 return job
 
             with (
@@ -260,11 +250,15 @@ class ChatWebSocketPlanTests(ChatWebSocketCase):
                 )
                 self.assertEqual((await websocket.next_json())["state"], "planned")
                 await websocket.disconnect()
-                await _wait_for_thread(stopped_seen)
-                turn.assert_not_called()
-
-                reconnect = await self._open()
-                await asyncio.sleep(0)
+                await asyncio.sleep(0.05)
+                # Closing the page stops no install (ADR-0119).
+                self.assertFalse(stops[0].is_set())
+                reconnect = await self._open(synchronized=False)
+                self.assertEqual((await reconnect.next_json())["type"], "running")
+                job.set_result(self.assistant_plan.Result("failed", self.assistant_plan.initial_items(plan), 502))
+                ended = await reconnect.next_json()
+                self.assertEqual((ended["type"], ended["state"]), ("assistant-install-plan", "failed"))
+                # A failed plan never dispatches the task.
                 turn.assert_not_called()
                 await reconnect.disconnect()
 

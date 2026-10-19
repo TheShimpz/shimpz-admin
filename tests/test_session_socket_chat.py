@@ -41,26 +41,27 @@ class SessionSocketChatChannelTests(SessionSocketCase):
 
         asyncio.run(scenario())
 
-    def test_detaching_stops_the_teams_active_turn_and_keeps_the_others(self) -> None:
+    def test_detaching_stops_watching_and_the_teams_turn_goes_on(self) -> None:
         turn, started, release = chat_socket_fixtures.held_turn()
 
         async def scenario() -> None:
-            stopped = self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
             with (
                 mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
-                mock.patch.object(self.chat_socket.local, "stop", return_value=stopped) as stop,
+                mock.patch.object(self.chat_socket.local, "stop") as stop,
             ):
                 websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("work"))
                 await chat_socket_fixtures.wait_for_thread(started)
                 self.assertEqual((await websocket.result("chat.detach", {"team_id": "team_1"}))["status"], 200)
-                for _ in range(100):
-                    if stop.called:
-                        break
-                    await asyncio.sleep(0.02)
+                await asyncio.sleep(0.1)
+                self.assertTrue(self.chat_socket.RUNS["team_1"].busy())
                 release.set()
-                stop.assert_called_once_with("team_1")
-                # The socket stays open for its other work.
+                for _ in range(200):
+                    if not self.chat_socket.RUNS["team_1"].busy():
+                        break
+                    await asyncio.sleep(0.01)
+                # Nothing stopped the turn (ADR-0119), and the socket stays open for its other work.
+                stop.assert_not_called()
                 self.assertEqual((await websocket.result("subscribe", {"topics": ["teams"]}))["status"], 200)
                 await websocket.disconnect()
 
@@ -210,6 +211,10 @@ class SessionSocketHaltTests(SessionSocketCase):
                 # The admitted origin is replaced while the second frame waits: it must never run under it.
                 self.assertEqual(self.admin_app.state.bind_browser_origin("https://next.example.test"), "replaced")
                 release.set()
+                await asyncio.sleep(0.1)
+                # The frame admitted before the change never runs; the socket's next frame finds its Origin refused.
+                self.assertEqual(dispatched, ["stop"])
+                await websocket.send_json({"type": "stop"})
                 self.assertEqual(await self._closed(websocket), 4403)
                 await websocket.finish()
             self.assertEqual(dispatched, ["stop"])

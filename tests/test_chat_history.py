@@ -54,6 +54,47 @@ class ChatHistoryTests(ChatHistoryCase):
         self.assertNotIn("plan_id", install)
         self.assertNotIn("continuation", install)
 
+    def test_a_turn_that_ended_without_a_reply_keeps_how_it_ended_outside_the_conversation(self) -> None:
+        failed, stopped, answered = history.new_turn_id(), history.new_turn_id(), history.new_turn_id()
+        for turn, message in ((failed, "Read the edital"), (stopped, "Never mind"), (answered, "And now?")):
+            self.assertTrue(history.append_user("marketing", turn, message))
+        long_detail = "Team   is\nunavailable " + "x" * 400
+        self.assertTrue(
+            history.append_status(
+                "marketing", failed, {"type": "error", "status": 503, "detail": long_detail}, finish=False
+            )
+        )
+        self.assertTrue(history.append_status("marketing", stopped, {"type": "stopped"}, finish=True))
+        # A detail that is no public text is kept as a plain one.
+        self.assertTrue(
+            history.append_status(
+                "marketing", answered, {"type": "error", "status": 502, "detail": "\u202e"}, finish=False
+            )
+        )
+        statuses = [entry for entry in history.page("marketing")["entries"] if entry["kind"] == "status"]
+        self.assertEqual(
+            [(entry["state"], entry.get("status"), len(entry.get("detail", ""))) for entry in statuses],
+            [("failed", 503, history.MAX_STATUS_DETAIL_CHARS), ("stopped", None, 0), ("failed", 502, 15)],
+        )
+        self.assertTrue(statuses[0]["detail"].startswith("Team is unavailable x"))
+        self.assertEqual(statuses[2]["detail"], "the turn failed")
+        # An ending never enters the conversation the Brain reads.
+        later = history.new_turn_id()
+        self.assertTrue(history.append_user("marketing", later, "Next"))
+        self.assertEqual(
+            [entry.text for entry in history.conversation("marketing", later)],
+            ["Read the edital", "Never mind", "And now?"],
+        )
+        for event in (
+            {"type": "error", "status": 200, "detail": "x"},
+            {"type": "stopped", "extra": 1},
+            {"type": "done"},
+        ):
+            with self.subTest(event=event), self.assertRaises(ValueError):
+                history.append_status("marketing", later, event, finish=False)
+        with self.assertRaises(ValueError):
+            history._validate_stored_status({"kind": "status", "state": "paused"})
+
     def test_every_row_carries_the_utc_time_admin_first_wrote_it(self) -> None:
         self.assertRegex(history._now(), r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
         times = iter(f"2026-10-0{day}T23:59:5{second}Z" for day in (1, 2, 3) for second in range(10))

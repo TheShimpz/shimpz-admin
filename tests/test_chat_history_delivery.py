@@ -194,7 +194,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
     def test_terminal_reply_is_committed_before_socket_projection(self) -> None:
         async def scenario() -> None:
             websocket = mock.AsyncMock()
-            connection = socket.Connection()
+            connection = socket.Connection(team_id="team_1")
             turn = socket.Turn(None, "chat", history_id="a" * 32)
             event = {
                 "type": "done",
@@ -235,7 +235,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
             turn_id = socket.history.new_turn_id()
             self.assertTrue(socket.history.append_user("team_1", turn_id, "Approve the Action"))
             self.assertTrue(socket.history.bind_resumable_turn("team_1", turn_id))
-            connection = socket.Connection(pending_history_id=turn_id)
+            connection = socket.Connection(team_id="team_1", pending_history_id=turn_id)
             websocket = mock.AsyncMock()
 
             await sync_delivery.human(
@@ -341,8 +341,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
                     websocket,
                     connection,
                     "team_1",
-                    future,
-                    asyncio.Queue(),
+                    lambda _report: future,
                     None,
                 )
 
@@ -371,15 +370,27 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
                     "a" * 32,
                     {"type": "done"},
                 )
+            # An error or a Stop keeps how the turn ended; finishing it ends its resumable state too (ADR-0119).
+            failed = {"type": "error", "status": 502, "detail": "Team is unavailable"}
+            with mock.patch.object(socket.history, "append_status", return_value=True) as status:
+                await delivery.terminal("team_1", "a" * 32, failed)
+                await delivery.terminal("team_1", "a" * 32, {"type": "stopped"}, finish_history=True)
+            self.assertEqual(
+                status.call_args_list,
+                [
+                    mock.call("team_1", "a" * 32, failed, finish=False),
+                    mock.call("team_1", "a" * 32, {"type": "stopped"}, finish=True),
+                ],
+            )
+            with (
+                mock.patch.object(socket.history, "append_status", return_value=False),
+                self.assertRaises(socket.history.HistoryUnavailableError),
+            ):
+                await delivery.terminal("team_1", "a" * 32, failed)
             with mock.patch.object(socket.history, "finish_resumable_turn") as finish:
-                await delivery.terminal("team_1", "a" * 32, {"type": "error"})
+                await delivery.terminal("team_1", "a" * 32, {"type": "assistant-guidance"})
                 finish.assert_not_called()
-                await delivery.terminal(
-                    "team_1",
-                    "a" * 32,
-                    {"type": "error"},
-                    finish_history=True,
-                )
+                await delivery.terminal("team_1", "a" * 32, {"type": "assistant-guidance"}, finish_history=True)
                 finish.assert_called_once_with("a" * 32)
 
             await delivery.challenge("team_1", None)
@@ -421,22 +432,33 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
         async def scenario() -> None:
             delivery = socket.history_delivery
             with self.assertRaises(socket.history.HistoryUnavailableError):
-                await delivery.resumed_terminal(None, {"type": "done"})
+                await delivery.resumed_terminal("team_1", None, {"type": "done"})
             with (
                 mock.patch.object(socket.history, "append_reply", return_value=False),
                 self.assertRaises(socket.history.HistoryUnavailableError),
             ):
                 await delivery.resumed_terminal(
+                    "team_1",
                     "a" * 32,
                     {"type": "done", "team_id": "team_1"},
                 )
             with mock.patch.object(socket.history, "append_reply", return_value=True):
                 await delivery.resumed_terminal(
+                    "team_1",
                     "a" * 32,
                     {"type": "done", "team_id": "team_1"},
                 )
+            failed = {"type": "error", "status": 409, "detail": "human request denied"}
+            with mock.patch.object(socket.history, "append_status", return_value=True) as status:
+                await delivery.resumed_terminal("team_1", "a" * 32, failed)
+                status.assert_called_once_with("team_1", "a" * 32, failed, finish=True)
+            with (
+                mock.patch.object(socket.history, "append_status", return_value=False),
+                self.assertRaises(socket.history.HistoryUnavailableError),
+            ):
+                await delivery.resumed_terminal("team_1", "a" * 32, failed)
             with mock.patch.object(socket.history, "finish_resumable_turn") as finish:
-                await delivery.resumed_terminal("a" * 32, {"type": "error"})
+                await delivery.resumed_terminal("team_1", "a" * 32, {"type": "assistant-guidance"})
                 finish.assert_called_once_with("a" * 32)
 
             reply = "Qual Assistant instalado você quer desinstalar?"

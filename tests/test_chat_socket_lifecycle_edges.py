@@ -145,7 +145,7 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
         async def scenario() -> None:
             websocket = mock.AsyncMock()
             reference = assistant_proposal.AssistantReference("shimpz-cloudflare", "Shimpz Cloudflare")
-            connection = socket.Connection(assistant_reference=reference)
+            connection = socket.Connection(team_id="team_1", assistant_reference=reference)
             with (
                 mock.patch.object(socket.lifecycle, "resolve", new=mock.AsyncMock(return_value=False)),
                 mock.patch.object(
@@ -153,7 +153,6 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
                     "submit_route",
                     side_effect=socket.ExecutorSaturatedError,
                 ),
-                mock.patch.object(socket, "_send_event", new=mock.AsyncMock(return_value=True)) as send,
             ):
                 await socket._dispatch_chat(
                     websocket,
@@ -161,9 +160,11 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
                     "team_1",
                     chat_socket_fixtures.chat_frame("cloudflare"),
                 )
+                # The route is asked for once the turn holds a slot of the Space's chat gate.
+                await connection.active.delivery
 
             self.assertIs(connection.assistant_reference, reference)
-            self.assertEqual(send.await_args.args[-1]["status"], 429)
+            self.assertEqual(websocket.send_json.await_args.args[-1]["status"], 429)
 
         asyncio.run(scenario())
 

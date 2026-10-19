@@ -31,6 +31,8 @@ from team import transport
 
 from action import stored_input
 from chat import assets as chat_assets
+from chat import gate as chat_gate
+from chat import socket as chat_channel
 from integrations import assistants as integrations
 from integrations import authorization
 
@@ -130,7 +132,24 @@ async def _team_delete(socket: SessionSocket, params: dict[str, object]) -> Answ
         await socket.gate.recheck_password(socket.origin, password)
     except HTTPException as exc:
         return exc.status_code, {"detail": exc.detail}
-    return await lane.run(socket, team_names.delete, params["team_id"], team_name)
+    status, body = await lane.run(socket, team_names.delete, params["team_id"], team_name)
+    if 200 <= status < 300:
+        # The deleted Team's chat run ends with it, whoever watched it (ADR-0119).
+        chat_channel.end_runs(params["team_id"])
+    return status, body
+
+
+def _chat_limit(operation: str, *names: str) -> Method:
+    """A chat limit read or save, whose committed answer the Space's chat gate follows at once (ADR-0119)."""
+    call = _team_call(team, operation, *names)
+
+    async def method(socket: SessionSocket, params: dict[str, object]) -> Answer:
+        status, body = await call(socket, params)
+        if status == 200 and isinstance(body, dict):
+            chat_gate.GATE.set_limit(body["limit"])
+        return status, body
+
+    return method
 
 
 # Assistants
@@ -249,8 +268,8 @@ METHODS: dict[str, Method] = {
     "decision.read": _on_lane(decision, "status"),
     "decision.save": _on_lane(sys.modules[__name__], "save_decision_key", "body"),
     "decision.remove": _on_lane(decision, "remove"),
-    "chat_limit.read": _team_call(team, "chat_limit"),
-    "chat_limit.save": _team_call(team, "save_chat_limit", "body"),
+    "chat_limit.read": _chat_limit("chat_limit"),
+    "chat_limit.save": _chat_limit("save_chat_limit", "body"),
     "integrations.list": _team_call(integrations, "list_assistant_integrations", "team_id"),
     "integrations.authorize": _authorize,
     "integrations.complete": _complete,

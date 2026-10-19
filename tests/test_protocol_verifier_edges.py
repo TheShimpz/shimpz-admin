@@ -520,6 +520,22 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
                     HTTP / "verify.py", lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation)
                 )
 
+    def test_rejects_chat_limit_vector_drift(self) -> None:
+        def missing(value: dict[str, object]) -> None:
+            value.pop("chat_limit")
+
+        def invalid_positive(value: dict[str, object]) -> None:
+            value["chat_limit"]["valid"] = [{"limit": 3}]
+
+        def valid_negative(value: dict[str, object]) -> None:
+            value["chat_limit"]["invalid"] = [{"limit": 1}]
+
+        for mutate in (missing, invalid_positive, valid_negative):
+            with self.subTest(mutate=mutate.__name__), self.assertRaises(SystemExit):
+                _execute(
+                    HTTP / "verify.py", lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation)
+                )
+
     def test_rejects_supervisor_and_identifier_vector_drift(self) -> None:
         def accepted_supervisor(value: dict[str, object]) -> None:
             value["local_supervisor"]["invalid"] = [value["local_supervisor"]["valid"][0]]

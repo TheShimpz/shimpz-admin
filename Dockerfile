@@ -88,13 +88,13 @@ COPY --link backend/action/stored_input.py ./action/
 COPY --link backend/chat/assets.py backend/chat/assistant_install.py backend/chat/assistant_inventory.py \
     backend/chat/assistant_plan.py backend/chat/assistant_proposal.py backend/chat/assistant_route.py \
     backend/chat/assistant_uninstall.py \
-    backend/chat/connection.py backend/chat/executor.py \
+    backend/chat/connection.py backend/chat/executor.py backend/chat/gate.py \
     backend/chat/human.py backend/chat/lanes.py backend/chat/lifecycle.py backend/chat/local.py \
     backend/chat/payloads.py \
     backend/chat/projection.py backend/chat/socket.py \
     backend/chat/task_resume.py \
     backend/chat/local_catalog.py backend/chat/store_catalog.py ./chat/
-COPY --link backend/chat/delivery/challenge.py backend/chat/delivery/plan.py \
+COPY --link backend/chat/delivery/challenge.py backend/chat/delivery/gated.py backend/chat/delivery/plan.py \
     backend/chat/delivery/progress.py backend/chat/delivery/route.py \
     backend/chat/delivery/sync.py backend/chat/delivery/terminal.py \
     backend/chat/delivery/uninstall.py ./chat/delivery/

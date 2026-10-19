@@ -259,39 +259,44 @@ class ChatWebSocketTests(ChatWebSocketCase):
 
         asyncio.run(scenario())
 
-    def test_disconnect_stops_a_running_turn_once(self) -> None:
+    def test_a_turn_runs_on_after_its_page_closes_and_a_returning_page_finds_it(self) -> None:
         async def scenario() -> None:
             started = threading.Event()
             release = threading.Event()
 
             def turn(_team_id, _payload, _conversation, _request, progress):
-                started.set()
-                release.wait(timeout=2)
                 progress(dict(_MEASURED_PROGRESS[0]))
-                return chat_socket_fixtures.completed_turn("discard me")
+                started.set()
+                release.wait(timeout=5)
+                return chat_socket_fixtures.completed_turn("kept for the page that returns")
 
-            stopped = self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
             with (
                 mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
-                mock.patch.object(self.chat_socket.local, "stop", return_value=stopped) as stop_mock,
+                mock.patch.object(self.chat_socket.local, "stop") as stop_mock,
             ):
                 websocket = await self._open()
                 await websocket.send_json(chat_socket_fixtures.chat_frame("running"))
                 await _wait_for_thread(started)
                 await websocket.disconnect()
-                self.assertEqual(stop_mock.call_count, 1)
-                release.set()
                 await asyncio.sleep(0.05)
-                pending_getters = [
-                    task
-                    for task in asyncio.all_tasks()
-                    if task is not asyncio.current_task() and not task.done() and "Queue.get" in repr(task.get_coro())
-                ]
-                self.assertEqual(pending_getters, [])
+                # Closing the page never stops its turn (ADR-0119).
+                stop_mock.assert_not_called()
+                again = await self._open(synchronized=False)
+                snapshot = await again.next_json()
+                self.assertEqual((snapshot["type"], snapshot["position"]), ("running", None))
+                self.assertEqual([event["phase"] for event in snapshot["events"]], ["admin-preparation"])
+                release.set()
+                terminal = await _next_terminal(again)
+                self.assertEqual((terminal["type"], terminal["reply"]), ("done", "kept for the page that returns"))
+                await again.disconnect()
+            replies = [
+                entry for entry in self.history_store.page("team_1")["entries"] if entry.get("role") == "assistant"
+            ]
+            self.assertEqual([entry["text"] for entry in replies], ["kept for the page that returns"])
 
         asyncio.run(scenario())
 
-    def test_progress_send_failure_stops_a_running_turn_once(self) -> None:
+    def test_a_turn_whose_page_closed_keeps_its_reply_for_the_next_page(self) -> None:
         async def scenario() -> None:
             started = threading.Event()
             release = threading.Event()
@@ -299,22 +304,27 @@ class ChatWebSocketTests(ChatWebSocketCase):
             def turn(_team_id, _payload, _conversation, _request, progress):
                 started.set()
                 progress(dict(_MEASURED_PROGRESS[0]))
-                release.wait(timeout=2)
-                return chat_socket_fixtures.completed_turn("discard me")
+                release.wait(timeout=5)
+                return chat_socket_fixtures.completed_turn("finished with no page open")
 
-            stopped = self.chat_socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
             with (
                 mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
-                mock.patch.object(self.chat_socket.local, "stop", return_value=stopped) as stop_mock,
+                mock.patch.object(self.chat_socket.local, "stop") as stop_mock,
             ):
                 websocket = await self._open(fail_send_type="progress")
                 await websocket.send_json(chat_socket_fixtures.chat_frame("running"))
                 await _wait_for_thread(started)
-                await _wait_for_thread(websocket.send_failed)
                 await websocket.disconnect()
-                self.assertEqual(stop_mock.call_count, 1)
                 release.set()
-                await asyncio.sleep(0.05)
+                for _ in range(200):
+                    if "team_1" not in self.chat_socket.RUNS or not self.chat_socket.RUNS["team_1"].busy():
+                        break
+                    await asyncio.sleep(0.01)
+                stop_mock.assert_not_called()
+            replies = [
+                entry for entry in self.history_store.page("team_1")["entries"] if entry.get("role") == "assistant"
+            ]
+            self.assertEqual([entry["text"] for entry in replies], ["finished with no page open"])
 
         asyncio.run(scenario())
 
@@ -442,3 +452,11 @@ class ChatWebSocketTests(ChatWebSocketCase):
             self.assertEqual(recorded, [])
 
         asyncio.run(scenario())
+
+
+async def _next_terminal(websocket) -> dict:
+    """The next frame that ends a turn, past its progress."""
+    while True:
+        event = await websocket.next_json()
+        if event["type"] not in {"progress", "running"}:
+            return event
