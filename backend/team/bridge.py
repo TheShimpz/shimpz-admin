@@ -388,9 +388,14 @@ def save_chat_limit(body: object) -> transport.TeamResponse:
 
 
 def _chat_limit(response: transport.TeamResponse) -> transport.TeamResponse:
-    if response.status == 200 and team_contract.canonical_chat_limit(response.body) is None:
+    """Team's answer of exactly the limit and its trace identifier, as the browser's exact `{limit}`."""
+    if response.status != 200:
+        return response
+    body = response.body
+    limit = team_contract.canonical_chat_limit({key: value for key, value in body.items() if key != "trace_id"})
+    if limit is None or not transport.is_closed_traced(body, {"limit"}):
         return transport.TeamResponse(502, {"detail": "Team returned an invalid chat limit"})
-    return response
+    return transport.TeamResponse(200, limit)
 
 
 def stop_chat(team_id: object) -> transport.TeamResponse:

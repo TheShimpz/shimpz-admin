@@ -464,7 +464,8 @@ class SessionMethodTopicTests(SessionMethodCase):
                 self.assertEqual(raised, set())
 
     def test_the_space_chat_limit_is_teams_and_only_a_committed_save_raises_its_topic(self) -> None:
-        answers = {"GET": (200, {"limit": 2}), "PUT": (200, {"limit": 1})}
+        trace = {"trace_id": "a" * 32}
+        answers = {"GET": (200, {"limit": 2, **trace}), "PUT": (200, {"limit": 1, **trace})}
 
         def team(method: str, path: str, *_args, **_kwargs):
             self.assertEqual(path, "/v1/chat/limit")
@@ -481,9 +482,15 @@ class SessionMethodTopicTests(SessionMethodCase):
             # A limit Admin refuses never reaches Team, and an answer Team should not give is unavailable.
             refused, raised = asyncio.run(self._changed_by("chat_limit.save", {"body": {"limit": 3}}, topics))
             self.assertEqual((refused["status"], raised), (400, set()))
-            answers["PUT"] = (200, {"limit": 9})
-            invalid, raised = asyncio.run(self._changed_by("chat_limit.save", SAMPLES["chat_limit.save"], topics))
-            self.assertEqual((invalid["status"], raised), (502, set()))
+            # Team's answer carries its trace identifier; a limit out of range or an answer without it is refused.
+            for answer in ({"limit": 9, **trace}, {"limit": 1}, {"limit": 1, "trace_id": "not-a-trace"}):
+                answers["PUT"] = (200, answer)
+                invalid, raised = asyncio.run(self._changed_by("chat_limit.save", SAMPLES["chat_limit.save"], topics))
+                self.assertEqual((invalid["status"], raised), (502, set()), answer)
+            # Team's own refusal reaches the page as it is.
+            answers["GET"] = (503, {"detail": "Team is unavailable"})
+            down, raised = asyncio.run(self._changed_by("chat_limit.read", {}, topics))
+            self.assertEqual((down["status"], raised), (503, set()))
 
     def test_every_key_save_and_decision_removal_raises_its_space_topic_when_it_completes(self) -> None:
         models = self.methods.models
