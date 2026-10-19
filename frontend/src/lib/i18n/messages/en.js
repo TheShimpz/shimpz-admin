@@ -176,7 +176,6 @@ export default {
         waiting: 'Waiting for the first image…',
         ended: 'The browser task ended.',
         failed: 'The browser view is unavailable.',
-        note: 'View only: you cannot click or type on this page.',
       },
     },
     you: 'You',

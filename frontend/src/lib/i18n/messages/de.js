@@ -178,7 +178,6 @@ export default {
         waiting: 'Warten auf das erste Bild…',
         ended: 'Die Browser-Aufgabe ist beendet.',
         failed: 'Die Browser-Ansicht ist nicht verfügbar.',
-        note: 'Nur Ansicht: Sie können auf dieser Seite nicht klicken oder tippen.',
       },
     },
     you: 'Du',

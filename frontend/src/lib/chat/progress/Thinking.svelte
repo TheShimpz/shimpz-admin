@@ -115,6 +115,13 @@
     white-space: nowrap;
   }
 
+  /* The icon alone, in the accent colour, so it stands out from the progress line. */
+  .summary :global(.fullscreen.fullscreen) {
+    --button-border: transparent;
+    --button-color: var(--shimpz-color-cyan);
+    --button-hover-color: var(--shimpz-color-cyan);
+  }
+
   .summary :global(.fullscreen svg) {
     width: 1rem;
     height: 1rem;

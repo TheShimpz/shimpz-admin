@@ -178,7 +178,6 @@ export default {
         waiting: 'En attente de la première image…',
         ended: 'La tâche du navigateur est terminée.',
         failed: 'La vue du navigateur est indisponible.',
-        note: 'Affichage seul : vous ne pouvez ni cliquer ni écrire sur cette page.',
       },
     },
     you: 'Vous',

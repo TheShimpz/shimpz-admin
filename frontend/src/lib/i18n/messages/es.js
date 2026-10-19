@@ -178,7 +178,6 @@ export default {
         waiting: 'Esperando la primera imagen…',
         ended: 'La tarea del navegador terminó.',
         failed: 'La vista del navegador no está disponible.',
-        note: 'Solo visualización: no puedes hacer clic ni escribir en esta página.',
       },
     },
     you: 'Tú',

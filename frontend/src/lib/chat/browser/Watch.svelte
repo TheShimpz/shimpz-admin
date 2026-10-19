@@ -69,7 +69,6 @@
       <p class="browser-view-status" role="status">{labels[status]}</p>
     {/if}
   </div>
-  <figcaption>{labels.note}</figcaption>
 </figure>
 
 <style>
@@ -143,8 +142,7 @@
     stroke-linejoin: round;
   }
 
-  .browser-view-status,
-  figcaption {
+  .browser-view-status {
     margin: 0;
     color: var(--text-dim);
     font-size: 0.62rem;
