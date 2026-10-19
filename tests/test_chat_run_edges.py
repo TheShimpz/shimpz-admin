@@ -189,10 +189,12 @@ class RunEdgeTests(unittest.TestCase):
             run.attach(watching, _authority(), "en")
             run.attach(broken, _authority(), "en")
             self.assertNotIn(broken, run.observers)
-            # The live steps keep one more than their bound, as a receipt does, so an outgrown delivery is known.
-            for seq in range(1, self.socket.local.MAX_PUBLIC_PROGRESS_EVENTS + 4):
+            # A page that attaches is shown the latest steps and where the next one continues.
+            for seq in range(1, self.socket.LIVE_STEPS + 5):
                 run.publish({"type": "progress", "seq": seq, "origin": "team", "phase": "model", "state": "started"})
-            self.assertEqual(len(run.live), self.socket.local.MAX_PUBLIC_PROGRESS_EVENTS + 1)
+            snapshot = run.snapshot()
+            self.assertEqual(len(snapshot["events"]), self.socket.LIVE_STEPS)
+            self.assertEqual((snapshot["events"][0]["seq"], snapshot["cursor"]), (5, self.socket.LIVE_STEPS + 4))
             other = self.socket.Transport(lambda _event: None, mock.Mock())
             run.attach(other, _authority(), "en")
             run.detach(watching)

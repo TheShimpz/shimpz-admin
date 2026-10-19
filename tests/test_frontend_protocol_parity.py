@@ -1,6 +1,7 @@
 """The browser's copies of Team HTTP presentation rules stay identical to the pinned Team protocol (ADR-0090)."""
 
 import ast
+import importlib
 import re
 import sys
 import unittest
@@ -192,6 +193,31 @@ class FrontendIdentifierParityTests(unittest.TestCase):
 
 class FrontendSessionSocketParityTests(unittest.TestCase):
     """The browser's copies of the session socket protocol stay the Admin-owned protocol's (ADR-0114)."""
+
+    def test_the_browser_admits_exactly_the_running_event_admin_sends(self) -> None:
+        source = (LIB / "chat" / "protocol.js").read_text(encoding="utf-8")
+        chat_socket = importlib.import_module("chat.socket")
+        gate = importlib.import_module("chat.gate")
+
+        def constant(name: str) -> str:
+            match = re.search(rf"^const {name} = (.+);$", source, re.MULTILINE)
+            if match is None:
+                raise AssertionError(f"{name} is missing from the chat protocol")
+            return match[1]
+
+        # The latest steps Admin keeps and the furthest queue place it tells are what the browser admits (ADR-0119).
+        self.assertEqual(int(constant("MAX_RUNNING_STEPS")), chat_socket.LIVE_STEPS)
+        self.assertEqual(int(constant("MAX_QUEUE_PLACE")), gate.MAX_WAITING)
+        run = chat_socket.Run.__new__(chat_socket.Run)
+        run.started, run.position, run.live = None, None, []
+        keys = sorted(run.snapshot())
+        self.assertIn(
+            "exactKeys(value, ["
+            + ", ".join(f"'{key}'" for key in ["type", "elapsed_ms", "position", "cursor", "events"])
+            + "])",
+            source,
+        )
+        self.assertEqual(keys, sorted(["type", "elapsed_ms", "position", "cursor", "events"]))
 
     def test_the_browser_session_socket_bounds_and_topics_are_the_protocol_s(self) -> None:
         source = (LIB / "session" / "socket.js").read_text(encoding="utf-8")

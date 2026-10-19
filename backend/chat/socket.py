@@ -891,9 +891,18 @@ class Run:
         )
 
     def snapshot(self) -> dict[str, object]:
-        """Where the run is now, as one `running` event: how long it has run, its queue place, and its steps so far."""
+        """Where the run is now, as one `running` event: how long it has run, its queue place, the sequence number of
+        its delivery's latest step (`cursor`, which the next step follows), and its latest steps.
+        """
         elapsed = 0 if self.started is None else int((time.monotonic() - self.started) * 1000)
-        return {"type": "running", "elapsed_ms": max(0, elapsed), "position": self.position, "events": list(self.live)}
+        cursor = self.live[-1]["seq"] if self.live else 0
+        return {
+            "type": "running",
+            "elapsed_ms": max(0, elapsed),
+            "position": self.position,
+            "cursor": cursor,
+            "events": list(self.live),
+        }
 
     def publish(self, event: dict[str, object]) -> None:
         """Record what a page attaching later must see, then hand the event to every page attached now."""
@@ -901,8 +910,9 @@ class Run:
         if kind == "progress":
             if event.get("seq") == 1:
                 self.live = []
-            if len(self.live) <= local.MAX_PUBLIC_PROGRESS_EVENTS:
-                self.live.append(dict(event))
+            # Only the latest steps are kept: a page that attaches is shown them and continues from the last one.
+            self.live.append(dict(event))
+            del self.live[:-LIVE_STEPS]
         elif kind == "running":
             position = event.get("position")
             self.position = position if isinstance(position, int) else None
@@ -978,6 +988,8 @@ class Run:
             self.publish({"type": "stopped"})
 
 
+# The latest steps of a run's delivery a page that attaches is shown.
+LIVE_STEPS = 64
 # Each Team's chat run in this Admin process (ADR-0119): an Admin restart ends them all, never replaying any.
 RUNS: dict[str, Run] = {}
 # How often a run's authority and idleness are checked again while no page or session event says so.
