@@ -56,8 +56,10 @@ class Connection:
     pending_human_request: dict[str, object] | None = None
     sync_task: asyncio.Task | None = None
     sync_terminal_sent: bool = False
-    # A human or Integration continuation Team executes now (ADR-0119): ending the run stops it there too.
+    # A human or Integration continuation Team executes now (ADR-0119): ending the run stops it there too, and the Team
+    # is released only once it ended.
     continuing: bool = False
+    continuation: concurrent.futures.Future | None = field(default=None, repr=False)
     lifecycle_proposal: UninstallProposal | None = None
     lifecycle: Operation | None = None
     assistant_reference: AssistantReference | None = None

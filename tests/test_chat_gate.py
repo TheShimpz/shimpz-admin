@@ -29,7 +29,8 @@ class ChatGateTests(unittest.TestCase):
                     await release[name].wait()
 
             tasks = {name: asyncio.create_task(operation(name)) for name in "abcd"}
-            await asyncio.sleep(0)
+            for _ in range(4):
+                await asyncio.sleep(0)
             # The limit is read once, with the first operation that needs it.
             self.assertEqual((order, gate.limit), (["a", "b"], 2))
             self.assertEqual((told["a"], told["b"], told["c"], told["d"]), ([None], [None], [1], [2]))

@@ -5,6 +5,7 @@ import concurrent.futures
 import contextlib
 import importlib
 import sys
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -416,6 +417,112 @@ class RunBoundaryTests(unittest.TestCase):
             gate._grant()
             await task
             self.assertEqual(entered, [1, None])
+
+        asyncio.run(scenario())
+
+
+class ReviewEdgeTests(unittest.TestCase):
+    def setUp(self) -> None:
+        chat_socket_fixtures.fresh_runs(self)
+        self.socket = importlib.import_module("chat.socket")
+
+    def test_a_page_that_leaves_while_its_frame_is_dispatched_never_ends_the_message(self) -> None:
+        async def scenario() -> None:
+            run = self.socket.run_for("team_1")
+            page = self.socket.Transport(lambda _event: None, mock.Mock())
+            run.observers.add(page)
+            admitted = asyncio.Event()
+            release = asyncio.Event()
+
+            async def dispatch(*_args, **_kwargs):
+                admitted.set()
+                await release.wait()
+
+            with mock.patch.object(self.socket, "_dispatch", side_effect=dispatch):
+                run.submit(chat_socket_fixtures.chat_frame("hello"), _authority(), page)
+                await admitted.wait()
+                run.detach(page)
+                # The frame under dispatch keeps the run: the message it carries is not lost.
+                self.assertIs(self.socket.RUNS.get("team_1"), run)
+                release.set()
+                await asyncio.sleep(0)
+            await run.end()
+
+        asyncio.run(scenario())
+
+    def test_the_first_limit_is_read_once_for_everyone_and_counts_against_the_queue(self) -> None:
+        async def scenario() -> None:
+            gate = chat_gate.Gate()
+            answered = asyncio.Event()
+            reads = []
+
+            async def slow_limit() -> int:
+                reads.append(1)
+                await answered.wait()
+                return 1
+
+            async def enter() -> None:
+                async with gate.slot(lambda _place: None, slow_limit):
+                    await asyncio.sleep(0)
+
+            with mock.patch.object(chat_gate, "MAX_WAITING", 2):
+                tasks = [asyncio.create_task(enter()) for _ in range(2)]
+                await asyncio.sleep(0)
+                with self.assertRaises(chat_gate.QueueFullError):
+                    async with gate.slot(lambda _place: None, slow_limit):
+                        raise AssertionError("an operation passed a full queue while the limit was read")
+                answered.set()
+                await asyncio.gather(*tasks)
+            self.assertEqual((reads, gate.limit), ([1], 1))
+
+            failing = chat_gate.Gate()
+
+            async def unavailable() -> int:
+                raise RuntimeError("Team is unavailable")
+
+            with self.assertRaises(RuntimeError):
+                async with failing.slot(lambda _place: None, unavailable):
+                    pass
+            # A failed read is tried again by the next operation.
+            async with failing.slot(lambda _place: None, _limit):
+                pass
+
+        asyncio.run(scenario())
+
+    def test_an_ended_run_keeps_its_team_until_its_work_and_its_stop_ended(self) -> None:
+        async def scenario() -> None:
+            run = self.socket.run_for("team_1")
+            run.authority = _authority()
+            future: concurrent.futures.Future[object] = concurrent.futures.Future()
+            future.set_running_or_notify_cancel()
+            run.connection.active = self.socket.Turn(future, "chat")
+            continuation: concurrent.futures.Future[object] = concurrent.futures.Future()
+            continuation.set_running_or_notify_cancel()
+            run.connection.continuation = continuation
+            stopped = self.socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
+            answer = threading.Event()
+
+            def stop(_team_id: str) -> object:
+                answer.wait(timeout=5)
+                return stopped
+
+            with (
+                mock.patch.object(self.socket.local, "stop", side_effect=stop),
+                mock.patch.object(self.socket, "STOP_RESULT_WAIT_SECONDS", 0.01),
+            ):
+                ending = asyncio.create_task(run.end())
+                await asyncio.sleep(0.1)
+                self.assertIs(self.socket.RUNS.get("team_1"), run)
+                future.set_result(object())
+                await asyncio.sleep(0.05)
+                self.assertIs(self.socket.RUNS.get("team_1"), run)
+                continuation.set_result(object())
+                await asyncio.sleep(0.05)
+                # Its Stop is still under way.
+                self.assertIs(self.socket.RUNS.get("team_1"), run)
+                answer.set()
+                await ending
+            self.assertNotIn("team_1", self.socket.RUNS)
 
         asyncio.run(scenario())
 

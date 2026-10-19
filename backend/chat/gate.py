@@ -77,6 +77,9 @@ class Gate:
         self._waiting: list[_Waiter] = []
         # Operations Team found the Space busy for, waiting a moment before they queue again at the head.
         self._resting = 0
+        # Operations waiting for Team's first answer of the limit, all on one shared read.
+        self._reading = 0
+        self._limit_read: asyncio.Future | None = None
 
     @property
     def limit(self) -> int | None:
@@ -98,15 +101,40 @@ class Gate:
         finally:
             held.release()
 
+    def _queued(self) -> int:
+        """Every operation that waits for a slot: queued, resting after a busy Space, or waiting for the limit."""
+        return len(self._waiting) + self._resting + self._reading
+
+    async def _read_limit(self, read_limit: ReadLimit) -> None:
+        """Read Team's limit once for every operation that needs it first; a failed read is tried again by the next."""
+        if self._queued() >= MAX_WAITING:
+            raise QueueFullError("the chat queue is full")
+        self._reading += 1
+        try:
+            if self._limit_read is None:
+                read = asyncio.ensure_future(read_limit())
+                read.add_done_callback(self._limit_answered)
+                self._limit_read = read
+            # A reader Stop cancels leaves the shared read to the others; its answer is kept before any reader resumes.
+            await asyncio.shield(self._limit_read)
+        finally:
+            self._reading -= 1
+
+    def _limit_answered(self, read: asyncio.Future) -> None:
+        """The shared read ended: keep its answer, or forget a failure so the next operation reads again."""
+        self._limit_read = None
+        if not read.cancelled() and read.exception() is None and self._limit is None:
+            self._limit = read.result()
+
     async def _acquire(self, position: Position, read_limit: ReadLimit, *, head: bool) -> None:
         if self._limit is None:
-            self._limit = await read_limit()
+            await self._read_limit(read_limit)
         # A free slot goes at once only to an operation nobody waits ahead of, resting ones included.
         if not self._waiting and not (self._resting and not head) and self._running < self._limit:
             self._running += 1
             position(None)
             return
-        if not head and len(self._waiting) + self._resting >= MAX_WAITING:
+        if not head and self._queued() >= MAX_WAITING:
             raise QueueFullError("the chat queue is full")
         waiter = _Waiter(position)
         if head:

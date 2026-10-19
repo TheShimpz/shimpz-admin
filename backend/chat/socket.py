@@ -314,6 +314,7 @@ async def _gated_continuation(
                 try:
                     future = submit(report)
                     connection.continuing = True
+                    connection.continuation = future
                 except ExecutorSaturatedError:
                     await _send_sync_terminal_once(
                         websocket, connection, error_terminal(429, "local chat capacity reached")
@@ -334,6 +335,7 @@ async def _gated_continuation(
                         )
                 finally:
                     connection.continuing = False
+                    connection.continuation = None
                 busy = (
                     isinstance(response, transport.TeamResponse)
                     and response.status == 429
@@ -897,6 +899,8 @@ class Run:
         self.position: int | None = None
         self._frames: asyncio.Queue[tuple[dict[str, object], Authority, Transport | None]] = asyncio.Queue()
         self._ending = False
+        # A frame is being dispatched now: from its dequeue until it either started work or was refused.
+        self._dispatching = False
         self._task = asyncio.create_task(self._loop())
 
     # Pages
@@ -920,7 +924,8 @@ class Run:
     def busy(self) -> bool:
         connection = self.connection
         return (
-            connection.active is not None
+            self._dispatching
+            or connection.active is not None
             or connection.sync_task is not None
             or connection.lifecycle is not None
             or not self._frames.empty()
@@ -985,10 +990,14 @@ class Run:
         try:
             while True:
                 frame, authority, observer = await self._frames.get()
-                if not await authority.current():
-                    # Its session or Origin ended before its turn came: it runs nothing.
-                    continue
-                await self._run_frame(frame, authority, observer)
+                self._dispatching = True
+                try:
+                    if not await authority.current():
+                        # Its session or Origin ended before its turn came: it runs nothing.
+                        continue
+                    await self._run_frame(frame, authority, observer)
+                finally:
+                    self._dispatching = False
         except WebSocketDisconnect:
             # A protocol refusal closed the pages; the run's work ends with them, as Stop would end it.
             asyncio.get_running_loop().create_task(self.end())
@@ -1038,6 +1047,7 @@ class Run:
         unfinished = None if active is None or active.terminal_sent else active.history_id
         # A human or Integration continuation Team executes now is stopped there too, not only no longer awaited.
         continuing = self.connection.continuing
+        continuation = self.connection.continuation
         authority = self.authority
         try:
             with authority.scope() if authority is not None else contextlib.nullcontext():
@@ -1052,8 +1062,22 @@ class Run:
             with contextlib.suppress(Exception):
                 await history_delivery.terminal(self.team_id, unfinished, {"type": "stopped"}, finish_history=True)
             self.publish({"type": "stopped"})
+        # The Team is released only once its work and every Stop sent for it ended, so neither reaches a later turn.
+        await _ended(active, continuation)
         if RUNS.get(self.team_id) is self:
             del RUNS[self.team_id]
+
+
+async def _ended(active: Turn | None, continuation: concurrent.futures.Future | None) -> None:
+    """Wait until a run's Team call, its continuation, and the Stop sent for them have all ended."""
+    waits: list[Awaitable[object]] = []
+    if active is not None and active.future is not None and not active.future.done():
+        waits.append(asyncio.wrap_future(active.future))
+    if active is not None and active.stop_task is not None and not active.stop_task.done():
+        waits.append(active.stop_task)
+    if continuation is not None and not continuation.done():
+        waits.append(asyncio.wrap_future(continuation))
+    await asyncio.gather(*waits, return_exceptions=True)
 
 
 # The latest steps of a run's delivery a page that attaches is shown.
