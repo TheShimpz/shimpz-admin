@@ -115,11 +115,14 @@
     white-space: nowrap;
   }
 
-  /* The icon alone, in the accent colour, so it stands out from the progress line. */
+  /* The icon alone, in the accent colour, so it stands out from the progress line; its box hugs the icon, keeping a
+     24px target. */
   .summary :global(.fullscreen.fullscreen) {
     --button-border: transparent;
     --button-color: var(--shimpz-color-cyan);
     --button-hover-color: var(--shimpz-color-cyan);
+    --button-height: 1.5rem;
+    --button-padding-inline: 0.25rem;
   }
 
   .summary :global(.fullscreen svg) {
