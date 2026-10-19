@@ -29,7 +29,7 @@ EPOCH_RE = re.compile(r"[0-9a-f]{32}\Z")
 SOURCE_REVISION_RE = re.compile(r"[0-9a-f]{40}\Z")
 MAX_SOURCE_TIME = 253_402_300_799
 TOPIC_RE = re.compile(
-    r"(?:teams|space/(?:models|decision)|platform/release|security/summary|session|assistants/registry"
+    r"(?:teams|space/(?:models|decision|chat-limit)|platform/release|security/summary|session|assistants/registry"
     r"|local-assistants"
     r"|team/[a-z0-9_]{1,40}/(?:routines|history|inventory|inference|integrations))\Z"
 )
@@ -67,6 +67,8 @@ METHODS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "decision.read": (_NONE, _NONE),
     "decision.save": (frozenset({"body"}), _NONE),
     "decision.remove": (_NONE, _NONE),
+    "chat_limit.read": (_NONE, _NONE),
+    "chat_limit.save": (frozenset({"body"}), _NONE),
     "integrations.list": (_TEAM, _NONE),
     "integrations.authorize": (frozenset({"team_id", "challenge_id", "body"}), _NONE),
     "integrations.complete": (frozenset({"team_id", "challenge_id", "body"}), _NONE),
@@ -114,6 +116,7 @@ BODY_BYTES = {
     "assistants.install_local": 16 * KIB,
     "models.save": 16 * KIB,
     "decision.save": 16 * KIB,
+    "chat_limit.save": 1 * KIB,
     "integrations.authorize": 16 * KIB,
     "integrations.complete": 16 * KIB,
     "routines.deletion": 8 * KIB,
@@ -153,6 +156,7 @@ READ_TOPICS = {
     "snapshots.details": lambda _params: "local-assistants",
     "models.list": lambda _params: "space/models",
     "decision.read": lambda _params: "space/decision",
+    "chat_limit.read": lambda _params: "space/chat-limit",
     "integrations.list": _team_topic("integrations"),
     "stored_inputs.list": _team_topic("integrations"),
 }

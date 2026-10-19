@@ -249,6 +249,8 @@ METHODS: dict[str, Method] = {
     "decision.read": _on_lane(decision, "status"),
     "decision.save": _on_lane(sys.modules[__name__], "save_decision_key", "body"),
     "decision.remove": _on_lane(decision, "remove"),
+    "chat_limit.read": _team_call(team, "chat_limit"),
+    "chat_limit.save": _team_call(team, "save_chat_limit", "body"),
     "integrations.list": _team_call(integrations, "list_assistant_integrations", "team_id"),
     "integrations.authorize": _authorize,
     "integrations.complete": _complete,

@@ -16,7 +16,7 @@ envelope included, at most 1 MiB.
   `result {id, status, body}`. A read of a topic's state also carries that topic, the process `epoch`, and the
   topic `revision` taken before the read. At most 16 calls are in flight per socket. Every parameter is a string of
   at most 128 characters, except `topics` and a request `body`: one JSON object whose compact UTF-8 size keeps the
-  operation's own bound (`BODY_BYTES`: a Team name or an acknowledgment 1 KiB; a Team order or deletion, a
+  operation's own bound (`BODY_BYTES`: a Team name, an acknowledgment, or the Space chat limit 1 KiB; a Team order or deletion, a
   confirmation's password, and the recovery codes' or signing key's second factor 8 KiB; every other body 16 KiB), or
   the call is answered 413. A status and body are exactly what the operation always answered; an empty answer is
   `{}`. A Supervisor confirmation (`routines.deletion` then `routines.delete`, `recovery_codes.confirmation` then
@@ -42,7 +42,8 @@ envelope included, at most 1 MiB.
 
 Topics in this version: `teams`, `team/{id}/history`, `team/{id}/routines`, `team/{id}/inventory`,
 `team/{id}/inference`, `team/{id}/integrations` (Integrations and Stored Inputs), `assistants/registry`, `local-assistants`, `space/models` (model provider
-keys), `space/decision` (the decision provider key), `platform/release`,
+keys), `space/decision` (the decision provider key), `space/chat-limit` (how many chat turns the Space runs at once,
+which Team owns, ADR-0119), `platform/release`,
 `security/summary`, and `session`.
 
 `store.catalog {locale, cursor?}` reads the public Store catalog in pages: each page's Assistants fit one result

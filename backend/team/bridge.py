@@ -367,6 +367,32 @@ def intent_route(
     )
 
 
+# The topic a page showing the Space's chat limit hears a change on (ADR-0119).
+CHAT_LIMIT_TOPIC = "space/chat-limit"
+
+
+def chat_limit() -> transport.TeamResponse:
+    """How many chat turns the Space runs at once, as Team, its owner, answers (ADR-0119)."""
+    return _chat_limit(transport.call("GET", "/v1/chat/limit"))
+
+
+def save_chat_limit(body: object) -> transport.TeamResponse:
+    """Set the Space's chat limit; every page that shows it hears of a committed change."""
+    admitted = team_contract.canonical_chat_limit(body)
+    if admitted is None:
+        raise transport.TeamRequestError(f"the chat limit must be from 1 to {team_contract.MAX_CHAT_LIMIT}")
+    response = _chat_limit(transport.call("PUT", "/v1/chat/limit", admitted))
+    if response.status == 200:
+        topics.changed(CHAT_LIMIT_TOPIC)
+    return response
+
+
+def _chat_limit(response: transport.TeamResponse) -> transport.TeamResponse:
+    if response.status == 200 and team_contract.canonical_chat_limit(response.body) is None:
+        return transport.TeamResponse(502, {"detail": "Team returned an invalid chat limit"})
+    return response
+
+
 def stop_chat(team_id: object) -> transport.TeamResponse:
     canonical_id = payloads.canonical_team_id(team_id)
     return transport.call("POST", f"/v1/teams/{canonical_id}/chat/stop", {})

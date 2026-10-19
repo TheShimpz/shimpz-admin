@@ -69,6 +69,8 @@ SAMPLES = {
     "decision.read": {},
     "decision.save": {"body": {"api_key": "test-api-key-for-models"}},
     "decision.remove": {},
+    "chat_limit.read": {},
+    "chat_limit.save": {"body": {"limit": 1}},
     "integrations.list": {"team_id": "team_1"},
     "integrations.authorize": {"team_id": "team_1", "challenge_id": CHALLENGE, "body": PAIR},
     "integrations.complete": {"team_id": "team_1", "challenge_id": CHALLENGE, "body": {"completion_code": CODE}},
@@ -460,6 +462,28 @@ class SessionMethodTopicTests(SessionMethodCase):
                 result, raised = asyncio.run(self._changed_by(method, SAMPLES[method], topics))
                 self.assertNotEqual(result["status"], 200)
                 self.assertEqual(raised, set())
+
+    def test_the_space_chat_limit_is_teams_and_only_a_committed_save_raises_its_topic(self) -> None:
+        answers = {"GET": (200, {"limit": 2}), "PUT": (200, {"limit": 1})}
+
+        def team(method: str, path: str, *_args, **_kwargs):
+            self.assertEqual(path, "/v1/chat/limit")
+            return self.transport.TeamResponse(*answers[method])
+
+        topics = ["space/chat-limit"]
+        with mock.patch.object(self.transport, "call", side_effect=team):
+            read, raised = asyncio.run(self._changed_by("chat_limit.read", {}, topics))
+            self.assertEqual(
+                (read["status"], read["body"], read["topic"], raised), (200, {"limit": 2}, topics[0], set())
+            )
+            saved, raised = asyncio.run(self._changed_by("chat_limit.save", SAMPLES["chat_limit.save"], topics))
+            self.assertEqual((saved["status"], saved["body"], raised), (200, {"limit": 1}, set(topics)))
+            # A limit Admin refuses never reaches Team, and an answer Team should not give is unavailable.
+            refused, raised = asyncio.run(self._changed_by("chat_limit.save", {"body": {"limit": 3}}, topics))
+            self.assertEqual((refused["status"], raised), (400, set()))
+            answers["PUT"] = (200, {"limit": 9})
+            invalid, raised = asyncio.run(self._changed_by("chat_limit.save", SAMPLES["chat_limit.save"], topics))
+            self.assertEqual((invalid["status"], raised), (502, set()))
 
     def test_every_key_save_and_decision_removal_raises_its_space_topic_when_it_completes(self) -> None:
         models = self.methods.models
