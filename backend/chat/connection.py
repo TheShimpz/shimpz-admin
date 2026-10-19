@@ -31,6 +31,8 @@ class Turn:
     request: dict[str, object] | None = field(default=None, repr=False)
     # The turn's hold on the Space's chat gate while it runs (ADR-0119).
     slot: object | None = field(default=None, repr=False)
+    # The status of a Stop sent for it whose outcome Team did not confirm.
+    stop_unconfirmed: int | None = None
 
 
 @dataclass(slots=True)

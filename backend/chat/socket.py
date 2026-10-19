@@ -411,14 +411,10 @@ async def _run_stop(
     emit: bool,
 ) -> None:
     try:
-        response = transport.TeamResponse(502, {})
-        # Stop has the same fail-closed callback boundary as turn delivery.
-        with contextlib.suppress(Exception):
-            try:
-                response = await asyncio.wrap_future(submit_in_context(lanes.STOP, local.stop, team_id))
-            except ExecutorSaturatedError:
-                response = transport.TeamResponse(429, {})
+        response = await _team_stop(team_id)
         accepted = stop_accepted(response, team_id)
+        if accepted is None:
+            turn.stop_unconfirmed = _stop_status(response)
         if not emit or connection.closed or turn.terminal_sent:
             return
         if accepted is True:
@@ -431,13 +427,7 @@ async def _run_stop(
                 finish_history=True,
             )
         elif accepted is None:
-            status = response.status if isinstance(response, transport.TeamResponse) else 502
-            await _send_terminal_once(
-                websocket,
-                connection,
-                turn,
-                error_terminal(status, "chat turn could not be stopped"),
-            )
+            await _send_terminal_once(websocket, connection, turn, _unstopped(turn.stop_unconfirmed))
         elif turn.operation == "pending-stop":
             await _send_terminal_once(
                 websocket,
@@ -451,6 +441,25 @@ async def _run_stop(
         turn.stop_task = None
         if turn.operation == "pending-stop" and turn.terminal_sent and connection.active is turn:
             connection.active = None
+
+
+async def _team_stop(team_id: str) -> object:
+    """Ask Team to stop the Team's chat; Stop has the same fail-closed callback boundary as turn delivery."""
+    response: object = transport.TeamResponse(502, {})
+    with contextlib.suppress(Exception):
+        try:
+            response = await asyncio.wrap_future(submit_in_context(lanes.STOP, local.stop, team_id))
+        except ExecutorSaturatedError:
+            response = transport.TeamResponse(429, {})
+    return response
+
+
+def _stop_status(response: object) -> int:
+    return response.status if isinstance(response, transport.TeamResponse) else 502
+
+
+def _unstopped(status: int | None) -> dict[str, object]:
+    return error_terminal(status or 502, "chat turn could not be stopped")
 
 
 async def _finish_cancelled_turn(websocket: WebSocket, connection: Connection, turn: Turn) -> None:
@@ -1049,22 +1058,30 @@ class Run:
         continuing = self.connection.continuing
         continuation = self.connection.continuation
         authority = self.authority
+        # The status of the run's own Stop when Team did not confirm it.
+        unconfirmed: int | None = None
         try:
             with authority.scope() if authority is not None else contextlib.nullcontext():
                 await _close_connection(self.relay, self.connection, self.team_id)
                 # Admin holds no Team answer that ended its turn, so the Team may still run it: stop it there too.
                 if continuing or (active is not None and not active.terminal_sent and active.stop_task is None):
-                    with contextlib.suppress(Exception):
-                        await asyncio.wrap_future(submit_in_context(lanes.STOP, local.stop, self.team_id))
+                    response = await _team_stop(self.team_id)
+                    if stop_accepted(response, self.team_id) is None:
+                        unconfirmed = _stop_status(response)
         except transport.TeamRequestError, local_supervisor.SupervisorAuthorityError, RuntimeError:
             log.warning("chat run ended without Supervisor authority")
             await _close_connection(self.relay, self.connection, self.team_id)
-        if unfinished is not None:
-            with contextlib.suppress(Exception):
-                await history_delivery.terminal(self.team_id, unfinished, {"type": "stopped"}, finish_history=True)
-            self.publish({"type": "stopped"})
-        # The Team is released only once its work and every Stop sent for it ended, so neither reaches a later turn.
+            unconfirmed = 503
+        # The Team is released only once its work and every Stop sent for it ended, so neither reaches a later turn,
+        # and its turn's ending is known only then.
         await _ended(active, continuation)
+        if unfinished is not None:
+            unconfirmed = unconfirmed or active.stop_unconfirmed
+            # A Stop Team did not confirm is never shown as stopped: its turn may still run, and stays resumable.
+            ending = {"type": "stopped"} if unconfirmed is None else _unstopped(unconfirmed)
+            with contextlib.suppress(Exception):
+                await history_delivery.terminal(self.team_id, unfinished, ending, finish_history=unconfirmed is None)
+            self.publish(ending)
         if RUNS.get(self.team_id) is self:
             del RUNS[self.team_id]
 

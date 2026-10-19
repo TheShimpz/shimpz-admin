@@ -301,6 +301,39 @@ class RunEdgeTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_a_stop_team_did_not_confirm_is_kept_as_a_failure_never_as_stopped(self) -> None:
+        async def scenario() -> None:
+            seen: list[dict[str, object]] = []
+            for stop_answer, scope in (
+                (self.socket.local.PublicResponse(503, {"detail": "Team is unavailable"}), contextlib.nullcontext),
+                (None, None),
+            ):
+                run = self.socket.run_for("team_1")
+                run.observers.add(self.socket.Transport(seen.append, mock.Mock()))
+                answered: concurrent.futures.Future[object] = concurrent.futures.Future()
+                answered.set_result(self.socket.local.PublicResponse(503, {}))
+                run.connection.active = self.socket.Turn(answered, "chat", history_id="t" * 32)
+                if scope is None:
+
+                    def refused():
+                        raise self.socket.transport.TeamRequestError("authority unavailable")
+
+                    run.authority = _authority(scope=refused)
+                else:
+                    run.authority = _authority(scope=scope)
+                with (
+                    mock.patch.object(self.socket.local, "stop", return_value=stop_answer),
+                    mock.patch.object(self.socket.history_delivery, "terminal", new=mock.AsyncMock()) as kept,
+                    contextlib.nullcontext() if scope is not None else self.assertLogs("shimpz-admin"),
+                ):
+                    await run.end()
+                event = kept.call_args.args[2]
+                self.assertEqual((event["type"], event["status"]), ("error", 503))
+                self.assertFalse(kept.call_args.kwargs["finish_history"])
+                self.assertEqual(seen[-1], event)
+
+        asyncio.run(scenario())
+
     def test_session_endings_reach_runs_only_once_a_loop_holds_them(self) -> None:
         with mock.patch.object(self.socket, "_SWEEP_LOOP", [None]):
             self.socket.sessions_ended(None)
