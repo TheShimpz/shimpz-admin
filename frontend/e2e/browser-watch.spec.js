@@ -1,6 +1,6 @@
 // A running Browser task's screen in the built Admin (ADR-0117, over KasmVNC): while the turn's current step is the
-// Browser, its display shows by itself under the progress, beside End; the view only shows and sends the display no key,
-// pointer, or clipboard, End stops the turn as Stop does, and a task that ended says so.
+// Browser, its display shows by itself under the progress, beside a full-screen toggle; the view only shows and sends the
+// display no key, pointer, or clipboard, full screen shows it alone and returns it, and a task that ended says so.
 import { expect, test } from '@playwright/test';
 
 import { CLIENT_MESSAGES, rfbServer, solid } from './rfbServer.js';
@@ -86,16 +86,20 @@ test('the running task\'s screen shows by itself and is sent no input @browser-s
   await expect(view.getByRole('button')).toHaveCount(0);
   await expect(view.getByRole('textbox')).toHaveCount(0);
   await expect(page.getByRole('button', { name: EN.stop, exact: true })).toBeEnabled();
-  await expect(page.getByRole('button', { name: WATCH.end, exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: WATCH.fullscreen, exact: true })).toBeEnabled();
 });
 
-test('End stops the turn that runs the Browser task', async ({ page }) => {
-  const { scenario } = await startTask(page);
+test('full screen shows the task\'s screen alone and returns it to the chat', async ({ page }) => {
+  await startTask(page);
   await expect.poll(() => middlePixel(page)).toEqual(PAGE);
-  const end = page.getByRole('button', { name: WATCH.end, exact: true });
-  await end.click();
-  await expect.poll(() => scenario.chatFrames().filter((frame) => frame.type === 'stop').length).toBe(1);
-  await expect(end).toBeDisabled();
+  const screen = page.getByRole('img', { name: WATCH.alt });
+  await page.getByRole('button', { name: WATCH.fullscreen, exact: true }).click();
+  await expect.poll(() => screen.evaluate((element) => document.fullscreenElement?.contains(element) ?? false)).toBe(true);
+  // The screen still shows the task's page while it fills the display.
+  await expect.poll(() => middlePixel(page)).toEqual(PAGE);
+  await page.getByRole('button', { name: WATCH.exitFullscreen, exact: true }).click();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement)).toBeNull();
+  await expect(page.getByRole('button', { name: WATCH.fullscreen, exact: true })).toBeVisible();
 });
 
 test('a task that ended says so and opens nothing more', async ({ page }) => {

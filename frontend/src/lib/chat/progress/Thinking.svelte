@@ -15,11 +15,9 @@
     startedAt,
     // The Team the turn runs in: while its Browser task runs, its screen shows here (ADR-0117).
     teamId = '',
-    // Ends the turn, and with it the Browser task, as the composer's Stop does; `ending` while that is under way.
-    onend = () => {},
-    ending = false,
   } = $props();
   let elapsed = $state(0);
+  let watch = $state();
 
   let current = $derived(currentIndex >= 0 ? steps[currentIndex] : null);
   // The screen shows for as long as the turn's current step is its Browser task, and closes with it.
@@ -41,13 +39,21 @@
     <span class="elapsed" title={elapsedText} aria-hidden="true">{formattedElapsed} ·</span>
     <span class="step-copy">{current ? localizedStepLabel(current, progressLabels, { assistantName: $assistantName }) : progressLabels.awaiting}</span>
     {#if browsing}
-      <Button class="end" variant="ghost" size="compact" type="button" disabled={ending} onclick={onend}>
-        {progressLabels.watch.end}
+      <Button
+        class="fullscreen"
+        variant="ghost"
+        size="icon"
+        type="button"
+        onclick={() => watch?.enterFullscreen()}
+        aria-label={progressLabels.watch.fullscreen}
+        title={progressLabels.watch.fullscreen}
+      >
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"></path></svg>
       </Button>
     {/if}
   </div>
   {#if browsing}
-    <BrowserWatch {teamId} labels={progressLabels.watch} />
+    <BrowserWatch bind:this={watch} {teamId} labels={progressLabels.watch} />
   {/if}
 </div>
 
@@ -107,6 +113,16 @@
     color: var(--accent);
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
+  }
+
+  .summary :global(.fullscreen svg) {
+    width: 1rem;
+    height: 1rem;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.8;
+    stroke-linecap: round;
+    stroke-linejoin: round;
   }
 
   @keyframes signal {

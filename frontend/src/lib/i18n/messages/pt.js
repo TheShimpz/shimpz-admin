@@ -171,7 +171,8 @@ export default {
         finished: 'Concluído',
       },
       watch: {
-        end: 'Encerrar',
+        fullscreen: 'Tela cheia',
+        exitFullscreen: 'Sair da tela cheia',
         title: 'Visualização ao vivo do navegador isolado',
         alt: 'O que o navegador isolado mostra agora',
         waiting: 'Aguardando a primeira imagem…',

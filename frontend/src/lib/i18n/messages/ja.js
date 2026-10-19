@@ -171,7 +171,8 @@ export default {
         finished: '完了',
       },
       watch: {
-        end: '終了',
+        fullscreen: '全画面表示',
+        exitFullscreen: '全画面表示を終了',
         title: '分離されたブラウザーのライブ表示',
         alt: '分離されたブラウザーの現在の表示',
         waiting: '最初の画像を待っています…',

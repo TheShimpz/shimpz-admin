@@ -171,7 +171,8 @@ export default {
         finished: 'Abgeschlossen',
       },
       watch: {
-        end: 'Beenden',
+        fullscreen: 'Vollbild',
+        exitFullscreen: 'Vollbild beenden',
         title: 'Live-Ansicht des isolierten Browsers',
         alt: 'Was der isolierte Browser gerade zeigt',
         waiting: 'Warten auf das erste Bild…',

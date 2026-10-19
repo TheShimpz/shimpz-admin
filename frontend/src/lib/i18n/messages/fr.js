@@ -171,7 +171,8 @@ export default {
         finished: 'Terminé',
       },
       watch: {
-        end: 'Terminer',
+        fullscreen: 'Plein écran',
+        exitFullscreen: 'Quitter le plein écran',
         title: 'Vue en direct du navigateur isolé',
         alt: 'Ce que le navigateur isolé affiche maintenant',
         waiting: 'En attente de la première image…',

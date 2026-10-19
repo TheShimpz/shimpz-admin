@@ -1109,8 +1109,6 @@
               progressLabels={copy.progress}
               startedAt={liveTurn.startedAt}
               teamId={chatTeamId}
-              onend={stop}
-              ending={liveTurn.stopping}
             />
           {/snippet}
           {#each exchanges as exchange, index (exchange.key)}

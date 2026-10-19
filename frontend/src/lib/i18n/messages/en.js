@@ -169,7 +169,8 @@ export default {
         finished: 'Complete',
       },
       watch: {
-        end: 'End',
+        fullscreen: 'Full screen',
+        exitFullscreen: 'Exit full screen',
         title: 'Live view of the isolated browser',
         alt: 'What the isolated browser shows now',
         waiting: 'Waiting for the first image…',

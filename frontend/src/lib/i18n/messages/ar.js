@@ -171,7 +171,8 @@ export default {
         finished: 'مكتمل',
       },
       watch: {
-        end: 'إنهاء',
+        fullscreen: 'ملء الشاشة',
+        exitFullscreen: 'إنهاء ملء الشاشة',
         title: 'عرض مباشر للمتصفح المعزول',
         alt: 'ما يعرضه المتصفح المعزول الآن',
         waiting: 'بانتظار الصورة الأولى…',
