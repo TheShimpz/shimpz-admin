@@ -65,10 +65,10 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"></path></svg>
       </Button>
     {/if}
+    {#if status !== 'showing'}
+      <p class="browser-view-status" role="status">{labels[status]}</p>
+    {/if}
   </div>
-  {#if status !== 'showing'}
-    <p class="browser-view-status" role="status">{labels[status]}</p>
-  {/if}
   <figcaption>{labels.note}</figcaption>
 </figure>
 
@@ -107,6 +107,24 @@
   .stage:fullscreen .screen {
     width: min(100vw, calc(100vh * 1280 / 800));
     border: 0;
+  }
+
+  .stage .browser-view-status {
+    margin-top: var(--gap-item);
+  }
+
+  /* In full screen the task's state stays in sight, over the bottom of the screen. */
+  .stage:fullscreen .browser-view-status {
+    position: absolute;
+    bottom: var(--gap-item);
+    left: 50%;
+    transform: translateX(-50%);
+    margin: 0;
+    padding: 0.4rem 0.8rem;
+    border-radius: 999px;
+    background: rgb(0 0 0 / 0.7);
+    color: #fff;
+    font-size: 0.9rem;
   }
 
   .stage :global(.exit) {

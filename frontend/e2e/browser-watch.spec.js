@@ -102,6 +102,18 @@ test('full screen shows the task\'s screen alone and returns it to the chat', as
   await expect(page.getByRole('button', { name: WATCH.fullscreen, exact: true })).toBeVisible();
 });
 
+test('a task that ends while its screen is full screen says so there', async ({ page }) => {
+  const { end } = await startTask(page);
+  await expect.poll(() => middlePixel(page)).toEqual(PAGE);
+  await page.getByRole('button', { name: WATCH.fullscreen, exact: true }).click();
+  await expect.poll(() => page.evaluate(() => document.fullscreenElement !== null)).toBe(true);
+  end();
+  const status = page.getByRole('figure', { name: WATCH.title }).getByRole('status');
+  await expect(status).toHaveText(WATCH.ended);
+  await expect(status).toBeVisible();
+  expect(await status.evaluate((element) => document.fullscreenElement?.contains(element) ?? false)).toBe(true);
+});
+
 test('a task that ended says so and opens nothing more', async ({ page }) => {
   const { display, end } = await startTask(page);
   await expect.poll(() => middlePixel(page)).toEqual(PAGE);
