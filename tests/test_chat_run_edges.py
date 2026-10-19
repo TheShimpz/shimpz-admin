@@ -252,6 +252,55 @@ class RunEdgeTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_a_run_whose_team_never_answers_holds_up_no_other_runs_ending(self) -> None:
+        async def scenario() -> None:
+            hung: concurrent.futures.Future[object] = concurrent.futures.Future()
+            hung.set_running_or_notify_cancel()
+            stuck = self.socket.run_for("team_1")
+            stuck.connection.active = self.socket.Turn(hung, "chat")
+            stuck.authority = _authority(current=False)
+            expired = self.socket.run_for("team_2")
+            expired.connection.active = self.socket.Turn(None, "chat")
+            expired.authority = _authority(current=False)
+            stopped = self.socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
+            with (
+                mock.patch.object(self.socket, "SWEEP_SECONDS", 0.01),
+                mock.patch.object(self.socket, "STOP_RESULT_WAIT_SECONDS", 0.01),
+                mock.patch.object(self.socket.local, "stop", return_value=stopped),
+            ):
+                self.socket._SWEEP_TASK[0] = None
+                self.socket._start_sweep()
+                for _ in range(200):
+                    if "team_2" not in self.socket.RUNS:
+                        break
+                    await asyncio.sleep(0.01)
+                self.assertNotIn("team_2", self.socket.RUNS)
+                self.assertIs(self.socket.RUNS.get("team_1"), stuck)
+                hung.set_result(object())
+                for _ in range(200):
+                    if not self.socket.RUNS:
+                        break
+                    await asyncio.sleep(0.01)
+                self.assertEqual(self.socket.RUNS, {})
+                self.socket._SWEEP_TASK[0] = None
+
+        asyncio.run(scenario())
+
+    def test_a_turn_with_no_ending_admin_holds_is_stopped_in_team_when_its_run_ends(self) -> None:
+        async def scenario() -> None:
+            run = self.socket.run_for("team_1")
+            run.authority = _authority()
+            answered: concurrent.futures.Future[object] = concurrent.futures.Future()
+            answered.set_result(self.socket.local.PublicResponse(503, {}))
+            run.connection.active = self.socket.Turn(answered, "chat")
+            stopped = self.socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
+            with mock.patch.object(self.socket.local, "stop", return_value=stopped) as stop:
+                await run.end()
+            stop.assert_called_once_with("team_1")
+            self.assertNotIn("team_1", self.socket.RUNS)
+
+        asyncio.run(scenario())
+
     def test_session_endings_reach_runs_only_once_a_loop_holds_them(self) -> None:
         with mock.patch.object(self.socket, "_SWEEP_LOOP", [None]):
             self.socket.sessions_ended(None)

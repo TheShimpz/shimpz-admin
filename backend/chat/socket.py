@@ -1052,7 +1052,8 @@ class Run:
         try:
             with authority.scope() if authority is not None else contextlib.nullcontext():
                 await _close_connection(self.relay, self.connection, self.team_id)
-                if continuing:
+                # Admin holds no Team answer that ended its turn, so the Team may still run it: stop it there too.
+                if continuing or (active is not None and not active.terminal_sent and active.stop_task is None):
                     with contextlib.suppress(Exception):
                         await asyncio.wrap_future(submit_in_context(lanes.STOP, local.stop, self.team_id))
         except transport.TeamRequestError, local_supervisor.SupervisorAuthorityError, RuntimeError:
@@ -1097,10 +1098,20 @@ def run_for(team_id: str) -> Run:
     return run
 
 
+# Runs being ended, each on its own task so one whose Team never answers holds up no other.
+_ENDINGS: set[asyncio.Task] = set()
+
+
+def _end_apart(run: Run) -> None:
+    task = asyncio.get_running_loop().create_task(run.end())
+    _ENDINGS.add(task)
+    task.add_done_callback(_ENDINGS.discard)
+
+
 def end_runs(team_id: str | None = None) -> None:
     """End one Team's run, or every run: its Team was deleted, or the Space reset (on the event loop)."""
     for run in [run for key, run in RUNS.items() if team_id is None or key == team_id]:
-        asyncio.get_running_loop().create_task(run.end())
+        _end_apart(run)
 
 
 def sessions_ended(sessions: frozenset[str] | None) -> None:
@@ -1116,7 +1127,7 @@ def _end_sessions(sessions: frozenset[str] | None) -> None:
     for run in tuple(RUNS.values()):
         authority = run.authority
         if run.busy() and authority is not None and (sessions is None or authority.session in sessions):
-            asyncio.get_running_loop().create_task(run.end())
+            _end_apart(run)
 
 
 _SWEEP_LOOP: list[asyncio.AbstractEventLoop | None] = [None]
@@ -1140,7 +1151,7 @@ async def _sweep() -> None:
             authority = run.authority
             if run.busy():
                 if authority is not None and not await authority.current():
-                    await run.end()
+                    _end_apart(run)
             elif not run.observers:
                 run.retire()
 
