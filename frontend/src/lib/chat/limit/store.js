@@ -36,7 +36,7 @@ export function forgetChatLimit() {
 
 /** Set the limit; what shows afterwards is the limit read once Admin announced Team committed it. */
 export async function saveChatLimit(limit) {
-  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_CHAT_LIMIT) throw new LocalApiError('The chat limit is invalid.');
+  if (!validLimit({ limit })) throw new LocalApiError('The chat limit is invalid.');
   const saved = await answered(await socketReads.call('chat_limit.save', { body: { limit } }), 'The chat limit could not be saved.');
   if (saved !== limit) throw new LocalApiError('The chat limit is invalid.');
   await limitValue.refresh();

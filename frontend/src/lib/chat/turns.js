@@ -114,7 +114,7 @@ export function historyTurn(entry, author, renderKey, words) {
   if (entry.kind === 'status') {
     // A turn that ended without a reply says how, as the page that watched it said (ADR-0119).
     const text = entry.state === 'stopped' ? words.turnStopped : projectedChatError(entry.status, entry.detail, words).message;
-    return { ...stored, role: 'assistant', text: escapeMarkdownText(text), author, ending: entry.state };
+    return { ...stored, role: 'assistant', text: escapeMarkdownText(text), author };
   }
   if (entry.kind === 'assistant-install') {
     return {

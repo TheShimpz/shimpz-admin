@@ -66,8 +66,7 @@ test('a turn that ended without a reply reads back as how it ended', async () =>
   ]);
   const stopped = historyTurn(page.entries[1], 'Marketing', 1, words);
   const failed = historyTurn(page.entries[2], 'Marketing', 2, words);
-  assert.deepEqual([stopped.text, stopped.ending], [escapeMarkdownText(words.turnStopped), 'stopped']);
-  assert.deepEqual([failed.text, failed.ending], [escapeMarkdownText(words.runtimeFailed), 'failed']);
+  assert.deepEqual([stopped.text, failed.text], [escapeMarkdownText(words.turnStopped), escapeMarkdownText(words.runtimeFailed)]);
   for (const invalid of [
     { id: `${TURN}:status`, created_at: AT, kind: 'status', state: 'paused' },
     { id: `${TURN}:status`, created_at: AT, kind: 'status', state: 'failed', status: 200, detail: 'x' },

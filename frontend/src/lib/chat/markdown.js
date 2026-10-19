@@ -331,13 +331,13 @@ export function parseMarkdown(markdown, { chatNotices = false } = {}) {
         for (;;) {
           let next = index;
           while (next < lines.length && !lines[next].trim()) next += 1;
-          const continued = next < lines.length && !LIST_ITEM.test(lines[next]) ? CONTINUATION.exec(lines[next]) : null;
+          const following = next < lines.length ? LIST_ITEM.exec(lines[next]) : null;
+          const continued = next < lines.length && !following ? CONTINUATION.exec(lines[next]) : null;
           if (continued) {
             itemLines.push(parseInline(continued[1]));
             index = next + 1;
             continue;
           }
-          const following = next < lines.length ? LIST_ITEM.exec(lines[next]) : null;
           if (following && /^\d/.test(following[1]) === ordered) index = next;
           break;
         }

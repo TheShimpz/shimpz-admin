@@ -54,11 +54,8 @@ export class ChatTurn {
     this.startedAt = Date.now() - elapsedMs;
     this.position = position;
     this.resetProgress();
-    for (const frame of events) {
-      this.events.push(frame);
-      extendExecutionProjection(this.projection, frame);
-    }
-    this.sequence = cursor;
+    this.sequence = cursor - events.length;
+    for (const frame of events) this.progress(frame);
   }
 
   /**

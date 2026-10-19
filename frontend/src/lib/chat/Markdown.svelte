@@ -12,6 +12,8 @@
 </script>
 
 <div class="markdown" class:chat={variant === 'chat'}>
+  <!-- Written without whitespace, so the list carries no text between its items or lines. -->
+  {#snippet listItems(items)}{#each items as item}<li>{#each item as line, i}{#if i}<br />{/if}<MarkdownInline tokens={line} />{/each}</li>{/each}{/snippet}
   {#each blocks as block}
     {#if block.type === 'heading' && block.level === 1}
       <h1><MarkdownInline tokens={block.inlines} /></h1>
@@ -24,9 +26,9 @@
     {:else if block.type === 'notice'}
       <Notice variant={block.variant} role="status">{block.text}</Notice>
     {:else if block.type === 'list' && block.ordered}
-      <ol start={block.start}>{#each block.items as item}<li>{#each item as line, i}{#if i}<br />{/if}<MarkdownInline tokens={line} />{/each}</li>{/each}</ol>
+      <ol start={block.start}>{@render listItems(block.items)}</ol>
     {:else if block.type === 'list'}
-      <ul>{#each block.items as item}<li>{#each item as line, i}{#if i}<br />{/if}<MarkdownInline tokens={line} />{/each}</li>{/each}</ul>
+      <ul>{@render listItems(block.items)}</ul>
     {:else if block.type === 'table'}
       <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard scrolling for wide tables) -->
       <div class="table-scroll" role="region" aria-label={tableLabel(block)} tabindex="0">
