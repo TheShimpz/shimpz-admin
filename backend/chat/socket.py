@@ -891,8 +891,10 @@ class Run:
         )
 
     def snapshot(self) -> dict[str, object]:
-        """Where the run is now, as one `running` event: how long it has run, its queue place, the sequence number of
-        its delivery's latest step (`cursor`, which the next step follows), and its latest steps.
+        """Where the run is now, as one `running` event.
+
+        It says how long the run has run, its queue place, the sequence number of its delivery's latest step (`cursor`,
+        which the next step follows), and its latest steps.
         """
         elapsed = 0 if self.started is None else int((time.monotonic() - self.started) * 1000)
         cursor = self.live[-1]["seq"] if self.live else 0
