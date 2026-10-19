@@ -148,6 +148,11 @@ class SessionSocketWaitingTests(SessionSocketCase):
                 await asyncio.to_thread(self.admin_app.state.revoke_sessions_for_logout, self.token)
                 self.assertEqual(await self._closed(websocket), 4401)
                 await websocket.finish()
+                # The sign-out ends the work its session authorized (ADR-0119), once its socket already closed.
+                for _ in range(500):
+                    if "live" in observed:
+                        break
+                    await asyncio.sleep(0.01)
             self.assertEqual(observed["live"], ())
 
         asyncio.run(scenario())

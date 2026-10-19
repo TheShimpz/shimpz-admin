@@ -201,7 +201,7 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
 
         asyncio.run(scenario())
 
-    def test_stop_during_sync_emits_one_terminal_without_cancelling_team(self) -> None:
+    def test_stop_during_a_resumed_continuation_refuses_the_frame_and_stops_team_there(self) -> None:
         async def scenario() -> None:
             started = threading.Event()
             release = threading.Event()
@@ -247,12 +247,18 @@ class ChatWebSocketSyncTests(ChatWebSocketCase):
                     {"type": "websocket.close", "code": 1008, "reason": ""},
                 )
                 await websocket.finish()
-                stop.assert_not_called()
+                # The refused frame closed its page; the run its continuation ran on ends, which stops that
+                # continuation in Team too, rather than leaving it to act unwatched (ADR-0119).
+                for _ in range(500):
+                    if stop.called:
+                        break
+                    await asyncio.sleep(0.01)
+                stop.assert_called_once_with("team_1")
                 release.set()
                 await _wait_for_thread(finished)
                 with self.assertRaises(TimeoutError):
                     await websocket.next_message(wait_seconds=0.05)
-                stop.assert_not_called()
+                stop.assert_called_once_with("team_1")
 
         asyncio.run(scenario())
 

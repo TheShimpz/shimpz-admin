@@ -215,9 +215,16 @@ async def _continue_team_turn(
         if not _space_busy(response, turn, connection):
             break
         # Team runs as many turns as the Space's limit, some of them unknown here: this one waits at the head of the
-        # queue and asks again; Stop meanwhile ends it there (ADR-0119).
+        # queue and asks again, still under a current session; Stop meanwhile ends it there (ADR-0119).
         turn.operation = "queued"
         await turn.slot.busy()
+        try:
+            await gated.authorized(websocket)
+        except gated.AuthorityEndedError:
+            await _finish_active_turn(
+                websocket, connection, turn, error_terminal(401, "the session ended before the turn could start")
+            )
+            return
     await _deliver_turn(websocket, connection, turn, team_id, response)
 
 
@@ -302,26 +309,31 @@ async def _gated_continuation(
     try:
         async with chat_gate.GATE.slot(gated.position(websocket), gated.read_limit) as held:
             while True:
+                await gated.authorized(websocket)
                 progress, report = _progress_channel()
                 try:
                     future = submit(report)
+                    connection.continuing = True
                 except ExecutorSaturatedError:
                     await _send_sync_terminal_once(
                         websocket, connection, error_terminal(429, "local chat capacity reached")
                     )
                     return None
                 response = None
-                with contextlib.suppress(Exception):
-                    response = await _await_progress_result(
-                        websocket,
-                        connection,
-                        future,
-                        progress,
-                        lambda: connection.closed or connection.sync_terminal_sent,
-                        progress_transport.receipt_delivery(
-                            connection.receipt, connection.pending_history_id, fresh=False
-                        ),
-                    )
+                try:
+                    with contextlib.suppress(Exception):
+                        response = await _await_progress_result(
+                            websocket,
+                            connection,
+                            future,
+                            progress,
+                            lambda: connection.closed or connection.sync_terminal_sent,
+                            progress_transport.receipt_delivery(
+                                connection.receipt, connection.pending_history_id, fresh=False
+                            ),
+                        )
+                finally:
+                    connection.continuing = False
                 busy = (
                     isinstance(response, transport.TeamResponse)
                     and response.status == 429
@@ -335,6 +347,10 @@ async def _gated_continuation(
     except gated.LimitUnavailableError:
         await _send_sync_terminal_once(
             websocket, connection, error_terminal(503, "the Space chat limit is unavailable")
+        )
+    except gated.AuthorityEndedError:
+        await _send_sync_terminal_once(
+            websocket, connection, error_terminal(401, "the session ended before the continuation could start")
         )
     return None
 
@@ -840,6 +856,25 @@ class Relay(gated.Observed):
             observer.close(code)
 
 
+class FrameRelay(Relay):
+    """What one frame's dispatch writes to (ADR-0119).
+
+    While the frame is dispatched, a refusal reaches only the page that sent it; everything its started work sends
+    afterwards reaches every page that watches.
+    """
+
+    def __init__(self, run: Run, observer: Transport | None) -> None:
+        super().__init__(run)
+        self.observer = observer
+        self.dispatching = True
+
+    async def send_json(self, event: dict[str, object]) -> None:
+        if self.dispatching and event.get("type") == "error" and self.observer is not None:
+            self.run.push(self.observer, event)
+            return
+        await super().send_json(event)
+
+
 class Run:
     """One Team's chat in Admin: its state, its frames in arrival order, and the pages that watch it (ADR-0119).
 
@@ -860,7 +895,8 @@ class Run:
         self.live: list[dict[str, object]] = []
         self.started: float | None = None
         self.position: int | None = None
-        self._frames: asyncio.Queue[tuple[dict[str, object], Authority]] = asyncio.Queue()
+        self._frames: asyncio.Queue[tuple[dict[str, object], Authority, Transport | None]] = asyncio.Queue()
+        self._ending = False
         self._task = asyncio.create_task(self._loop())
 
     # Pages
@@ -869,9 +905,9 @@ class Run:
         """Let one more page watch; a busy run shows it where it is, an idle one synchronizes as a fresh page does."""
         self.observers.add(observer)
         if self.busy():
-            self._push(observer, self.snapshot())
+            self.push(observer, self.snapshot())
         else:
-            self.submit({"type": "sync", "locale": locale}, authority)
+            self.submit({"type": "sync", "locale": locale}, authority, observer)
 
     def detach(self, observer: Transport) -> None:
         """One page stops watching; a proposal that waited for a page's decision expires with the last one."""
@@ -919,9 +955,10 @@ class Run:
             position = event.get("position")
             self.position = position if isinstance(position, int) else None
         for observer in tuple(self.observers):
-            self._push(observer, event)
+            self.push(observer, event)
 
-    def _push(self, observer: Transport, event: dict[str, object]) -> None:
+    def push(self, observer: Transport, event: dict[str, object]) -> None:
+        """Hand one event to one page; a page that cannot take it stops watching."""
         try:
             observer.push(dict(event))
         except RuntimeError, ValueError, OSError:
@@ -930,36 +967,51 @@ class Run:
 
     # Frames
 
-    def submit(self, frame: dict[str, object], authority: Authority) -> bool:
-        """Queue one admitted chat frame with the authority it was admitted under; refuse one beyond the bound."""
+    def submit(self, frame: dict[str, object], authority: Authority, observer: Transport | None = None) -> bool:
+        """Queue one admitted chat frame with the authority it was admitted under; refuse one beyond the bound.
+
+        A run that is ending tells the page that sent the frame to send it again once it ended.
+        """
         if self.connection.closed:
+            if observer is not None:
+                self.push(observer, error_terminal(409, "the Team's chat is ending; send again in a moment"))
             return True
         if self._frames.qsize() >= MAX_WAITING_FRAMES:
             return False
-        self._frames.put_nowait((frame, authority))
+        self._frames.put_nowait((frame, authority, observer))
         return True
 
     async def _loop(self) -> None:
         try:
             while True:
-                frame, authority = await self._frames.get()
+                frame, authority, observer = await self._frames.get()
                 if not await authority.current():
                     # Its session or Origin ended before its turn came: it runs nothing.
                     continue
-                if frame.get("type") != "stop":
-                    self.authority = authority
-                if frame.get("type") in {"chat", "resume-task", "human-response", "sync"}:
-                    self.live, self.started, self.position = [], time.monotonic(), None
-                try:
-                    with authority.scope():
-                        await _dispatch(self.relay, self.connection, self.team_id, frame, authority.authenticate)
-                except transport.TeamRequestError, local_supervisor.SupervisorAuthorityError, RuntimeError:
-                    # The current Supervisor authority is unavailable: the frame is refused as the HTTP gate refuses.
-                    log.warning("chat run frame refused: Supervisor authority is unavailable")
-                    self.publish(error_terminal(503, "Supervisor authority is unavailable"))
+                await self._run_frame(frame, authority, observer)
         except WebSocketDisconnect:
             # A protocol refusal closed the pages; the run's work ends with them, as Stop would end it.
             asyncio.get_running_loop().create_task(self.end())
+
+    async def _run_frame(self, frame: dict[str, object], authority: Authority, observer: Transport | None) -> None:
+        """Dispatch one frame; the work it starts, and only that, runs under its authority and is watched afresh."""
+        connection = self.connection
+        before = (connection.active, connection.sync_task, connection.lifecycle)
+        relay = FrameRelay(self, observer)
+        try:
+            with authority.scope():
+                await _dispatch(relay, connection, self.team_id, frame, authority.authenticate)
+        except transport.TeamRequestError, local_supervisor.SupervisorAuthorityError, RuntimeError:
+            # The current Supervisor authority is unavailable: the frame is refused as the HTTP gate refuses.
+            log.warning("chat run frame refused: Supervisor authority is unavailable")
+            await relay.send_json(error_terminal(503, "Supervisor authority is unavailable"))
+        finally:
+            relay.dispatching = False
+        after = (connection.active, connection.sync_task, connection.lifecycle)
+        if any(now is not None and now is not then for now, then in zip(after, before, strict=True)):
+            # The work it started has not run yet: it is watched from its first step.
+            self.authority = authority
+            self.live, self.started, self.position = [], time.monotonic(), None
 
     # Ending
 
@@ -970,17 +1022,29 @@ class Run:
         self._task.cancel()
 
     async def end(self) -> None:
-        """Stop the run's work, keep how its turn ended, and forget the run (revocation, deletion, reset)."""
-        if RUNS.get(self.team_id) is self:
-            del RUNS[self.team_id]
+        """Stop the run's work, keep how its turn ended, and forget the run (revocation, deletion, reset).
+
+        The run stays the Team's until its work is proven stopped, so no new run starts beside work still ending; its
+        pages then follow the Team's next run.
+        """
+        if self._ending:
+            return
+        # From here no frame is admitted: a page that sends one is told to send it again once the run ended.
+        self._ending = True
+        self.connection.closed = True
         self._task.cancel()
         await asyncio.gather(self._task, return_exceptions=True)
         active = self.connection.active
         unfinished = None if active is None or active.terminal_sent else active.history_id
+        # A human or Integration continuation Team executes now is stopped there too, not only no longer awaited.
+        continuing = self.connection.continuing
         authority = self.authority
         try:
             with authority.scope() if authority is not None else contextlib.nullcontext():
                 await _close_connection(self.relay, self.connection, self.team_id)
+                if continuing:
+                    with contextlib.suppress(Exception):
+                        await asyncio.wrap_future(submit_in_context(lanes.STOP, local.stop, self.team_id))
         except transport.TeamRequestError, local_supervisor.SupervisorAuthorityError, RuntimeError:
             log.warning("chat run ended without Supervisor authority")
             await _close_connection(self.relay, self.connection, self.team_id)
@@ -988,6 +1052,8 @@ class Run:
             with contextlib.suppress(Exception):
                 await history_delivery.terminal(self.team_id, unfinished, {"type": "stopped"}, finish_history=True)
             self.publish({"type": "stopped"})
+        if RUNS.get(self.team_id) is self:
+            del RUNS[self.team_id]
 
 
 # The latest steps of a run's delivery a page that attaches is shown.
@@ -1058,29 +1124,39 @@ async def _sweep() -> None:
 class Channel:
     """One page watching one Team's chat run over its session socket (ADR-0114, ADR-0119).
 
-    Its frames run on the run under the authority they were admitted with; closing it stops watching, never the work.
+    Its frames run on the Team's current run under the authority they were admitted with; closing it stops watching,
+    never the work. Once a run ended, the page follows the Team's next one.
     """
 
     def __init__(self, transport: Transport, team_id: str, authority: Callable[[], Authority]) -> None:
         self.transport = transport
         self.team_id = team_id
         self._authority = authority
-        self.run = run_for(team_id)
+
+    @property
+    def run(self) -> Run:
+        run = run_for(self.team_id)
+        if not run.connection.closed:
+            run.observers.add(self.transport)
+        return run
 
     @property
     def connection(self) -> Connection:
         return self.run.connection
 
     def attach(self, locale: str) -> None:
-        self.run.attach(self.transport, self._authority(), locale)
+        run = run_for(self.team_id)
+        run.attach(self.transport, self._authority(), locale)
 
     def submit(self, frame: dict[str, object]) -> bool:
         """Queue one admitted chat frame for the Team's run in arrival order; refuse one beyond the waiting bound."""
-        return self.run.submit(frame, self._authority())
+        return self.run.submit(frame, self._authority(), self.transport)
 
     def halt(self) -> None:
         """Stop watching at once: the socket is closing."""
-        self.run.detach(self.transport)
+        run = RUNS.get(self.team_id)
+        if run is not None:
+            run.detach(self.transport)
 
     async def close(self) -> None:
         """Stop watching; the run's work goes on (ADR-0119)."""

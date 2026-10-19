@@ -738,7 +738,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
             self.assertFalse(channel.connection.closed)
             self.assertIs(socket.RUNS["team_1"], run)
             await run.end()
-            self.assertTrue(channel.connection.closed)
+            self.assertTrue(run.connection.closed)
             self.assertNotIn("team_1", socket.RUNS)
             # An ended run admits no further frame.
             self.assertTrue(run.submit({"type": "stop"}, authority))
