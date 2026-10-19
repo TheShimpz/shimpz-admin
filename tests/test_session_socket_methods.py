@@ -192,7 +192,8 @@ class SessionMethodAuthorityTests(SessionMethodCase):
         with (
             mock.patch.object(self.lane, "current", return_value=False),
             mock.patch.object(self.lane, "http", side_effect=AssertionError("must not run")),
-            mock.patch.object(self.admin_app.local_auth, "recheck_password", new=mock.AsyncMock()),
+            # No password derivation still holds sign-in's one slot when the next method asks for it.
+            mock.patch.object(self.admin_app.local_auth, "check_password", new=mock.AsyncMock()),
         ):
             asyncio.run(scenario())
         self.assertEqual(self.team_calls, [])
