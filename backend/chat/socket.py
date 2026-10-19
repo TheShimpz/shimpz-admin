@@ -86,7 +86,7 @@ async def _await_progress_result(
     async def send(event: Mapping[str, object]) -> bool:
         if not await _send_event(websocket, event):
             return False
-        # The receipt keeps only what the browser received.
+        # The receipt keeps every step the run delivered, whether or not a page watched it.
         record(event)
         return True
 
@@ -143,7 +143,7 @@ async def _deliver_turn(
                     asyncio.shield(turn.stop_task),
                     timeout=STOP_RESULT_WAIT_SECONDS,
                 )
-        # A channel that closed meanwhile stops its turn as it closes (`_close_connection`).
+        # A run that ended meanwhile stopped its turn as it ended (`close_connection`).
         if connection.closed or turn.terminal_sent:
             return
         challenge, challenge_type = first_challenge(response, team_id)

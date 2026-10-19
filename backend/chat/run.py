@@ -251,8 +251,9 @@ class Run:
     async def end(self) -> None:
         """Stop the run's work, keep how its turn ended, and forget the run (revocation, deletion, reset).
 
-        The run stays the Team's until its work is proven stopped, so no new run starts beside work still ending; its
-        pages then follow the Team's next run.
+        The run stays the Team's until its Team calls and the Stops sent for them have answered, so no new run starts
+        beside work Admin still awaits; work whose answer was lost may still finish in Team (ADR-0119). Its pages then
+        follow the Team's next run.
         """
         if self._ending:
             return
@@ -282,8 +283,8 @@ class Run:
             log.warning("chat run ended without Supervisor authority")
             await chat_socket.close_connection(self.relay, self.connection, self.team_id)
             unconfirmed = 503
-        # The Team is released only once its work and every Stop sent for it ended, so neither reaches a later turn,
-        # and its turn's ending is known only then.
+        # The Team is released only once its Team calls and every Stop sent for them answered, and its turn's ending
+        # is known only then.
         await _ended(active, continuation)
         if unfinished is not None:
             unconfirmed = unconfirmed or active.stop_unconfirmed

@@ -32,7 +32,7 @@ async def turn(
     if connection.closed or active.terminal_sent:
         return False
     projected = event
-    # Every terminal ends the turn's receipt, as it does on the page; a reply keeps the steps its page was shown.
+    # Every terminal ends the turn's receipt, as it does on the page; a reply keeps the steps its run delivered.
     receipt = take_receipt(connection.receipt, active.history_id)
     # A Stop of a paused turn that failed leaves that turn waiting: nothing of it ended, so nothing is kept.
     unended = active.operation == "pending-stop" and event.get("type") == "error"
