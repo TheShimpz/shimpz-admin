@@ -348,7 +348,7 @@ def live_team(case, name: str = "Team") -> None:
 def fresh_runs(case) -> None:
     """No Team's chat run outlives one test, and each test's Space runs at most two chat operations at once."""
     gate = importlib.import_module("chat.gate")
-    runs = importlib.import_module("chat.socket").RUNS
+    runs = importlib.import_module("chat.run").RUNS
     fresh = gate.Gate()
     fresh.set_limit(2)
     patcher = mock.patch.object(gate, "GATE", fresh)

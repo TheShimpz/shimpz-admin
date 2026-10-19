@@ -196,7 +196,7 @@ class FrontendSessionSocketParityTests(unittest.TestCase):
 
     def test_the_browser_admits_exactly_the_running_event_admin_sends(self) -> None:
         source = (LIB / "chat" / "protocol.js").read_text(encoding="utf-8")
-        chat_socket = importlib.import_module("chat.socket")
+        chat_runs = importlib.import_module("chat.run")
         gate = importlib.import_module("chat.gate")
 
         def constant(name: str) -> str:
@@ -206,9 +206,9 @@ class FrontendSessionSocketParityTests(unittest.TestCase):
             return match[1]
 
         # The latest steps Admin keeps and the furthest queue place it tells are what the browser admits (ADR-0119).
-        self.assertEqual(int(constant("MAX_RUNNING_STEPS")), chat_socket.LIVE_STEPS)
+        self.assertEqual(int(constant("MAX_RUNNING_STEPS")), chat_runs.LIVE_STEPS)
         self.assertEqual(int(constant("MAX_QUEUE_PLACE")), gate.MAX_WAITING)
-        run = chat_socket.Run.__new__(chat_socket.Run)
+        run = chat_runs.Run.__new__(chat_runs.Run)
         run.started, run.position, run.live = None, None, []
         keys = sorted(run.snapshot())
         self.assertIn(

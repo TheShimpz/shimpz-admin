@@ -18,6 +18,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from chat.projection import error_terminal
 from fastapi import WebSocket, WebSocketDisconnect
 from mfa import tickets
 from protocol.socket.v1 import frames
@@ -26,7 +27,7 @@ from session.outbound import Outbound, OutboundOverflowError
 from signin import auth, local_auth
 
 import browser
-from chat import socket as chat_channel
+from chat import run as chat_runs
 from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
@@ -134,7 +135,7 @@ class SessionSocket:
         self.outbound = Outbound()
         self.calls: dict[str, asyncio.Task] = {}
         self.subscriptions: set[str] = set()
-        self.channels: dict[str, chat_channel.Channel] = {}
+        self.channels: dict[str, chat_runs.Channel] = {}
         self.detaching: set[asyncio.Task] = set()
         self.closed = asyncio.Event()
         self.close_code = 1000
@@ -244,17 +245,17 @@ class SessionSocket:
             return 409, {"detail": "the Team's chat is already attached"}
         if len(self.channels) >= frames.MAX_ATTACHED_TEAMS:
             return 409, {"detail": "a session socket attaches at most 4 Teams"}
-        transport = chat_channel.Transport(lambda event: self.send(frames.chat_event(team_id, event)), self._end)
-        channel = chat_channel.Channel(transport, team_id, self._chat_authority)
+        transport = chat_runs.Transport(lambda event: self.send(frames.chat_event(team_id, event)), self._end)
+        channel = chat_runs.Channel(transport, team_id, self._chat_authority)
         self.channels[team_id] = channel
         # After the attach result: where the Team's running chat is, or today's sync (the pending gate, an Integration
         # resume, or `sync-empty`) when nothing runs.
         self.loop.call_soon(channel.attach, canonical_locale)
         return 200, {"team_id": team_id}
 
-    def _chat_authority(self) -> chat_channel.Authority:
+    def _chat_authority(self) -> chat_runs.Authority:
         """The authority a chat frame admitted on this socket keeps after the socket closes (ADR-0119)."""
-        return chat_channel.Authority(
+        return chat_runs.Authority(
             session=self.session,
             scope=lambda: self.gate.request_scope(self.cookies),
             current=self._still_authorized,
@@ -316,7 +317,7 @@ class SessionSocket:
         if not await self._authorized():
             return
         if chat != {"type": "stop"} and not budget.CALL_BUDGET.admit(self.session):
-            self.send(frames.chat_event(team_id, chat_channel.error_terminal(429, "session call budget reached")))
+            self.send(frames.chat_event(team_id, error_terminal(429, "session call budget reached")))
             return
         if not channel.submit(chat):
             raise frames.ProtocolError("too many chat frames are waiting")

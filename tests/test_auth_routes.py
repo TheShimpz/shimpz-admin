@@ -380,7 +380,7 @@ class AuthRouteTests(unittest.TestCase):
 
         with (
             mock.patch.object(self.admin_app.team, "reset_space", return_value=expected) as team_reset,
-            mock.patch.object(self.admin_app.chat_socket, "end_runs") as end_runs,
+            mock.patch.object(self.admin_app.chat_runs, "end_runs") as end_runs,
         ):
             response = asyncio.run(self.admin_app.local_space_reset(reset))
 
@@ -396,7 +396,7 @@ class AuthRouteTests(unittest.TestCase):
             mock.patch.object(
                 self.admin_app.team, "reset_space", return_value=transport.TeamResponse(503, {"detail": "busy"})
             ),
-            mock.patch.object(self.admin_app.chat_socket, "end_runs") as kept,
+            mock.patch.object(self.admin_app.chat_runs, "end_runs") as kept,
         ):
             self.assertNotEqual(asyncio.run(self.admin_app.local_space_reset(failed)).status_code, 200)
         kept.assert_not_called()

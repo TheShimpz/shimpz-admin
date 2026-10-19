@@ -317,7 +317,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                 await websocket.disconnect()
                 release.set()
                 for _ in range(200):
-                    if "team_1" not in self.chat_socket.RUNS or not self.chat_socket.RUNS["team_1"].busy():
+                    if "team_1" not in self.chat_runs.RUNS or not self.chat_runs.RUNS["team_1"].busy():
                         break
                     await asyncio.sleep(0.01)
                 stop_mock.assert_not_called()

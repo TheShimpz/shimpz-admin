@@ -54,10 +54,10 @@ class SessionSocketChatChannelTests(SessionSocketCase):
                 await chat_socket_fixtures.wait_for_thread(started)
                 self.assertEqual((await websocket.result("chat.detach", {"team_id": "team_1"}))["status"], 200)
                 await asyncio.sleep(0.1)
-                self.assertTrue(self.chat_socket.RUNS["team_1"].busy())
+                self.assertTrue(self.chat_runs.RUNS["team_1"].busy())
                 release.set()
                 for _ in range(200):
-                    if not self.chat_socket.RUNS["team_1"].busy():
+                    if not self.chat_runs.RUNS["team_1"].busy():
                         break
                     await asyncio.sleep(0.01)
                 # Nothing stopped the turn (ADR-0119), and the socket stays open for its other work.
@@ -115,9 +115,9 @@ class SessionSocketWaitingTests(SessionSocketCase):
 
         async def scenario() -> None:
             websocket = await self._open()
-            with mock.patch.object(self.chat_socket, "_dispatch", side_effect=held):
+            with mock.patch.object(self.chat_socket, "dispatch", side_effect=held):
                 # One frame dispatches and blocks; eight more wait; one more beyond the bound closes the socket.
-                for _ in range(1 + self.chat_socket.MAX_WAITING_FRAMES):
+                for _ in range(1 + self.chat_runs.MAX_WAITING_FRAMES):
                     await websocket.send_json({"type": "stop"})
                 await asyncio.sleep(0.1)
                 await websocket.send_json({"type": "stop"})
@@ -180,7 +180,7 @@ class SessionSocketHaltTests(SessionSocketCase):
                 await close(*args, **kwargs)
 
             with (
-                mock.patch.object(self.chat_socket, "_dispatch", side_effect=dispatch),
+                mock.patch.object(self.chat_socket, "dispatch", side_effect=dispatch),
                 mock.patch.object(socket.websocket, "close", side_effect=slow_close),
             ):
                 await websocket.send_json({"type": "stop"})
@@ -209,7 +209,7 @@ class SessionSocketHaltTests(SessionSocketCase):
         async def scenario() -> None:
             self.assertEqual(self.admin_app.state.bind_browser_origin(external), "learned")
             websocket = await self._open(origin=external)
-            with mock.patch.object(self.chat_socket, "_dispatch", side_effect=dispatch):
+            with mock.patch.object(self.chat_socket, "dispatch", side_effect=dispatch):
                 await websocket.send_json({"type": "stop"})
                 await websocket.send_json(chat_socket_fixtures.chat_frame("admitted while the origin was"))
                 await asyncio.sleep(0.1)

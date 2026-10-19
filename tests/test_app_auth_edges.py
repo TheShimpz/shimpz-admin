@@ -292,7 +292,7 @@ class AppAuthenticationEdgeTests(app_import.RouteStatusAssertions):
                 "reset",
                 new=mock.AsyncMock(return_value=self.admin_app.JSONResponse({"reset": True})),
             ) as reset,
-            mock.patch.object(self.admin_app.chat_socket, "end_runs") as end_runs,
+            mock.patch.object(self.admin_app.chat_runs, "end_runs") as end_runs,
         ):
             self.assertEqual(asyncio.run(self.admin_app.local_space_host_reset(request)).status_code, 200)
             # A host reset that went through ends every Team's chat run (ADR-0119); a refused one ends none.

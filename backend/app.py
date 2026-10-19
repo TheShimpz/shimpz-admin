@@ -42,7 +42,7 @@ from team import transport
 import browser
 from chat import assets as chat_assets
 from chat import human as chat_human
-from chat import socket as chat_socket
+from chat import run as chat_runs
 from integrations import assistants as integrations
 from integrations import authorization
 from integrations import handoff as handoff_store
@@ -480,7 +480,7 @@ async def local_space_host_reset(request: Request):
         established_reset=_established_host_reset,
     )
     if response.status_code == 200:
-        chat_socket.end_runs()
+        chat_runs.end_runs()
     return response
 
 
@@ -495,7 +495,7 @@ async def local_space_reset(request: Request):
     )
     if response.status_code == 200:
         # Every Team's chat run ends with the reset Space (ADR-0119).
-        chat_socket.end_runs()
+        chat_runs.end_runs()
     return response
 
 

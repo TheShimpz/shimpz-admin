@@ -19,6 +19,7 @@ from tests.chat_socket_case import ChatDeliveryCase, resume_operations
 from tests.chat_socket_fixtures import human_challenge, human_response
 
 from chat import human, local, socket, task_resume
+from chat import run as runs
 from tests import chat_socket_fixtures
 
 
@@ -480,15 +481,15 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
             await socket._dispatch_stop(websocket, pending, "team_1")
             self.assertIsNotNone(pending.active)
 
-            await socket._dispatch(websocket, socket.Connection(), "team_1", {"type": "bad"}, authenticate)
+            await socket.dispatch(websocket, socket.Connection(), "team_1", {"type": "bad"}, authenticate)
             # A sync frame names exactly one interface language for a restored request (ADR-0091).
             for frame in ({"type": "sync"}, {"type": "sync", "locale": "xx"}, {"type": "sync", "locale": None}):
-                await socket._dispatch(websocket, socket.Connection(), "team_1", frame, authenticate)
+                await socket.dispatch(websocket, socket.Connection(), "team_1", frame, authenticate)
                 self.assertEqual(
                     websocket.send_json.await_args.args[0],
                     {"type": "error", "status": 400, "detail": "unsupported chat frame"},
                 )
-            await socket._dispatch(
+            await socket.dispatch(
                 websocket,
                 socket.Connection(lifecycle=mock.sentinel.lifecycle),
                 "team_1",
@@ -496,7 +497,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
                 authenticate,
             )
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
-            await socket._dispatch(
+            await socket.dispatch(
                 websocket,
                 socket.Connection(lifecycle_proposal=mock.sentinel.proposal),
                 "team_1",
@@ -505,7 +506,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
             )
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 409)
             with mock.patch.object(socket.task_resume, "dispatch", new=mock.AsyncMock()) as resume:
-                await socket._dispatch(
+                await socket.dispatch(
                     websocket,
                     socket.Connection(lifecycle_proposal=mock.sentinel.proposal),
                     "team_1",
@@ -723,23 +724,23 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
             future: concurrent.futures.Future[object] = concurrent.futures.Future()
             future.set_result(object())
             sent = []
-            transport = socket.Transport(sent.append, mock.Mock())
-            authority = socket.Authority(
+            transport = runs.Transport(sent.append, mock.Mock())
+            authority = runs.Authority(
                 session="s" * 64,
                 scope=contextlib.nullcontext,
                 current=mock.AsyncMock(return_value=True),
                 authenticate=mock.AsyncMock(return_value=human.AuthenticationResult("verified")),
             )
-            channel = socket.Channel(transport, "team_1", lambda: authority)
+            channel = runs.Channel(transport, "team_1", lambda: authority)
             run = channel.run
             channel.connection.active = socket.Turn(future, "chat")
             await channel.close()
             # The page stopped watching; the turn's run goes on.
             self.assertFalse(channel.connection.closed)
-            self.assertIs(socket.RUNS["team_1"], run)
+            self.assertIs(runs.RUNS["team_1"], run)
             await run.end()
             self.assertTrue(run.connection.closed)
-            self.assertNotIn("team_1", socket.RUNS)
+            self.assertNotIn("team_1", runs.RUNS)
             # An ended run admits no further frame.
             self.assertTrue(run.submit({"type": "stop"}, authority))
             self.assertTrue(run._frames.empty())

@@ -134,14 +134,14 @@ class ChatRunTests(ChatWebSocketCase):
                 await page.send_json(chat_socket_fixtures.chat_frame("work"))
                 await chat_socket_fixtures.wait_for_thread(started["team_1"])
                 await page.disconnect()
-                run = self.chat_socket.RUNS["team_1"]
+                run = self.chat_runs.RUNS["team_1"]
                 session = run.authority.session
                 # Every session ending reaches the runs through the same listener the socket registry uses.
-                self.chat_socket.sessions_ended(frozenset({"another-session"}))
+                self.chat_runs.sessions_ended(frozenset({"another-session"}))
                 await asyncio.sleep(0.05)
                 self.assertTrue(run.busy())
-                self.chat_socket.sessions_ended(frozenset({session}))
-                await _until(lambda: "team_1" not in self.chat_socket.RUNS)
+                self.chat_runs.sessions_ended(frozenset({session}))
+                await _until(lambda: "team_1" not in self.chat_runs.RUNS)
                 await _until(lambda: team_stop.called)
                 release["team_1"].set()
             statuses = [entry for entry in self.history_store.page("team_1")["entries"] if entry["kind"] == "status"]
@@ -154,7 +154,7 @@ class ChatRunTests(ChatWebSocketCase):
 
         async def scenario() -> None:
             hold = asyncio.Event()
-            dispatch = self.chat_socket._dispatch
+            dispatch = self.chat_socket.dispatch
 
             async def slow_first(*args, **kwargs):
                 if args[3] == {"type": "stop"} and not hold.is_set():
@@ -164,17 +164,17 @@ class ChatRunTests(ChatWebSocketCase):
 
             with (
                 mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
-                mock.patch.object(self.chat_socket, "_dispatch", side_effect=slow_first),
+                mock.patch.object(self.chat_socket, "dispatch", side_effect=slow_first),
             ):
                 page = await self._open_team("team_1")
                 await page.send_json({"type": "stop"})
                 await page.send_json(chat_socket_fixtures.chat_frame("admitted, then the page closed"))
                 # The socket admitted it, and it waits behind the Stop, when the page closes.
-                await _until(lambda: not self.chat_socket.RUNS["team_1"]._frames.empty())
+                await _until(lambda: not self.chat_runs.RUNS["team_1"]._frames.empty())
                 await page.disconnect()
                 await chat_socket_fixtures.wait_for_thread(started["team_1"])
                 release["team_1"].set()
-                await _until(lambda: not self.chat_socket.RUNS["team_1"].busy())
+                await _until(lambda: not self.chat_runs.RUNS["team_1"].busy())
             replies = [
                 entry for entry in self.history_store.page("team_1")["entries"] if entry.get("role") == "assistant"
             ]
@@ -190,40 +190,40 @@ class ChatRunTests(ChatWebSocketCase):
             with (
                 mock.patch.object(self.chat_socket.local, "turn", side_effect=turn),
                 mock.patch.object(self.chat_socket.local, "stop", return_value=stopped),
-                mock.patch.object(self.chat_socket, "SWEEP_SECONDS", 0.05),
+                mock.patch.object(self.chat_runs, "SWEEP_SECONDS", 0.05),
             ):
-                self.chat_socket._SWEEP_TASK[0] = None
+                self.chat_runs._SWEEP_TASK[0] = None
                 page = await self._open_team("team_1")
                 await page.send_json(chat_socket_fixtures.chat_frame("work"))
                 await chat_socket_fixtures.wait_for_thread(started["team_1"])
                 await page.disconnect()
-                run = self.chat_socket.RUNS["team_1"]
-                run.authority = self.chat_socket.Authority(
+                run = self.chat_runs.RUNS["team_1"]
+                run.authority = self.chat_runs.Authority(
                     session=run.authority.session,
                     scope=run.authority.scope,
                     current=mock.AsyncMock(return_value=False),
                     authenticate=run.authority.authenticate,
                 )
-                await _until(lambda: "team_1" not in self.chat_socket.RUNS)
+                await _until(lambda: "team_1" not in self.chat_runs.RUNS)
                 release["team_1"].set()
                 # An idle run nobody watches is forgotten at the next sweep.
-                idle = self.chat_socket.run_for("team_2")
-                await _until(lambda: "team_2" not in self.chat_socket.RUNS)
+                idle = self.chat_runs.run_for("team_2")
+                await _until(lambda: "team_2" not in self.chat_runs.RUNS)
                 self.assertFalse(idle.busy())
-                self.chat_socket._SWEEP_TASK[0] = None
+                self.chat_runs._SWEEP_TASK[0] = None
 
         asyncio.run(scenario())
 
     def test_deleting_a_team_or_resetting_the_space_ends_its_runs(self) -> None:
         async def scenario() -> None:
             for team in ("team_1", "team_2"):
-                self.chat_socket.run_for(team)
+                self.chat_runs.run_for(team)
             ended = []
-            with mock.patch.object(self.chat_socket.Run, "end", new=lambda run: _record(ended, run.team_id)):
-                self.chat_socket.end_runs("team_1")
+            with mock.patch.object(self.chat_runs.Run, "end", new=lambda run: _record(ended, run.team_id)):
+                self.chat_runs.end_runs("team_1")
                 await asyncio.sleep(0.01)
                 self.assertEqual(ended, ["team_1"])
-                self.chat_socket.end_runs()
+                self.chat_runs.end_runs()
                 await asyncio.sleep(0.01)
             self.assertEqual(sorted(ended), ["team_1", "team_1", "team_2"])
 

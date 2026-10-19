@@ -32,7 +32,7 @@ from team import transport
 from action import stored_input
 from chat import assets as chat_assets
 from chat import gate as chat_gate
-from chat import socket as chat_channel
+from chat import run as chat_runs
 from integrations import assistants as integrations
 from integrations import authorization
 
@@ -135,7 +135,7 @@ async def _team_delete(socket: SessionSocket, params: dict[str, object]) -> Answ
     status, body = await lane.run(socket, team_names.delete, params["team_id"], team_name)
     if 200 <= status < 300:
         # The deleted Team's chat run ends with it, whoever watched it (ADR-0119).
-        chat_channel.end_runs(params["team_id"])
+        chat_runs.end_runs(params["team_id"])
     return status, body
 
 

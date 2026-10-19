@@ -32,6 +32,7 @@ class ChatWebSocketCase(unittest.TestCase):
         ):
             cls.admin_app = importlib.import_module("app")
         cls.chat_socket = importlib.import_module("chat.socket")
+        cls.chat_runs = importlib.import_module("chat.run")
         cls.assistant_plan = importlib.import_module("chat.assistant_plan")
         cls.assistant_route = importlib.import_module("chat.assistant_route")
         cls.team = importlib.import_module("team.bridge")

@@ -25,8 +25,8 @@ async def _limit() -> int:
 
 
 def _authority(current: bool = True, scope=contextlib.nullcontext):
-    socket = importlib.import_module("chat.socket")
-    return socket.Authority(
+    runs = importlib.import_module("chat.run")
+    return runs.Authority(
         session="s" * 64,
         scope=scope,
         current=mock.AsyncMock(return_value=current),
@@ -137,6 +137,7 @@ class ContinuationEdgeTests(unittest.TestCase):
     def setUp(self) -> None:
         chat_socket_fixtures.fresh_runs(self)
         self.socket = importlib.import_module("chat.socket")
+        self.runs = importlib.import_module("chat.run")
 
     def test_a_continuation_asks_again_while_the_space_is_busy_and_reports_its_failures(self) -> None:
         async def scenario() -> None:
@@ -185,46 +186,47 @@ class RunEdgeTests(unittest.TestCase):
     def setUp(self) -> None:
         chat_socket_fixtures.fresh_runs(self)
         self.socket = importlib.import_module("chat.socket")
+        self.runs = importlib.import_module("chat.run")
 
     def test_pages_come_and_go_and_a_page_that_cannot_take_an_event_stops_watching(self) -> None:
         async def scenario() -> None:
-            run = self.socket.run_for("team_1")
+            run = self.runs.run_for("team_1")
             run.connection.active = self.socket.Turn(None, "chat")
             kept, failing = [], mock.Mock(side_effect=RuntimeError("overflow"))
-            watching = self.socket.Transport(kept.append, mock.Mock())
-            broken = self.socket.Transport(failing, mock.Mock())
+            watching = self.runs.Transport(kept.append, mock.Mock())
+            broken = self.runs.Transport(failing, mock.Mock())
             run.attach(watching, _authority(), "en")
             run.attach(broken, _authority(), "en")
             self.assertNotIn(broken, run.observers)
             # A page that attaches is shown the latest steps and where the next one continues.
-            for seq in range(1, self.socket.LIVE_STEPS + 5):
+            for seq in range(1, self.runs.LIVE_STEPS + 5):
                 run.publish({"type": "progress", "seq": seq, "origin": "team", "phase": "model", "state": "started"})
             snapshot = run.snapshot()
-            self.assertEqual(len(snapshot["events"]), self.socket.LIVE_STEPS)
-            self.assertEqual((snapshot["events"][0]["seq"], snapshot["cursor"]), (5, self.socket.LIVE_STEPS + 4))
-            other = self.socket.Transport(lambda _event: None, mock.Mock())
+            self.assertEqual(len(snapshot["events"]), self.runs.LIVE_STEPS)
+            self.assertEqual((snapshot["events"][0]["seq"], snapshot["cursor"]), (5, self.runs.LIVE_STEPS + 4))
+            other = self.runs.Transport(lambda _event: None, mock.Mock())
             run.attach(other, _authority(), "en")
             run.detach(watching)
             # Another page still watches, and the turn runs: nothing is forgotten.
-            self.assertIs(self.socket.RUNS["team_1"], run)
+            self.assertIs(self.runs.RUNS["team_1"], run)
             run.detach(other)
-            self.assertIs(self.socket.RUNS["team_1"], run)
+            self.assertIs(self.runs.RUNS["team_1"], run)
             await run.end()
 
         asyncio.run(scenario())
 
     def test_ending_a_run_without_authority_or_with_a_failing_one_still_ends_it(self) -> None:
         async def scenario() -> None:
-            idle = self.socket.run_for("team_1")
+            idle = self.runs.run_for("team_1")
             await idle.end()
-            self.assertNotIn("team_1", self.socket.RUNS)
+            self.assertNotIn("team_1", self.runs.RUNS)
             # Ending it again, as a revocation and a deletion may both, finds nothing more to forget.
             await idle.end()
 
             def failing_scope():
                 raise self.socket.transport.TeamRequestError("authority unavailable")
 
-            running = self.socket.run_for("team_2")
+            running = self.runs.run_for("team_2")
             running.authority = _authority(scope=failing_scope)
             with self.assertLogs("shimpz-admin", "WARNING"):
                 await running.end()
@@ -234,21 +236,21 @@ class RunEdgeTests(unittest.TestCase):
 
     def test_the_sweep_keeps_current_and_watched_work_and_ends_only_what_it_must(self) -> None:
         async def scenario() -> None:
-            with mock.patch.object(self.socket, "SWEEP_SECONDS", 0.01):
-                self.socket._SWEEP_TASK[0] = None
-                current = self.socket.run_for("team_1")
+            with mock.patch.object(self.runs, "SWEEP_SECONDS", 0.01):
+                self.runs._SWEEP_TASK[0] = None
+                current = self.runs.run_for("team_1")
                 current.connection.active = self.socket.Turn(None, "chat")
                 current.authority = _authority(current=True)
-                unowned = self.socket.run_for("team_2")
+                unowned = self.runs.run_for("team_2")
                 unowned.connection.active = self.socket.Turn(None, "chat")
-                watched = self.socket.run_for("team_3")
-                watched.observers.add(self.socket.Transport(lambda _event: None, mock.Mock()))
+                watched = self.runs.run_for("team_3")
+                watched.observers.add(self.runs.Transport(lambda _event: None, mock.Mock()))
                 await asyncio.sleep(0.05)
-                self.assertEqual(sorted(self.socket.RUNS), ["team_1", "team_2", "team_3"])
+                self.assertEqual(sorted(self.runs.RUNS), ["team_1", "team_2", "team_3"])
                 for run in (current, unowned, watched):
                     await run.end()
                 await asyncio.sleep(0.05)
-                self.socket._SWEEP_TASK[0] = None
+                self.runs._SWEEP_TASK[0] = None
 
         asyncio.run(scenario())
 
@@ -256,39 +258,39 @@ class RunEdgeTests(unittest.TestCase):
         async def scenario() -> None:
             hung: concurrent.futures.Future[object] = concurrent.futures.Future()
             hung.set_running_or_notify_cancel()
-            stuck = self.socket.run_for("team_1")
+            stuck = self.runs.run_for("team_1")
             stuck.connection.active = self.socket.Turn(hung, "chat")
             stuck.authority = _authority(current=False)
-            expired = self.socket.run_for("team_2")
+            expired = self.runs.run_for("team_2")
             expired.connection.active = self.socket.Turn(None, "chat")
             expired.authority = _authority(current=False)
             stopped = self.socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
             with (
-                mock.patch.object(self.socket, "SWEEP_SECONDS", 0.01),
+                mock.patch.object(self.runs, "SWEEP_SECONDS", 0.01),
                 mock.patch.object(self.socket, "STOP_RESULT_WAIT_SECONDS", 0.01),
                 mock.patch.object(self.socket.local, "stop", return_value=stopped),
             ):
-                self.socket._SWEEP_TASK[0] = None
-                self.socket._start_sweep()
+                self.runs._SWEEP_TASK[0] = None
+                self.runs._start_sweep()
                 for _ in range(200):
-                    if "team_2" not in self.socket.RUNS:
+                    if "team_2" not in self.runs.RUNS:
                         break
                     await asyncio.sleep(0.01)
-                self.assertNotIn("team_2", self.socket.RUNS)
-                self.assertIs(self.socket.RUNS.get("team_1"), stuck)
+                self.assertNotIn("team_2", self.runs.RUNS)
+                self.assertIs(self.runs.RUNS.get("team_1"), stuck)
                 hung.set_result(object())
                 for _ in range(200):
-                    if not self.socket.RUNS:
+                    if not self.runs.RUNS:
                         break
                     await asyncio.sleep(0.01)
-                self.assertEqual(self.socket.RUNS, {})
-                self.socket._SWEEP_TASK[0] = None
+                self.assertEqual(self.runs.RUNS, {})
+                self.runs._SWEEP_TASK[0] = None
 
         asyncio.run(scenario())
 
     def test_a_turn_with_no_ending_admin_holds_is_stopped_in_team_when_its_run_ends(self) -> None:
         async def scenario() -> None:
-            run = self.socket.run_for("team_1")
+            run = self.runs.run_for("team_1")
             run.authority = _authority()
             answered: concurrent.futures.Future[object] = concurrent.futures.Future()
             answered.set_result(self.socket.local.PublicResponse(503, {}))
@@ -297,7 +299,7 @@ class RunEdgeTests(unittest.TestCase):
             with mock.patch.object(self.socket.local, "stop", return_value=stopped) as stop:
                 await run.end()
             stop.assert_called_once_with("team_1")
-            self.assertNotIn("team_1", self.socket.RUNS)
+            self.assertNotIn("team_1", self.runs.RUNS)
 
         asyncio.run(scenario())
 
@@ -308,8 +310,8 @@ class RunEdgeTests(unittest.TestCase):
                 (self.socket.local.PublicResponse(503, {"detail": "Team is unavailable"}), contextlib.nullcontext),
                 (None, None),
             ):
-                run = self.socket.run_for("team_1")
-                run.observers.add(self.socket.Transport(seen.append, mock.Mock()))
+                run = self.runs.run_for("team_1")
+                run.observers.add(self.runs.Transport(seen.append, mock.Mock()))
                 answered: concurrent.futures.Future[object] = concurrent.futures.Future()
                 answered.set_result(self.socket.local.PublicResponse(503, {}))
                 run.connection.active = self.socket.Turn(answered, "chat", history_id="t" * 32)
@@ -335,15 +337,15 @@ class RunEdgeTests(unittest.TestCase):
         asyncio.run(scenario())
 
     def test_session_endings_reach_runs_only_once_a_loop_holds_them(self) -> None:
-        with mock.patch.object(self.socket, "_SWEEP_LOOP", [None]):
-            self.socket.sessions_ended(None)
+        with mock.patch.object(self.runs, "_SWEEP_LOOP", [None]):
+            self.runs.sessions_ended(None)
 
         async def scenario() -> None:
-            run = self.socket.run_for("team_1")
+            run = self.runs.run_for("team_1")
             run.connection.active = self.socket.Turn(None, "chat")
             run.authority = _authority()
-            with mock.patch.object(self.socket.Run, "end", new=mock.AsyncMock()) as end:
-                self.socket.sessions_ended(None)
+            with mock.patch.object(self.runs.Run, "end", new=mock.AsyncMock()) as end:
+                self.runs.sessions_ended(None)
                 await asyncio.sleep(0.01)
             end.assert_awaited_once()
 
@@ -354,13 +356,14 @@ class AuditEdgeTests(unittest.TestCase):
     def setUp(self) -> None:
         chat_socket_fixtures.fresh_runs(self)
         self.socket = importlib.import_module("chat.socket")
+        self.runs = importlib.import_module("chat.run")
 
     def test_a_refused_frame_reaches_only_its_page_and_never_takes_the_running_works_authority(self) -> None:
         async def scenario() -> None:
-            run = self.socket.run_for("team_1")
+            run = self.runs.run_for("team_1")
             first, second = [], []
-            watching = self.socket.Transport(first.append, mock.Mock())
-            sending = self.socket.Transport(second.append, mock.Mock())
+            watching = self.runs.Transport(first.append, mock.Mock())
+            sending = self.runs.Transport(second.append, mock.Mock())
             run.observers.update({watching, sending})
             running = _authority()
             run.authority = running
@@ -380,9 +383,9 @@ class AuditEdgeTests(unittest.TestCase):
 
     def test_an_operation_whose_session_ended_while_it_waited_never_starts(self) -> None:
         async def scenario() -> None:
-            run = self.socket.run_for("team_1")
+            run = self.runs.run_for("team_1")
             run.authority = _authority(current=False)
-            relay = self.socket.FrameRelay(run, None)
+            relay = self.runs.FrameRelay(run, None)
             relay.dispatching = False
             finish = mock.AsyncMock()
             work = mock.AsyncMock()
@@ -400,18 +403,18 @@ class AuditEdgeTests(unittest.TestCase):
 
     def test_ending_a_run_stops_a_continuation_team_executes_and_holds_the_team_until_it_ended(self) -> None:
         async def scenario() -> None:
-            run = self.socket.run_for("team_1")
+            run = self.runs.run_for("team_1")
             run.authority = _authority()
             run.connection.continuing = True
             stopped = asyncio.Event()
             seen_registered = []
 
             def stop(_team_id):
-                seen_registered.append(self.socket.RUNS.get("team_1") is run)
+                seen_registered.append(self.runs.RUNS.get("team_1") is run)
                 return self.socket.local.PublicResponse(200, {"team_id": "team_1", "stopped": True})
 
             page = []
-            observer = self.socket.Transport(page.append, mock.Mock())
+            observer = self.runs.Transport(page.append, mock.Mock())
             with mock.patch.object(self.socket.local, "stop", side_effect=stop):
                 ending = asyncio.create_task(run.end())
                 await asyncio.sleep(0)
@@ -420,10 +423,10 @@ class AuditEdgeTests(unittest.TestCase):
                 await ending
                 stopped.set()
             self.assertEqual(seen_registered, [True])
-            self.assertNotIn("team_1", self.socket.RUNS)
+            self.assertNotIn("team_1", self.runs.RUNS)
             self.assertEqual(page[-1]["status"], 409)
             # A page that watched it follows the Team's next run.
-            channel = self.socket.Channel(observer, "team_1", _authority)
+            channel = self.runs.Channel(observer, "team_1", _authority)
             self.assertIsNot(channel.run, run)
             self.assertIn(observer, channel.run.observers)
             channel.halt()
@@ -436,24 +439,25 @@ class RunBoundaryTests(unittest.TestCase):
     def setUp(self) -> None:
         chat_socket_fixtures.fresh_runs(self)
         self.socket = importlib.import_module("chat.socket")
+        self.runs = importlib.import_module("chat.run")
 
     def test_a_frames_other_events_reach_every_page_and_a_replaced_run_is_never_forgotten_twice(self) -> None:
         async def scenario() -> None:
-            run = self.socket.run_for("team_1")
+            run = self.runs.run_for("team_1")
             first, second = [], []
-            run.observers.update({self.socket.Transport(first.append, mock.Mock())})
-            relay = self.socket.FrameRelay(run, self.socket.Transport(second.append, mock.Mock()))
+            run.observers.update({self.runs.Transport(first.append, mock.Mock())})
+            relay = self.runs.FrameRelay(run, self.runs.Transport(second.append, mock.Mock()))
             await relay.send_json({"type": "sync-empty"})
             self.assertEqual(first, [{"type": "sync-empty"}])
             # Another run took the Team's place meanwhile: retiring or ending the old one leaves it there.
-            newer = self.socket.Run("team_1")
-            self.socket.RUNS["team_1"] = newer
+            newer = self.runs.Run("team_1")
+            self.runs.RUNS["team_1"] = newer
             run.retire()
             await run.end()
-            self.assertIs(self.socket.RUNS["team_1"], newer)
+            self.assertIs(self.runs.RUNS["team_1"], newer)
             # A page never watches a run that is ending.
             newer.connection.closed = True
-            channel = self.socket.Channel(self.socket.Transport(first.append, mock.Mock()), "team_1", _authority)
+            channel = self.runs.Channel(self.runs.Transport(first.append, mock.Mock()), "team_1", _authority)
             self.assertNotIn(channel.transport, channel.run.observers)
             newer.connection.closed = False
             await newer.end()
@@ -462,9 +466,9 @@ class RunBoundaryTests(unittest.TestCase):
 
     def test_a_turn_retried_after_a_busy_space_never_starts_once_its_session_ended(self) -> None:
         async def scenario() -> None:
-            run = self.socket.run_for("team_1")
+            run = self.runs.run_for("team_1")
             run.authority = _authority()
-            relay = self.socket.FrameRelay(run, None)
+            relay = self.runs.FrameRelay(run, None)
             relay.dispatching = False
             busy = self.socket.local.PublicResponse(429, {"code": "space-busy"})
             turn = self.socket.Turn(None, "chat", history_id=None)
@@ -507,11 +511,12 @@ class ReviewEdgeTests(unittest.TestCase):
     def setUp(self) -> None:
         chat_socket_fixtures.fresh_runs(self)
         self.socket = importlib.import_module("chat.socket")
+        self.runs = importlib.import_module("chat.run")
 
     def test_a_page_that_leaves_while_its_frame_is_dispatched_never_ends_the_message(self) -> None:
         async def scenario() -> None:
-            run = self.socket.run_for("team_1")
-            page = self.socket.Transport(lambda _event: None, mock.Mock())
+            run = self.runs.run_for("team_1")
+            page = self.runs.Transport(lambda _event: None, mock.Mock())
             run.observers.add(page)
             admitted = asyncio.Event()
             release = asyncio.Event()
@@ -520,12 +525,12 @@ class ReviewEdgeTests(unittest.TestCase):
                 admitted.set()
                 await release.wait()
 
-            with mock.patch.object(self.socket, "_dispatch", side_effect=dispatch):
+            with mock.patch.object(self.socket, "dispatch", side_effect=dispatch):
                 run.submit(chat_socket_fixtures.chat_frame("hello"), _authority(), page)
                 await admitted.wait()
                 run.detach(page)
                 # The frame under dispatch keeps the run: the message it carries is not lost.
-                self.assertIs(self.socket.RUNS.get("team_1"), run)
+                self.assertIs(self.runs.RUNS.get("team_1"), run)
                 release.set()
                 await asyncio.sleep(0)
             await run.end()
@@ -573,7 +578,7 @@ class ReviewEdgeTests(unittest.TestCase):
 
     def test_an_ended_run_keeps_its_team_until_its_work_and_its_stop_ended(self) -> None:
         async def scenario() -> None:
-            run = self.socket.run_for("team_1")
+            run = self.runs.run_for("team_1")
             run.authority = _authority()
             future: concurrent.futures.Future[object] = concurrent.futures.Future()
             future.set_running_or_notify_cancel()
@@ -594,17 +599,17 @@ class ReviewEdgeTests(unittest.TestCase):
             ):
                 ending = asyncio.create_task(run.end())
                 await asyncio.sleep(0.1)
-                self.assertIs(self.socket.RUNS.get("team_1"), run)
+                self.assertIs(self.runs.RUNS.get("team_1"), run)
                 future.set_result(object())
                 await asyncio.sleep(0.05)
-                self.assertIs(self.socket.RUNS.get("team_1"), run)
+                self.assertIs(self.runs.RUNS.get("team_1"), run)
                 continuation.set_result(object())
                 await asyncio.sleep(0.05)
                 # Its Stop is still under way.
-                self.assertIs(self.socket.RUNS.get("team_1"), run)
+                self.assertIs(self.runs.RUNS.get("team_1"), run)
                 answer.set()
                 await ending
-            self.assertNotIn("team_1", self.socket.RUNS)
+            self.assertNotIn("team_1", self.runs.RUNS)
 
         asyncio.run(scenario())
 
