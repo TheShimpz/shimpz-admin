@@ -20,8 +20,8 @@
   } from '#lib/chat/turns.js';
   import { clarifiedRequest, matchClarificationAnswers } from '#lib/chat/clarification/compose.js';
   import { promptHistoryStep } from '#lib/chat/prompts.js';
-  import ChatDay from '#lib/chat/Day.svelte';
-  import { calendarDay, exchangeDays, turnInstants, untilNextDay } from '#lib/chat/days.js';
+  import ChatDay from '#lib/chat/day/Header.svelte';
+  import { calendarDay, exchangeDays, turnInstants, untilNextDay } from '#lib/chat/day/calendar.js';
   import { questionWords } from '#lib/routines/words.js';
   import { adminSocket, commandsReady, openChatChannel, outcomeUnknown } from '#lib/session/socket.js';
   import {
@@ -200,7 +200,7 @@
   // How each Routine card was answered, so a reloaded card shows its answer, never its buttons again.
   let answers = $derived(cardAnswers(transcript.turns));
   let exchanges = $derived(groupExchanges(transcript.turns, answers));
-  // Each exchange's calendar day in the viewer's timezone (chat/days.js says which time an item carries); a header
+  // Each exchange's calendar day in the viewer's timezone (chat/day/calendar.js says which time an item carries); a header
   // opens each day, and "today" moves at the viewer's midnight.
   const instantOf = turnInstants();
   let today = $state(calendarDay(Date.now()));

@@ -1,7 +1,7 @@
 <script>
   import { Message } from '@shimpz/frontend';
   import AttachmentTile from '#lib/chat/attachments/Tile.svelte';
-  import { clockTime, instantValue } from '#lib/chat/days.js';
+  import { clockTime, instantValue } from '#lib/chat/day/calendar.js';
   import InstallPlan from '#lib/chat/lifecycle/InstallPlan.svelte';
   import Uninstall from '#lib/chat/lifecycle/Uninstall.svelte';
   import { shownUsage } from '#lib/chat/turns.js';

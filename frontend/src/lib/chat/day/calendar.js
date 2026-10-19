@@ -8,7 +8,7 @@
 //   yet a history row here, so its time is when the page first showed it.
 // An exchange (a message and the reply under it) stays whole under the day of its first item.
 
-import { dateFormat, relativeFormat } from '../i18n/formats.js';
+import { dateFormat, relativeFormat } from '../../i18n/formats.js';
 
 const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DAY_MS = 86_400_000;

@@ -4,7 +4,7 @@
 
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import { dismissOnEscape, dismissOutside, hidePanel, openPanel, placePanel } from '#lib/brain/panel.js';
-  import { chatLimit, MAX_CHAT_LIMIT, saveChatLimit } from '#lib/chat/limit.js';
+  import { chatLimit, MAX_CHAT_LIMIT, saveChatLimit } from '#lib/chat/limit/store.js';
   import { t } from '#lib/i18n/index.js';
   import { focusMark, regainFocus } from '#lib/shell/focus.js';
 

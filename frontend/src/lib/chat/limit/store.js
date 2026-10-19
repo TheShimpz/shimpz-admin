@@ -1,6 +1,6 @@
-import { socketReads } from '../session/socket.js';
-import { synced } from '../session/synced.js';
-import { exactKeys, jsonObject, LocalApiError, safeApiError } from '../api.js';
+import { socketReads } from '../../session/socket.js';
+import { synced } from '../../session/synced.js';
+import { exactKeys, jsonObject, LocalApiError, safeApiError } from '../../api.js';
 
 // How many chat conversations the Space runs at once (ADR-0119): Team owns the limit, Admin reads and sets it. The
 // rest wait in line, each told its place. 2 is the ceiling proven so far.

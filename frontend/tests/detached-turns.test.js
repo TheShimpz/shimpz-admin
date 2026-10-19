@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { socketReads } from '../src/lib/session/socket.js';
-import { forgetChatLimit, loadChatLimit, saveChatLimit } from '../src/lib/chat/limit.js';
+import { forgetChatLimit, loadChatLimit, saveChatLimit } from '../src/lib/chat/limit/store.js';
 import { parseChatEvent } from '../src/lib/chat/protocol.js';
 import { listChatHistory } from '../src/lib/chat/history.js';
 import { historyTurn } from '../src/lib/chat/turns.js';

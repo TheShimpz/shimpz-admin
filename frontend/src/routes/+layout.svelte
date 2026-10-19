@@ -16,7 +16,7 @@
   import { clearChatHistories } from '#lib/chat/history.js';
   import { clearPreviews } from '#lib/chat/attachments/previews.js';
   import { forgetDecisionProvider } from '#lib/brain/decision.js';
-  import { forgetChatLimit } from '#lib/chat/limit.js';
+  import { forgetChatLimit } from '#lib/chat/limit/store.js';
   import { locale, LOCALES, t } from '#lib/i18n/index.js';
   import { INITIAL_VIEW_READINESS } from '#lib/shell/initialView.js';
   import { clearModelContext, modelContext } from '#lib/brain/context.js';
