@@ -1,5 +1,5 @@
 <script>
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { Button } from '@shimpz/frontend';
   import { assistantName } from '#lib/assistants/names.js';
   import BrowserWatch from '#lib/chat/browser/Watch.svelte';
@@ -20,12 +20,24 @@
   } = $props();
   let elapsed = $state(0);
   let watch = $state();
+  let root = $state();
 
   let current = $derived(currentIndex >= 0 ? steps[currentIndex] : null);
   // The screen shows for as long as the turn's current step is its Browser task, and closes with it.
   let browsing = $derived(current?.phase === 'browser' && Boolean(teamId));
   // The seconds since the turn started, counting, right after the signal bars; the time's name is only its hover title.
   let formattedElapsed = $derived(`${elapsed} s`);
+
+  // A screen that opens is brought to the top of the transcript, as a sent message is, so the reader follows the task
+  // from its progress line without scrolling by hand.
+  $effect(() => {
+    if (!browsing) return;
+    void tick().then(() => {
+      if (!root?.isConnected) return;
+      const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      root.scrollIntoView({ block: 'start', behavior: reducedMotion ? 'auto' : 'smooth' });
+    });
+  });
 
   onMount(() => {
     const update = () => { elapsed = Math.max(0, Math.floor((Date.now() - startedAt) / 1000)); };
@@ -35,7 +47,7 @@
   });
 </script>
 
-<div class="thinking" role="group" aria-label={label}>
+<div bind:this={root} class="thinking" role="group" aria-label={label}>
   <div class="summary">
     <span class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
     <span class="elapsed" title={elapsedText} aria-hidden="true">{formattedElapsed} ·</span>

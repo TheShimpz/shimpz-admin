@@ -16,7 +16,7 @@ const INPUT = new Set(Object.values(CLIENT_MESSAGES));
 
 // Start a turn whose Browser task keeps running; its display draws one screen of PAGE and records what the page sends,
 // until the test ends the task.
-async function startTask(page) {
+async function startTask(page, message = 'Open example.com and tell me its title.') {
   const scenario = await routeScenario(page, 'browser-watch');
   const display = { streams: [], closed: 0, ended: false };
   await routeRead(page, 'browser.view', () => (display.ended
@@ -43,7 +43,7 @@ async function startTask(page) {
   });
   const composer = page.getByRole('textbox', { name: EN.send, exact: true });
   await expect(composer).toBeEnabled({ timeout: 20_000 });
-  await composer.fill('Open example.com and tell me its title.');
+  await composer.fill(message);
   await composer.press('Enter');
   // The screen shows by itself once the turn's current step is the Browser task.
   await expect(page.getByRole('figure', { name: WATCH.title })).toBeVisible();
@@ -121,4 +121,12 @@ test('a task that ended says so and opens nothing more', async ({ page }) => {
   await expect(page.getByRole('figure', { name: WATCH.title }).getByRole('status')).toHaveText(WATCH.ended);
   await page.waitForTimeout(1_000);
   expect(display.streams).toHaveLength(1);
+});
+
+test('the screen that opens under a long message is scrolled to, as the message was', async ({ page }) => {
+  const steps = Array.from({ length: 80 }, (_, index) => `${index + 1}. Open the next notice and read its deadline.`);
+  await startTask(page, steps.join('\n'));
+  // The reader follows the task from the progress line above its screen, without scrolling by hand.
+  await expect(page.getByRole('button', { name: WATCH.fullscreen, exact: true })).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole('img', { name: WATCH.alt })).toBeInViewport({ ratio: 0.5 });
 });
