@@ -211,32 +211,15 @@ async def _continue_team_turn(
         turn.operation = "chat"
         turn.lifecycle_stop = None
         response = await _turn_response(websocket, connection, turn)
-        if not _space_busy(response, turn, connection):
+        if not gated.space_busy(response) or turn.slot is None or turn.stop_requested or connection.closed:
             break
         # Team runs as many turns as the Space's limit, some of them unknown here: this one waits at the head of the
-        # queue and asks again, still under a current session; Stop meanwhile ends it there (ADR-0119).
+        # queue and asks again, still under a current session (the gate ends it otherwise); Stop meanwhile ends it
+        # there (ADR-0119).
         turn.operation = "queued"
         await turn.slot.busy()
-        try:
-            await gated.authorized(websocket)
-        except gated.AuthorityEndedError:
-            await _finish_active_turn(
-                websocket, connection, turn, error_terminal(401, "the session ended before the turn could start")
-            )
-            return
+        await gated.authorized(websocket)
     await _deliver_turn(websocket, connection, turn, team_id, response)
-
-
-def _space_busy(response: object, turn: Turn, connection: Connection) -> bool:
-    """Whether Team refused the turn only because the Space runs as many chat turns as its limit, and it may wait."""
-    return (
-        isinstance(response, transport.TeamResponse)
-        and response.status == 429
-        and response.body == {"code": "space-busy"}
-        and turn.slot is not None
-        and not turn.stop_requested
-        and not connection.closed
-    )
 
 
 async def _finish_active_turn(
@@ -311,9 +294,7 @@ async def _gated_continuation(
                 await gated.authorized(websocket)
                 progress, report = _progress_channel()
                 try:
-                    future = submit(report)
-                    connection.continuing = True
-                    connection.continuation = future
+                    future = connection.continuation = submit(report)
                 except ExecutorSaturatedError:
                     await _send_sync_terminal_once(
                         websocket, connection, error_terminal(429, "local chat capacity reached")
@@ -333,26 +314,12 @@ async def _gated_continuation(
                             ),
                         )
                 finally:
-                    connection.continuing = False
                     connection.continuation = None
-                busy = (
-                    isinstance(response, transport.TeamResponse)
-                    and response.status == 429
-                    and response.body == {"code": "space-busy"}
-                )
-                if not busy or connection.closed:
+                if not gated.space_busy(response) or connection.closed:
                     return response
                 await held.busy()
-    except chat_gate.QueueFullError:
-        await _send_sync_terminal_once(websocket, connection, error_terminal(429, "the chat queue is full"))
-    except gated.LimitUnavailableError:
-        await _send_sync_terminal_once(
-            websocket, connection, error_terminal(503, "the Space chat limit is unavailable")
-        )
-    except gated.AuthorityEndedError:
-        await _send_sync_terminal_once(
-            websocket, connection, error_terminal(401, "the session ended before the continuation could start")
-        )
+    except gated.REFUSED as error:
+        await _send_sync_terminal_once(websocket, connection, gated.refusal(error))
     return None
 
 

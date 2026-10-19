@@ -121,20 +121,10 @@ async def resumed_terminal(
     *,
     receipt: list[dict[str, object]] | None = None,
 ) -> None:
+    """Keep how a resumed turn ended; the turn it resumed must still be known."""
     if turn_id is None:
         raise store.HistoryUnavailableError("chat history resumable turn is unavailable")
-    if event.get("type") == "done":
-        committed = await asyncio.to_thread(store.append_reply, event.get("team_id"), turn_id, event, receipt=receipt)
-        if not committed:
-            raise store.HistoryUnavailableError("chat history resumed reply was not committed")
-        return
-    if event.get("type") in {"error", "stopped"}:
-        # The ending is kept whether or not a page watched it (ADR-0119).
-        committed = await asyncio.to_thread(store.append_status, team_id, turn_id, event, finish=True)
-        if not committed:
-            raise store.HistoryUnavailableError("chat history resumed status was not committed")
-        return
-    await asyncio.to_thread(store.finish_resumable_turn, turn_id)
+    await terminal(team_id, turn_id, event, finish_history=True, receipt=receipt)
 
 
 async def guidance(team_id: str, turn_id: str | None, code: str, reply: str) -> None:

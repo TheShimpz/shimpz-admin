@@ -267,7 +267,6 @@ class Run:
         active = self.connection.active
         unfinished = None if active is None or active.terminal_sent else active.history_id
         # A human or Integration continuation Team executes now is stopped there too, not only no longer awaited.
-        continuing = self.connection.continuing
         continuation = self.connection.continuation
         authority = self.authority
         # The status of the run's own Stop when Team did not confirm it.
@@ -276,7 +275,9 @@ class Run:
             with authority.scope() if authority is not None else contextlib.nullcontext():
                 await chat_socket.close_connection(self.relay, self.connection, self.team_id)
                 # Admin holds no Team answer that ended its turn, so the Team may still run it: stop it there too.
-                if continuing or (active is not None and not active.terminal_sent and active.stop_task is None):
+                if continuation is not None or (
+                    active is not None and not active.terminal_sent and active.stop_task is None
+                ):
                     response = await chat_socket.team_stop(self.team_id)
                     if stop_accepted(response, self.team_id) is None:
                         unconfirmed = chat_socket.stop_status(response)
@@ -404,10 +405,6 @@ class Channel:
             run.observers.add(self.transport)
         return run
 
-    @property
-    def connection(self) -> Connection:
-        return self.run.connection
-
     def attach(self, locale: str) -> None:
         run = run_for(self.team_id)
         run.attach(self.transport, self._authority(), locale)
@@ -416,15 +413,11 @@ class Channel:
         """Queue one admitted chat frame for the Team's run in arrival order; refuse one beyond the waiting bound."""
         return self.run.submit(frame, self._authority(), self.transport)
 
-    def halt(self) -> None:
-        """Stop watching at once: the socket is closing."""
+    def leave(self) -> None:
+        """Stop watching; the run's work goes on (ADR-0119)."""
         run = RUNS.get(self.team_id)
         if run is not None:
             run.detach(self.transport)
-
-    async def close(self) -> None:
-        """Stop watching; the run's work goes on (ADR-0119)."""
-        self.halt()
 
 
 auth.SESSIONS.listen(sessions_ended)

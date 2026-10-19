@@ -33,7 +33,6 @@ class _Held:
 
     gate: Gate
     position: Position
-    read_limit: ReadLimit
     holding: bool = False
 
     async def busy(self) -> None:
@@ -51,7 +50,7 @@ class _Held:
             self.gate._grant()
             raise
         self.gate._resting -= 1
-        await self.gate._acquire(self.position, self.read_limit, head=True)
+        await self.gate._acquire(self.position, head=True)
         self.holding = True
 
     def release(self) -> None:
@@ -93,8 +92,10 @@ class Gate:
     @contextlib.asynccontextmanager
     async def slot(self, position: Position, read_limit: ReadLimit):
         """Hold one slot for the body; wait for it first, in order, when the Space runs as many as its limit."""
-        held = _Held(self, position, read_limit)
-        await self._acquire(position, read_limit, head=False)
+        if self._limit is None:
+            await self._read_limit(read_limit)
+        held = _Held(self, position)
+        await self._acquire(position, head=False)
         held.holding = True
         try:
             yield held
@@ -126,9 +127,7 @@ class Gate:
         if not read.cancelled() and read.exception() is None and self._limit is None:
             self._limit = read.result()
 
-    async def _acquire(self, position: Position, read_limit: ReadLimit, *, head: bool) -> None:
-        if self._limit is None:
-            await self._read_limit(read_limit)
+    async def _acquire(self, position: Position, *, head: bool) -> None:
         # A free slot goes at once only to an operation nobody waits ahead of, resting ones included.
         if not self._waiting and not (self._resting and not head) and self._running < self._limit:
             self._running += 1

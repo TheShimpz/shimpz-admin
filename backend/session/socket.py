@@ -136,7 +136,6 @@ class SessionSocket:
         self.calls: dict[str, asyncio.Task] = {}
         self.subscriptions: set[str] = set()
         self.channels: dict[str, chat_runs.Channel] = {}
-        self.detaching: set[asyncio.Task] = set()
         self.closed = asyncio.Event()
         self.close_code = 1000
         self.loop = asyncio.get_running_loop()
@@ -275,9 +274,7 @@ class SessionSocket:
         channel = self.channels.pop(team_id, None) if isinstance(team_id, str) else None
         if channel is None:
             return 409, {"detail": "the Team's chat is not attached"}
-        closing = asyncio.create_task(channel.close())
-        self.detaching.add(closing)
-        closing.add_done_callback(self.detaching.discard)
+        channel.leave()
         return 200, {"team_id": team_id}
 
     # Inbound
@@ -402,27 +399,24 @@ class SessionSocket:
             await self._shutdown(workers)
 
     async def _shutdown(self, workers: list[asyncio.Task]) -> None:
-        """End the socket's authority at once, tell the browser, then stop its work and close each chat channel.
+        """End the socket's authority at once, leave each chat channel, tell the browser, then stop its work.
 
-        The registry binding and every step-up ticket of the socket end before anything waits, and the close reaches
-        the browser before a slow Stop of a chat channel can delay it.
+        The registry binding and every step-up ticket of the socket end before anything waits.
         """
         registry.REGISTRY.remove(self.handle)
         self.gate.confirmations.ticket_store.revoke(self.step_up)
         local_auth.discard_operation(self.ticket, self.gate.confirmations)
         for task in (*workers, *self.calls.values()):
             task.cancel()
-        # No chat frame dispatches any more, and each channel starts stopping its work before anything waits.
+        # No chat frame dispatches any more; each page stops watching, and its Team's work goes on (ADR-0119).
         channels = list(self.channels.values())
         self.channels.clear()
         for channel in channels:
-            channel.halt()
-        closing = [asyncio.create_task(channel.close()) for channel in channels]
+            channel.leave()
         with contextlib.suppress(RuntimeError, OSError):
             await self.websocket.close(code=self.close_code)
         await asyncio.gather(*workers, *self.calls.values(), return_exceptions=True)
         watcher.WATCHER.refresh()
-        await asyncio.gather(*closing, *self.detaching, return_exceptions=True)
 
 
 async def serve(websocket: WebSocket, gate: Gate) -> None:

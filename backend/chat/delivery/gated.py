@@ -7,6 +7,7 @@ from chat.connection import Connection, Turn
 from chat.projection import error_terminal
 from fastapi import WebSocket
 from team import bridge as team_bridge
+from team.transport import TeamResponse
 
 from chat import gate as chat_gate
 
@@ -35,17 +36,37 @@ class AuthorityEndedError(RuntimeError):
     """The session the operation was admitted under ended while it waited."""
 
 
+# Why the gate let an operation not start, as the terminal its page is told.
+REFUSED = (chat_gate.QueueFullError, LimitUnavailableError, AuthorityEndedError)
+
+
+def refusal(error: Exception) -> dict[str, object]:
+    if isinstance(error, chat_gate.QueueFullError):
+        return error_terminal(429, "the chat queue is full")
+    if isinstance(error, LimitUnavailableError):
+        return error_terminal(503, "the Space chat limit is unavailable")
+    return error_terminal(401, "the session ended before the work could start")
+
+
+def space_busy(response: object) -> bool:
+    """Whether Team refused the work only because the Space runs as many chat turns as its limit."""
+    return isinstance(response, TeamResponse) and response.status == 429 and response.body == {"code": "space-busy"}
+
+
+def _run(websocket: WebSocket) -> object | None:
+    return websocket.run if isinstance(websocket, Observed) else None
+
+
 async def authorized(websocket: WebSocket) -> None:
     """Before the operation starts after waiting: the authority it was admitted under is still current (ADR-0119)."""
-    run = websocket.run if isinstance(websocket, Observed) else None
-    authority = getattr(run, "authority", None)
+    authority = getattr(_run(websocket), "authority", None)
     if authority is not None and not await authority.current():
         raise AuthorityEndedError("the session ended while the operation waited")
 
 
 def position(websocket: WebSocket) -> chat_gate.Position:
     """Tell the pages watching the run where its operation waits, or that it runs."""
-    run = websocket.run if isinstance(websocket, Observed) else None
+    run = _run(websocket)
 
     def tell(place: int | None) -> None:
         # Only a change is told: an operation that never waited starts without a word.
@@ -69,11 +90,7 @@ async def run(
             turn.slot = held
             await authorized(websocket)
             await work()
-    except chat_gate.QueueFullError:
-        await finish(websocket, connection, turn, error_terminal(429, "the chat queue is full"))
-    except AuthorityEndedError:
-        await finish(websocket, connection, turn, error_terminal(401, "the session ended before the turn could start"))
-    except LimitUnavailableError:
-        await finish(websocket, connection, turn, error_terminal(503, "the Space chat limit is unavailable"))
+    except REFUSED as error:
+        await finish(websocket, connection, turn, refusal(error))
     finally:
         turn.slot = None

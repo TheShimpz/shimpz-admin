@@ -733,10 +733,10 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
             )
             channel = runs.Channel(transport, "team_1", lambda: authority)
             run = channel.run
-            channel.connection.active = socket.Turn(future, "chat")
-            await channel.close()
+            run.connection.active = socket.Turn(future, "chat")
+            channel.leave()
             # The page stopped watching; the turn's run goes on.
-            self.assertFalse(channel.connection.closed)
+            self.assertFalse(run.connection.closed)
             self.assertIs(runs.RUNS["team_1"], run)
             await run.end()
             self.assertTrue(run.connection.closed)

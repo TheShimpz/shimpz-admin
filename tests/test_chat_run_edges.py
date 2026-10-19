@@ -405,7 +405,9 @@ class AuditEdgeTests(unittest.TestCase):
         async def scenario() -> None:
             run = self.runs.run_for("team_1")
             run.authority = _authority()
-            run.connection.continuing = True
+            continuation: concurrent.futures.Future[object] = concurrent.futures.Future()
+            continuation.set_result(object())
+            run.connection.continuation = continuation
             stopped = asyncio.Event()
             seen_registered = []
 
@@ -429,8 +431,11 @@ class AuditEdgeTests(unittest.TestCase):
             channel = self.runs.Channel(observer, "team_1", _authority)
             self.assertIsNot(channel.run, run)
             self.assertIn(observer, channel.run.observers)
-            channel.halt()
+            channel.leave()
             await asyncio.sleep(0)
+            # Leaving a Team whose run was already forgotten changes nothing.
+            self.runs.Channel(observer, "team_2", _authority).leave()
+            self.assertNotIn("team_2", self.runs.RUNS)
 
         asyncio.run(scenario())
 
@@ -478,9 +483,13 @@ class RunBoundaryTests(unittest.TestCase):
                 run.authority = _authority(current=False)
 
             turn.slot = mock.Mock(busy=mock.AsyncMock(side_effect=rested))
-            with mock.patch.object(self.socket.local, "turn", return_value=busy):
+            with (
+                mock.patch.object(self.socket.local, "turn", return_value=busy) as asked,
+                self.assertRaises(gated.AuthorityEndedError),
+            ):
+                # The gate's own refusal ends it, as it ends an operation that waited for a slot.
                 await self.socket._continue_team_turn(relay, run.connection, turn, "team_1", {})
-            self.assertTrue(turn.terminal_sent)
+            asked.assert_called_once()
             await run.end()
 
         asyncio.run(scenario())
@@ -602,12 +611,13 @@ class ReviewEdgeTests(unittest.TestCase):
                 self.assertIs(self.runs.RUNS.get("team_1"), run)
                 future.set_result(object())
                 await asyncio.sleep(0.05)
-                self.assertIs(self.runs.RUNS.get("team_1"), run)
-                continuation.set_result(object())
-                await asyncio.sleep(0.05)
                 # Its Stop is still under way.
                 self.assertIs(self.runs.RUNS.get("team_1"), run)
                 answer.set()
+                await asyncio.sleep(0.05)
+                # Its continuation still runs in Team.
+                self.assertIs(self.runs.RUNS.get("team_1"), run)
+                continuation.set_result(object())
                 await ending
             self.assertNotIn("team_1", self.runs.RUNS)
 
