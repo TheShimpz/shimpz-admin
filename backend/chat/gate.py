@@ -37,9 +37,20 @@ class _Held:
     holding: bool = False
 
     async def busy(self) -> None:
-        """Team found the Space busy: give the slot back, wait a moment, and take one again at the head of the queue."""
+        """Team found the Space busy: give the slot back, wait a moment, and take one again at the head of the queue.
+
+        While it waits it still counts against the queue's bound, so retrying operations never let the queue outgrow it.
+        """
         self.release()
-        await asyncio.sleep(BUSY_RETRY_SECONDS)
+        self.gate._resting += 1
+        try:
+            await asyncio.sleep(BUSY_RETRY_SECONDS)
+        except asyncio.CancelledError:
+            # Stopped while it rested: the place it kept goes to whoever waits.
+            self.gate._resting -= 1
+            self.gate._grant()
+            raise
+        self.gate._resting -= 1
         await self.gate._acquire(self.position, self.read_limit, head=True)
         self.holding = True
 
@@ -64,6 +75,8 @@ class Gate:
         self._limit: int | None = None
         self._running = 0
         self._waiting: list[_Waiter] = []
+        # Operations Team found the Space busy for, waiting a moment before they queue again at the head.
+        self._resting = 0
 
     @property
     def limit(self) -> int | None:
@@ -88,17 +101,22 @@ class Gate:
     async def _acquire(self, position: Position, read_limit: ReadLimit, *, head: bool) -> None:
         if self._limit is None:
             self._limit = await read_limit()
-        if not self._waiting and self._running < self._limit:
+        # A free slot goes at once only to an operation nobody waits ahead of, resting ones included.
+        if not self._waiting and not (self._resting and not head) and self._running < self._limit:
             self._running += 1
             position(None)
             return
-        if len(self._waiting) >= MAX_WAITING:
+        if not head and len(self._waiting) + self._resting >= MAX_WAITING:
             raise QueueFullError("the chat queue is full")
         waiter = _Waiter(position)
         if head:
             self._waiting.insert(0, waiter)
         else:
             self._waiting.append(waiter)
+        # A slot left free for a resting operation goes to the head once it is back, or to whoever waits once none
+        # rests any more.
+        if not self._resting:
+            self._grant()
         self._tell()
         try:
             await waiter.granted

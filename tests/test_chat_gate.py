@@ -182,6 +182,32 @@ class ChatGateTests(unittest.TestCase):
 
         asyncio.run(scenario())
 
+    def test_operations_resting_after_a_busy_space_still_count_against_the_queue(self) -> None:
+        async def scenario() -> None:
+            gate = chat_gate.Gate()
+            gate.set_limit(1)
+            resting = asyncio.Event()
+
+            async def busy() -> None:
+                async with gate.slot(lambda _place: None, _limit) as held:
+                    resting.set()
+                    await held.busy()
+
+            with mock.patch.object(chat_gate, "BUSY_RETRY_SECONDS", 60), mock.patch.object(chat_gate, "MAX_WAITING", 1):
+                task = asyncio.create_task(busy())
+                await resting.wait()
+                await asyncio.sleep(0)
+                # The resting operation gave its slot back yet fills the queue's one place: a new one is refused.
+                with self.assertRaises(chat_gate.QueueFullError):
+                    async with gate.slot(lambda _place: None, _limit):
+                        raise AssertionError("an operation queued past the bound")
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            async with gate.slot(lambda _place: None, _limit):
+                pass
+
+        asyncio.run(scenario())
+
 
 if __name__ == "__main__":
     unittest.main()

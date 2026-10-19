@@ -44,23 +44,29 @@ class GateEdgeTests(unittest.TestCase):
 
             async def busy() -> None:
                 async with gate.slot(places["busy"].append, _limit) as held:
-                    await asyncio.sleep(0)
-                    asked_again.set()
+                    # Team answers busy once the waiter queued behind it.
+                    await asked_again.wait()
                     await held.busy()
 
             async def waiter() -> None:
                 async with gate.slot(places["waiter"].append, _limit):
                     await hold.wait()
 
+            async def until(predicate) -> None:
+                for _ in range(1000):
+                    if predicate():
+                        return
+                    await asyncio.sleep(0)
+                raise AssertionError("the expected state never came")
+
             with mock.patch.object(chat_gate, "BUSY_RETRY_SECONDS", 0):
                 first = asyncio.create_task(busy())
-                await asyncio.sleep(0)
+                await until(lambda: places["busy"] == [None])
                 second = asyncio.create_task(waiter())
-                await asyncio.sleep(0)
-                await asyncio.sleep(0)
-                await asyncio.sleep(0)
+                await until(lambda: places["waiter"] == [1])
+                asked_again.set()
                 # The waiter took the slot the busy operation gave back; the busy one waits at the head.
-                self.assertEqual(places["busy"][-1], 1)
+                await until(lambda: places["waiter"][-1] is None and places["busy"][-1] == 1)
                 first.cancel()
                 await asyncio.gather(first, return_exceptions=True)
                 hold.set()
