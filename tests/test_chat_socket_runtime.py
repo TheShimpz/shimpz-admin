@@ -101,7 +101,7 @@ class ChatWebSocketRuntimeTests(ChatWebSocketCase):
         asyncio.run(scenario())
 
     def test_worker_queue_rejects_instead_of_growing(self) -> None:
-        executor = self.chat_socket.lanes.BoundedThreadPoolExecutor(
+        executor = self.chat_socket.BoundedThreadPoolExecutor(
             max_workers=1,
             max_outstanding=1,
             thread_name_prefix="chat-test",
@@ -124,7 +124,7 @@ class ChatWebSocketRuntimeTests(ChatWebSocketCase):
             binding = transport._SUPERVISOR_SESSION.get()
             return None if binding is None else binding.value
 
-        executor = self.chat_socket.lanes.BoundedThreadPoolExecutor(
+        executor = self.chat_socket.BoundedThreadPoolExecutor(
             max_workers=1,
             max_outstanding=1,
             thread_name_prefix="chat-context-test",

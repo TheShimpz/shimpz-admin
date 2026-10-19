@@ -19,7 +19,7 @@ from chat.delivery import progress as progress_transport
 from chat.delivery import route as route_delivery
 from chat.delivery import sync as sync_delivery
 from chat.delivery import terminal as terminal_delivery
-from chat.executor import ExecutorSaturatedError, submit_in_context
+from chat.executor import BoundedThreadPoolExecutor, ExecutorSaturatedError, submit_in_context
 from chat.projection import error_terminal, first_challenge, integration_challenge_event, stop_accepted, turn_terminal
 from fastapi import WebSocket, WebSocketDisconnect
 from history import delivery as history_delivery
@@ -29,7 +29,6 @@ from team import transport
 from chat import (
     assistant_route,
     human,
-    lanes,
     lifecycle,
     local,
     payloads,
@@ -40,6 +39,11 @@ from protocol.http.v1 import payload as team_contract
 from protocol.http.v1 import websocket as chat_ws_common
 
 STOP_RESULT_WAIT_SECONDS = 15
+# Independent bounded worker lanes for chat control operations: a slow provider can never consume the worker needed to
+# revoke its Team turn.
+TURN_LANE = BoundedThreadPoolExecutor(max_workers=2, max_outstanding=2, thread_name_prefix="shimpz-chat-turn")
+STOP_LANE = BoundedThreadPoolExecutor(max_workers=2, max_outstanding=4, thread_name_prefix="shimpz-chat-stop")
+SYNC_LANE = BoundedThreadPoolExecutor(max_workers=2, max_outstanding=4, thread_name_prefix="shimpz-chat-sync")
 FrameError = chat_ws_common.FrameError
 log = logging.getLogger("shimpz-admin")
 
@@ -182,7 +186,7 @@ def _submit_team_turn(
     turn: Turn,
 ) -> tuple[concurrent.futures.Future, asyncio.Queue[dict[str, object]]]:
     progress, report = _progress_channel()
-    future = submit_in_context(lanes.TURN, local.turn, team_id, payload, turn.conversation, turn.request, report)
+    future = submit_in_context(TURN_LANE, local.turn, team_id, payload, turn.conversation, turn.request, report)
     return future, progress
 
 
@@ -267,7 +271,7 @@ async def _load_sync_snapshot(
     locale: str,
 ) -> SyncSnapshot | None:
     try:
-        future = submit_in_context(lanes.SYNC, _sync_snapshot, team_id, locale)
+        future = submit_in_context(SYNC_LANE, _sync_snapshot, team_id, locale)
     except ExecutorSaturatedError:
         await _send_sync_terminal_once(
             websocket,
@@ -283,7 +287,7 @@ async def _load_sync_snapshot(
         resumed = await _gated_continuation(
             websocket,
             connection,
-            lambda report: submit_in_context(lanes.SYNC, local.resume_integrations, team_id, challenge_id, report),
+            lambda report: submit_in_context(SYNC_LANE, local.resume_integrations, team_id, challenge_id, report),
         )
         snapshot = None if resumed is None else SyncSnapshot("integration", snapshot.pending, resumed)
     if snapshot is None and not connection.closed:
@@ -443,7 +447,7 @@ async def team_stop(team_id: str) -> object:
     response: object = transport.TeamResponse(502, {})
     with contextlib.suppress(Exception):
         try:
-            response = await asyncio.wrap_future(submit_in_context(lanes.STOP, local.stop, team_id))
+            response = await asyncio.wrap_future(submit_in_context(STOP_LANE, local.stop, team_id))
         except ExecutorSaturatedError:
             response = transport.TeamResponse(429, {})
     return response
@@ -595,7 +599,7 @@ async def _dispatch_human_response(
         return
 
     def submit(report: Callable[[dict[str, object]], None]) -> concurrent.futures.Future:
-        return submit_in_context(lanes.SYNC, local.resume_human, team_id, payload, report, assurance=assurance)
+        return submit_in_context(SYNC_LANE, local.resume_human, team_id, payload, report, assurance=assurance)
 
     connection.sync_terminal_sent = False
     connection.sync_task = asyncio.create_task(

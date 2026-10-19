@@ -291,9 +291,9 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
 
     def test_executor_and_static_origin_configuration_are_bounded(self) -> None:
         with self.assertRaises(ValueError):
-            socket.lanes.BoundedThreadPoolExecutor(max_workers=2, max_outstanding=1, thread_name_prefix="bad")
+            socket.BoundedThreadPoolExecutor(max_workers=2, max_outstanding=1, thread_name_prefix="bad")
 
-        executor = socket.lanes.BoundedThreadPoolExecutor(max_workers=1, max_outstanding=1, thread_name_prefix="test")
+        executor = socket.BoundedThreadPoolExecutor(max_workers=1, max_outstanding=1, thread_name_prefix="test")
         self.addCleanup(executor.shutdown, wait=True)
         permit = mock.Mock()
         permit.acquire.return_value = False
