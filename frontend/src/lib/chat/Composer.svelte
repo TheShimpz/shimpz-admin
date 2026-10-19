@@ -5,6 +5,7 @@
   import BrainMenu from '#lib/brain/Menu.svelte';
   import ComposerAttachments from '#lib/chat/attachments/ComposerFiles.svelte';
   import FastRoutingMenu from '#lib/brain/FastRoutingMenu.svelte';
+  import ChatLimitMenu from '#lib/chat/ChatLimitMenu.svelte';
   import { t } from '#lib/i18n/index.js';
   import { modelContext } from '#lib/brain/context.js';
   import { CREDENTIAL_RECORD_INVALID } from '#lib/api.js';
@@ -164,6 +165,7 @@
     {/if}
     <BrainMenu disabled={menusBusy} />
     <FastRoutingMenu disabled={menusBusy} />
+    <ChatLimitMenu disabled={menusBusy} />
     <Button
       bind:element={integrationsButton}
       class="composer-integrations"

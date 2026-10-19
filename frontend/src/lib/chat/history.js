@@ -24,7 +24,7 @@ import {
   TEAM_ID_RE,
 } from '../ids.js';
 
-const ENTRY_ID_RE = /^([0-9a-f]{32}):(user|reply|install|uninstall|guidance|routine|answer)$/;
+const ENTRY_ID_RE = /^([0-9a-f]{32}):(user|reply|install|uninstall|guidance|status|routine|answer)$/;
 const HISTORY_CURSOR_RE = /^(?!A{11}$)[A-Za-z0-9_-]{10}[AEIMQUYcgkosw048]$/;
 const MAX_PAGE_ENTRIES = 64;
 const MAX_ASSISTANTS = 4;
@@ -212,6 +212,30 @@ function guidanceEntry(value, suffix, status) {
   };
 }
 
+// How a turn ended without a reply (ADR-0119): stopped, or failed with its HTTP status and the short detail shown.
+const MAX_STATUS_DETAIL_CHARS = 200;
+
+function statusEntry(value, suffix, status) {
+  if (suffix !== 'status') throw invalidHistory(status);
+  if (value.state === 'stopped' && exactKeys(value, ['id', 'kind', 'state'])) {
+    return { id: value.id, kind: 'status', state: 'stopped' };
+  }
+  if (
+    value.state !== 'failed' ||
+    !exactKeys(value, ['detail', 'id', 'kind', 'state', 'status']) ||
+    !Number.isSafeInteger(value.status) ||
+    value.status < 400 ||
+    value.status > 599
+  ) throw invalidHistory(status);
+  return {
+    id: value.id,
+    kind: 'status',
+    state: 'failed',
+    status: value.status,
+    detail: publicText(value.detail, MAX_STATUS_DETAIL_CHARS, status),
+  };
+}
+
 // How the person answered a Routine card, kept beside it (ADR-0101): its id, the answer, and the card's Routine name.
 const CARD_ANSWERS = new Set(['created', 'changed', 'revoked']);
 
@@ -234,6 +258,7 @@ const ENTRY_PARSERS = {
   'assistant-install': installEntry,
   'assistant-uninstall': uninstallEntry,
   guidance: guidanceEntry,
+  status: statusEntry,
 };
 
 function historyEntry(value, status) {

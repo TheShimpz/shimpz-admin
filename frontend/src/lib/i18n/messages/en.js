@@ -148,6 +148,7 @@ export default {
     progressStagesExecuted: 'Execution stages recorded: {count}',
     progress: {
       awaiting: 'Waiting for execution',
+      queued: 'Waiting in line: position {position}',
       narrative: {
         adminPreparation: 'Admin prepares your request to send to me',
         replyValidation: 'Admin checks my reply before showing it to you',
@@ -192,6 +193,8 @@ export default {
     connectionFailed: 'The secure chat connection could not be established. Refresh this page to try again.',
     protocolError: 'The secure chat response was invalid.',
     turnFailed: 'The chat turn could not start.',
+    turnStopped: 'This task was stopped.',
+    unfinished: 'This message has no reply: Admin restarted while it ran. Send it again if you still need it.',
     capacityFailed: 'The local chat is busy. Try again shortly.',
     runtimeFailed: 'The local chat runtime is unavailable.',
     spaceResetting: 'The Space is being reset. Try again when it finishes.',
@@ -779,6 +782,12 @@ export default {
     order: 'Team order',
     orderFailed: 'The Team order could not be saved. The previous order is back.',
     orderStale: 'The Teams changed while you were reordering. The list was reloaded; try again.',
+  },
+  chatLimitMenu: {
+    label: 'Simultaneous conversations',
+    summary: 'How many conversations of this Space run at once. The others wait in line and start in order. Each one that uses the browser can take up to 1 CPU and 2 GiB of memory.',
+    unavailable: 'The limit is unavailable.',
+    failed: 'The limit could not be saved.',
   },
   brainMenu: {
     modelLoading: 'Loading model settings…',

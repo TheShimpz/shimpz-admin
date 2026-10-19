@@ -150,6 +150,7 @@ export default {
     progressStagesExecuted: 'Erfasste Ausführungsschritte: {count}',
     progress: {
       awaiting: 'Warten auf die Ausführung',
+      queued: 'In der Warteschlange: Position {position}',
       narrative: {
         adminPreparation: 'Der Admin bereitet deine Anfrage vor, um sie mir zu senden',
         replyValidation: 'Der Admin prüft meine Antwort, bevor er sie dir zeigt',
@@ -194,6 +195,8 @@ export default {
     connectionFailed: 'Die sichere Chat-Verbindung konnte nicht hergestellt werden. Laden Sie diese Seite neu, um es erneut zu versuchen.',
     protocolError: 'Die sichere Chat-Antwort war ungültig.',
     turnFailed: 'Die Chat-Runde konnte nicht gestartet werden.',
+    turnStopped: 'Diese Aufgabe wurde gestoppt.',
+    unfinished: 'Diese Nachricht hat keine Antwort: Admin wurde während der Ausführung neu gestartet. Senden Sie sie erneut, wenn Sie sie noch brauchen.',
     capacityFailed: 'Der lokale Chat ist ausgelastet. Versuche es gleich noch einmal.',
     runtimeFailed: 'Die lokale Chat-Laufzeit ist nicht verfügbar.',
     spaceResetting: 'Der Space wird gerade zurückgesetzt. Versuche es erneut, sobald das abgeschlossen ist.',
@@ -764,6 +767,12 @@ export default {
     order: 'Team-Reihenfolge',
     orderFailed: 'Die Team-Reihenfolge konnte nicht gespeichert werden. Die vorherige Reihenfolge ist wiederhergestellt.',
     orderStale: 'Die Teams haben sich beim Neuordnen geändert. Die Liste wurde neu geladen; versuchen Sie es erneut.',
+  },
+  chatLimitMenu: {
+    label: 'Gleichzeitige Unterhaltungen',
+    summary: 'Wie viele Unterhaltungen dieses Space gleichzeitig laufen. Die übrigen warten in der Schlange und starten der Reihe nach. Jede, die den Browser nutzt, kann bis zu 1 CPU und 2 GiB Speicher belegen.',
+    unavailable: 'Das Limit ist nicht verfügbar.',
+    failed: 'Das Limit konnte nicht gespeichert werden.',
   },
   brainMenu: {
     modelLoading: 'Modelle werden geladen…',

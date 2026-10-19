@@ -1148,6 +1148,36 @@ function parseHumanRequiredEvent(value) {
   };
 }
 
+// The latest steps a `running` event carries (Admin's LIVE_STEPS) and the furthest place in the Space's chat queue.
+const MAX_RUNNING_STEPS = 64;
+const MAX_QUEUE_PLACE = 32;
+
+// Where the Team's chat is, for a page that attaches while it works or a turn that waits for the Space's chat gate
+// (ADR-0119): how long it has run, its place in the queue (null once it runs), the sequence number of its delivery's
+// latest step, and its latest steps, which end there.
+function parseRunningEvent(value) {
+  if (
+    !exactKeys(value, ['type', 'elapsed_ms', 'position', 'cursor', 'events']) ||
+    !Number.isSafeInteger(value.elapsed_ms) ||
+    value.elapsed_ms < 0 ||
+    value.elapsed_ms > MAX_CHAT_PROGRESS_ELAPSED_MS ||
+    !(value.position === null || (Number.isSafeInteger(value.position) && value.position >= 1 && value.position <= MAX_QUEUE_PLACE)) ||
+    !Number.isSafeInteger(value.cursor) ||
+    value.cursor < 0 ||
+    value.cursor > MAX_CHAT_PROGRESS_EVENTS ||
+    !Array.isArray(value.events) ||
+    value.events.length > MAX_RUNNING_STEPS
+  ) throw invalidResponse();
+  const events = value.events.map((event) => {
+    if (!event || typeof event !== 'object' || event.type !== 'progress') throw invalidResponse();
+    return { type: 'progress', ...progressEvent(event, ['type']) };
+  });
+  // The steps are consecutive and end at the cursor.
+  const first = value.cursor - events.length + 1;
+  if (events.some((event, index) => event.seq !== first + index)) throw invalidResponse();
+  return { type: 'running', elapsed_ms: value.elapsed_ms, position: value.position, cursor: value.cursor, events };
+}
+
 // A frame that carries nothing but its type.
 function parseBareEvent(value) {
   if (!exactKeys(value, ['type'])) throw invalidResponse();
@@ -1161,6 +1191,7 @@ const CHAT_EVENT_PARSERS = new Map([
   ['assistant-uninstall', parseAssistantUninstallEvent],
   ['error', parseErrorEvent],
   ['progress', (value) => ({ type: 'progress', ...progressEvent(value, ['type']) })],
+  ['running', parseRunningEvent],
   ['stopped', parseBareEvent],
   ['sync-empty', parseBareEvent],
   ['human-response-rejected', parseHumanRejectedEvent],

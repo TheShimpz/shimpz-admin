@@ -38,6 +38,8 @@
     cardAnswer,
     ondecide,
     thinking,
+    // Whether the Team's chat is synchronized and idle, so a message without an ending is known to be unfinished.
+    unfinishedShown = false,
   } = $props();
 
   let userTurn = $derived(exchange.user);
@@ -79,6 +81,10 @@
         </div>
       {:else}
         <p>{userTurn.text}</p>
+      {/if}
+      {#if userTurn.unfinished && unfinishedShown}
+        <!-- Its turn left no ending: Admin restarted while it ran, or it still runs elsewhere (ADR-0119). -->
+        <p class="unfinished">{words.unfinished}</p>
       {/if}
       {#if shownFiles.length}
         <!-- A message's files follow its text, one compact card each. -->
@@ -183,6 +189,12 @@
 </section>
 
 <style>
+  .unfinished {
+    margin: var(--gap-item) 0 0;
+    color: var(--text-dim);
+    font-size: 0.75rem;
+  }
+
   .exchange {
     display: grid;
     min-width: 0;

@@ -15,6 +15,8 @@
     startedAt,
     // The Team the turn runs in: while its Browser task runs, its screen shows here (ADR-0117).
     teamId = '',
+    // The turn's place in the Space's chat queue while it waits, or null once it runs (ADR-0119).
+    queuePosition = null,
   } = $props();
   let elapsed = $state(0);
   let watch = $state();
@@ -37,7 +39,9 @@
   <div class="summary">
     <span class="signal" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
     <span class="elapsed" title={elapsedText} aria-hidden="true">{formattedElapsed} ·</span>
-    <span class="step-copy">{current ? localizedStepLabel(current, progressLabels, { assistantName: $assistantName }) : progressLabels.awaiting}</span>
+    <span class="step-copy">{queuePosition !== null
+      ? progressLabels.queued.replace('{position}', String(queuePosition))
+      : current ? localizedStepLabel(current, progressLabels, { assistantName: $assistantName }) : progressLabels.awaiting}</span>
     {#if browsing}
       <Button
         class="fullscreen"

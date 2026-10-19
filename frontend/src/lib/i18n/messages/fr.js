@@ -150,6 +150,7 @@ export default {
     progressStagesExecuted: 'Étapes enregistrées : {count}',
     progress: {
       awaiting: 'En attente de l’exécution',
+      queued: 'En file d’attente : position {position}',
       narrative: {
         adminPreparation: 'L’Admin prépare votre demande pour me l’envoyer',
         replyValidation: 'L’Admin vérifie ma réponse avant de vous l’afficher',
@@ -194,6 +195,8 @@ export default {
     connectionFailed: 'La connexion sécurisée du chat n’a pas pu être établie. Actualisez cette page pour réessayer.',
     protocolError: 'La réponse sécurisée du chat n’était pas valide.',
     turnFailed: 'Le tour de chat n’a pas pu démarrer.',
+    turnStopped: 'Cette tâche a été arrêtée.',
+    unfinished: 'Ce message n’a pas de réponse : Admin a redémarré pendant son exécution. Renvoyez-le si vous en avez encore besoin.',
     capacityFailed: 'Le chat local est occupé. Réessayez dans un instant.',
     runtimeFailed: 'L’environnement du chat local est indisponible.',
     spaceResetting: 'Le Space est en cours de réinitialisation. Réessayez une fois celle-ci terminée.',
@@ -764,6 +767,12 @@ export default {
     order: 'Ordre des Équipes',
     orderFailed: 'L’ordre des Équipes n’a pas pu être enregistré. L’ordre précédent est rétabli.',
     orderStale: 'Les Équipes ont changé pendant le réordonnancement. La liste a été rechargée ; réessayez.',
+  },
+  chatLimitMenu: {
+    label: 'Conversations simultanées',
+    summary: 'Combien de conversations de cet Space s’exécutent en même temps. Les autres attendent dans la file et démarrent dans l’ordre. Chacune qui utilise le navigateur peut occuper jusqu’à 1 CPU et 2 Gio de mémoire.',
+    unavailable: 'La limite est indisponible.',
+    failed: 'La limite n’a pas pu être enregistrée.',
   },
   brainMenu: {
     modelLoading: 'Chargement des modèles…',

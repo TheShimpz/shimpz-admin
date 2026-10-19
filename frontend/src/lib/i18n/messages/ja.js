@@ -150,6 +150,7 @@ export default {
     progressStagesExecuted: '記録された実行ステップ：{count}',
     progress: {
       awaiting: '実行を待機中',
+      queued: '順番待ち：{position} 番目',
       narrative: {
         adminPreparation: 'Admin があなたの依頼を私に送る準備をします',
         replyValidation: '表示する前に Admin が私の回答を確認します',
@@ -194,6 +195,8 @@ export default {
     connectionFailed: '安全なチャット接続を確立できませんでした。このページを更新してもう一度お試しください。',
     protocolError: '安全なチャットの応答が無効でした。',
     turnFailed: 'チャットのターンを開始できませんでした。',
+    turnStopped: 'このタスクは停止されました。',
+    unfinished: 'このメッセージには返信がありません。実行中に Admin が再起動しました。必要であればもう一度送信してください。',
     capacityFailed: 'ローカルチャットは混み合っています。しばらくしてからもう一度お試しください。',
     runtimeFailed: 'ローカルチャットのランタイムを利用できません。',
     spaceResetting: 'Space をリセットしています。完了したらもう一度お試しください。',
@@ -764,6 +767,12 @@ export default {
     order: 'チームの順序',
     orderFailed: 'チームの順序を保存できませんでした。以前の順序に戻しました。',
     orderStale: '並べ替え中にチームが変更されました。リストを再読み込みしました。もう一度お試しください。',
+  },
+  chatLimitMenu: {
+    label: '同時に実行する会話',
+    summary: 'この Space で同時に実行される会話の数です。ほかの会話は列で待ち、順番に開始します。ブラウザーを使う会話は、それぞれ最大 1 CPU と 2 GiB のメモリーを使用できます。',
+    unavailable: '上限を取得できません。',
+    failed: '上限を保存できませんでした。',
   },
   brainMenu: {
     modelLoading: 'モデルを読み込み中…',

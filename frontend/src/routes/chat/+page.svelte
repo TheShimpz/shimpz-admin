@@ -584,6 +584,7 @@
     ['human-required', humanRequired],
     ['human-response-rejected', (incoming) => human.rejected(incoming)],
     ['progress', progressFrame],
+    ['running', runningFrame],
     ['sync-empty', syncEmpty],
     ['assistant-install-plan', installPlanFrame],
     ['assistant-guidance', guidanceFrame],
@@ -617,7 +618,15 @@
     human.progressed();
   }
 
-  // Admin synchronized the Team and nothing is pending: a turn this page still waited on ended without a reply.
+  // Where the Team's chat is (ADR-0119): a turn this page attached to while it works, or one waiting for the Space's
+  // chat gate. The message it answers is shown, so it no longer reads as unfinished.
+  function runningFrame(incoming) {
+    liveTurn.restore(incoming);
+    transcript.clearUnfinished();
+  }
+
+  // Admin synchronized the Team and nothing is pending: a turn this page still waited on ended while the page could
+  // not watch it, so its ending is read from the history, as a reload shows it (ADR-0119).
   function syncEmpty() {
     liveTurn.syncing = false;
     liveTurn.forgetSegments();
@@ -628,8 +637,10 @@
     let failure;
     if (human.relocalizing) failure = humanRequestCopy.expired;
     else if (human.expiredId) failure = '';
-    else if (liveTurn.busy && transcript.turns.length > 0) failure = copy.turnFailed;
-    else return;
+    else if (liveTurn.busy && transcript.turns.length > 0) {
+      failure = '';
+      transcript.resync();
+    } else return;
     liveTurn.settle();
     resetChallengeState();
     if (failure) setError(failure);
@@ -1108,6 +1119,7 @@
               elapsedText={copy.elapsed}
               progressLabels={copy.progress}
               startedAt={liveTurn.startedAt}
+              queuePosition={liveTurn.position}
               teamId={chatTeamId}
             />
           {/snippet}
@@ -1131,6 +1143,7 @@
               onrewrite={rewriteRoutine}
               onleave={focusComposer}
               cardAnswer={answers.get(exchange.assistant?.routineProposal?.proposal_id) ?? ''}
+              unfinishedShown={socketReady && !liveTurn.syncing && !liveTurn.busy}
               ondecide={uninstall.decide}
               thinking={index === exchanges.length - 1 && liveTurn.busy && !challengePending &&
                 (exchange.assistant ? exchange.assistant.installPlan?.state === 'installed' : !lifecycleWorking)

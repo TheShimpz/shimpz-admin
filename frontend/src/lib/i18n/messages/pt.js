@@ -150,6 +150,7 @@ export default {
     progressStagesExecuted: 'Etapas registradas: {count}',
     progress: {
       awaiting: 'Aguardando a execução',
+      queued: 'Na fila: posição {position}',
       narrative: {
         adminPreparation: 'O Admin prepara seu pedido para me enviar',
         replyValidation: 'O Admin confere minha resposta antes de mostrá-la a você',
@@ -194,6 +195,8 @@ export default {
     connectionFailed: 'Não foi possível estabelecer a conexão segura do chat. Atualize esta página para tentar novamente.',
     protocolError: 'A resposta segura do chat era inválida.',
     turnFailed: 'Não foi possível iniciar o turno do chat.',
+    turnStopped: 'Esta tarefa foi interrompida.',
+    unfinished: 'Esta mensagem ficou sem resposta: o Admin reiniciou enquanto ela rodava. Envie de novo se ainda precisar.',
     capacityFailed: 'O chat local está ocupado. Tente novamente em instantes.',
     runtimeFailed: 'O runtime do chat local está indisponível.',
     spaceResetting: 'O Space está sendo redefinido. Tente novamente quando terminar.',
@@ -764,6 +767,12 @@ export default {
     order: 'Ordem dos Times',
     orderFailed: 'Não foi possível salvar a ordem dos Times. A ordem anterior foi restaurada.',
     orderStale: 'Os Times mudaram enquanto você reordenava. A lista foi recarregada; tente de novo.',
+  },
+  chatLimitMenu: {
+    label: 'Conversas simultâneas',
+    summary: 'Quantas conversas deste Space rodam ao mesmo tempo. As demais esperam na fila e começam em ordem. Cada uma que usa o navegador pode ocupar até 1 CPU e 2 GiB de memória.',
+    unavailable: 'O limite está indisponível.',
+    failed: 'Não foi possível salvar o limite.',
   },
   brainMenu: {
     modelLoading: 'Carregando modelos…',

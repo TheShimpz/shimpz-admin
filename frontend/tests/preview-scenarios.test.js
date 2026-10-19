@@ -511,3 +511,12 @@ test('the watch scenario keeps its Browser task running and opens its view as Ad
   // Without a running task, the view is refused as Team refuses it.
   await assert.rejects(openBrowserView('marketing', reader(createScenario('ready'))), BrowserViewEndedError);
 });
+
+test('a scenario holds the Space chat limit a save sets, within its bounds', () => {
+  const scenario = createScenario();
+  assert.deepEqual(scenario.call('chat_limit.read', {}).json, { limit: 2 });
+  assert.deepEqual(scenario.call('chat_limit.save', { body: { limit: 1 } }).json, { limit: 1 });
+  assert.deepEqual(scenario.call('chat_limit.read', {}).json, { limit: 1 });
+  assert.equal(scenario.call('chat_limit.save', { body: { limit: 3 } }).status, 400);
+});
+

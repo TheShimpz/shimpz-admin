@@ -150,6 +150,7 @@ export default {
     progressStagesExecuted: '已记录的执行阶段：{count}',
     progress: {
       awaiting: '等待执行',
+      queued: '排队中：第 {position} 位',
       narrative: {
         adminPreparation: 'Admin 准备要发给我的请求',
         replyValidation: 'Admin 在向你展示前检查我的回复',
@@ -194,6 +195,8 @@ export default {
     connectionFailed: '无法建立安全聊天连接。请刷新此页面后重试。',
     protocolError: '安全聊天响应无效。',
     turnFailed: '无法开始本轮聊天。',
+    turnStopped: '此任务已停止。',
+    unfinished: '此消息没有回复：运行期间 Admin 已重启。如仍需要，请重新发送。',
     capacityFailed: '本地聊天正忙，请稍后重试。',
     runtimeFailed: '本地聊天运行环境不可用。',
     spaceResetting: 'Space 正在重置。完成后请重试。',
@@ -764,6 +767,12 @@ export default {
     order: '团队顺序',
     orderFailed: '无法保存团队顺序，已恢复之前的顺序。',
     orderStale: '在你调整顺序时团队发生了变化。列表已重新加载，请重试。',
+  },
+  chatLimitMenu: {
+    label: '同时进行的对话',
+    summary: '此 Space 同时运行的对话数量。其余对话排队等待并按顺序开始。每个使用浏览器的对话最多可占用 1 个 CPU 和 2 GiB 内存。',
+    unavailable: '上限不可用。',
+    failed: '无法保存上限。',
   },
   brainMenu: {
     modelLoading: '正在加载模型…',

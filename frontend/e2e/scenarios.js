@@ -766,6 +766,14 @@ const SPACE_METHODS = Object.freeze({
   'assistants.registry': () => ok({ assistants: ASSISTANTS }),
   'models.list': () => ok({ providers: providers() }),
   'decision.read': () => ok({ provider: 'typesafe', configured: false, masked: null }),
+  // How many conversations the Space runs at once (ADR-0119): Team's own limit, 1 or 2.
+  'chat_limit.read': (state) => ok({ limit: state.chatLimit ?? 2 }),
+  'chat_limit.save': (state, params) => {
+    const limit = params.body?.limit;
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 2) return { status: 400, json: { detail: 'invalid' } };
+    state.chatLimit = limit;
+    return ok({ limit });
+  },
   // The catalog scenario stages four Assistants and finds no public ones in any interface language.
   'store.catalog': (state, params) => (state.catalog
     ? ok({ version: 1, locale: params.locale, assistants: [], next: null })

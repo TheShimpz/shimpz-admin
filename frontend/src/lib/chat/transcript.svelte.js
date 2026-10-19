@@ -38,6 +38,7 @@ export class Transcript {
   #queue = [];
   #applying = false;
   #stopTopics = () => {};
+  #resync = () => {};
   #host;
 
   /**
@@ -92,15 +93,32 @@ export class Transcript {
     this.#watch(teamId, ++this.#generation);
   }
 
+  /** Shows the conversation as a reload would, when this page missed how a turn ended (ADR-0119). */
+  resync() {
+    this.#resync();
+  }
+
+  /** A message last in the history that a running turn of its Team now answers is no longer unfinished. */
+  clearUnfinished() {
+    if (this.turns.some((turn) => turn.unfinished)) {
+      this.turns = this.turns.map(({ unfinished: _unfinished, ...turn }) => turn);
+    }
+  }
+
   /** The page left: nothing it followed answers any more. */
   close() {
     this.#generation += 1;
     this.#stopTopics();
   }
 
-  // History rows as new turns, each with the next render identity unless `keys` holds the one its row already has.
+  // History rows as new turns, each with the next render identity unless `keys` holds the one its row already has. A
+  // message last in the history has no ending yet: it ended while Admin restarted, or its turn still runs, which the
+  // chat then says (ADR-0119).
   #fresh(entries, team, keys = new Map()) {
-    return entries.map((entry) => historyTurn(entry, team.name, keys.get(entry.id) ?? this.#nextKey++, this.#host.words()));
+    const turns = entries.map((entry) => historyTurn(entry, team.name, keys.get(entry.id) ?? this.#nextKey++, this.#host.words()));
+    const last = turns.at(-1);
+    if (last?.role === 'user') turns[turns.length - 1] = { ...last, unfinished: true };
+    return turns;
   }
 
   // The turns of history rows, keeping the render identity of a row already shown.
@@ -259,6 +277,10 @@ export class Transcript {
       this.#host.connect(teamId);
     };
     const head = chatHistory(teamId);
+    // A turn ended unseen: the newest page replaces what is shown, as a reload would.
+    this.#resync = () => {
+      if (generation === this.#generation) void head.restart();
+    };
     const watching = () => generation === this.#generation && this.#host.mounted() && this.#host.teamId() === teamId;
     let hydrated = false;
     let failed = false;

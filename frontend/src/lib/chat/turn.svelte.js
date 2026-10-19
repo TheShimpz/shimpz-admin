@@ -14,6 +14,8 @@ export class ChatTurn {
   // When the turn in flight started, as this page observed it: its thinking view counts from here, also after a human
   // or Integration request hid it for a while.
   startedAt = $state(0);
+  // The turn's place in the Space's chat queue while it waits (1 is next), or null once it runs (ADR-0119).
+  position = $state(null);
   // The current segment's progress: its events in sequence and their projection.
   events = $state([]);
   projection = $state(createExecutionProjection());
@@ -38,6 +40,25 @@ export class ChatTurn {
     this.busy = false;
     this.syncing = false;
     this.stopping = false;
+    this.position = null;
+  }
+
+  /**
+   * Where the Team's chat is, as Admin shows a page that attaches while it works or a turn that waits (ADR-0119): it
+   * runs since `elapsed_ms` ago, waits at `position` or runs, and its current delivery's latest steps end at `cursor`,
+   * which the next step follows.
+   */
+  restore({ elapsed_ms: elapsedMs, position, cursor, events }) {
+    this.busy = true;
+    this.syncing = false;
+    this.startedAt = Date.now() - elapsedMs;
+    this.position = position;
+    this.resetProgress();
+    for (const frame of events) {
+      this.events.push(frame);
+      extendExecutionProjection(this.projection, frame);
+    }
+    this.sequence = cursor;
   }
 
   /**
