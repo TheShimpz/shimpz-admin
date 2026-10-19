@@ -614,8 +614,9 @@ class ReviewEdgeTests(unittest.TestCase):
                 # Its Stop is still under way.
                 self.assertIs(self.runs.RUNS.get("team_1"), run)
                 answer.set()
-                await asyncio.sleep(0.05)
-                # Its continuation still runs in Team.
+                # Its continuation still runs in Team: the ending waits on it.
+                while not continuation._done_callbacks:
+                    await asyncio.sleep(0.01)
                 self.assertIs(self.runs.RUNS.get("team_1"), run)
                 continuation.set_result(object())
                 await ending
