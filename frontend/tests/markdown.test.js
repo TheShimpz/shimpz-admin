@@ -68,6 +68,29 @@ What is the weather in Lisbon?
   assert.equal(blocks[5].inlines[0].href, 'https://open-meteo.com/');
 });
 
+test('a numbered item with indented lines below it and a blank line before the next keeps one list', () => {
+  // The hard line break after each title is its two trailing spaces.
+  const blocks = parseMarkdown([
+    '## Report', '', '1. **Launch**  ', '   25 December 2021.', '   Page: [article](https://example.com/a)', '',
+    '2. **NASA**  ', '   Founded in 1958.', '', '3. **Python**',
+  ].join('\n'));
+  assert.deepEqual(blocks.map((block) => block.type), ['heading', 'list']);
+  const [, list] = blocks;
+  assert.equal(list.ordered, true);
+  assert.equal(list.start, 1);
+  assert.equal(list.items.length, 3);
+  assert.deepEqual(list.items.map((item) => item.length), [3, 2, 1]);
+  assert.equal(list.items[0][2][1].href, 'https://example.com/a');
+});
+
+test('a list that something split keeps counting from the number its first item wrote', () => {
+  const blocks = parseMarkdown('1. One\n\nA paragraph between.\n\n2. Two\n- a bullet\n\n7. Seven');
+  assert.deepEqual(blocks.map((block) => [block.type, block.start]), [
+    ['list', 1], ['paragraph', undefined], ['list', 2], ['list', 1], ['list', 7],
+  ]);
+  assert.equal(parseMarkdown('99999999999999999999. Huge')[0].start, 1);
+});
+
 test('keeps raw HTML inert text and refuses executable or credential-bearing links', () => {
   const tokens = parseInline(
     '<img src=x onerror=alert(1)> [run](javascript:alert(1)) '

@@ -4,6 +4,8 @@ const VISIBLE_ASCII = /^[\x21-\x7e]+$/;
 // A list item and a heading start their text at its first non-space character, so the space before it is matched once:
 // `\s+(.+)$` let a long run of spaces be tried from every split, seconds on one reply line.
 const LIST_ITEM = /^ {0,3}([-+*]|\d+[.)])\s+(\S.*)$/;
+// A line indented under a list item continues that item on a line of its own.
+const CONTINUATION = /^ {2,}(\S.*)$/;
 const HEADING = /^(#{1,3})\s+(\S.*)$/;
 const TABLE_DIVIDER = /^:?-{3,}:?$/;
 const CHAT_NOTICE = /^:(success|warning|error)\[([^\[\]\r\n]+)\]$/;
@@ -180,6 +182,12 @@ function chatNotice(line, enabled) {
   return { type: 'notice', variant: match[1], text: match[2] };
 }
 
+// The number an ordered list starts at, as its first item wrote it; one beyond what a page can number exactly is 1.
+function listStart(marker) {
+  const start = Number.parseInt(marker, 10);
+  return Number.isSafeInteger(start) ? start : 1;
+}
+
 function startsBlock(line, chatNotices) {
   return (
     line.startsWith('```') || HEADING.test(line) || LIST_ITEM.test(line)
@@ -316,10 +324,26 @@ export function parseMarkdown(markdown, { chatNotices = false } = {}) {
       while (index < lines.length) {
         const item = LIST_ITEM.exec(lines[index]);
         if (!item || /^\d/.test(item[1]) !== ordered) break;
-        items.push(parseInline(item[2]));
+        const itemLines = [parseInline(item[2])];
         index += 1;
+        // Indented lines, blank lines between them included, belong to the item; blank lines before the next item of
+        // the same list keep the list whole.
+        for (;;) {
+          let next = index;
+          while (next < lines.length && !lines[next].trim()) next += 1;
+          const continued = next < lines.length && !LIST_ITEM.test(lines[next]) ? CONTINUATION.exec(lines[next]) : null;
+          if (continued) {
+            itemLines.push(parseInline(continued[1]));
+            index = next + 1;
+            continue;
+          }
+          const following = next < lines.length ? LIST_ITEM.exec(lines[next]) : null;
+          if (following && /^\d/.test(following[1]) === ordered) index = next;
+          break;
+        }
+        items.push(itemLines);
       }
-      blocks.push({ type: 'list', ordered, items });
+      blocks.push({ type: 'list', ordered, start: ordered ? listStart(firstItem[1]) : 1, items });
       continue;
     }
 

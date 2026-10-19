@@ -24,9 +24,9 @@
     {:else if block.type === 'notice'}
       <Notice variant={block.variant} role="status">{block.text}</Notice>
     {:else if block.type === 'list' && block.ordered}
-      <ol>{#each block.items as item}<li><MarkdownInline tokens={item} /></li>{/each}</ol>
+      <ol start={block.start}>{#each block.items as item}<li>{#each item as line, i}{#if i}<br />{/if}<MarkdownInline tokens={line} />{/each}</li>{/each}</ol>
     {:else if block.type === 'list'}
-      <ul>{#each block.items as item}<li><MarkdownInline tokens={item} /></li>{/each}</ul>
+      <ul>{#each block.items as item}<li>{#each item as line, i}{#if i}<br />{/if}<MarkdownInline tokens={line} />{/each}</li>{/each}</ul>
     {:else if block.type === 'table'}
       <!-- svelte-ignore a11y_no_noninteractive_tabindex (keyboard scrolling for wide tables) -->
       <div class="table-scroll" role="region" aria-label={tableLabel(block)} tabindex="0">
