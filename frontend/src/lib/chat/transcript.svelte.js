@@ -111,14 +111,16 @@ export class Transcript {
     this.#stopTopics();
   }
 
-  // History rows as new turns, each with the next render identity unless `keys` holds the one its row already has. A
-  // message last in the history has no ending yet: it ended while Admin restarted, or its turn still runs, which the
-  // chat then says (ADR-0119).
+  // History rows as new turns, each with the next render identity unless `keys` holds the one its row already has.
   #fresh(entries, team, keys = new Map()) {
-    const turns = entries.map((entry) => historyTurn(entry, team.name, keys.get(entry.id) ?? this.#nextKey++, this.#host.words()));
+    return entries.map((entry) => historyTurn(entry, team.name, keys.get(entry.id) ?? this.#nextKey++, this.#host.words()));
+  }
+
+  // The conversation as the history's head holds it. A message last in the head has no ending yet: it ended while
+  // Admin restarted, or its turn still runs, which the chat then says (ADR-0119).
+  #head(turns) {
     const last = turns.at(-1);
-    if (last?.role === 'user') turns[turns.length - 1] = { ...last, unfinished: true };
-    return turns;
+    return last?.role === 'user' ? [...turns.slice(0, -1), { ...last, unfinished: true }] : turns;
   }
 
   // The turns of history rows, keeping the render identity of a row already shown.
@@ -150,7 +152,7 @@ export class Transcript {
     try {
       const team = this.#host.team(teamId);
       if (!team) throw new Error(this.#host.loadFailed());
-      this.turns = this.#kept(view.entries, team);
+      this.turns = this.#head(this.#kept(view.entries, team));
       this.before = view.before;
       this.loading = false;
       if (this.turns.length > 0) await this.reveal({ instant: true });
@@ -229,7 +231,7 @@ export class Transcript {
     const team = this.#host.team(teamId);
     if (!team) return;
     if (value.restart) {
-      this.turns = this.#fresh(value.entries, team);
+      this.turns = this.#head(this.#fresh(value.entries, team));
       this.before = value.before;
       await this.reveal({ instant: true });
       return;
@@ -371,7 +373,7 @@ export class Transcript {
         const team = this.#host.team(teamId);
         if (!team || !opens(state.value)) return;
         const following = this.#atEnd();
-        this.turns = this.#kept(state.value.view.entries, team);
+        this.turns = this.#head(this.#kept(state.value.view.entries, team));
         this.before = state.value.view.before;
         if (following) void this.reveal({ instant: true });
         return;

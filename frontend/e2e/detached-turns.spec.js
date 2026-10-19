@@ -124,6 +124,23 @@ test('a turn that ended without a reply keeps how it ended, and one without an e
   await expect(page.getByText(chatPage.unfinished)).toBeVisible();
 });
 
+test('an earlier page that ends with a message answered on the next page does not call it unanswered', async ({ page }) => {
+  await routeScenario(page);
+  const cursor = 'AAAAAAAAAAI';
+  // The page boundary falls between a message and its reply.
+  await routeRead(page, 'history.page', (params) => {
+    if (params.team_id !== 'marketing' || params.routine) return undefined;
+    return params.before === cursor
+      ? ok({ entries: [{ id: `${TURN}:user`, created_at: AT, kind: 'message', role: 'user', text: 'Read the edital' }], before: null })
+      : ok({ entries: [{ id: `${TURN}:reply`, created_at: AT, kind: 'message', role: 'assistant', text: 'Prazo: 30/11.', author: 'Marketing' }], before: cursor });
+  });
+  await routeMarketing(page, { onSync: (channel) => channel.send({ type: 'sync-empty' }) });
+  await page.goto('/chat/?team=marketing');
+  await expect(page.getByText('Read the edital', { exact: true })).toBeVisible();
+  await expect(page.getByText('Prazo: 30/11.', { exact: true })).toBeVisible();
+  await expect(page.getByText(chatPage.unfinished)).toHaveCount(0);
+});
+
 test('the Supervisor sets how many conversations the Space runs at once', async ({ page }) => {
   await routeScenario(page);
   await routeMarketing(page, { onSync: (channel) => channel.send({ type: 'sync-empty' }) });
