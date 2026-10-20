@@ -6,17 +6,29 @@ body is checked against Team's protocol before Team is reached, and every answer
 exact form with its trace identifier, which the page never receives. A refusal passes on only as one of the closed
 codes below; anything else is a Team that is unavailable. A saved or forgotten Sign-in changes the Team's
 `sign-ins` topic.
+
+A sign-in session belongs to the Supervisor session that started it: when that session ends (logout, revocation, or
+expiry), Admin cancels it under the authority it was started with, so a Save under way keeps nothing.
 """
 
+import contextlib
+import logging
+import threading
 from collections.abc import Callable
 
 from session import topics
+from signin import auth
 from team import transport
 
 from chat import payloads
 from protocol.http.v1 import sign_in as contract
 
+log = logging.getLogger("shimpz-admin")
+
 TOPIC = "sign-ins"
+# Each Team's running sign-in session, by Team (a Team runs at most one): its id and the authority that started it.
+_STARTED: dict[str, tuple[str, object]] = {}
+_GUARD = threading.Lock()
 # The closed refusals: the URL or label is not admissible, the session or Team is gone, more than one window is open,
 # the profile holds an identity provider's session, the Space's Browser is busy, or nothing could be saved or read.
 _REFUSALS = {
@@ -87,3 +99,41 @@ def forget(team_id: object, body: object) -> transport.TeamResponse:
     admitted = _admitted(body, contract.canonical_forget)
     response = transport.call("POST", _path(team_id, "sign-ins/forget"), admitted)
     return _changed(team_id, _answer(response, contract.canonical_forgotten))
+
+
+def started_under(team_id: str, session_id: str, authority: object) -> None:
+    """Remember the authority a sign-in session was started under; its session's end cancels it."""
+    with _GUARD:
+        _STARTED[team_id] = (session_id, authority)
+
+
+def finished(team_id: str) -> None:
+    """The Team's sign-in session was saved or cancelled: nothing is left to cancel when its session ends."""
+    with _GUARD:
+        _STARTED.pop(team_id, None)
+
+
+def sessions_ended(sessions: frozenset[str] | None) -> None:
+    """Supervisor sessions stopped being tracked (any thread): cancel every sign-in session one of them started."""
+    with _GUARD:
+        ended = [
+            (team_id, session_id, authority)
+            for team_id, (session_id, authority) in _STARTED.items()
+            if sessions is None or authority.session in sessions
+        ]
+        for team_id, _session_id, _authority in ended:
+            del _STARTED[team_id]
+    for team_id, session_id, authority in ended:
+        threading.Thread(
+            target=_cancel_ended, args=(team_id, session_id, authority), name="sign-in-revoked", daemon=True
+        ).start()
+
+
+def _cancel_ended(team_id: str, session_id: str, authority) -> None:
+    with contextlib.suppress(transport.TeamRequestError), authority.scope():
+        response = cancel(team_id, {"sign_in_session_id": session_id})
+        if response.status not in {200, 404}:
+            log.warning("a revoked session's sign-in could not be cancelled")
+
+
+auth.SESSIONS.listen(sessions_ended)

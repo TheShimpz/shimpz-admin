@@ -153,6 +153,30 @@ def _chat_limit(operation: str, *names: str) -> Method:
     return method
 
 
+# Sign-ins
+
+
+async def _sign_in_start(socket: SessionSocket, params: dict[str, object]) -> Answer:
+    """Start a sign-in session, kept with the authority that started it: that session's end cancels it (ADR-0117)."""
+    status, body = await _team_call(team_sign_ins, "start", "team_id", "body")(socket, params)
+    if status == 200 and isinstance(body, dict):
+        team_sign_ins.started_under(str(params["team_id"]), str(body["sign_in_session_id"]), socket.authority())
+    return status, body
+
+
+def _sign_in_finish(operation: str) -> Method:
+    """Save or cancel a sign-in session; once it no longer runs, its session's end has nothing to cancel."""
+    call = _team_call(team_sign_ins, operation, "team_id", "body")
+
+    async def method(socket: SessionSocket, params: dict[str, object]) -> Answer:
+        status, body = await call(socket, params)
+        if status == 200 or (isinstance(body, dict) and body.get("code") == "sign-in-not-running"):
+            team_sign_ins.finished(str(params["team_id"]))
+        return status, body
+
+    return method
+
+
 # Assistants
 
 
@@ -284,9 +308,9 @@ METHODS: dict[str, Method] = {
     # The view id of the Browser task a Team runs now, whose screen the Supervisor watches (ADR-0117, M2 Watch).
     "browser.view": _team_call(team, "open_browser_view", "team_id"),
     # A person signs in to a site in a Browser they drive and Saves it as one of the Team's Sign-ins (ADR-0117).
-    "sign_in.start": _team_call(team_sign_ins, "start", "team_id", "body"),
-    "sign_in.save": _team_call(team_sign_ins, "save", "team_id", "body"),
-    "sign_in.cancel": _team_call(team_sign_ins, "cancel", "team_id", "body"),
+    "sign_in.start": _sign_in_start,
+    "sign_in.save": _sign_in_finish("save"),
+    "sign_in.cancel": _sign_in_finish("cancel"),
     "sign_ins.list": _team_call(team_sign_ins, "listing", "team_id"),
     "sign_ins.forget": _team_call(team_sign_ins, "forget", "team_id", "body"),
     "store.catalog": _catalog,

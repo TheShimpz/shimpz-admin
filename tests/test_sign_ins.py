@@ -1,8 +1,11 @@
 """A Team's Sign-ins through Admin (ADR-0117, Sign-ins amendment): exact bodies, exact answers, closed refusals."""
 
+import contextlib
 import sys
+import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -104,6 +107,49 @@ class SignInBridgeTests(unittest.TestCase):
             self.assertEqual((response.status, response.body.get("code")), (expected, code))
         # A Sign-in that was not saved changes nothing the page shows.
         self.assertEqual(self.raised, [])
+
+
+class RevokedSessionTests(unittest.TestCase):
+    """A sign-in session belongs to the Supervisor session that started it: that session's end cancels it."""
+
+    def test_a_started_session_is_cancelled_under_its_authority_when_its_session_ends(self):
+        scopes = []
+
+        @contextlib.contextmanager
+        def scope():
+            scopes.append("entered")
+            yield
+
+        authority = SimpleNamespace(session="s1", scope=scope)
+        other = SimpleNamespace(session="s2", scope=scope)
+        sign_ins.started_under("team_1", SESSION, authority)
+        sign_ins.started_under("team_2", "c" * 32, other)
+        cancelled = transport.TeamResponse(200, {"cancelled": True, "trace_id": TRACE})
+        with mock.patch.object(transport, "call", return_value=cancelled) as call:
+            sign_ins.sessions_ended(frozenset({"s1"}))
+            deadline = time.monotonic() + 5
+            while not call.called and time.monotonic() < deadline:
+                time.sleep(0.01)
+            time.sleep(0.05)
+        call.assert_called_once_with("POST", "/v1/teams/team_1/browser/sign-in/cancel", {"sign_in_session_id": SESSION})
+        self.assertEqual(scopes, ["entered"])
+        # A finished session has nothing left to cancel; every remaining one ends with all sessions.
+        sign_ins.finished("team_2")
+        with mock.patch.object(transport, "call") as untouched:
+            sign_ins.sessions_ended(None)
+            time.sleep(0.05)
+        untouched.assert_not_called()
+
+    def test_a_cancel_team_refuses_is_logged_and_never_raised(self):
+        sign_ins.started_under("team_1", SESSION, SimpleNamespace(session="s1", scope=contextlib.nullcontext))
+        refused = transport.TeamResponse(503, {"code": "browser-unavailable"})
+        with (
+            mock.patch.object(transport, "call", return_value=refused),
+            self.assertLogs("shimpz-admin", "WARNING") as logged,
+        ):
+            sign_ins._cancel_ended("team_1", SESSION, SimpleNamespace(scope=contextlib.nullcontext))
+        self.assertIn("could not be cancelled", logged.output[0])
+        sign_ins.finished("team_1")
 
 
 if __name__ == "__main__":

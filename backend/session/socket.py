@@ -245,15 +245,18 @@ class SessionSocket:
         if len(self.channels) >= frames.MAX_ATTACHED_TEAMS:
             return 409, {"detail": "a session socket attaches at most 4 Teams"}
         transport = chat_runs.Transport(lambda event: self.send(frames.chat_event(team_id, event)), self._end)
-        channel = chat_runs.Channel(transport, team_id, self._chat_authority)
+        channel = chat_runs.Channel(transport, team_id, self.authority)
         self.channels[team_id] = channel
         # After the attach result: where the Team's running chat is, or today's sync (the pending gate, an Integration
         # resume, or `sync-empty`) when nothing runs.
         self.loop.call_soon(channel.attach, canonical_locale)
         return 200, {"team_id": team_id}
 
-    def _chat_authority(self) -> chat_runs.Authority:
-        """The authority a chat frame admitted on this socket keeps after the socket closes (ADR-0119)."""
+    def authority(self) -> chat_runs.Authority:
+        """The authority work admitted on this socket keeps after the socket closes.
+
+        A chat frame keeps it (ADR-0119), and so does a sign-in session, which its session's end cancels (ADR-0117).
+        """
         return chat_runs.Authority(
             session=self.session,
             scope=lambda: self.gate.request_scope(self.cookies),
