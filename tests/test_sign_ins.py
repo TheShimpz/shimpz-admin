@@ -119,7 +119,8 @@ class RevokedSessionTests(unittest.TestCase):
     """A sign-in session belongs to the Supervisor session that started it: that session's end cancels it."""
 
     def setUp(self):
-        self.addCleanup(sign_ins._TRACKED.clear)
+        self.addCleanup(sign_ins._RUNNING.clear)
+        self.addCleanup(sign_ins._STARTING.clear)
         self.scopes: list[str] = []
 
     def authority(self, session: str, *, current: bool = True) -> SimpleNamespace:
@@ -160,7 +161,7 @@ class RevokedSessionTests(unittest.TestCase):
         self.assertEqual(self.scopes, ["s1"])
         # Only the very session that finished is forgotten: a stale answer for another one keeps it tracked.
         sign_ins.finished("team_2", "d" * 32)
-        self.assertIn("team_2", sign_ins._TRACKED)
+        self.assertIn("team_2", sign_ins._RUNNING)
         sign_ins.finished("team_2", SESSION)
         self.assertEqual(self.cancels(lambda: sign_ins.sessions_ended(None)), [])
 
@@ -179,12 +180,15 @@ class RevokedSessionTests(unittest.TestCase):
 
         calls = self.cancels(action)
         self.assertEqual(len(calls), 1)
-        self.assertNotIn("team_1", sign_ins._TRACKED)
-        # A start Team refused, or one Admin refused before Team, tracks nothing.
+        self.assertEqual((sign_ins._RUNNING, sign_ins._STARTING), ({}, set()))
+        # A start Team refused, or one Admin refused before Team, tracks nothing and keeps the running session's own.
+        running = self.authority("s3")
+        self.start("team_1", running)
         self.start("team_1", authority, transport.TeamResponse(409, {"code": "browser-busy"}))
         with self.assertRaises(transport.TeamRequestError):
             sign_ins.start_under(authority, "team_1", {"url": "http://example.com/", "locale": "en"})
-        self.assertEqual(sign_ins._TRACKED, {})
+        self.assertIs(sign_ins._RUNNING["team_1"].authority, running)
+        self.assertEqual(sign_ins._STARTING, set())
 
     def test_the_sweep_cancels_a_session_whose_authority_lapsed_by_the_full_rule(self):
         self.threads = threading.active_count()
@@ -196,21 +200,22 @@ class RevokedSessionTests(unittest.TestCase):
                 sign_ins.sweep()
                 sign_ins.sweep()
                 await asyncio.sleep(0.05)
-                sign_ins._TRACKED.clear()
-                await asyncio.wait_for(sign_ins._SWEEP[0], 1)
+                task = sign_ins._SWEEP[0]
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
 
         calls = self.cancels(lambda: asyncio.run(one_pass()))
         self.assertTrue(calls)
         self.assertTrue(all(entry.args[1] == "/v1/teams/team_1/browser/sign-in/cancel" for entry in calls))
 
     def test_a_cancel_team_refuses_is_logged_and_never_raised(self):
-        tracked = sign_ins._Tracked(self.authority("s1"), SESSION)
+        tracked = sign_ins._Tracked("team_1", self.authority("s1"), SESSION)
         refused = transport.TeamResponse(503, {"code": "browser-unavailable"})
         with (
             mock.patch.object(transport, "call", return_value=refused),
             self.assertLogs("shimpz-admin", "WARNING") as logged,
         ):
-            sign_ins._cancel_ended("team_1", tracked)
+            sign_ins._cancel_ended(tracked)
         self.assertIn("could not be cancelled", logged.output[0])
 
 

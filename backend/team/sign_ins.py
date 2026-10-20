@@ -34,18 +34,20 @@ TOPIC = "sign-ins"
 SWEEP_SECONDS = 30
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, eq=False)
 class _Tracked:
-    """A Team's sign-in session as Admin started it: the authority it was started under, from before its start."""
+    """A sign-in session as Admin starts it: its Team and the authority it was started under, from before its start."""
 
+    team_id: str
     authority: Any
     # Known once Team answered the start; until then a revocation is remembered and acted on as the answer arrives.
     session_id: str | None = None
     revoked: bool = False
 
 
-# Each Team's sign-in session, by Team: a Team runs at most one.
-_TRACKED: dict[str, _Tracked] = {}
+# Each Team's running sign-in session (a Team runs at most one), and every start still waiting for Team's answer.
+_RUNNING: dict[str, _Tracked] = {}
+_STARTING: set[_Tracked] = set()
 _GUARD = threading.Lock()
 _SWEEP: list[asyncio.Task | None] = [None]
 # The closed refusals: the URL or label is not admissible, the session or Team is gone, more than one window is open,
@@ -124,50 +126,46 @@ def start_under(authority: Any, team_id: object, body: object) -> transport.Team
     """Start a sign-in session that belongs to `authority`, tracked before Team is asked.
 
     A revocation that comes while its Browser starts still cancels it once Team answers; this runs on a lane worker,
-    so it completes whatever happens to the socket meanwhile.
+    so it completes whatever happens to the socket meanwhile. A start Team refuses changes nothing already tracked.
     """
-    canonical_id = payloads.canonical_team_id(team_id)
-    tracked = _Tracked(authority)
+    tracked = _Tracked(payloads.canonical_team_id(team_id), authority)
     with _GUARD:
-        _TRACKED[canonical_id] = tracked
+        _STARTING.add(tracked)
     response = None
     try:
-        response = start(canonical_id, body)
+        response = start(tracked.team_id, body)
     finally:
         with _GUARD:
-            running = response is not None and response.status == 200 and _TRACKED.get(canonical_id) is tracked
+            _STARTING.discard(tracked)
+            running = response is not None and response.status == 200
             if running:
                 tracked.session_id = str(response.body["sign_in_session_id"])
-                revoked = tracked.revoked
-            if (not running or revoked) and _TRACKED.get(canonical_id) is tracked:
-                del _TRACKED[canonical_id]
-    if running and revoked:
-        _cancel_apart(canonical_id, tracked)
+                if not tracked.revoked:
+                    _RUNNING[tracked.team_id] = tracked
+    if running and tracked.revoked:
+        _cancel_apart(tracked)
     return response
 
 
 def finished(team_id: str, session_id: object) -> None:
     """That sign-in session was saved or cancelled: its authority's end has nothing left to cancel."""
     with _GUARD:
-        tracked = _TRACKED.get(team_id)
+        tracked = _RUNNING.get(team_id)
         if tracked is not None and tracked.session_id == session_id:
-            del _TRACKED[team_id]
+            del _RUNNING[team_id]
 
 
 def _revoke(ended: Callable[[_Tracked], bool]) -> None:
-    """Cancel every tracked session whose authority `ended`; one still starting is cancelled once Team answers."""
+    """Cancel every running session whose authority `ended`; one still starting is cancelled once Team answers."""
     with _GUARD:
-        revoked = []
-        for team_id, tracked in tuple(_TRACKED.items()):
-            if not ended(tracked):
-                continue
-            if tracked.session_id is None:
+        for tracked in _STARTING:
+            if ended(tracked):
                 tracked.revoked = True
-            else:
-                del _TRACKED[team_id]
-                revoked.append((team_id, tracked))
-    for team_id, tracked in revoked:
-        _cancel_apart(team_id, tracked)
+        revoked = [tracked for tracked in _RUNNING.values() if ended(tracked)]
+        for tracked in revoked:
+            del _RUNNING[tracked.team_id]
+    for tracked in revoked:
+        _cancel_apart(tracked)
 
 
 def sessions_ended(sessions: frozenset[str] | None) -> None:
@@ -175,34 +173,35 @@ def sessions_ended(sessions: frozenset[str] | None) -> None:
     _revoke(lambda tracked: sessions is None or tracked.authority.session in sessions)
 
 
-def _cancel_apart(team_id: str, tracked: _Tracked) -> None:
-    threading.Thread(target=_cancel_ended, args=(team_id, tracked), name="sign-in-revoked", daemon=True).start()
+def _cancel_apart(tracked: _Tracked) -> None:
+    threading.Thread(target=_cancel_ended, args=(tracked,), name="sign-in-revoked", daemon=True).start()
 
 
-def _cancel_ended(team_id: str, tracked: _Tracked) -> None:
+def _cancel_ended(tracked: _Tracked) -> None:
     with contextlib.suppress(transport.TeamRequestError), tracked.authority.scope():
-        response = cancel(team_id, {"sign_in_session_id": tracked.session_id})
+        response = cancel(tracked.team_id, {"sign_in_session_id": tracked.session_id})
         if response.status not in {200, 404}:
             log.warning("a revoked session's sign-in could not be cancelled")
 
 
 def sweep() -> None:
-    """On the event loop: check every tracked authority again by the full rule while any session is tracked."""
+    """On the event loop: from the first start on, check every tracked authority again by the full rule."""
     task = _SWEEP[0]
     if task is None or task.done():
         _SWEEP[0] = asyncio.get_running_loop().create_task(_sweep())
 
 
 async def _sweep() -> None:
-    while _TRACKED:
+    # It runs for the process's life, so a start registered just after a pass is never missed.
+    while True:
         await asyncio.sleep(SWEEP_SECONDS)
         with _GUARD:
-            tracked = list(_TRACKED.values())
+            tracked = [*_STARTING, *_RUNNING.values()]
         lapsed = set()
         for item in tracked:
             if not await item.authority.current():
-                lapsed.add(id(item))
-        _revoke(lambda item, lapsed=frozenset(lapsed): id(item) in lapsed)
+                lapsed.add(item)
+        _revoke(lambda item, lapsed=frozenset(lapsed): item in lapsed)
 
 
 auth.SESSIONS.listen(sessions_ended)
