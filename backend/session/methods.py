@@ -18,7 +18,7 @@ from fastapi import HTTPException
 from history import http as history_http
 from protocol.socket.v1 import frames
 from session import lane, routines, stepup, topics, watcher
-from signin import security
+from signin import local_auth, security
 from space import release as platform_release
 from team import bridge as team
 from team import http as team_http
@@ -166,6 +166,37 @@ async def _sign_in_start(socket: SessionSocket, params: dict[str, object]) -> An
             return team_sign_ins.start_under(authority, team_id, body)
 
     return await lane.run(socket, handler, params.get("team_id"), params.get("body"))
+
+
+# Deleting the Team's Sign-in: the password, then one second factor bound to the exact Sign-in Admin read (ADR-0117).
+
+
+async def _sign_in_deletion(socket: SessionSocket, params: dict[str, object]) -> Answer:
+    """Read the Team's Sign-in and begin a confirmation bound to it: its id, generation, and Team incarnation."""
+    status, body = await _team_call(team_sign_ins, "current", "team_id")(socket, params)
+    if status != 200:
+        return status, body
+    sign_in = body["sign_in"]
+    if sign_in is None:
+        return 404, {"detail": "sign-in unavailable", "code": "sign-in-absent"}
+    # The page names back the Sign-in it showed; the ticket is bound to the one read here, so any other fails.
+    return await stepup.begin(socket, team_sign_ins.deletion_subject(params["team_id"], sign_in), params["body"])
+
+
+async def _sign_in_delete(socket: SessionSocket, params: dict[str, object]) -> Answer:
+    """Team deletes the Sign-in only once the second factor confirmed this exact one; Team re-checks it too."""
+    try:
+        named = team_sign_ins.confirmed(params["sign_in_id"], params["generation"], params["team_incarnation"])
+        subject = team_sign_ins.deletion_subject(params["team_id"], named)
+        method, _value = local_auth.operation_factor(params["body"])
+    except (transport.TeamRequestError, HTTPException) as exc:
+        return 400, {"detail": exc.detail if isinstance(exc, HTTPException) else str(exc)}
+
+    def delete(_asker: local_auth.Asker) -> transport.TeamResponse:
+        with team_http.refused_as_bad_request():
+            return team_sign_ins.delete(params["team_id"], named, method)
+
+    return await stepup.complete(socket, subject, params["body"], delete)
 
 
 def _sign_in_finish(operation: str) -> Method:
@@ -318,8 +349,9 @@ METHODS: dict[str, Method] = {
     "sign_in.start": _sign_in_start,
     "sign_in.save": _sign_in_finish("save"),
     "sign_in.cancel": _sign_in_finish("cancel"),
-    "sign_ins.list": _team_call(team_sign_ins, "listing", "team_id"),
-    "sign_ins.forget": _team_call(team_sign_ins, "forget", "team_id", "body"),
+    "sign_in.read": _team_call(team_sign_ins, "current", "team_id"),
+    "sign_in.deletion": _sign_in_deletion,
+    "sign_in.delete": _sign_in_delete,
     "store.catalog": _catalog,
     "subscribe": _subscribe,
     "unsubscribe": _unsubscribe,

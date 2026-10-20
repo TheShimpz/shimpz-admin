@@ -31,7 +31,7 @@ MAX_SOURCE_TIME = 253_402_300_799
 TOPIC_RE = re.compile(
     r"(?:teams|space/(?:models|decision|chat-limit)|platform/release|security/summary|session|assistants/registry"
     r"|local-assistants"
-    r"|team/[a-z0-9_]{1,40}/(?:routines|history|inventory|inference|integrations|sign-ins))\Z"
+    r"|team/[a-z0-9_]{1,40}/(?:routines|history|inventory|inference|integrations|sign-in))\Z"
 )
 MAX_PARAM_CHARS = 128
 KIB = 1024
@@ -80,8 +80,9 @@ METHODS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "sign_in.start": (frozenset({"team_id", "body"}), _NONE),
     "sign_in.save": (frozenset({"team_id", "body"}), _NONE),
     "sign_in.cancel": (frozenset({"team_id", "body"}), _NONE),
-    "sign_ins.list": (_TEAM, _NONE),
-    "sign_ins.forget": (frozenset({"team_id", "body"}), _NONE),
+    "sign_in.read": (_TEAM, _NONE),
+    "sign_in.deletion": (frozenset({"team_id", "body"}), _NONE),
+    "sign_in.delete": (frozenset({"team_id", "sign_in_id", "generation", "team_incarnation", "body"}), _NONE),
     "store.catalog": (frozenset({"locale"}), frozenset({"cursor"})),
     "routines.pause": (frozenset({"team_id", "routine_id"}), _NONE),
     "routines.resume": (frozenset({"team_id", "routine_id"}), _NONE),
@@ -110,8 +111,8 @@ METHODS: dict[str, tuple[frozenset[str], frozenset[str]]] = {
 # The most bytes each method's request body takes as compact UTF-8 JSON: the bound its operation always had (a Team
 # name or an acknowledgment 1 KiB; a Team order or deletion, a confirmation's password, and the recovery codes' or
 # signing key's second factor 8 KiB; a Routine run's human answer 96 KiB, the 16,000 code points a text answer admits at
-# 4 bytes each with its fields, inside the inbound frame; a sign-in session's save or cancel, or a Sign-in's forgetting,
-# 1 KiB; every other body 16 KiB). A larger body is answered 413.
+# 4 bytes each with its fields, inside the inbound frame; a sign-in session's save or cancel 1 KiB, its deletion's
+# password 8 KiB; every other body 16 KiB). A larger body is answered 413.
 BODY_BYTES = {
     "teams.create": 1 * KIB,
     "teams.rename": 1 * KIB,
@@ -134,7 +135,8 @@ BODY_BYTES = {
     "sign_in.start": 16 * KIB,
     "sign_in.save": 1 * KIB,
     "sign_in.cancel": 1 * KIB,
-    "sign_ins.forget": 1 * KIB,
+    "sign_in.deletion": 8 * KIB,
+    "sign_in.delete": 16 * KIB,
     "recovery_codes.confirmation": 8 * KIB,
     "recovery_codes.replace": 8 * KIB,
     "supervisor_key.confirmation": 8 * KIB,
@@ -169,7 +171,7 @@ READ_TOPICS = {
     "chat_limit.read": lambda _params: "space/chat-limit",
     "integrations.list": _team_topic("integrations"),
     "stored_inputs.list": _team_topic("integrations"),
-    "sign_ins.list": _team_topic("sign-ins"),
+    "sign_in.read": _team_topic("sign-in"),
 }
 # Calls that change only what the socket itself holds (its subscriptions and attached chats) count against the
 # session's socket-change budget; they run without any authority scope.

@@ -1,11 +1,12 @@
-"""A Team's Sign-ins for the Supervisor (ADR-0117, Sign-ins amendment).
+"""A Team's Sign-in for the Supervisor (ADR-0117, 2026-10-20 amendment).
 
-The Supervisor starts a sign-in session at one https site, drives its Browser through the view's control stream, and
-Saves it as a Sign-in with a label of their own, or cancels it; they list the Team's Sign-ins and forget one. Every
-body is checked against Team's protocol before Team is reached, and every answer of Team's is admitted only in its
-exact form with its trace identifier, which the page never receives. A refusal passes on only as one of the closed
-codes below; anything else is a Team that is unavailable. A saved or forgotten Sign-in changes the Team's
-`sign-ins` topic.
+Each Team has one Sign-in, its browser session. The Supervisor reads it, starts a sign-in session at one https site
+(restored from the Sign-in when there is one), drives its Browser through the view's control stream, and Saves it or
+cancels it; deleting it takes the Supervisor's password and second factor, bound to the exact Sign-in, generation, and
+Team incarnation Admin read when the confirmation began. Every body is checked against Team's protocol before Team is
+reached, and every answer of Team's is admitted only in its exact form with its trace identifier, which the page never
+receives. A refusal passes on only as one of the closed codes below; anything else is a Team that is unavailable. A
+saved or deleted Sign-in changes the Team's `sign-in` topic.
 
 A sign-in session belongs to the Supervisor session that started it: when that session ends (logout, revocation, or
 expiry), Admin cancels it under the authority it was started with, so a Save under way keeps nothing.
@@ -29,7 +30,7 @@ from protocol.http.v1 import sign_in as contract
 
 log = logging.getLogger("shimpz-admin")
 
-TOPIC = "sign-ins"
+TOPIC = "sign-in"
 # How often the authorities of running sign-in sessions are checked again by the full rule, which also catches an
 # absolute expiry no session listener announces.
 SWEEP_SECONDS = 30
@@ -58,9 +59,9 @@ _SWEEP: list[asyncio.Task | None] = [None]
 # The closed refusals: the URL or label is not admissible, the session or Team is gone, more than one window is open,
 # the profile holds an identity provider's session, the Space's Browser is busy, or nothing could be saved or read.
 _REFUSALS = {
-    400: frozenset({contract.URL_INVALID, contract.LABEL_INVALID}),
-    404: frozenset({contract.NOT_RUNNING, "team-not-found"}),
-    409: frozenset({contract.WINDOWS, contract.IDENTITY_PROVIDER, "browser-busy"}),
+    400: frozenset({contract.URL_INVALID}),
+    404: frozenset({contract.NOT_RUNNING, contract.ABSENT, "team-not-found"}),
+    409: frozenset({contract.WINDOWS, contract.IDENTITY_PROVIDER, contract.BUSY, contract.CHANGED, "browser-busy"}),
     503: frozenset({contract.UNSAVED, "browser-unavailable", "sign-ins-unavailable"}),
 }
 
@@ -104,27 +105,45 @@ def _changed(team_id: object, response: transport.TeamResponse) -> transport.Tea
 
 
 def save(team_id: object, body: object) -> transport.TeamResponse:
-    """Save the session as a Sign-in under the person's label; once saving starts, the session ends however it goes."""
-    admitted = _admitted(body, contract.canonical_save)
+    """Save the session as the Sign-in's next generation; once saving starts, the session ends however it goes."""
+    admitted = _admitted(body, contract.canonical_session)
     response = transport.call("POST", _path(team_id, "sign-in/save"), admitted)
-    return _changed(team_id, _answer(response, contract.canonical_sign_in))
+    return _changed(team_id, _answer(response, contract.canonical_saved))
 
 
 def cancel(team_id: object, body: object) -> transport.TeamResponse:
-    """End the session without keeping anything."""
+    """End the session; a restored Sign-in then needs a person's Save before an agent uses it."""
     admitted = _admitted(body, contract.canonical_session)
-    return _answer(transport.call("POST", _path(team_id, "sign-in/cancel"), admitted), contract.canonical_cancelled)
+    response = transport.call("POST", _path(team_id, "sign-in/cancel"), admitted)
+    return _changed(team_id, _answer(response, contract.canonical_cancelled))
 
 
-def listing(team_id: object) -> transport.TeamResponse:
-    return _answer(transport.call("GET", _path(team_id, "sign-ins")), contract.canonical_sign_ins)
+def current(team_id: object) -> transport.TeamResponse:
+    """The Team's Sign-in, or null when it has none."""
+    return _answer(transport.call("GET", _path(team_id, "sign-in")), contract.canonical_current)
 
 
-def forget(team_id: object, body: object) -> transport.TeamResponse:
-    """Forget one Sign-in, deleting its sealed profile; `forgotten` is false when it was already gone."""
-    admitted = _admitted(body, contract.canonical_forget)
-    response = transport.call("POST", _path(team_id, "sign-ins/forget"), admitted)
-    return _changed(team_id, _answer(response, contract.canonical_forgotten))
+def deletion_subject(team_id: object, sign_in: dict[str, object]) -> str:
+    """The one exact deletion a Supervisor confirms: this Team's Sign-in, at this generation and incarnation."""
+    canonical_id = payloads.canonical_team_id(team_id)
+    identity = (sign_in["team_incarnation"], sign_in["sign_in_id"], sign_in["generation"])
+    return "sign-in-delete:{}:{}:{}:{}".format(canonical_id, *identity)
+
+
+def confirmed(sign_in_id: object, generation: object, team_incarnation: object) -> dict[str, object]:
+    """The Sign-in a deletion names, as its socket call carries it; a form outside Team's protocol is refused."""
+    number = int(generation) if isinstance(generation, str) and generation.isdecimal() else None
+    named = {"sign_in_id": sign_in_id, "generation": number, "team_incarnation": team_incarnation, "factor": "totp"}
+    if contract.canonical_delete(named) is None:
+        raise transport.TeamRequestError("the Sign-in to delete is not admissible")
+    return named
+
+
+def delete(team_id: object, named: dict[str, object], factor: str) -> transport.TeamResponse:
+    """Delete exactly the confirmed Sign-in, telling Team which second factor confirmed it (ADR-0120)."""
+    body = _admitted({**named, "factor": factor}, contract.canonical_delete)
+    response = transport.call("POST", _path(team_id, "sign-in/delete"), body)
+    return _changed(team_id, _answer(response, contract.canonical_deleted))
 
 
 def start_under(authority: Any, team_id: object, body: object) -> transport.TeamResponse:

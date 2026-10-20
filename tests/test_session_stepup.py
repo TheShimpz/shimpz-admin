@@ -644,3 +644,72 @@ class OperationTicketTests(StepUpCase):
                 self.assertRaises(self.transport.TeamRequestError),
             ):
                 self.manage.deletion_subject(team_id, routine_id)
+
+
+SIGN_IN = {
+    "sign_in_id": "e" * 32,
+    "state": "ready",
+    "generation": 3,
+    "team_incarnation": "f" * 64,
+    "sites": ["linkedin.com"],
+    "sites_truncated": False,
+    "created_at": "2026-10-20T10:00:00Z",
+    "saved_at": "2026-10-20T10:00:00Z",
+    "last_used_at": "2026-10-20T10:00:00Z",
+    "expires_at": "2026-11-19T10:00:00Z",
+}
+
+
+def _sign_in_delete(proof: dict, **changes: str) -> tuple[str, dict]:
+    named = {"sign_in_id": SIGN_IN["sign_in_id"], "generation": "3", "team_incarnation": SIGN_IN["team_incarnation"]}
+    return "sign_in.delete", {"team_id": TEAM, **named, **changes, "body": proof}
+
+
+class SignInDeletionTests(StepUpCase):
+    """Deleting a Team's Sign-in takes the password and a second factor bound to the exact Sign-in Admin read."""
+
+    def setUp(self) -> None:
+        super().setUp()
+        self.sign_ins = importlib.import_module("team.sign_ins")
+        self.read = mock.patch.object(
+            self.sign_ins, "current", return_value=self.transport.TeamResponse(200, {"sign_in": SIGN_IN})
+        ).start()
+        self.deleted = mock.patch.object(
+            self.sign_ins, "delete", return_value=self.transport.TeamResponse(200, {"deletion": "deleted"})
+        ).start()
+
+    def test_the_confirmed_sign_in_is_deleted_once_with_its_factor_named(self) -> None:
+        deletion = ("sign_in.deletion", {"team_id": TEAM, "body": {"password": PASSWORD}})
+        offer, deleted, replayed = self.run_calls(
+            deletion, _sign_in_delete({"code": self.code()}), _sign_in_delete({"code": self.code()})
+        )
+        self.assertEqual(self.answer(offer), (202, {"methods": ["totp"]}))
+        self.assertEqual(self.answer(deleted), (200, {"deletion": "deleted"}))
+        self.assertEqual(self.answer(replayed), (401, {"code": "authentication-expired"}))
+        named = {"sign_in_id": "e" * 32, "generation": 3, "team_incarnation": "f" * 64, "factor": "totp"}
+        self.deleted.assert_called_once_with(TEAM, named, "totp")
+
+    def test_a_confirmation_never_deletes_another_generation_or_sign_in(self) -> None:
+        deletion = ("sign_in.deletion", {"team_id": TEAM, "body": {"password": PASSWORD}})
+        for changes in ({"generation": "4"}, {"sign_in_id": "a" * 32}, {"team_incarnation": "0" * 64}):
+            with self.subTest(changes=changes):
+                offer, refused = self.run_calls(deletion, _sign_in_delete({"code": self.code()}, **changes))
+                self.assertEqual(offer["status"], 202)
+                self.assertEqual(self.answer(refused), (401, {"code": "authentication-expired"}))
+        self.deleted.assert_not_called()
+        for changes in ({"generation": "zero"}, {"sign_in_id": "nope"}):
+            with self.subTest(changes=changes):
+                (refused,) = self.run_calls(_sign_in_delete({"code": self.code()}, **changes))
+                self.assertEqual(refused["status"], 400)
+        (bad_body,) = self.run_calls(_sign_in_delete({"password": PASSWORD}))
+        self.assertEqual(bad_body["status"], 400)
+
+    def test_a_team_without_a_sign_in_or_unreachable_offers_no_confirmation(self) -> None:
+        deletion = ("sign_in.deletion", {"team_id": TEAM, "body": {"password": PASSWORD}})
+        self.read.return_value = self.transport.TeamResponse(200, {"sign_in": None})
+        (absent,) = self.run_calls(deletion)
+        self.assertEqual(self.answer(absent), (404, {"detail": "sign-in unavailable", "code": "sign-in-absent"}))
+        self.read.return_value = self.transport.TeamResponse(502, {"detail": "team unavailable"})
+        (unavailable,) = self.run_calls(deletion)
+        self.assertEqual(unavailable["status"], 502)
+        self.assertEqual(self.context.ticket_store._records, {})
