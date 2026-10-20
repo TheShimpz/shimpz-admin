@@ -5,7 +5,14 @@ import { expect, test } from '@playwright/test';
 
 import { accessibilityViolations } from './axe.js';
 import { CLIENT_MESSAGES, rfbServer, solid } from './rfbServer.js';
-import { SIGN_IN_CODE, SIGN_IN_PASSWORD, SIGN_IN_SESSION, SIGN_IN_VIEW } from './scenarios.js';
+import {
+  SIGN_IN_CODE,
+  SIGN_IN_ID,
+  SIGN_IN_INCARNATION,
+  SIGN_IN_PASSWORD,
+  SIGN_IN_SESSION,
+  SIGN_IN_VIEW,
+} from './scenarios.js';
 import { readsOf, routeRead, routeScenario } from './scenarioRoutes.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 
@@ -149,6 +156,27 @@ test('a screen whose connection ended connects again, and a refused Cancel keeps
   await dialog.getByRole('button', { name: SESSION.cancel }).click();
   await expect(dialog.getByText(SESSION.cancelFailed)).toBeVisible();
   await expect(dialog).toBeVisible();
+});
+
+test('a Save the activity log could not record is kept, and the person is told so', async ({ page }) => {
+  await openChat(page);
+  const record = {
+    sign_in_id: SIGN_IN_ID,
+    state: 'ready',
+    generation: 1,
+    team_incarnation: SIGN_IN_INCARNATION,
+    sites: ['example.net'],
+    sites_truncated: false,
+    created_at: '2026-10-20T12:00:00Z',
+    saved_at: '2026-10-20T12:00:00Z',
+    last_used_at: '2026-10-20T12:00:00Z',
+    expires_at: '2026-10-27T12:00:00Z',
+  };
+  await routeRead(page, 'sign_in.save', () => ({ status: 200, json: { sign_in: record, recorded: false } }));
+  const dialog = await startSession(page);
+  await dialog.getByRole('button', { name: SESSION.save }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.getByText(SESSION.savedUnrecorded)).toBeVisible();
 });
 
 test('a Save that failed for another reason keeps the session to save again or cancel at Team', async ({ page }) => {

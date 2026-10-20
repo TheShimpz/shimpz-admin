@@ -77,8 +77,10 @@
     working = 'saving';
     error = '';
     try {
-      await saveSignIn(session.teamId, session.sessionId);
-      onclose(copy.saved);
+      const { recorded } = await saveSignIn(session.teamId, session.sessionId);
+      // A Save the activity log could not record is still saved; the person hears both (ADR-0120).
+      if (recorded) onclose(copy.saved);
+      else onclose(copy.savedUnrecorded, 'info');
     } catch (failed) {
       error = refusal(failed, copy.unsaved);
       working = '';

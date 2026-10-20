@@ -848,6 +848,7 @@ export default {
     cancelFailed: 'The sign-in session could not be cancelled. Try again, or it ends by itself after 10 minutes without you.',
     close: 'Close',
     saved: 'Browser session saved.',
+    savedUnrecorded: 'Browser session saved, but the activity log could not record it.',
     windows: 'Close every other browser window, then save again.',
     identityProvider: 'This browser held a Google, Microsoft, or Apple account session, which a Sign-in cannot keep, so nothing was saved. Start again and sign in to the site without that account.',
     notRunning: 'The sign-in session ended. Start it again.',

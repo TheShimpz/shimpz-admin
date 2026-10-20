@@ -833,6 +833,7 @@ export default {
     cancelFailed: 'No se pudo cancelar la sesión de inicio. Inténtalo de nuevo, o terminará sola tras 10 minutos sin ti.',
     close: 'Cerrar',
     saved: 'Sesión del navegador guardada.',
+    savedUnrecorded: 'Sesión del navegador guardada, pero el registro de actividad no pudo registrarla.',
     windows: 'Cierra las demás ventanas del navegador y vuelve a guardar.',
     identityProvider: 'Este navegador tenía una sesión de cuenta de Google, Microsoft o Apple, que un acceso no puede guardar, así que no se guardó nada. Empieza de nuevo e inicia sesión en el sitio sin esa cuenta.',
     notRunning: 'La sesión de inicio terminó. Empieza de nuevo.',

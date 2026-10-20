@@ -92,9 +92,9 @@
     close();
   }
 
-  function ended(message) {
+  function ended(message, tone = 'success') {
     session = null;
-    if (message) showAdminNotice({ tone: 'success', message });
+    if (message) showAdminNotice({ tone, message });
   }
 
   function deleted(outcome) {

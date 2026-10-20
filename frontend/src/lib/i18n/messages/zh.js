@@ -833,6 +833,7 @@ export default {
     cancelFailed: '无法取消登录会话。请重试，或在你离开 10 分钟后它会自行结束。',
     close: '关闭',
     saved: '浏览器会话已保存。',
+    savedUnrecorded: '浏览器会话已保存，但活动日志未能记录。',
     windows: '请关闭浏览器的其他所有窗口，然后再次保存。',
     identityProvider: '此浏览器有一个 Google、Microsoft 或 Apple 账户会话，登录无法保存它，因此没有保存任何内容。请重新开始，并在不使用该账户的情况下登录网站。',
     notRunning: '登录会话已结束。请重新开始。',

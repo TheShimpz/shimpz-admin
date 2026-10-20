@@ -833,6 +833,7 @@ export default {
     cancelFailed: 'Não foi possível cancelar a sessão de login. Tente de novo, ou ela termina sozinha após 10 minutos sem você.',
     close: 'Fechar',
     saved: 'Sessão do navegador salva.',
+    savedUnrecorded: 'Sessão do navegador salva, mas o registro de atividades não conseguiu registrá-la.',
     windows: 'Feche as outras janelas do navegador e salve de novo.',
     identityProvider: 'Este navegador tinha uma sessão de conta Google, Microsoft ou Apple, que um acesso não pode guardar, então nada foi salvo. Comece de novo e entre no site sem essa conta.',
     notRunning: 'A sessão de login terminou. Comece de novo.',

@@ -833,6 +833,7 @@ export default {
     cancelFailed: 'Die Anmeldesitzung konnte nicht abgebrochen werden. Versuche es erneut, oder sie endet nach 10 Minuten ohne dich von selbst.',
     close: 'Schließen',
     saved: 'Browsersitzung gespeichert.',
+    savedUnrecorded: 'Browsersitzung gespeichert, aber das Aktivitätsprotokoll konnte sie nicht erfassen.',
     windows: 'Schließe alle anderen Browserfenster und speichere erneut.',
     identityProvider: 'Dieser Browser hatte eine Google-, Microsoft- oder Apple-Kontositzung, die eine Anmeldung nicht behalten kann, daher wurde nichts gespeichert. Beginne neu und melde dich ohne dieses Konto bei der Website an.',
     notRunning: 'Die Anmeldesitzung ist beendet. Beginne neu.',

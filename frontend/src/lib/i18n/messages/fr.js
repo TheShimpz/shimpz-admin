@@ -833,6 +833,7 @@ export default {
     cancelFailed: 'La session de connexion n’a pas pu être annulée. Réessayez, ou elle se terminera seule après 10 minutes sans vous.',
     close: 'Fermer',
     saved: 'Session du navigateur enregistrée.',
+    savedUnrecorded: 'Session du navigateur enregistrée, mais le journal d’activité n’a pas pu la consigner.',
     windows: 'Fermez les autres fenêtres du navigateur, puis enregistrez à nouveau.',
     identityProvider: 'Ce navigateur avait une session de compte Google, Microsoft ou Apple, qu’un accès ne peut pas garder, donc rien n’a été enregistré. Recommencez et connectez-vous au site sans ce compte.',
     notRunning: 'La session de connexion est terminée. Recommencez.',
