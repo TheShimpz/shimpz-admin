@@ -692,6 +692,20 @@ class SessionMethodAnswerTests(SessionMethodCase):
             result = self._answers("browser.view", SAMPLES["browser.view"])
         open_view.assert_called_once_with("team_1")
         self.assertEqual((result["status"], result["body"]), (200, opened.body))
+        # A sign-in session's Save or Cancel that Team answered, or that finds it no longer running, is finished.
+        for method, answer in (
+            ("sign_in.cancel", self.transport.TeamResponse(200, {"cancelled": True})),
+            ("sign_in.save", self.transport.TeamResponse(404, {"detail": "x", "code": "sign-in-not-running"})),
+        ):
+            operation = method.split(".")[1]
+            with (
+                self.subTest(method=method),
+                mock.patch.object(self.methods.team_sign_ins, operation, return_value=answer),
+                mock.patch.object(self.methods.team_sign_ins, "finished") as finished,
+            ):
+                result = self._answers(method, SAMPLES[method])
+                self.assertEqual(result["status"], answer.status)
+                finished.assert_called_once_with("team_1", "a" * 32)
         result = self._answers("stored_inputs.clear", {**SAMPLES["stored_inputs.clear"], "stored_input_id": "Bad"})
         self.assertEqual(result["status"], 400)
         result = self._answers("assistants.summary", {**SAMPLES["assistants.summary"], "locale": "it"})

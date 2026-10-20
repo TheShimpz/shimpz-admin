@@ -175,8 +175,13 @@ class RevokedSessionTests(unittest.TestCase):
             return transport.TeamResponse(200, {**STARTED, "trace_id": TRACE})
 
         def action():
+            # Another session's start still waiting is left to go on.
+            other = sign_ins._Tracked("team_2", self.authority("s2"))
+            sign_ins._STARTING.add(other)
             with mock.patch.object(sign_ins, "start", side_effect=started):
                 sign_ins.start_under(authority, "team_1", START_BODY)
+            self.assertFalse(other.revoked)
+            sign_ins._STARTING.discard(other)
 
         calls = self.cancels(action)
         self.assertEqual(len(calls), 1)
