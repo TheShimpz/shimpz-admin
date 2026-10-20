@@ -46,6 +46,21 @@ export function streamUrl(teamId, viewId, location = globalThis.location, kind =
   return `${scheme}//${location.host}/api/teams/${encodeURIComponent(teamId)}/browser/views/${viewId}/${kind}`;
 }
 
+// KasmVNC reads a pointer event as 11 bytes: a 16-bit button mask, the position, and two scroll deltas. noVNC sends the
+// standard 6, on which KasmVNC drops the connection, so a driven screen sends KasmVNC's own form (a watched one sends no
+// pointer at all). The wheel stays noVNC's buttons 4 and 5.
+function kasmPointer(RFB) {
+  RFB.messages.pointerEvent = (sock, x, y, mask) => {
+    sock.sQpush8(5);
+    sock.sQpush16(mask & 0xffff);
+    sock.sQpush16(x);
+    sock.sQpush16(y);
+    sock.sQpush16(0);
+    sock.sQpush16(0);
+    sock.flush();
+  };
+}
+
 // noVNC's client of one screen, scaled to `target`: view-only, never taking focus, or driven by the person.
 function screen(RFB, target, url, { control }) {
   const rfb = new RFB(target, url, { wsProtocols: ['binary'] });
@@ -73,6 +88,7 @@ export async function controlBrowser(
 ) {
   if (!TEAM_ID_RE.test(teamId) || !VIEW_ID_RE.test(viewId)) throw new LocalApiError('The Browser view is invalid.');
   signal.throwIfAborted();
+  kasmPointer(RFB);
   return new Promise((_resolve, reject) => {
     const rfb = screen(RFB, target, streamUrl(teamId, viewId, location, 'control'), { control: true });
     let connected = true;

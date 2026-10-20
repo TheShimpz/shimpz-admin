@@ -141,6 +141,8 @@ test('save sends the kept label, cancel and forget their exact bodies', async ()
 class RFB extends EventTarget {
   static made = [];
 
+  static messages = {};
+
   constructor(target, url, options) {
     super();
     Object.assign(this, { target, url, options, focused: 0, disconnected: 0 });
@@ -169,6 +171,15 @@ test('a sign-in session\'s Browser is driven over its control stream until it en
   assert.equal(rfb.focusOnClick, true);
   rfb.dispatchEvent(new Event('connect'));
   assert.deepEqual([connected, rfb.focused], [1, 1]);
+  // The person's pointer reaches KasmVNC in its own 11-byte form: type, 16-bit mask, position, and two scroll deltas.
+  const pushed = [];
+  const sock = {
+    sQpush8: (value) => pushed.push(['8', value]),
+    sQpush16: (value) => pushed.push(['16', value]),
+    flush: () => pushed.push(['flush']),
+  };
+  RFB.messages.pointerEvent(sock, 640, 400, 0x101);
+  assert.deepEqual(pushed, [['8', 5], ['16', 0x101], ['16', 640], ['16', 400], ['16', 0], ['16', 0], ['flush']]);
   rfb.dispatchEvent(new Event('disconnect'));
   await assert.rejects(driving, BrowserViewEndedError);
   // Without an `onconnect`, the screen still shows and takes the person's keys.

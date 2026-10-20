@@ -86,7 +86,8 @@ export function rfbServer({ width = 1280, height = 800, name = 'Browser', screen
     } else if (type === KEY) {
       if (!take(8)) return null;
     } else if (type === POINTER) {
-      if (!take(6)) return null;
+      // KasmVNC's pointer event: a 16-bit button mask, the position, and two scroll deltas.
+      if (!take(11)) return null;
     } else if (type === CUT_TEXT) {
       if (buffer.length < 8) return null;
       const length = new DataView(buffer.buffer, buffer.byteOffset).getUint32(4);

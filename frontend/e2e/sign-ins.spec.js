@@ -81,6 +81,8 @@ test('a sign-in session is driven by the person and saved under their label @bro
   const received = () => display.streams[0].server.received;
   await expect.poll(() => received().includes(CLIENT_MESSAGES.POINTER)).toBe(true);
   await expect.poll(() => received().includes(CLIENT_MESSAGES.KEY)).toBe(true);
+  // Every message is one the display reads whole, in KasmVNC's own sizes: none is misread as another.
+  expect(received().every((type) => [0, 2, 3, CLIENT_MESSAGES.KEY, CLIENT_MESSAGES.POINTER].includes(type))).toBe(true);
   await expect(dialog).toBeVisible();
   expect(await accessibilityViolations(page)).toEqual([]);
 
@@ -132,6 +134,8 @@ test('neither starting nor saving sends the chat draft around them', async ({ pa
   await panel.getByRole('textbox', { name: COPY.urlLabel }).press('Enter');
   const dialog = page.getByRole('dialog', { name: SESSION.title.replace('{site}', 'mail.example.net') });
   await expect(dialog).toBeVisible();
+  // The screen takes the focus as it connects, so the person types into the page; the label is typed after that.
+  await expect(dialog.getByRole('status')).toHaveCount(0);
   await dialog.getByRole('textbox', { name: SESSION.labelField }).fill('Inbox');
   await dialog.getByRole('textbox', { name: SESSION.labelField }).press('Enter');
   await expect(dialog).toBeHidden();
