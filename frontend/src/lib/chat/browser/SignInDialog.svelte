@@ -10,18 +10,22 @@
   // A sign-in session (ADR-0117, Sign-ins amendment): the Browser only the person drives, at the site they chose, with
   // Chrome's own address bar. The screen takes their pointer and keys; Esc goes to the page, so only Cancel or Save
   // ends the dialog. Save keeps the profile as a Sign-in under the person's label, after what it means is said; Cancel
-  // keeps nothing. Saving takes Chromium's rest and stop (about 40 s), during which the screen ends by design.
+  // keeps nothing. Saving takes Chromium's rest and stop (about 40 s), during which the screen ends by design. A screen
+  // whose connection ended says so and can connect again: only Team's own answer says the session ended. The dialog is
+  // its own form, so Enter in it never reaches the chat's composer around it.
   let { session, onclose } = $props();
 
   const titleId = $props.id();
   let dialog = $state();
   let screen = $state();
+  // `loading`, `showing`, `lost` (the connection to the screen ended), or `ended` (Team ended the session).
   let status = $state('loading');
   let label = $state('');
   let working = $state('');
   let error = $state('');
   let copy = $derived($t('signInSession'));
   let kept = $derived(canonicalLabel(label));
+  let connection = null;
 
   // What a saved Sign-in means, said before Save: every identity in it is delegated, it keeps the site's own state,
   // what the agent reads signed in reaches the model provider, and a dedicated account is the safer one.
@@ -33,10 +37,14 @@
     'sign-in-not-running': 'notRunning',
     'sign-in-unsaved': 'unsaved',
   };
+  // Refusals that come before saving began: the session goes on.
+  const KEPT_RUNNING = new Set(['sign-in-windows', 'sign-in-label-invalid']);
 
-  onMount(() => {
-    dialog.showModal();
+  function connect() {
+    connection?.abort(new DOMException('The screen reconnected.', 'AbortError'));
     const controller = new AbortController();
+    connection = controller;
+    status = 'loading';
     import('@novnc/novnc')
       .then(({ default: RFB }) => controlBrowser(session.teamId, session.viewId, {
         signal: controller.signal,
@@ -47,10 +55,15 @@
         },
       }))
       .catch(() => {
-        if (!controller.signal.aborted && !working) status = 'ended';
+        if (!controller.signal.aborted && !working && status !== 'ended') status = 'lost';
       });
+  }
+
+  onMount(() => {
+    dialog.showModal();
+    connect();
     return () => {
-      controller.abort(new DOMException('The sign-in closed.', 'AbortError'));
+      connection?.abort(new DOMException('The sign-in closed.', 'AbortError'));
       if (dialog?.open) dialog.close();
     };
   });
@@ -60,8 +73,10 @@
     return copy[REFUSALS[failed?.code]] ?? fallback;
   }
 
-  async function save() {
-    if (working || !kept) return;
+  async function save(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (working || !kept || status === 'ended') return;
     working = 'saving';
     error = '';
     try {
@@ -70,8 +85,7 @@
     } catch (failed) {
       error = refusal(failed, copy.unsaved);
       working = '';
-      // A refusal before saving began (another window, a bad label) leaves the session running; any other ended it.
-      if (!['sign-in-windows', 'sign-in-label-invalid'].includes(failed?.code)) status = 'ended';
+      if (!KEPT_RUNNING.has(failed?.code)) status = 'ended';
     }
   }
 
@@ -82,10 +96,16 @@
       return;
     }
     working = 'cancelling';
+    error = '';
     try {
       await cancelSignIn(session.teamId, session.sessionId);
-    } catch {
-      // A session that already ended or cannot be reached keeps nothing either way; Team ends it when it idles.
+    } catch (failed) {
+      if (failed?.code !== 'sign-in-not-running') {
+        // The session may still run on Team: the person hears so and can try again or leave it to end by itself.
+        error = outcomeUnknown(failed) ? $t('shell.outcomeUnknown') : copy.cancelFailed;
+        working = '';
+        return;
+      }
     }
     onclose('');
   }
@@ -97,39 +117,44 @@
   labelledBy={titleId}
   oncancel={(event) => event.preventDefault()}
 >
-  <DialogFrame kicker={copy.kicker} title={$t('signInSession.title', { site: session.site })} {titleId} lead={copy.lead}>
-    <div class="screen" bind:this={screen} role="application" aria-label={copy.screen}></div>
-    {#if status !== 'showing'}
-      <p class="status" role="status">{copy[status]}</p>
-    {/if}
-    {#if status !== 'ended'}
-      <TextField
-        id={`${titleId}-label`}
-        label={copy.labelField}
-        hint={copy.labelHint}
-        bind:value={label}
-        maxlength={MAX_LABEL_CHARS}
-        autocomplete="off"
-        disabled={Boolean(working)}
-      />
-      <ul class="terms" aria-label={copy.termsLabel}>
-        {#each TERMS as term (term)}
-          <li>{$t(`signInSession.terms.${term}`, { site: session.site })}</li>
-        {/each}
-      </ul>
-    {/if}
-    {#if error}<Notice variant="error">{error}</Notice>{/if}
-    {#snippet footer()}
-      <DialogAction kind="cancel" type="button" disabled={Boolean(working)} onclick={cancel}>
-        {status === 'ended' ? copy.close : working === 'cancelling' ? copy.cancelling : copy.cancel}
-      </DialogAction>
-      {#if status !== 'ended'}
-        <DialogAction kind="confirm" type="button" disabled={Boolean(working) || !kept || !$commandsReady} onclick={save}>
-          {working === 'saving' ? copy.saving : copy.save}
-        </DialogAction>
+  <form onsubmit={save}>
+    <DialogFrame kicker={copy.kicker} title={$t('signInSession.title', { site: session.site })} {titleId} lead={copy.lead}>
+      <div class="screen" bind:this={screen} role="application" aria-label={copy.screen}></div>
+      {#if status !== 'showing'}
+        <p class="status" role="status">{copy[status]}</p>
       {/if}
-    {/snippet}
-  </DialogFrame>
+      {#if status === 'lost'}
+        <DialogAction kind="retry" type="button" disabled={Boolean(working)} onclick={connect}>{copy.reconnect}</DialogAction>
+      {/if}
+      {#if status !== 'ended'}
+        <TextField
+          id={`${titleId}-label`}
+          label={copy.labelField}
+          hint={copy.labelHint}
+          bind:value={label}
+          maxlength={MAX_LABEL_CHARS}
+          autocomplete="off"
+          disabled={Boolean(working)}
+        />
+        <ul class="terms" aria-label={copy.termsLabel}>
+          {#each TERMS as term (term)}
+            <li>{$t(`signInSession.terms.${term}`, { site: session.site })}</li>
+          {/each}
+        </ul>
+      {/if}
+      {#if error}<Notice variant="error">{error}</Notice>{/if}
+      {#snippet footer()}
+        <DialogAction kind="cancel" type="button" disabled={Boolean(working)} onclick={cancel}>
+          {status === 'ended' ? copy.close : working === 'cancelling' ? copy.cancelling : copy.cancel}
+        </DialogAction>
+        {#if status !== 'ended'}
+          <DialogAction kind="confirm" type="submit" disabled={Boolean(working) || !kept || !$commandsReady}>
+            {working === 'saving' ? copy.saving : copy.save}
+          </DialogAction>
+        {/if}
+      {/snippet}
+    </DialogFrame>
+  </form>
 </Modal>
 
 <style>

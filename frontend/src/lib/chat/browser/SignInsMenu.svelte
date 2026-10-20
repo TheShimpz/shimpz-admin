@@ -47,7 +47,9 @@
   }
 
   async function start(event) {
+    // This panel's form sits inside the chat's composer form: its submit never reaches the composer.
     event.preventDefault();
+    event.stopPropagation();
     if (blocked) return;
     if (!startUrl(url)) {
       error = copy.urlInvalid;
