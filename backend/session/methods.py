@@ -157,22 +157,29 @@ def _chat_limit(operation: str, *names: str) -> Method:
 
 
 async def _sign_in_start(socket: SessionSocket, params: dict[str, object]) -> Answer:
-    """Start a sign-in session, kept with the authority that started it: that session's end cancels it (ADR-0117)."""
-    status, body = await _team_call(team_sign_ins, "start", "team_id", "body")(socket, params)
-    if status == 200 and isinstance(body, dict):
-        team_sign_ins.started_under(str(params["team_id"]), str(body["sign_in_session_id"]), socket.authority())
-    return status, body
+    """Start a sign-in session that belongs to the socket's authority: that session's end cancels it (ADR-0117)."""
+    authority = socket.authority()
+    team_sign_ins.sweep()
+
+    def handler(team_id: object, body: object) -> transport.TeamResponse:
+        with team_http.refused_as_bad_request():
+            return team_sign_ins.start_under(authority, team_id, body)
+
+    return await lane.run(socket, handler, params.get("team_id"), params.get("body"))
 
 
 def _sign_in_finish(operation: str) -> Method:
-    """Save or cancel a sign-in session; once it no longer runs, its session's end has nothing to cancel."""
-    call = _team_call(team_sign_ins, operation, "team_id", "body")
+    """Save or cancel a sign-in session; once it no longer runs, its authority's end has nothing to cancel."""
+
+    def handler(team_id: object, body: object) -> transport.TeamResponse:
+        with team_http.refused_as_bad_request():
+            response = getattr(team_sign_ins, operation)(team_id, body)
+        if response.status == 200 or response.body.get("code") == "sign-in-not-running":
+            team_sign_ins.finished(str(team_id), body.get("sign_in_session_id"))
+        return response
 
     async def method(socket: SessionSocket, params: dict[str, object]) -> Answer:
-        status, body = await call(socket, params)
-        if status == 200 or (isinstance(body, dict) and body.get("code") == "sign-in-not-running"):
-            team_sign_ins.finished(str(params["team_id"]))
-        return status, body
+        return await lane.run(socket, handler, params.get("team_id"), params.get("body"))
 
     return method
 

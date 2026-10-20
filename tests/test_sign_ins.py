@@ -1,7 +1,9 @@
 """A Team's Sign-ins through Admin (ADR-0117, Sign-ins amendment): exact bodies, exact answers, closed refusals."""
 
+import asyncio
 import contextlib
 import sys
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -109,47 +111,107 @@ class SignInBridgeTests(unittest.TestCase):
         self.assertEqual(self.raised, [])
 
 
+STARTED = {"sign_in_session_id": SESSION, "view_id": "c" * 32, "site": "example.com"}
+START_BODY = {"url": "https://example.com/", "locale": "en"}
+
+
 class RevokedSessionTests(unittest.TestCase):
     """A sign-in session belongs to the Supervisor session that started it: that session's end cancels it."""
 
-    def test_a_started_session_is_cancelled_under_its_authority_when_its_session_ends(self):
-        scopes = []
+    def setUp(self):
+        self.addCleanup(sign_ins._TRACKED.clear)
+        self.scopes: list[str] = []
 
+    def authority(self, session: str, *, current: bool = True) -> SimpleNamespace:
         @contextlib.contextmanager
         def scope():
-            scopes.append("entered")
+            self.scopes.append(session)
             yield
 
-        authority = SimpleNamespace(session="s1", scope=scope)
-        other = SimpleNamespace(session="s2", scope=scope)
-        sign_ins.started_under("team_1", SESSION, authority)
-        sign_ins.started_under("team_2", "c" * 32, other)
+        async def still_current() -> bool:
+            return current
+
+        return SimpleNamespace(session=session, scope=scope, current=still_current)
+
+    def cancels(self, action) -> list:
+        """The Team calls `action` makes, waiting for the cancel threads it starts."""
         cancelled = transport.TeamResponse(200, {"cancelled": True, "trace_id": TRACE})
         with mock.patch.object(transport, "call", return_value=cancelled) as call:
-            sign_ins.sessions_ended(frozenset({"s1"}))
-            deadline = time.monotonic() + 5
-            while not call.called and time.monotonic() < deadline:
+            action()
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline and threading.active_count() > self.threads:
                 time.sleep(0.01)
-            time.sleep(0.05)
-        call.assert_called_once_with("POST", "/v1/teams/team_1/browser/sign-in/cancel", {"sign_in_session_id": SESSION})
-        self.assertEqual(scopes, ["entered"])
-        # A finished session has nothing left to cancel; every remaining one ends with all sessions.
-        sign_ins.finished("team_2")
-        with mock.patch.object(transport, "call") as untouched:
-            sign_ins.sessions_ended(None)
-            time.sleep(0.05)
-        untouched.assert_not_called()
+        return [entry for entry in call.call_args_list if entry.args[1].endswith("/sign-in/cancel")]
+
+    def start(self, team_id: str, authority, answer=None) -> transport.TeamResponse:
+        started = transport.TeamResponse(200, {**STARTED, "trace_id": TRACE}) if answer is None else answer
+        with mock.patch.object(transport, "call", return_value=started):
+            return sign_ins.start_under(authority, team_id, START_BODY)
+
+    def test_a_started_session_is_cancelled_under_its_authority_when_its_session_ends(self):
+        self.threads = threading.active_count()
+        self.start("team_1", self.authority("s1"))
+        self.start("team_2", self.authority("s2"))
+        calls = self.cancels(lambda: sign_ins.sessions_ended(frozenset({"s1"})))
+        self.assertEqual(
+            [entry.args for entry in calls],
+            [("POST", "/v1/teams/team_1/browser/sign-in/cancel", {"sign_in_session_id": SESSION})],
+        )
+        self.assertEqual(self.scopes, ["s1"])
+        # Only the very session that finished is forgotten: a stale answer for another one keeps it tracked.
+        sign_ins.finished("team_2", "d" * 32)
+        self.assertIn("team_2", sign_ins._TRACKED)
+        sign_ins.finished("team_2", SESSION)
+        self.assertEqual(self.cancels(lambda: sign_ins.sessions_ended(None)), [])
+
+    def test_a_session_revoked_while_its_browser_starts_is_cancelled_once_team_answers(self):
+        self.threads = threading.active_count()
+        authority = self.authority("s1")
+
+        def started(*_args, **_kwargs):
+            # Logout comes while Team starts the Browser.
+            sign_ins.sessions_ended(frozenset({"s1"}))
+            return transport.TeamResponse(200, {**STARTED, "trace_id": TRACE})
+
+        def action():
+            with mock.patch.object(sign_ins, "start", side_effect=started):
+                sign_ins.start_under(authority, "team_1", START_BODY)
+
+        calls = self.cancels(action)
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("team_1", sign_ins._TRACKED)
+        # A start Team refused, or one Admin refused before Team, tracks nothing.
+        self.start("team_1", authority, transport.TeamResponse(409, {"code": "browser-busy"}))
+        with self.assertRaises(transport.TeamRequestError):
+            sign_ins.start_under(authority, "team_1", {"url": "http://example.com/", "locale": "en"})
+        self.assertEqual(sign_ins._TRACKED, {})
+
+    def test_the_sweep_cancels_a_session_whose_authority_lapsed_by_the_full_rule(self):
+        self.threads = threading.active_count()
+        self.start("team_1", self.authority("s1", current=False))
+        self.start("team_2", self.authority("s2"))
+
+        async def one_pass():
+            with mock.patch.object(sign_ins, "SWEEP_SECONDS", 0):
+                sign_ins.sweep()
+                sign_ins.sweep()
+                await asyncio.sleep(0.05)
+                sign_ins._TRACKED.clear()
+                await asyncio.wait_for(sign_ins._SWEEP[0], 1)
+
+        calls = self.cancels(lambda: asyncio.run(one_pass()))
+        self.assertTrue(calls)
+        self.assertTrue(all(entry.args[1] == "/v1/teams/team_1/browser/sign-in/cancel" for entry in calls))
 
     def test_a_cancel_team_refuses_is_logged_and_never_raised(self):
-        sign_ins.started_under("team_1", SESSION, SimpleNamespace(session="s1", scope=contextlib.nullcontext))
+        tracked = sign_ins._Tracked(self.authority("s1"), SESSION)
         refused = transport.TeamResponse(503, {"code": "browser-unavailable"})
         with (
             mock.patch.object(transport, "call", return_value=refused),
             self.assertLogs("shimpz-admin", "WARNING") as logged,
         ):
-            sign_ins._cancel_ended("team_1", SESSION, SimpleNamespace(scope=contextlib.nullcontext))
+            sign_ins._cancel_ended("team_1", tracked)
         self.assertIn("could not be cancelled", logged.output[0])
-        sign_ins.finished("team_1")
 
 
 if __name__ == "__main__":
