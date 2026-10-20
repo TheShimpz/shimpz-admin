@@ -821,7 +821,7 @@ export default {
     identityProvider: 'Este navegador tenía una sesión de cuenta de Google, Microsoft o Apple, que un acceso no puede guardar, así que no se guardó nada. Empieza de nuevo e inicia sesión en el sitio sin esa cuenta.',
     labelInvalid: 'Escribe un nombre de cuenta de 1 a 64 caracteres.',
     notRunning: 'La sesión de inicio terminó. Empieza de nuevo.',
-    unsaved: 'No se pudo guardar el acceso. Empieza de nuevo.',
+    unsaved: 'No se pudo guardar el acceso. Vuelve a guardar, o cancela.',
   },
   brainMenu: {
     modelLoading: 'Cargando modelos…',

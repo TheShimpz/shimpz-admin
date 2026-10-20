@@ -821,7 +821,7 @@ export default {
     identityProvider: 'Dieser Browser hatte eine Google-, Microsoft- oder Apple-Kontositzung, die eine Anmeldung nicht behalten kann, daher wurde nichts gespeichert. Beginne neu und melde dich ohne dieses Konto bei der Website an.',
     labelInvalid: 'Gib einen Kontonamen mit 1 bis 64 Zeichen ein.',
     notRunning: 'Die Anmeldesitzung ist beendet. Beginne neu.',
-    unsaved: 'Die Anmeldung konnte nicht gespeichert werden. Beginne neu.',
+    unsaved: 'Die Anmeldung konnte nicht gespeichert werden. Speichere erneut, oder brich ab.',
   },
   brainMenu: {
     modelLoading: 'Modelle werden geladen…',

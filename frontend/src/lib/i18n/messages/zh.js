@@ -821,7 +821,7 @@ export default {
     identityProvider: '此浏览器有一个 Google、Microsoft 或 Apple 账户会话，登录无法保存它，因此没有保存任何内容。请重新开始，并在不使用该账户的情况下登录网站。',
     labelInvalid: '请输入 1 到 64 个字符的账户名称。',
     notRunning: '登录会话已结束。请重新开始。',
-    unsaved: '无法保存登录。请重新开始。',
+    unsaved: '无法保存登录。请再次保存，或取消。',
   },
   brainMenu: {
     modelLoading: '正在加载模型…',

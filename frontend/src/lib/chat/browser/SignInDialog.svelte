@@ -37,8 +37,8 @@
     'sign-in-not-running': 'notRunning',
     'sign-in-unsaved': 'unsaved',
   };
-  // Refusals that come before saving began: the session goes on.
-  const KEPT_RUNNING = new Set(['sign-in-windows', 'sign-in-label-invalid']);
+  // Only Team saying so ends the session here: after any other failed Save it may still run, so Cancel still asks Team.
+  const ENDED = 'sign-in-not-running';
 
   function connect() {
     connection?.abort(new DOMException('The screen reconnected.', 'AbortError'));
@@ -55,7 +55,7 @@
         },
       }))
       .catch(() => {
-        if (!controller.signal.aborted && !working && status !== 'ended') status = 'lost';
+        if (!controller.signal.aborted && status !== 'ended') status = 'lost';
       });
   }
 
@@ -85,7 +85,7 @@
     } catch (failed) {
       error = refusal(failed, copy.unsaved);
       working = '';
-      if (!KEPT_RUNNING.has(failed?.code)) status = 'ended';
+      if (failed?.code === ENDED) status = 'ended';
     }
   }
 
@@ -120,10 +120,11 @@
   <form onsubmit={save}>
     <DialogFrame kicker={copy.kicker} title={$t('signInSession.title', { site: session.site })} {titleId} lead={copy.lead}>
       <div class="screen" bind:this={screen} role="application" aria-label={copy.screen}></div>
-      {#if status !== 'showing'}
+      <!-- Saving ends the screen by design: its state shows only once the Save answered. -->
+      {#if status !== 'showing' && working !== 'saving'}
         <p class="status" role="status">{copy[status]}</p>
       {/if}
-      {#if status === 'lost'}
+      {#if status === 'lost' && !working}
         <DialogAction kind="retry" type="button" disabled={Boolean(working)} onclick={connect}>{copy.reconnect}</DialogAction>
       {/if}
       {#if status !== 'ended'}

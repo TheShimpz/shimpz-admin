@@ -154,3 +154,18 @@ test('a screen whose connection ended connects again, and a refused Cancel keeps
   await expect(dialog.getByText(SESSION.cancelFailed)).toBeVisible();
   await expect(dialog).toBeVisible();
 });
+
+test('a Save that failed for another reason keeps the session to save again or cancel at Team', async ({ page }) => {
+  await openChat(page);
+  let fail = true;
+  await routeRead(page, 'sign_in.save', () => (fail ? { status: 503, json: { detail: 'x', code: 'sign-in-unsaved' } } : undefined));
+  const dialog = await startSession(page);
+  await dialog.getByRole('textbox', { name: SESSION.labelField }).fill('Inbox');
+  await dialog.getByRole('button', { name: SESSION.save }).click();
+  await expect(dialog.getByText(SESSION.unsaved)).toBeVisible();
+  await expect(dialog.getByRole('button', { name: SESSION.save })).toBeEnabled();
+  await dialog.getByRole('button', { name: SESSION.cancel }).click();
+  await expect(dialog).toBeHidden();
+  expect(await readsOf(page, 'sign_in.cancel')).toHaveLength(1);
+  fail = false;
+});

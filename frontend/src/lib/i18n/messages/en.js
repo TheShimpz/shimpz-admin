@@ -836,7 +836,7 @@ export default {
     identityProvider: 'This browser held a Google, Microsoft, or Apple account session, which a Sign-in cannot keep, so nothing was saved. Start again and sign in to the site without that account.',
     labelInvalid: 'Enter an account name of 1 to 64 characters.',
     notRunning: 'The sign-in session ended. Start it again.',
-    unsaved: 'The Sign-in could not be saved. Start again.',
+    unsaved: 'The Sign-in could not be saved. Save again, or cancel.',
   },
   brainMenu: {
     modelLoading: 'Loading model settings…',

@@ -821,7 +821,7 @@ export default {
     identityProvider: 'Ce navigateur avait une session de compte Google, Microsoft ou Apple, qu’un accès ne peut pas garder, donc rien n’a été enregistré. Recommencez et connectez-vous au site sans ce compte.',
     labelInvalid: 'Saisissez un nom de compte de 1 à 64 caractères.',
     notRunning: 'La session de connexion est terminée. Recommencez.',
-    unsaved: 'L’accès n’a pas pu être enregistré. Recommencez.',
+    unsaved: 'L’accès n’a pas pu être enregistré. Enregistrez à nouveau, ou annulez.',
   },
   brainMenu: {
     modelLoading: 'Chargement des modèles…',
