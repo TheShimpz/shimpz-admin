@@ -33,7 +33,8 @@ SIGN_IN = {
     "last_used_at": "2026-10-19T10:00:00Z",
     "expires_at": "2026-11-18T10:00:00Z",
 }
-NAMED = {"sign_in_id": "b" * 32, "generation": 1, "team_incarnation": INCARNATION, "factor": "totp"}
+NAMED = {"sign_in_id": "b" * 32, "generation": 1, "team_incarnation": INCARNATION}
+ORIGIN = "https://admin.example"
 
 
 def traced(body: dict) -> transport.TeamResponse:
@@ -53,9 +54,19 @@ class SignInBridgeTests(unittest.TestCase):
     def test_each_operation_reaches_its_team_route_and_answers_teams_exact_body_untraced(self) -> None:
         started = {"sign_in_session_id": SESSION, "view_id": "c" * 32, "site": "example.com"}
         cases = (
-            (sign_ins.start, {"url": "https://example.com/login", "locale": "pt"}, "sign-in", started),
-            (sign_ins.save, {"sign_in_session_id": SESSION}, "sign-in/save", {"sign_in": SIGN_IN, "recorded": True}),
-            (sign_ins.cancel, {"sign_in_session_id": SESSION}, "sign-in/cancel", {"cancelled": True}),
+            (
+                sign_ins.start,
+                {"url": "https://example.com/login", "locale": "pt", "origin": ORIGIN},
+                "sign-in",
+                started,
+            ),
+            (
+                sign_ins.save,
+                {"sign_in_session_id": SESSION, "origin": ORIGIN},
+                "sign-in/save",
+                {"sign_in": SIGN_IN, "recorded": True},
+            ),
+            (sign_ins.cancel, {"sign_in_session_id": SESSION, "origin": ORIGIN}, "sign-in/cancel", {"cancelled": True}),
         )
         for operation, body, route, answer in cases:
             with self.subTest(route=route), mock.patch.object(transport, "call", return_value=traced(answer)) as call:
@@ -67,9 +78,11 @@ class SignInBridgeTests(unittest.TestCase):
         self.assertEqual((response.status, response.body), (200, {"sign_in": SIGN_IN}))
         call.assert_called_once_with("GET", "/v1/teams/team_1/browser/sign-in")
         with mock.patch.object(transport, "call", return_value=traced({"deletion": "pending"})) as call:
-            response = sign_ins.delete("team_1", NAMED, "passkey")
+            response = sign_ins.delete("team_1", NAMED, "passkey", ORIGIN)
         self.assertEqual((response.status, response.body), (200, {"deletion": "pending"}))
-        call.assert_called_once_with("POST", "/v1/teams/team_1/browser/sign-in/delete", {**NAMED, "factor": "passkey"})
+        call.assert_called_once_with(
+            "POST", "/v1/teams/team_1/browser/sign-in/delete", {**NAMED, "factor": "passkey", "origin": ORIGIN}
+        )
         # A Save, a Cancel, and a deletion change what the Team's Sign-in shows.
         self.assertEqual(self.raised, ["team/team_1/sign-in"] * 3)
 
@@ -112,7 +125,7 @@ class SignInBridgeTests(unittest.TestCase):
                 operation("team_1", body)
             call.assert_not_called()
         with mock.patch.object(transport, "call") as call, self.assertRaises(transport.TeamRequestError):
-            sign_ins.delete("team_1", NAMED, "password")
+            sign_ins.delete("team_1", NAMED, "password", ORIGIN)
         with mock.patch.object(transport, "call") as call, self.assertRaises(transport.TeamRequestError):
             sign_ins.current("Team 1")
         call.assert_not_called()
@@ -136,14 +149,14 @@ class SignInBridgeTests(unittest.TestCase):
                 self.subTest(status=status, answer=answer),
                 mock.patch.object(transport, "call", return_value=transport.TeamResponse(status, answer)),
             ):
-                response = sign_ins.save("team_1", {"sign_in_session_id": SESSION})
+                response = sign_ins.save("team_1", {"sign_in_session_id": SESSION, "origin": ORIGIN})
             self.assertEqual((response.status, response.body.get("code")), (expected, code))
         # A Sign-in that was not saved changes nothing the page shows.
         self.assertEqual(self.raised, [])
 
 
 STARTED = {"sign_in_session_id": SESSION, "view_id": "c" * 32, "site": "example.com"}
-START_BODY = {"url": "https://example.com/", "locale": "en"}
+START_BODY = {"url": "https://example.com/", "locale": "en", "origin": ORIGIN}
 
 
 class RevokedSessionTests(unittest.TestCase):
@@ -187,7 +200,7 @@ class RevokedSessionTests(unittest.TestCase):
         calls = self.cancels(lambda: sign_ins.sessions_ended(frozenset({"s1"})))
         self.assertEqual(
             [entry.args for entry in calls],
-            [("POST", "/v1/teams/team_1/browser/sign-in/cancel", {"sign_in_session_id": SESSION})],
+            [("POST", "/v1/teams/team_1/browser/sign-in/cancel", {"sign_in_session_id": SESSION, "origin": ORIGIN})],
         )
         self.assertEqual(self.scopes, ["s1"])
         # Only the very session that finished is forgotten: a stale answer for another one keeps it tracked.
@@ -207,7 +220,7 @@ class RevokedSessionTests(unittest.TestCase):
 
         def action():
             # Another session's start still waiting is left to go on.
-            other = sign_ins._Tracked("team_2", self.authority("s2"))
+            other = sign_ins._Tracked("team_2", self.authority("s2"), ORIGIN)
             sign_ins._STARTING.add(other)
             with mock.patch.object(sign_ins, "start", side_effect=started):
                 sign_ins.start_under(authority, "team_1", START_BODY)
@@ -222,7 +235,7 @@ class RevokedSessionTests(unittest.TestCase):
         self.start("team_1", running)
         self.start("team_1", authority, transport.TeamResponse(409, {"code": "browser-busy"}))
         with self.assertRaises(transport.TeamRequestError):
-            sign_ins.start_under(authority, "team_1", {"url": "http://example.com/", "locale": "en"})
+            sign_ins.start_under(authority, "team_1", {"url": "http://example.com/", "locale": "en", "origin": ORIGIN})
         self.assertIs(sign_ins._RUNNING["team_1"].authority, running)
         self.assertEqual(sign_ins._STARTING, set())
 
@@ -245,7 +258,7 @@ class RevokedSessionTests(unittest.TestCase):
         self.assertTrue(all(entry.args[1] == "/v1/teams/team_1/browser/sign-in/cancel" for entry in calls))
 
     def test_a_revoked_sessions_cancel_is_asked_again_until_team_takes_it(self):
-        tracked = sign_ins._Tracked("team_1", self.authority("s1"), SESSION)
+        tracked = sign_ins._Tracked("team_1", self.authority("s1"), ORIGIN, SESSION)
         answers = [
             transport.TeamResponse(502, {"detail": "team unavailable"}),
             transport.TeamResponse(503, {"code": "browser-unavailable", "trace_id": TRACE}),

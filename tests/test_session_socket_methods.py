@@ -708,11 +708,17 @@ class SessionMethodAnswerTests(SessionMethodCase):
             operation = method.split(".")[1]
             with (
                 self.subTest(method=method),
-                mock.patch.object(self.methods.team_sign_ins, operation, return_value=answer),
+                mock.patch.object(self.methods.team_sign_ins, operation, return_value=answer) as called,
                 mock.patch.object(self.methods.team_sign_ins, "finished") as finished,
             ):
-                result = self._answers(method, SAMPLES[method])
+                # The page cannot name its own Origin: Team hears the socket's verified one.
+                params = {**SAMPLES[method], "body": {**SAMPLES[method]["body"], "origin": "https://elsewhere.example"}}
+                result = self._answers(method, params, origin="http://127.0.0.1:7777")
                 self.assertEqual(result["status"], answer.status)
+                self.assertEqual(
+                    called.call_args.args,
+                    ("team_1", {"sign_in_session_id": "a" * 32, "origin": "http://127.0.0.1:7777"}),
+                )
                 # A session a refusal leaves running is still its authority's to cancel.
                 if answer.status == 409:
                     finished.assert_not_called()

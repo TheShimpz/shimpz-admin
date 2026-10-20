@@ -48,6 +48,8 @@ class _Tracked:
 
     team_id: str
     authority: Any
+    # The verified Origin of the Admin page that started it, which a Cancel Admin delivers for it names too.
+    origin: str
     # Known once Team answered the start; until then a revocation is remembered and acted on as the answer arrives.
     session_id: str | None = None
     revoked: bool = False
@@ -136,18 +138,23 @@ def deletion_subject(team_id: object, sign_in: dict[str, object]) -> str:
     return f"sign-in-delete:{hashlib.sha256(canonical).hexdigest()}"
 
 
+def with_origin(body: object, origin: str) -> object:
+    """A person's request body as Team takes it: naming their Admin page's verified Origin, never one it sent."""
+    return {**body, "origin": origin} if isinstance(body, dict) else body
+
+
 def confirmed(sign_in_id: object, generation: object, team_incarnation: object) -> dict[str, object]:
     """The Sign-in a deletion names, as its socket call carries it; a form outside Team's protocol is refused."""
     number = int(generation) if isinstance(generation, str) and generation.isdecimal() else None
-    named = {"sign_in_id": sign_in_id, "generation": number, "team_incarnation": team_incarnation, "factor": "totp"}
-    if contract.canonical_delete(named) is None:
+    named = {"sign_in_id": sign_in_id, "generation": number, "team_incarnation": team_incarnation}
+    if contract.canonical_delete({**named, "factor": "totp", "origin": "https://admin.invalid"}) is None:
         raise transport.TeamRequestError("the Sign-in to delete is not admissible")
     return named
 
 
-def delete(team_id: object, named: dict[str, object], factor: str) -> transport.TeamResponse:
-    """Delete exactly the confirmed Sign-in, telling Team which second factor confirmed it (ADR-0120)."""
-    body = _admitted({**named, "factor": factor}, contract.canonical_delete)
+def delete(team_id: object, named: dict[str, object], factor: str, origin: str) -> transport.TeamResponse:
+    """Delete exactly the confirmed Sign-in, telling Team the second factor and the Origin that confirmed it."""
+    body = _admitted({**named, "factor": factor, "origin": origin}, contract.canonical_delete)
     response = transport.call("POST", _path(team_id, "sign-in/delete"), body)
     return _changed(team_id, _answer(response, contract.canonical_deleted))
 
@@ -158,7 +165,8 @@ def start_under(authority: Any, team_id: object, body: object) -> transport.Team
     A revocation that comes while its Browser starts still cancels it once Team answers; this runs on a lane worker,
     so it completes whatever happens to the socket meanwhile. A start Team refuses changes nothing already tracked.
     """
-    tracked = _Tracked(payloads.canonical_team_id(team_id), authority)
+    origin = body.get("origin") if isinstance(body, dict) else None
+    tracked = _Tracked(payloads.canonical_team_id(team_id), authority, origin if isinstance(origin, str) else "")
     with _GUARD:
         _STARTING.add(tracked)
     response = None
@@ -216,7 +224,7 @@ def _cancel_ended(tracked: _Tracked) -> None:
     deadline = time.monotonic() + CANCEL_RETRY_SECONDS
     while True:
         with contextlib.suppress(transport.TeamRequestError), tracked.authority.scope():
-            response = cancel(tracked.team_id, {"sign_in_session_id": tracked.session_id})
+            response = cancel(tracked.team_id, {"sign_in_session_id": tracked.session_id, "origin": tracked.origin})
             if response.status in {200, 404} or response.body.get("code") == "browser-unavailable":
                 return
         if time.monotonic() >= deadline:

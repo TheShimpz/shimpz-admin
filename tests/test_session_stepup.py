@@ -686,8 +686,9 @@ class SignInDeletionTests(StepUpCase):
         self.assertEqual(self.answer(offer), (202, {"methods": ["totp"]}))
         self.assertEqual(self.answer(deleted), (200, {"deletion": "deleted"}))
         self.assertEqual(self.answer(replayed), (401, {"code": "authentication-expired"}))
-        named = {"sign_in_id": "e" * 32, "generation": 3, "team_incarnation": "f" * 64, "factor": "totp"}
-        self.deleted.assert_called_once_with(TEAM, named, "totp")
+        named = {"sign_in_id": "e" * 32, "generation": 3, "team_incarnation": "f" * 64}
+        # Team hears the socket's own verified Origin, never one the page could name.
+        self.deleted.assert_called_once_with(TEAM, named, "totp", ORIGIN)
 
     def test_a_confirmation_never_deletes_another_generation_or_sign_in(self) -> None:
         deletion = ("sign_in.deletion", {"team_id": TEAM, "body": {"password": PASSWORD}})
