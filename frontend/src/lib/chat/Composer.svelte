@@ -6,13 +6,13 @@
   import ComposerAttachments from '#lib/chat/attachments/ComposerFiles.svelte';
   import FastRoutingMenu from '#lib/brain/FastRoutingMenu.svelte';
   import ChatLimitMenu from '#lib/chat/limit/Menu.svelte';
-  import SignInsMenu from '#lib/chat/browser/SignInsMenu.svelte';
+  import SignInMenu from '#lib/chat/browser/SignInMenu.svelte';
   import { t } from '#lib/i18n/index.js';
   import { modelContext } from '#lib/brain/context.js';
   import { CREDENTIAL_RECORD_INVALID } from '#lib/api.js';
 
   // The chat's composer: the message with its files, or the Brain's key while the selected provider has none, and its
-  // tools (attach, the Brain, fast-routing, and chat-limit menus, the Team's Sign-ins, Integrations), then Send, or Stop
+  // tools (attach, the Brain, fast-routing, and chat-limit menus, the Team's browser session, Integrations), then Send, or Stop
   // while a turn runs. The page owns the draft, the key, the files (`files`, a MessageFiles), and every action; it binds
   // the controls it moves the focus to (the message, the file picker, the Integrations button, Stop, and the Brain
   // notice's Try again).
@@ -169,7 +169,7 @@
     <BrainMenu disabled={menusBusy} />
     <FastRoutingMenu disabled={menusBusy} />
     <ChatLimitMenu disabled={menusBusy} />
-    <SignInsMenu {teamId} disabled={menusBusy} />
+    <SignInMenu {teamId} disabled={menusBusy} />
     <Button
       bind:element={integrationsButton}
       class="composer-integrations"

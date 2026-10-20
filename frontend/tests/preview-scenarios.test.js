@@ -22,11 +22,11 @@ import { messages } from '../src/lib/i18n/catalogs.js';
 import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from '../src/lib/assistants/api.js';
 import { loadAssistantDetails, loadLocalAssistantDetails, loadLocalAssistantSummary } from '../src/lib/assistants/preview.js';
 import {
-  BROWSER_VIEW, CLARIFICATION, createScenario, SCENARIOS, SIGN_IN_SESSION, SIGN_IN_VIEW,
+  BROWSER_VIEW, CLARIFICATION, createScenario, SCENARIOS, SIGN_IN_CODE, SIGN_IN_PASSWORD, SIGN_IN_SESSION, SIGN_IN_VIEW,
 } from '../e2e/scenarios.js';
 import { BrowserViewEndedError, openBrowserView } from '../src/lib/chat/browser/view.js';
 import {
-  cancelSignIn, forgetSignIn, listSignIns, saveSignIn, startSignIn,
+  beginSignInDeletion, cancelSignIn, deleteSignIn, readSignIn, saveSignIn, startSignIn,
 } from '../src/lib/chat/browser/signIns.js';
 import { ROUTINE_TEXT, routineLifecycleStart } from '../e2e/routineScenarios.js';
 import { via } from './socketStub.js';
@@ -517,31 +517,40 @@ test('the watch scenario keeps its Browser task running and opens its view as Ad
   await assert.rejects(openBrowserView('marketing', reader(createScenario('ready'))), BrowserViewEndedError);
 });
 
-test('the sign-ins scenario answers a session and the list exactly as Admin does', async () => {
+test('the sign-ins scenario answers the browser session exactly as Admin does', async () => {
   const scenario = createScenario('sign-ins');
   const call = reader(scenario);
-  const listed = await listSignIns('marketing', call);
-  assert.deepEqual(listed.map((item) => item.label), ['Work', 'Personal']);
-  await assert.rejects(saveSignIn('marketing', SIGN_IN_SESSION, 'Inbox', call), (error) => error.code === 'sign-in-not-running');
+  const shown = await readSignIn('marketing', call);
+  assert.deepEqual([shown.generation, shown.sites], [1, ['mail.example.com', 'shop.example.org']]);
+  await assert.rejects(saveSignIn('marketing', SIGN_IN_SESSION, call), (error) => error.code === 'sign-in-not-running');
+  await assert.rejects(cancelSignIn('marketing', SIGN_IN_SESSION, call), (error) => error.code === 'sign-in-not-running');
   await assert.rejects(startSignIn('marketing', 'https://localhost', 'en', call), (error) => error.code === 'sign-in-url-invalid');
   assert.equal(scenario.call('sign_in.start', { team_id: 'marketing', body: { url: 'nope' } }).json.code, 'sign-in-url-invalid');
-  assert.deepEqual(await startSignIn('marketing', 'mail.example.net', 'en', call), {
-    sessionId: SIGN_IN_SESSION, viewId: SIGN_IN_VIEW, site: 'mail.example.net',
+  assert.deepEqual(await startSignIn('marketing', 'www.example.net', 'en', call), {
+    sessionId: SIGN_IN_SESSION, viewId: SIGN_IN_VIEW, site: 'www.example.net',
   });
-  const refused = scenario.call('sign_in.save', {
-    team_id: 'marketing', body: { sign_in_session_id: SIGN_IN_SESSION, label: ' Inbox' },
-  });
-  assert.equal(refused.json.code, 'sign-in-label-invalid');
-  const saved = await saveSignIn('marketing', SIGN_IN_SESSION, 'Inbox', call);
-  assert.deepEqual([saved.site, saved.label], ['mail.example.net', 'Inbox']);
-  assert.equal((await listSignIns('marketing', call)).length, 3);
-  await assert.rejects(cancelSignIn('marketing', SIGN_IN_SESSION, call), (error) => error.code === 'sign-in-not-running');
-  await startSignIn('marketing', 'mail.example.net', 'en', call);
+  await assert.rejects(startSignIn('marketing', 'www.example.net', 'en', call), (error) => error.code === 'sign-in-busy');
+  const saved = await saveSignIn('marketing', SIGN_IN_SESSION, call);
+  assert.deepEqual([saved.signIn.generation, saved.signIn.sites.includes('example.net')], [2, true]);
+  await startSignIn('marketing', 'www.example.net', 'en', call);
   assert.equal(await cancelSignIn('marketing', SIGN_IN_SESSION, call), true);
-  assert.equal(await forgetSignIn('marketing', saved.sign_in_id, call), true);
-  assert.equal(await forgetSignIn('marketing', saved.sign_in_id, call), false);
-  assert.deepEqual(await listSignIns('marketing', reader(createScenario())), []);
-  for (const method of ['sign_in.start', 'sign_in.save', 'sign_in.cancel', 'sign_ins.forget']) {
+  const needing = await readSignIn('marketing', call);
+  assert.equal(needing.state, 'needs-person');
+  // Deleting takes the password, then one code for exactly the session shown.
+  await assert.rejects(deleteSignIn('marketing', needing, { code: SIGN_IN_CODE }, call), (error) => error.code === 'authentication-expired');
+  await assert.rejects(beginSignInDeletion('marketing', 'wrong', call), (error) => error.code === 'password-incorrect');
+  await beginSignInDeletion('marketing', SIGN_IN_PASSWORD, call);
+  await assert.rejects(deleteSignIn('marketing', needing, { code: '000000' }, call), (error) => error.code === 'code-incorrect');
+  await beginSignInDeletion('marketing', SIGN_IN_PASSWORD, call);
+  await assert.rejects(deleteSignIn('marketing', { ...needing, generation: 1 }, { code: SIGN_IN_CODE }, call), (error) => (
+    error.code === 'sign-in-changed'
+  ));
+  await beginSignInDeletion('marketing', SIGN_IN_PASSWORD, call);
+  assert.equal(await deleteSignIn('marketing', needing, { code: SIGN_IN_CODE }, call), 'deleted');
+  assert.equal(await readSignIn('marketing', call), null);
+  await assert.rejects(beginSignInDeletion('marketing', SIGN_IN_PASSWORD, call), (error) => error.code === 'sign-in-absent');
+  assert.equal(await readSignIn('marketing', reader(createScenario())), null);
+  for (const method of ['sign_in.start', 'sign_in.save', 'sign_in.cancel', 'sign_in.deletion', 'sign_in.delete']) {
     assert.equal(scenario.call(method, { team_id: 'growth', body: {} }), null, method);
   }
   // A running Browser task holds the Space's one Browser.

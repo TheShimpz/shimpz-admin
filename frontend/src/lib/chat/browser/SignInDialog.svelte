@@ -1,16 +1,16 @@
 <script>
   import { onMount } from 'svelte';
-  import { DialogFrame, Modal, Notice, TextField } from '@shimpz/frontend';
+  import { DialogFrame, Modal, Notice } from '@shimpz/frontend';
   import DialogAction from '#lib/DialogAction.svelte';
   import { commandsReady, outcomeUnknown } from '#lib/session/socket.js';
   import { t } from '#lib/i18n/index.js';
   import { controlBrowser } from './view.js';
-  import { cancelSignIn, canonicalLabel, MAX_LABEL_CHARS, saveSignIn } from './signIns.js';
+  import { cancelSignIn, saveSignIn } from './signIns.js';
 
-  // A sign-in session (ADR-0117, Sign-ins amendment): the Browser only the person drives, at the site they chose, with
-  // Chrome's own address bar. The screen takes their pointer and keys; Esc goes to the page, so only Cancel or Save
-  // ends the dialog. Save keeps the profile as a Sign-in under the person's label, after what it means is said; Cancel
-  // keeps nothing. Saving takes Chromium's rest and stop (about 40 s), during which the screen ends by design. A screen
+  // A sign-in session (ADR-0117, 2026-10-20 amendment): the Team's browser session, restored when it has one, driven
+  // only by the person at the site they chose, with Chrome's own address bar. The screen takes their pointer and keys;
+  // Esc goes to the page, so only Cancel or Save ends the dialog. Save keeps the whole session, after what that means
+  // is said; Cancel keeps nothing new, and a restored session then waits for the person's next Save. Saving takes Chromium's rest and stop (about 40 s), during which the screen ends by design. A screen
   // whose connection ended says so and can connect again: only Team's own answer says the session ended. The dialog is
   // its own form, so Enter in it never reaches the chat's composer around it.
   let { session, onclose } = $props();
@@ -20,11 +20,9 @@
   let screen = $state();
   // `loading`, `showing`, `lost` (the connection to the screen ended), or `ended` (Team ended the session).
   let status = $state('loading');
-  let label = $state('');
   let working = $state('');
   let error = $state('');
   let copy = $derived($t('signInSession'));
-  let kept = $derived(canonicalLabel(label));
   let connection = null;
 
   // What a saved Sign-in means, said before Save: every identity in it is delegated, it keeps the site's own state,
@@ -33,7 +31,6 @@
   const REFUSALS = {
     'sign-in-windows': 'windows',
     'sign-in-identity-provider': 'identityProvider',
-    'sign-in-label-invalid': 'labelInvalid',
     'sign-in-not-running': 'notRunning',
     'sign-in-unsaved': 'unsaved',
   };
@@ -76,11 +73,11 @@
   async function save(event) {
     event.preventDefault();
     event.stopPropagation();
-    if (working || !kept || status === 'ended') return;
+    if (working || status === 'ended') return;
     working = 'saving';
     error = '';
     try {
-      await saveSignIn(session.teamId, session.sessionId, kept);
+      await saveSignIn(session.teamId, session.sessionId);
       onclose(copy.saved);
     } catch (failed) {
       error = refusal(failed, copy.unsaved);
@@ -128,15 +125,6 @@
         <DialogAction kind="retry" type="button" disabled={Boolean(working)} onclick={connect}>{copy.reconnect}</DialogAction>
       {/if}
       {#if status !== 'ended'}
-        <TextField
-          id={`${titleId}-label`}
-          label={copy.labelField}
-          hint={copy.labelHint}
-          bind:value={label}
-          maxlength={MAX_LABEL_CHARS}
-          autocomplete="off"
-          disabled={Boolean(working)}
-        />
         <ul class="terms" aria-label={copy.termsLabel}>
           {#each TERMS as term (term)}
             <li>{$t(`signInSession.terms.${term}`, { site: session.site })}</li>
@@ -149,7 +137,7 @@
           {status === 'ended' ? copy.close : working === 'cancelling' ? copy.cancelling : copy.cancel}
         </DialogAction>
         {#if status !== 'ended'}
-          <DialogAction kind="confirm" type="submit" disabled={Boolean(working) || !kept || !$commandsReady}>
+          <DialogAction kind="confirm" type="submit" disabled={Boolean(working) || !$commandsReady}>
             {working === 'saving' ? copy.saving : copy.save}
           </DialogAction>
         {/if}

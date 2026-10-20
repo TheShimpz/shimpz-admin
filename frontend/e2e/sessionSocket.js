@@ -11,13 +11,14 @@ export const SOURCE_TIME = 1_791_884_573;
 // The `shimpz.chat.v7` server frames whose own shape names their Team; every other frame gains it on the channel.
 const NATIVE_TEAM_FRAMES = new Set(['done', 'assistant-install-plan', 'assistant-guidance']);
 const NATIVE_UNINSTALL_STATES = new Set(['proposed', 'uninstalled']);
-// The Team topic each change Admin answers raises: a card's answer is kept in the history, a Sign-in saved or forgotten
-// changes the Team's Sign-ins.
+// The Team topic each change Admin answers raises: a card's answer is kept in the history, and a Save, a Cancel, or a
+// deletion changes the Team's browser session.
 const RAISES = Object.freeze({
   'routines.proposal_confirm': 'history',
   'routines.proposal_revoke': 'history',
-  'sign_in.save': 'sign-ins',
-  'sign_ins.forget': 'sign-ins',
+  'sign_in.save': 'sign-in',
+  'sign_in.cancel': 'sign-in',
+  'sign_in.delete': 'sign-in',
 });
 
 function channelFrame(teamId, event) {

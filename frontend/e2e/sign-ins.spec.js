@@ -1,18 +1,19 @@
-// A Team's Sign-ins in the built Admin (ADR-0117, Sign-ins amendment): the composer's Sign-ins list with Forget, and a
-// sign-in session whose Browser the person drives in a dialog, then Saves under a label or Cancels.
+// A Team's browser session in the built Admin (ADR-0117, 2026-10-20 amendment): the composer's panel with what the
+// session holds, a sign-in session whose Browser the person drives in a dialog, then Saves or Cancels, and the
+// session's deletion with the Supervisor password and a code.
 import { expect, test } from '@playwright/test';
 
 import { accessibilityViolations } from './axe.js';
 import { CLIENT_MESSAGES, rfbServer, solid } from './rfbServer.js';
-import { SIGN_IN_SESSION, SIGN_IN_VIEW } from './scenarios.js';
+import { SIGN_IN_CODE, SIGN_IN_PASSWORD, SIGN_IN_SESSION, SIGN_IN_VIEW } from './scenarios.js';
 import { readsOf, routeRead, routeScenario } from './scenarioRoutes.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
 
-const COPY = messages.en.signIns;
+const COPY = messages.en.signIn;
+const SECURITY = messages.en.security;
 const CHAT = messages.en.chatPage;
 const SESSION = messages.en.signInSession;
 const CONTROL = `**/api/teams/marketing/browser/views/${SIGN_IN_VIEW}/control`;
-const WORK = 'a'.repeat(32);
 
 // Open the chat of the `sign-ins` scenario, its sign-in session's display recording what the page sends it.
 async function openChat(page) {
@@ -38,15 +39,15 @@ async function openChat(page) {
   return display;
 }
 
-async function openList(page) {
+async function openPanel(page) {
   await page.getByRole('button', { name: COPY.label, exact: true }).click();
   const panel = page.getByRole('dialog', { name: COPY.label });
-  await expect(panel.getByRole('list', { name: COPY.label })).toBeVisible();
+  await expect(panel.getByRole('textbox', { name: COPY.urlLabel })).toBeVisible();
   return panel;
 }
 
 async function startSession(page, address = 'mail.example.net') {
-  const panel = await openList(page);
+  const panel = await openPanel(page);
   await panel.getByRole('textbox', { name: COPY.urlLabel }).fill(address);
   await panel.getByRole('button', { name: COPY.start, exact: true }).click();
   const dialog = page.getByRole('dialog', { name: SESSION.title.replace('{site}', 'mail.example.net') });
@@ -54,17 +55,15 @@ async function startSession(page, address = 'mail.example.net') {
   return dialog;
 }
 
-test('the list names each Sign-in and Forget removes exactly the one asked', async ({ page }) => {
+test('the panel shows what the browser session holds and its state', async ({ page }) => {
   await openChat(page);
-  const panel = await openList(page);
-  await expect(panel.getByRole('listitem')).toHaveCount(2);
-  await panel.getByRole('button', { name: 'Forget Work (mail.example.com)', exact: true }).click();
-  await expect(panel.getByRole('listitem')).toHaveCount(1);
-  await expect(panel.getByRole('listitem')).toContainText('shop.example.org');
-  expect(await readsOf(page, 'sign_ins.forget')).toEqual([{ team_id: 'marketing', body: { sign_in_id: WORK } }]);
+  const panel = await openPanel(page);
+  const held = panel.getByRole('region', { name: COPY.label });
+  await expect(held).toContainText(COPY.ready);
+  await expect(held.getByRole('listitem')).toHaveText(['mail.example.com', 'shop.example.org']);
 });
 
-test('a sign-in session is driven by the person and saved under their label @browser-sensitive', async ({ page }) => {
+test('a sign-in session is driven by the person and saved as the next generation @browser-sensitive', async ({ page }) => {
   const display = await openChat(page);
   const dialog = await startSession(page);
   expect(await readsOf(page, 'sign_in.start')).toEqual([
@@ -86,23 +85,19 @@ test('a sign-in session is driven by the person and saved under their label @bro
   await expect(dialog).toBeVisible();
   expect(await accessibilityViolations(page)).toEqual([]);
 
-  await expect(dialog.getByRole('button', { name: SESSION.save })).toBeDisabled();
-  await dialog.getByRole('textbox', { name: SESSION.labelField }).fill('  Inbox  ');
   await dialog.getByRole('button', { name: SESSION.save }).click();
   await expect(dialog).toBeHidden();
   expect(await readsOf(page, 'sign_in.save')).toEqual([
-    { team_id: 'marketing', body: { sign_in_session_id: SIGN_IN_SESSION, label: 'Inbox' } },
+    { team_id: 'marketing', body: { sign_in_session_id: SIGN_IN_SESSION } },
   ]);
-  const panel = await openList(page);
-  await expect(panel.getByRole('listitem')).toHaveCount(3);
-  await expect(panel.getByRole('listitem').last()).toContainText('Inbox');
+  const panel = await openPanel(page);
+  await expect(panel.getByRole('region', { name: COPY.label }).getByRole('listitem')).toContainText(['example.net']);
 });
 
-test('a refused save says what to do and keeps the session; Cancel keeps nothing', async ({ page }) => {
+test('a refused save says what to do and keeps the session; Cancel leaves it needing the person', async ({ page }) => {
   await openChat(page);
   await routeRead(page, 'sign_in.save', () => ({ status: 409, json: { detail: 'x', code: 'sign-in-windows' } }));
   const dialog = await startSession(page);
-  await dialog.getByRole('textbox', { name: SESSION.labelField }).fill('Inbox');
   await dialog.getByRole('button', { name: SESSION.save }).click();
   await expect(dialog.getByText(SESSION.windows)).toBeVisible();
   await expect(dialog.getByRole('button', { name: SESSION.save })).toBeEnabled();
@@ -111,13 +106,13 @@ test('a refused save says what to do and keeps the session; Cancel keeps nothing
   expect(await readsOf(page, 'sign_in.cancel')).toEqual([
     { team_id: 'marketing', body: { sign_in_session_id: SIGN_IN_SESSION } },
   ]);
-  const panel = await openList(page);
-  await expect(panel.getByRole('listitem')).toHaveCount(2);
+  const panel = await openPanel(page);
+  await expect(panel.getByRole('region', { name: COPY.label })).toContainText(COPY.needsPerson);
 });
 
 test('an address that is not https is refused before Admin is asked', async ({ page }) => {
   await openChat(page);
-  const panel = await openList(page);
+  const panel = await openPanel(page);
   await panel.getByRole('textbox', { name: COPY.urlLabel }).fill('http://mail.example.net');
   await panel.getByRole('button', { name: COPY.start, exact: true }).click();
   await expect(panel.getByRole('alert')).toHaveText(COPY.urlInvalid);
@@ -129,15 +124,12 @@ test('neither starting nor saving sends the chat draft around them', async ({ pa
   const composer = page.getByRole('textbox', { name: CHAT.send, exact: true });
   await expect(composer).toBeEnabled({ timeout: 20_000 });
   await composer.fill('A draft that stays.');
-  const panel = await openList(page);
+  const panel = await openPanel(page);
   await panel.getByRole('textbox', { name: COPY.urlLabel }).fill('mail.example.net');
   await panel.getByRole('textbox', { name: COPY.urlLabel }).press('Enter');
   const dialog = page.getByRole('dialog', { name: SESSION.title.replace('{site}', 'mail.example.net') });
   await expect(dialog).toBeVisible();
-  // The screen takes the focus as it connects, so the person types into the page; the label is typed after that.
-  await expect(dialog.getByRole('status')).toHaveCount(0);
-  await dialog.getByRole('textbox', { name: SESSION.labelField }).fill('Inbox');
-  await dialog.getByRole('textbox', { name: SESSION.labelField }).press('Enter');
+  await dialog.getByRole('button', { name: SESSION.save }).click();
   await expect(dialog).toBeHidden();
   expect(await readsOf(page, 'sign_in.save')).toHaveLength(1);
   await expect(composer).toHaveValue('A draft that stays.');
@@ -161,15 +153,42 @@ test('a screen whose connection ended connects again, and a refused Cancel keeps
 
 test('a Save that failed for another reason keeps the session to save again or cancel at Team', async ({ page }) => {
   await openChat(page);
-  let fail = true;
-  await routeRead(page, 'sign_in.save', () => (fail ? { status: 503, json: { detail: 'x', code: 'sign-in-unsaved' } } : undefined));
+  await routeRead(page, 'sign_in.save', () => ({ status: 503, json: { detail: 'x', code: 'sign-in-unsaved' } }));
   const dialog = await startSession(page);
-  await dialog.getByRole('textbox', { name: SESSION.labelField }).fill('Inbox');
   await dialog.getByRole('button', { name: SESSION.save }).click();
   await expect(dialog.getByText(SESSION.unsaved)).toBeVisible();
   await expect(dialog.getByRole('button', { name: SESSION.save })).toBeEnabled();
   await dialog.getByRole('button', { name: SESSION.cancel }).click();
   await expect(dialog).toBeHidden();
   expect(await readsOf(page, 'sign_in.cancel')).toHaveLength(1);
-  fail = false;
+});
+
+test('the session is deleted only with the password and a code, for exactly the session shown', async ({ page }) => {
+  await openChat(page);
+  const panel = await openPanel(page);
+  await panel.getByRole('button', { name: COPY.delete, exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: COPY.deleteTitle });
+  await expect(dialog).toBeVisible();
+  expect(await accessibilityViolations(page)).toEqual([]);
+  // Delete needs the password and a code together; a wrong password deletes nothing.
+  await expect(dialog.getByRole('button', { name: COPY.deletion.delete, exact: true })).toBeDisabled();
+  await dialog.getByLabel(SECURITY.password, { exact: true }).fill('wrong words');
+  await dialog.getByRole('textbox', { name: SECURITY.code }).fill(SIGN_IN_CODE);
+  await dialog.getByRole('button', { name: COPY.deletion.delete, exact: true }).click();
+  await expect(dialog.getByText(SECURITY.passwordIncorrect)).toBeVisible();
+  expect(await readsOf(page, 'sign_in.delete')).toEqual([]);
+  await dialog.getByLabel(SECURITY.password, { exact: true }).fill(SIGN_IN_PASSWORD);
+  await dialog.getByRole('textbox', { name: SECURITY.code }).fill(SIGN_IN_CODE);
+  await dialog.getByRole('button', { name: COPY.deletion.delete, exact: true }).click();
+  await expect(dialog).toBeHidden();
+  const [deleted] = await readsOf(page, 'sign_in.delete');
+  expect(deleted).toEqual({
+    team_id: 'marketing',
+    sign_in_id: 'a'.repeat(32),
+    generation: '1',
+    team_incarnation: 'c'.repeat(64),
+    body: { code: SIGN_IN_CODE },
+  });
+  const after = await openPanel(page);
+  await expect(after.getByText(COPY.empty)).toBeVisible();
 });

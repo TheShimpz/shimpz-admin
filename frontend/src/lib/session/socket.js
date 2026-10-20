@@ -21,7 +21,7 @@ const SOURCE_REVISION_RE = /^[0-9a-f]{40}$/;
 // The latest commit time, in UTC seconds, a version name can show.
 const MAX_SOURCE_TIME = 253_402_300_799;
 const CALL_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
-const TOPIC_RE = /^(?:teams|space\/(?:models|decision|chat-limit)|platform\/release|security\/summary|session|assistants\/registry|local-assistants|team\/[a-z0-9_]{1,40}\/(?:routines|history|inventory|inference|integrations|sign-ins))$/;
+const TOPIC_RE = /^(?:teams|space\/(?:models|decision|chat-limit)|platform\/release|security\/summary|session|assistants\/registry|local-assistants|team\/[a-z0-9_]{1,40}\/(?:routines|history|inventory|inference|integrations|sign-in))$/;
 // The chat-channel frames a client sends; every one carries its Team's `team_id`.
 const CHAT_CLIENT_TYPES = new Set(['chat', 'resume-task', 'stop', 'sync', 'human-response']);
 // The `shimpz.chat.v7` server frames whose own shape names their Team; on every other frame `team_id` is the channel's.
@@ -166,7 +166,7 @@ const CHANGES = new Set([
   'teams.create', 'teams.rename', 'teams.reorder', 'teams.delete', 'inference.save',
   'assistants.install', 'assistants.install_local', 'assistants.uninstall', 'models.save', 'decision.save',
   'decision.remove', 'integrations.authorize', 'integrations.complete', 'integrations.cancel', 'stored_inputs.clear',
-  'files.acknowledge', 'sign_in.start', 'sign_in.save', 'sign_in.cancel', 'sign_ins.forget',
+  'files.acknowledge', 'sign_in.start', 'sign_in.save', 'sign_in.cancel', 'sign_in.deletion', 'sign_in.delete',
   'routines.pause', 'routines.resume', 'routines.deletion', 'routines.delete', 'routines.card_answer',
   'routines.challenge', 'routines.human', 'routines.integrations', 'routines.proposal_confirm',
   'routines.proposal_revoke', 'security.acknowledge', 'recovery_codes.confirmation', 'recovery_codes.replace',
