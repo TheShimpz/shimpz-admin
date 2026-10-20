@@ -21,8 +21,13 @@ import { failureCause, questionWords, refusalWords } from '../src/lib/routines/w
 import { messages } from '../src/lib/i18n/catalogs.js';
 import { listLocalAssistantSnapshots, listPublicAssistantCatalog } from '../src/lib/assistants/api.js';
 import { loadAssistantDetails, loadLocalAssistantDetails, loadLocalAssistantSummary } from '../src/lib/assistants/preview.js';
-import { BROWSER_VIEW, CLARIFICATION, createScenario, SCENARIOS } from '../e2e/scenarios.js';
+import {
+  BROWSER_VIEW, CLARIFICATION, createScenario, SCENARIOS, SIGN_IN_SESSION, SIGN_IN_VIEW,
+} from '../e2e/scenarios.js';
 import { BrowserViewEndedError, openBrowserView } from '../src/lib/chat/browser/view.js';
+import {
+  cancelSignIn, forgetSignIn, listSignIns, saveSignIn, startSignIn,
+} from '../src/lib/chat/browser/signIns.js';
 import { ROUTINE_TEXT, routineLifecycleStart } from '../e2e/routineScenarios.js';
 import { via } from './socketStub.js';
 
@@ -510,6 +515,40 @@ test('the watch scenario keeps its Browser task running and opens its view as Ad
   assert.ok(frames.every((frame) => frame.type === 'progress'));
   // Without a running task, the view is refused as Team refuses it.
   await assert.rejects(openBrowserView('marketing', reader(createScenario('ready'))), BrowserViewEndedError);
+});
+
+test('the sign-ins scenario answers a session and the list exactly as Admin does', async () => {
+  const scenario = createScenario('sign-ins');
+  const call = reader(scenario);
+  const listed = await listSignIns('marketing', call);
+  assert.deepEqual(listed.map((item) => item.label), ['Work', 'Personal']);
+  await assert.rejects(saveSignIn('marketing', SIGN_IN_SESSION, 'Inbox', call), (error) => error.code === 'sign-in-not-running');
+  await assert.rejects(startSignIn('marketing', 'https://localhost', 'en', call), (error) => error.code === 'sign-in-url-invalid');
+  assert.equal(scenario.call('sign_in.start', { team_id: 'marketing', body: { url: 'nope' } }).json.code, 'sign-in-url-invalid');
+  assert.deepEqual(await startSignIn('marketing', 'mail.example.net', 'en', call), {
+    sessionId: SIGN_IN_SESSION, viewId: SIGN_IN_VIEW, site: 'mail.example.net',
+  });
+  const refused = scenario.call('sign_in.save', {
+    team_id: 'marketing', body: { sign_in_session_id: SIGN_IN_SESSION, label: ' Inbox' },
+  });
+  assert.equal(refused.json.code, 'sign-in-label-invalid');
+  const saved = await saveSignIn('marketing', SIGN_IN_SESSION, 'Inbox', call);
+  assert.deepEqual([saved.site, saved.label], ['mail.example.net', 'Inbox']);
+  assert.equal((await listSignIns('marketing', call)).length, 3);
+  await assert.rejects(cancelSignIn('marketing', SIGN_IN_SESSION, call), (error) => error.code === 'sign-in-not-running');
+  await startSignIn('marketing', 'mail.example.net', 'en', call);
+  assert.equal(await cancelSignIn('marketing', SIGN_IN_SESSION, call), true);
+  assert.equal(await forgetSignIn('marketing', saved.sign_in_id, call), true);
+  assert.equal(await forgetSignIn('marketing', saved.sign_in_id, call), false);
+  assert.deepEqual(await listSignIns('marketing', reader(createScenario())), []);
+  for (const method of ['sign_in.start', 'sign_in.save', 'sign_in.cancel', 'sign_ins.forget']) {
+    assert.equal(scenario.call(method, { team_id: 'growth', body: {} }), null, method);
+  }
+  // A running Browser task holds the Space's one Browser.
+  await assert.rejects(
+    startSignIn('marketing', 'mail.example.net', 'en', reader(createScenario('browser-watch'))),
+    (error) => error.code === 'browser-busy',
+  );
 });
 
 test('a scenario holds the Space chat limit a save sets, within its bounds', () => {

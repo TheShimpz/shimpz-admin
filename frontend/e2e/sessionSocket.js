@@ -11,7 +11,14 @@ export const SOURCE_TIME = 1_791_884_573;
 // The `shimpz.chat.v7` server frames whose own shape names their Team; every other frame gains it on the channel.
 const NATIVE_TEAM_FRAMES = new Set(['done', 'assistant-install-plan', 'assistant-guidance']);
 const NATIVE_UNINSTALL_STATES = new Set(['proposed', 'uninstalled']);
-const CARD_ANSWERS = new Set(['routines.proposal_confirm', 'routines.proposal_revoke']);
+// The Team topic each change Admin answers raises: a card's answer is kept in the history, a Sign-in saved or forgotten
+// changes the Team's Sign-ins.
+const RAISES = Object.freeze({
+  'routines.proposal_confirm': 'history',
+  'routines.proposal_revoke': 'history',
+  'sign_in.save': 'sign-ins',
+  'sign_ins.forget': 'sign-ins',
+});
 
 function channelFrame(teamId, event) {
   const native = NATIVE_TEAM_FRAMES.has(event?.type) ||
@@ -117,8 +124,9 @@ export function serveSession(transport, handlers, revisions = new Map()) {
       const { status, json, after } = await answer(frame);
       send({ type: 'result', id: frame.id, status, body: json ?? {} });
       after?.();
-      // Admin keeps a card's answer in the Team's history, which the page then reads again.
-      if (status === 200 && CARD_ANSWERS.has(frame.method)) raise(revisions, [session], `team/${frame.params.team_id}/history`);
+      if (status === 200 && Object.hasOwn(RAISES, frame.method)) {
+        raise(revisions, [session], `team/${frame.params.team_id}/${RAISES[frame.method]}`);
+      }
       return;
     }
     if (frame.type === 'activity') {

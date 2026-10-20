@@ -1,6 +1,7 @@
 // Watching a Browser task's screen (ADR-0117, over KasmVNC): the view of the task the Team runs now is opened over the
 // session socket, and its screen is one binary WebSocket that Admin relays to the Browser's display, drawn by noVNC on a
-// bare canvas in view-only mode. Only Admin's exact answers are admitted.
+// bare canvas in view-only mode. A sign-in session's Browser is driven instead, over the view's control stream (Sign-ins
+// amendment). Only Admin's exact answers are admitted.
 
 import { exactKeys, jsonObject, LocalApiError } from '../../api.js';
 import { TEAM_ID_RE } from '../../ids.js';
@@ -39,10 +40,57 @@ export async function openBrowserView(teamId, call = socketReads.call) {
   throw new LocalApiError('The Browser view is unavailable.', response.status);
 }
 
-/** The screen's WebSocket address on this page's own origin. */
-export function streamUrl(teamId, viewId, location = globalThis.location) {
+/** The screen's WebSocket address on this page's own origin: its `stream`, or its `control` for the person driving it. */
+export function streamUrl(teamId, viewId, location = globalThis.location, kind = 'stream') {
   const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  return `${scheme}//${location.host}/api/teams/${encodeURIComponent(teamId)}/browser/views/${viewId}/stream`;
+  return `${scheme}//${location.host}/api/teams/${encodeURIComponent(teamId)}/browser/views/${viewId}/${kind}`;
+}
+
+// noVNC's client of one screen, scaled to `target`: view-only, never taking focus, or driven by the person.
+function screen(RFB, target, url, { control }) {
+  const rfb = new RFB(target, url, { wsProtocols: ['binary'] });
+  rfb.viewOnly = !control;
+  rfb.focusOnClick = control;
+  rfb.scaleViewport = true;
+  rfb.clipViewport = false;
+  rfb.resizeSession = false;
+  rfb.showDotCursor = control;
+  // The box's own background shows until the first screen arrives.
+  rfb.background = 'transparent';
+  rfb.qualityLevel = QUALITY;
+  rfb.compressionLevel = COMPRESSION;
+  return rfb;
+}
+
+/**
+ * Drive a sign-in session's Browser on `target` until `signal` aborts or the stream ends. Calls `onconnect` once the
+ * screen shows; rejects with the abort reason when closed, or BrowserViewEndedError once the stream ended.
+ */
+export async function controlBrowser(
+  teamId,
+  viewId,
+  { signal, target, RFB, onconnect = () => {}, location = globalThis.location },
+) {
+  if (!TEAM_ID_RE.test(teamId) || !VIEW_ID_RE.test(viewId)) throw new LocalApiError('The Browser view is invalid.');
+  signal.throwIfAborted();
+  return new Promise((_resolve, reject) => {
+    const rfb = screen(RFB, target, streamUrl(teamId, viewId, location, 'control'), { control: true });
+    let connected = true;
+    const abort = () => {
+      if (connected) rfb.disconnect();
+      reject(signal.reason);
+    };
+    signal.addEventListener('abort', abort, { once: true });
+    rfb.addEventListener('connect', () => {
+      rfb.focus();
+      onconnect();
+    });
+    rfb.addEventListener('disconnect', () => {
+      connected = false;
+      signal.removeEventListener('abort', abort);
+      if (!signal.aborted) reject(new BrowserViewEndedError());
+    });
+  });
 }
 
 /**
@@ -57,17 +105,7 @@ export async function watchBrowser(
   const viewId = await openWhenRunning(teamId, signal, call);
   signal.throwIfAborted();
   return new Promise((_resolve, reject) => {
-    const rfb = new RFB(target, streamUrl(teamId, viewId, location), { wsProtocols: ['binary'] });
-    rfb.viewOnly = true;
-    rfb.focusOnClick = false;
-    rfb.scaleViewport = true;
-    rfb.clipViewport = false;
-    rfb.resizeSession = false;
-    rfb.showDotCursor = false;
-    // The box's own background shows until the first screen arrives.
-    rfb.background = 'transparent';
-    rfb.qualityLevel = QUALITY;
-    rfb.compressionLevel = COMPRESSION;
+    const rfb = screen(RFB, target, streamUrl(teamId, viewId, location), { control: false });
     let connected = true;
     const abort = () => {
       if (connected) rfb.disconnect();

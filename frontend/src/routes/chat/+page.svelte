@@ -1173,6 +1173,7 @@
         {/if}
 
           <Composer
+            teamId={chatTeamId}
             files={messageFiles}
             bind:draft
             bind:providerKey

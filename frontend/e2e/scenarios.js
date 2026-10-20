@@ -291,6 +291,17 @@ const STARTS = {
     runs: [],
     browserTask: true,
   }),
+  // A Team with two saved Sign-ins, where the person can sign in to another site (ADR-0117, Sign-ins amendment).
+  'sign-ins': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [],
+    runs: [],
+    signIns: [
+      signInRecord('a', 'mail.example.com', 'Work', '2026-10-02T09:15:00Z', '2026-10-18T17:40:00Z'),
+      signInRecord('c', 'shop.example.org', 'Personal', '2026-10-12T20:05:00Z', '2026-10-12T20:05:00Z'),
+    ],
+  }),
   // More sent images than the session keeps thumbnails of, one per message down a long chat.
   'attachment-many-images': () => ({
     session: authenticatedLocalSession(),
@@ -810,10 +821,66 @@ const TEAM_METHODS = Object.freeze({
   'browser.view': (state, params) => (state.browserTask && params.team_id === 'marketing'
     ? ok({ view_id: BROWSER_VIEW })
     : { status: 404, json: { detail: 'browser view unavailable', code: 'browser-not-running' } }),
+  'sign_ins.list': (state, params) => ok({ sign_ins: params.team_id === 'marketing' ? state.signIns ?? [] : [] }),
+  'sign_in.start': startSignIn,
+  'sign_in.save': saveSignIn,
+  'sign_in.cancel': (state, params) => {
+    if (params.team_id !== 'marketing') return null;
+    if (!state.signInSession) return refused(404, 'sign-in-not-running');
+    state.signInSession = '';
+    return ok({ cancelled: true });
+  },
+  'sign_ins.forget': (state, params) => {
+    if (params.team_id !== 'marketing') return null;
+    const before = state.signIns ?? [];
+    state.signIns = before.filter((item) => item.sign_in_id !== params.body?.sign_in_id);
+    return ok({ forgotten: state.signIns.length !== before.length });
+  },
 });
 
 // The view of the running Browser task a scenario's chat starts; its frames come over HTTP.
 export const BROWSER_VIEW = 'b'.repeat(32);
+// The sign-in session a scenario opens, and the view the person drives it through.
+export const SIGN_IN_SESSION = 'd'.repeat(32);
+export const SIGN_IN_VIEW = 'e'.repeat(32);
+const SIGN_IN_DAYS = 30;
+
+function signInRecord(id, site, label, createdAt, lastUsedAt) {
+  const expires = new Date(Date.parse(createdAt) + SIGN_IN_DAYS * 86_400_000).toISOString().replace(/\.\d{3}Z$/u, 'Z');
+  return { sign_in_id: id.repeat(32), site, label, created_at: createdAt, last_used_at: lastUsedAt, expires_at: expires };
+}
+
+const refused = (status, code) => ({ status, json: { detail: 'sign-in unavailable', code } });
+
+// A sign-in session opens at the https site asked for, unless a Browser task holds the Space's one Browser.
+function startSignIn(state, params) {
+  if (params.team_id !== 'marketing') return null;
+  if (state.browserTask) return refused(409, 'browser-busy');
+  let site = '';
+  try {
+    const url = new URL(params.body?.url);
+    site = url.protocol === 'https:' ? url.hostname : '';
+  } catch {
+    site = '';
+  }
+  if (!site.includes('.')) return refused(400, 'sign-in-url-invalid');
+  state.signInSession = site;
+  return ok({ sign_in_session_id: SIGN_IN_SESSION, view_id: SIGN_IN_VIEW, site });
+}
+
+// Save keeps the session as a Sign-in under its label and ends it.
+function saveSignIn(state, params) {
+  if (params.team_id !== 'marketing') return null;
+  if (!state.signInSession || params.body?.sign_in_session_id !== SIGN_IN_SESSION) return refused(404, 'sign-in-not-running');
+  const label = typeof params.body.label === 'string' ? params.body.label.trim() : '';
+  if (!label || label.length > 64 || label !== params.body.label) return refused(400, 'sign-in-label-invalid');
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/u, 'Z');
+  const ids = 'f0123456789'.split('').filter((id) => !(state.signIns ?? []).some((item) => item.sign_in_id.startsWith(id)));
+  const saved = signInRecord(ids[0], state.signInSession, label, now, now);
+  state.signIns = [...(state.signIns ?? []), saved];
+  state.signInSession = '';
+  return ok(saved);
+}
 
 // A turn whose Browser task keeps running: Admin prepares the request, Team gathers its context and calls its model,
 // then starts the Browser, and no reply comes until the person stops the turn.
