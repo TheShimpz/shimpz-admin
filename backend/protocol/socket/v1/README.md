@@ -41,7 +41,8 @@ envelope included, at most 1 MiB.
   `team_id`, after `chat.attach {team_id, locale}`.
 
 Topics in this version: `teams`, `team/{id}/history`, `team/{id}/routines`, `team/{id}/inventory`,
-`team/{id}/inference`, `team/{id}/integrations` (Integrations and Stored Inputs), `assistants/registry`, `local-assistants`, `space/models` (model provider
+`team/{id}/inference`, `team/{id}/integrations` (Integrations and Stored Inputs), `team/{id}/sign-ins` (the
+Team's Sign-ins, ADR-0117), `assistants/registry`, `local-assistants`, `space/models` (model provider
 keys), `space/decision` (the decision provider key), `space/chat-limit` (how many chat turns the Space runs at once,
 which Team owns, ADR-0119), `platform/release`,
 `security/summary`, and `session`.

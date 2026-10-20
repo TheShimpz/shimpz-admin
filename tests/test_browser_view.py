@@ -159,6 +159,20 @@ class BrowserStreamTests(ChatWebSocketCase):
         self.assertNotIn("Sec-WebSocket-Extensions", headers)
         self.assertEqual(team.received, [b"\x01"])
 
+    def test_a_control_stream_reaches_teams_control_route_of_the_same_view(self) -> None:
+        team = FakeTeam()
+
+        async def scenario():
+            async with team.running():
+                page = self.page(path=f"/api/teams/team_1/browser/views/{VIEW}/control")
+                await page.start()
+                self.assertEqual((await page.next())["bytes"], b"RFB 003.008\n")
+                await page.close()
+
+        asyncio.run(scenario())
+        [(path, _headers)] = team.requests
+        self.assertEqual(path, f"/v1/teams/team_1/browser/views/{VIEW}/control")
+
     def test_only_admins_own_page_with_a_session_and_the_binary_subprotocol_is_admitted(self) -> None:
         async def refused(**options) -> dict:
             async with FakeTeam().running():

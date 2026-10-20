@@ -7,6 +7,9 @@ connection of its own (no proxy, no redirect followed) with the Supervisor's ass
 binary messages both ways through bounded queues with send deadlines. The screen's bytes are never read, stored, or
 logged. At most MAX_STREAMS streams run at once, and either side ending, the session ending, or its Origin no longer
 being admitted ends the stream; the session and Origin are watched from the moment the stream is accepted.
+
+`GET /api/teams/{team_id}/browser/views/{view_id}/control` is the same stream of a sign-in session's Browser, which the
+Supervisor also drives (Sign-ins amendment): Team alone decides that the view offers control and grants it.
 """
 
 import asyncio
@@ -50,7 +53,9 @@ _TEAM_REFUSALS = {404: ENDED, 503: UNAVAILABLE}
 _VIEW_ID = re.compile(r"[0-9a-f]{32}")
 
 
-async def serve(websocket: WebSocket, gate: session_socket.Gate, team_id: str, view_id: str) -> None:
+async def serve(
+    websocket: WebSocket, gate: session_socket.Gate, team_id: str, view_id: str, *, control: bool = False
+) -> None:
     """Admit the page's stream, then relay it to Team until either side or the session ends."""
     origin = await _admit(websocket, gate)
     if origin is None:
@@ -65,7 +70,7 @@ async def serve(websocket: WebSocket, gate: session_socket.Gate, team_id: str, v
         await _close(websocket, BUSY)
         return
     try:
-        path = f"/v1/teams/{canonical_team}/browser/views/{view_id}/stream"
+        path = f"/v1/teams/{canonical_team}/browser/views/{view_id}/{'control' if control else 'stream'}"
         await _close(websocket, await _relay(websocket, gate, origin, path))
     finally:
         _STREAMS.release()

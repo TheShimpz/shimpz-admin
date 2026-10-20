@@ -109,7 +109,8 @@ COPY --link backend/session/budget.py backend/session/calls.py backend/session/l
     backend/session/outbound.py backend/session/registry.py backend/session/routines.py backend/session/socket.py \
     backend/session/stepup.py backend/session/topics.py backend/session/watcher.py ./session/
 COPY --link backend/team/assets.py backend/team/bridge.py backend/team/browser_view.py backend/team/files.py \
-    backend/team/http.py backend/team/inference.py backend/team/names.py backend/team/order.py backend/team/snapshots.py \
+    backend/team/http.py backend/team/inference.py backend/team/names.py backend/team/order.py backend/team/sign_ins.py \
+    backend/team/snapshots.py \
     backend/team/summary.py backend/team/transport.py ./team/
 COPY --link backend/protocol/http/v1/browser.py backend/protocol/http/v1/browser_view.py \
     backend/protocol/http/v1/challenge.py \
@@ -118,7 +119,7 @@ COPY --link backend/protocol/http/v1/browser.py backend/protocol/http/v1/browser
     backend/protocol/http/v1/payload.py backend/protocol/http/v1/preview.py \
     backend/protocol/http/v1/progress.py backend/protocol/http/v1/purpose.py backend/protocol/http/v1/routine.py \
     backend/protocol/http/v1/routine_notice.py backend/protocol/http/v1/routine_proposal.py \
-    backend/protocol/http/v1/routine_run.py backend/protocol/http/v1/strict_json.py \
+    backend/protocol/http/v1/routine_run.py backend/protocol/http/v1/sign_in.py backend/protocol/http/v1/strict_json.py \
     backend/protocol/http/v1/supervisor.py backend/protocol/http/v1/turn.py backend/protocol/http/v1/websocket.py ./protocol/http/v1/
 COPY --link backend/protocol/socket/v1/frames.py ./protocol/socket/v1/
 # UI_DIR in app.py resolves to backend/../frontend/build; session/socket.py reads the commit both were built from.

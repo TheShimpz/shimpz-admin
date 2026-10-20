@@ -25,6 +25,7 @@ from team import http as team_http
 from team import inference as team_inference
 from team import names as team_names
 from team import order as team_order
+from team import sign_ins as team_sign_ins
 from team import snapshots as team_snapshots
 from team import summary as team_summary
 from team import transport
@@ -282,6 +283,12 @@ METHODS: dict[str, Method] = {
     "files.acknowledge": _team_call(team, "acknowledge_file", "team_id", "file_id"),
     # The view id of the Browser task a Team runs now, whose screen the Supervisor watches (ADR-0117, M2 Watch).
     "browser.view": _team_call(team, "open_browser_view", "team_id"),
+    # A person signs in to a site in a Browser they drive and Saves it as one of the Team's Sign-ins (ADR-0117).
+    "sign_in.start": _team_call(team_sign_ins, "start", "team_id", "body"),
+    "sign_in.save": _team_call(team_sign_ins, "save", "team_id", "body"),
+    "sign_in.cancel": _team_call(team_sign_ins, "cancel", "team_id", "body"),
+    "sign_ins.list": _team_call(team_sign_ins, "listing", "team_id"),
+    "sign_ins.forget": _team_call(team_sign_ins, "forget", "team_id", "body"),
     "store.catalog": _catalog,
     "subscribe": _subscribe,
     "unsubscribe": _unsubscribe,
