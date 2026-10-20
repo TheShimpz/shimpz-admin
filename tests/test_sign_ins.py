@@ -208,11 +208,22 @@ class RevokedSessionTests(unittest.TestCase):
         self.assertTrue(calls)
         self.assertTrue(all(entry.args[1] == "/v1/teams/team_1/browser/sign-in/cancel" for entry in calls))
 
-    def test_a_cancel_team_refuses_is_logged_and_never_raised(self):
+    def test_a_revoked_sessions_cancel_is_asked_again_until_team_takes_it(self):
         tracked = sign_ins._Tracked("team_1", self.authority("s1"), SESSION)
-        refused = transport.TeamResponse(503, {"code": "browser-unavailable"})
+        answers = [
+            transport.TeamResponse(502, {"detail": "team unavailable"}),
+            transport.TeamResponse(503, {"code": "browser-unavailable", "trace_id": TRACE}),
+        ]
         with (
-            mock.patch.object(transport, "call", return_value=refused),
+            mock.patch.object(transport, "call", side_effect=answers) as call,
+            mock.patch.object(sign_ins, "CANCEL_RETRY_DELAY_SECONDS", 0),
+        ):
+            sign_ins._cancel_ended(tracked)
+        self.assertEqual(call.call_count, 2)
+        # Past Team's own limit, the session surely ended: the last failure is logged and never raised.
+        with (
+            mock.patch.object(transport, "call", return_value=answers[0]),
+            mock.patch.object(sign_ins, "CANCEL_RETRY_SECONDS", 0),
             self.assertLogs("shimpz-admin", "WARNING") as logged,
         ):
             sign_ins._cancel_ended(tracked)

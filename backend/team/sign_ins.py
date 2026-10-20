@@ -15,6 +15,7 @@ import asyncio
 import contextlib
 import logging
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -32,6 +33,10 @@ TOPIC = "sign-ins"
 # How often the authorities of running sign-in sessions are checked again by the full rule, which also catches an
 # absolute expiry no session listener announces.
 SWEEP_SECONDS = 30
+# A revoked session's Cancel is asked again this often while Team cannot be reached, until Team's own 30-minute limit
+# has surely ended the session.
+CANCEL_RETRY_DELAY_SECONDS = 5
+CANCEL_RETRY_SECONDS = 31 * 60
 
 
 @dataclass(slots=True, eq=False)
@@ -178,10 +183,21 @@ def _cancel_apart(tracked: _Tracked) -> None:
 
 
 def _cancel_ended(tracked: _Tracked) -> None:
-    with contextlib.suppress(transport.TeamRequestError), tracked.authority.scope():
-        response = cancel(tracked.team_id, {"sign_in_session_id": tracked.session_id})
-        if response.status not in {200, 404}:
+    """Deliver the revoked session's Cancel until Team confirms it, it no longer runs, or Team's own limit ended it.
+
+    Team answers unavailable only after it took the Cancel, so that is delivered too; a Team it cannot reach is asked
+    again, and nothing else is ever asked under that authority.
+    """
+    deadline = time.monotonic() + CANCEL_RETRY_SECONDS
+    while True:
+        with contextlib.suppress(transport.TeamRequestError), tracked.authority.scope():
+            response = cancel(tracked.team_id, {"sign_in_session_id": tracked.session_id})
+            if response.status in {200, 404} or response.body.get("code") == "browser-unavailable":
+                return
+        if time.monotonic() >= deadline:
             log.warning("a revoked session's sign-in could not be cancelled")
+            return
+        time.sleep(CANCEL_RETRY_DELAY_SECONDS)
 
 
 def sweep() -> None:
