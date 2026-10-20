@@ -696,6 +696,7 @@ class SessionMethodAnswerTests(SessionMethodCase):
         for method, answer in (
             ("sign_in.cancel", self.transport.TeamResponse(200, {"cancelled": True})),
             ("sign_in.save", self.transport.TeamResponse(404, {"detail": "x", "code": "sign-in-not-running"})),
+            ("sign_in.save", self.transport.TeamResponse(409, {"detail": "x", "code": "sign-in-windows"})),
         ):
             operation = method.split(".")[1]
             with (
@@ -705,7 +706,11 @@ class SessionMethodAnswerTests(SessionMethodCase):
             ):
                 result = self._answers(method, SAMPLES[method])
                 self.assertEqual(result["status"], answer.status)
-                finished.assert_called_once_with("team_1", "a" * 32)
+                # A session a refusal leaves running is still its authority's to cancel.
+                if answer.status == 409:
+                    finished.assert_not_called()
+                else:
+                    finished.assert_called_once_with("team_1", "a" * 32)
         result = self._answers("stored_inputs.clear", {**SAMPLES["stored_inputs.clear"], "stored_input_id": "Bad"})
         self.assertEqual(result["status"], 400)
         result = self._answers("assistants.summary", {**SAMPLES["assistants.summary"], "locale": "it"})
