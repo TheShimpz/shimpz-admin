@@ -13,10 +13,12 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "backend"))
 
+from mfa import tickets
 from session import topics
 from team import sign_ins, transport
 
 TRACE = "f" * 32
+LONGEST_TEAM_ID = 40
 SESSION = "a" * 32
 INCARNATION = "c" * 64
 SIGN_IN = {
@@ -73,8 +75,18 @@ class SignInBridgeTests(unittest.TestCase):
 
     def test_a_deletion_binds_the_exact_sign_in_admin_read(self) -> None:
         subject = sign_ins.deletion_subject("team_1", SIGN_IN)
-        self.assertEqual(subject, f"sign-in-delete:team_1:{INCARNATION}:{'b' * 32}:1")
         self.assertEqual(sign_ins.deletion_subject("team_1", sign_ins.confirmed("b" * 32, "1", INCARNATION)), subject)
+        # Every field of the tuple changes the subject, which fits the ticket's bound for the longest Team id.
+        for team_id, changed in (
+            ("team_2", SIGN_IN),
+            ("team_1", {**SIGN_IN, "generation": 2}),
+            ("team_1", {**SIGN_IN, "sign_in_id": "d" * 32}),
+            ("team_1", {**SIGN_IN, "team_incarnation": "e" * 64}),
+        ):
+            with self.subTest(team_id=team_id, changed=changed):
+                self.assertNotEqual(sign_ins.deletion_subject(team_id, changed), subject)
+        longest = sign_ins.deletion_subject("t" * LONGEST_TEAM_ID, {**SIGN_IN, "generation": 2**31 - 1})
+        self.assertLessEqual(len(longest), tickets.MAX_SUBJECT_CHARS)
         for named in (
             ("b" * 32, "one", INCARNATION),
             ("b" * 32, "0", INCARNATION),

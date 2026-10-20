@@ -14,6 +14,8 @@ expiry), Admin cancels it under the authority it was started with, so a Save und
 
 import asyncio
 import contextlib
+import hashlib
+import json
 import logging
 import threading
 import time
@@ -124,10 +126,14 @@ def current(team_id: object) -> transport.TeamResponse:
 
 
 def deletion_subject(team_id: object, sign_in: dict[str, object]) -> str:
-    """The one exact deletion a Supervisor confirms: this Team's Sign-in, at this generation and incarnation."""
+    """The one exact deletion a Supervisor confirms: this Team's Sign-in, at this generation and incarnation.
+
+    The ticket binds the SHA-256 of the canonical tuple, which fits its subject bound for every admissible Team id.
+    """
     canonical_id = payloads.canonical_team_id(team_id)
-    identity = (sign_in["team_incarnation"], sign_in["sign_in_id"], sign_in["generation"])
-    return "sign-in-delete:{}:{}:{}:{}".format(canonical_id, *identity)
+    identity = [canonical_id, sign_in["team_incarnation"], sign_in["sign_in_id"], sign_in["generation"]]
+    canonical = json.dumps(identity, separators=(",", ":")).encode()
+    return f"sign-in-delete:{hashlib.sha256(canonical).hexdigest()}"
 
 
 def confirmed(sign_in_id: object, generation: object, team_incarnation: object) -> dict[str, object]:
