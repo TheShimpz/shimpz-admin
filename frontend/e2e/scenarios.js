@@ -392,9 +392,15 @@ const STARTS = {
 
 export const SCENARIOS = Object.freeze(Object.keys(STARTS));
 
+// Admin lists a person's choices: each provider's chat models, without the catalog's own admission field.
+export function chatModels(provider) {
+  return provider.models.filter((model) => model.chat === true).map(({ chat: _chat, ...model }) => model);
+}
+
 function providers() {
   return modelCatalog.providers.map(({ credential_validation: _validation, ...provider }) => ({
     ...provider,
+    models: chatModels(provider),
     configured: true,
     masked: '••••1234',
   }));

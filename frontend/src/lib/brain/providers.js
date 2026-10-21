@@ -11,7 +11,10 @@ const EXPECTED_CATALOG = Object.freeze(Object.fromEntries(MODEL_CATALOG.provider
   Object.freeze({
     title: provider.title,
     default_model: provider.default_model,
-    models: Object.freeze(provider.models.map((model) => Object.freeze({ ...model }))),
+    // A person chooses only a chat model; a non-chat one is a model the Brain runs itself (the Browser's).
+    models: Object.freeze(provider.models
+      .filter((model) => model.chat === true)
+      .map(({ chat: _chat, ...model }) => Object.freeze(model))),
   }),
 ])));
 const PROVIDER_IDS = new Set(Object.keys(EXPECTED_CATALOG));

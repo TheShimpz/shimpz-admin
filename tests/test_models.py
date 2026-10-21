@@ -220,6 +220,8 @@ class ModelProviderTests(unittest.TestCase):
             ("openai", "claude-sonnet-5-5"),
             ("anthropic", "gpt-6.1-sol"),
             ("openai", "gpt-5.7"),
+            # A catalog model the Brain runs itself (the Browser's) is never a person's choice.
+            ("anthropic", "claude-haiku-5-5"),
         ):
             with self.subTest(provider=provider, model=model), self.assertRaises(models.ModelProviderError):
                 models.canonical_model(provider, model)

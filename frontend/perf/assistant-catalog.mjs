@@ -147,7 +147,7 @@ function callBody(method, params, data) {
         id: provider.id,
         title: provider.title,
         default_model: provider.default_model,
-        models: provider.models,
+        models: provider.models.filter((model) => model.chat === true).map(({ chat: _chat, ...model }) => model),
         configured: provider.id === modelCatalog.default_provider,
         masked: null,
       })),

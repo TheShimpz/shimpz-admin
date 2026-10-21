@@ -42,6 +42,8 @@ PROVIDERS = {
                 model["output_usd_per_million_cents"],
             )
             for model in provider["models"]
+            # A person chooses only a chat model; a non-chat one is a model Brain runs itself (the Browser's).
+            if model["chat"] is True
         ),
     )
     for provider in _CATALOG["providers"]

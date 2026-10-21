@@ -8,7 +8,8 @@ export const team = { team_id: 'perf_team', team_name: 'Performance Team', statu
 const provider = catalog.providers.find((item) => item.id === catalog.default_provider);
 const models = catalog.providers.map((item) => ({
   id: item.id, title: item.title, default_model: item.default_model,
-  models: item.models, configured: item.id === provider.id, masked: null,
+  models: item.models.filter((model) => model.chat === true).map(({ chat: _chat, ...model }) => model),
+  configured: item.id === provider.id, masked: null,
 }));
 
 export const reads = Object.freeze({

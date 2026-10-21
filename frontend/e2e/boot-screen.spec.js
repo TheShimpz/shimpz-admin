@@ -4,7 +4,7 @@ import { expect, test } from '@playwright/test';
 
 import { accessibilityViolations } from './axe.js';
 import { readsOf, routeChat, routeRead, waitForRead } from './scenarioRoutes.js';
-import { authenticatedLocalSession, localSession } from './scenarios.js';
+import { authenticatedLocalSession, chatModels, localSession } from './scenarios.js';
 
 const modelCatalog = JSON.parse(
   readFileSync(new URL('../src/lib/brain/catalog.json', import.meta.url), 'utf8'),
@@ -58,6 +58,7 @@ async function routeReadyChat(page, { teamGate, inferenceGate }) {
   await routeRead(page, 'models.list', () => ({ status: 200, json: {
     providers: modelCatalog.providers.map(({ credential_validation: _credential, ...provider }) => ({
       ...provider,
+      models: chatModels(provider),
       configured: true,
       masked: '••••1234',
     })),

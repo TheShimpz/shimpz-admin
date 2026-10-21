@@ -29,6 +29,7 @@ import {
 import { outputChoiceWords, proposalRequest, proposalWhen } from '../src/lib/routines/words.js';
 import { formatTaskUsage, taskUsageSummary } from '../src/lib/chat/usage.js';
 import {
+  chatModels,
   authenticatedLocalSession,
   historyView,
   localSession,
@@ -430,6 +431,7 @@ async function routeReadyChat(page, {
   });
   const providerState = ({ credential_validation: _credential, ...provider }) => ({
     ...provider,
+    models: chatModels(provider),
     configured: configuredProviders.has(provider.id),
     masked: configuredProviders.has(provider.id) ? '••••1234' : null,
   });
