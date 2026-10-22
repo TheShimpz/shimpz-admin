@@ -596,7 +596,7 @@ export default {
       at: 'Schritt {n}: {assistant} · {action}',
       was: 'Schritt {n} zuvor: {assistant} · {action}',
       unchanged: 'Nur die Beschreibung ändert sich; alle Schritte bleiben, wie sie sind.',
-      lastChanged: 'Jeder Lauf zeigt jetzt das Ergebnis von Schritt {n}.',
+      lastChanged: 'Der letzte Schritt ist jetzt ein anderer: Schritt {n}.',
       plan: 'Schritte nach der Änderung',
       confirm: 'Übernehmen',
       revoked: 'Änderung der Routine vom Benutzer abgebrochen.',

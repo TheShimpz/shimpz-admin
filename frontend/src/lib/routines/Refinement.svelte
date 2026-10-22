@@ -42,16 +42,17 @@
     return () => clearTimeout(timer);
   });
 
-  // What changes, in plan order: each added or replacing step where it now stands, then each step that went.
+  // What changes: each added or replacing step where it now stands, then each base step that went, a replaced one
+  // with the Action it had, so the person sees what each replacement stands in for.
   let changed = $derived([
-    ...refinement.steps.filter((step) => step.change !== 'kept').map((step) => ({ ...step, at: step.position })),
-    ...refinement.removed.filter((step) => step.change === 'removed').map((step) => ({ ...step, at: step.position })),
+    ...refinement.steps.filter((step) => step.change !== 'kept').map((step) => ({ ...step, at: step.position, was: false })),
+    ...refinement.removed.map((step) => ({ ...step, at: step.position, was: true })),
   ]);
   let writes = $derived(refinement.steps.some((step) => !step.read_only));
   const TONES = { added: 'accent', replaced: 'warning', removed: 'danger' };
 
   function stepWords(step) {
-    return fill(words[step.change === 'removed' ? 'was' : 'at'], {
+    return fill(words[step.was ? 'was' : 'at'], {
       n: step.at,
       assistant: $assistantName(step.assistant),
       action: humanizeId(step.action),
@@ -91,7 +92,7 @@
       </dl>
       {#if changed.length}
         <ul class="changes" aria-label={words.changes}>
-          {#each changed as step (`${step.change}:${step.at}`)}
+          {#each changed as step (`${step.was}:${step.at}`)}
             <li><Tag size="xs" tone={TONES[step.change]} label={words.change[step.change]} /><span>{stepWords(step)}</span></li>
           {/each}
         </ul>

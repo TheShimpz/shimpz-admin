@@ -596,7 +596,7 @@ export default {
       at: '步骤 {n}：{assistant} · {action}',
       was: '更改前的步骤 {n}：{assistant} · {action}',
       unchanged: '只有描述发生变化；所有步骤保持不变。',
-      lastChanged: '每次运行现在显示步骤 {n} 的结果。',
+      lastChanged: '最后一步现在是另一个步骤：步骤 {n}。',
       plan: '更改后的步骤',
       confirm: '应用',
       revoked: '用户已取消例行任务的更改。',

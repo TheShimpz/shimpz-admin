@@ -596,7 +596,7 @@ export default {
       at: 'Etapa {n}: {assistant} · {action}',
       was: 'Etapa {n} antes: {assistant} · {action}',
       unchanged: 'Só a descrição muda; todas as etapas continuam como estão.',
-      lastChanged: 'Cada execução agora mostra o resultado da etapa {n}.',
+      lastChanged: 'A última etapa agora é outra: a etapa {n}.',
       plan: 'Etapas depois da mudança',
       confirm: 'Aplicar',
       revoked: 'Alteração da rotina cancelada pelo usuário.',

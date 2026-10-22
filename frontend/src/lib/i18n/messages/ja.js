@@ -596,7 +596,7 @@ export default {
       at: 'ステップ {n}: {assistant} · {action}',
       was: '変更前のステップ {n}: {assistant} · {action}',
       unchanged: '説明だけが変わり、すべてのステップはそのままです。',
-      lastChanged: '各実行では今後ステップ {n} の結果を表示します。',
+      lastChanged: '最後のステップが別のものになりました: ステップ {n}。',
       plan: '変更後のステップ',
       confirm: '適用',
       revoked: 'ユーザーがルーティンの変更を取り消しました。',

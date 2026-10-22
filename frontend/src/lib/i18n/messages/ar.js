@@ -596,7 +596,7 @@ export default {
       at: 'الخطوة {n}: {assistant} · {action}',
       was: 'الخطوة {n} سابقًا: {assistant} · {action}',
       unchanged: 'يتغير الوصف فقط؛ وتبقى كل الخطوات كما هي.',
-      lastChanged: 'يعرض كل تشغيل الآن نتيجة الخطوة {n}.',
+      lastChanged: 'أصبحت الخطوة الأخيرة خطوة أخرى: الخطوة {n}.',
       plan: 'الخطوات بعد التغيير',
       confirm: 'تطبيق',
       revoked: 'ألغى المستخدم تغيير الروتين.',

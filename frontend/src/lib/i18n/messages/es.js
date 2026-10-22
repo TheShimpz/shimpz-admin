@@ -596,7 +596,7 @@ export default {
       at: 'Paso {n}: {assistant} · {action}',
       was: 'Paso {n} antes: {assistant} · {action}',
       unchanged: 'Solo cambia la descripción; todos los pasos siguen igual.',
-      lastChanged: 'Cada ejecución ahora muestra el resultado del paso {n}.',
+      lastChanged: 'El último paso ahora es otro: el paso {n}.',
       plan: 'Pasos después del cambio',
       confirm: 'Aplicar',
       revoked: 'Cambio de la rutina cancelado por el usuario.',

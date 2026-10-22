@@ -694,9 +694,9 @@ export function recordingReply(state, message, teamName) {
   return reply;
 }
 
-// A refinement of a listed Routine (ADR-0122): its one step kept and a records step added after it. The card names
+// A refinement of a listed Routine (ADR-0122): its one step kept and the zones' second page added after it. The card names
 // the Routine the message's Refine entry named, else the Team's first Routine.
-export const REFINEMENT_DESCRIPTION = 'Lists your Cloudflare zones and then reads the DNS records of shimpz.com.';
+export const REFINEMENT_DESCRIPTION = 'Lists the first and the second page of your Cloudflare zones.';
 
 function refinementCard(proposalId, routine, now = Date.now()) {
   return {
@@ -716,9 +716,10 @@ function refinementCard(proposalId, routine, now = Date.now()) {
       {
         position: 2,
         assistant: 'shimpz-cloudflare',
-        action: 'list-dns-records',
+        action: 'list-zones',
         read_only: true,
-        inputs: [{ member: 'zone_id', origin: 'selector', value: null, step: 1, ...SELECTOR }],
+        // A step a refinement adds takes only literals and run dates in this slice (ADR-0122).
+        inputs: [{ member: 'page', origin: 'request', value: '2', step: null, pointer: null, where: null, item: null }],
         change: 'added',
         base: null,
       },

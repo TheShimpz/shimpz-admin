@@ -605,7 +605,7 @@ export default {
       at: 'Step {n}: {assistant} · {action}',
       was: 'Step {n} before: {assistant} · {action}',
       unchanged: 'Only the description changes; every step stays as it is.',
-      lastChanged: 'Each run now shows the result of step {n}.',
+      lastChanged: 'The last step is now a different one: step {n}.',
       plan: 'Steps after the change',
       confirm: 'Apply',
       revoked: 'Routine change cancelled by the user.',

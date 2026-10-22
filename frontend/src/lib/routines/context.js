@@ -107,4 +107,5 @@ export function clearTeamRoutines() {
   order = [];
   shown.clear();
   routineContext.set(new Map());
+  refineTarget.set(null);
 }
