@@ -16,6 +16,7 @@ import { catalogBindingAnswer, catalogImageAnswer, catalogInventory, catalogSnap
 import { localizedChallenge } from './localizedRequest.js';
 import {
   recordingReply,
+  refiningReply,
   ROUTINE_QUESTIONS,
   routineLifecycleStart,
   ROUTINE_PROPOSAL_METHODS,
@@ -180,6 +181,29 @@ const STARTS = {
     runs: [],
     recording: 'card',
     catalog: true,
+  }),
+  // Any message is a refining turn of a listed Routine (ADR-0122): its reply carries the refinement's card, which
+  // Apply confirms and Cancel revokes; each message's Refine target is kept.
+  'routine-refine': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [ROUTINE_VIEW],
+    plans: { [ROUTINE_VIEW.routine_id]: ROUTINE_PLAN },
+    runs: [],
+    incidents: [],
+    recording: 'refine',
+    catalog: true,
+  }),
+  // The same, where Team refuses the refinement: another step reads the step it would remove.
+  'routine-refine-refusal': () => ({
+    session: authenticatedLocalSession(),
+    teams: [TEAM],
+    routines: [ROUTINE_VIEW],
+    plans: { [ROUTINE_VIEW.routine_id]: ROUTINE_PLAN },
+    runs: [],
+    incidents: [],
+    recording: 'refine',
+    refusal: 'routine-refine-dependency',
   }),
   // Any message is a recording turn whose request would hold a password, so its reply says no Routine was created.
   'routine-refusal': () => ({
@@ -690,6 +714,7 @@ function chatReply(state, frame) {
   const message = typeof frame.message === 'string' ? frame.message : '';
   if (state.clarify) return clarifyReply(state, message);
   const teamName = state.teams.find((team) => team.team_id === 'marketing')?.team_name ?? TEAM.team_name;
+  if (state.recording === 'refine') return refiningReply(state, message, teamName, frame.refine ?? null);
   if (state.recording) return recordingReply(state, message, teamName);
   return {
     type: 'done',

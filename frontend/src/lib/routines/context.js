@@ -15,6 +15,13 @@ import { LocalApiError } from '../api.js';
  */
 export const routineContext = writable(new Map());
 
+/**
+ * The Routine the person asked to refine from its panel (ADR-0122): `{ teamId, routineId, name }`, or null. The chat of
+ * that Team names it beside its composer and sends its id with the next message, which then clears it; the person may
+ * clear it first. Team checks the id against the Team's own Routines.
+ */
+export const refineTarget = writable(null);
+
 // The session socket holds at most 64 topics, which every screen shares: the first Teams of the list follow their
 // Routines' topic, and the Team the chat shows always does. Any other Team is read when listed and after a failure.
 export const FOLLOWED_TEAMS = 40;

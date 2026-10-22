@@ -23,7 +23,8 @@ export function cardAnswers(turns) {
  */
 function settled(turn, answers) {
   if (turn.routineAnswer) return turn.routineAnswer.status !== 'changed';
-  const answer = turn.routineProposal ? answers.get(turn.routineProposal.proposal_id) : undefined;
+  const card = turn.routineProposal ?? turn.routineRefinement;
+  const answer = card ? answers.get(card.proposal_id) : undefined;
   return (answer === 'created' || answer === 'changed') && turn.text === '';
 }
 
@@ -76,6 +77,7 @@ export function replyFields(source) {
     // A stored reply keeps the steps its page was shown; a live one collects them from its progress frames.
     ...(source.receipt ? { receipt: source.receipt } : {}),
     ...(source.routine_proposal ? { routineProposal: source.routine_proposal } : {}),
+    ...(source.routine_refinement ? { routineRefinement: source.routine_refinement } : {}),
     ...(source.routine_refusal ? { routineRefusal: source.routine_refusal } : {}),
     ...(source.routine_question ? { routineQuestion: source.routine_question } : {}),
     // The files a reply's Browser task downloaded, as cards under it; each came from the web (ADR-0117).

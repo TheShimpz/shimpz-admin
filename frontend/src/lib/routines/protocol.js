@@ -945,6 +945,75 @@ export function parseRoutineProposal(value) {
   });
 }
 
+// The card of a refinement (ADR-0122), mirroring Team's `routine_proposal.canonical_refinement`: an existing Routine's
+// next revision, built from its revision `base_revision` and the agent's edits. Every step of the complete resulting
+// plan is a recording card's step plus its change and the position it had in the base plan; `removed` lists the base
+// steps that do not continue. Every base step is either kept, in order, or listed there, a replaced one beside its
+// replacement.
+const STEP_CHANGES = ['kept', 'added', 'replaced'];
+const REMOVED_CHANGES = ['removed', 'replaced'];
+
+function isRefinedStep(value, position) {
+  if (!exactKeys(value, ['position', 'assistant', 'action', 'read_only', 'inputs', 'change', 'base'])) return false;
+  const { change, base, ...card } = value;
+  return STEP_CHANGES.includes(change) &&
+    (change === 'added' ? base === null : whole(base, 1, MAX_ROUTINE_STEPS)) &&
+    isCardStep(card, position);
+}
+
+function isRemovedStep(value) {
+  return exactKeys(value, ['position', 'assistant', 'action', 'read_only', 'change']) &&
+    whole(value.position, 1, MAX_ROUTINE_STEPS) &&
+    isAssistantId(value.assistant) &&
+    isActionId(value.action) &&
+    typeof value.read_only === 'boolean' &&
+    REMOVED_CHANGES.includes(value.change);
+}
+
+function sortedNumbers(values) {
+  return values.every((value, index) => index === 0 || values[index - 1] < value);
+}
+
+function ascending(left, right) {
+  return left - right;
+}
+
+function basePositions(steps, removed) {
+  const kept = steps.filter((step) => step.change === 'kept').map((step) => step.base);
+  const replaced = steps.filter((step) => step.change === 'replaced').map((step) => step.base).sort(ascending);
+  const gone = removed.map((step) => step.position);
+  const all = [...kept, ...gone].sort(ascending);
+  return sortedNumbers(kept) && sortedNumbers(gone) && all.every((value, index) => value === index + 1) &&
+    JSON.stringify(replaced) === JSON.stringify(removed.filter((step) => step.change === 'replaced').map((step) => step.position));
+}
+
+/** A refinement's card (ADR-0122), admitted exactly as Team's closed form, or a thrown `routine-response-invalid`. */
+export function parseRoutineRefinement(value) {
+  const keys = [
+    'proposal_id', 'expires_at', 'routine_id', 'base_revision', 'name', 'description', 'schedule', 'timezone',
+    'timezone_source', 'output', 'last_changed', 'steps', 'removed',
+  ];
+  return view(value, keys, (item) => {
+    const { steps, removed } = item;
+    return (
+      typeof item.proposal_id === 'string' && OPAQUE_ID_RE.test(item.proposal_id) &&
+      isInstant(item.expires_at) &&
+      typeof item.routine_id === 'string' && OPAQUE_ID_RE.test(item.routine_id) &&
+      whole(item.base_revision, 1, 2 ** 31 - 1) &&
+      isName(item.name) &&
+      isName(item.description, MAX_DESCRIPTION_CHARS) &&
+      isSchedule(item.schedule) &&
+      isZoned(item.timezone, item.timezone_source) &&
+      OUTPUT_MODES.includes(item.output) &&
+      typeof item.last_changed === 'boolean' &&
+      Array.isArray(steps) && steps.length > 0 && steps.length <= MAX_ROUTINE_STEPS &&
+      steps.every((step, index) => isRefinedStep(step, index + 1)) &&
+      Array.isArray(removed) && removed.every(isRemovedStep) &&
+      basePositions(steps, removed)
+    );
+  });
+}
+
 /** Why a recording turn made no card: one closed code; nothing was created. */
 export function parseRoutineRefusal(value) {
   return view(value, ['code'], (item) => typeof item.code === 'string' && ERROR_CODE_RE.test(item.code));

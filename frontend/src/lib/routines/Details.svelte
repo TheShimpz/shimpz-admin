@@ -1,7 +1,7 @@
 <script>
   import { Button, Notice } from '@shimpz/frontend';
   import { tick, untrack } from 'svelte';
-  import { beforeNavigate } from '$app/navigation';
+  import { beforeNavigate, goto } from '$app/navigation';
 
   import {
     historyHead,
@@ -26,7 +26,7 @@
     STATUS_WORDS,
     untilWords,
   } from '#lib/routines/words.js';
-  import { refreshTeamRoutines } from '#lib/routines/context.js';
+  import { refineTarget, refreshTeamRoutines } from '#lib/routines/context.js';
   import { call, commandsReady } from '#lib/session/socket.js';
   import RoutineDecision from '#lib/routines/Decision.svelte';
   import RoutineDeletion from '#lib/routines/Deletion.svelte';
@@ -51,7 +51,7 @@
   // `runs` and `incidents` are the Team's, which the panel reads for this Routine only. `onback`, when given, is its Back
   // control, which returns to the list the panel was opened from; Escape then goes back as well. Opened from anywhere
   // else, it has no Back control and Escape closes it.
-  let { teamId, teamName, routine, runs, incidents, copy, onclose, ondeleted, onback } = $props();
+  let { teamId, teamName, routine, runs, incidents, copy, onclose, ondeleted, onback, onrefine = () => {} } = $props();
 
   const id = $props.id();
   let dialog = $state();
@@ -323,6 +323,16 @@
     onclose();
   });
 
+  // Refine leaves the panel for this Team's chat, whose next message the person writes refines this Routine (ADR-0122);
+  // `onrefine` hears it, so whatever opened the panel, such as a phone's Team drawer, gives way to the chat too.
+  function refine() {
+    refineTarget.set({ teamId, routineId: routine.routine_id, name: routine.name });
+    dialog?.close();
+    onclose();
+    onrefine();
+    void goto(`/chat/?team=${encodeURIComponent(teamId)}`);
+  }
+
   function back(event) {
     event?.preventDefault();
     dialog?.close();
@@ -352,9 +362,11 @@
         </Button>
       {/each}
     </div>
-    <!-- Pause or Resume and Delete as one icon each at the menu's far end; Delete still asks first. -->
+    <!-- Refine, Pause or Resume, and Delete as one icon each at the menu's far end; Delete still asks first. -->
     {#if !routine.deleting}
       <div class="actions">
+        <Button class="act act--refine" variant="ghost" size="sm" iconOnly type="button" disabled={busy}
+          aria-label={copy.panel.refine} title={copy.panel.refine} onclick={refine}><RoutineIcon name="edit" /></Button>
         {#if routine.state === 'paused'}
           <Button class="act act--resume" variant="ghost" size="sm" iconOnly type="button" disabled={busy || !$commandsReady}
             aria-label={copy.list.resume} title={copy.list.resume}

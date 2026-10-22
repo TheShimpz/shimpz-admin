@@ -14,6 +14,7 @@
   import RoutineCreated from '#lib/routines/Created.svelte';
   import RoutineProposal from '#lib/routines/Proposal.svelte';
   import RoutineQuestion from '#lib/routines/Question.svelte';
+  import RoutineRefinement from '#lib/routines/Refinement.svelte';
   import { formatTaskUsage, formatTaskUsageDetail } from '#lib/chat/usage.js';
   import { fill } from '#lib/i18n/fill.js';
 
@@ -180,6 +181,9 @@
       {:else if assistantTurn.routineProposal}
         <RoutineProposal teamId={selectedTeamId} proposal={assistantTurn.routineProposal}
           copy={$t('routine')} disabled={answerDisabled} answered={cardAnswer} {onrewrite} {onleave} />
+      {:else if assistantTurn.routineRefinement}
+        <RoutineRefinement teamId={selectedTeamId} refinement={assistantTurn.routineRefinement}
+          copy={$t('routine')} answered={cardAnswer} {onleave} />
       {:else if assistantTurn.routineRefusal}
         <p class="routine-refusal" role="note">{refusalWords(assistantTurn.routineRefusal, $t('routine').proposal)}</p>
       {/if}

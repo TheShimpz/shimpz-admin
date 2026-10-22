@@ -71,9 +71,11 @@ function messageEntry(value, suffix, status) {
   const recorded = assistant && Object.hasOwn(value, 'receipt');
   // A reply whose turn ran the Browser keeps the files it downloaded, so a reload shows their cards again (ADR-0117).
   const browsed = assistant && Object.hasOwn(value, 'browser');
-  // A recording turn's Routine card, question, or refusal is kept with its reply, so a reload shows it again (ADR-0101).
+  // A recording turn's Routine card, refinement card, question, or refusal is kept with its reply, so a reload shows it
+  // again (ADR-0101, ADR-0122).
   const routineKeys = assistant
-    ? ['routine_proposal', 'routine_refusal', 'routine_question'].filter((key) => Object.hasOwn(value, key))
+    ? ['routine_proposal', 'routine_refinement', 'routine_refusal', 'routine_question']
+      .filter((key) => Object.hasOwn(value, key))
     : [];
   // A user message keeps references to the files it carried, never their content.
   const attached = !assistant && Object.hasOwn(value, 'files');

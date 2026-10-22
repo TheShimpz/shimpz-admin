@@ -360,6 +360,7 @@
                 incidents={teamRoutines(team.id).incidents}
                 failed={teamRoutines(team.id).failed}
                 onclose={() => closeRoutines(team.id)}
+                onrefine={onnavigate}
               />
             {/if}
           </li>

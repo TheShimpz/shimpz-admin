@@ -694,6 +694,66 @@ export function recordingReply(state, message, teamName) {
   return reply;
 }
 
+// A refinement of a listed Routine (ADR-0122): its one step kept and a records step added after it. The card names
+// the Routine the message's Refine entry named, else the Team's first Routine.
+export const REFINEMENT_DESCRIPTION = 'Lists your Cloudflare zones and then reads the DNS records of shimpz.com.';
+
+function refinementCard(proposalId, routine, now = Date.now()) {
+  return {
+    proposal_id: proposalId,
+    expires_at: instant(now + CARD_LIFETIME_MS),
+    routine_id: routine.routine_id,
+    base_revision: routine.plan.revision,
+    name: routine.name,
+    description: REFINEMENT_DESCRIPTION,
+    schedule: structuredClone(routine.schedule),
+    timezone: routine.timezone,
+    timezone_source: routine.timezone_source,
+    output: routine.output.mode,
+    last_changed: true,
+    steps: [
+      { position: 1, assistant: 'shimpz-cloudflare', action: 'list-zones', read_only: true, inputs: [], change: 'kept', base: 1 },
+      {
+        position: 2,
+        assistant: 'shimpz-cloudflare',
+        action: 'list-dns-records',
+        read_only: true,
+        inputs: [{ member: 'zone_id', origin: 'selector', value: null, step: 1, ...SELECTOR }],
+        change: 'added',
+        base: null,
+      },
+    ],
+    removed: [],
+  };
+}
+
+/** A refining turn's reply: the card of the refinement, which Apply confirms and Cancel revokes. */
+export function refiningReply(state, message, teamName, refine) {
+  state.sequence += 1;
+  state.refined = [...(state.refined ?? []), refine];
+  const routine = state.routines.find((item) => item.routine_id === refine) ?? state.routines[0];
+  const proposalId = `d${state.sequence.toString(16)}`.padStart(32, '0');
+  const card = refinementCard(proposalId, routine, Date.now());
+  // A refusal says why the Routine was not changed, in place of the card.
+  const answer = state.refusal ? { routine_refusal: { code: state.refusal } } : { routine_refinement: card };
+  if (!state.refusal) state.proposals = { ...state.proposals, [proposalId]: { refinement: card } };
+  const reply = {
+    type: 'done', team_id: 'marketing', team_name: teamName, clarification: null, usage: structuredClone(MODEL_USAGE),
+    reply: '', ...answer,
+  };
+  const turn = `${'e'.repeat(24)}${state.sequence.toString(16).padStart(8, '0')}`;
+  const at = instant(Date.now());
+  state.history = [
+    ...state.history,
+    { id: `${turn}:user`, created_at: at, kind: 'message', role: 'user', text: message },
+    {
+      id: `${turn}:reply`, created_at: at, kind: 'message', role: 'assistant', text: '', author: teamName,
+      usage: structuredClone(MODEL_USAGE), ...structuredClone(answer),
+    },
+  ];
+  return reply;
+}
+
 function remainingProposals(state, proposalId) {
   return Object.fromEntries(Object.entries(state.proposals ?? {}).filter(([key]) => key !== proposalId));
 }
@@ -702,9 +762,10 @@ function remainingProposals(state, proposalId) {
 // How the person answered a card, kept beside it in the transcript as Admin keeps it: the first answer only.
 function answered(state, proposalId, status) {
   const id = `${proposalId}:answer`;
-  const card = state.history.find((entry) => entry.routine_proposal?.proposal_id === proposalId);
+  const card = state.history.find((entry) => (entry.routine_proposal ?? entry.routine_refinement)?.proposal_id === proposalId);
   if (!card || state.history.some((entry) => entry.id === id)) return;
-  const answer = { id, kind: 'routine-answer', proposal_id: proposalId, status, name: card.routine_proposal.name };
+  const { name } = card.routine_proposal ?? card.routine_refinement;
+  const answer = { id, kind: 'routine-answer', proposal_id: proposalId, status, name };
   state.history = [...state.history, { ...answer, created_at: instant(Date.now()) }];
 }
 
@@ -720,8 +781,18 @@ function revokeProposal(state, { proposal_id: proposalId }) {
 function confirmProposal(state, { proposal_id: proposalId }) {
   const proposal = state.proposals?.[proposalId];
   const remaining = remainingProposals(state, proposalId);
-  if (!proposal || Date.parse(proposal.expires_at) <= Date.now()) return { status: 409, json: { code: 'routine-proposal-expired' } };
+  const expires = proposal?.refinement?.expires_at ?? proposal?.expires_at;
+  if (!proposal || Date.parse(expires) <= Date.now()) return { status: 409, json: { code: 'routine-proposal-expired' } };
   state.proposals = remaining;
+  if (proposal.refinement) {
+    // A refinement changes the Routine it names into its next revision (ADR-0122).
+    const { routine_id: routineId } = proposal.refinement;
+    state.routines = state.routines.map((item) => (item.routine_id === routineId
+      ? { ...item, plan: { ...item.plan, revision: item.plan.revision + 1 } }
+      : item));
+    answered(state, proposalId, 'changed');
+    return { status: 200, json: { team_id: 'marketing', proposal_id: proposalId, routine_id: routineId, status: 'changed' } };
+  }
   // The Routine runs exactly as its card showed; an interval's first run starts right after confirmation.
   const routine = routineView({
     routine_id: `9${proposalId.slice(-8)}`.padStart(32, '0'),

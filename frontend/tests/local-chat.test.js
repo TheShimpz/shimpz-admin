@@ -84,7 +84,17 @@ test('chat builds only the versioned WebSocket contract', () => {
     assistant_ids: ['shimpz-cloudflare'],
     locale: 'pt',
     timezone: browserTimezone(),
+    refine: null,
   });
+  // A message sent after a Routine's Refine entry names that Routine by id (ADR-0122).
+  const refined = createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, 'en', 'b'.repeat(32));
+  assert.equal(refined.refine, 'b'.repeat(32));
+  for (const refine of ['B'.repeat(32), 'b', 1]) {
+    assert.throws(
+      () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, 'en', refine),
+      /Invalid local chat request/,
+    );
+  }
   for (const locale of [undefined, null, 'pt-BR', 'EN', 'it', 1]) {
     assert.throws(
       () => createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, locale),
@@ -323,7 +333,7 @@ test('chat requires one exact bounded Assistant scope and keeps empty scope Brai
   assert.deepEqual(
     createChatFrame('team_1', { message: 'Hi', files: [], assistant_ids: [] }, 'en'),
     {
-      type: 'chat', message: 'Hi', files: [], assistant_ids: [], locale: 'en', timezone: browserTimezone(),
+      type: 'chat', message: 'Hi', files: [], assistant_ids: [], locale: 'en', timezone: browserTimezone(), refine: null,
     },
   );
 

@@ -22,7 +22,8 @@ import {
   waitForRead,
 } from './scenarioRoutes.js';
 import {
-  CARD_SETTINGS, CREATION, CREATION_USAGE, diagnostic, httpFailure, noticeRow, planPage, planSummary, ROUTINE_TEXT,
+  CARD_SETTINGS, CREATION, CREATION_USAGE, diagnostic, httpFailure, noticeRow, planPage, planSummary, REFINEMENT_DESCRIPTION,
+  ROUTINE_TEXT,
   routineChallenge,
   routineLifecycleStart, runStepsPage,
 } from './routineScenarios.js';
@@ -5533,6 +5534,78 @@ test.describe('Team Routines', () => {
     await expect.poll(() => proposalCalls(page)).toEqual(['revoke']);
     expect(scenario.call('routines.list', { team_id: 'marketing' }).json.routines).toEqual([]);
     await expect(page.locator('.routine-run')).toHaveCount(0);
+  });
+
+  // A Routine is refined from its panel (ADR-0122): Refine leaves for the Team's chat, whose next message names the
+  // Routine to Team; its reply carries the refinement's card, which Apply confirms and Cancel revokes.
+  test("a Routine's Refine entry names it beside the composer and only the next message carries it", { tag: '@mobile' }, async ({ page }) => {
+    const scenario = await routeScenario(page, 'routine-refine');
+    await page.goto('/chat/?team=marketing');
+    const panel = await openRoutinePanel(page);
+    await panel.getByRole('button', { name: messages.en.routine.panel.refine, exact: true }).click();
+    await expect(panel).toHaveCount(0);
+    const refining = page.getByRole('status').filter({ hasText: ROUTINE_VIEW.name });
+    await expect(refining).toHaveText(new RegExp(RegExp.escape(
+      messages.en.chatPage.refining.replace('{name}', ROUTINE_VIEW.name),
+    )));
+    await sendMessage(page, 'Also read the DNS records of shimpz.com');
+    await expect(refining).toHaveCount(0);
+    await expect(page.getByRole('region', { name: messages.en.routine.proposal.title })).toBeVisible();
+    await sendMessage(page, 'Thanks');
+    await expect.poll(() => scenario.chatFrames().filter((frame) => frame.type === 'chat').map((frame) => frame.refine)).toEqual([ROUTINE_VIEW.routine_id, null]);
+    // The person may stop refining before sending anything.
+    const again = await openRoutinePanel(page);
+    await again.getByRole('button', { name: messages.en.routine.panel.refine, exact: true }).click();
+    await page.getByRole('button', { name: messages.en.chatPage.stopRefining, exact: true }).click();
+    await expect(refining).toHaveCount(0);
+    await sendMessage(page, 'Hello');
+    await expect.poll(() => scenario.chatFrames().filter((frame) => frame.type === 'chat').map((frame) => frame.refine)).toEqual([ROUTINE_VIEW.routine_id, null, null]);
+  });
+
+  test('a refinement card lists its changes beside the complete plan, and Apply changes the Routine', async ({ page }) => {
+    const scenario = await routeScenario(page, 'routine-refine');
+    await page.goto('/chat/?team=marketing');
+    await sendMessage(page, 'In the Daily DNS zones Routine, also read the records');
+    const words = messages.en.routine.refinement;
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    await expect(card.getByRole('heading')).toHaveText(words.heading.replace('{name}', ROUTINE_VIEW.name));
+    await expect(card).toContainText(REFINEMENT_DESCRIPTION);
+    await expect(card.getByRole('list', { name: words.changes }).getByRole('listitem')).toHaveCount(1);
+    await expect(card.getByRole('list', { name: words.changes })).toContainText(words.change.added);
+    await card.getByText(words.plan).click();
+    await expect(card.getByRole('list', { name: words.plan }).getByRole('listitem')).toHaveCount(2);
+    await expect(card.getByRole('button')).toHaveCount(2);
+    expect(await accessibilityViolations(page)).toEqual([]);
+    await card.getByRole('button', { name: words.confirm, exact: true }).click();
+    await expect(card).toHaveCount(0);
+    await expect(page.getByRole('textbox', { name: 'Send', exact: true })).toBeFocused();
+    await expect.poll(() => readsOf(page, 'routines.proposal_confirm')).toHaveLength(1);
+    const [routine] = scenario.call('routines.list', { team_id: 'marketing' }).json.routines;
+    expect(routine.plan.revision).toBe(2);
+    // The answered card never returns; the chat says the Routine was changed, also after a reload.
+    await page.reload();
+    await expect(page.getByRole('region', { name: messages.en.routine.proposal.title })).toHaveCount(0);
+    await expect(page.getByText(messages.en.routine.proposal.answers.changed.replace('{name}', ROUTINE_VIEW.name))).toBeVisible();
+  });
+
+  test('a refinement card canceled with its Cancel button changes nothing', async ({ page }) => {
+    const scenario = await routeScenario(page, 'routine-refine');
+    await page.goto('/chat/?team=marketing');
+    await sendMessage(page, 'In the Daily DNS zones Routine, also read the records');
+    const card = page.getByRole('region', { name: messages.en.routine.proposal.title });
+    await card.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(card).toHaveCount(0);
+    await expect(page.getByRole('status').filter({ hasText: messages.en.routine.refinement.revoked })).toBeVisible();
+    await expect.poll(() => readsOf(page, 'routines.proposal_revoke')).toHaveLength(1);
+    const [routine] = scenario.call('routines.list', { team_id: 'marketing' }).json.routines;
+    expect(routine.plan.revision).toBe(1);
+  });
+
+  test('a refinement that cannot become a card says why the Routine was not changed', async ({ page }) => {
+    await routeScenario(page, 'routine-refine-refusal');
+    await page.goto('/chat/?team=marketing');
+    await sendMessage(page, 'In the Daily DNS zones Routine, drop the zones step');
+    await expect(page.getByRole('note')).toHaveText(messages.en.routine.proposal.refusals.refineDependency);
   });
 
   test('a recording that cannot become a Routine says no Routine was created and offers nothing to confirm', async ({ page }) => {

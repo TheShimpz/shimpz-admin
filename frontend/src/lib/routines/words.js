@@ -429,6 +429,12 @@ const REFUSAL_KEYS = {
   'routine-recording-conflict': 'unverified',
   'routine-recording-unverified': 'unverified',
   'routine-recording-ambiguous': 'ambiguous',
+  // A replacement or refinement of a Routine that changed meanwhile or is running now (ADR-0122).
+  'routine-revision-changed': 'changed',
+  'routine-busy': 'busy',
+  'routine-refine-invalid': 'refineInvalid',
+  'routine-refine-dependency': 'refineDependency',
+  'routine-refine-input': 'refineInput',
 };
 
 /** The localized sentence saying why no Routine was created from this turn. */

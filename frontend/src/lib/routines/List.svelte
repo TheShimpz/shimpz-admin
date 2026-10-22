@@ -15,8 +15,8 @@
   // the status is said in words only to assistive technology. Choosing one turns the modal into that Routine's panel,
   // whose Back (or Escape) returns to the list on the same Routine. `onclose` hears when the person leaves, or when the
   // Team has no Routine left to list. While the Team's newest listing `failed`, the list says so above what it last knew
-  // and offers to read it again.
-  let { teamName, teamId, routines, runs, incidents, failed, onclose } = $props();
+  // and offers to read it again. `onrefine` hears that a panel's Refine left for the Team's chat (ADR-0122).
+  let { teamName, teamId, routines, runs, incidents, failed, onclose, onrefine = () => {} } = $props();
 
   let copy = $derived($t('routine'));
   let dialog = $state();
@@ -84,6 +84,7 @@
     {copy}
     onback={() => (open = '')}
     onclose={() => onclose()}
+    {onrefine}
     ondeleted={() => (routines.length === 0 ? onclose() : (open = ''))}
   />
 {:else}

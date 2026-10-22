@@ -9,6 +9,7 @@ import {
   browserTimezone,
   parseRoutineProposal,
   parseRoutineQuestion,
+  parseRoutineRefinement,
   parseRoutineRefusal,
 } from '../routines/protocol.js';
 import { isLocale } from '../i18n/locales.js';
@@ -563,15 +564,20 @@ function requireLocale(locale) {
 
 /**
  * Build the ordinary chat frame accepted by shimpz.chat.v7, in the interface language the Brain writes in, with the
- * browser's timezone, which Team uses only as the default zone of a Routine the message creates.
+ * browser's timezone, which Team uses only as the default zone of a Routine the message creates, and the id of the
+ * Routine the person asked to refine from its panel, or null (ADR-0122).
  */
-export function createChatFrame(teamId, turn, locale) {
+export function createChatFrame(teamId, turn, locale, refine = null) {
   requireTeam(teamId);
+  if (refine !== null && (typeof refine !== 'string' || !OPAQUE_ID_RE.test(refine))) {
+    throw new LocalApiError('Invalid local chat request.');
+  }
   return {
     type: 'chat',
     ...canonicalChatTurn(turn),
     locale: requireLocale(locale),
     timezone: browserTimezone(),
+    refine,
   };
 }
 
@@ -844,10 +850,11 @@ function parseAssistantUninstallEvent(value, expectedTeamId, expectedTeamName) {
   throw invalidResponse();
 }
 
-// A recording turn's reply carries the card of the Routine it recorded, what Team asks the person first, or why it made
-// none (ADR-0101): at most one, and never beside a clarification.
+// A recording turn's reply carries the card of the Routine it recorded or refined, what Team asks the person first, or
+// why it made none (ADR-0101, ADR-0122): at most one, and never beside a clarification.
 const ROUTINE_REPLIES = {
   routine_proposal: parseRoutineProposal,
+  routine_refinement: parseRoutineRefinement,
   routine_refusal: parseRoutineRefusal,
   routine_question: parseRoutineQuestion,
 };

@@ -28,6 +28,7 @@ import {
   parseIncidentView,
   parseRoutineProposal,
   parseRoutineQuestion,
+  parseRoutineRefinement,
   parseRoutineRefusal,
   parseRoutineRunEntry,
   parseRoutineView,
@@ -314,6 +315,61 @@ test('a timezone and its source are each in their closed forms', () => {
   assert.equal(isZoned('UTC', 'none'), true);
   for (const [zone, source] of [['UTC', 'guess'], ['../etc', 'browser'], ['Asia/Tokyo', 'none']]) {
     assert.equal(isZoned(zone, source), false);
+  }
+});
+
+// A refinement of the card's Routine (ADR-0122): its first step kept, its second replaced, and one step added.
+const REFINEMENT = Object.freeze({
+  proposal_id: PROPOSAL.proposal_id,
+  expires_at: PROPOSAL.expires_at,
+  routine_id: 'b'.repeat(32),
+  base_revision: 2,
+  name: PROPOSAL.name,
+  description: PROPOSAL.description,
+  schedule: PROPOSAL.schedule,
+  timezone: PROPOSAL.timezone,
+  timezone_source: PROPOSAL.timezone_source,
+  output: PROPOSAL.output,
+  last_changed: true,
+  steps: [
+    { ...PROPOSAL.steps[0], change: 'kept', base: 1 },
+    { ...PROPOSAL.steps[1], change: 'replaced', base: 2 },
+    { ...PROPOSAL.steps[0], position: 3, change: 'added', base: null },
+  ],
+  removed: [
+    { position: 2, assistant: PROPOSAL.steps[1].assistant, action: PROPOSAL.steps[1].action, read_only: true, change: 'replaced' },
+    { position: 3, assistant: PROPOSAL.steps[0].assistant, action: PROPOSAL.steps[0].action, read_only: true, change: 'removed' },
+  ],
+});
+
+test('a refinement card is admitted only whole, every base step kept in order or listed as gone', () => {
+  assert.deepEqual(parseRoutineRefinement(structuredClone(REFINEMENT)), REFINEMENT);
+  const [kept, replaced, added] = REFINEMENT.steps;
+  for (const invalid of [
+    { ...REFINEMENT, extra: 1 },
+    { ...REFINEMENT, base_revision: 0 },
+    { ...REFINEMENT, last_changed: 'yes' },
+    { ...REFINEMENT, steps: [{ ...kept, base: null }, replaced, added] },
+    { ...REFINEMENT, steps: [kept, replaced, { ...added, base: 3 }] },
+    { ...REFINEMENT, steps: [kept, replaced, { ...added, change: 'moved' }] },
+    { ...REFINEMENT, steps: [kept, replaced, Object.fromEntries(Object.entries(added).filter(([key]) => key !== 'base'))] },
+    { ...REFINEMENT, removed: REFINEMENT.removed.slice(1) },
+    { ...REFINEMENT, removed: [REFINEMENT.removed[1], REFINEMENT.removed[0]] },
+    { ...REFINEMENT, removed: [{ ...REFINEMENT.removed[0], change: 'removed' }, REFINEMENT.removed[1]] },
+    { ...REFINEMENT, removed: [{ ...REFINEMENT.removed[0], position: 0 }, REFINEMENT.removed[1]] },
+    { ...REFINEMENT, removed: 'none' },
+  ]) {
+    assert.throws(() => parseRoutineRefinement(invalid), RoutineError, JSON.stringify(invalid).slice(0, 100));
+  }
+  const copy = routineMessages.en.proposal;
+  for (const [code, key] of [
+    ['routine-refine-invalid', 'refineInvalid'],
+    ['routine-refine-dependency', 'refineDependency'],
+    ['routine-refine-input', 'refineInput'],
+    ['routine-revision-changed', 'changed'],
+    ['routine-busy', 'busy'],
+  ]) {
+    assert.equal(refusalWords({ code }, copy), copy.refusals[key]);
   }
 });
 

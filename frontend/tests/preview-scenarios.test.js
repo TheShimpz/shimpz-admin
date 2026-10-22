@@ -110,6 +110,27 @@ test('a recording turn carries the Cloudflare card; Criar creates its Routine an
   assert.deepEqual(plain.call('routines.list', { team_id: 'marketing' }).json.routines, []);
 });
 
+test('a refining turn carries the refinement card of the Routine it names; Apply changes it and Cancel nothing', async () => {
+  const scenario = createScenario('routine-refine');
+  const [listed] = scenario.call('routines.list', { team_id: 'marketing' }).json.routines;
+  const frame = (refine) => ({ type: 'chat', message: 'Also read the records', files: [], assistant_ids: [], refine });
+  const [first] = scenario.chat.message(frame(listed.routine_id));
+  const card = parseChatEvent(first, 'marketing', 'Marketing').routine_refinement;
+  assert.equal(card.routine_id, listed.routine_id);
+  assert.deepEqual(card.steps.map((step) => step.change), ['kept', 'added']);
+  assert.equal((await confirmRoutineProposal(reader(scenario), 'marketing', card.proposal_id)).status, 'changed');
+  assert.equal(scenario.call('routines.list', { team_id: 'marketing' }).json.routines[0].plan.revision, 2);
+  const [second] = scenario.chat.message(frame(null));
+  const revoked = parseChatEvent(second, 'marketing', 'Marketing').routine_refinement;
+  assert.equal((await revokeRoutineProposal(reader(scenario), 'marketing', revoked.proposal_id)).status, 'revoked');
+  const answers = scenario.call('history.page', { team_id: 'marketing' }).json.entries
+    .filter((entry) => entry.kind === 'routine-answer').map((entry) => entry.status);
+  assert.deepEqual(answers, ['changed', 'revoked']);
+  const refused = createScenario('routine-refine-refusal');
+  const [reply] = refused.chat.message(frame(null));
+  assert.deepEqual(parseChatEvent(reply, 'marketing', 'Marketing').routine_refusal, { code: 'routine-refine-dependency' });
+});
+
 test("a refused recording says in the person's language that no Routine was created", () => {
   for (const locale of Object.keys(ROUTINE_TEXT)) {
     const scenario = createScenario('routine-refusal', locale);

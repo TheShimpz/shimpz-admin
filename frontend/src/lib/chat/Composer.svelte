@@ -8,6 +8,7 @@
   import ChatLimitMenu from '#lib/chat/limit/Menu.svelte';
   import SignInMenu from '#lib/chat/browser/SignInMenu.svelte';
   import { t } from '#lib/i18n/index.js';
+  import { fill } from '#lib/i18n/fill.js';
   import { modelContext } from '#lib/brain/context.js';
   import { CREDENTIAL_RECORD_INVALID } from '#lib/api.js';
 
@@ -42,6 +43,9 @@
     stopping,
     sendUnavailable,
     socketReady,
+    // The name of the Routine the next message refines (ADR-0122), or null, and how the person stops refining it.
+    refining = null,
+    onstoprefining,
     onsubmit,
     ondrag,
     ondragleave,
@@ -126,6 +130,12 @@
       />
       {#if files.dragging}
         <p class="composer-drop" aria-hidden="true">{attachCopy.drop}</p>
+      {/if}
+      {#if refining}
+        <p class="composer-refining" role="status">
+          <span>{fill(copy.refining, { name: refining })}</span>
+          <Button variant="ghost" size="compact" type="button" onclick={onstoprefining}>{copy.stopRefining}</Button>
+        </p>
       {/if}
       <TextAreaField
         id="chat-composer"
@@ -297,6 +307,19 @@
     padding: var(--gap-item) var(--gap-group) 0;
     color: var(--shimpz-color-text-muted);
     font: 400 0.75rem/1.4 var(--shimpz-font-mono);
+  }
+
+  /* The Routine the next message refines, said above the message with the control that stops refining it. */
+  .composer-refining {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--gap-item);
+    margin: 0;
+    padding: var(--gap-item) var(--gap-group) 0;
+    color: var(--shimpz-color-cyan);
+    font: 400 0.75rem/1.4 var(--shimpz-font-mono);
+    overflow-wrap: anywhere;
   }
 
   .composer-input :global(.composer-field) { gap: 0; }

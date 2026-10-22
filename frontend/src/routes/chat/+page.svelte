@@ -23,6 +23,7 @@
   import ChatDay from '#lib/chat/day/Header.svelte';
   import { calendarDay, exchangeDays, turnInstants, untilNextDay } from '#lib/chat/day/calendar.js';
   import { questionWords } from '#lib/routines/words.js';
+  import { refineTarget } from '#lib/routines/context.js';
   import { adminSocket, commandsReady, openChatChannel, outcomeUnknown } from '#lib/session/socket.js';
   import {
     localizedEventLabel,
@@ -190,6 +191,8 @@
   // While a reconciling sync is in flight Team may already have replaced the shown request, even after switching back.
   let humanUnanswerable = $derived(humanStale || Boolean(human.relocalizing));
   let selectedTeamId = $derived($teamContext.selectedTeamId);
+  // The Routine the person asked to refine from its panel, while this chat is that Routine's Team's (ADR-0122).
+  let refining = $derived($refineTarget?.teamId === $teamContext.selectedTeamId ? $refineTarget : null);
   let activeTeam = $derived(teamOf(selectedTeamId) ?? null);
   // The conversation stays mounted while this Team's Brain loads, needs a key, or failed; only a send needs it ready.
   let chatTeamId = $derived(
@@ -899,7 +902,7 @@
         resumedObjective = resumable.message;
         capabilityObjective = null;
       } else {
-        frame = createChatFrame(teamId, currentTurn, $locale);
+        frame = createChatFrame(teamId, currentTurn, $locale, refining?.routineId ?? null);
       }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : copy.loadFailed);
@@ -926,6 +929,8 @@
     }
     try {
       socket.send(frame);
+      // The refinement went with this message; the Team keeps it for the rest of the exchange.
+      if (frame.refine) refineTarget.set(null);
       if (files.length) {
         capabilityObjective = null;
       } else if (useCapabilityObjective && !continuation) {
@@ -1142,7 +1147,7 @@
               onanswer={(answer) => answerClarification(exchange, answer)}
               onrewrite={rewriteRoutine}
               onleave={focusComposer}
-              cardAnswer={answers.get(exchange.assistant?.routineProposal?.proposal_id) ?? ''}
+              cardAnswer={answers.get((exchange.assistant?.routineProposal ?? exchange.assistant?.routineRefinement)?.proposal_id) ?? ''}
               unfinishedShown={socketReady && !liveTurn.syncing && !liveTurn.busy}
               ondecide={uninstall.decide}
               thinking={index === exchanges.length - 1 && liveTurn.busy && !challengePending &&
@@ -1198,6 +1203,8 @@
             stopping={liveTurn.stopping}
             {sendUnavailable}
             {socketReady}
+            refining={refining?.name ?? null}
+            onstoprefining={() => refineTarget.set(null)}
             onsubmit={keyRequired ? saveProviderKey : send}
             ondrag={messageFiles.dragOver}
             ondragleave={messageFiles.dragLeave}
