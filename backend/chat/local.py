@@ -42,13 +42,15 @@ _TURN_RESPONSE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarificati
 DONE_FIELDS = frozenset({"team_id", "team_name", "reply", "clarification"})
 # A completed turn may also say what it consumed: its elapsed time and model tokens, for presentation only.
 USAGE_FIELD = "usage"
-# A recording turn ends with the card of the Routine it recorded, for the person to confirm, with what Team must ask
-# the person first, or with why it made none (ADR-0101); only one, and never beside a clarification.
+# A recording turn ends with the card of the Routine it recorded or refined, for the person to confirm, with what Team
+# must ask the person first, or with why it made none (ADR-0101, ADR-0122); only one, and never beside a clarification.
 PROPOSAL_FIELD = "routine_proposal"
+REFINEMENT_FIELD = "routine_refinement"
 REFUSAL_FIELD = "routine_refusal"
 QUESTION_FIELD = "routine_question"
 ROUTINE_FIELDS = {
     PROPOSAL_FIELD: routine_proposal_contract.canonical_proposal,
+    REFINEMENT_FIELD: routine_proposal_contract.canonical_refinement,
     REFUSAL_FIELD: routine_proposal_contract.canonical_refusal,
     QUESTION_FIELD: routine_proposal_contract.canonical_question,
 }
@@ -738,7 +740,10 @@ def _project_turn(
 
 
 def admit_routine_fields(body: dict[str, object], clarification: object) -> dict[str, object] | None:
-    """A reply's Routine card, question, or refusal in its closed form, at most one and never beside a clarification."""
+    """A reply's Routine card, question, or refusal in its closed form, at most one and never beside a clarification.
+
+    A card is a recording's or a refinement's (ADR-0122).
+    """
     present = [name for name in ROUTINE_FIELDS if name in body]
     if not present:
         return {}

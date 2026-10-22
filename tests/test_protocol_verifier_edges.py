@@ -299,6 +299,16 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
             with self.subTest(mutate=mutate), self.assertRaises(SystemExit):
                 _execute(HTTP / "verify.py", mutate)
 
+    def test_rejects_a_latest_run_outcome_that_is_no_run_step_status(self) -> None:
+        def mutate(root: Path) -> None:
+            module = root / "routine_context.py"
+            text = module.read_text(encoding="utf-8")
+            module.write_text(text.replace('"waiting", "not_run"', '"waiting", "skipped", "not_run"'), encoding="utf-8")
+            _rehash(root, "routine_context.py")
+
+        with self.assertRaisesRegex(SystemExit, "latest run's step outcomes"):
+            _execute(HTTP / "verify.py", mutate)
+
     def test_rejects_a_drifted_blank_browser_note_vector(self) -> None:
         def drifted(value: dict[str, object]) -> None:
             value["browser_blank_note"][0]["canonical"] = {"kind": "wait", "note": "   "}

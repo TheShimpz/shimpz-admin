@@ -584,7 +584,7 @@ async def _admit_chat_payload(
     if set(frame) != {"type", *payloads.CHAT_PAYLOAD_FIELDS}:
         await _send_event(
             websocket,
-            error_terminal(400, "chat frame requires message, files, assistant_ids, locale, and timezone"),
+            error_terminal(400, "chat frame requires message, files, assistant_ids, locale, timezone, and refine"),
         )
         return None
     try:

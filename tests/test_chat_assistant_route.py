@@ -28,7 +28,7 @@ EN = local.IntentRouteContext(locale="en")
 
 
 def payload(message: str) -> dict[str, object]:
-    return {"message": message, "files": [], "assistant_ids": [], "locale": "en", "timezone": None}
+    return {"message": message, "files": [], "assistant_ids": [], "locale": "en", "timezone": None, "refine": None}
 
 
 def response(

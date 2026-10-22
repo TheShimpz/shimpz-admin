@@ -101,6 +101,7 @@ class PrivateChatTransportTests(unittest.TestCase):
             "assistant_ids": ["shimpz-cloudflare"],
             "locale": "en",
             "timezone": None,
+            "refine": None,
             "conversation": [],
             "request": REQUEST,
         }
@@ -152,6 +153,7 @@ class PrivateChatTransportTests(unittest.TestCase):
                     "assistant_ids": assistant_ids,
                     "locale": "en",
                     "timezone": None,
+                    "refine": None,
                     "conversation": [{"role": "user", "text": "x" * 512, "truncated": False}],
                     "request": REQUEST,
                 },
@@ -195,6 +197,7 @@ class PrivateChatTransportTests(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "refine": None,
                         "conversation": [],
                         "request": REQUEST,
                     },

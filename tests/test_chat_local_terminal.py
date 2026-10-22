@@ -49,7 +49,7 @@ def _turn(reply: str, message: str, locale: str = "en", **extra: object) -> obje
     ):
         return local.turn(
             "team_1",
-            {"message": message, "files": [], "assistant_ids": [], "locale": locale, "timezone": None},
+            {"message": message, "files": [], "assistant_ids": [], "locale": locale, "timezone": None, "refine": None},
             (),
             REQUEST,
         )
@@ -111,6 +111,13 @@ class LocalChatTerminalProjectionTests(unittest.TestCase):
 
         relayed = turn(routine_proposal=card)
         self.assertEqual(relayed.websocket_event("team_1")["routine_proposal"], card)
+        vectors = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())
+        refinement = vectors["routine_refinement"]["valid"][0]
+        refined = turn(routine_refinement=refinement)
+        self.assertEqual(refined.websocket_event("team_1")["routine_refinement"], refinement)
+        self.assertEqual(
+            turn(routine_refinement=refinement, routine_proposal=card).body, {"code": "chat-response-invalid"}
+        )
         refused = turn(routine_refusal={"code": "routine-secret-literal"})
         self.assertEqual(refused.websocket_event("team_1")["routine_refusal"], {"code": "routine-secret-literal"})
         self.assertNotIn("routine_proposal", turn().body)

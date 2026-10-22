@@ -83,7 +83,7 @@ class ChatWebSocketRuntimeTests(ChatWebSocketCase):
                         self.assertEqual(await received(), {"type": "sync-empty", "team_id": "team_1"})
                         await websocket.send(
                             '{"type":"chat","team_id":"team_1","message":"hello","files":[],"assistant_ids":[],'
-                            '"locale":"en","timezone":"America/Sao_Paulo"}'
+                            '"locale":"en","timezone":"America/Sao_Paulo","refine":null}'
                         )
                         self.assertEqual(await received(), done_frame("hello from the Team"))
                         with self.assertRaises(TimeoutError):

@@ -96,6 +96,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "assistant_ids": ["already-enabled"],
                         "locale": "en",
                         "timezone": None,
+                        "refine": None,
                     },
                 )
                 turn.assert_called_once()
@@ -107,6 +108,7 @@ class ChatTaskResumeTests(ChatWebSocketCase):
                         "assistant_ids": ["already-enabled", "shimpz-cloudflare", "whatsapp"],
                         "locale": "en",
                         "timezone": None,
+                        "refine": None,
                     },
                 )
                 self.assertEqual(turn.call_args.args[2], window)

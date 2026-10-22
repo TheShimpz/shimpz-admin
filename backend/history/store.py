@@ -315,9 +315,13 @@ def append_routine_notice(notice: object) -> bool:
     return True
 
 
+# A recording's card or a refinement's card (ADR-0122), whichever the reply carried.
 _CARD_BY_PROPOSAL = (
-    "SELECT json_extract(payload, '$.routine_proposal.name') FROM transcript WHERE team_id = ? "
-    "AND substr(event_key, -6) = ':reply' AND json_extract(payload, '$.routine_proposal.proposal_id') = ?"
+    "SELECT coalesce(json_extract(payload, '$.routine_proposal.name'), "
+    "json_extract(payload, '$.routine_refinement.name')) "
+    "FROM transcript WHERE team_id = ? AND substr(event_key, -6) = ':reply' "
+    "AND coalesce(json_extract(payload, '$.routine_proposal.proposal_id'), "
+    "json_extract(payload, '$.routine_refinement.proposal_id')) = ?"
 )
 
 

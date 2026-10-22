@@ -35,7 +35,15 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
             ):
                 payload, identity = await socket._admit_chat_payload(websocket, connection, "team_1", frame)
             self.assertEqual(
-                payload, {"message": "Hello", "files": [], "assistant_ids": [], "locale": "en", "timezone": None}
+                payload,
+                {
+                    "message": "Hello",
+                    "files": [],
+                    "assistant_ids": [],
+                    "locale": "en",
+                    "timezone": None,
+                    "refine": None,
+                },
             )
             self.assertEqual(set(identity), {"issued_at", "nonce"})
             self.assertEqual(connection.admitted_history_id, "a" * 32)
@@ -104,6 +112,7 @@ class ChatHistoryDeliveryTests(ChatDeliveryCase):
                 "assistant_ids": [],
                 "locale": "en",
                 "timezone": None,
+                "refine": None,
             }
             listing = transport.TeamResponse(200, {"team_id": "team_1", "files": []})
             with (

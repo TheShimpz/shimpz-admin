@@ -225,6 +225,20 @@ class ChatHistoryReplyPayloadTests(ChatHistoryCase):
         with self.assertRaises(history.HistoryUnavailableError):
             history.page("marketing")
 
+    def test_a_refinement_card_reads_back_and_its_answer_is_kept_beside_it(self) -> None:
+        vectors = json.loads((ROOT / "backend/protocol/http/v1/vectors.json").read_text())
+        card = vectors["routine_refinement"]["valid"][0]
+        turn_id = self._admitted()
+        event = {**done_event(""), "routine_refinement": card}
+        self.assertTrue(history.append_reply("marketing", turn_id, event))
+        self.assertEqual(history.page("marketing")["entries"][-1]["routine_refinement"], card)
+        answer = {"team_id": "marketing", "proposal_id": card["proposal_id"], "routine_id": card["routine_id"]}
+        self.assertTrue(history.append_proposal_answer({**answer, "status": "changed"}))
+        kept = history.page("marketing")["entries"][-1]
+        self.assertEqual((kept["kind"], kept["status"], kept["name"]), ("routine-answer", "changed", card["name"]))
+        with self.assertRaises(ValueError):
+            history.append_reply("marketing", self._admitted(), {**event, "routine_refinement": {**card, "removed": 1}})
+
     def test_a_reply_keeps_its_closed_turn_usage_for_reload(self) -> None:
         usage = {
             "duration_ms": 6200,

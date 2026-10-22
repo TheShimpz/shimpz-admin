@@ -159,8 +159,22 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
             self.assertEqual(
                 admitted[:2],
                 (
-                    {"message": valid["message"], "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
-                    {"message": valid["objective"], "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
+                    {
+                        "message": valid["message"],
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "refine": None,
+                    },
+                    {
+                        "message": valid["objective"],
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "refine": None,
+                    },
                 ),
             )
             self.assertRegex(admitted[2]["nonce"], r"\A[0-9a-f]{32}\Z")
@@ -252,6 +266,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
                 "assistant_ids": [],
                 "locale": "en",
                 "timezone": None,
+                "refine": None,
             }
             prepare.assert_called_once_with("team_1", objective)
             self.assertEqual(websocket.send_json.await_args.args[0]["status"], 429)
@@ -284,6 +299,7 @@ class ChatSocketEdgeTests(ChatDeliveryCase):
                     "assistant_ids": [],
                     "locale": "en",
                     "timezone": None,
+                    "refine": None,
                 },
             )
 

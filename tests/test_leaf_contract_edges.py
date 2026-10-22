@@ -122,16 +122,24 @@ class AssetProjectionEdgeTests(unittest.TestCase):
 class PayloadEdgeTests(unittest.TestCase):
     def test_chat_payload_limits_and_duplicates_fail_closed(self) -> None:
         invalid = (
-            {"message": " ", "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
+            {"message": " ", "files": [], "assistant_ids": [], "locale": "en", "timezone": None, "refine": None},
             {
                 "message": "x" * (payloads.MAX_CHAT_MESSAGE_CHARS + 1),
                 "files": [],
                 "assistant_ids": [],
                 "locale": "en",
                 "timezone": None,
+                "refine": None,
             },
-            {"message": "ok", "files": "bad", "assistant_ids": [], "locale": "en", "timezone": None},
-            {"message": "ok", "files": ["a" * 32, "a" * 32], "assistant_ids": [], "locale": "en", "timezone": None},
+            {"message": "ok", "files": "bad", "assistant_ids": [], "locale": "en", "timezone": None, "refine": None},
+            {
+                "message": "ok",
+                "files": ["a" * 32, "a" * 32],
+                "assistant_ids": [],
+                "locale": "en",
+                "timezone": None,
+                "refine": None,
+            },
         )
         for value in invalid:
             with self.subTest(value=value), self.assertRaises(transport.TeamRequestError):
@@ -140,12 +148,14 @@ class PayloadEdgeTests(unittest.TestCase):
     def test_team_chat_body_admits_only_a_bounded_committed_window(self) -> None:
         entry = {"role": "user", "text": "Earlier", "truncated": False}
         request = {"issued_at": 1_700_000_000, "nonce": "0" * 32}
-        chat = {"files": [], "assistant_ids": [], "locale": "en", "timezone": "America/Sao_Paulo"}
+        chat = {"files": [], "assistant_ids": [], "locale": "en", "timezone": "America/Sao_Paulo", "refine": None}
         body = payloads.canonical_team_chat_body(
             {"message": " ok ", **chat, "conversation": [entry], "request": request}
         )
         self.assertEqual(body, {"message": "ok", **chat, "conversation": [entry], "request": request})
         valid = {"message": "ok", **chat, "conversation": [entry], "request": request}
+        # The Routine the person asked to refine from its panel reaches Team by id (ADR-0122).
+        self.assertEqual(payloads.canonical_team_chat_body({**valid, "refine": "a" * 32})["refine"], "a" * 32)
         invalid = (
             None,
             {"message": "ok", **chat},
@@ -158,6 +168,8 @@ class PayloadEdgeTests(unittest.TestCase):
             {**valid, "request": None},
             {**valid, "timezone": "../etc"},
             {**valid, "timezone": 3},
+            {**valid, "refine": "A" * 32},
+            {**valid, "refine": 3},
         )
         for value in invalid:
             with self.subTest(value=value), self.assertRaises(transport.TeamRequestError):
@@ -167,7 +179,14 @@ class PayloadEdgeTests(unittest.TestCase):
         for locale in (None, "EN", "it", 1):
             with self.subTest(locale=locale), self.assertRaises(transport.TeamRequestError):
                 payloads.canonical_chat_payload(
-                    {"message": "ok", "files": [], "assistant_ids": [], "locale": locale, "timezone": None}
+                    {
+                        "message": "ok",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": locale,
+                        "timezone": None,
+                        "refine": None,
+                    }
                 )
         with self.assertRaises(transport.TeamRequestError):
             payloads.canonical_chat_payload(

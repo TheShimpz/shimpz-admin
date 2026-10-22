@@ -38,7 +38,7 @@ async def _deliver_admitted(
     plan, operations, turn: Turn, message: str, *, connection: Connection | None = None
 ) -> None:
     """Deliver one admitted plan to a sentinel socket for an English turn that sent this message."""
-    payload = {"message": message, "files": [], "assistant_ids": [], "locale": "en", "timezone": None}
+    payload = {"message": message, "files": [], "assistant_ids": [], "locale": "en", "timezone": None, "refine": None}
     await plan_delivery._deliver_admitted(
         mock.sentinel.websocket,
         Connection() if connection is None else connection,
@@ -96,6 +96,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                 "assistant_ids": [],
                 "locale": "en",
                 "timezone": None,
+                "refine": None,
             }
             operations = _operations()
             connection = Connection()
@@ -154,6 +155,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                         "assistant_ids": [],
                         "locale": "en",
                         "timezone": None,
+                        "refine": None,
                     },
                     result,
                     operations,
@@ -246,7 +248,14 @@ class PlanDeliveryEdges(unittest.TestCase):
 
     def test_route_resume_continues_only_an_empty_capability_preparation(self) -> None:
         async def scenario() -> None:
-            fallback = {"message": "continue", "files": [], "assistant_ids": [], "locale": "en", "timezone": None}
+            fallback = {
+                "message": "continue",
+                "files": [],
+                "assistant_ids": [],
+                "locale": "en",
+                "timezone": None,
+                "refine": None,
+            }
             preparation = assistant_plan.Preparation()
             result = assistant_route.Result("ordinary-task", preparation=preparation)
             operations = _operations()
@@ -516,7 +525,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                 Connection(),
                 turn,
                 "team_1",
-                {"message": "send", "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
+                {"message": "send", "files": [], "assistant_ids": [], "locale": "en", "timezone": None, "refine": None},
                 preparation,
                 operations,
             )
@@ -529,7 +538,7 @@ class PlanDeliveryEdges(unittest.TestCase):
                 mock.ANY,
                 mock.ANY,
                 "team_1",
-                {"message": "send", "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
+                {"message": "send", "files": [], "assistant_ids": [], "locale": "en", "timezone": None, "refine": None},
             )
 
             error = await deliver(assistant_plan.Preparation(error_status=503))
@@ -552,7 +561,14 @@ class PlanDeliveryEdges(unittest.TestCase):
 
             operations = _operations()
             plan = _plan()
-            objective = {"message": "send", "files": [], "assistant_ids": [], "locale": "en", "timezone": None}
+            objective = {
+                "message": "send",
+                "files": [],
+                "assistant_ids": [],
+                "locale": "en",
+                "timezone": None,
+                "refine": None,
+            }
             with mock.patch.object(
                 plan_delivery,
                 "_deliver_admitted",

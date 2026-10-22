@@ -11,9 +11,10 @@ _FILE_ID_RE = team_contract.FILE_ID_RE
 MAX_CHAT_MESSAGE_CHARS = team_contract.MAX_CHAT_MESSAGE_CHARS
 MAX_CHAT_FILES = team_contract.MAX_CHAT_FILES
 MAX_CHAT_ASSISTANTS = team_contract.MAX_CHAT_ASSISTANTS
-# The browser's chat fields; `locale` is the interface language every reply is written in (ADR-0090), and `timezone`
-# the browser's IANA zone, the default zone of a Routine the message creates (ADR-0092), or null.
-CHAT_PAYLOAD_FIELDS = frozenset({"message", "files", "assistant_ids", "locale", "timezone"})
+# The browser's chat fields; `locale` is the interface language every reply is written in (ADR-0090), `timezone`
+# the browser's IANA zone, the default zone of a Routine the message creates (ADR-0092), or null, and `refine` the id
+# of the Routine the person asked to refine from its panel (ADR-0122), or null.
+CHAT_PAYLOAD_FIELDS = frozenset({"message", "files", "assistant_ids", "locale", "timezone", "refine"})
 
 
 def canonical_team_id(value: object) -> str:
@@ -78,11 +79,14 @@ def canonical_team_chat_body(payload: object) -> dict[str, object]:
 def canonical_chat_payload(payload: object) -> dict[str, object]:
     """Validate one explicit Assistant scope without treating an empty scope as all, in one interface language."""
     if not isinstance(payload, dict) or set(payload) != CHAT_PAYLOAD_FIELDS:
-        raise TeamRequestError("chat requires message, files, assistant_ids, locale, and timezone")
+        raise TeamRequestError("chat requires message, files, assistant_ids, locale, timezone, and refine")
     locale = canonical_locale(payload["locale"])
     timezone = payload["timezone"]
     if timezone is not None and routine_contract.canonical_timezone(timezone) is None:
         raise TeamRequestError("timezone must be one IANA zone name or null")
+    refine = payload["refine"]
+    if refine is not None and not routine_contract.matches(refine, routine_contract.ROUTINE_ID_RE):
+        raise TeamRequestError("refine must name one Routine or be null")
     message = payload["message"]
     if not isinstance(message, str) or not (message := message.strip()):
         raise TeamRequestError("message must be non-empty")
@@ -106,6 +110,7 @@ def canonical_chat_payload(payload: object) -> dict[str, object]:
         "assistant_ids": canonical_assistant_ids,
         "locale": locale,
         "timezone": timezone,
+        "refine": refine,
     }
 
 

@@ -30,6 +30,7 @@ def chat_frame(
         "assistant_ids": [] if assistant_ids is None else assistant_ids,
         "locale": locale,
         "timezone": None,
+        "refine": None,
     }
 
 

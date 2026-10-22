@@ -173,6 +173,7 @@ class ChatWebSocketTests(ChatWebSocketCase):
                         "assistant_ids": ["shimpz-cloudflare"],
                         "locale": "en",
                         "timezone": None,
+                        "refine": None,
                     },
                     (),
                     mock.ANY,

@@ -552,6 +552,7 @@ class HumanChallengeProjectionTests(unittest.TestCase):
             "assistant_ids": ["shimpz-cloudflare"],
             "locale": "pt",
             "timezone": None,
+            "refine": None,
         }
         for locale, expected in (("pt", 428), ("en", 502)):
             controller = transport.TeamResponse(428, _response(request, **localization(rendered_for(request), locale)))

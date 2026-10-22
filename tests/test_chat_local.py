@@ -50,7 +50,7 @@ def _hi_turn() -> object:
     """Send the plain "Hi" turn with no files or Assistant scope through the private local hand-off."""
     return local.turn(
         "team_1",
-        {"message": "Hi", "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
+        {"message": "Hi", "files": [], "assistant_ids": [], "locale": "en", "timezone": None, "refine": None},
         (),
         REQUEST,
     )
@@ -165,6 +165,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                     "assistant_ids": ["shimpz-cloudflare"],
                     "locale": "en",
                     "timezone": None,
+                    "refine": None,
                 },
                 (),
                 REQUEST,
@@ -221,7 +222,14 @@ class LocalChatOrchestrationTests(unittest.TestCase):
         ):
             response = local.turn(
                 "team_1",
-                {"message": "Hello", "files": [], "assistant_ids": [], "locale": "en", "timezone": None},
+                {
+                    "message": "Hello",
+                    "files": [],
+                    "assistant_ids": [],
+                    "locale": "en",
+                    "timezone": None,
+                    "refine": None,
+                },
                 (),
                 REQUEST,
                 events.append,
@@ -438,15 +446,30 @@ class LocalChatOrchestrationTests(unittest.TestCase):
             {"message": "Hi", "files": [], "assistant_ids": [], "assistant": "hello-pulse"},
             {"message": "Hi", "files": [], "assistant_ids": [], "provider": "openai"},
             {"message": "Hi", "files": [], "assistant_ids": [], "api_key": "must-not-cross"},
-            {"message": "Hi", "files": ["../escape"], "assistant_ids": [], "locale": "en", "timezone": None},
+            {
+                "message": "Hi",
+                "files": ["../escape"],
+                "assistant_ids": [],
+                "locale": "en",
+                "timezone": None,
+                "refine": None,
+            },
             {"message": "Hi", "files": []},
-            {"message": "Hi", "files": [], "assistant_ids": ["Shimpz-Assistant"], "locale": "en", "timezone": None},
+            {
+                "message": "Hi",
+                "files": [],
+                "assistant_ids": ["Shimpz-Assistant"],
+                "locale": "en",
+                "timezone": None,
+                "refine": None,
+            },
             {
                 "message": "Hi",
                 "files": [],
                 "assistant_ids": ["shimpz-cloudflare", "shimpz-cloudflare"],
                 "locale": "en",
                 "timezone": None,
+                "refine": None,
             },
             {
                 "message": "Hi",
@@ -454,6 +477,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "assistant_ids": [f"assistant-{index}" for index in range(17)],
                 "locale": "en",
                 "timezone": None,
+                "refine": None,
             },
         )
         with mock.patch.object(team, "get_inference") as inference:
@@ -490,6 +514,7 @@ class LocalChatOrchestrationTests(unittest.TestCase):
                 "assistant_ids": [],
                 "locale": "en",
                 "timezone": None,
+                "refine": None,
                 "conversation": [],
                 "request": REQUEST,
             },

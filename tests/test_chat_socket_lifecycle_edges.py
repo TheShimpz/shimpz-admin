@@ -204,6 +204,7 @@ class ChatSocketLifecycleEdgeTests(ChatDeliveryCase):
                     "assistant_ids": [],
                     "locale": "pt",
                     "timezone": None,
+                    "refine": None,
                     "unexpected": "oi",
                 },
             )

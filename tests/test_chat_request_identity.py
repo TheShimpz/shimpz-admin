@@ -18,6 +18,7 @@ PAYLOAD = {
     "assistant_ids": [],
     "locale": "pt",
     "timezone": None,
+    "refine": None,
 }
 
 

@@ -35,6 +35,7 @@ def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], di
             "assistant_ids": frame["assistant_ids"],
             "locale": frame["locale"],
             "timezone": frame["timezone"],
+            "refine": None,
         }
     )
     objective = payloads.canonical_chat_payload(
@@ -44,6 +45,7 @@ def _canonical_payloads(frame: dict[str, object]) -> tuple[dict[str, object], di
             "assistant_ids": frame["objective_assistant_ids"],
             "locale": frame["locale"],
             "timezone": frame["timezone"],
+            "refine": None,
         }
     )
     if (
