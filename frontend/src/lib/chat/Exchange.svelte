@@ -11,10 +11,10 @@
   import { locale, t } from '#lib/i18n/index.js';
   import Markdown from '#lib/chat/Markdown.svelte';
   import { refusalWords } from '#lib/routines/words.js';
-  import RoutineCreated from '#lib/routines/Created.svelte';
-  import RoutineProposal from '#lib/routines/Proposal.svelte';
+  import RoutineCreated from '#lib/routines/card/Created.svelte';
+  import RoutineProposal from '#lib/routines/card/Proposal.svelte';
   import RoutineQuestion from '#lib/routines/Question.svelte';
-  import RoutineRefinement from '#lib/routines/Refinement.svelte';
+  import RoutineRefinement from '#lib/routines/card/Refinement.svelte';
   import { formatTaskUsage, formatTaskUsageDetail } from '#lib/chat/usage.js';
   import { fill } from '#lib/i18n/fill.js';
 
