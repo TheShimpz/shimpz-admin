@@ -616,15 +616,15 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
                     HTTP / "verify.py", lambda root, mutation=mutate: _rewrite_json(root, "vectors.json", mutation)
                 )
 
-        def exclusive_notes(root: Path) -> None:
+        def exclusive_memory(root: Path) -> None:
             module = root / "browser.py"
             source = module.read_text(encoding="utf-8")
-            bound = "for note in notes) > MAX_NOTES_BYTES"
+            bound = "len(str(value).encode()) > MAX_MEMORY_BYTES"
             module.write_text(source.replace(bound, bound.replace(">", ">=")), encoding="utf-8")
             _rehash(root, "browser.py")
 
         with self.assertRaises(SystemExit):
-            _execute(HTTP / "verify.py", exclusive_notes)
+            _execute(HTTP / "verify.py", exclusive_memory)
 
         def unmeasured_history(root: Path) -> None:
             module = root / "browser.py"
