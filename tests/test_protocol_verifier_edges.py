@@ -626,6 +626,15 @@ class TeamHttpVerifierEdgeTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             _execute(HTTP / "verify.py", exclusive_notes)
 
+        def unmeasured_history(root: Path) -> None:
+            module = root / "browser.py"
+            source = module.read_text(encoding="utf-8")
+            module.write_text(source.replace("        + history_bytes(thread)\n", ""), encoding="utf-8")
+            _rehash(root, "browser.py")
+
+        with self.assertRaises(SystemExit):
+            _execute(HTTP / "verify.py", unmeasured_history)
+
 
 if __name__ == "__main__":
     unittest.main()
