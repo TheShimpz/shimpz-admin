@@ -579,7 +579,7 @@ export default {
         generic: 'Es wurde keine Routine erstellt.',
         refineInvalid: 'Die Routine wurde nicht geändert: Die Änderung nannte einen Schritt oder eine Aktion, die es nicht gibt. Bitte erneut anfragen.',
         refineDependency: 'Die Routine wurde nicht geändert: Ein anderer Schritt liest den Schritt, der entfernt oder ersetzt würde. Bitte erneut anfragen, um die Routine neu aufzuzeichnen.',
-        refineInput: 'Die Routine wurde nicht geändert: Ein neuer Schritt verwendet einen Wert aus einem anderen Ergebnis, was eine Änderung noch nicht hinzufügen kann. Bitte erneut anfragen und den Wert nennen.',
+        refineInput: 'Die Routine wurde nicht geändert: Ein neuer Schritt verwendet einen Wert unklarer Herkunft. Bitte erneut anfragen und ihn nennen, etwa den Namen der Zone.',
         changed: 'Es wurde nichts geändert: Die Routine hat sich inzwischen geändert. Bitte erneut anfragen.',
         busy: 'Es wurde nichts geändert: Die Routine läuft gerade. Bitte erneut anfragen, sobald der Lauf endet.',
       },

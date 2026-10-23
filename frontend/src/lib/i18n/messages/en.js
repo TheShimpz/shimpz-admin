@@ -588,7 +588,7 @@ export default {
         generic: 'No Routine was created.',
         refineInvalid: 'The Routine was not changed: the change named a step or an Action that is not there. Ask again.',
         refineDependency: 'The Routine was not changed: another step reads the step it would remove or replace. Ask again to record the Routine anew.',
-        refineInput: 'The Routine was not changed: a new step uses a value from another result, which a change cannot add yet. Ask again naming the value.',
+        refineInput: 'The Routine was not changed: a new step uses a value whose source is unclear. Ask again naming it, such as the zone’s name.',
         changed: 'No change was made: the Routine changed meanwhile. Ask again.',
         busy: 'No change was made: the Routine is running now. Ask again once its run ends.',
       },

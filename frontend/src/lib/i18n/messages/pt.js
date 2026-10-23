@@ -579,7 +579,7 @@ export default {
         generic: 'Nenhuma rotina foi criada.',
         refineInvalid: 'A rotina não foi alterada: a mudança citou uma etapa ou uma ação que não existe. Peça novamente.',
         refineDependency: 'A rotina não foi alterada: outra etapa lê a etapa que seria removida ou substituída. Peça novamente para gravar a rotina de novo.',
-        refineInput: 'A rotina não foi alterada: uma nova etapa usa um valor de outro resultado, o que uma mudança ainda não consegue adicionar. Peça novamente citando o valor.',
+        refineInput: 'A rotina não foi alterada: uma nova etapa usa um valor de origem incerta. Peça novamente citando-o, como o nome da zona.',
         changed: 'Nada foi alterado: a rotina mudou nesse meio-tempo. Peça novamente.',
         busy: 'Nada foi alterado: a rotina está em execução agora. Peça novamente quando a execução terminar.',
       },

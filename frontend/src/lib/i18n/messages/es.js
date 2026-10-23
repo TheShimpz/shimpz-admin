@@ -579,7 +579,7 @@ export default {
         generic: 'No se creó ninguna rutina.',
         refineInvalid: 'La rutina no se modificó: el cambio nombró un paso o una acción que no existe. Pídelo de nuevo.',
         refineDependency: 'La rutina no se modificó: otro paso lee el paso que se quitaría o reemplazaría. Pídelo de nuevo para grabar la rutina otra vez.',
-        refineInput: 'La rutina no se modificó: un paso nuevo usa un valor de otro resultado, algo que un cambio aún no puede añadir. Pídelo de nuevo indicando el valor.',
+        refineInput: 'La rutina no se modificó: un paso nuevo usa un valor de origen incierto. Pídelo de nuevo indicándolo, como el nombre de la zona.',
         changed: 'No se hizo ningún cambio: la rutina cambió mientras tanto. Pídelo de nuevo.',
         busy: 'No se hizo ningún cambio: la rutina se está ejecutando ahora. Pídelo de nuevo cuando termine la ejecución.',
       },

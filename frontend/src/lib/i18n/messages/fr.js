@@ -579,7 +579,7 @@ export default {
         generic: 'Aucune routine n’a été créée.',
         refineInvalid: 'La routine n’a pas été modifiée : la modification citait une étape ou une action qui n’existe pas. Redemandez.',
         refineDependency: 'La routine n’a pas été modifiée : une autre étape lit l’étape qui serait retirée ou remplacée. Redemandez pour enregistrer la routine à nouveau.',
-        refineInput: 'La routine n’a pas été modifiée : une nouvelle étape utilise une valeur d’un autre résultat, ce qu’une modification ne peut pas encore ajouter. Redemandez en citant la valeur.',
+        refineInput: 'La routine n’a pas été modifiée : une nouvelle étape utilise une valeur d’origine incertaine. Redemandez en la citant, comme le nom de la zone.',
         changed: 'Rien n’a été modifié : la routine a changé entre-temps. Redemandez.',
         busy: 'Rien n’a été modifié : la routine s’exécute en ce moment. Redemandez une fois l’exécution terminée.',
       },
