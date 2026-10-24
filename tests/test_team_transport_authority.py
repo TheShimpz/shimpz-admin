@@ -54,6 +54,7 @@ class _Connection:
 
     def __init__(self, _host: str, _port: int, *, timeout: int) -> None:
         self.timeout = timeout
+        self.sock = mock.Mock()
 
     def request(self, method: str, path: str, *, body: bytes | None, headers: dict[str, str]) -> None:
         self.__class__.requests.append(

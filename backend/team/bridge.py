@@ -26,7 +26,7 @@ log = logging.getLogger("shimpz-admin")
 MAX_CHAT_JSON_BODY_BYTES = 128 * 1024
 # A chat turn's stream is silent while Team waits on one Brain request, which Team allows 300 s
 # (teams/inference/client.py RESPONSE_TIMEOUT_SECONDS): Admin waits that long for its next record, and a little more,
-# before it calls the turn lost.
+# before it calls the turn lost. During a Browser phase it waits as long as that task may run, and this much more.
 CHAT_STREAM_TIMEOUT_SECONDS = 330
 MAX_FILE_UPLOAD_BYTES = team_contract.MAX_FILE_UPLOAD_BYTES
 CAPABILITY_PLAN_TIMEOUT_SECONDS = 65

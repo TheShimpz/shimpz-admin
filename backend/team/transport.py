@@ -16,11 +16,13 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from http import HTTPStatus
 from pathlib import Path
+from typing import cast
 from urllib.parse import quote, urlparse
 
 import models
 import supervisor as local_supervisor
 
+from protocol.http.v1 import browser as browser_contract
 from protocol.http.v1 import content as content_contract
 from protocol.http.v1 import preview as preview_contract
 from protocol.http.v1 import progress as progress_contract
@@ -381,7 +383,8 @@ class _Reading[Result: (TeamResponse, TeamAssetResponse)]:
     """How one kind of Team answer is accepted, decoded, named in logs, and answered when Team is unavailable."""
 
     accept: str
-    decode: Callable[[http.client.HTTPResponse], Result]
+    # Reads the answer; the second argument sets how long the exchange's socket may stay silent from now on.
+    decode: Callable[[http.client.HTTPResponse, Callable[[float], None]], Result]
     unavailable: Callable[[], Result]
     subject: str
     decode_errors: tuple[type[Exception], ...] = ()
@@ -460,6 +463,8 @@ def _exchange_once[Result: (TeamResponse, TeamAssetResponse)](
         # socket would require serialization and could retain an authenticated connection across
         # bearer rotation. The local bridge avoids a TLS handshake, so isolation wins over pooling.
         connection.request(method, path, body=entity.body, headers=headers)
+        # Team answers with Connection: close, after which the connection forgets its socket: the reader keeps it.
+        connected = cast(socket.socket, connection.sock)
         response = connection.getresponse()
         if not 200 <= response.status <= 599:
             raise OSError("invalid team status")
@@ -467,7 +472,7 @@ def _exchange_once[Result: (TeamResponse, TeamAssetResponse)](
             _bearer_refused(response)
             log.info("%s %s %s -> Team refused the bearer", reading.subject, method, path)
             return None
-        result = reading.decode(response)
+        result = reading.decode(response, connected.settimeout)
     except (OSError, UnicodeError, http.client.HTTPException, *reading.decode_errors):
         # Exception text, bearer and bodies may contain internals. Never copy them into logs or JSON.
         log.warning("%s failed (%s)", reading.subject, method)
@@ -498,7 +503,7 @@ def _request(
         bindings=bindings,
         reading=_Reading(
             "application/json",
-            lambda response: TeamResponse(response.status, _decode_response(response, max_response_bytes)),
+            lambda response, _pace: TeamResponse(response.status, _decode_response(response, max_response_bytes)),
             _team_unavailable,
             "team request",
         ),
@@ -574,13 +579,26 @@ def _asset_unavailable() -> TeamAssetResponse:
     return TeamAssetResponse(HTTPStatus.BAD_GATEWAY, None, {"detail": "team unavailable"})
 
 
-_ASSET_READING = _Reading("image/png", _decode_asset, _asset_unavailable, "Team asset request")
-_PREVIEW_READING = _Reading("image/jpeg, image/png", _decode_preview, _asset_unavailable, "Team file preview request")
+_ASSET_READING = _Reading(
+    "image/png", lambda response, _pace: _decode_asset(response), _asset_unavailable, "Team asset request"
+)
+_PREVIEW_READING = _Reading(
+    "image/jpeg, image/png",
+    lambda response, _pace: _decode_preview(response),
+    _asset_unavailable,
+    "Team file preview request",
+)
 _PAGE_PREVIEW_READING = _Reading(
-    "image/jpeg, image/png", _decode_page_preview, _asset_unavailable, "Team file page preview request"
+    "image/jpeg, image/png",
+    lambda response, _pace: _decode_page_preview(response),
+    _asset_unavailable,
+    "Team file page preview request",
 )
 _CONTENT_READING = _Reading(
-    "application/octet-stream", _decode_content, _asset_unavailable, "Team file content request"
+    "application/octet-stream",
+    lambda response, _pace: _decode_content(response),
+    _asset_unavailable,
+    "Team file content request",
 )
 
 
@@ -599,7 +617,14 @@ def _request_asset(path: str, reading: _Reading[TeamAssetResponse] = _ASSET_READ
 def _decode_stream(
     response: http.client.HTTPResponse,
     progress: ProgressSink,
+    pace: Callable[[float], None],
+    timeout: int,
 ) -> TeamResponse:
+    """A chat turn's progress, then its terminal answer; the stream may stay silent `timeout` seconds between records.
+
+    A Browser phase may run up to Team's Browser task deadline with nothing to say: from its validated start until its
+    end, the stream may stay silent that long and `timeout` more.
+    """
     content_type = (response.getheader("Content-Type") or "").partition(";")[0].strip().lower()
     if (
         response.status != HTTPStatus.OK
@@ -620,6 +645,7 @@ def _decode_stream(
             raise OSError("Team chat stream exceeded its limit")
         record = progress_contract.decode_line(raw)
         if record["type"] == "terminal":
+            pace(timeout)
             if response.read(1):
                 raise OSError("Team chat stream continued after terminal")
             return TeamResponse(record["status"], record["body"])
@@ -627,6 +653,8 @@ def _decode_stream(
         if event_count > progress_contract.MAX_EVENTS or record["seq"] != sequence + 1:
             raise OSError("invalid Team chat progress order")
         sequence = record["seq"]
+        if record["phase"] == "browser":
+            pace(timeout + browser_contract.MAX_TASK_SECONDS if record["state"] == "started" else timeout)
         event = {key: value for key, value in record.items() if key != "type"}
         with contextlib.suppress(Exception):
             progress(event)
@@ -649,7 +677,7 @@ def _stream_request(
         bindings=bindings,
         reading=_Reading(
             "application/x-ndjson",
-            lambda response: _decode_stream(response, progress),
+            lambda response, pace: _decode_stream(response, progress, pace, timeout),
             _team_unavailable,
             "team chat stream",
             (progress_contract.ProgressContractError,),

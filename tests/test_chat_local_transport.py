@@ -5,6 +5,7 @@ import copy
 import json
 import sys
 import tempfile
+import time
 import unittest
 from http.server import BaseHTTPRequestHandler
 from pathlib import Path
@@ -29,6 +30,12 @@ CHALLENGE_ID = "b" * 32
 REQUEST = {"issued_at": 1_700_000_000, "nonce": "0" * 32}
 
 
+# The stream's bound in these tests, and a silence longer than it: after which record each silent mode goes quiet.
+STREAM_SECONDS = 1
+SILENCE_SECONDS = 1.6
+SILENT = {"silent-browser": 0, "silent-after-browser": 1, "silent-context": 0}
+
+
 class _ControllerHandler(BaseHTTPRequestHandler):
     request: ClassVar[dict[str, object]] = {}
     response_mode: ClassVar[str] = "valid"
@@ -47,6 +54,7 @@ class _ControllerHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/x-ndjson")
         self.send_header("Transfer-Encoding", "chunked")
+        self.send_header("Connection", "close")
         self.end_headers()
         records = [
             {"type": "progress", "seq": 1, "phase": "team-context", "state": "started"},
@@ -73,10 +81,17 @@ class _ControllerHandler(BaseHTTPRequestHandler):
             records[0]["seq"] = 2
         elif self.response_mode == "missing-terminal":
             records.pop()
+        elif self.response_mode in SILENT:
+            # A Browser phase, then a silence longer than the stream's own bound: during the phase, or after it.
+            phase = "browser" if self.response_mode != "silent-context" else "team-context"
+            records[0]["phase"] = records[1]["phase"] = phase
         with contextlib.suppress(BrokenPipeError, ConnectionResetError):
-            for record in records:
+            for index, record in enumerate(records):
                 encoded = progress_contract.encode_record(record)
                 self.wfile.write(f"{len(encoded):X}\r\n".encode("ascii") + encoded + b"\r\n")
+                self.wfile.flush()
+                if SILENT.get(self.response_mode) == index:
+                    time.sleep(SILENCE_SECONDS)
             self.wfile.write(b"0\r\n\r\n")
             self.wfile.flush()
 
@@ -183,6 +198,30 @@ class PrivateChatTransportTests(unittest.TestCase):
         self.assertEqual(request["headers"]["x-shimpz-model-api-key"], model_key)
         self.assertEqual(json.loads(request["body"]), {"challenge_id": CHALLENGE_ID})
         self.assertNotIn(model_key.encode(), request["body"])
+
+    def test_a_browser_phase_may_stay_silent_until_its_task_deadline_and_no_other_phase_may(self) -> None:
+        # Team answers with Connection: close and a chunked stream, as in production.
+        self.enterContext(mock.patch.object(team, "CHAT_STREAM_TIMEOUT_SECONDS", STREAM_SECONDS))
+        for mode, status in (("silent-browser", 200), ("silent-after-browser", 502), ("silent-context", 502)):
+            with self.subTest(mode=mode):
+                _ControllerHandler.response_mode = mode
+                response = team.chat(
+                    "team_1",
+                    {
+                        "message": "Hello",
+                        "files": [],
+                        "assistant_ids": [],
+                        "locale": "en",
+                        "timezone": None,
+                        "refine": None,
+                        "conversation": [],
+                        "request": REQUEST,
+                    },
+                    provider="openai",
+                    api_key="test-api-key-for-models",
+                    progress=lambda _event: None,
+                )
+                self.assertEqual(response.status, status)
 
     def test_malformed_or_truncated_stream_fails_closed(self) -> None:
         for mode in ("sequence-gap", "missing-terminal"):

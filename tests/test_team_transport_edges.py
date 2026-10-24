@@ -50,7 +50,7 @@ class _Connection:
     close_error = False
 
     def __init__(self, *_args, **_kwargs) -> None:
-        pass
+        self.sock = mock.Mock()
 
     def request(self, *_args, **_kwargs) -> None:
         pass
@@ -235,7 +235,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
 
     def test_stream_decoder_rejects_headers_size_and_terminal_residue(self) -> None:
         with self.assertRaisesRegex(OSError, "invalid Team chat stream"):
-            transport._decode_stream(_Response(), mock.Mock())
+            transport._decode_stream(_Response(), mock.Mock(), mock.Mock(), 330)
 
         oversized = progress_contract.encode_record(
             {"type": "progress", "seq": 1, "phase": "model", "state": "started"}
@@ -248,7 +248,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
             mock.patch.object(progress_contract, "MAX_STREAM_BYTES", len(oversized) - 1),
             self.assertRaisesRegex(OSError, "exceeded its limit"),
         ):
-            transport._decode_stream(response, mock.Mock())
+            transport._decode_stream(response, mock.Mock(), mock.Mock(), 330)
 
         terminal = progress_contract.encode_record({"type": "terminal", "status": 200, "body": {}})
         response = _Response(
@@ -257,7 +257,7 @@ class TeamTransportEdgeTests(unittest.TestCase):
             lines=[terminal],
         )
         with self.assertRaisesRegex(OSError, "continued after terminal"):
-            transport._decode_stream(response, mock.Mock())
+            transport._decode_stream(response, mock.Mock(), mock.Mock(), 330)
 
     def test_every_answer_kind_keeps_its_answer_and_reports_a_failed_close(self) -> None:
         terminal = progress_contract.encode_record({"type": "terminal", "status": 200, "body": {"ok": True}})
