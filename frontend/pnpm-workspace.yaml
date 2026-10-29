@@ -12,3 +12,11 @@ pmOnFail: error
 overrides:
   cookie: 2.0.1
   devalue: 5.9.4
+
+# GHSA-gcqx-w48m-w2h4 (low): deepmerge mergeObject() lets a merged object's prototype be poisoned. No fixed release
+# exists (4.3.1 is the latest), and only the build plugin @sveltejs/vite-plugin-svelte merges its own configuration
+# with it; nothing it merges comes from a request, and none of it ships. Remove this entry once a fixed deepmerge or a
+# plugin without it is released (reviewed 2026-10-29).
+auditConfig:
+  ignoreGhsas:
+    - GHSA-gcqx-w48m-w2h4
