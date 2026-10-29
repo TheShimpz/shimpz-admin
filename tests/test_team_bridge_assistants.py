@@ -798,10 +798,9 @@ async def _socket_results(admin_app, token: str, calls: tuple[tuple[str, dict], 
 
 
 def _probe_session():
+    import app as admin_app
     import state
     from signin import auth
-
-    import app as admin_app
 
     secret = configure_supervisor(state, "test-team-passphrase")
     token = auth.issue_session(secret, "totp")
