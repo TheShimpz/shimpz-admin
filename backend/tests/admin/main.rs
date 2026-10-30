@@ -7,6 +7,7 @@ mod routine;
 mod signin;
 mod socket;
 mod space;
+mod stepup;
 mod support;
 mod team;
 mod transport;
