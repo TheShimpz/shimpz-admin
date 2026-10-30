@@ -10,6 +10,10 @@ use std::{
 
 use team_protocol::websocket::canonical_origin;
 
+/// The exact browser origins Compose admits, comma-separated.
+const ALLOWED_ORIGINS: &str = "SHIMPZ_ADMIN_ALLOWED_ORIGINS";
+/// The Space's identity, which binds the host reset capability.
+const SPACE_ID: &str = "SHIMPZ_SPACE_ID";
 /// The loopback origins the CLI-emitted Compose admits when it names none.
 pub const DEFAULT_ORIGINS: &str = "http://127.0.0.1:7777,http://localhost:7777";
 
@@ -72,8 +76,7 @@ impl Config {
     /// Returns [`ConfigError`] for a setting Admin cannot run with.
     pub fn from_env() -> Result<Self, ConfigError> {
         let variable = |name: &str| std::env::var(name).ok().filter(|value| !value.is_empty());
-        let origins = std::env::var("SHIMPZ_ADMIN_ALLOWED_ORIGINS")
-            .unwrap_or_else(|_| DEFAULT_ORIGINS.to_owned());
+        let origins = std::env::var(ALLOWED_ORIGINS).unwrap_or_else(|_| DEFAULT_ORIGINS.to_owned());
         let public_key_file = variable("SHIMPZ_LOCAL_SUPERVISOR_PUBLIC_KEY_FILE").map_or_else(
             || PathBuf::from("/run/shimpz-local-supervisor/public.pem"),
             PathBuf::from,
@@ -85,7 +88,7 @@ impl Config {
         Ok(Self {
             listen: SocketAddr::from(([0, 0, 0, 0], 4600)),
             static_origins: static_origins(&origins)?,
-            space_id: std::env::var("SHIMPZ_SPACE_ID").unwrap_or_default(),
+            space_id: std::env::var(SPACE_ID).unwrap_or_default(),
             team_url: variable("SHIMPZ_TEAM_URL").unwrap_or_else(|| "http://team:7077".to_owned()),
             team_token_file: variable("SHIMPZ_TEAM_TOKEN_FILE")
                 .map_or_else(|| PathBuf::from("/run/shimpz-local/token"), PathBuf::from),
