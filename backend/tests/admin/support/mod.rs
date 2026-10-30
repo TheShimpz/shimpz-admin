@@ -2,6 +2,7 @@
 //! fake Team that verifies Admin's bearer and assertions and answers what each test scripts.
 
 pub mod client;
+pub mod session;
 pub mod socket;
 pub mod team;
 

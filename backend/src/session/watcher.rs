@@ -59,7 +59,7 @@ async fn sample(app: &App, topic: &str, cookie: &str) -> Result<Value, Fault> {
     }
     let team = app.session_team(cookie)?;
     if topic == "teams" {
-        Ok(seen(&crate::team::order::listing(&team).await?))
+        Ok(seen(&crate::team::order::listing(app, &team).await?))
     } else {
         Ok(seen(
             &crate::team::bridge::list_local_assistants(&team).await,

@@ -489,7 +489,8 @@ const fn refusal(status: SessionStatus) -> u16 {
 }
 
 /// The handshake's one exact admitted Origin, under the HTTP gate's own page check.
-fn admitted_origin(headers: &HeaderMap, origins: &[String]) -> Option<String> {
+#[must_use]
+pub fn admitted_origin(headers: &HeaderMap, origins: &[String]) -> Option<String> {
     let mut sent = headers.get_all("origin").iter();
     let origin = sent.next()?.to_str().ok()?.to_owned();
     if sent.next().is_some() || !browser::from_admin_page(headers, origins) {
@@ -499,7 +500,8 @@ fn admitted_origin(headers: &HeaderMap, origins: &[String]) -> Option<String> {
 }
 
 /// The subprotocols the handshake offers, as the server reads them.
-fn offered_protocols(headers: &HeaderMap) -> Vec<String> {
+#[must_use]
+pub fn offered_protocols(headers: &HeaderMap) -> Vec<String> {
     headers
         .get_all("sec-websocket-protocol")
         .iter()
