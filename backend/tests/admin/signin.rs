@@ -429,3 +429,31 @@ async fn passkey_registration_needs_fresh_mfa_and_refuses_an_unverified_response
     let fresh = json::detail("fresh multifactor authentication is required");
     assert_eq!((stale.status, stale.json()), (401, fresh));
 }
+
+#[tokio::test]
+async fn an_abandoned_password_check_keeps_its_permit_and_records_its_refusal() {
+    let admin = Admin::start().await;
+    admin.signed_in();
+    let app = std::sync::Arc::clone(&admin.app);
+    let wrong = admin_backend::json::text("wrong horse battery staple x");
+    let check = admin_backend::signin::local::check_password(&app, &wrong, None);
+    assert!(
+        tokio::time::timeout(std::time::Duration::from_millis(1), check)
+            .await
+            .is_err()
+    );
+    assert!(
+        app.limiter.begin().is_err(),
+        "the derivation still holds its permit"
+    );
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while app.limiter.begin().is_err() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the permit was never released"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    let journal = std::fs::read_to_string(app.config.audit_path()).unwrap();
+    assert!(journal.contains("\"password-rejected\""));
+}

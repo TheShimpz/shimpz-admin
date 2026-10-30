@@ -24,7 +24,7 @@ pub use operation::{
 use super::{
     audit::Outcome as Journaled,
     passkeys::Ceremony as ChallengeCeremony,
-    password::{self, MAX_PASSWORD_CHARS, VerifyError},
+    password::{self, MAX_PASSWORD_CHARS},
     tickets::{Issue, Purpose, TICKET_TTL_MS, Ticket},
     token,
     totp::Verification,
@@ -183,6 +183,32 @@ fn too_many(retry_after: u64) -> Fault {
     )
 }
 
+/// Verifies `password` against `record` under `permit`, then records and journals the attempt's outcome.
+fn settle(
+    app: &App,
+    password: &str,
+    record: &Value,
+    permit: password::Permit,
+    origin: Option<&str>,
+) -> Result<(), Fault> {
+    let verified = password::verify_password(password, record);
+    let lock_seconds = permit.finish(verified.as_ref().ok().map(|accepted| !accepted));
+    let accepted = verified.map_err(|_| Fault::PasswordRecord)?;
+    if lock_seconds > 0 {
+        log("info", "login_locked");
+        journal(app, "password-locked", Journaled::Denied, origin, None)
+            .map_err(|error| state_fault(&error))?;
+        return Err(too_many(lock_seconds));
+    }
+    if !accepted {
+        log("info", "password_rejected");
+        journal(app, "password-rejected", Journaled::Denied, origin, None)
+            .map_err(|error| state_fault(&error))?;
+        return Err(Fault::detail(401, "invalid Supervisor credentials"));
+    }
+    Ok(())
+}
+
 /// The Supervisor store record once the password passes sign-in's limiter and lockout; every refusal journaled.
 ///
 /// # Errors
@@ -205,25 +231,15 @@ pub async fn check_password(
         .limiter
         .begin()
         .map_err(|limited| too_many(limited.retry_after))?;
-    let checked = record.clone();
-    let verified =
-        tokio::task::spawn_blocking(move || password::verify_password(&password, &checked))
-            .await
-            .unwrap_or(Err(VerifyError::Record));
-    let lock_seconds = permit.finish(verified.as_ref().ok().map(|accepted| !accepted));
-    let accepted = verified.map_err(|_| Fault::PasswordRecord)?;
-    if lock_seconds > 0 {
-        log("info", "login_locked");
-        journal(app, "password-locked", Journaled::Denied, origin, None)
-            .map_err(|error| state_fault(&error))?;
-        return Err(too_many(lock_seconds));
-    }
-    if !accepted {
-        log("info", "password_rejected");
-        journal(app, "password-rejected", Journaled::Denied, origin, None)
-            .map_err(|error| state_fault(&error))?;
-        return Err(Fault::detail(401, "invalid Supervisor credentials"));
-    }
+    // The derivation, its permit, and the attempt's accounting and journal all live in the blocking task: a caller
+    // that goes away (a closed socket) neither frees the permit early nor skips recording the attempt.
+    let (task_app, checked) = (Arc::clone(app), record.clone());
+    let origin = origin.map(str::to_owned);
+    tokio::task::spawn_blocking(move || {
+        settle(&task_app, &password, &checked, permit, origin.as_deref())
+    })
+    .await
+    .unwrap_or(Err(Fault::PasswordRecord))?;
     Ok(record)
 }
 
