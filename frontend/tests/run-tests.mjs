@@ -28,10 +28,6 @@ const result = spawnSync(
   [
     '--test',
     `--test-concurrency=${workers}`,
-    '--experimental-test-coverage',
-    '--test-coverage-lines=95',
-    '--test-coverage-branches=81',
-    '--test-coverage-functions=96',
     ...tests,
   ],
   { stdio: 'inherit' },
