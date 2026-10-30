@@ -206,7 +206,7 @@ test("every interface language offers exactly the Team protocol's output choices
   const { constantTuples } = await import('./protocolMirror.js');
   // The protocol mirror is the authority (ADR-0101): Team reads the chosen label back to its choice.
   const protocol = {};
-  for (const [locale, ...pairs] of constantTuples('routine_proposal.rs', 'OUTPUT_CHOICES', 7)) {
+  for (const [locale, ...pairs] of constantTuples('../../protocol/team/http/src/routine_proposal.rs', 'OUTPUT_CHOICES', 7)) {
     protocol[locale] = Object.fromEntries([0, 2, 4].map((index) => [pairs[index], pairs[index + 1]]));
   }
   // Every language labels the same choices, in the order Team offers them.
@@ -222,9 +222,9 @@ test("every interface language offers exactly the Team protocol's schedule and o
   const { constantTuples } = await import('./protocolMirror.js');
   // Team reads a send that is exactly one of these as a settings answer, which only records again (ADR-0101).
   const schedules = Object.fromEntries(
-    constantTuples('routine_proposal.rs', 'SCHEDULE_CHOICES', 4).map(([locale, ...answers]) => [locale, answers]),
+    constantTuples('../../protocol/team/http/src/routine_proposal.rs', 'SCHEDULE_CHOICES', 4).map(([locale, ...answers]) => [locale, answers]),
   );
-  const intervals = Object.fromEntries(constantTuples('routine_proposal.rs', 'OVER_BUDGET_ANSWERS', 2));
+  const intervals = Object.fromEntries(constantTuples('../../protocol/team/http/src/routine_proposal.rs', 'OVER_BUDGET_ANSWERS', 2));
   assert.deepEqual(Object.keys(schedules).sort(), Object.keys(routineMessages).sort());
   assert.deepEqual(Object.keys(intervals).sort(), Object.keys(routineMessages).sort());
   for (const [locale, catalog] of Object.entries(routineMessages)) {

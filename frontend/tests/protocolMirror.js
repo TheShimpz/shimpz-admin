@@ -2,8 +2,9 @@
 // A constant this cannot find fails the test that reads it; it never passes silently.
 import { readFileSync } from 'node:fs';
 
+// `file` is the mirror source's path relative to this directory, written out by each caller.
 export function constantStrings(file, name) {
-  const source = readFileSync(new URL(`../../protocol/team/http/src/${file}`, import.meta.url), 'utf8');
+  const source = readFileSync(new URL(file, import.meta.url), 'utf8');
   const start = source.indexOf(`pub const ${name}: `);
   if (start < 0) throw new Error(`${name} is not a constant of ${file}`);
   const open = source.indexOf('= [', start);

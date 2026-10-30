@@ -25,7 +25,7 @@ function leafPaths(value, prefix = '') {
 
 test("Admin's interface languages are exactly the Team protocol's chat locales", () => {
   // The protocol mirror is the authority (ADR-0090): a chat turn may name only these languages.
-  const locales = constantStrings('payload/mod.rs', 'CHAT_LOCALES');
+  const locales = constantStrings('../../protocol/team/http/src/payload/mod.rs', 'CHAT_LOCALES');
   assert.deepEqual([...expectedLocales].sort(), [...locales].sort());
   assert.equal(new Set(expectedLocales).size, expectedLocales.length);
 });

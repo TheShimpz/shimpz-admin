@@ -259,7 +259,7 @@ test("every interface language composes answers with exactly the Team protocol's
   const { constantTuples } = await import('./protocolMirror.js');
   // The protocol mirror is the authority (ADR-0101): Team reads the person's own lines out of a composed answer.
   const protocol = Object.fromEntries(
-    constantTuples('payload/clarification.rs', 'CLARIFICATION_LABELS', 3)
+    constantTuples('../../protocol/team/http/src/payload/clarification.rs', 'CLARIFICATION_LABELS', 3)
       .map(([locale, question, answer]) => [locale, { question, answer }]),
   );
   assert.deepEqual(Object.keys(protocol).sort(), Object.keys(messages).sort());
