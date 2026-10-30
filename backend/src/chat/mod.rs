@@ -2,7 +2,10 @@
 //! Assistant lifecycle a message can ask for.
 
 pub mod assets;
+pub mod assistant_install;
+pub mod assistant_proposal;
 pub mod human;
+pub mod local;
 pub mod methods;
 pub mod payloads;
 pub mod projection;

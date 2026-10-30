@@ -27,9 +27,13 @@ pub struct Domains {
 impl Domains {
     /// Every domain at start.
     #[must_use]
-    pub fn new(config: &Config, clock: &Arc<Clock>) -> Self {
+    pub fn new(
+        config: &Config,
+        clock: &Arc<Clock>,
+        topics: &Arc<crate::session::topics::Topics>,
+    ) -> Self {
         Self {
-            history: crate::history::State::new(config, clock),
+            history: crate::history::State::new(config, clock, topics),
             chat: crate::chat::State::new(config, clock),
             team: crate::team::State::new(config, clock),
             integrations: crate::integrations::State::new(config, clock),

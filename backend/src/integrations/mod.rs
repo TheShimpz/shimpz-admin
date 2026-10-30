@@ -1,17 +1,27 @@
 //! Assistant Integrations: their projection and the Supervisor's OAuth authorization of one challenge.
 
+pub mod assistants;
+pub mod authorization;
+pub mod cloudflare;
+pub mod handoff;
 pub mod routes;
 
+use std::sync::Arc;
+
+use crate::{clock::Clock, config::Config};
+
 /// The Integrations' process state: the OAuth handoffs.
-pub struct State {}
+pub struct State {
+    /// The one-use OAuth browser handoffs.
+    pub handoffs: handoff::Handoffs,
+}
 
 impl State {
-    /// The domain's state at start.
+    /// No handoff yet.
     #[must_use]
-    pub fn new(
-        _config: &crate::config::Config,
-        _clock: &std::sync::Arc<crate::clock::Clock>,
-    ) -> Self {
-        Self {}
+    pub fn new(_config: &Config, clock: &Arc<Clock>) -> Self {
+        Self {
+            handoffs: handoff::Handoffs::new(Arc::clone(clock)),
+        }
     }
 }

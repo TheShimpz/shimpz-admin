@@ -86,7 +86,7 @@ impl App {
         ));
         let source = read_source(&config.revision_file).ok().flatten();
         let site = crate::http::statics::Site::index(&config.ui_dir);
-        let domains = crate::domains::Domains::new(&config, &clock);
+        let domains = crate::domains::Domains::new(&config, &clock, &topics);
         let app = Arc::new(Self {
             limiter: Arc::new(LoginLimiter::new(Arc::clone(&clock))),
             tickets: Tickets::new(Arc::clone(&clock)),
