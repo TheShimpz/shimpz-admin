@@ -35,6 +35,15 @@ pub const CAPABILITY_FIELDS: [&str; 6] = [
     "capability_sha256",
 ];
 
+/// Writes one structured log line of a fixed event name, never a value.
+pub fn log(level: &str, event: &str) {
+    let line = json::compact(&json::object(vec![
+        ("level", json::text(level)),
+        ("event", json::text(event)),
+    ]));
+    let _ = writeln!(std::io::stderr(), "{line}");
+}
+
 /// A payload-free panic hook: a panic is reported by its location alone, never its message, so no secret a panicking
 /// value held can reach a log.
 pub fn install_panic_hook() {
@@ -109,6 +118,11 @@ fn serve() -> ExitCode {
             .write_all(b"{\"level\":\"error\",\"event\":\"configuration_invalid\"}\n");
         return ExitCode::FAILURE;
     };
+    if crate::app::read_source(&config.revision_file).is_err() {
+        let _ = std::io::stderr()
+            .write_all(b"{\"level\":\"error\",\"event\":\"source_revision_malformed\"}\n");
+        return ExitCode::FAILURE;
+    }
     let Some(runtime) = runtime() else {
         return ExitCode::FAILURE;
     };

@@ -118,6 +118,33 @@ fn unique(items: &[String]) -> bool {
     sorted.len() == items.len()
 }
 
+/// The files and the explicit Assistant scope a chat message names, each bounded and without duplicates.
+fn scope(files: &Value, assistant_ids: &Value) -> Result<(Vec<String>, Vec<String>), Fault> {
+    let files = json::as_array(files)
+        .filter(|files| files.len() <= MAX_CHAT_FILES)
+        .ok_or_else(|| refused(&format!("files must contain at most {MAX_CHAT_FILES} ids")))?
+        .iter()
+        .map(file_id)
+        .collect::<Result<Vec<_>, _>>()?;
+    if !unique(&files) {
+        return Err(refused("files must not contain duplicate ids"));
+    }
+    let assistants = json::as_array(assistant_ids)
+        .filter(|ids| ids.len() <= MAX_CHAT_ASSISTANTS)
+        .ok_or_else(|| {
+            refused(&format!(
+                "assistant_ids must contain at most {MAX_CHAT_ASSISTANTS} ids"
+            ))
+        })?
+        .iter()
+        .map(assistant_id)
+        .collect::<Result<Vec<_>, _>>()?;
+    if !unique(&assistants) {
+        return Err(refused("assistant_ids must not contain duplicate ids"));
+    }
+    Ok((files, assistants))
+}
+
 /// One explicit Assistant scope (an empty scope is never all), in one interface language.
 ///
 /// # Errors
@@ -149,28 +176,7 @@ pub fn chat_payload(payload: &Value) -> Result<Value, Fault> {
             "message exceeds {MAX_CHAT_MESSAGE_CHARS} characters"
         )));
     }
-    let files = json::as_array(field("files"))
-        .filter(|files| files.len() <= MAX_CHAT_FILES)
-        .ok_or_else(|| refused(&format!("files must contain at most {MAX_CHAT_FILES} ids")))?
-        .iter()
-        .map(file_id)
-        .collect::<Result<Vec<_>, _>>()?;
-    if !unique(&files) {
-        return Err(refused("files must not contain duplicate ids"));
-    }
-    let assistants = json::as_array(field("assistant_ids"))
-        .filter(|ids| ids.len() <= MAX_CHAT_ASSISTANTS)
-        .ok_or_else(|| {
-            refused(&format!(
-                "assistant_ids must contain at most {MAX_CHAT_ASSISTANTS} ids"
-            ))
-        })?
-        .iter()
-        .map(assistant_id)
-        .collect::<Result<Vec<_>, _>>()?;
-    if !unique(&assistants) {
-        return Err(refused("assistant_ids must not contain duplicate ids"));
-    }
+    let (files, assistants) = scope(field("files"), field("assistant_ids"))?;
     Ok(json::object(vec![
         ("message", json::text(message)),
         ("files", json::strings(files)),

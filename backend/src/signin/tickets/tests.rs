@@ -19,64 +19,34 @@ fn operation<'a>(subject: &'a str, socket: &str) -> Issue<'a> {
     }
 }
 
+fn spend(
+    tickets: &Tickets,
+    token: &str,
+    subject: &str,
+    socket: &str,
+) -> Result<Ticket, TicketError> {
+    tickets.consume(token, Purpose::Operation, subject, Some(&binding(socket)))
+}
+
 #[test]
 fn a_ticket_is_spent_by_any_presentation_and_lives_three_minutes() {
     let clock = Arc::new(Clock::new());
     let tickets = Tickets::new(Arc::clone(&clock));
     let token = tickets.issue(operation("recovery-codes", "a")).unwrap();
-    assert!(
-        tickets
-            .consume(
-                &token,
-                Purpose::Operation,
-                "supervisor-key",
-                Some(&binding("a"))
-            )
-            .is_err()
-    );
-    assert!(
-        tickets
-            .consume(
-                &token,
-                Purpose::Operation,
-                "recovery-codes",
-                Some(&binding("a"))
-            )
-            .is_err()
-    );
+    assert!(spend(&tickets, &token, "supervisor-key", "a").is_err());
+    assert!(spend(&tickets, &token, "recovery-codes", "a").is_err());
     let token = tickets.issue(operation("recovery-codes", "a")).unwrap();
-    assert!(
-        tickets
-            .consume(
-                &token,
-                Purpose::Operation,
-                "recovery-codes",
-                Some(&binding("b"))
-            )
-            .is_err()
-    );
+    assert!(spend(&tickets, &token, "recovery-codes", "b").is_err());
     let token = tickets.issue(operation("recovery-codes", "a")).unwrap();
     clock.advance(180);
-    assert!(
-        tickets
-            .consume(
-                &token,
-                Purpose::Operation,
-                "recovery-codes",
-                Some(&binding("a"))
-            )
-            .is_err()
-    );
+    assert!(spend(&tickets, &token, "recovery-codes", "a").is_err());
     let token = tickets.issue(operation("recovery-codes", "a")).unwrap();
-    let ticket = tickets
-        .consume(
-            &token,
-            Purpose::Operation,
-            "recovery-codes",
-            Some(&binding("a")),
-        )
-        .unwrap();
-    assert_eq!(ticket.generation, 1);
+    assert_eq!(
+        spend(&tickets, &token, "recovery-codes", "a")
+            .unwrap()
+            .generation,
+        1
+    );
 }
 
 #[test]

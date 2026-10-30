@@ -114,6 +114,8 @@ pub enum Fault {
     History,
     /// Anything else: the server error HTTP answers.
     Internal,
+    /// The session socket closed, or lost its Origin or session, before the call ran: the call is never answered.
+    Closed,
 }
 
 impl Fault {
@@ -168,7 +170,7 @@ impl Fault {
             ),
             Self::Audit => Reply::detail(503, "Supervisor authentication audit is unavailable"),
             Self::History => Reply::detail(503, "Admin chat history is unavailable"),
-            Self::Internal => Reply::detail(500, "Internal Server Error"),
+            Self::Internal | Self::Closed => Reply::detail(500, "Internal Server Error"),
         }
     }
 

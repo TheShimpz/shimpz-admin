@@ -1,5 +1,7 @@
 //! A Team's Routines (ADR-0086): the scheduler, the machine calls, and the Supervisor's management and answers.
 
+pub mod methods;
+
 /// The Routines' process state: the scheduler's wake and the open challenges.
 pub struct State {}
 

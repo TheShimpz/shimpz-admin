@@ -4,6 +4,8 @@ pub mod assets;
 pub mod bridge;
 pub mod browser_view;
 pub mod files;
+pub mod methods;
+pub mod order;
 pub mod transport;
 
 /// The Team domain's process state: the Team order lock, sign-in sessions, and bounded streams.

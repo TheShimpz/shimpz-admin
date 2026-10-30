@@ -3,7 +3,10 @@
 
 pub mod assets;
 pub mod human;
+pub mod methods;
 pub mod payloads;
+pub mod projection;
+pub mod run;
 
 /// Chat's process state: each Team's run, the Space's gate, the catalogs, and the lanes.
 pub struct State {}

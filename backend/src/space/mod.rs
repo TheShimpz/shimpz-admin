@@ -1,5 +1,7 @@
 //! The Space's own operations: the platform release status, Space and host reset, and the Supervisor key rotation.
 
+pub mod methods;
+pub mod release;
 pub mod routes;
 
 /// The Space domain's process state: the key rotation's retry.

@@ -84,10 +84,10 @@ impl App {
             config.team_token_file.clone(),
             Arc::clone(&clock),
         ));
-        let source = read_source(&config.revision_file);
+        let source = read_source(&config.revision_file).ok().flatten();
         let site = crate::http::statics::Site::index(&config.ui_dir);
         let domains = crate::domains::Domains::new(&config, &clock);
-        Arc::new(Self {
+        let app = Arc::new(Self {
             limiter: Arc::new(LoginLimiter::new(Arc::clone(&clock))),
             tickets: Tickets::new(Arc::clone(&clock)),
             challenges: Challenges::new(Arc::clone(&clock)),
@@ -103,7 +103,14 @@ impl App {
             source,
             site,
             domains,
-        })
+        });
+        let weak = Arc::downgrade(&app);
+        app.sessions.listen(Arc::new(move |ended| {
+            if let Some(app) = weak.upgrade() {
+                app.domains.session.registry.end_sessions(ended);
+            }
+        }));
+        app
     }
 
     /// Team with the bearer alone.
@@ -183,16 +190,34 @@ impl App {
     }
 }
 
-fn read_source(path: &std::path::Path) -> Option<SourceBuild> {
-    let content = std::fs::read(path).ok()?;
-    let text = std::str::from_utf8(&content).ok()?.strip_suffix('\n')?;
-    let (revision, time) = text.split_once(' ')?;
+/// The Admin source revision file is malformed.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct MalformedSource;
+
+/// This Admin's build commit and commit time, or `None` without a build (a working tree or a test).
+///
+/// # Errors
+///
+/// Returns [`MalformedSource`] for a malformed file, which fails Admin's start.
+pub fn read_source(path: &std::path::Path) -> Result<Option<SourceBuild>, MalformedSource> {
+    let content = match std::fs::read(path) {
+        Ok(content) => content,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(MalformedSource),
+    };
+    let text = std::str::from_utf8(&content)
+        .map_err(|_| MalformedSource)?
+        .strip_suffix('\n')
+        .ok_or(MalformedSource)?;
+    let (revision, time) = text.split_once(' ').ok_or(MalformedSource)?;
     if time.is_empty()
         || time.len() > 12
         || time.starts_with('0')
         || !time.bytes().all(|byte| byte.is_ascii_digit())
     {
-        return None;
+        return Err(MalformedSource);
     }
-    SourceBuild::admitted(revision, time.parse().ok()?)
+    SourceBuild::admitted(revision, time.parse().map_err(|_| MalformedSource)?)
+        .map(Some)
+        .ok_or(MalformedSource)
 }

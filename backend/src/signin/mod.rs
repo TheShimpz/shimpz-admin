@@ -1,6 +1,8 @@
 //! The Local Supervisor's sign-in: the password, the session token, the second factors, and the journal.
 
 pub mod audit;
+pub mod local;
+pub mod methods;
 pub mod passkeys;
 pub mod password;
 pub mod recovery;

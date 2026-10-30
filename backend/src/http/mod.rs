@@ -50,9 +50,9 @@ async fn spa(State(app): Shared, request: Request) -> Response {
         .await
 }
 
-/// Every route of the Admin API and its SPA.
-pub fn router(app: Arc<App>) -> Router {
-    use crate::{chat, integrations, session, signin, space, team};
+/// The sign-in ceremonies and the session bootstrap.
+fn signin_routes() -> Router<Arc<App>> {
+    use crate::signin;
     Router::new()
         .route("/api/session", route(post(signin::routes::session)))
         .route("/api/login", route(post(signin::routes::login)))
@@ -83,6 +83,12 @@ pub fn router(app: Arc<App>) -> Router {
             "/api/admin/passkeys",
             route(post(signin::routes::passkey_registered)),
         )
+}
+
+/// The Space, OAuth, Team resource, and `WebSocket` routes.
+fn resource_routes() -> Router<Arc<App>> {
+    use crate::{chat, integrations, session, space, team};
+    Router::new()
         .route("/api/space", route(delete(space::routes::space_reset)))
         .route("/api/space/host", route(delete(space::routes::host_reset)))
         .route(
@@ -130,6 +136,13 @@ pub fn router(app: Arc<App>) -> Router {
             "/api/teams/{team_id}/browser/views/{view_id}/control",
             route(get(team::browser_view::control)),
         )
+}
+
+/// Every route of the Admin API and its SPA.
+pub fn router(app: Arc<App>) -> Router {
+    Router::new()
+        .merge(signin_routes())
+        .merge(resource_routes())
         .route("/api/", any(unknown_api))
         .route("/api/{*path}", any(unknown_api))
         .fallback(spa)

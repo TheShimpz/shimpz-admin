@@ -149,14 +149,7 @@ impl Site {
             return response;
         }
         if !self.built {
-            if path.is_empty() {
-                return (
-                    [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-                    "UI not built — build admin/frontend (npm run build).",
-                )
-                    .into_response();
-            }
-            return super::respond::json_response(404, &crate::json::detail("Not Found"));
+            return unbuilt(path);
         }
         let Some(asset) = self
             .assets
@@ -193,6 +186,18 @@ impl Site {
         );
         response
     }
+}
+
+/// What a missing build serves: a notice at the root, nothing elsewhere.
+fn unbuilt(path: &str) -> Response {
+    if path.is_empty() {
+        return (
+            [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+            "UI not built — build admin/frontend (npm run build).",
+        )
+            .into_response();
+    }
+    super::respond::json_response(404, &crate::json::detail("Not Found"))
 }
 
 fn describe(
