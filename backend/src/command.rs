@@ -156,14 +156,19 @@ fn healthcheck() -> ExitCode {
     let Some(runtime) = runtime() else {
         return ExitCode::FAILURE;
     };
-    exit(runtime.block_on(async {
+    let probed = runtime.block_on(async {
         tokio::time::timeout(Duration::from_secs(2), probe_session())
             .await
             .map_err(|_| ())?
-    }))
+    });
+    // The bootstrap answer names only whether the Supervisor is configured: the release smoke reads it here.
+    exit(probed.and_then(|body| std::io::stdout().write_all(&body).map_err(|_| ())))
 }
 
-async fn probe_session() -> Result<(), ()> {
+/// The largest session bootstrap answer the healthcheck reads.
+const MAX_HEALTH_BYTES: usize = 4096;
+
+async fn probe_session() -> Result<Vec<u8>, ()> {
     use http_body_util::BodyExt;
     let stream = tokio::net::TcpStream::connect(("127.0.0.1", 4600))
         .await
@@ -189,9 +194,12 @@ async fn probe_session() -> Result<(), ()> {
         .await
         .map_err(|_| ())?
         .to_bytes();
+    if body.len() > MAX_HEALTH_BYTES {
+        return Err(());
+    }
     json::parse(&body)
         .ok()
-        .and_then(|value| json::members(&value).map(|_| ()))
+        .and_then(|value| json::members(&value).map(|_| body.to_vec()))
         .ok_or(())
 }
 
