@@ -1,0 +1,70 @@
+[package]
+name = "admin-backend-fuzz"
+version = "0.0.0"
+edition = "2024"
+publish = false
+license = "Apache-2.0"
+description = "cargo-fuzz targets for every Admin parser of untrusted bytes"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+admin-backend = { path = ".." }
+http = "=1.5.0"
+libfuzzer-sys = "=0.4.13"
+tempfile = "=3.27.0"
+
+[[bin]]
+name = "session_frame"
+path = "fuzz_targets/session_frame.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "session_token"
+path = "fuzz_targets/session_token.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "admin_record"
+path = "fuzz_targets/admin_record.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "browser_headers"
+path = "fuzz_targets/browser_headers.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "static_document"
+path = "fuzz_targets/static_document.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "release_status"
+path = "fuzz_targets/release_status.rs"
+test = false
+doc = false
+bench = false
+
+[lints.rust]
+missing_docs = "deny"
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+
+# The fuzz crate is its own workspace, so the parent package never builds it.
+[workspace]
+members = ["."]

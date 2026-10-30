@@ -11,3 +11,9 @@ playwright-report/
 .env
 .env.*
 !.env.example
+backend/target/
+backend/fuzz/target/
+backend/fuzz/corpus/
+backend/fuzz/artifacts/
+backend/fuzz/coverage/
+backend/mutants.out*/

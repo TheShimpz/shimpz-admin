@@ -5,7 +5,7 @@
 //! environment nor returned to the browser. A damaged store fails loud: it never reads as "no password set", which would
 //! reopen the first-run bootstrap.
 
-mod classify;
+pub mod classify;
 mod factors;
 mod identity;
 mod keys;
