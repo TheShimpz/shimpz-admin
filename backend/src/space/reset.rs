@@ -1,6 +1,8 @@
 //! A Local Space reset across Supervisor and Team authority: Team deletes the Space, and Admin clears the chat history
 //! and the saved Team order with it under the order lock.
 
+use std::sync::Arc;
+
 use crate::{
     app::App,
     fault::{Fault, Outcome, Reply},
@@ -40,7 +42,7 @@ pub enum Deletion {
 }
 
 /// Deletes the Space through `team`, then clears the history and the saved order; the `teams` topic changes.
-pub async fn space_reset(app: &App, team: &Team, deletion: Deletion) -> Reply {
+pub async fn space_reset(app: &Arc<App>, team: &Team, deletion: Deletion) -> Reply {
     let response = {
         let _order = app.domains.team.order.lock().await;
         let cleaned = {
@@ -64,7 +66,7 @@ pub async fn space_reset(app: &App, team: &Team, deletion: Deletion) -> Reply {
 ///
 /// Returns the body's or sign-in's refusal, or the journal's.
 pub async fn authenticated(
-    app: &App,
+    app: &Arc<App>,
     team: &Team,
     origin: Option<&str>,
     payload: &Value,

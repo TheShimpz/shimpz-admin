@@ -4,7 +4,7 @@
 //! file names. A Space with no Supervisor, or whose password record needs recovery, is reset by the capability alone;
 //! an initialized Space also needs the Supervisor password.
 
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock};
 
 use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
@@ -52,7 +52,7 @@ fn timestamp(document: &Value, name: &str) -> Option<i64> {
 ///
 /// Returns [`CapabilityUnavailable`].
 pub fn verify_capability(
-    app: &App,
+    app: &Arc<App>,
     capability: &Value,
     now: i64,
 ) -> Result<(String, i64), CapabilityUnavailable> {
@@ -104,7 +104,7 @@ fn no_store(status: u16, code: &str, detail: &str) -> Reply {
     Reply::new(status, json::detail_code(detail, code))
 }
 
-fn denied(app: &App) -> Outcome {
+fn denied(app: &Arc<App>) -> Outcome {
     app.audit
         .record("host-reset", Journal::Denied, None, None)
         .map_err(|_| Fault::Audit)?;
@@ -115,7 +115,7 @@ fn denied(app: &App) -> Outcome {
 }
 
 /// Which deletion the presented authority admits, after the password when the Space needs one.
-async fn authorized(app: &App, payload: &Value) -> Result<Result<Deletion, Reply>, Fault> {
+async fn authorized(app: &Arc<App>, payload: &Value) -> Result<Result<Deletion, Reply>, Fault> {
     let only_capability = json::has_exactly(payload, &["capability"]);
     match app.store.authentication_state() {
         Err(StateError::PasswordRecord) => {
@@ -147,14 +147,7 @@ async fn authorized(app: &App, payload: &Value) -> Result<Result<Deletion, Reply
                 )));
             }
             let password = payload.get("password").cloned().unwrap_or(Value::Null);
-            local::recheck_password(app, None, &password)
-                .await
-                .map_err(|fault| match fault {
-                    Fault::Refused(refusal) if refusal.status == 403 => {
-                        Fault::detail(401, "invalid Supervisor credentials")
-                    }
-                    other => other,
-                })?;
+            local::check_password(app, &password, None).await?;
             Ok(Ok(Deletion::Established))
         }
     }
@@ -165,7 +158,7 @@ async fn authorized(app: &App, payload: &Value) -> Result<Result<Deletion, Reply
 /// # Errors
 ///
 /// Returns 403 without the authority, 400 or 401 for the body or password, or the journal's refusal.
-pub async fn reset(app: &App, payload: &Value) -> Outcome {
+pub async fn reset(app: &Arc<App>, payload: &Value) -> Outcome {
     let now = app.clock.now_secs();
     let Ok((digest, expires)) =
         verify_capability(app, payload.get("capability").unwrap_or(&Value::Null), now)
