@@ -16,7 +16,7 @@ pub mod webauthn;
 
 /// Sign-in's process state: the setup lock, and the signing key rotation's lock and retry.
 pub struct State {
-    /// Setup, its TOTP enrollment, and the recovery ceremonies run one at a time.
+    /// Setup, its TOTP enrollment, the recovery ceremonies, and a host reset run one at a time.
     pub setup: tokio::sync::Mutex<()>,
     /// One key rotation settles at a time.
     pub rotation: tokio::sync::Mutex<()>,

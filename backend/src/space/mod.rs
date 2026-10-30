@@ -8,11 +8,8 @@ pub mod reset;
 pub mod routes;
 pub mod supervisor_key;
 
-/// The Space domain's process state.
-pub struct State {
-    /// Held by the Supervisor's setup and by a host reset: neither runs while the other does.
-    pub setup: tokio::sync::Mutex<()>,
-}
+/// The Space domain's process state (a host reset holds sign-in's setup lock, `signin::State::setup`).
+pub struct State {}
 
 impl State {
     /// The domain's state at start.
@@ -21,8 +18,6 @@ impl State {
         _config: &crate::process::config::Config,
         _clock: &std::sync::Arc<crate::time::clock::Clock>,
     ) -> Self {
-        Self {
-            setup: tokio::sync::Mutex::new(()),
-        }
+        Self {}
     }
 }

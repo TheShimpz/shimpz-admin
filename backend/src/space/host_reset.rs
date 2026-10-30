@@ -166,7 +166,8 @@ pub async fn reset(app: &Arc<App>, payload: &Value) -> Outcome {
         log("info", "host_reset_denied_capability_unavailable");
         return denied(app);
     };
-    let Ok(_setup) = app.domains.space.setup.try_lock() else {
+    // The one lock Supervisor setup, enrollment, and recovery hold: a reset never runs beside any of them.
+    let Ok(_setup) = app.domains.signin.setup.try_lock() else {
         log("info", "host_reset_deferred_busy");
         return Ok(no_store(
             409,

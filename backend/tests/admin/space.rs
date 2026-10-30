@@ -92,3 +92,19 @@ async fn an_initialized_space_needs_the_password_and_a_wrong_capability_reaches_
     assert_eq!(wrong.status, 403);
     assert!(admin.team.requests().is_empty());
 }
+
+#[tokio::test]
+async fn a_host_reset_waits_for_no_setup_and_runs_beside_none() {
+    let admin = Admin::start().await;
+    project_capability(&admin);
+    let held = admin.app.domains.signin.setup.lock().await;
+    let body = json::object(vec![("capability", json::text(CAPABILITY))]);
+    let answer = host_reset(&admin, &body).await;
+    assert_eq!(answer.status, 409);
+    assert_eq!(
+        answer.json().get("code"),
+        Some(&json::text("host-reset-busy"))
+    );
+    drop(held);
+    assert!(admin.team.requests_to("/v1/space/bootstrap").is_empty());
+}
