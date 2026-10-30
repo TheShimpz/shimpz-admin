@@ -142,7 +142,8 @@ async fn revoke(app: &App, pending: &Pending) {
     }
 }
 
-/// Settles one turn: sent again and delivered while its grant holds, revoked otherwise.
+/// Settles one turn: sent again and delivered while its grant holds, revoked otherwise. The grant is watched all
+/// the while: a session that ends meanwhile revokes the turn at Team, and nothing of it is delivered.
 pub async fn settle(app: &Arc<App>, pending: &Pending) {
     if pending.revoked || !current(app, pending) {
         return revoke(app, pending).await;
@@ -150,34 +151,60 @@ pub async fn settle(app: &Arc<App>, pending: &Pending) {
     let Ok(team) = app.granted_team(&pending.grant.session) else {
         return;
     };
-    let credential = match model_credential(app, &team, &pending.team_id).await {
-        Ok(Ok(credential)) => credential,
-        // Without a provider key the turn cannot go on: it ends as Team would have ended it.
-        Ok(Err(refusal)) => {
-            if commit(app, pending, &refusal).await {
-                settled(app, &team, pending, true).await;
-            }
-            return;
-        }
-        Err(_) => return,
-    };
-    resend(app, &team, pending, &credential).await;
-}
-
-/// Sends the turn again, watching its grant all the while: a session that ends meanwhile revokes it, and nothing of
-/// it is delivered.
-async fn resend(app: &App, team: &Team, pending: &Pending, credential: &bridge::Credential) {
-    let progress = |_: Value| {};
-    let sending = bridge::chat(team, &pending.team_id, &pending.body, credential, &progress);
-    let sent = tokio::select! {
-        sent = sending => sent,
+    let resent = tokio::select! {
+        resent = resend(app, &team, pending) => resent,
         () = lapsed(app, pending) => return revoke(app, pending).await,
     };
     if !current(app, pending) {
         return revoke(app, pending).await;
     }
-    if let Ok(response) = sent {
-        delivered(app, team, pending, &response, credential.api_key.as_str()).await;
+    conclude(app, &team, pending, resent).await;
+}
+
+/// Delivers what sending a turn again came to, its grant checked after it.
+async fn conclude(app: &App, team: &Team, pending: &Pending, resent: Resent) {
+    match resent {
+        Resent::Answered(response, api_key) => {
+            delivered(app, team, pending, &response, api_key.as_str()).await;
+        }
+        // Without a provider key the turn cannot go on: it ends as Team would have ended it.
+        Resent::Refused(refusal) => {
+            if commit(app, pending, &refusal).await {
+                settled(app, team, pending, true).await;
+            }
+        }
+        Resent::Unsent => {}
+    }
+}
+
+/// What sending a turn again came to.
+enum Resent {
+    /// Team's answer, and the key it was sent with, which its projection never echoes.
+    Answered(Reply, zeroize::Zeroizing<String>),
+    /// Admin holds no provider key for it.
+    Refused(Answer),
+    /// Nothing was sent; the next sweep tries again.
+    Unsent,
+}
+
+async fn resend(app: &App, team: &Team, pending: &Pending) -> Resent {
+    let credential = match model_credential(app, team, &pending.team_id).await {
+        Ok(Ok(credential)) => credential,
+        Ok(Err(refusal)) => return Resent::Refused(refusal),
+        Err(_) => return Resent::Unsent,
+    };
+    let progress = |_: Value| {};
+    let sent = bridge::chat(
+        team,
+        &pending.team_id,
+        &pending.body,
+        &credential,
+        &progress,
+    )
+    .await;
+    match sent {
+        Ok(response) => Resent::Answered(response, credential.api_key.clone()),
+        Err(_) => Resent::Unsent,
     }
 }
 

@@ -36,8 +36,8 @@ pub const SCHEMA: i64 = 1;
 /// The most turns Admin keeps undelivered at once.
 pub const MAX_TURNS: usize = 64;
 /// How long Team holds a turn from its send without Admin (Team's `GRANT_SECONDS`): a turn whose session would end
-/// sooner is not sent.
-pub const GRANT_SECONDS: i64 = 3600;
+/// sooner, by its absolute or its idle deadline, is not sent.
+pub const GRANT_SECONDS: i64 = 3000;
 /// The largest record file.
 pub const MAX_BYTES: u64 = 32 * 1024 * 1024;
 

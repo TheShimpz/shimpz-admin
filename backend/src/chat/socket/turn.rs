@@ -120,11 +120,11 @@ fn recorded(ctx: &Ctx, turn: &Arc<Turn>, submission: &Submission) -> Result<(), 
         return Err(unavailable());
     };
     let grant = durable::grant_of(&ctx.app, &authority).ok_or_else(unavailable)?;
-    if grant.expires_at < issued_at.saturating_add(durable::GRANT_SECONDS) {
-        // Team holds a turn for up to an hour from its send: one that would outlive its session is not sent.
+    if grant.expires_at.min(grant.idle_until) < issued_at.saturating_add(durable::GRANT_SECONDS) {
+        // Team holds a turn for a bounded time from its send: one that would outlive its session is not sent.
         return Err(error_terminal(
             401,
-            "this session ends within the hour: sign in again to send",
+            "this session ends soon: sign in again to send",
         ));
     }
     let pending = durable::Pending {
