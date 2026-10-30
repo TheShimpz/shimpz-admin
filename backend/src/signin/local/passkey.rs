@@ -69,7 +69,8 @@ fn verified(
         .store
         .passkey_for_authentication(&identifier, &challenge.origin)
         .map_err(classified)?;
-    let result = webauthn::verify_authentication(&challenge, credential, &original)
+    let handle = super::user_handle(app).map_err(classified)?;
+    let result = webauthn::verify_authentication(&challenge, credential, &original, &handle)
         .map_err(|error| classified(StateError::Passkey(error)))?;
     let origin = ticket.origin.as_deref();
     let journal_outcome = |commit: &PasskeyCommit| {

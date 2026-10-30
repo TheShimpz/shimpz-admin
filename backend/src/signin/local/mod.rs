@@ -419,6 +419,18 @@ pub const fn totp_refusal(result: Verification) -> (u16, &'static str) {
     }
 }
 
+/// The Supervisor's 32-byte `WebAuthn` user handle, which an assertion may name.
+///
+/// # Errors
+///
+/// Returns the store's error, or [`StateError::Corrupt`] for a handle that is not hex.
+pub fn user_handle(app: &App) -> Result<Vec<u8>, StateError> {
+    let handle = app.store.webauthn_user_id()?;
+    data_encoding::HEXLOWER
+        .decode(handle.as_bytes())
+        .map_err(|_| StateError::Corrupt)
+}
+
 /// Discards the passkey challenge of `token`: a ceremony completed with TOTP leaves none behind.
 pub fn discard_challenge(app: &App, token: &str) {
     let _ = app

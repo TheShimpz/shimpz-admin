@@ -43,10 +43,12 @@ tokio-tungstenite = { version = "=0.29.0", default-features = false, features = 
 unicode-normalization = "=0.1.24"
 zeroize = "=1.9.1"
 
+account-webauthn = { path = "../vendor/webauthn" }
 strict-json = { path = "../vendor/strict-json" }
 team-protocol = { path = "../protocol/team/http" }
 
 [dev-dependencies]
+account-webauthn = { path = "../vendor/webauthn", features = ["testing"] }
 tempfile = "=3.27.0"
 tokio = { version = "=1.53.3", features = ["test-util"] }
 tower = { version = "=0.5.3", default-features = false, features = ["util"] }

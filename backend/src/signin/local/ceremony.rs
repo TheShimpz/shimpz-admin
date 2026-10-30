@@ -9,7 +9,7 @@ use super::{
     FACTORS_CHANGED, PASSKEY_ENROLLMENT_FRESH_SECONDS, TotpAttempt, TotpFailure, answer,
     bind_origin, check_password, complete_totp, discard_challenge, factor_changed, issue_ticket,
     journal, log, passkey, request_origin, session_secret, set_session, set_ticket, state_fault,
-    ticket,
+    ticket, user_handle,
 };
 use crate::{
     fault::Fault,
@@ -523,8 +523,10 @@ pub fn complete_passkey_registration(
     {
         return Err(Fault::detail(409, "authentication factors changed; retry"));
     }
-    let record = webauthn::verify_registration(&challenge, credential, app.clock.now_secs())
-        .map_err(registration_refusal)?;
+    let handle = user_handle(app).map_err(|error| state_fault(&error))?;
+    let record =
+        webauthn::verify_registration(&challenge, credential, &handle, app.clock.now_secs())
+            .map_err(registration_refusal)?;
     let journal_outcome = |_secret: &String| {
         journal(
             app,
