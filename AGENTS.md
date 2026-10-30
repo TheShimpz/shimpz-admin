@@ -17,17 +17,17 @@
   parsers, or migrations for retired repository state.
 - Preserve attributable Supervisor authority, Team isolation, least privilege, fail-closed validation, and secret
   redaction. Admin never receives a Docker socket or persists Team-owned Integration tokens.
-- Use Python 3.14, and Node.js 26 for every Node.js workload this repository runs. User-visible Svelte behavior
+- The backend is the Rust package `backend/` (ADR-0123); use Node.js 26 for every Node.js workload this repository
+  runs. User-visible Svelte behavior
   requires Playwright against the built application.
 - Tests that support workers use half of local processors and all GitHub Actions runner processors. Do not add
   Cypress or an experimental component-test runner.
 
 ## Validation
 
-- This standalone repository has no Ruff authority. Before committing Python, run
-  `ruff check --config ruff.toml admin` from the umbrella root.
-- Run focused backend tests with
-  `uv run --frozen --python 3.14 python -m unittest discover -s tests`.
+- From the umbrella root, run `.scripts/gate/rust crate admin/backend` for the backend (fmt, clippy pedantic, the
+  documentation, cargo machete, its tests, and its fuzz targets). The vendored strict-JSON and Team-protocol mirrors
+  are proven by their producers and byte-identity checks.
 - The frontend uses the exact pnpm its `packageManager` names, installed by `frontend/bootstrap-pnpm.sh` from the
   hash-pinned registry tarball (Node.js 26 bundles no Corepack), with its lockfile and no install scripts. Run its
   checks from `frontend/` with `pnpm test`, `pnpm check`, and `pnpm build` as applicable.

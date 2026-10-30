@@ -1,7 +1,7 @@
 # Shimpz Admin
 
 Shimpz Admin is the loopback-only Supervisor console for a Local Shimpz Space. Its SvelteKit
-frontend and FastAPI backend provide password/session authentication, Team lifecycle, Assistant
+frontend and Rust backend (`backend/`, one `shimpz-admin` binary) provide password/session authentication, Team lifecycle, Assistant
 install/uninstall, provider/model selection, local chat, and OAuth Integration connection management.
 The backend also exposes the private Team files API.
 
@@ -25,5 +25,6 @@ workload identity, Action execution, storage, Integration encryption, and Brain 
   and never cross chat frames.
 
 The production image runs as a non-root user with a read-only root filesystem and publishes only the
-configured loopback port. Backend, frontend, container, and browser contracts live under `tests/` and
-the umbrella repository's `.tests/ui/` suite.
+configured loopback port. Backend contracts live in `backend/` (unit tests beside each module, the integration suite
+in `backend/tests/`, fuzz targets in `backend/fuzz/`), frontend contracts in `frontend/`, and browser contracts in the
+umbrella repository's `.tests/ui/` suite.

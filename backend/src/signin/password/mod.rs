@@ -34,12 +34,11 @@ const LOG_N: u8 = 14;
 const R: u32 = 8;
 const P: u32 = 5;
 
-/// The common-password blocklist in the policy's comparison form (`blocklist/passwords.txt`).
-static BLOCKLIST: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
-    include_str!("../../../signin/blocklist/passwords.txt")
-        .lines()
-        .collect()
-});
+/// The common-password blocklist (`blocklist.txt`) in the policy's comparison form: every entry of the `SecLists` Pwdb top
+/// one million list at commit 913b327 (sha256 e9a88f67aafe65496682dc374559ee714e978bee50314767494c3e37a18c9fc8), its
+/// `$hex[...]` entries decoded, kept when its comparison form is at least the minimum password length.
+static BLOCKLIST: LazyLock<HashSet<&'static str>> =
+    LazyLock::new(|| include_str!("../../../blocklist.txt").lines().collect());
 
 /// Why a new password is refused.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
