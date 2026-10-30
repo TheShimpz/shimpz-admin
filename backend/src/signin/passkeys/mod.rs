@@ -25,7 +25,7 @@ pub const MAX_PASSKEYS: usize = 8;
 pub const RP_NAME: &str = "Shimpz";
 
 /// Why a passkey ceremony or stored credential failed closed.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PasskeyError {
     /// A stored passkey or option state is invalid.
     Invalid(&'static str),
@@ -94,7 +94,7 @@ pub fn rp_id_for_origin(origin: &str) -> Result<String, PasskeyError> {
     if canonical_origin(Some(origin)).as_deref() != Some(origin) {
         return Err(refused);
     }
-    let (scheme, netloc) = origin.split_once("://").ok_or(refused.clone())?;
+    let (scheme, netloc) = origin.split_once("://").ok_or(refused)?;
     if netloc.contains('@') {
         return Err(refused);
     }

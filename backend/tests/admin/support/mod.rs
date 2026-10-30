@@ -3,6 +3,7 @@
 
 pub mod client;
 pub mod session;
+pub mod signin;
 pub mod socket;
 pub mod team;
 

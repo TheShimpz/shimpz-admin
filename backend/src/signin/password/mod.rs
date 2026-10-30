@@ -36,7 +36,7 @@ const P: u32 = 5;
 
 /// The common-password blocklist in the policy's comparison form (`blocklist/passwords.txt`).
 static BLOCKLIST: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
-    include_str!("../../signin/blocklist/passwords.txt")
+    include_str!("../../../signin/blocklist/passwords.txt")
         .lines()
         .collect()
 });

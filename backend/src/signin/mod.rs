@@ -7,13 +7,22 @@ pub mod passkeys;
 pub mod password;
 pub mod recovery;
 pub mod routes;
+pub mod security;
 pub mod sessions;
 pub mod tickets;
 pub mod token;
 pub mod totp;
+pub mod webauthn;
 
-/// Sign-in's process state: the setup lock.
-pub struct State {}
+/// Sign-in's process state: the setup lock, and the signing key rotation's lock and retry.
+pub struct State {
+    /// Setup, its TOTP enrollment, and the recovery ceremonies run one at a time.
+    pub setup: tokio::sync::Mutex<()>,
+    /// One key rotation settles at a time.
+    pub rotation: tokio::sync::Mutex<()>,
+    /// Wakes the open rotation's retry.
+    pub recovery: std::sync::Arc<tokio::sync::Notify>,
+}
 
 impl State {
     /// The domain's state at start.
@@ -22,6 +31,10 @@ impl State {
         _config: &crate::config::Config,
         _clock: &std::sync::Arc<crate::clock::Clock>,
     ) -> Self {
-        Self {}
+        Self {
+            setup: tokio::sync::Mutex::new(()),
+            rotation: tokio::sync::Mutex::new(()),
+            recovery: std::sync::Arc::new(tokio::sync::Notify::new()),
+        }
     }
 }

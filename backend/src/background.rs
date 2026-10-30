@@ -9,4 +9,5 @@ use crate::app::App;
 pub fn start(app: &Arc<App>) {
     crate::team::sign_ins::listen(app);
     crate::routine::scheduler::start(app);
+    crate::space::supervisor_key::start_recovery(app);
 }

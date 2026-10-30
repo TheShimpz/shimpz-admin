@@ -4,6 +4,7 @@ mod browser_view;
 mod files;
 mod gate;
 mod routine;
+mod signin;
 mod socket;
 mod space;
 mod support;

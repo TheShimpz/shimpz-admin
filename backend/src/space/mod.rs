@@ -5,6 +5,7 @@ pub mod methods;
 pub mod release;
 pub mod reset;
 pub mod routes;
+pub mod supervisor_key;
 
 /// The Space domain's process state.
 pub struct State {
