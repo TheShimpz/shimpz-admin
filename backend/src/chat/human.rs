@@ -651,3 +651,6 @@ fn rejected(challenge: &str, reason: &str, remaining: u32, retry_after: u64) -> 
         failure: None,
     }
 }
+
+#[cfg(test)]
+mod tests;
