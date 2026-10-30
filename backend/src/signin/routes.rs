@@ -182,6 +182,7 @@ fn logout_now(app: &App, headers: &HeaderMap) -> Result<Response, Fault> {
             }
             Err(error) => return Err(state_fault(&error)),
         }
+        app.domains.integrations.handoffs.cancel_session(&session);
     }
     let mut response = respond::json_response(200, &json::object(vec![("ok", Value::Bool(true))]));
     respond::delete_cookie(&mut response, SESSION_COOKIE, "/");

@@ -11,8 +11,11 @@ use crate::{app::App, json::Value, team::history::HistoryUnavailable};
 ///
 /// Returns [`HistoryUnavailable`].
 pub fn append_routine_notice(app: &App, notice: &Value) -> Result<bool, HistoryUnavailable> {
-    let _ = (app, notice);
-    Ok(true)
+    app.domains
+        .history
+        .store
+        .append_routine_notice(notice)
+        .map_err(|_| HistoryUnavailable)
 }
 
 /// Keeps a Routine card's answer in its Team's transcript as soon as Team gives it, so a reload shows it answered.
@@ -21,6 +24,9 @@ pub fn append_routine_notice(app: &App, notice: &Value) -> Result<bool, HistoryU
 ///
 /// Returns [`HistoryUnavailable`].
 pub fn append_proposal_answer(app: &App, answer: &Value) -> Result<bool, HistoryUnavailable> {
-    let _ = (app, answer);
-    Ok(true)
+    app.domains
+        .history
+        .store
+        .append_proposal_answer(answer)
+        .map_err(|_| HistoryUnavailable)
 }

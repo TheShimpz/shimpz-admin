@@ -96,7 +96,7 @@ async fn append_live_user(
     message: Value,
     files: Vec<String>,
 ) -> Result<bool, AdmitError> {
-    let _lifecycle = app.domains.history.lifecycle.lock().await;
+    let _lifecycle = crate::team::history::lifecycle(&app).await;
     match bridge::resolve_team_name(&team, &team_id).await {
         Ok(Ok(_)) => {}
         Ok(Err(_)) => return Err(HistoryError::Unavailable.into()),

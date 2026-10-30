@@ -20,8 +20,12 @@ pub async fn lifecycle(app: &App) -> MutexGuard<'_, ()> {
 ///
 /// Returns [`HistoryUnavailable`].
 pub fn clear_team(app: &App, team_id: &str) -> Result<(), HistoryUnavailable> {
-    let _ = (app, team_id);
-    Ok(())
+    app.domains
+        .history
+        .store
+        .clear_team(team_id)
+        .map(|_| ())
+        .map_err(|_| HistoryUnavailable)
 }
 
 /// Removes every transcript.
@@ -30,13 +34,17 @@ pub fn clear_team(app: &App, team_id: &str) -> Result<(), HistoryUnavailable> {
 ///
 /// Returns [`HistoryUnavailable`].
 pub fn clear_all(app: &App) -> Result<(), HistoryUnavailable> {
-    let _ = app;
-    Ok(())
+    app.domains
+        .history
+        .store
+        .clear_all()
+        .map(|_| ())
+        .map_err(|_| HistoryUnavailable)
 }
 
 /// Ends the chat run of one Team, or of every Team: whoever watched it, its work stops with the Team.
 pub fn end_runs(app: &App, team_id: Option<&str>) {
-    let _ = (app, team_id);
+    crate::chat::run::end_runs(app, team_id);
 }
 
 /// A successful Team change whose history cleanup failed is answered 503; anything else as it was.

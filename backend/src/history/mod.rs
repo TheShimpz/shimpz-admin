@@ -34,9 +34,6 @@ impl From<Invalid> for HistoryError {
 pub struct State {
     /// The transcript.
     pub store: Arc<store::Store>,
-    /// Serializes Team deletion, Space reset, and Routine notice delivery with the writes they must not race: a row
-    /// read before a Team was deleted is never written after its transcript was removed.
-    pub lifecycle: tokio::sync::Mutex<()>,
     /// The lane a user message's admission runs on: one worker, a few waiting.
     pub admission: Lane,
 }
@@ -51,7 +48,6 @@ impl State {
                 Arc::clone(clock),
                 Arc::clone(topics),
             )),
-            lifecycle: tokio::sync::Mutex::new(()),
             admission: Lane::new(1, 4),
         }
     }
