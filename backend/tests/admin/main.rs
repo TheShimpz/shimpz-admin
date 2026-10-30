@@ -5,6 +5,7 @@ mod files;
 mod gate;
 mod routine;
 mod socket;
+mod space;
 mod support;
 mod team;
 mod transport;

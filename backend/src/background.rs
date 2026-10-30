@@ -7,5 +7,6 @@ use crate::app::App;
 
 /// Starts every background task of `app`.
 pub fn start(app: &Arc<App>) {
-    let _ = app;
+    crate::team::sign_ins::listen(app);
+    crate::routine::scheduler::start(app);
 }

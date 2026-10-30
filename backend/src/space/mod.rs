@@ -1,11 +1,16 @@
 //! The Space's own operations: the platform release status, Space and host reset, and the Supervisor key rotation.
 
+pub mod host_reset;
 pub mod methods;
 pub mod release;
+pub mod reset;
 pub mod routes;
 
-/// The Space domain's process state: the key rotation's retry.
-pub struct State {}
+/// The Space domain's process state.
+pub struct State {
+    /// Held by the Supervisor's setup and by a host reset: neither runs while the other does.
+    pub setup: tokio::sync::Mutex<()>,
+}
 
 impl State {
     /// The domain's state at start.
@@ -14,6 +19,8 @@ impl State {
         _config: &crate::config::Config,
         _clock: &std::sync::Arc<crate::clock::Clock>,
     ) -> Self {
-        Self {}
+        Self {
+            setup: tokio::sync::Mutex::new(()),
+        }
     }
 }
