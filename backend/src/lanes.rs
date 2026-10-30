@@ -10,7 +10,7 @@ use std::sync::{
 };
 
 use futures_util::FutureExt;
-use tokio::sync::{Semaphore, watch};
+use tokio::sync::{Notify, Semaphore, watch};
 
 const PENDING: u8 = 0;
 const RUNNING: u8 = 1;
@@ -42,6 +42,8 @@ pub struct Lane {
 pub struct Job<T> {
     state: Arc<AtomicU8>,
     result: watch::Receiver<Option<Ended<T>>>,
+    ended: Arc<watch::Sender<Option<Ended<T>>>>,
+    cancelled: Arc<Notify>,
 }
 
 impl<T> Clone for Job<T> {
@@ -49,6 +51,8 @@ impl<T> Clone for Job<T> {
         Self {
             state: Arc::clone(&self.state),
             result: self.result.clone(),
+            ended: Arc::clone(&self.ended),
+            cancelled: Arc::clone(&self.cancelled),
         }
     }
 }
@@ -79,10 +83,21 @@ impl Lane {
         let workers = Arc::clone(&self.workers);
         let state = Arc::new(AtomicU8::new(PENDING));
         let (sender, receiver) = watch::channel(None);
-        let task_state = Arc::clone(&state);
+        let sender = Arc::new(sender);
+        let cancelled = Arc::new(Notify::new());
+        let (task_state, task_sender, task_cancelled) = (
+            Arc::clone(&state),
+            Arc::clone(&sender),
+            Arc::clone(&cancelled),
+        );
         tokio::spawn(async move {
+            let sender = task_sender;
             let _admitted = admitted;
-            let Ok(_worker) = workers.acquire_owned().await else {
+            let worker = tokio::select! {
+                worker = workers.acquire_owned() => worker,
+                () = task_cancelled.notified() => return,
+            };
+            let Ok(_worker) = worker else {
                 let _ = sender.send(Some(Ended::Cancelled));
                 return;
             };
@@ -102,6 +117,8 @@ impl Lane {
         Ok(Job {
             state,
             result: receiver,
+            ended: sender,
+            cancelled,
         })
     }
 }
@@ -110,19 +127,24 @@ impl<T: Clone> Job<T> {
     /// Cancels the job if it has not started; `true` when it never will.
     #[must_use]
     pub fn cancel(&self) -> bool {
-        self.state
+        let cancelled = self
+            .state
             .compare_exchange(PENDING, CANCELLED, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
-            || self.state.load(Ordering::SeqCst) == CANCELLED
+            .is_ok();
+        if cancelled {
+            let _ = self.ended.send(Some(Ended::Cancelled));
+            self.cancelled.notify_one();
+        }
+        cancelled || self.state.load(Ordering::SeqCst) == CANCELLED
     }
 
-    /// Whether the job ended.
+    /// Whether the job ended: it finished, or it was cancelled before it started.
     #[must_use]
     pub fn is_finished(&self) -> bool {
         self.result.borrow().is_some()
     }
 
-    /// Waits for the job's end.
+    /// Waits for the job's end; a job cancelled before it started ends at once and gives its admission back.
     pub async fn wait(&self) -> Ended<T> {
         let mut receiver = self.result.clone();
         match receiver.wait_for(Option::is_some).await {

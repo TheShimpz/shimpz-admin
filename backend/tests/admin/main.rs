@@ -1,6 +1,7 @@
 //! The Admin backend's integration suite: one in-process Admin per test against a fake Team.
 
 mod browser_view;
+mod chat;
 mod expiry;
 mod files;
 mod gate;

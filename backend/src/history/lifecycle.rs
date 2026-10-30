@@ -9,7 +9,7 @@ use team_protocol::{
 
 use super::Invalid;
 use crate::{
-    chat::assistant_install::ASSISTANT_LIMIT_REACHED,
+    chat::assistants::install::ASSISTANT_LIMIT_REACHED,
     json::{self, Value},
 };
 

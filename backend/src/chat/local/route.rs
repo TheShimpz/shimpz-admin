@@ -17,7 +17,7 @@ use super::{
 };
 use crate::{
     app::App,
-    chat::{assistant_proposal::AssistantReference, payloads},
+    chat::{assistants::proposal::AssistantReference, payloads},
     fault::{Fault, Reply},
     history::context::{self, Entry},
     json::{self, Value},
