@@ -32,7 +32,7 @@ use crate::{
         HistoryError,
         delivery::{self as history, AdmitError},
     },
-    json::{self, Value},
+    json::{self, Number, Value},
     lanes::Job,
     process::command::log,
 };
@@ -63,7 +63,22 @@ async fn turn_response(
     }
 }
 
-/// Delivers the Team's answer: a challenge pauses the turn; anything else ends it.
+/// The ending a page is shown of Team's answer: an invalid challenge fails the turn.
+fn ending(answer: &Answer, team_id: &str) -> Value {
+    let challenged = answer.reply.status == 428
+        || matches!(
+            answer.reply.get_str("status"),
+            Some("human-required" | "integrations-required")
+        );
+    if challenged {
+        error_terminal(502, "the Assistant challenge was invalid")
+    } else {
+        turn_terminal(answer, team_id)
+    }
+}
+
+/// Delivers the Team's answer: a challenge pauses the turn; anything else ends it. Team is told it was delivered only
+/// once the history committed it; otherwise the sweep settles it (ADR-0125).
 async fn deliver_turn(ctx: &Ctx, turn: &Arc<Turn>, answer: &Answer) {
     let (requested, stop_task) = {
         let state = turn.state();
@@ -72,52 +87,46 @@ async fn deliver_turn(ctx: &Ctx, turn: &Arc<Turn>, answer: &Answer) {
     if requested && let Some(stop_task) = stop_task {
         let _ = tokio::time::timeout(super::stop::STOP_RESULT_WAIT, stop_task.wait()).await;
     }
-    if ctx.closed() || turn.state().terminal_sent {
-        ctx.connection().release(turn);
-        return;
-    }
-    if let Some((event, kind)) = first_challenge(answer, ctx.team_id()) {
+    let committed = if ctx.closed() || turn.state().terminal_sent {
+        false
+    } else if let Some((event, kind)) = first_challenge(answer, ctx.team_id()) {
         ctx.connection().lifecycle_proposal = None;
-        challenge::deliver(ctx, turn, &event, kind).await;
-        settled(ctx, turn);
-        ctx.connection().release(turn);
-        return;
-    }
-    let challenged = answer.reply.status == 428
-        || matches!(
-            answer.reply.get_str("status"),
-            Some("human-required" | "integrations-required")
-        );
-    let event = if challenged {
-        error_terminal(502, "the Assistant challenge was invalid")
+        challenge::deliver(ctx, turn, &event, kind).await
     } else {
-        turn_terminal(answer, ctx.team_id())
+        let event = ending(answer, ctx.team_id());
+        if json::get_str(&event, "type") == Some("done") {
+            ctx.connection().forget_challenge();
+        }
+        terminal::turn(ctx, turn, &event, false).await
     };
-    if json::get_str(&event, "type") == Some("done") {
-        ctx.connection().forget_challenge();
-    }
-    if terminal::turn(ctx, turn, &event, false).await {
-        settled(ctx, turn);
-    }
+    settled(ctx, turn, committed);
     ctx.connection().release(turn);
 }
 
-/// Records the turn before Team is sent it, owned by this run until it is settled (ADR-0125); `false` when it could
-/// not be made durable.
-fn recorded(ctx: &Ctx, turn: &Arc<Turn>, submission: &Submission) -> bool {
+/// Records the turn before Team is sent it, owned by this run until it is settled (ADR-0125); the ending it fails
+/// with when it cannot be kept.
+fn recorded(ctx: &Ctx, turn: &Arc<Turn>, submission: &Submission) -> Result<(), Value> {
+    let unavailable = || error_terminal(503, "Admin could not keep the chat turn");
     let Ok(body) = submission.body() else {
         // Team refuses it before running anything: nothing to keep.
-        return true;
+        return Ok(());
     };
-    let (Some(authority), Some(nonce)) = (
+    let request = json::get(&body, "request");
+    let (Some(authority), Some(nonce), Some(Value::Number(Number::Int(issued_at)))) = (
         ctx.run.authority(),
-        json::get(&body, "request").and_then(|request| json::get_str(request, "nonce")),
+        request.and_then(|request| json::get_str(request, "nonce")),
+        request.and_then(|request| json::get(request, "issued_at")),
     ) else {
-        return false;
+        return Err(unavailable());
     };
-    let Some(grant) = durable::grant_of(&ctx.app, &authority) else {
-        return false;
-    };
+    let grant = durable::grant_of(&ctx.app, &authority).ok_or_else(unavailable)?;
+    if grant.expires_at < issued_at.saturating_add(durable::GRANT_SECONDS) {
+        // Team holds a turn for up to an hour from its send: one that would outlive its session is not sent.
+        return Err(error_terminal(
+            401,
+            "this session ends within the hour: sign in again to send",
+        ));
+    }
     let pending = durable::Pending {
         team_id: ctx.team_id().to_owned(),
         history_id: turn.state().history_id.clone(),
@@ -126,18 +135,27 @@ fn recorded(ctx: &Ctx, turn: &Arc<Turn>, submission: &Submission) -> bool {
         grant,
         revoked: false,
     };
-    ctx.app.domains.chat.turns.record(pending).is_ok()
+    ctx.app
+        .domains
+        .chat
+        .turns
+        .record(pending)
+        .map_err(|_| unavailable())
 }
 
-/// Tells Team the turn was delivered once its ending is committed; a turn Team could not be told of is left to the
-/// sweep.
-fn settled(ctx: &Ctx, turn: &Arc<Turn>) {
+/// Tells Team the turn was delivered once its ending is `committed`; a turn whose ending is not committed, or Team
+/// could not be told of, is left to the sweep.
+fn settled(ctx: &Ctx, turn: &Arc<Turn>, committed: bool) {
     let Some(request) = turn.state().request.clone() else {
         return;
     };
     let Some(nonce) = json::get_str(&request, "nonce").map(str::to_owned) else {
         return;
     };
+    if !committed {
+        ctx.app.domains.chat.turns.release(ctx.team_id(), &nonce);
+        return;
+    }
     let (app, team, team_id) = (
         Arc::clone(&ctx.app),
         ctx.team.clone(),
@@ -158,7 +176,7 @@ fn submit_team_turn(
     ctx: &Ctx,
     turn: &Arc<Turn>,
     payload: &Value,
-) -> Option<(Job<Result<Answer, Fault>>, progress::ProgressQueue)> {
+) -> Result<(Job<Result<Answer, Fault>>, progress::ProgressQueue), Value> {
     let (queue, report) = progress::channel();
     let (conversation, request) = {
         let state = turn.state();
@@ -172,9 +190,7 @@ fn submit_team_turn(
         conversation,
         request,
     };
-    if !recorded(ctx, turn, &submission) {
-        return None;
-    }
+    recorded(ctx, turn, &submission)?;
     let (app, team, team_id) = (
         Arc::clone(&ctx.app),
         ctx.team.clone(),
@@ -187,8 +203,8 @@ fn submit_team_turn(
         .lanes
         .turn
         .submit(async move { local_turn::submit(&app, &team, &team_id, submission, &report).await })
-        .ok()?;
-    Some((job, queue))
+        .map_err(|_| error_terminal(429, "local chat capacity reached"))?;
+    Ok((job, queue))
 }
 
 /// Continues a turn into its Team turn; a Space Team found busy waits at the head of the gate's queue and asks again.
@@ -206,14 +222,12 @@ pub async fn continue_team_turn(
         return Ok(());
     }
     let answer = loop {
-        let Some((job, mut queue)) = submit_team_turn(ctx, turn, payload) else {
-            finish_active_turn(
-                ctx,
-                turn,
-                &error_terminal(429, "local chat capacity reached"),
-            )
-            .await;
-            return Ok(());
+        let (job, mut queue) = match submit_team_turn(ctx, turn, payload) {
+            Ok(submitted) => submitted,
+            Err(refusal) => {
+                finish_active_turn(ctx, turn, &refusal).await;
+                return Ok(());
+            }
         };
         let slot = {
             let mut state = turn.state();

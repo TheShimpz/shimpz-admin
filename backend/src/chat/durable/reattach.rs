@@ -98,7 +98,21 @@ async fn settled(app: &App, team: &Team, pending: &Pending, revoked: bool) {
     }
 }
 
-/// Ends a turn whose grant ended: revoked at Team first, so nothing of it runs again, then kept as failed.
+/// Whether the turn's history already holds its ending (a reply committed before a crash).
+async fn ended(app: &App, pending: &Pending) -> Result<bool, ()> {
+    let Some(turn) = pending.history_id.clone() else {
+        return Ok(true);
+    };
+    let team = pending.team_id.clone();
+    history::blocking(&app.domains.history.store, move |store| {
+        store.ended(&team, &turn)
+    })
+    .await
+    .map_err(drop)
+}
+
+/// Ends a turn whose grant ended: revoked at Team first, so nothing of it runs again, then kept as failed unless its
+/// history already holds its ending.
 async fn revoke(app: &App, pending: &Pending) {
     let Ok(team) = app.granted_team(&pending.grant.session) else {
         return;
@@ -110,11 +124,15 @@ async fn revoke(app: &App, pending: &Pending) {
     if unreached(&response) {
         return;
     }
+    let Ok(ended) = ended(app, pending).await else {
+        return;
+    };
     let event = error_terminal(403, "the session that sent this message ended");
     let turn = pending.history_id.as_deref();
-    if history_terminal(app, &pending.team_id, turn, &event, true, None)
-        .await
-        .is_ok()
+    if ended
+        || history_terminal(app, &pending.team_id, turn, &event, true, None)
+            .await
+            .is_ok()
     {
         let _ = app
             .domains
@@ -126,7 +144,7 @@ async fn revoke(app: &App, pending: &Pending) {
 
 /// Settles one turn: sent again and delivered while its grant holds, revoked otherwise.
 pub async fn settle(app: &Arc<App>, pending: &Pending) {
-    if pending.revoked || !grant_current(app, &pending.grant) {
+    if pending.revoked || !current(app, pending) {
         return revoke(app, pending).await;
     }
     let Ok(team) = app.granted_team(&pending.grant.session) else {
@@ -143,17 +161,39 @@ pub async fn settle(app: &Arc<App>, pending: &Pending) {
         }
         Err(_) => return,
     };
+    resend(app, &team, pending, &credential).await;
+}
+
+/// Sends the turn again, watching its grant all the while: a session that ends meanwhile revokes it, and nothing of
+/// it is delivered.
+async fn resend(app: &App, team: &Team, pending: &Pending, credential: &bridge::Credential) {
     let progress = |_: Value| {};
-    let sent = bridge::chat(
-        &team,
-        &pending.team_id,
-        &pending.body,
-        &credential,
-        &progress,
-    )
-    .await;
+    let sending = bridge::chat(team, &pending.team_id, &pending.body, credential, &progress);
+    let sent = tokio::select! {
+        sent = sending => sent,
+        () = lapsed(app, pending) => return revoke(app, pending).await,
+    };
+    if !current(app, pending) {
+        return revoke(app, pending).await;
+    }
     if let Ok(response) = sent {
-        delivered(app, &team, pending, &response, credential.api_key.as_str()).await;
+        delivered(app, team, pending, &response, credential.api_key.as_str()).await;
+    }
+}
+
+/// Whether the turn may still be delivered: not revoked, and its grant holding.
+fn current(app: &App, pending: &Pending) -> bool {
+    !app.domains
+        .chat
+        .turns
+        .revoked(&pending.team_id, &pending.nonce)
+        && grant_current(app, &pending.grant)
+}
+
+/// Resolves once the turn's session ends or its grant lapses, while it is sent again.
+async fn lapsed(app: &App, pending: &Pending) {
+    while current(app, pending) {
+        tokio::time::sleep(Duration::from_secs(1)).await;
     }
 }
 

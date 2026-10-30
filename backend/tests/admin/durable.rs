@@ -199,3 +199,68 @@ async fn a_team_that_cannot_be_reached_leaves_the_turn_waiting_until_it_answers(
         ["List my DNS zones", "Two zones are active."]
     );
 }
+
+#[tokio::test]
+async fn a_session_ending_within_the_hour_sends_no_turn_team_would_hold_past_it() {
+    let admin = Admin::start().await;
+    let _ = admin.signed_in();
+    admin.app.store.set_model_api_key("openai", KEY).unwrap();
+    script_team(&admin);
+    script_sends(&admin, 0, None);
+    // A session signed in 23 and a half hours ago: Team would hold its turn past the session's end.
+    let secret = admin.app.store.session_secret().unwrap();
+    let old = admin_backend::signin::token::issue(
+        &admin.app.sessions,
+        &secret,
+        admin_backend::signin::token::Method::Totp,
+        admin.clock.now_secs() - 84_600,
+    );
+    let mut socket = open(&admin, &old).await;
+    let params = json::object(vec![
+        ("team_id", json::text("marketing")),
+        ("locale", json::text("en")),
+    ]);
+    let call = json::object(vec![
+        ("type", json::text("call")),
+        ("id", json::text("attach")),
+        ("method", json::text("chat.attach")),
+        ("params", params),
+    ]);
+    send_frame(&mut socket, &call).await;
+    until(&mut socket, "result").await;
+    until(&mut socket, "sync-empty").await;
+    send_frame(&mut socket, &message("List my DNS zones")).await;
+    let refused = until(&mut socket, "error").await;
+    assert_eq!(json::get(&refused, "status"), Some(&json::int(401)));
+    assert!(admin.team.requests_to(CHAT).is_empty());
+    assert!(!kept(&admin));
+}
+
+#[tokio::test]
+async fn a_logout_while_the_turn_is_sent_again_revokes_it_and_delivers_nothing() {
+    let admin = Admin::start().await;
+    let (mut socket, cookie) = attached(&admin).await;
+    script_sends(&admin, 2, None);
+    send_frame(&mut socket, &message("List my DNS zones")).await;
+    assert!(eventually(|| !admin.team.requests_to(CHAT).is_empty()).await);
+    drop(socket);
+    let admin = admin.restarted().await;
+    let app = Arc::clone(&admin.app);
+    let sweep =
+        tokio::spawn(async move { admin_backend::chat::durable::reattach::sweep(&app).await });
+    assert!(eventually(|| admin.team.requests_to(CHAT).len() == 2).await);
+    admin_backend::chat::durable::revoke_token(&admin.app, &cookie);
+    tokio::time::timeout(Duration::from_secs(10), sweep)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        admin
+            .team
+            .requests_to("/v1/teams/marketing/chat/revoked")
+            .len(),
+        1
+    );
+    assert_eq!(texts(&admin), ["List my DNS zones"]);
+    assert!(!kept(&admin));
+}

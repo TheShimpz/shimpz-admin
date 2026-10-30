@@ -450,6 +450,29 @@ impl Store {
             .transpose()
     }
 
+    /// Whether one turn already has its ending: a reply or a status row.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`HistoryError`].
+    pub fn ended(&self, team: &str, turn: &str) -> Result<bool, HistoryError> {
+        let (team, turn) = (team_id(team)?, turn_id(turn)?);
+        if self.absent()? {
+            return Ok(false);
+        }
+        let found: Option<i64> = self.database(|database| {
+            database
+                .query_row(
+                    "SELECT 1 FROM transcript WHERE team_id = ? AND event_key IN (?, ?)",
+                    params![team, format!("{turn}:reply"), format!("{turn}:status")],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(unavailable)
+        })?;
+        Ok(found.is_some())
+    }
+
     /// Ends one turn's resumable state.
     ///
     /// # Errors

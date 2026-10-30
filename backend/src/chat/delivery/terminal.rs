@@ -11,7 +11,7 @@ use crate::{
     process::command::log,
 };
 
-/// Sends one turn's terminal once, committed first; whether it was sent.
+/// Sends one turn's terminal once, committed first; whether it was sent with its own ending committed.
 pub async fn turn(ctx: &Ctx, turn: &Arc<Turn>, event: &Value, finish_history: bool) -> bool {
     let (history_id, unended, receipt) = {
         let mut connection = ctx.connection();
@@ -54,7 +54,7 @@ pub async fn turn(ctx: &Ctx, turn: &Arc<Turn>, event: &Value, finish_history: bo
         turn.state().terminal_sent = true;
     }
     ctx.send(&projected);
-    true
+    committed.is_ok() && !unended
 }
 
 /// Sends a resumed turn's terminal once, committed first when it ends the turn; whether it was sent.

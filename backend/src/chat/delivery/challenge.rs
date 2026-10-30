@@ -10,8 +10,8 @@ use crate::{
     process::command::log,
 };
 
-/// Binds the paused turn to its challenge, then shows the challenge.
-pub async fn deliver(ctx: &Ctx, turn: &Arc<Turn>, challenge: &Value, kind: &'static str) {
+/// Binds the paused turn to its challenge, then shows the challenge; whether the history bound it.
+pub async fn deliver(ctx: &Ctx, turn: &Arc<Turn>, challenge: &Value, kind: &'static str) -> bool {
     let history_id = turn.state().history_id.clone();
     let store = Arc::clone(ctx.history());
     if delivery::challenge(&store, ctx.team_id(), history_id.as_deref())
@@ -26,7 +26,7 @@ pub async fn deliver(ctx: &Ctx, turn: &Arc<Turn>, challenge: &Value, kind: &'sta
             false,
         )
         .await;
-        return;
+        return false;
     }
     {
         let mut connection = ctx.connection();
@@ -34,4 +34,5 @@ pub async fn deliver(ctx: &Ctx, turn: &Arc<Turn>, challenge: &Value, kind: &'sta
         connection.remember_challenge(challenge, kind);
     }
     ctx.send(challenge);
+    true
 }
