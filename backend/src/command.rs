@@ -299,3 +299,6 @@ fn clear_capability(target: &Path) -> Result<(), ()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

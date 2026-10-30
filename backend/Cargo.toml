@@ -47,6 +47,7 @@ team-protocol = { path = "../protocol/team/http" }
 [dev-dependencies]
 tempfile = "=3.27.0"
 tokio = { version = "=1.53.3", features = ["test-util"] }
+tower = { version = "=0.5.3", default-features = false, features = ["util"] }
 
 [lints.rust]
 missing_docs = "deny"

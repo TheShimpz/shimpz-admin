@@ -50,6 +50,17 @@ async fn spa(State(app): Shared, request: Request) -> Response {
         .await
 }
 
+/// A request whose handling panicked answers as any other server error; the payload-free panic hook reports only
+/// where it happened, and every permit the request held is released as its future unwinds.
+pub async fn contained(request: Request, next: middleware::Next) -> Response {
+    match futures_util::FutureExt::catch_unwind(std::panic::AssertUnwindSafe(next.run(request)))
+        .await
+    {
+        Ok(response) => response,
+        Err(_) => respond::json_response(500, &crate::json::detail("Internal Server Error")),
+    }
+}
+
 /// The sign-in ceremonies and the session bootstrap.
 fn signin_routes() -> Router<Arc<App>> {
     use crate::signin;
@@ -147,6 +158,7 @@ pub fn router(app: Arc<App>) -> Router {
         .route("/api/{*path}", any(unknown_api))
         .fallback(spa)
         .layer(middleware::from_fn_with_state(Arc::clone(&app), gate::gate))
+        .layer(middleware::from_fn(contained))
         .with_state(app)
 }
 
@@ -158,3 +170,6 @@ pub fn router(app: Arc<App>) -> Router {
 pub async fn serve(app: Arc<App>, listener: TcpListener) -> std::io::Result<()> {
     axum::serve(listener, router(app)).await
 }
+
+#[cfg(test)]
+mod tests;
