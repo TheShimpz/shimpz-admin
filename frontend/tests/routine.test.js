@@ -203,13 +203,11 @@ test("a recording turn's reply and its stored history carry at most one Routine 
 });
 
 test("every interface language offers exactly the Team protocol's output choices, in its order", async () => {
-  const { readFileSync } = await import('node:fs');
+  const { constantTuples } = await import('./protocolMirror.js');
   // The protocol mirror is the authority (ADR-0101): Team reads the chosen label back to its choice.
-  const source = readFileSync(new URL('../../backend/protocol/http/v1/routine_proposal.py', import.meta.url), 'utf8');
-  const block = source.match(/OUTPUT_CHOICES = \{\n([\s\S]*?)\n\}/u)[1];
   const protocol = {};
-  for (const [, locale, body] of block.matchAll(/"([a-z]{2})": \{([^}]*)\}/gu)) {
-    protocol[locale] = Object.fromEntries([...body.matchAll(/"([a-z]+)": "((?:[^"\\]|\\.)*)"/gu)].map(([, kind, label]) => [kind, label]));
+  for (const [locale, ...pairs] of constantTuples('routine_proposal.rs', 'OUTPUT_CHOICES', 7)) {
+    protocol[locale] = Object.fromEntries([0, 2, 4].map((index) => [pairs[index], pairs[index + 1]]));
   }
   // Every language labels the same choices, in the order Team offers them.
   const kinds = Object.keys(protocol.en);
@@ -221,17 +219,12 @@ test("every interface language offers exactly the Team protocol's output choices
 });
 
 test("every interface language offers exactly the Team protocol's schedule and over-budget answers", async () => {
-  const { readFileSync } = await import('node:fs');
+  const { constantTuples } = await import('./protocolMirror.js');
   // Team reads a send that is exactly one of these as a settings answer, which only records again (ADR-0101).
-  const source = readFileSync(new URL('../../backend/protocol/http/v1/routine_proposal.py', import.meta.url), 'utf8');
-  const block = (name) => source.match(new RegExp(`${name} = \\{\\n([\\s\\S]*?)\\n\\}`, 'u'))[1];
-  const strings = (text) => [...text.matchAll(/"((?:[^"\\]|\\.)*)"/gu)].map(([, value]) => value);
   const schedules = Object.fromEntries(
-    [...block('SCHEDULE_CHOICES').matchAll(/"([a-z]{2})": \(([^)]*)\)/gu)].map(([, locale, body]) => [locale, strings(body)]),
+    constantTuples('routine_proposal.rs', 'SCHEDULE_CHOICES', 4).map(([locale, ...answers]) => [locale, answers]),
   );
-  const intervals = Object.fromEntries(
-    [...block('OVER_BUDGET_ANSWERS').matchAll(/"([a-z]{2})": "((?:[^"\\]|\\.)*)"/gu)].map(([, locale, answer]) => [locale, answer]),
-  );
+  const intervals = Object.fromEntries(constantTuples('routine_proposal.rs', 'OVER_BUDGET_ANSWERS', 2));
   assert.deepEqual(Object.keys(schedules).sort(), Object.keys(routineMessages).sort());
   assert.deepEqual(Object.keys(intervals).sort(), Object.keys(routineMessages).sort());
   for (const [locale, catalog] of Object.entries(routineMessages)) {
