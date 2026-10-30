@@ -34,6 +34,8 @@ pub struct Scope {
     value: Zeroizing<String>,
     identity: LocalIdentity,
     kind: AuthorityKind,
+    /// Whether `value` is already the authority's SHA-256: a durable turn's session after a restart.
+    digest: bool,
 }
 
 impl Scope {
@@ -52,6 +54,28 @@ impl Scope {
             value: Zeroizing::new(value.to_owned()),
             identity,
             kind,
+            digest: false,
+        })
+    }
+
+    /// The session a durable turn was granted under, known by the SHA-256 of its token alone (ADR-0125).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Fault::TeamRequest`] for anything but 64 lowercase hex digits.
+    pub fn granted(digest: &str, identity: LocalIdentity) -> Result<Self, Fault> {
+        let hex = digest.len() == 64
+            && digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte));
+        if !hex {
+            return Err(Fault::team_request("Supervisor session is unavailable"));
+        }
+        Ok(Self {
+            value: Zeroizing::new(digest.to_owned()),
+            identity,
+            kind: AuthorityKind::Session,
+            digest: true,
         })
     }
 
@@ -65,6 +89,16 @@ impl Scope {
     #[must_use]
     pub const fn identity(&self) -> &LocalIdentity {
         &self.identity
+    }
+
+    /// Its assertion over `request` at `now`.
+    fn sign(&self, request: &RequestBinding, now: i64) -> Result<String, ()> {
+        if self.digest {
+            assertion::sign_granted(&self.identity, &self.value, request, now, self.kind)
+        } else {
+            assertion::sign_request(&self.identity, &self.value, self.kind, request, now)
+        }
+        .map_err(|_| ())
     }
 }
 
@@ -232,9 +266,7 @@ impl Team {
             return Ok(headers);
         }
         if let Some(scope) = &self.scope {
-            let signed =
-                assertion::sign_request(&scope.identity, &scope.value, scope.kind, &request, now)
-                    .map_err(|_| ())?;
+            let signed = scope.sign(&request, now)?;
             headers.push((ASSERTION_HEADER.to_owned(), format!("Bearer {signed}")));
         }
         Ok(headers)

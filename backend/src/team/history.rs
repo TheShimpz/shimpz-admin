@@ -45,6 +45,8 @@ pub fn clear_all(app: &App) -> Result<(), HistoryUnavailable> {
 /// Ends the chat run of one Team, or of every Team: whoever watched it, its work stops with the Team.
 pub fn end_runs(app: &App, team_id: Option<&str>) {
     crate::chat::run::end_runs(app, team_id);
+    // Its undelivered turns go with it: Team deleted them with the Team, or with the Space.
+    let _ = app.domains.chat.turns.forget(team_id);
 }
 
 /// A successful Team change whose history cleanup failed is answered 503; anything else as it was.

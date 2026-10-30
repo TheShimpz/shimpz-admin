@@ -24,7 +24,7 @@ pub struct Admin {
     /// The loopback URL it serves.
     pub url: String,
     /// The temporary directory holding every file, removed with the Admin.
-    pub _root: tempfile::TempDir,
+    pub root: tempfile::TempDir,
     /// The fake Team.
     pub team: team::FakeTeam,
     /// The clock tests move.
@@ -77,8 +77,26 @@ impl Admin {
         Self {
             app,
             url,
-            _root: root,
+            root,
             team,
+            clock,
+        }
+    }
+
+    /// The same Admin after its process died: a new process over the same files and the same Team, its sessions gone.
+    pub async fn restarted(self) -> Self {
+        let config = config(self.root.path(), &self.team.url);
+        let clock = Arc::new(Clock::new());
+        let app = App::with_clock(config, Arc::clone(&clock));
+        self.team.verify_with(&app);
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        tokio::spawn(admin_backend::http::serve(Arc::clone(&app), listener));
+        Self {
+            app,
+            url,
+            root: self.root,
+            team: self.team,
             clock,
         }
     }

@@ -7,6 +7,7 @@ use crate::process::app::App;
 
 /// Starts every background task of `app`.
 pub fn start(app: &Arc<App>) {
+    crate::chat::durable::reattach::start(app);
     crate::team::sign_ins::listen(app);
     crate::routine::scheduler::start(app);
     crate::space::supervisor_key::start_recovery(app);

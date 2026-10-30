@@ -2,6 +2,7 @@
 
 mod browser_view;
 mod chat;
+mod durable;
 mod expiry;
 mod files;
 mod gate;

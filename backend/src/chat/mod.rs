@@ -6,6 +6,7 @@ pub mod assistants;
 pub mod catalog;
 pub mod connection;
 pub mod delivery;
+pub mod durable;
 pub mod gate;
 pub mod human;
 pub mod lifecycle;
@@ -73,12 +74,14 @@ pub struct State {
     pub listening: AtomicBool,
     /// The sweep of ended and idle runs.
     pub sweep: Mutex<Option<tokio::task::JoinHandle<()>>>,
+    /// The durable turns not yet settled (ADR-0125).
+    pub turns: durable::Turns,
 }
 
 impl State {
     /// The domain's state at start.
     #[must_use]
-    pub fn new(_config: &Config, clock: &Arc<Clock>) -> Self {
+    pub fn new(config: &Config, clock: &Arc<Clock>) -> Self {
         Self {
             runs: Mutex::new(HashMap::new()),
             gate: Arc::new(gate::Gate::default()),
@@ -86,6 +89,7 @@ impl State {
             lanes: Lanes::default(),
             listening: AtomicBool::new(false),
             sweep: Mutex::new(None),
+            turns: durable::Turns::new(&config.store_path.with_file_name("turns.json")),
         }
     }
 }

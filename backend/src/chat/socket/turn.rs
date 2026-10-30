@@ -4,6 +4,11 @@
 use std::sync::Arc;
 
 use super::{Ctx, DispatchError, stop::finish_active_turn};
+use crate::chat::durable::{self, reattach};
+use crate::team::bridge;
+
+/// How long a turn whose Team could not be reached waits before it is sent again.
+const RETRY: std::time::Duration = std::time::Duration::from_secs(2);
 use crate::{
     chat::{
         assistants::route::Context,
@@ -74,6 +79,7 @@ async fn deliver_turn(ctx: &Ctx, turn: &Arc<Turn>, answer: &Answer) {
     if let Some((event, kind)) = first_challenge(answer, ctx.team_id()) {
         ctx.connection().lifecycle_proposal = None;
         challenge::deliver(ctx, turn, &event, kind).await;
+        settled(ctx, turn);
         ctx.connection().release(turn);
         return;
     }
@@ -90,8 +96,62 @@ async fn deliver_turn(ctx: &Ctx, turn: &Arc<Turn>, answer: &Answer) {
     if json::get_str(&event, "type") == Some("done") {
         ctx.connection().forget_challenge();
     }
-    terminal::turn(ctx, turn, &event, false).await;
+    if terminal::turn(ctx, turn, &event, false).await {
+        settled(ctx, turn);
+    }
     ctx.connection().release(turn);
+}
+
+/// Records the turn before Team is sent it, owned by this run until it is settled (ADR-0125); `false` when it could
+/// not be made durable.
+fn recorded(ctx: &Ctx, turn: &Arc<Turn>, submission: &Submission) -> bool {
+    let Ok(body) = submission.body() else {
+        // Team refuses it before running anything: nothing to keep.
+        return true;
+    };
+    let (Some(authority), Some(nonce)) = (
+        ctx.run.authority(),
+        json::get(&body, "request").and_then(|request| json::get_str(request, "nonce")),
+    ) else {
+        return false;
+    };
+    let Some(grant) = durable::grant_of(&ctx.app, &authority) else {
+        return false;
+    };
+    let pending = durable::Pending {
+        team_id: ctx.team_id().to_owned(),
+        history_id: turn.state().history_id.clone(),
+        nonce: nonce.to_owned(),
+        body: body.clone(),
+        grant,
+        revoked: false,
+    };
+    ctx.app.domains.chat.turns.record(pending).is_ok()
+}
+
+/// Tells Team the turn was delivered once its ending is committed; a turn Team could not be told of is left to the
+/// sweep.
+fn settled(ctx: &Ctx, turn: &Arc<Turn>) {
+    let Some(request) = turn.state().request.clone() else {
+        return;
+    };
+    let Some(nonce) = json::get_str(&request, "nonce").map(str::to_owned) else {
+        return;
+    };
+    let (app, team, team_id) = (
+        Arc::clone(&ctx.app),
+        ctx.team.clone(),
+        ctx.team_id().to_owned(),
+    );
+    tokio::spawn(async move {
+        let turns = &app.domains.chat.turns;
+        let response = bridge::settle_chat(&team, &team_id, &request, false).await;
+        if response.is_ok_and(|response| response.success() || response.status == 409) {
+            let _ = turns.remove(&team_id, &nonce);
+        } else {
+            turns.release(&team_id, &nonce);
+        }
+    });
 }
 
 fn submit_team_turn(
@@ -112,6 +172,9 @@ fn submit_team_turn(
         conversation,
         request,
     };
+    if !recorded(ctx, turn, &submission) {
+        return None;
+    }
     let (app, team, team_id) = (
         Arc::clone(&ctx.app),
         ctx.team.clone(),
@@ -160,6 +223,19 @@ pub async fn continue_team_turn(
             state.slot.clone()
         };
         let answer = turn_response(ctx, turn, &job, &mut queue).await;
+        let current = ctx
+            .run
+            .authority()
+            .is_some_and(|authority| authority.current());
+        if reattach::unreached(&answer.reply)
+            && current
+            && !turn.state().stop_requested
+            && !ctx.closed()
+        {
+            // Team is down or lost the turn's run: the same send attaches to it, resumes it, or receives its ending.
+            tokio::time::sleep(RETRY).await;
+            continue;
+        }
         let Some(slot) = slot.filter(|_| {
             gated::space_busy(Some(&answer)) && !turn.state().stop_requested && !ctx.closed()
         }) else {

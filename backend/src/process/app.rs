@@ -129,6 +129,21 @@ impl App {
         self.scoped_team(cookie, AuthorityKind::Session)
     }
 
+    /// Team under the session a durable turn was granted under, known by its token's SHA-256 alone (ADR-0125).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Fault::Authority`] or [`Fault::TeamRequest`].
+    pub fn granted_team(&self, session: &str) -> Result<Team, Fault> {
+        let identity = self.store.local_supervisor().map_err(|_| {
+            Fault::TeamRequest("Local Supervisor identity is unavailable".to_owned())
+        })?;
+        Ok(Team::scoped(
+            Arc::clone(&self.team_client),
+            crate::team::transport::Scope::granted(session, identity)?,
+        ))
+    }
+
     /// Team under `value` of `kind`, bound to the current signing identity.
     ///
     /// # Errors

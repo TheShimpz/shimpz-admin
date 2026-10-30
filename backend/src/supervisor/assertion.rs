@@ -125,7 +125,7 @@ fn segment(raw: &[u8]) -> String {
 
 struct Signing<'a> {
     authority: &'a str,
-    authority_secret: &'a str,
+    authority_sha256: String,
     audience: &'a str,
     header: &'a [(&'a str, &'a str); 3],
 }
@@ -141,10 +141,7 @@ fn sign(
         ("aud", json::text(signing.audience)),
         ("sub", json::text(&identity.supervisor_id)),
         ("authority", json::text(signing.authority)),
-        (
-            "authority_sha256",
-            json::text(sha256_hex(signing.authority_secret.as_bytes())),
-        ),
+        ("authority_sha256", json::text(&signing.authority_sha256)),
         ("jti", json::text(crate::random::hex(16))),
         ("iat", json::int(now)),
         ("exp", json::int(now + ASSERTION_MAX_TTL_SECONDS)),
@@ -181,12 +178,34 @@ pub fn sign_request(
     request: &RequestBinding,
     now: i64,
 ) -> Result<String, SupervisorAuthorityError> {
+    sign_granted(
+        identity,
+        &sha256_hex(authority_secret.as_bytes()),
+        request,
+        now,
+        kind,
+    )
+}
+
+/// [`sign_request`] under an authority known only by its digest: a durable turn's session, which Admin keeps without
+/// its token after a restart (ADR-0125).
+///
+/// # Errors
+///
+/// Returns [`SupervisorAuthorityError`] when the claims fall outside the assertion contract.
+pub fn sign_granted(
+    identity: &LocalIdentity,
+    authority_sha256: &str,
+    request: &RequestBinding,
+    now: i64,
+    kind: AuthorityKind,
+) -> Result<String, SupervisorAuthorityError> {
     sign(
         identity,
         request,
         &Signing {
             authority: kind.name(),
-            authority_secret,
+            authority_sha256: authority_sha256.to_owned(),
             audience: ASSERTION_AUDIENCE,
             header: &JWT_HEADER,
         },
@@ -213,7 +232,7 @@ pub fn sign_routine_request(
         request,
         &Signing {
             authority: ROUTINE_AUTHORITY,
-            authority_secret: lease_token,
+            authority_sha256: sha256_hex(lease_token.as_bytes()),
             audience: ROUTINE_AUDIENCE,
             header: &ROUTINE_JWT_HEADER,
         },

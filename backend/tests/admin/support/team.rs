@@ -51,6 +51,8 @@ pub enum Answer {
     Json(u16, Value),
     /// A chunked NDJSON stream: these progress records, then the terminal of this status and body.
     Stream(Vec<Value>, u16, Value),
+    /// A stream that never ends: Admin dies, or Team does, while the turn runs.
+    Hang,
 }
 
 type Script = Box<dyn Fn(&Recorded) -> Option<Answer> + Send + Sync>;
@@ -192,6 +194,13 @@ async fn handle(state: &State, request: Request) -> Response {
     match answer {
         Some(Answer::Json(status, body)) => json_response(status, &body),
         Some(Answer::Stream(progress, status, body)) => stream_response(progress, status, body),
+        Some(Answer::Hang) => Response::builder()
+            .status(200)
+            .header("content-type", "application/x-ndjson")
+            .body(Body::from_stream(stream::pending::<
+                Result<Bytes, Infallible>,
+            >()))
+            .unwrap(),
         None => json_response(
             StatusCode::NOT_FOUND.as_u16(),
             &json::detail("not scripted"),

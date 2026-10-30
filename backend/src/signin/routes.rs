@@ -175,6 +175,8 @@ fn logout_now(app: &App, headers: &HeaderMap) -> Result<Response, Fault> {
         }
     }
     if !session.is_empty() {
+        // The turns this token's session sent end with it, even one an earlier Admin process issued (ADR-0125).
+        crate::chat::durable::revoke_token(app, &session);
         let secret = local::session_secret(app)?;
         if token::verify(&app.sessions, &app.clock, &secret, &session, false).is_some() {
             journal(app, "logout", Journaled::Ok, origin.as_deref(), None)

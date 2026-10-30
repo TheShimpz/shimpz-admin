@@ -195,6 +195,28 @@ pub async fn stop_chat(team: &Team, team_id: &str) -> Result<Reply, Fault> {
     .await
 }
 
+/// Settles one durable turn of the Team by its send's request identity: delivered once Admin's history committed its
+/// ending, or revoked once its session ended, which stops it (ADR-0125).
+///
+/// # Errors
+///
+/// Returns [`Fault::TeamRequest`] for an invalid id.
+pub async fn settle_chat(
+    team: &Team,
+    team_id: &str,
+    request: &Value,
+    revoked: bool,
+) -> Result<Reply, Fault> {
+    let id = payloads::team_id(&json::text(team_id))?;
+    let route = if revoked { "revoked" } else { "delivered" };
+    team.call(
+        "POST",
+        &format!("/v1/teams/{id}/chat/{route}"),
+        Some(&json::object(vec![("request", request.clone())])),
+    )
+    .await
+}
+
 /// The Team's pending Integration challenge, if any.
 ///
 /// # Errors

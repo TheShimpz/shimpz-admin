@@ -260,7 +260,12 @@ pub enum Submission {
 }
 
 impl Submission {
-    fn body(&self) -> Result<Value, Fault> {
+    /// The exact Team body of this submission.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`Fault::TeamRequest`] for a payload Team would refuse.
+    pub fn body(&self) -> Result<Value, Fault> {
         match self {
             Self::Turn {
                 payload,
@@ -348,24 +353,42 @@ pub async fn submit(
         Err(refusal) => return Ok(refusal),
     };
     let response = request(app, team, &id, &submission, &body, &credential, progress).await?;
+    if crate::chat::durable::reattach::unreached(&response) {
+        // Team will be asked again: the turn stays as it is (ADR-0125).
+        return Ok(Answer::raw(response.status, response.body));
+    }
+    let locale = submission.locale();
+    // Only a turn the page is shown is validated as one.
+    let validated = response.success()
+        && response.status != 428
+        && !MISSING_RUNTIME_STATUSES.contains(&response.status)
+        && response.get_str("status") != Some("human-denied");
+    let _span = validated.then(|| Span::start(progress, "reply-validation"));
+    Ok(projected(
+        &response,
+        &id,
+        locale.as_deref(),
+        credential.api_key.as_str(),
+    ))
+}
+
+/// Team's answer to a turn or continuation as a page is shown it: unavailable, a challenge, a denial, a safe error, or
+/// the validated turn, never echoing `api_key`.
+#[must_use]
+pub fn projected(response: &Reply, id: &str, locale: Option<&str>, api_key: &str) -> Answer {
     if MISSING_RUNTIME_STATUSES.contains(&response.status) {
-        return Ok(unavailable());
+        return unavailable();
     }
     if response.status == 428 {
-        return Ok(challenge::project_pending_challenge(
-            &response,
-            &id,
-            submission.locale().as_deref(),
-        ));
+        return challenge::project_pending_challenge(response, id, locale);
     }
     if response.get_str("status") == Some("human-denied") {
-        return Ok(challenge::project_human_denial(&response, &id));
+        return challenge::project_human_denial(response, id);
     }
     if !response.success() {
-        return Ok(safe_error(&response));
+        return safe_error(response);
     }
-    let _span = Span::start(progress, "reply-validation");
-    Ok(project_turn(&response, &id, &[credential.api_key.as_str()]))
+    project_turn(response, id, &[api_key])
 }
 
 enum Pending {

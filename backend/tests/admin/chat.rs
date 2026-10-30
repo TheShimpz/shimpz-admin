@@ -13,19 +13,19 @@ use crate::support::{
 };
 
 const TRACE: &str = "0123456789abcdef0123456789abcdef";
-const KEY: &str = "sk-test-model-key-0123456789";
+pub(crate) const KEY: &str = "sk-test-model-key-0123456789";
 
-fn traced(mut body: Value) -> Value {
+pub(crate) fn traced(mut body: Value) -> Value {
     json::set(&mut body, "trace_id", json::text(TRACE));
     body
 }
 
-fn parsed(text: &str) -> Value {
+pub(crate) fn parsed(text: &str) -> Value {
     json::parse(text.as_bytes()).unwrap()
 }
 
 /// A fake Team with one running Team, `marketing`, nothing paused, and an ordinary-task route.
-fn script_team(admin: &Admin) {
+pub(crate) fn script_team(admin: &Admin) {
     let team = &admin.team;
     team.on(
         "GET",
@@ -93,7 +93,7 @@ fn script_turn(admin: &Admin) {
     });
 }
 
-async fn open(admin: &Admin, cookie: &str) -> Socket {
+pub(crate) async fn open(admin: &Admin, cookie: &str) -> Socket {
     let cookie = format!("shimpz_admin={cookie}");
     let headers = [
         ("origin", ORIGIN),
@@ -121,7 +121,7 @@ fn call(id: &str, method: &str, params: Value) -> Value {
 }
 
 /// The next frame of `kind`, skipping any other.
-async fn until(socket: &mut Socket, kind: &str) -> Value {
+pub(crate) async fn until(socket: &mut Socket, kind: &str) -> Value {
     loop {
         let frame = tokio::time::timeout(Duration::from_secs(10), next(socket))
             .await
@@ -133,7 +133,7 @@ async fn until(socket: &mut Socket, kind: &str) -> Value {
     }
 }
 
-async fn attached(admin: &Admin) -> Socket {
+pub(crate) async fn attached(admin: &Admin) -> Socket {
     let cookie = admin.signed_in();
     admin.app.store.set_model_api_key("openai", KEY).unwrap();
     script_team(admin);
@@ -150,7 +150,7 @@ async fn attached(admin: &Admin) -> Socket {
     socket
 }
 
-fn message(text: &str) -> Value {
+pub(crate) fn message(text: &str) -> Value {
     json::object(vec![
         ("type", json::text("chat")),
         ("team_id", json::text("marketing")),
