@@ -230,6 +230,9 @@ def run() -> None:
             "/run/shimpz-local-supervisor:rw,nosuid,nodev,noexec,size=1m,mode=2770,uid=0,gid=10021",
             "--volume",
             f"{volume}:/data",
+            # The page's origin inside the namespace: Admin serves on its own port 4600 there.
+            "--env",
+            "SHIMPZ_ADMIN_ALLOWED_ORIGINS=http://127.0.0.1:4600",
         ]
         cpuset = os.environ.get("SHIMPZ_PERF_ADMIN_CPUSET")
         if cpuset:
@@ -237,16 +240,6 @@ def run() -> None:
         required_docker(
             *admin_options,
             admin_image["id"],
-            "uvicorn",
-            "app:app",
-            "--host",
-            "127.0.0.1",
-            "--port",
-            "7777",
-            "--workers",
-            "1",
-            "--log-level",
-            "warning",
         )
         measured = docker(*benchmark_command(container, browser_image["id"]), timeout=300)
         if measured.returncode:

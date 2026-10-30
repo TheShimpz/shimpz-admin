@@ -9,7 +9,7 @@
 // SHIMPZ_PERF_CONTROL_DELAY_MS delays the socket's own subscriptions and chat attach (0 by default).
 // For a real Supervisor session, run in a Playwright container sharing the network
 // namespace of a disposable Admin image with --network none, a fresh /data volume,
-// and uvicorn bound to port 7777 inside that namespace. No host port is published.
+// and Admin serving its own port 4600 inside that namespace. No host port is published.
 // SHIMPZ_PERF_ISOLATED_AUTH=1 requires a loopback-only network and a fresh Admin.
 import { chromium } from '@playwright/test';
 import { createHash, createHmac, randomBytes } from 'node:crypto';
@@ -542,7 +542,7 @@ function summarize(results, count, mode) {
   };
 }
 
-const isolatedOrigin = 'http://127.0.0.1:7777';
+const isolatedOrigin = 'http://127.0.0.1:4600';
 
 function requireIsolatedLoopback() {
   const interfaces = networkInterfaces();
