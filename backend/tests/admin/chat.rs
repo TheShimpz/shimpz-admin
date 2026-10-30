@@ -228,3 +228,247 @@ async fn a_chat_frame_beyond_its_fields_is_refused_to_its_page() {
     let error = until(&mut socket, "error").await;
     assert_eq!(json::get(&error, "status"), Some(&json::int(400)));
 }
+
+const CHALLENGE: &str = "abcdefabcdefabcdefabcdefabcdefab";
+
+fn integration_challenge() -> Value {
+    traced(parsed(&format!(
+        r#"{{"team_id":"marketing","status":"integrations-required","turn_id":"{CHALLENGE}","challenge_id":"{CHALLENGE}",
+        "expires_in":600,"requirements":[{{"assistant_id":"cloudflare","assistant_name":"Cloudflare",
+        "integration_id":"cloudflare","provider":"cloudflare","name":"Cloudflare","summary":"DNS access.",
+        "scopes":["zone.read"],"actions":[{{"id":"list-zones","name":"List zones","summary":"Lists zones."}}]}}]}}"#
+    )))
+}
+
+/// A turn Team pauses for an Integration, which a later continuation completes.
+fn script_resume(admin: &Admin) {
+    let pending = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    admin.team.script(move |request| match (request.method.as_str(), request.path.as_str()) {
+        ("POST", "/v1/teams/marketing/chat") => {
+            pending.store(true, std::sync::atomic::Ordering::SeqCst);
+            Some(Answer::Stream(Vec::new(), 428, integration_challenge()))
+        }
+        ("GET", "/v1/teams/marketing/chat/integrations") if pending.load(std::sync::atomic::Ordering::SeqCst) => {
+            Some(Answer::Json(200, integration_challenge()))
+        }
+        ("POST", "/v1/teams/marketing/chat/integrations") => Some(Answer::Stream(
+            Vec::new(),
+            200,
+            traced(parsed(r#"{"team_id":"marketing","team_name":"Marketing","reply":"Connected and listed.","clarification":null}"#)),
+        )),
+        _ => None,
+    });
+}
+
+#[tokio::test]
+async fn a_paused_turn_resumes_after_its_integration_and_keeps_its_reply() {
+    let admin = Admin::start().await;
+    let mut socket = attached(&admin).await;
+    script_resume(&admin);
+    send_frame(&mut socket, &message("List my DNS zones")).await;
+    let challenge = until(&mut socket, "integrations-required").await;
+    assert_eq!(json::get_str(&challenge, "challenge_id"), Some(CHALLENGE));
+    assert!(!json::contains(&challenge, "trace_id") && !json::contains(&challenge, "turn_id"));
+    let sync = json::object(vec![
+        ("type", json::text("sync")),
+        ("team_id", json::text("marketing")),
+        ("locale", json::text("en")),
+    ]);
+    send_frame(&mut socket, &sync).await;
+    let done = until(&mut socket, "done").await;
+    assert_eq!(json::get_str(&done, "reply"), Some("Connected and listed."));
+    let resume = admin
+        .team
+        .requests_to("/v1/teams/marketing/chat/integrations");
+    let posted: Vec<_> = resume
+        .iter()
+        .filter(|request| request.method == "POST")
+        .collect();
+    assert_eq!(
+        posted[0].json(),
+        json::object(vec![("challenge_id", json::text(CHALLENGE))])
+    );
+    let store = &admin.app.domains.history.store;
+    assert_eq!(store.resumable_turn("marketing").unwrap(), None);
+    let page = store.page("marketing", None, None).unwrap();
+    let texts: Vec<&str> = json::as_array(page.get("entries").unwrap())
+        .unwrap()
+        .iter()
+        .filter_map(|entry| json::get_str(entry, "text"))
+        .collect();
+    assert_eq!(texts, ["List my DNS zones", "Connected and listed."]);
+}
+
+#[tokio::test]
+async fn the_history_and_integrations_methods_answer_their_closed_shapes() {
+    let admin = Admin::start().await;
+    let mut socket = attached(&admin).await;
+    let team = json::object(vec![("team_id", json::text("marketing"))]);
+    send_frame(&mut socket, &call("page", "history.page", team.clone())).await;
+    let page = until(&mut socket, "result").await;
+    assert_eq!(json::get(&page, "status"), Some(&json::int(200)));
+    assert_eq!(
+        json::get_str(&page, "topic"),
+        Some("team/marketing/history")
+    );
+    admin.team.on(
+        "GET",
+        "/v1/teams/marketing/assistant-integrations",
+        200,
+        traced(parsed(r#"{"team_id":"marketing","integrations":[{"assistant_id":"cloudflare","assistant_name":"Cloudflare",
+        "assistant_version":"1.0.0","assistant_summary":"Manage DNS.","id":"cloudflare","provider":"cloudflare",
+        "name":"Cloudflare","summary":"DNS access.","scopes":["zone.read"],"status":"connected",
+        "integration":{"id":"acct","name":null,"username":null},"expires_at":null,"token":"secret"}]}"#)),
+    );
+    send_frame(&mut socket, &call("list", "integrations.list", team)).await;
+    let listed = until(&mut socket, "result").await;
+    assert_eq!(
+        json::get(&listed, "status"),
+        Some(&json::int(502)),
+        "an extra field fails the whole inventory closed"
+    );
+    assert!(!json::compact(&listed).contains("secret"));
+}
+
+/// A fake public Store serving one catalog of `cloudflare` in every locale it is asked for.
+async fn store_catalog() -> std::net::SocketAddr {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let router = axum::Router::new().route(
+        "/api/assistants",
+        axum::routing::get(|| async {
+            let digest = format!("sha256:{}", "a".repeat(64));
+            let body = format!(
+                r#"{{"version":1,"locale":"en","assistants":[{{"assistant_id":"cloudflare","name":"Cloudflare",
+                "summary":"Manage DNS records.","description":"Manage DNS records in Cloudflare.","links":{{}},
+                "assistant_version":"1.2.3","creators":["@shimpz"],"github":"https://github.com/theshimpz/cloudflare",
+                "icon_digest":"{digest}","source_digest":"{digest}","platforms":["linux/amd64","linux/arm64"],
+                "allowed_hosts":["api.cloudflare.com"],"integrations":[{{"id":"cloudflare","provider":"cloudflare",
+                "scopes":["zone.read"]}}],"stored_inputs":[],"actions":[{{"id":"list-zones","integrations":["cloudflare"],
+                "human_requests":[],"effect":"read_only","description":"List zones."}}]}}]}}"#
+            );
+            ([("content-type", "application/json")], body)
+        }),
+    );
+    tokio::spawn(async move { axum::serve(listener, router).await });
+    address
+}
+
+fn script_install(admin: &Admin) {
+    let installed = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    admin.team.on(
+        "GET",
+        "/v1/local-assistants",
+        200,
+        traced(parsed(r#"{"assistants":[]}"#)),
+    );
+    admin.team.script(move |request| match (request.method.as_str(), request.path.as_str()) {
+        ("POST", "/v1/teams/marketing/chat/intent-route") => {
+            let selection = json::get_str(&request.json(), "expected_intent").is_some();
+            let body = if selection {
+                r#"{"team_id":"marketing","intent":"assistant-install","query":"","assistant_ids":["cloudflare"],"reply":"","task_follows":false}"#
+            } else {
+                r#"{"team_id":"marketing","intent":"assistant-install","query":"cloudflare","assistant_ids":[],"reply":"","task_follows":false}"#
+            };
+            Some(Answer::Json(200, traced(parsed(body))))
+        }
+        ("POST", "/v1/teams/marketing/assistants") => {
+            installed.store(true, std::sync::atomic::Ordering::SeqCst);
+            Some(Answer::Json(200, traced(parsed(r#"{"assistant":"cloudflare","installed":true}"#))))
+        }
+        ("GET", "/v1/teams/marketing/assistants") if installed.load(std::sync::atomic::Ordering::SeqCst) => Some(Answer::Json(
+            200,
+            traced(parsed(r#"{"assistants":[{"assistant":"cloudflare","assistant_version":"1.2.3","provenance":"published","status":"running"}]}"#)),
+        )),
+        _ => None,
+    });
+}
+
+#[tokio::test]
+async fn an_install_request_runs_its_plan_and_keeps_its_card() {
+    let store = store_catalog().await;
+    let admin =
+        Admin::start_with(|config| config.outbound = admin_backend::config::Outbound::Local(store))
+            .await;
+    let mut socket = attached(&admin).await;
+    script_install(&admin);
+    send_frame(&mut socket, &message("Install Cloudflare")).await;
+    let planned = until(&mut socket, "assistant-install-plan").await;
+    assert_eq!(json::get_str(&planned, "state"), Some("planned"));
+    let terminal = loop {
+        let event = until(&mut socket, "assistant-install-plan").await;
+        if json::get_str(&event, "state") != Some("installing") {
+            break event;
+        }
+    };
+    assert_eq!(json::get_str(&terminal, "state"), Some("installed"));
+    assert_eq!(json::get_str(&terminal, "continuation"), Some("none"));
+    let item = &json::as_array(terminal.get("assistants").unwrap()).unwrap()[0];
+    assert_eq!(json::get_str(item, "creator"), Some("@shimpz"));
+    let installs = admin
+        .team
+        .requests()
+        .into_iter()
+        .filter(|request| {
+            request.method == "POST" && request.path == "/v1/teams/marketing/assistants"
+        })
+        .count();
+    assert_eq!(installs, 1);
+    assert!(
+        admin
+            .team
+            .requests_to("/v1/teams/marketing/chat")
+            .is_empty(),
+        "an install-only request never reaches the Brain"
+    );
+    let page = admin
+        .app
+        .domains
+        .history
+        .store
+        .page("marketing", None, None)
+        .unwrap();
+    let kinds: Vec<&str> = json::as_array(page.get("entries").unwrap())
+        .unwrap()
+        .iter()
+        .filter_map(|entry| json::get_str(entry, "kind"))
+        .collect();
+    assert_eq!(kinds, ["message", "assistant-install"]);
+}
+
+#[tokio::test]
+async fn stopping_a_paused_turn_ends_it_once_team_confirms() {
+    let admin = Admin::start().await;
+    let mut socket = attached(&admin).await;
+    admin.team.script(|request| {
+        (request.method == "POST" && request.path == "/v1/teams/marketing/chat")
+            .then(|| Answer::Stream(Vec::new(), 428, integration_challenge()))
+    });
+    admin.team.on(
+        "POST",
+        "/v1/teams/marketing/chat/stop",
+        200,
+        traced(parsed(r#"{"team_id":"marketing","requested":true,"accepted":true,"confirmed":false,"forced_restart":false}"#)),
+    );
+    send_frame(&mut socket, &message("List my DNS zones")).await;
+    until(&mut socket, "integrations-required").await;
+    let store = &admin.app.domains.history.store;
+    assert!(store.resumable_turn("marketing").unwrap().is_some());
+    let stop = json::object(vec![
+        ("type", json::text("stop")),
+        ("team_id", json::text("marketing")),
+    ]);
+    send_frame(&mut socket, &stop).await;
+    until(&mut socket, "stopped").await;
+    assert_eq!(store.resumable_turn("marketing").unwrap(), None);
+    let page = store.page("marketing", None, None).unwrap();
+    let last = json::as_array(page.get("entries").unwrap())
+        .unwrap()
+        .last()
+        .cloned()
+        .unwrap();
+    assert_eq!(
+        (json::get_str(&last, "kind"), json::get_str(&last, "state")),
+        (Some("status"), Some("stopped"))
+    );
+}
