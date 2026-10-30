@@ -41,6 +41,7 @@ WORKDIR /workspace
 COPY backend/Cargo.toml backend/Cargo.lock ./backend/
 COPY backend/src ./backend/src
 COPY vendor/strict-json ./vendor/strict-json
+COPY vendor/webauthn ./vendor/webauthn
 COPY protocol/team/http ./protocol/team/http
 RUN find . -type f -regextype posix-extended \
         ! -regex '.*/(Cargo\.toml|Cargo\.lock)' ! -regex '.*/src/(lib|main)\.rs' -delete \
@@ -58,7 +59,8 @@ WORKDIR /workspace
 COPY --from=rust-skeleton /workspace ./
 RUN cd backend \
     && cargo build --release --locked --bin shimpz-admin \
-    && cargo clean --release --locked --package admin-backend --package strict-json --package team-protocol
+    && cargo clean --release --locked --package admin-backend --package strict-json --package team-protocol \
+       --package account-webauthn
 
 FROM rust-dependencies AS rust-build
 COPY backend/Cargo.toml backend/Cargo.lock ./backend/
@@ -66,6 +68,7 @@ COPY backend/src ./backend/src
 COPY backend/model_catalog.json ./backend/
 COPY backend/blocklist.txt ./backend/
 COPY vendor/strict-json ./vendor/strict-json
+COPY vendor/webauthn ./vendor/webauthn
 COPY protocol/team/http ./protocol/team/http
 ARG SOURCE_DATE_EPOCH=0
 RUN cd backend && cargo build --release --locked --bin shimpz-admin
