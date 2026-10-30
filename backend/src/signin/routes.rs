@@ -46,6 +46,22 @@ where
     }
 }
 
+/// A ceremony that holds the one setup lock: its bounded body is read first, so a request that withholds its body never
+/// holds the lock.
+async fn setup_ceremony<F, Fut>(app: Arc<App>, request: Request, run: F) -> Response
+where
+    F: FnOnce(Arc<App>, HeaderMap, Value) -> Fut,
+    Fut: Future<Output = Result<Response, Fault>>,
+{
+    match payload(request).await {
+        Ok((headers, payload)) => {
+            let _held = app.domains.signin.setup.lock().await;
+            answered(run(Arc::clone(&app), headers, payload).await)
+        }
+        Err(fault) => respond::fault(&fault),
+    }
+}
+
 /// How Admin's page at an admitted `origin` completes an OAuth authorization, if it can.
 fn oauth_completion_mode(app: &App, origin: &str) -> Result<Value, Fault> {
     if AUTOMATIC_OAUTH_ORIGINS.contains(&origin) {
@@ -196,8 +212,7 @@ pub async fn logout(State(app): State<Arc<App>>, request: Request) -> Response {
 
 /// `POST /api/admin/setup`.
 pub async fn setup(State(app): State<Arc<App>>, request: Request) -> Response {
-    let _held = app.domains.signin.setup.lock().await;
-    ceremony_route(
+    setup_ceremony(
         Arc::clone(&app),
         request,
         |app, headers, payload| async move { ceremony::setup(&app, &headers, &payload).await },
@@ -207,8 +222,7 @@ pub async fn setup(State(app): State<Arc<App>>, request: Request) -> Response {
 
 /// `POST /api/admin/setup/totp`.
 pub async fn setup_totp(State(app): State<Arc<App>>, request: Request) -> Response {
-    let _held = app.domains.signin.setup.lock().await;
-    ceremony_route(Arc::clone(&app), request, |app, headers, payload| async move {
+    setup_ceremony(Arc::clone(&app), request, |app, headers, payload| async move {
         ceremony::confirm_setup(&app, &headers, &payload).await
     })
     .await
@@ -232,8 +246,7 @@ pub async fn login_passkey(State(app): State<Arc<App>>, request: Request) -> Res
 
 /// `POST /api/login/recovery`.
 pub async fn login_recovery(State(app): State<Arc<App>>, request: Request) -> Response {
-    let _held = app.domains.signin.setup.lock().await;
-    ceremony_route(
+    setup_ceremony(
         Arc::clone(&app),
         request,
         |app, headers, payload| async move {
@@ -245,8 +258,7 @@ pub async fn login_recovery(State(app): State<Arc<App>>, request: Request) -> Re
 
 /// `POST /api/login/recovery/totp`.
 pub async fn recovery_totp(State(app): State<Arc<App>>, request: Request) -> Response {
-    let _held = app.domains.signin.setup.lock().await;
-    ceremony_route(
+    setup_ceremony(
         Arc::clone(&app),
         request,
         |app, headers, payload| async move {

@@ -4,6 +4,9 @@ use axum::{body::Body, http::HeaderMap};
 use http_body_util::BodyExt;
 
 use super::browser;
+
+/// The longest a request may take to deliver its body: no request holds a read open longer.
+pub const READ_DEADLINE: std::time::Duration = std::time::Duration::from_secs(10);
 use crate::{
     fault::Fault,
     json::{self, Value},
@@ -55,8 +58,15 @@ pub async fn json_object(
 ///
 /// # Errors
 ///
-/// Returns 413 beyond the bound, or 400 when the body cannot be read.
-pub async fn read(mut body: Body, max_bytes: usize) -> Result<Vec<u8>, Fault> {
+/// Returns 413 beyond the bound, 408 when the body does not arrive within [`READ_DEADLINE`], or 400 when it cannot
+/// be read.
+pub async fn read(body: Body, max_bytes: usize) -> Result<Vec<u8>, Fault> {
+    tokio::time::timeout(READ_DEADLINE, collect(body, max_bytes))
+        .await
+        .map_err(|_| Fault::detail(408, "request body was not received in time"))?
+}
+
+async fn collect(mut body: Body, max_bytes: usize) -> Result<Vec<u8>, Fault> {
     let mut raw = Vec::new();
     while let Some(frame) = body.frame().await {
         let frame = frame.map_err(|_| Fault::detail(400, "request body must be valid JSON"))?;

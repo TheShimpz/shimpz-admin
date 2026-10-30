@@ -108,3 +108,29 @@ async fn a_host_reset_waits_for_no_setup_and_runs_beside_none() {
     drop(held);
     assert!(admin.team.requests_to("/v1/space/bootstrap").is_empty());
 }
+
+#[tokio::test]
+async fn a_setup_that_withholds_its_body_does_not_block_a_host_reset() {
+    use tokio::io::AsyncWriteExt;
+    let admin = Admin::start().await;
+    admin.team.on(
+        "DELETE",
+        "/v1/space/bootstrap",
+        200,
+        json::object(vec![("reset", Value::Bool(true))]),
+    );
+    project_capability(&admin);
+    let address = admin.url.trim_start_matches("http://");
+    let mut withheld = tokio::net::TcpStream::connect(address).await.unwrap();
+    let head = format!(
+        "POST /api/admin/setup HTTP/1.1\r\nHost: {address}\r\nOrigin: {}\r\nSec-Fetch-Site: same-origin\r\n\
+         Content-Type: application/json\r\nContent-Length: 1\r\n\r\n",
+        crate::support::ORIGIN
+    );
+    withheld.write_all(head.as_bytes()).await.unwrap();
+    tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    let body = json::object(vec![("capability", json::text(CAPABILITY))]);
+    let answer = host_reset(&admin, &body).await;
+    assert_eq!(answer.status, 200, "{:?}", answer.json());
+    drop(withheld);
+}

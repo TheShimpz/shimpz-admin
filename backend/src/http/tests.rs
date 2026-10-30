@@ -40,3 +40,16 @@ async fn a_panicking_request_is_a_server_error_and_releases_what_it_held() {
     let answered = router.oneshot(request()).await.unwrap();
     assert_eq!(answered.status(), 200);
 }
+
+#[tokio::test(start_paused = true)]
+async fn a_body_that_never_arrives_is_refused_at_its_deadline() {
+    let never = futures_util::stream::pending::<Result<bytes::Bytes, std::io::Error>>();
+    let refused = body::read(Body::from_stream(never), 1024).await;
+    assert_eq!(
+        refused,
+        Err(crate::fault::Fault::detail(
+            408,
+            "request body was not received in time"
+        ))
+    );
+}
