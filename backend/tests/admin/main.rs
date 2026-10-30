@@ -5,6 +5,7 @@ mod chat;
 mod expiry;
 mod files;
 mod gate;
+mod parity;
 mod routine;
 mod signin;
 mod socket;
