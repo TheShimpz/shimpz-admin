@@ -1,4 +1,4 @@
-// Trusted Types in the built Admin under the policy backend/browser.py sends (e2e/serveBuild.mjs serves it): every main
+// Trusted Types in the built Admin under the policy backend/src/http/browser.rs sends (e2e/serveBuild.mjs serves it): every main
 // screen renders through Svelte's own template policy, and a string reaching an HTML or script sink fails closed.
 import { expect, test } from '@playwright/test';
 

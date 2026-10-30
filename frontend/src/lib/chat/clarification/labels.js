@@ -1,5 +1,5 @@
 // The labels of a composed clarification answer in every interface language: the Team protocol's CLARIFICATION_LABELS
-// (backend/protocol/http/v1/payload.py, ADR-0101), by which Team reads the person's own lines. An answer composed in one
+// (protocol/team/http/src/payload/clarification.rs, ADR-0101), by which Team reads the person's own lines. An answer composed in one
 // language still closes a question asked in another, so the chat keeps every language's pair loaded.
 export const CLARIFICATION_LABELS = {
   en: { question: 'Question', answer: 'Answer' },

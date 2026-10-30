@@ -188,7 +188,7 @@ export function manyImagesHistory(messages = 30) {
   }).flat();
 }
 
-// Team's attachment guidance in the interface language the message was written in (Admin assistant_route.py).
+// Team's attachment guidance in the interface language the message was written in (Admin chat route).
 const LIFECYCLE_GUIDANCE = Object.freeze({
   en: "Attachments can't be used to install or remove Assistants. Send that request again without attachments.",
   pt: 'Anexos não podem ser usados para instalar ou remover Assistentes. Envie esse pedido de novo sem anexos.',

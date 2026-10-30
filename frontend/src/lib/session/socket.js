@@ -9,7 +9,7 @@ import { readSession } from './context.js';
 import { exactKeys, LocalApiError } from '../api.js';
 import { TEAM_ID_RE } from '../ids.js';
 
-// The protocol's own bounds (backend/protocol/socket/v1/frames.py), pinned by the Admin parity test.
+// The protocol's own bounds (backend/src/session/frames.rs), pinned by the Admin parity test.
 const ADMIN_SOCKET_PROTOCOL = 'shimpz.admin.v1';
 const ADMIN_SOCKET_PATH = '/api/session/ws';
 const MAX_INBOUND_BYTES = 1024 * 1024;
