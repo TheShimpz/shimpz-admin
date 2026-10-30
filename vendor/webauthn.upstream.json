@@ -1,0 +1,7 @@
+{
+  "repository": "https://github.com/TheShimpz/shimpz-account",
+  "commit": "9226b0a7c465b9367f4064b860a43dcb491bfa95",
+  "path": "identity/webauthn",
+  "tree": "e7b2219e70173a9381b27fd7e3595a7d4b08de12",
+  "contract_files_sha256": "d0365d24e3cd5aeb202c3b3395441e426b97606a105aa86fe8ea464daa4784d4"
+}

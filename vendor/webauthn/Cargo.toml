@@ -1,0 +1,32 @@
+[package]
+name = "account-webauthn"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99.0"
+publish = false
+license = "Apache-2.0"
+description = "The strict WebAuthn verifier Account and the Local Admin share, parameterized by its relying party"
+
+[lib]
+name = "account_webauthn"
+path = "src/lib.rs"
+
+[features]
+# The emulated authenticator, for consumers' own ceremony tests.
+testing = []
+
+[dependencies]
+p256 = { version = "=0.14.0", default-features = false, features = ["arithmetic", "std"] }
+ring = "=0.17.14"
+subtle = "=2.6.1"
+
+strict-json = { path = "../../vendor/strict-json" }
+
+[lints.rust]
+missing_docs = "deny"
+unsafe_code = "forbid"
+
+[lints.clippy]
+all = { level = "deny", priority = -1 }
+pedantic = { level = "deny", priority = -1 }
+cognitive_complexity = "deny"
