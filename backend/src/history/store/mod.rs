@@ -230,6 +230,42 @@ fn initialize(database: &Connection) -> Result<(), HistoryError> {
     database.execute_batch(SCHEMA).map_err(unavailable)
 }
 
+/// Opens the history at `path` read-only, as `verify-state` does, and decodes every stored entry under the current
+/// schema; answers the number of entries (zero when there is no history yet).
+///
+/// # Errors
+///
+/// Returns [`HistoryError::Unavailable`] for another schema version or any entry outside its closed shapes.
+pub fn verify(path: &std::path::Path) -> Result<usize, HistoryError> {
+    if !path.exists() {
+        return Ok(0);
+    }
+    let database = Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
+        .map_err(unavailable)?;
+    let version: i64 = database
+        .query_row("PRAGMA user_version", [], |row| row.get(0))
+        .map_err(unavailable)?;
+    if version != SCHEMA_VERSION {
+        return Err(HistoryError::Unavailable);
+    }
+    let mut statement = database
+        .prepare("SELECT team_id, payload FROM transcript ORDER BY position")
+        .map_err(unavailable)?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .map_err(unavailable)?;
+    let mut count = 0;
+    for row in rows {
+        let (team, payload) = row.map_err(unavailable)?;
+        team_id(&team).map_err(unavailable)?;
+        decoded(&payload)?;
+        count += 1;
+    }
+    Ok(count)
+}
+
 /// The history store of one Admin process.
 pub struct Store {
     path: PathBuf,
