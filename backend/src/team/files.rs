@@ -280,35 +280,53 @@ pub async fn page_preview(
 /// A held download slot, released once: when the response ends, or when the browser did not take it in time.
 type Slot = Arc<Mutex<Option<OwnedSemaphorePermit>>>;
 
-/// The original sent as an attachment in bounded chunks, holding its slot until it ends or its deadline passes.
+/// The chunks of a download not yet sent; emptied at its deadline whether or not the body is still polled.
+type Payload = Arc<Mutex<Option<std::vec::IntoIter<Bytes>>>>;
+
+/// The body of a download: its chunks in order, then the end, or one error once its deadline emptied the payload.
+fn sent(
+    payload: Payload,
+    slot: Slot,
+) -> impl futures_util::Stream<Item = Result<Bytes, std::io::Error>> {
+    futures_util::stream::unfold(
+        (payload, slot, false),
+        |(payload, slot, failed)| async move {
+            let next = lock(&payload).as_mut().map(Iterator::next);
+            match next {
+                Some(Some(chunk)) => Some((Ok(chunk), (payload, slot, failed))),
+                Some(None) => {
+                    lock(&payload).take();
+                    lock(&slot).take();
+                    None
+                }
+                None if failed => None,
+                None => {
+                    lock(&slot).take();
+                    let expired = std::io::Error::other("download send deadline");
+                    Some((Err(expired), (payload, slot, true)))
+                }
+            }
+        },
+    )
+}
+
+/// The original sent as an attachment in bounded chunks, holding its slot until it ends or its deadline passes. At
+/// the deadline the unsent remainder is dropped before the slot is released, so a client that stopped reading holds
+/// neither memory nor capacity; its body then ends with an error.
 fn attachment(contents: Vec<u8>, slot: Slot) -> Response {
     let deadline = tokio::time::Instant::now() + DOWNLOAD_SEND;
-    let timer = Arc::clone(&slot);
-    tokio::spawn(async move {
-        tokio::time::sleep_until(deadline).await;
-        lock(&timer).take();
-    });
     let chunks: Vec<Bytes> = Bytes::from(contents)
         .chunks(CHUNK_BYTES)
         .map(Bytes::copy_from_slice)
         .collect();
-    let stream = futures_util::stream::unfold(
-        (chunks.into_iter(), slot),
-        move |(mut chunks, slot)| async move {
-            if tokio::time::Instant::now() >= deadline {
-                lock(&slot).take();
-                return Some((
-                    Err(std::io::Error::other("download send deadline")),
-                    (chunks, slot),
-                ));
-            }
-            if let Some(chunk) = chunks.next() {
-                return Some((Ok(chunk), (chunks, slot)));
-            }
-            lock(&slot).take();
-            None
-        },
-    );
+    let payload: Payload = Arc::new(Mutex::new(Some(chunks.into_iter())));
+    let (expired, timer) = (Arc::clone(&payload), Arc::clone(&slot));
+    tokio::spawn(async move {
+        tokio::time::sleep_until(deadline).await;
+        drop(lock(&expired).take());
+        lock(&timer).take();
+    });
+    let stream = sent(payload, slot);
     let mut response = Response::new(Body::from_stream(stream));
     no_store(&mut response);
     let headers = response.headers_mut();

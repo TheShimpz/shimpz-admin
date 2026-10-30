@@ -133,3 +133,26 @@ fn the_upload_s_headers_are_checked_before_its_body() {
         refused(413, "file upload too large")
     );
 }
+
+#[tokio::test(start_paused = true)]
+async fn an_unread_download_frees_its_remainder_and_its_slot_at_its_deadline() {
+    use http_body_util::BodyExt;
+    let capacity = Arc::new(tokio::sync::Semaphore::new(1));
+    let slot: Slot = Arc::new(Mutex::new(Some(
+        Arc::clone(&capacity).try_acquire_owned().unwrap(),
+    )));
+    let mut body = attachment(vec![7; 3 * CHUNK_BYTES], slot).into_body();
+    let first = body.frame().await.unwrap().unwrap().into_data().unwrap();
+    assert_eq!(first.len(), CHUNK_BYTES);
+    tokio::time::sleep(DOWNLOAD_SEND + Duration::from_secs(1)).await;
+    assert_eq!(
+        capacity.available_permits(),
+        1,
+        "the slot is released without polling"
+    );
+    assert!(
+        body.frame().await.unwrap().is_err(),
+        "the unsent remainder was dropped"
+    );
+    assert!(body.frame().await.is_none());
+}
