@@ -3,7 +3,7 @@
 
 use tokio::sync::MutexGuard;
 
-use crate::{app::App, fault::Reply, json};
+use crate::{fault::Reply, json, process::app::App};
 
 /// The chat history cannot be read or written.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -54,7 +54,7 @@ pub fn cleanup(response: Reply, action: impl FnOnce() -> Result<(), HistoryUnava
         return response;
     }
     if action().is_err() {
-        crate::command::log("error", "chat_history_cleanup_unavailable");
+        crate::process::command::log("error", "chat_history_cleanup_unavailable");
         return Reply::new(
             503,
             json::detail("Team state changed, but Admin chat history cleanup did not complete"),

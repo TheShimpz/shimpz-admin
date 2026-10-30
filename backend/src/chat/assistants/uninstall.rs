@@ -5,9 +5,9 @@ use super::{
     proposal::{Capability, UninstallCandidate, UninstallProposal},
 };
 use crate::{
-    app::App,
     fault::{Fault, Reply},
     json::{self, Value},
+    process::app::App,
     team::{bridge, transport::Team},
 };
 

@@ -5,9 +5,9 @@ use std::sync::Arc;
 use super::terminal;
 use crate::{
     chat::{connection::Turn, projection::error_terminal, socket::Ctx},
-    command::log,
     history::delivery,
     json::Value,
+    process::command::log,
 };
 
 /// Binds the paused turn to its challenge, then shows the challenge.

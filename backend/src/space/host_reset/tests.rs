@@ -13,7 +13,7 @@ fn digest() -> String {
 }
 
 fn app(root: &std::path::Path) -> Arc<App> {
-    let mut config = crate::config::Config::under(root);
+    let mut config = crate::process::config::Config::under(root);
     std::fs::create_dir_all(config.reset_capability_path.parent().unwrap()).unwrap();
     config.space_id = "space-0123456789abcdef01234567".to_owned();
     App::new(config)

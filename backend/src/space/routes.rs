@@ -10,9 +10,9 @@ use axum::{
 
 use super::{host_reset, reset};
 use crate::{
-    app::App,
     fault::Fault,
     http::{body, browser, respond},
+    process::app::App,
     team::transport::Team,
 };
 

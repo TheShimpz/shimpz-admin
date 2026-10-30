@@ -21,9 +21,9 @@ use super::{
     task_resume,
 };
 use crate::{
-    app::App,
     history::store::Store,
     json::{self, Value},
+    process::app::App,
     team::transport::Team,
 };
 
@@ -182,9 +182,10 @@ async fn stop_in_team(
 pub async fn end_run(run: &Arc<Run>) {
     let app = Arc::clone(run.app());
     let authority = run.authority();
-    let team = authority
-        .as_ref()
-        .map_or_else(|| Ok(app.machine_team()), crate::authority::Authority::team);
+    let team = authority.as_ref().map_or_else(
+        || Ok(app.machine_team()),
+        crate::supervisor::authority::Authority::team,
+    );
     let (active, continuation) = {
         let connection = run.connection();
         (connection.active.clone(), connection.continuation.clone())
@@ -200,7 +201,7 @@ pub async fn end_run(run: &Arc<Run>) {
         let ctx = Ctx::new(Arc::clone(&app), Arc::clone(run), relay, team);
         stop_in_team(&ctx, active.as_ref(), continuation.is_some()).await
     } else {
-        crate::command::log("warning", "chat_run_ended_without_authority");
+        crate::process::command::log("warning", "chat_run_ended_without_authority");
         let ctx = Ctx::new(Arc::clone(&app), Arc::clone(run), relay, app.machine_team());
         stop::close_connection(&ctx).await;
         Some(503)

@@ -6,7 +6,7 @@ fn audit(root: &Path) -> Audit {
     Audit::new(
         root.join("audit.jsonl"),
         Arc::new(Topics::new()),
-        Arc::new(crate::clock::Clock::new()),
+        Arc::new(crate::time::clock::Clock::new()),
     )
 }
 
@@ -84,7 +84,7 @@ fn the_history_names_the_sign_in_before_this_one_and_the_refusals_since() {
     journal
         .record("login", Outcome::Ok, None, Some("passkey"))
         .unwrap();
-    let now = crate::clock::Clock::new().now_secs();
+    let now = crate::time::clock::Clock::new().now_secs();
     let history = journal.sign_in_history(now + 1).unwrap();
     assert_eq!(history.failures_since, 2);
     assert_eq!(

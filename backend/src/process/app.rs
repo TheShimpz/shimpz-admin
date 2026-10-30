@@ -4,10 +4,9 @@ use std::sync::Arc;
 
 use crate::{
     chat::human::ActionPasswords,
-    clock::Clock,
-    config::Config,
     fault::Fault,
-    outbound,
+    http::outbound,
+    process::config::Config,
     record::{StateError, Store},
     session::{frames::SourceBuild, topics::Topics},
     signin::{
@@ -16,6 +15,7 @@ use crate::{
     },
     supervisor::assertion::AuthorityKind,
     team::transport::{Scope, Team, TeamClient},
+    time::clock::Clock,
 };
 
 /// Everything one Admin process shares.
@@ -49,7 +49,7 @@ pub struct App {
     /// The compiled Admin UI.
     pub site: crate::http::statics::Site,
     /// The domains' own state.
-    pub domains: crate::domains::Domains,
+    pub domains: crate::process::domains::Domains,
 }
 
 /// The session cookie.
@@ -86,7 +86,7 @@ impl App {
         ));
         let source = read_source(&config.revision_file).ok().flatten();
         let site = crate::http::statics::Site::index(&config.ui_dir);
-        let domains = crate::domains::Domains::new(&config, &clock, &topics);
+        let domains = crate::process::domains::Domains::new(&config, &clock, &topics);
         let app = Arc::new(Self {
             limiter: Arc::new(LoginLimiter::new(Arc::clone(&clock))),
             tickets: Tickets::new(Arc::clone(&clock)),

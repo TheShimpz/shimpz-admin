@@ -28,11 +28,11 @@ use tokio_tungstenite::{
 };
 
 use crate::{
-    app::{App, COOKIE},
-    authority::{SessionStatus, session_status},
     http::{browser, respond},
     json,
+    process::app::{App, COOKIE},
     session::{registry::SIGNED_OUT, socket},
+    supervisor::authority::{SessionStatus, session_status},
 };
 
 /// The streams relayed at once.
@@ -82,7 +82,7 @@ impl Bound {
 /// The page's admitted Origin and session cookie, or `None`: the handshake is refused before it is accepted.
 fn admit(app: &App, headers: &HeaderMap) -> Option<(String, String)> {
     let Ok(origins) = app.allowed_origins() else {
-        crate::command::log("error", "browser_stream_origin_authority_unavailable");
+        crate::process::command::log("error", "browser_stream_origin_authority_unavailable");
         return None;
     };
     let origin = socket::admitted_origin(headers, &origins)?;

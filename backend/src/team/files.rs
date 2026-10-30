@@ -20,10 +20,10 @@ use super::{
     transport::{AssetReply, Team},
 };
 use crate::{
-    app::App,
     fault::{Fault, Outcome},
     http::{body, browser, respond},
     json::{self, Value},
+    process::app::App,
     sync::lock,
 };
 

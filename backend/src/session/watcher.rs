@@ -12,10 +12,10 @@ use std::{
 };
 
 use crate::{
-    app::App,
-    authority::{SessionStatus, session_status},
     fault::{Fault, Reply},
     json::{self, Value},
+    process::app::App,
+    supervisor::authority::{SessionStatus, session_status},
     sync::lock,
 };
 
@@ -76,7 +76,7 @@ async fn check(app: &App, topic: &'static str, values: &mut HashMap<&'static str
         return false;
     };
     let Ok(value) = sample(app, topic, subscriber.cookie()).await else {
-        crate::command::log("warning", "session_watcher_read_failed");
+        crate::process::command::log("warning", "session_watcher_read_failed");
         return true;
     };
     if values

@@ -22,8 +22,8 @@ use crate::{
     chat::payloads,
     fault::{Fault, Reply},
     json::{self, Value},
-    keys::models,
     session::topics::Topics,
+    space::keys::models,
 };
 
 /// The largest chat turn body.

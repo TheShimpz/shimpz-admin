@@ -6,11 +6,11 @@ use unicode_normalization::UnicodeNormalization;
 
 use super::{bridge, history, order, transport::Team};
 use crate::{
-    app::App,
-    command::log,
     fault::{Fault, Outcome, Reply},
     http::body,
     json::{self, Value},
+    process::app::App,
+    process::command::log,
     signin::password::MAX_PASSWORD_CHARS,
 };
 

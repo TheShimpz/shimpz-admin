@@ -15,11 +15,11 @@ pub use decode::{AssetReply, Image};
 pub use headers::{Bindings, Scope};
 
 use crate::{
-    clock::Clock,
     fault::{Fault, Reply},
     json::{self, Value},
     supervisor::assertion::AuthorityKind,
     supervisor::identity::LocalIdentity,
+    time::clock::Clock,
 };
 
 /// The largest JSON request body Admin sends by default.

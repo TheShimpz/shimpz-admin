@@ -10,7 +10,7 @@ use hyper::body::Incoming;
 use hyper_util::rt::TokioIo;
 use rustls::pki_types::ServerName;
 
-use crate::config::Outbound;
+use crate::process::config::Outbound;
 
 /// An outbound request failed: unreachable, refused by TLS, too slow, or answered outside its bound.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

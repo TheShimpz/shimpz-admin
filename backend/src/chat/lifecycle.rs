@@ -14,10 +14,10 @@ use super::{
     socket::Ctx,
 };
 use crate::{
-    command::log,
     history::delivery::blocking,
     json::{self, Value},
     lanes::{Ended, Job},
+    process::command::log,
     sync::lock,
 };
 

@@ -161,7 +161,7 @@ async fn slow_provider() -> std::net::SocketAddr {
 async fn a_started_key_save_completes_after_its_socket_closes() {
     let provider = slow_provider().await;
     let admin = Admin::start_with(|config| {
-        config.outbound = admin_backend::config::Outbound::Local(provider);
+        config.outbound = admin_backend::process::config::Outbound::Local(provider);
     })
     .await;
     let cookie = admin.signed_in();
@@ -172,6 +172,7 @@ async fn a_started_key_save_completes_after_its_socket_closes() {
     tokio::time::sleep(Duration::from_millis(100)).await;
     drop(socket);
     tokio::time::sleep(Duration::from_millis(800)).await;
-    let saved = admin_backend::keys::models::resolve_api_key(&admin.app.store, "openai").unwrap();
+    let saved =
+        admin_backend::space::keys::models::resolve_api_key(&admin.app.store, "openai").unwrap();
     assert_eq!(saved.as_deref(), Some("sk-test-key-0123456789"));
 }

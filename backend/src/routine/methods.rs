@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use super::{answer, history, manage};
 use crate::{
-    app::App,
     fault::{Fault, Outcome, Reply},
+    process::app::App,
     session::{
         calls::{self, Call, Run},
         stepup,

@@ -8,7 +8,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{clock::Clock, sync::lock};
+use crate::{sync::lock, time::clock::Clock};
 
 /// The sliding window.
 pub const WINDOW_MS: i64 = 60_000;

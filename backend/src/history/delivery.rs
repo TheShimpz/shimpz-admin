@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use super::{HistoryError, context::Entry, store::Store};
 use crate::{
-    app::App,
     fault::Fault,
     json::{self, Value},
     lanes::Ended,
+    process::app::App,
     team::{bridge, transport::Team},
 };
 

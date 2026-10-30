@@ -10,11 +10,11 @@ pub mod team;
 use std::{os::unix::fs::PermissionsExt, path::Path, sync::Arc};
 
 use admin_backend::{
-    app::App,
-    clock::Clock,
-    config::{Config, Outbound},
     json,
+    process::app::App,
+    process::config::{Config, Outbound},
     signin::{token, totp},
+    time::clock::Clock,
 };
 
 /// A served Admin and what it was built from.

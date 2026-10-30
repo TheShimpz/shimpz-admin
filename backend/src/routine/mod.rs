@@ -20,8 +20,8 @@ impl State {
     /// The domain's state at start.
     #[must_use]
     pub fn new(
-        _config: &crate::config::Config,
-        clock: &std::sync::Arc<crate::clock::Clock>,
+        _config: &crate::process::config::Config,
+        clock: &std::sync::Arc<crate::time::clock::Clock>,
     ) -> Self {
         Self {
             scheduler: scheduler::Scheduler::new(clock.now_ms()),

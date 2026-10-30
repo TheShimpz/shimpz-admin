@@ -6,9 +6,9 @@ use std::sync::Arc;
 use super::{history_terminal, progress::take_receipt};
 use crate::{
     chat::{connection::Turn, projection::error_terminal, socket::Ctx},
-    command::log,
     history::delivery,
     json::{self, Value},
+    process::command::log,
 };
 
 /// Sends one turn's terminal once, committed first; whether it was sent.

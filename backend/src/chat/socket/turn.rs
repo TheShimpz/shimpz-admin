@@ -22,7 +22,6 @@ use crate::{
         payloads::{self, CHAT_PAYLOAD_FIELDS},
         projection::{error_terminal, first_challenge, turn_terminal},
     },
-    command::log,
     fault::Fault,
     history::{
         HistoryError,
@@ -30,6 +29,7 @@ use crate::{
     },
     json::{self, Value},
     lanes::Job,
+    process::command::log,
 };
 
 fn stopped() -> Value {

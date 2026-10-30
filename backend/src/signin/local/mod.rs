@@ -30,10 +30,10 @@ use super::{
     totp::Verification,
 };
 use crate::{
-    app::App,
     fault::Fault,
     http::{browser, respond},
     json::{self, Value},
+    process::app::App,
     record::{Ceremony, StateError},
 };
 
@@ -83,7 +83,7 @@ pub fn journal(
 
 /// Writes one structured log line of a fixed event name, never a value.
 pub fn log(level: &str, event: &str) {
-    crate::command::log(level, event);
+    crate::process::command::log(level, event);
 }
 
 /// Forgets every ticket and challenge after an authentication-state change.

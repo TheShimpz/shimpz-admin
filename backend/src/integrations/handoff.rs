@@ -21,7 +21,7 @@ use team_protocol::{
 };
 
 use super::cloudflare;
-use crate::{clock::Clock, sync::lock};
+use crate::{sync::lock, time::clock::Clock};
 
 /// How long a handoff lives.
 pub const HANDOFF_TTL_MS: i64 = 600_000;

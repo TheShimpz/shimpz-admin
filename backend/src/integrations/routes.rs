@@ -11,12 +11,12 @@ use axum::{
 
 use super::authorization::LOCAL_DOMAIN_ORIGIN;
 use crate::{
-    app::App,
-    command::log,
     http::{
         browser,
         respond::{self, CookieAttributes},
     },
+    process::app::App,
+    process::command::log,
 };
 
 /// The callback binding cookie.

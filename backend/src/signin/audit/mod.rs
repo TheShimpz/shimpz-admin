@@ -22,7 +22,7 @@ use crate::{
     json::{self, Value},
     session::topics::Topics,
     sync::lock,
-    timefmt,
+    time::format,
 };
 
 /// A journal file rotates at this size.
@@ -90,7 +90,7 @@ pub struct HistoryUnavailable;
 pub struct Audit {
     path: PathBuf,
     topics: Arc<Topics>,
-    clock: Arc<crate::clock::Clock>,
+    clock: Arc<crate::time::clock::Clock>,
     failed: Mutex<bool>,
 }
 
@@ -167,7 +167,7 @@ pub struct SignInHistory {
 impl Audit {
     /// The journal at `path`.
     #[must_use]
-    pub fn new(path: PathBuf, topics: Arc<Topics>, clock: Arc<crate::clock::Clock>) -> Self {
+    pub fn new(path: PathBuf, topics: Arc<Topics>, clock: Arc<crate::time::clock::Clock>) -> Self {
         Self {
             path,
             topics,
@@ -202,7 +202,7 @@ impl Audit {
             "invalid authentication audit event"
         );
         let mut entry = vec![
-            ("ts", json::text(timefmt::utc(self.clock.now_secs()))),
+            ("ts", json::text(format::utc(self.clock.now_secs()))),
             ("event", json::text(event)),
             (
                 "outcome",
@@ -302,7 +302,7 @@ impl Audit {
             .count();
         Ok(SignInHistory {
             previous: Some((
-                timefmt::utc(*moment),
+                format::utc(*moment),
                 json::get_str(signed_in, "origin").map(str::to_owned),
             )),
             failures_since,
@@ -316,7 +316,7 @@ fn entry(line: &[u8]) -> Result<(i64, Value), HistoryUnavailable> {
     }
     let value = json::parse(line).map_err(|_| HistoryUnavailable)?;
     let moment = json::get_str(&value, "ts")
-        .and_then(timefmt::parse_utc)
+        .and_then(format::parse_utc)
         .ok_or(HistoryUnavailable)?;
     let origin_ok = match value.get("origin") {
         None | Some(Value::Null) => true,

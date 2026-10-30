@@ -12,10 +12,10 @@ use super::{
     ticket,
 };
 use crate::{
-    app::App,
     fault::Fault,
     http::{body::exact_fields, browser},
     json::{self, Value},
+    process::app::App,
     record::{AuthState, Ceremony, StateError},
     signin::{
         audit::Outcome as Journaled,

@@ -22,7 +22,7 @@ use std::{
     sync::{Arc, Mutex, atomic::AtomicBool},
 };
 
-use crate::{clock::Clock, config::Config, lanes::Lane};
+use crate::{lanes::Lane, process::config::Config, time::clock::Clock};
 
 /// Chat's bounded worker lanes: a slow provider never consumes the worker needed to stop its turn.
 pub struct Lanes {

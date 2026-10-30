@@ -14,7 +14,6 @@ use super::{
     uninstall,
 };
 use crate::{
-    app::App,
     chat::{
         catalog::Offer,
         local::{
@@ -25,8 +24,9 @@ use crate::{
     fault::Fault,
     history::context::Entry,
     json::{self, Value},
-    keys::decision,
     lanes::Ended,
+    process::app::App,
+    space::keys::decision,
     team::transport::Team,
 };
 

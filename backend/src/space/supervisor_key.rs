@@ -16,9 +16,9 @@ use data_encoding::{BASE64URL_NOPAD, HEXLOWER};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    app::App,
     fault::Reply,
     json::{self, Value},
+    process::app::App,
     record::StateError,
     signin::{audit::Outcome as Journaled, local::journal},
     supervisor::{
@@ -97,7 +97,7 @@ fn switched(response: &Reply, pending: &LocalIdentity) -> Option<bool> {
             return Some(true);
         }
         // Team switched to some key, but not this one: keep both keys rather than guess which one Team pins.
-        crate::command::log("error", "supervisor_key_rotation_other_key");
+        crate::process::command::log("error", "supervisor_key_rotation_other_key");
         return None;
     }
     if response.status >= 500 {
@@ -110,10 +110,10 @@ fn adopt(app: &App, pending: &LocalIdentity) -> Result<Outcome, RotationFailure>
     let journal_outcome =
         |(): &()| journal(app, "supervisor-key-rotated", Journaled::Ok, None, None);
     app.store.adopt_supervisor_key(pending, &journal_outcome)?;
-    crate::command::log("warning", "supervisor_key_rotated");
+    crate::process::command::log("warning", "supervisor_key_rotated");
     if identity::materialize(&app.config.public_key_file, app.config.key_group, pending).is_err() {
         // Team verifies under its own pin; the published copy is written again on the next start.
-        crate::command::log("warning", "supervisor_public_key_unpublished");
+        crate::process::command::log("warning", "supervisor_public_key_unpublished");
     }
     Ok(Outcome::Rotated)
 }
@@ -130,7 +130,7 @@ fn abandon(app: &App, pending: &LocalIdentity) -> Result<Outcome, RotationFailur
     };
     app.store
         .abandon_supervisor_key(pending, &journal_outcome)?;
-    crate::command::log("warning", "supervisor_key_rotation_abandoned");
+    crate::process::command::log("warning", "supervisor_key_rotation_abandoned");
     Ok(Outcome::Abandoned)
 }
 
@@ -160,7 +160,7 @@ pub async fn resolve(app: &App, authority: Option<&str>) -> Result<Outcome, Rota
     }
     match decided {
         None => {
-            crate::command::log("warning", "supervisor_key_rotation_waiting");
+            crate::process::command::log("warning", "supervisor_key_rotation_waiting");
             Ok(Outcome::Pending)
         }
         Some(true) => adopt(app, &pending),
@@ -207,11 +207,11 @@ fn publish(app: &App) {
                     .is_ok()
             });
             if !published {
-                crate::command::log("error", "supervisor_public_key_unpublished");
+                crate::process::command::log("error", "supervisor_public_key_unpublished");
             }
         }
         Ok(false) => {}
-        Err(_) => crate::command::log("error", "password_record_requires_recovery"),
+        Err(_) => crate::process::command::log("error", "password_record_requires_recovery"),
     }
 }
 
@@ -241,7 +241,7 @@ async fn retry(app: Weak<App>) {
         };
         if resolve(&current, None).await.is_err() {
             // An unreadable store or a refused journal keeps both keys; the next attempt tries again.
-            crate::command::log("error", "supervisor_key_rotation_retry_failed");
+            crate::process::command::log("error", "supervisor_key_rotation_retry_failed");
         }
     }
 }

@@ -15,10 +15,10 @@ use super::{
     token,
 };
 use crate::{
-    app::App,
     fault::{Fault, Reply},
     http::{body, browser, respond},
     json::{self, Value},
+    process::app::App,
     record::{AuthState, StateError},
 };
 

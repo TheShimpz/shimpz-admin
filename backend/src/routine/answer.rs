@@ -15,7 +15,6 @@ use team_protocol::{routine_run, websocket::canonical_human_response};
 use super::{manage, team::RESUME_TIMEOUT_SECONDS};
 use crate::{
     chat::human::{self, ActionPasswords},
-    clock::Clock,
     fault::{Fault, Reply},
     json::{self, Value},
     sync::lock,
@@ -23,6 +22,7 @@ use crate::{
         bridge::MAX_CHAT_JSON_BODY_BYTES,
         transport::{Bindings, Options, Team},
     },
+    time::clock::Clock,
 };
 
 /// The most challenges Admin keeps open.

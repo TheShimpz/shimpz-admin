@@ -8,9 +8,9 @@ use sha2::{Digest, Sha256};
 use team_protocol::websocket::canonical_origin;
 
 use crate::{
-    clock::Clock,
     json::{self, Value},
     sync::lock,
+    time::clock::Clock,
 };
 
 /// A challenge lives this long.

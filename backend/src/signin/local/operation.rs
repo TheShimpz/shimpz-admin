@@ -12,10 +12,10 @@ use super::{
     passkey::{self, AssertionFailure},
 };
 use crate::{
-    app::App,
     fault::{Fault, Reply},
     http::body::exact_fields,
     json::{self, Value},
+    process::app::App,
     record::{AuthState, Ceremony},
     signin::{
         audit::Outcome as Journaled,

@@ -24,11 +24,11 @@ use team_protocol::{
 
 use crate::{
     chat::payloads,
-    clock::Clock,
     json::{self, Value},
     record::Store,
     signin::password,
     team::bridge::is_trace_id,
+    time::clock::Clock,
 };
 
 /// The longest a challenge stays open.

@@ -12,7 +12,7 @@ use std::{
 
 use sha2::{Digest, Sha256};
 
-use crate::{clock::Clock, sync::lock};
+use crate::{sync::lock, time::clock::Clock};
 
 /// A session ends after this long without Supervisor activity.
 pub const IDLE_MS: i64 = 3600 * 1000;

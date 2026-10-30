@@ -14,9 +14,9 @@ use zeroize::Zeroizing;
 
 use super::{browser, respond};
 use crate::{
-    app::{App, COOKIE},
     fault::Reply,
     json,
+    process::app::{App, COOKIE},
     record::StateError,
     team::transport::Team,
 };

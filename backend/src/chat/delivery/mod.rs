@@ -11,9 +11,9 @@ pub mod terminal;
 pub mod uninstall;
 
 use crate::{
-    app::App,
     history::{HistoryError, delivery},
     json::Value,
+    process::app::App,
 };
 
 /// Keeps how one turn ended in its Team's history.

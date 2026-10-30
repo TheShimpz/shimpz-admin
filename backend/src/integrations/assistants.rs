@@ -14,9 +14,9 @@ use team_protocol::{
 use super::cloudflare;
 use crate::{
     chat::payloads,
-    command::log,
     fault::{Fault, Reply},
     json::{self, Value},
+    process::command::log,
     session::topics::Topics,
     team::{bridge, transport::Team},
 };

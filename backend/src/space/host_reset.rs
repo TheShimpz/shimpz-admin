@@ -12,11 +12,11 @@ use team_protocol::python::regex::{Pattern, declared};
 
 use super::reset::{self, Deletion};
 use crate::{
-    app::App,
-    command::log,
     fault::{Fault, Outcome, Reply},
     fsio::{self, Requirements},
     json::{self, Value},
+    process::app::App,
+    process::command::log,
     record::{AuthState, StateError},
     signin::{audit::Outcome as Journal, local},
     supervisor::assertion::AuthorityKind,

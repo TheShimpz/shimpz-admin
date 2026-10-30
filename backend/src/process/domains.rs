@@ -1,8 +1,8 @@
-//! Each domain's own process state, held by the [`crate::app::App`] every route and task shares.
+//! Each domain's own process state, held by the [`crate::process::app::App`] every route and task shares.
 
 use std::sync::Arc;
 
-use crate::{clock::Clock, config::Config};
+use crate::{process::config::Config, time::clock::Clock};
 
 /// The domains' state.
 pub struct Domains {

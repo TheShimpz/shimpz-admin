@@ -16,7 +16,6 @@ use super::{
     proposal::{self, Capability},
 };
 use crate::{
-    app::App,
     chat::{
         catalog::{
             Offer,
@@ -27,6 +26,7 @@ use crate::{
     },
     fault::Fault,
     json::{self, Value},
+    process::app::App,
     team::{bridge, transport::Team},
 };
 

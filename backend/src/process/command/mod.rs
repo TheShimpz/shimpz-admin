@@ -13,9 +13,9 @@ use std::{
 use rustix::fs::OFlags;
 
 use crate::{
-    app::App,
-    config::Config,
     json,
+    process::app::App,
+    process::config::Config,
     record::{StateError, Store},
 };
 
@@ -118,7 +118,7 @@ fn serve() -> ExitCode {
             .write_all(b"{\"level\":\"error\",\"event\":\"configuration_invalid\"}\n");
         return ExitCode::FAILURE;
     };
-    if crate::app::read_source(&config.revision_file).is_err() {
+    if crate::process::app::read_source(&config.revision_file).is_err() {
         let _ = std::io::stderr()
             .write_all(b"{\"level\":\"error\",\"event\":\"source_revision_malformed\"}\n");
         return ExitCode::FAILURE;
@@ -129,7 +129,7 @@ fn serve() -> ExitCode {
     runtime.block_on(async move {
         let listen = config.listen;
         let app = App::new(config);
-        crate::background::start(&app);
+        crate::process::background::start(&app);
         let Ok(listener) = tokio::net::TcpListener::bind(listen).await else {
             return ExitCode::FAILURE;
         };
@@ -204,7 +204,7 @@ async fn probe_session() -> Result<Vec<u8>, ()> {
 }
 
 fn store(config: &Config) -> Store {
-    let clock = std::sync::Arc::new(crate::clock::Clock::new());
+    let clock = std::sync::Arc::new(crate::time::clock::Clock::new());
     let sessions = std::sync::Arc::new(crate::signin::sessions::Sessions::new(
         std::sync::Arc::clone(&clock),
     ));
@@ -230,7 +230,7 @@ fn authentication_state() -> ExitCode {
 
 fn verify_state() -> ExitCode {
     let config = production();
-    match crate::verify::verify(&config, &store(&config)) {
+    match crate::process::verify::verify(&config, &store(&config)) {
         Ok(counts) => exit(
             std::io::stdout()
                 .write_all(counts.as_bytes())

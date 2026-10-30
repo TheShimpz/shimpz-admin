@@ -18,7 +18,7 @@ fn a_panic_reports_where_it_happened_and_never_its_payload() {
     let output = Command::new(std::env::current_exe().unwrap())
         .args([
             "--exact",
-            "command::tests::a_panic_reports_where_it_happened_and_never_its_payload",
+            "process::command::tests::a_panic_reports_where_it_happened_and_never_its_payload",
             "--nocapture",
             "--test-threads=1",
         ])
@@ -42,7 +42,7 @@ fn a_panic_reports_where_it_happened_and_never_its_payload() {
     assert!(
         reports
             .iter()
-            .all(|line| line.contains(r#""location":"src/command/tests.rs:"#)),
+            .all(|line| line.contains(r#""location":"src/process/command/tests.rs:"#)),
         "{stderr}"
     );
 }

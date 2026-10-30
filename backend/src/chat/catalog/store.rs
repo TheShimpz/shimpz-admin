@@ -28,10 +28,10 @@ use team_protocol::{
 };
 
 use crate::{
-    clock::Clock,
+    http::outbound,
     json::{self, Value},
-    outbound,
     sync::lock,
+    time::clock::Clock,
 };
 
 /// The Store's host.

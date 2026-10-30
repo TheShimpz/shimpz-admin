@@ -16,11 +16,11 @@ use team_protocol::{
 
 use super::catalog::store::{CatalogAssistant, CatalogPage, IconError};
 use crate::{
-    app::App,
     fault::{Fault, Outcome, Reply},
     http::respond,
     json::{self, Value},
     lanes::Ended,
+    process::app::App,
     session::frames::MAX_OUTBOUND_BYTES,
 };
 

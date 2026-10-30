@@ -15,9 +15,9 @@ use tokio::sync::{Notify, OwnedSemaphorePermit, Semaphore};
 
 use super::{delivery, team};
 use crate::{
-    app::App,
-    command::log,
     json::{self, Value},
+    process::app::App,
+    process::command::log,
     supervisor::identity::{self, LocalIdentity},
     sync::lock,
 };

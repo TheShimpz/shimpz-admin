@@ -9,7 +9,7 @@ pub mod store;
 
 use std::sync::Arc;
 
-use crate::{clock::Clock, config::Config, lanes::Lane, session::topics::Topics};
+use crate::{lanes::Lane, process::config::Config, session::topics::Topics, time::clock::Clock};
 
 /// A value outside the history's closed shapes (Python's `ValueError`), with its reason.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

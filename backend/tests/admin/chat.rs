@@ -387,9 +387,10 @@ fn script_install(admin: &Admin) {
 #[tokio::test]
 async fn an_install_request_runs_its_plan_and_keeps_its_card() {
     let store = store_catalog().await;
-    let admin =
-        Admin::start_with(|config| config.outbound = admin_backend::config::Outbound::Local(store))
-            .await;
+    let admin = Admin::start_with(|config| {
+        config.outbound = admin_backend::process::config::Outbound::Local(store);
+    })
+    .await;
     let mut socket = attached(&admin).await;
     script_install(&admin);
     send_frame(&mut socket, &message("Install Cloudflare")).await;

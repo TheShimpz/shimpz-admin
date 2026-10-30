@@ -16,12 +16,12 @@ use super::{
     Answer, closed_traced_for, credential_record_invalid, model_credential, routable, safe_error,
 };
 use crate::{
-    app::App,
     chat::{assistants::proposal::AssistantReference, payloads},
     fault::{Fault, Reply},
     history::context::{self, Entry},
     json::{self, Value},
-    keys::{decision, models::KeyError},
+    process::app::App,
+    space::keys::{decision, models::KeyError},
     team::{bridge, transport::Team},
 };
 

@@ -14,10 +14,10 @@ pub use fields::{BROWSER_FIELD, ROUTINE_FIELDS, admit_routine_fields};
 pub use progress::{MAX_PUBLIC_PROGRESS_EVENTS, canonical_public_progress};
 
 use crate::{
-    app::App,
     fault::{Fault, Reply},
     json::{self, Value},
-    keys::models::{self, KeyError},
+    process::app::App,
+    space::keys::models::{self, KeyError},
     team::{
         bridge::{self, Credential},
         transport::Team,

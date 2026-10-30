@@ -9,10 +9,10 @@ use std::{
 
 use super::{Observer, Run};
 use crate::{
-    app::App,
-    authority::Authority,
     json::Value,
+    process::app::App,
     session::socket::{Channel, Socket},
+    supervisor::authority::Authority,
     sync::lock,
 };
 

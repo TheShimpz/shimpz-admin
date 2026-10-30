@@ -12,9 +12,9 @@ use unicode_normalization::UnicodeNormalization;
 use zeroize::Zeroizing;
 
 use crate::{
-    clock::Clock,
     json::{self, Value},
     sync::lock,
+    time::clock::Clock,
 };
 
 /// The fewest characters a new password has.

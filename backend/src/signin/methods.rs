@@ -45,7 +45,7 @@ pub async fn security_acknowledge(call: &Call) -> Outcome {
 }
 
 /// A security change Admin completed changes the session's sign-in security summary.
-fn announced(app: &crate::app::App, outcome: Outcome) -> Outcome {
+fn announced(app: &crate::process::app::App, outcome: Outcome) -> Outcome {
     if outcome.as_ref().is_ok_and(Reply::success) {
         app.topics.changed("security/summary");
     }

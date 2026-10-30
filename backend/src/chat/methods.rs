@@ -36,7 +36,7 @@ pub async fn history_page(call: &Call) -> Outcome {
 }
 
 /// A committed chat limit answer the Space's chat gate follows at once (ADR-0119).
-fn followed(app: &crate::app::App, reply: Reply) -> Reply {
+fn followed(app: &crate::process::app::App, reply: Reply) -> Reply {
     if reply.status == 200
         && let Some(limit) = reply.get("limit").and_then(json::as_int)
     {

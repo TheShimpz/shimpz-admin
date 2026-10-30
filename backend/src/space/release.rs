@@ -66,7 +66,7 @@ pub fn status_response(path: &Path) -> Outcome {
     json::set(
         &mut document,
         "checked_at",
-        json::text(crate::timefmt::utc(checked_at)),
+        json::text(crate::time::format::utc(checked_at)),
     );
     Ok(Reply::ok(document))
 }

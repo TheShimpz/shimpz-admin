@@ -25,13 +25,13 @@ use team_protocol::sign_in as contract;
 
 use super::{bridge::closed_traced, transport::Team};
 use crate::{
-    app::App,
-    authority::Authority,
     chat::payloads,
-    command::log,
     fault::{Fault, Reply},
     json::{self, Value},
+    process::app::App,
+    process::command::log,
     session::topics::Topics,
+    supervisor::authority::Authority,
     sync::lock,
 };
 

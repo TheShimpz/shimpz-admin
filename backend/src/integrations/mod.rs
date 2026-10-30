@@ -8,7 +8,7 @@ pub mod routes;
 
 use std::sync::Arc;
 
-use crate::{clock::Clock, config::Config};
+use crate::{process::config::Config, time::clock::Clock};
 
 /// The Integrations' process state: the OAuth handoffs.
 pub struct State {

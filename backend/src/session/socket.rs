@@ -31,12 +31,12 @@ use super::{
     registry::SIGNED_OUT,
 };
 use crate::{
-    app::{App, COOKIE},
-    authority::{Authority, SessionStatus, session_status},
     fault::Reply,
     http::browser,
     json::{self, Value},
+    process::app::{App, COOKIE},
     signin::{sessions::session_key, tickets::Binding, token},
+    supervisor::authority::{Authority, SessionStatus, session_status},
     sync::lock,
 };
 
@@ -203,7 +203,7 @@ impl Socket {
             Ok(()) => Ok(()),
             Err(Refused::Closed) => Err(SendError::Closed),
             Err(Refused::Overflow) => {
-                crate::command::log("warning", "session_outbound_overflow");
+                crate::process::command::log("warning", "session_outbound_overflow");
                 self.end(UNAVAILABLE);
                 Err(SendError::Closed)
             }
@@ -515,7 +515,7 @@ pub fn offered_protocols(headers: &HeaderMap) -> Vec<String> {
 /// Admits the handshake as the bound Origin and session cookie, or the close code that refuses it before accepting.
 fn admit(app: &App, headers: &HeaderMap) -> Result<(String, String), u16> {
     let Ok(origins) = app.allowed_origins() else {
-        crate::command::log("error", "session_origin_authority_unavailable");
+        crate::process::command::log("error", "session_origin_authority_unavailable");
         return Err(UNAVAILABLE);
     };
     let origin = admitted_origin(headers, &origins).ok_or(ORIGIN_REFUSED)?;

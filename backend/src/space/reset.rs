@@ -4,10 +4,10 @@
 use std::sync::Arc;
 
 use crate::{
-    app::App,
     fault::{Fault, Outcome, Reply},
     http::body,
     json::{self, Value},
+    process::app::App,
     signin::{audit::Outcome as Journal, local, password::MAX_PASSWORD_CHARS},
     team::{bridge, history, order, transport::Team},
 };

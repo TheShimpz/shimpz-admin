@@ -16,10 +16,10 @@ use super::{
     socket::Socket,
 };
 use crate::{
-    app::App,
     fault::{Fault, Outcome, Reply},
     json::{self, Value},
     lanes::{Ended, Lane},
+    process::app::App,
     team::transport::Team,
 };
 
@@ -241,7 +241,7 @@ pub async fn run(socket: &Arc<Socket>, call: frames::Call) {
             Err(Fault::Closed) => return,
             Err(fault) => {
                 if fault == Fault::Internal {
-                    crate::command::log("error", "session_call_failed");
+                    crate::process::command::log("error", "session_call_failed");
                 }
                 fault.reply()
             }
@@ -255,7 +255,7 @@ pub async fn run(socket: &Arc<Socket>, call: frames::Call) {
         revision.as_ref().filter(|_| success),
     );
     if frames::encode(&frame).is_err() {
-        crate::command::log("warning", "session_result_exceeds_frame_bound");
+        crate::process::command::log("warning", "session_result_exceeds_frame_bound");
         frame = frames::result(
             &id,
             502,

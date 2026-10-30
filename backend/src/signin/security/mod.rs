@@ -7,9 +7,9 @@
 
 use super::{local::state_fault, token};
 use crate::{
-    app::App,
     fault::Fault,
     json::{self, Value},
+    process::app::App,
     record::StateError,
 };
 
@@ -29,7 +29,7 @@ fn history(app: &App, session: &str) -> Result<Value, Fault> {
     let evidence = token::verify(&app.sessions, &app.clock, &secret, session, false)
         .ok_or_else(|| Fault::detail(401, "unauthenticated"))?;
     let Ok(history) = app.audit.sign_in_history(evidence.issued_at) else {
-        crate::command::log("warning", "sign_in_history_unavailable");
+        crate::process::command::log("warning", "sign_in_history_unavailable");
         return Ok(Value::Null);
     };
     let previous = history.previous.map_or(Value::Null, |(at, origin)| {

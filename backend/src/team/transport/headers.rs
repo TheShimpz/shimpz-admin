@@ -11,7 +11,7 @@ use super::{Team, TeamClient};
 use crate::{
     fault::Fault,
     json::Value,
-    keys::models,
+    space::keys::models,
     supervisor::{
         assertion::{self, AuthorityKind, RequestBinding},
         identity::LocalIdentity,

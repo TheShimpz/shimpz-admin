@@ -22,10 +22,10 @@ use super::{
     socket::{self, Ctx, Disconnected},
 };
 use crate::{
-    app::App,
-    authority::Authority,
-    command::log,
     json::{self, Value},
+    process::app::App,
+    process::command::log,
+    supervisor::authority::Authority,
     sync::lock,
 };
 

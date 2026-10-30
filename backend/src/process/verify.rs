@@ -1,7 +1,7 @@
 //! `verify-state`: a read-only, offline proof that every kept store opens and parses under this Admin.
 
 use crate::{
-    config::Config,
+    process::config::Config,
     record::{StateError, Store},
 };
 

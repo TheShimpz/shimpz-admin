@@ -23,10 +23,10 @@ use team_protocol::{identifiers::canonical_team_id, websocket::HEX_ID_RE};
 
 use super::{HistoryError, Invalid};
 use crate::{
-    clock::Clock,
     json::{self, Value},
     session::topics::Topics,
     sync::lock,
+    time::clock::Clock,
 };
 
 /// Version 15 keeps each Routine creation with what its recording spent.
@@ -305,7 +305,7 @@ impl Store {
     }
 
     fn now(&self) -> String {
-        crate::timefmt::utc(self.clock.now_secs())
+        crate::time::format::utc(self.clock.now_secs())
     }
 
     fn changed(&self, team_id: &str) {

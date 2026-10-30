@@ -3,9 +3,9 @@
 
 use super::{journal, log, state_fault};
 use crate::{
-    app::App,
     fault::Fault,
     json::Value,
+    process::app::App,
     record::{PasskeyCommit, StateError},
     signin::{
         audit::Outcome as Journaled,

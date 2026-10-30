@@ -10,11 +10,11 @@ use super::{
     handoff::HandoffError,
 };
 use crate::{
-    app::App,
     chat::payloads,
     fault::{Fault, Outcome, Reply},
     http::body,
     json::{self, Value},
+    process::app::App,
     team::transport::Team,
 };
 

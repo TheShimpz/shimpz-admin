@@ -2,8 +2,8 @@
 
 use super::{HistoryError, State, delivery::blocking};
 use crate::{
-    command::log,
     fault::{Fault, Outcome, Reply},
+    process::command::log,
     team::{bridge, transport::Team},
 };
 

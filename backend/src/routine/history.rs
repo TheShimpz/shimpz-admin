@@ -2,7 +2,7 @@
 //! The chat domain owns the history store; this is the narrow interface Routines call (it shares the lifecycle lock in
 //! [`crate::team::history`]).
 
-use crate::{app::App, json::Value, team::history::HistoryUnavailable};
+use crate::{json::Value, process::app::App, team::history::HistoryUnavailable};
 
 /// Writes one Routine notice version to its Team's transcript, idempotently per version; `false` when it conflicts
 /// with its transcript row.

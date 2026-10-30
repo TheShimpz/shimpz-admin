@@ -5,8 +5,8 @@
 
 use super::models::{self, KeyError};
 use crate::{
+    http::outbound,
     json::{self, Value},
-    outbound,
     record::Store,
 };
 

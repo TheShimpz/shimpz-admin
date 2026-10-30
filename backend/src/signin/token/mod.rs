@@ -9,7 +9,7 @@ use sha2::Sha256;
 use subtle::ConstantTimeEq;
 
 use super::sessions::Sessions;
-use crate::clock::Clock;
+use crate::time::clock::Clock;
 
 /// A session's absolute lifetime from its sign-in.
 pub const TTL_SECONDS: i64 = 24 * 3600;

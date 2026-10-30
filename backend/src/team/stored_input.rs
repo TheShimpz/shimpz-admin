@@ -3,9 +3,9 @@
 use super::{bridge::closed_traced, transport::Team};
 use crate::{
     chat::payloads,
-    command::log,
     fault::{Fault, Reply},
     json::{self, Value},
+    process::command::log,
     session::topics::Topics,
 };
 

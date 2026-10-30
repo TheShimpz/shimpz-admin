@@ -7,7 +7,9 @@ use super::{calls::Call, frames};
 use crate::{
     chat,
     fault::{Outcome, Reply},
-    keys, routine, signin, space, team,
+    routine, signin, space,
+    space::keys,
+    team,
 };
 
 /// A method whose port has not landed yet.

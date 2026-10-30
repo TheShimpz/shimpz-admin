@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use crate::app::App;
+use crate::process::app::App;
 
 /// Starts every background task of `app`.
 pub fn start(app: &Arc<App>) {

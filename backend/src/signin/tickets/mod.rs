@@ -2,7 +2,7 @@
 
 use std::{collections::HashMap, sync::Arc, sync::Mutex};
 
-use crate::{clock::Clock, sync::lock};
+use crate::{sync::lock, time::clock::Clock};
 
 /// A ticket lives this long.
 pub const TICKET_TTL_MS: i64 = 180 * 1000;

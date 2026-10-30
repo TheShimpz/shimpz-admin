@@ -1,10 +1,10 @@
 //! Strict Team projection for one exact automatic Assistant installation.
 
 use crate::{
-    app::App,
     chat::catalog::{Offer, local::LocalAssistant, store::CatalogAssistant},
     fault::{Fault, Reply},
     json::{self, Value},
+    process::app::App,
     team::{bridge, transport::Team},
 };
 

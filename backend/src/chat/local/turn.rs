@@ -17,11 +17,11 @@ use super::{
     model_credential, progress, safe_error, unavailable,
 };
 use crate::{
-    app::App,
     chat::payloads,
     fault::{Fault, Reply},
     history::context::Entry,
     json::{self, Value},
+    process::app::App,
     team::{
         bridge::{self, Credential},
         transport::Team,

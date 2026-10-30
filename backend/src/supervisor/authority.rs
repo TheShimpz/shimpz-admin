@@ -5,7 +5,9 @@ use std::sync::{Arc, Weak};
 
 use zeroize::Zeroizing;
 
-use crate::{app::App, fault::Fault, signin::sessions::session_key, team::transport::Team};
+use crate::{
+    fault::Fault, process::app::App, signin::sessions::session_key, team::transport::Team,
+};
 
 /// Whether a session is current: `active`, `invalid`, or `unavailable` when the check itself failed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

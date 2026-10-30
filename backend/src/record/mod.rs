@@ -21,12 +21,12 @@ pub use factors::{Ceremony, PasskeyCommit};
 pub use identity::RotationError;
 
 use crate::{
-    clock::Clock,
     fsio,
     json::{self, Value},
     session::topics::Topics,
     signin::sessions::Sessions,
     sync::lock,
+    time::clock::Clock,
 };
 
 /// Every reason a store operation fails.

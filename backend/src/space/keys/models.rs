@@ -6,8 +6,8 @@
 use std::{sync::LazyLock, time::Duration};
 
 use crate::{
+    http::outbound,
     json::{self, Value},
-    outbound,
     record::{StateError, Store},
 };
 
@@ -48,7 +48,7 @@ pub struct Provider {
 
 /// The providers of the pinned model catalog, in its order, each with only its chat models.
 pub static PROVIDERS: LazyLock<Vec<Provider>> = LazyLock::new(|| {
-    let catalog = json::parse(include_bytes!("../../model_catalog.json")).unwrap_or(Value::Null);
+    let catalog = json::parse(include_bytes!("../../../model_catalog.json")).unwrap_or(Value::Null);
     json::get(&catalog, "providers")
         .and_then(json::as_array)
         .unwrap_or_default()
