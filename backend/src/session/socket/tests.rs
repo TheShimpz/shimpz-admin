@@ -73,3 +73,42 @@ fn a_frame_outside_the_bounded_json_contract_names_its_close_code() {
     );
     assert_eq!(decode(Message::Ping(Vec::new().into())), Ok(None));
 }
+
+fn test_socket() -> (tempfile::TempDir, Arc<Socket>) {
+    let root = tempfile::tempdir().unwrap();
+    let app = App::new(crate::process::config::Config::under(root.path()));
+    let socket = Arc::new(Socket::new(
+        app,
+        "http://127.0.0.1:7777".to_owned(),
+        String::new(),
+    ));
+    (root, socket)
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_write_the_client_never_takes_closes_the_socket_at_its_deadline() {
+    let (_root, socket) = test_socket();
+    socket.send(&crate::json::empty(), None).unwrap();
+    let never = futures_util::sink::unfold((), |(), _: Message| {
+        std::future::pending::<Result<(), ()>>()
+    });
+    let writer = tokio::spawn(write(Arc::clone(&socket), Box::pin(never)));
+    tokio::time::sleep(WRITE_DEADLINE + CLOSE_DEADLINE + Duration::from_secs(1)).await;
+    assert!(writer.is_finished());
+    assert_eq!(socket.close_code(), UNAVAILABLE);
+}
+
+#[tokio::test(start_paused = true)]
+async fn a_close_overtakes_a_blocked_write() {
+    let (_root, socket) = test_socket();
+    socket.send(&crate::json::empty(), None).unwrap();
+    let never = futures_util::sink::unfold((), |(), _: Message| {
+        std::future::pending::<Result<(), ()>>()
+    });
+    let writer = tokio::spawn(write(Arc::clone(&socket), Box::pin(never)));
+    tokio::time::sleep(Duration::from_millis(10)).await;
+    socket.end(ORIGIN_REFUSED);
+    tokio::time::sleep(CLOSE_DEADLINE + Duration::from_secs(1)).await;
+    assert!(writer.is_finished());
+    assert_eq!(socket.close_code(), ORIGIN_REFUSED);
+}

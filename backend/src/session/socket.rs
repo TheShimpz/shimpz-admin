@@ -625,18 +625,52 @@ fn transport_close(error: &axum::Error) -> u16 {
     if capacity { 1009 } else { 1000 }
 }
 
-async fn write(
-    socket: Arc<Socket>,
-    mut sender: futures_util::stream::SplitSink<WebSocket, Message>,
-) {
+/// The longest one frame may take to reach the client before the socket closes as unavailable.
+const WRITE_DEADLINE: Duration = Duration::from_secs(10);
+/// The longest the close frame, and then the writer's end, may take once the socket closed.
+const CLOSE_DEADLINE: Duration = Duration::from_secs(5);
+
+/// Sends one frame within its deadline unless the socket closes first; `false` ends the writer (closing the socket
+/// when the write failed or timed out).
+async fn delivered<S>(
+    socket: &Socket,
+    sender: &mut S,
+    closed: &mut watch::Receiver<Option<u16>>,
+    text: String,
+) -> bool
+where
+    S: futures_util::Sink<Message> + Unpin,
+{
+    let sent = tokio::select! {
+        sent = tokio::time::timeout(WRITE_DEADLINE, sender.send(Message::Text(text.into()))) => sent,
+        _ = closed.wait_for(Option::is_some) => return false,
+    };
+    match sent {
+        Ok(Ok(())) => true,
+        Ok(Err(_)) => {
+            socket.end(1000);
+            false
+        }
+        Err(_) => {
+            socket.end(UNAVAILABLE);
+            false
+        }
+    }
+}
+
+/// Writes queued frames until the socket closes; a write that does not complete in time, or that the socket's close
+/// overtakes, ends it.
+async fn write<S>(socket: Arc<Socket>, mut sender: S)
+where
+    S: futures_util::Sink<Message> + Unpin,
+{
     let mut closed = socket.closed.subscribe();
     loop {
         let text = tokio::select! {
             text = socket.outbound.take() => text,
             _ = closed.wait_for(Option::is_some) => break,
         };
-        if sender.send(Message::Text(text.into())).await.is_err() {
-            socket.end(1000);
+        if !delivered(&socket, &mut sender, &mut closed, text).await {
             break;
         }
     }
@@ -644,11 +678,7 @@ async fn write(
         code: socket.close_code(),
         reason: "".into(),
     };
-    let _ = tokio::time::timeout(
-        Duration::from_secs(5),
-        sender.send(Message::Close(Some(close))),
-    )
-    .await;
+    let _ = tokio::time::timeout(CLOSE_DEADLINE, sender.send(Message::Close(Some(close)))).await;
 }
 
 /// Closes the socket at its session's absolute or idle expiry, checking its Origin and session at least each minute.
@@ -680,14 +710,20 @@ async fn serve(socket: Arc<Socket>, websocket: WebSocket) {
             }
         }))
     };
-    let writer = tokio::spawn(write(Arc::clone(&socket), sender));
+    let mut writer = tokio::spawn(write(Arc::clone(&socket), sender));
     let expiry = tokio::spawn(expire(Arc::clone(&socket)));
     read(&socket, receiver).await;
     socket.app.topics.forget(listener);
     socket.end(socket.close_code());
     socket.shut_down();
     expiry.abort();
-    let _ = writer.await;
+    // The writer ends within its own deadlines; one that does not is stopped, so teardown never waits on a client.
+    if tokio::time::timeout(CLOSE_DEADLINE * 2, &mut writer)
+        .await
+        .is_err()
+    {
+        writer.abort();
+    }
 }
 
 #[cfg(test)]
