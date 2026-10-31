@@ -27,7 +27,7 @@ pub struct Admin {
     pub root: tempfile::TempDir,
     /// The fake Team.
     pub team: team::FakeTeam,
-    /// The clock tests move.
+    /// The clock tests move; it stands still otherwise.
     pub clock: Arc<Clock>,
 }
 
@@ -68,7 +68,7 @@ impl Admin {
         let team = team::FakeTeam::start("team-bearer-token").await;
         let mut config = config(root.path(), &team.url);
         adjust(&mut config);
-        let clock = Arc::new(Clock::new());
+        let clock = Arc::new(Clock::frozen());
         let app = App::with_clock(config, Arc::clone(&clock));
         team.verify_with(&app);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -86,7 +86,7 @@ impl Admin {
     /// The same Admin after its process died: a new process over the same files and the same Team, its sessions gone.
     pub async fn restarted(self) -> Self {
         let config = config(self.root.path(), &self.team.url);
-        let clock = Arc::new(Clock::new());
+        let clock = Arc::new(Clock::frozen());
         let app = App::with_clock(config, Arc::clone(&clock));
         self.team.verify_with(&app);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
