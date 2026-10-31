@@ -454,6 +454,14 @@ async fn an_abandoned_password_check_keeps_its_permit_and_records_its_refusal() 
         );
         tokio::time::sleep(std::time::Duration::from_millis(20)).await;
     }
-    let journal = std::fs::read_to_string(app.config.audit_path()).unwrap();
-    assert!(journal.contains("\"password-rejected\""));
+    // The task journals the refusal right after the limiter accounts for it and frees the permit.
+    while !std::fs::read_to_string(app.config.audit_path())
+        .is_ok_and(|journal| journal.contains("\"password-rejected\""))
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the refusal was never journaled"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
 }
