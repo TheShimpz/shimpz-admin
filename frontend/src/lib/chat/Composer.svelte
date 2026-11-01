@@ -330,7 +330,6 @@
     height: auto;
     min-height: 3.25rem;
     max-height: 12rem;
-    field-sizing: content;
     resize: none;
     padding: var(--gap-group) var(--gap-group) var(--gap-inside);
     color: var(--shimpz-color-text);
@@ -340,6 +339,10 @@
     clip-path: none;
     overflow-y: auto;
   }
+
+  /* Only the message grows with what it holds; a one-line key keeps the frame's width however long it is. */
+  .composer-input :global(.composer-field textarea) { field-sizing: content; }
+  .composer-input :global(.composer-field input) { min-width: 0; }
 
   .composer-input :global(.composer-field textarea::placeholder),
   .composer-input :global(.composer-field input::placeholder) {
