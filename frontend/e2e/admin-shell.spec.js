@@ -292,6 +292,28 @@ test('a passkey that cannot be created keeps the offer, and Create passkey takes
   await expect(create).toBeFocused();
 });
 
+test('Not now keeps the passkey offer away when the page is reloaded', async ({ page }) => {
+  await page.route('**/api/**', (route) => route.fulfill({ status: 503, contentType: 'application/json', body: '{}' }));
+  await page.route('**/api/session', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify(authenticatedLocalSession({
+      oauth_completion_mode: null,
+      authentication_method: 'totp',
+      passkey_enrollment_available: true,
+      passkey_registered: false,
+    })),
+  }));
+
+  await page.goto('http://localhost:4173/');
+  await expect(page.getByRole('heading', { name: 'Make future sign-ins easier' })).toBeVisible();
+  await page.getByRole('button', { name: messages.en.auth.passkeyLater }).click();
+  await expect(page.getByRole('heading', { name: 'Make future sign-ins easier' })).toHaveCount(0);
+  await page.reload();
+  // The reloaded session reaches the signed-in shell, where the offer would already have shown.
+  await expect(page.getByRole('button', { name: /^(New Team|Open the Team list)$/ })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Create passkey' })).toHaveCount(0);
+});
+
 test('a passkey sign-in the browser cancels returns the focus to the code field', async ({ page }) => {
   await page.addInitScript(() => {
     navigator.credentials.get = () => Promise.reject(new DOMException('canceled', 'NotAllowedError'));

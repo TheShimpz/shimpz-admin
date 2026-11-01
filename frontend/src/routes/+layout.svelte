@@ -122,6 +122,23 @@
     if (check === sessionCheck) phase = 'ready';
   }
 
+  // "Not now" holds for this tab's session, so a reload does not ask again; a later sign-in in a new tab may.
+  const PASSKEY_OFFER_DECLINED = 'shimpz.passkey-offer-declined';
+  function passkeyOfferDeclined() {
+    try {
+      return sessionStorage.getItem(PASSKEY_OFFER_DECLINED) === '1';
+    } catch {
+      return false;
+    }
+  }
+  function declinePasskeyOffer() {
+    try {
+      sessionStorage.setItem(PASSKEY_OFFER_DECLINED, '1');
+    } catch {
+      // Without storage the offer simply returns on the next load.
+    }
+  }
+
   async function checkSession(options = {}) {
     const check = ++sessionCheck;
     const redirectToChat = options.redirectToChat === true;
@@ -160,6 +177,7 @@
         setSessionContext(session);
         const offerPasskey =
           !skipPasskeyOffer &&
+          !passkeyOfferDeclined() &&
           session?.authentication_method === 'totp' &&
           session?.passkey_enrollment_available === true &&
           session?.passkey_registered === false;
@@ -449,7 +467,10 @@
         onSubmitTotp={submitTotp}
         onUsePasskey={usePasskey}
         onRegisterPasskey={registerLocalPasskey}
-        onSkipPasskey={() => enterReady(redirectAfterAuthentication)}
+        onSkipPasskey={() => {
+          declinePasskeyOffer();
+          return enterReady(redirectAfterAuthentication);
+        }}
         onUseRecoveryCode={() => { error = ''; code = ''; phase = 'recovery-code'; }}
         onSubmitRecoveryCode={submitRecoveryCode}
         onRecoveryCodesSaved={recoveryCodesSaved}
