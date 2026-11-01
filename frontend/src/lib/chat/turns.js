@@ -386,7 +386,15 @@ export function friendlyChatError(status, words) {
   return words.requestFailed;
 }
 
-/** A chat `error` frame as the page shows it: its words, and a technical detail unless the words say all. */
+/** The stable code a chat error's detail starts with (`<code> · <cause> · <words>`), or `''`. */
+function chatErrorCode(detail) {
+  return typeof detail === 'string' ? detail.split(' · ', 1)[0] : '';
+}
+
+/**
+ * A chat `error` frame as the page shows it: its words, and a technical detail unless the words say all. The detail
+ * keeps Admin's text whole: the stable code, Team's closed cause (`cause unknown` when it stated none), and the words.
+ */
 export function projectedChatError(status, detail, words) {
   if (status === 409 && detail === ASSISTANT_LIMIT_REACHED) return { message: words.limit, detail: '' };
   if (status === 403 && detail === 'authentication was not confirmed') {
@@ -395,9 +403,10 @@ export function projectedChatError(status, detail, words) {
   if (status === 503 && detail === 'authentication is unavailable') {
     return { message: words.authenticationUnavailable, detail: '' };
   }
-  const resetting = status === 409 && typeof detail === 'string' && detail.startsWith('space-resetting:');
+  const code = chatErrorCode(detail);
+  const resetting = status === 409 && code === 'space-resetting';
   // A stored key record Admin did not write refuses every turn until the Space is reset, which its words say.
-  const broken = status === 502 && typeof detail === 'string' && detail.startsWith('credential-record-invalid:');
+  const broken = status === 502 && code === 'credential-record-invalid';
   return {
     message: resetting ? words.spaceResetting : broken ? words.credentialRecordInvalid : friendlyChatError(status, words),
     detail: `HTTP ${status} · ${detail}`,

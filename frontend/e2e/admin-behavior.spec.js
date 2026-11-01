@@ -1351,7 +1351,7 @@ test('a custom answer takes focus and can be sent only once it has text', async 
 test('a send refused while the Space resets explains the reset', async ({ page }) => {
   await routeReadyChat(page, {
     terminalError: 409,
-    terminalDetail: 'space-resetting: the Space is being reset; retry when it finishes',
+    terminalDetail: 'space-resetting · cause unknown · the Space is being reset; retry when it finishes',
   });
   await page.goto('/chat/');
   await sendMessage(page, 'List my DNS zones');
@@ -4201,6 +4201,29 @@ test('keeps an unexpected terminal error visible after silent Stop handling', as
   await expect(page.getByRole('button', { name: 'Stop' })).toHaveCount(0);
   await expect(composer).toBeEnabled();
   await expect(composer).toBeFocused();
+});
+
+const ACTION_CAUSE_DETAIL = 'assistant-rpc-failed · team-audit · record-refused · provider-call · workload-stopped'
+  + ' · the Assistant Action did not complete; whether it took effect is unknown';
+
+test('a failed Action shows its exact cause in the technical detail', async ({ page }) => {
+  await routeReadyChat(page, { terminalError: 502, terminalDetail: ACTION_CAUSE_DETAIL });
+  await page.goto('/chat/');
+  await sendMessage(page, 'Search the web for Shimpz');
+  const notice = page.locator('[data-slot="notice"].shimpz-notice--error');
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText(`HTTP 502 · ${ACTION_CAUSE_DETAIL}`);
+});
+
+test('a failure Team gave no cause for says the cause is unknown', async ({ page }) => {
+  await routeReadyChat(page, {
+    terminalError: 409,
+    terminalDetail: 'chat-active · cause unknown · this Team already has an active chat turn',
+  });
+  await page.goto('/chat/');
+  await sendMessage(page, 'List my DNS zones');
+  const notice = page.locator('[data-slot="notice"].shimpz-notice--error');
+  await expect(notice).toContainText('HTTP 409 · chat-active · cause unknown');
 });
 
 test('keeps long Chat transcripts keyboard-scrollable', async ({ page }) => {

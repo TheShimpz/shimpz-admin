@@ -10,6 +10,8 @@ pub mod turn;
 
 use std::sync::Arc;
 
+use team_protocol::cause::{Cause, canonical_cause, render_cause};
+
 pub use fields::{BROWSER_FIELD, ROUTINE_FIELDS, admit_routine_fields};
 pub use progress::{MAX_PUBLIC_PROGRESS_EVENTS, canonical_public_progress};
 
@@ -35,7 +37,12 @@ pub struct Answer {
 }
 
 /// Error codes a page is told in words.
-const CHAT_ERROR_DETAILS: [(&str, &str); 31] = [
+const CHAT_ERROR_DETAILS: [(&str, &str); 33] = [
+    (
+        "assistant-rpc-failed",
+        "the Assistant Action did not complete; whether it took effect is unknown",
+    ),
+    ("assistant-action-failed", "the Assistant Action failed"),
     (
         "assistant-action-blocked",
         "Assistant Action execution is blocked until it is reinstalled",
@@ -185,22 +192,29 @@ impl Answer {
         Self::public(status, json::code(code))
     }
 
+    /// The page's error event: `<code> · <cause> · <words>`, the stable code and Team's closed cause first so a
+    /// shortened copy keeps them, the cause `cause unknown` when Team stated none, and the code's words, or its status's
+    /// when the code has none.
     fn error_event(&self) -> Value {
         let status = if (400..=599).contains(&self.reply.status) {
             self.reply.status
         } else {
             502
         };
-        let code = self.reply.get_str("code");
-        let known = code.and_then(|code| CHAT_ERROR_DETAILS.iter().find(|(name, _)| *name == code));
-        let detail = match known {
-            Some((code, detail)) => format!("{code}: {detail}"),
-            None => CHAT_ERROR_FALLBACKS
-                .iter()
-                .find(|(fallback, _)| *fallback == status)
-                .map_or("local chat request failed", |(_, detail)| detail)
-                .to_owned(),
-        };
+        let code = self.reply.get_str("code").unwrap_or("chat-request-failed");
+        let words = CHAT_ERROR_DETAILS
+            .iter()
+            .find(|(name, _)| *name == code)
+            .map(|(_, words)| *words)
+            .or_else(|| {
+                CHAT_ERROR_FALLBACKS
+                    .iter()
+                    .find(|(fallback, _)| *fallback == status)
+                    .map(|(_, words)| *words)
+            })
+            .unwrap_or("local chat request failed");
+        let cause = self.reply.get("cause").and_then(Cause::from_value);
+        let detail = format!("{code} · {} · {words}", render_cause(cause.as_ref()));
         json::object(vec![
             ("type", json::text("error")),
             ("status", json::int(i64::from(status))),
@@ -257,13 +271,19 @@ fn unavailable() -> Answer {
     Answer::code(503, "runtime-unavailable")
 }
 
-/// One authenticated controller failure reduced to a bounded, non-secret machine code.
+/// One authenticated controller failure reduced to a bounded, non-secret machine code and, when Team stated one,
+/// its closed cause in canonical form; anything else Team sent, a cause outside the closed vocabulary included, is
+/// dropped.
 fn safe_error(response: &Reply) -> Answer {
     let code = response
         .get_str("code")
         .filter(|code| code.len() <= 80 && ERROR_CODE_RE.is_full(code))
         .unwrap_or("chat-request-failed");
-    Answer::code(response.status, code)
+    let mut body = json::code(code);
+    if let Some(cause) = response.get("cause").and_then(canonical_cause) {
+        json::set(&mut body, "cause", cause);
+    }
+    Answer::public(response.status, body)
 }
 
 /// A stored key record Admin did not write refuses the turn; its public words name the reset remedy.

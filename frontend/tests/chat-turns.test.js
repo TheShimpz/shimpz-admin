@@ -304,12 +304,14 @@ test('a chat error reads as its words, with the technical detail unless the word
     { message: WORDS.authenticationDenied, detail: '' });
   assert.deepEqual(projectedChatError(503, 'authentication is unavailable', WORDS),
     { message: WORDS.authenticationUnavailable, detail: '' });
-  assert.deepEqual(projectedChatError(409, 'space-resetting: reset', WORDS),
-    { message: WORDS.spaceResetting, detail: 'HTTP 409 · space-resetting: reset' });
+  assert.deepEqual(projectedChatError(409, 'space-resetting · cause unknown · reset', WORDS),
+    { message: WORDS.spaceResetting, detail: 'HTTP 409 · space-resetting · cause unknown · reset' });
   assert.deepEqual(projectedChatError(502, 'bad gateway', WORDS), { message: WORDS.requestFailed, detail: 'HTTP 502 · bad gateway' });
   const broken = { ...WORDS, credentialRecordInvalid: 'reset' };
-  assert.deepEqual(projectedChatError(502, 'credential-record-invalid: broken', broken),
-    { message: 'reset', detail: 'HTTP 502 · credential-record-invalid: broken' });
+  assert.deepEqual(projectedChatError(502, 'credential-record-invalid · cause unknown · broken', broken),
+    { message: 'reset', detail: 'HTTP 502 · credential-record-invalid · cause unknown · broken' });
+  // Only the leading code decides the words: a cause or words that merely contain a remedy code change nothing.
+  assert.deepEqual(projectedChatError(409, 'chat-active · cause unknown · space-resetting', WORDS).message, WORDS.turnFailed);
 });
 
 test('turns with nothing to expire stay the same array, so nothing derived from them is computed again', () => {

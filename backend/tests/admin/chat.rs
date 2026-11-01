@@ -218,6 +218,81 @@ async fn a_reply_that_echoes_the_key_is_refused_and_never_shown() {
     assert!(!json::compact(&error).contains(KEY));
 }
 
+/// A Team turn that fails with `cause` beside its code.
+fn script_failed_turn(admin: &Admin, cause: Value) {
+    admin.team.script(move |request| {
+        (request.method == "POST" && request.path == "/v1/teams/marketing/chat").then(|| {
+            let body = json::object(vec![
+                ("error", json::text("the Assistant Action did not complete")),
+                ("code", json::text("assistant-rpc-failed")),
+                ("cause", cause.clone()),
+                ("trace_id", json::text(TRACE)),
+            ]);
+            Answer::Stream(Vec::new(), 502, body)
+        })
+    });
+}
+
+/// Team's closed cause reaches the page's technical detail beside the code, ahead of the words, and the turn's kept
+/// status holds it too.
+#[tokio::test]
+async fn a_failed_action_shows_its_exact_cause_and_keeps_it() {
+    let admin = Admin::start().await;
+    let mut socket = attached(&admin).await;
+    // Team's canonical JSON writes the cause's members sorted.
+    script_failed_turn(
+        &admin,
+        parsed(
+            r#"{"cleanup":"workload-stopped","condition":"record-refused","kind":"team-audit","phase":"provider-call"}"#,
+        ),
+    );
+    send_frame(&mut socket, &message("Search the web")).await;
+    let error = until(&mut socket, "error").await;
+    assert_eq!(json::get(&error, "status"), Some(&json::int(502)));
+    let detail = "assistant-rpc-failed · team-audit · record-refused · provider-call · workload-stopped · \
+                  the Assistant Action did not complete; whether it took effect is unknown";
+    assert_eq!(json::get_str(&error, "detail"), Some(detail));
+    let page = admin
+        .app
+        .domains
+        .history
+        .store
+        .page("marketing", None, None)
+        .unwrap();
+    let kept: Vec<&str> = json::as_array(page.get("entries").unwrap())
+        .unwrap()
+        .iter()
+        .filter_map(|entry| json::get_str(entry, "detail"))
+        .collect();
+    assert_eq!(kept.len(), 1);
+    assert!(
+        kept[0].starts_with("assistant-rpc-failed · team-audit · record-refused · provider-call")
+    );
+}
+
+/// A cause outside the closed vocabulary, or carrying anything else, is never shown: the page says the cause is
+/// unknown and keeps the code.
+#[tokio::test]
+async fn a_cause_outside_the_closed_vocabulary_is_shown_as_unknown() {
+    for forged in [
+        r#"{"kind":"team-audit","condition":"record-refused","phase":"provider-call","stderr":"sk-live-forged-0123"}"#,
+        r#"{"kind":"team-audit","condition":"sk-live-forged-0123","phase":"provider-call"}"#,
+        r#""sk-live-forged-0123""#,
+    ] {
+        let admin = Admin::start().await;
+        let mut socket = attached(&admin).await;
+        script_failed_turn(&admin, parsed(forged));
+        send_frame(&mut socket, &message("Search the web")).await;
+        let error = until(&mut socket, "error").await;
+        let detail = json::get_str(&error, "detail").unwrap_or_default();
+        assert!(
+            detail.starts_with("assistant-rpc-failed · cause unknown · "),
+            "{detail}"
+        );
+        assert!(!json::compact(&error).contains("sk-live"));
+    }
+}
+
 #[tokio::test]
 async fn a_chat_frame_beyond_its_fields_is_refused_to_its_page() {
     let admin = Admin::start().await;
