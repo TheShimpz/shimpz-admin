@@ -36,13 +36,30 @@ pub struct Answer {
     pub public: bool,
 }
 
-/// Error codes a page is told in words.
-const CHAT_ERROR_DETAILS: [(&str, &str); 33] = [
+/// The closed error codes a page is shown, each with its words; any other code is shown as `chat-request-failed`.
+const CHAT_ERROR_DETAILS: [(&str, &str); 38] = [
     (
         "assistant-rpc-failed",
         "the Assistant Action did not complete; whether it took effect is unknown",
     ),
     ("assistant-action-failed", "the Assistant Action failed"),
+    (
+        "action-not-declared",
+        "the Assistant does not declare the requested Action",
+    ),
+    (
+        "assistant-integration-unavailable",
+        "an Assistant integration is unavailable",
+    ),
+    (
+        "action-file-unavailable",
+        "the attached file is unavailable for this Action; attach it again",
+    ),
+    (
+        "assistant-file-busy",
+        "another file-bearing Action is still running; retry",
+    ),
+    ("docker-unavailable", "Docker is unavailable"),
     (
         "assistant-action-blocked",
         "Assistant Action execution is blocked until it is reinstalled",
@@ -193,26 +210,26 @@ impl Answer {
     }
 
     /// The page's error event: `<code> · <cause> · <words>`, the stable code and Team's closed cause first so a
-    /// shortened copy keeps them, the cause `cause unknown` when Team stated none, and the code's words, or its status's
-    /// when the code has none.
+    /// shortened copy keeps them, the cause `cause unknown` when Team stated none. Only a code of the closed table is
+    /// shown with its words; any other is `chat-request-failed` with its status's words, so no text a controller made
+    /// up reaches a page.
     fn error_event(&self) -> Value {
         let status = if (400..=599).contains(&self.reply.status) {
             self.reply.status
         } else {
             502
         };
-        let code = self.reply.get_str("code").unwrap_or("chat-request-failed");
-        let words = CHAT_ERROR_DETAILS
-            .iter()
-            .find(|(name, _)| *name == code)
-            .map(|(_, words)| *words)
-            .or_else(|| {
-                CHAT_ERROR_FALLBACKS
-                    .iter()
-                    .find(|(fallback, _)| *fallback == status)
-                    .map(|(_, words)| *words)
-            })
-            .unwrap_or("local chat request failed");
+        let known = self
+            .reply
+            .get_str("code")
+            .and_then(|code| CHAT_ERROR_DETAILS.iter().find(|(name, _)| *name == code));
+        let (code, words) = known.copied().unwrap_or_else(|| {
+            let words = CHAT_ERROR_FALLBACKS
+                .iter()
+                .find(|(fallback, _)| *fallback == status)
+                .map_or("local chat request failed", |(_, words)| words);
+            ("chat-request-failed", words)
+        });
         let cause = self.reply.get("cause").and_then(Cause::from_value);
         let detail = format!("{code} · {} · {words}", render_cause(cause.as_ref()));
         json::object(vec![

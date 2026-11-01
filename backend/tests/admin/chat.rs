@@ -293,6 +293,30 @@ async fn a_cause_outside_the_closed_vocabulary_is_shown_as_unknown() {
     }
 }
 
+/// A code outside the closed table never reaches the page, however code-like it looks.
+#[tokio::test]
+async fn an_unknown_error_code_is_shown_as_a_failed_request() {
+    let admin = Admin::start().await;
+    let mut socket = attached(&admin).await;
+    admin.team.script(|request| {
+        (request.method == "POST" && request.path == "/v1/teams/marketing/chat").then(|| {
+            let body = json::object(vec![
+                ("error", json::text("failed")),
+                ("code", json::text("sk-live-abcdef0123456789")),
+                ("trace_id", json::text(TRACE)),
+            ]);
+            Answer::Stream(Vec::new(), 502, body)
+        })
+    });
+    send_frame(&mut socket, &message("Search the web")).await;
+    let error = until(&mut socket, "error").await;
+    assert_eq!(
+        json::get_str(&error, "detail"),
+        Some("chat-request-failed · cause unknown · local chat request failed")
+    );
+    assert!(!json::compact(&error).contains("sk-live"));
+}
+
 #[tokio::test]
 async fn a_chat_frame_beyond_its_fields_is_refused_to_its_page() {
     let admin = Admin::start().await;
