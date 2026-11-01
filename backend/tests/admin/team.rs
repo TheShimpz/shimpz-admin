@@ -270,3 +270,94 @@ async fn an_install_says_it_started_before_its_result() {
             .any(|frame| json::get_str(frame, "type") == Some("progress"))
     );
 }
+
+/// Team's inference projection, a refusal, and a failure carrying a closed cause beside its code.
+fn inference_answers() -> [(u16, Value); 3] {
+    let configured = traced(&json::object(vec![
+        ("team_id", json::text("promotion")),
+        ("provider", json::text("openai")),
+        ("model", json::text("gpt-6-luna")),
+    ]));
+    let refused = traced(&json::object(vec![
+        ("error", json::text("Team model provider is not configured")),
+        ("code", json::text("inference-not-configured")),
+    ]));
+    let caused = traced(
+        &json::parse(
+            br#"{"error":"the Assistant Action did not complete","code":"assistant-rpc-failed","cause":{"condition":"record-refused","kind":"team-audit","phase":"provider-call"}}"#,
+        )
+        .unwrap(),
+    );
+    [(200, configured), (409, refused), (502, caused)]
+}
+
+/// Each Team answer to `inference.save` and `inference.read` — the projection, a refusal, and a failure carrying a
+/// closed cause beside its code — produces exactly one result frame for its call and no other, so a page never waits
+/// on a call Admin answered twice or not at all.
+#[tokio::test]
+async fn every_inference_answer_is_exactly_one_result_frame() {
+    for (status, answer) in inference_answers() {
+        let admin = Admin::start().await;
+        let cookie = admin.signed_in();
+        admin.team.on(
+            "PUT",
+            "/v1/teams/promotion/inference",
+            status,
+            answer.clone(),
+        );
+        admin
+            .team
+            .on("GET", "/v1/teams/promotion/inference", status, answer);
+        admin
+            .team
+            .on("GET", "/v1/teams", 200, inventory(&["promotion"]));
+        let mut socket = open(&admin, &cookie).await;
+        let save = params(
+            &[("team_id", "promotion")],
+            Some(json::parse(br#"{"provider":"openai","model":"gpt-6-luna"}"#).unwrap()),
+        );
+        let read = params(&[("team_id", "promotion")], None);
+        let calls = [
+            ("save", "inference.save", save),
+            ("read", "inference.read", read),
+            ("list", "teams.list", json::empty()),
+        ];
+        // Each call has its own id and is answered before the next is sent; a later call's result is the next result
+        // frame, so neither inference call was answered twice, and none went unanswered.
+        let mut results = Vec::new();
+        for (id, method, params) in calls {
+            results.extend(answered(&mut socket, id, method, params).await);
+        }
+        assert_eq!(results, ["save", "read", "list"], "{status}");
+    }
+}
+
+/// Sends call `id` and reads until its result, answering every result id seen on the way, its own last.
+async fn answered(
+    socket: &mut crate::support::socket::Socket,
+    id: &str,
+    method: &str,
+    params: Value,
+) -> Vec<String> {
+    let frame = json::object(vec![
+        ("type", json::text("call")),
+        ("id", json::text(id)),
+        ("method", json::text(method)),
+        ("params", params),
+    ]);
+    crate::support::socket::send_frame(socket, &frame).await;
+    let mut results = Vec::new();
+    loop {
+        let frame = crate::support::socket::next(socket).await.unwrap();
+        if json::get_str(&frame, "type") != Some("result") {
+            continue;
+        }
+        assert!(json::get(&frame, "status").and_then(json::as_int).is_some());
+        let answered = json::get_str(&frame, "id").unwrap_or_default().to_owned();
+        let done = answered == id;
+        results.push(answered);
+        if done {
+            return results;
+        }
+    }
+}
