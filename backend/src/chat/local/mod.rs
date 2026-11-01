@@ -10,7 +10,7 @@ pub mod turn;
 
 use std::sync::Arc;
 
-use team_protocol::cause::{Cause, canonical_cause, render_cause};
+use team_protocol::payload::cause::{Cause, canonical_cause, render_cause};
 
 pub use fields::{BROWSER_FIELD, ROUTINE_FIELDS, admit_routine_fields};
 pub use progress::{MAX_PUBLIC_PROGRESS_EVENTS, canonical_public_progress};
