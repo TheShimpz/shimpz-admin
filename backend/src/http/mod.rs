@@ -98,6 +98,23 @@ fn signin_routes() -> Router<Arc<App>> {
 }
 
 /// The Space, OAuth, Team resource, and `WebSocket` routes.
+fn browser_routes() -> Router<Arc<App>> {
+    use crate::team;
+    Router::new()
+        .route(
+            "/api/browser/viewer.js",
+            route(get(team::browser_view::viewer)),
+        )
+        .route(
+            "/api/teams/{team_id}/browser/views/{view_id}/stream",
+            route(get(team::browser_view::stream)),
+        )
+        .route(
+            "/api/teams/{team_id}/browser/views/{view_id}/control",
+            route(get(team::browser_view::control)),
+        )
+}
+
 fn resource_routes() -> Router<Arc<App>> {
     use crate::{chat, integrations, session, space, team};
     Router::new()
@@ -140,18 +157,6 @@ fn resource_routes() -> Router<Arc<App>> {
             route(get(chat::assets::catalog_icon)),
         )
         .route(session::frames::PATH, route(get(session::socket::upgrade)))
-        .route(
-            "/api/browser/viewer.js",
-            route(get(team::browser_view::viewer)),
-        )
-        .route(
-            "/api/teams/{team_id}/browser/views/{view_id}/stream",
-            route(get(team::browser_view::stream)),
-        )
-        .route(
-            "/api/teams/{team_id}/browser/views/{view_id}/control",
-            route(get(team::browser_view::control)),
-        )
 }
 
 /// Every route of the Admin API and its SPA.
@@ -159,6 +164,7 @@ pub fn router(app: Arc<App>) -> Router {
     Router::new()
         .merge(signin_routes())
         .merge(resource_routes())
+        .merge(browser_routes())
         .route("/api/", any(unknown_api))
         .route("/api/{*path}", any(unknown_api))
         .fallback(spa)
