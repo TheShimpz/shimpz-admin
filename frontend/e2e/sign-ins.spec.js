@@ -1,10 +1,11 @@
 // A Team's browser session in the built Admin (ADR-0117, 2026-10-20 amendment): the composer's panel with what the
 // session holds, a sign-in session whose Browser the person drives in a dialog, then Saves or Cancels, and the
 // session's deletion with the Supervisor password and a code.
+import { readFileSync } from 'node:fs';
+
 import { expect, test } from '@playwright/test';
 
 import { accessibilityViolations } from './axe.js';
-import { CLIENT_MESSAGES, rfbServer, solid } from './rfbServer.js';
 import {
   SIGN_IN_CODE,
   SIGN_IN_ID,
@@ -26,23 +27,17 @@ const CONTROL = `**/api/teams/marketing/browser/views/${SIGN_IN_VIEW}/control`;
 async function openChat(page) {
   const scenario = await routeScenario(page, 'sign-ins');
   const display = { streams: [], scenario };
+  await page.route('**/api/browser/viewer.js', (route) => route.fulfill({
+    contentType: 'text/javascript',
+    body: readFileSync(new URL('./viewerStub.js', import.meta.url)),
+  }));
   await page.routeWebSocket(CONTROL, (socket) => {
-    const server = rfbServer({ screen: ({ incremental }) => (incremental ? null : [solid(1280, 800, [40, 120, 200])]) });
-    display.streams.push({ socket, server });
-    socket.onMessage((message) => {
-      for (const answer of server.receive(new Uint8Array(message))) socket.send(Buffer.from(answer));
-    });
-    socket.send(Buffer.from(server.greeting));
+    const stream = { socket, received: [] };
+    display.streams.push(stream);
+    socket.onMessage((message) => { stream.received.push(message); });
+    socket.send('picture');
   });
   await page.goto('/chat/?team=marketing');
-  // noVNC admits a socket only when its own class names its methods and handlers (browser-watch.spec.js).
-  await page.evaluate(() => {
-    const own = window.WebSocket.prototype;
-    const base = Object.getPrototypeOf(own);
-    for (const [name, property] of Object.entries(Object.getOwnPropertyDescriptors(base))) {
-      if (!Object.hasOwn(own, name)) Object.defineProperty(own, name, property);
-    }
-  });
   return display;
 }
 
@@ -67,7 +62,6 @@ test('the panel shows what the browser session holds and its state', async ({ pa
   const panel = await openPanel(page);
   const held = panel.getByRole('region', { name: COPY.label });
   await expect(held).toContainText(COPY.ready);
-  await expect(held.getByRole('listitem')).toHaveText(['mail.example.com', 'shop.example.org']);
 });
 
 test('a sign-in session is driven by the person and saved as the next generation @browser-sensitive', async ({ page }) => {
@@ -84,11 +78,9 @@ test('a sign-in session is driven by the person and saved as the next generation
   await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
   await page.keyboard.type('me');
   await page.keyboard.press('Escape');
-  const received = () => display.streams[0].server.received;
-  await expect.poll(() => received().includes(CLIENT_MESSAGES.POINTER)).toBe(true);
-  await expect.poll(() => received().includes(CLIENT_MESSAGES.KEY)).toBe(true);
-  // Every message is one the display reads whole, in KasmVNC's own sizes: none is misread as another.
-  expect(received().every((type) => [0, 2, 3, CLIENT_MESSAGES.KEY, CLIENT_MESSAGES.POINTER].includes(type))).toBe(true);
+  const received = () => display.streams[0].received;
+  await expect.poll(() => received().includes('pointer')).toBe(true);
+  await expect.poll(() => received().includes('key')).toBe(true);
   await expect(dialog).toBeVisible();
   expect(await accessibilityViolations(page)).toEqual([]);
 
@@ -103,10 +95,10 @@ test('a sign-in session is driven by the person and saved as the next generation
 
 test('a refused save says what to do and keeps the session; Cancel leaves it needing the person', async ({ page }) => {
   await openChat(page);
-  await routeRead(page, 'sign_in.save', () => ({ status: 409, json: { detail: 'x', code: 'sign-in-windows' } }));
+  await routeRead(page, 'sign_in.save', () => ({ status: 503, json: { detail: 'x', code: 'sign-in-unsaved' } }));
   const dialog = await startSession(page);
   await dialog.getByRole('button', { name: SESSION.save }).click();
-  await expect(dialog.getByText(SESSION.windows)).toBeVisible();
+  await expect(dialog.getByText(SESSION.unsaved)).toBeVisible();
   await expect(dialog.getByRole('button', { name: SESSION.save })).toBeEnabled();
   await dialog.getByRole('button', { name: SESSION.cancel }).click();
   await expect(dialog).toBeHidden();
@@ -165,8 +157,6 @@ test('a Save the activity log could not record is kept, and the person is told s
     state: 'ready',
     generation: 1,
     team_incarnation: SIGN_IN_INCARNATION,
-    sites: ['example.net'],
-    sites_truncated: false,
     created_at: '2026-10-20T12:00:00Z',
     saved_at: '2026-10-20T12:00:00Z',
     last_used_at: '2026-10-20T12:00:00Z',

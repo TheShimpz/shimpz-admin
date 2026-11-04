@@ -29,8 +29,6 @@
   // what the agent reads signed in reaches the model provider, and a dedicated account is the safer one.
   const TERMS = ['delegated', 'kept', 'provider', 'dedicated'];
   const REFUSALS = {
-    'sign-in-windows': 'windows',
-    'sign-in-identity-provider': 'identityProvider',
     'sign-in-not-running': 'notRunning',
     'sign-in-unsaved': 'unsaved',
   };
@@ -42,15 +40,13 @@
     const controller = new AbortController();
     connection = controller;
     status = 'loading';
-    import('@novnc/novnc')
-      .then(({ default: RFB }) => controlBrowser(session.teamId, session.viewId, {
-        signal: controller.signal,
-        target: screen,
-        RFB,
-        onconnect() {
-          if (!controller.signal.aborted) status = 'showing';
-        },
-      }))
+    controlBrowser(session.teamId, session.viewId, {
+      signal: controller.signal,
+      target: screen,
+      onconnect() {
+        if (!controller.signal.aborted) status = 'showing';
+      },
+    })
       .catch(() => {
         if (!controller.signal.aborted && status !== 'ended') status = 'lost';
       });

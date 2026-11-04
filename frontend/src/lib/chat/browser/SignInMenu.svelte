@@ -128,15 +128,6 @@
     {:else}
       <section class="session" aria-label={copy.label}>
         <p class="state" data-state={signIn.state}>{signIn.state === 'ready' ? copy.ready : copy.needsPerson}</p>
-        <p class="detail">{copy.sitesLabel}</p>
-        {#if signIn.sites.length}
-          <ul class="sites">
-            {#each signIn.sites as site (site)}<li><bdi>{site}</bdi></li>{/each}
-          </ul>
-        {:else}
-          <p class="detail">{copy.noSites}</p>
-        {/if}
-        {#if signIn.sites_truncated}<p class="detail">{copy.moreSites}</p>{/if}
         <p class="detail">{$t('signIn.dates', { saved: day(signIn.saved_at), expires: day(signIn.expires_at) })}</p>
       </section>
     {/if}
@@ -188,8 +179,6 @@
   .state { margin: 0; color: var(--shimpz-color-cyan); font: 700 0.72rem/1.4 var(--shimpz-font-mono); }
   .state[data-state="needs-person"] { color: var(--shimpz-color-warning, var(--shimpz-color-danger)); }
   .detail { margin: 0; color: var(--shimpz-color-text-muted); font: 400 0.66rem/1.4 var(--shimpz-font-mono); }
-  .sites { display: flex; flex-wrap: wrap; gap: var(--gap-inside); margin: 0; padding: 0; list-style: none; }
-  .sites li { padding: 0.1rem 0.4rem; border: 1px solid var(--shimpz-color-border); color: var(--shimpz-color-text); font-size: 0.72rem; }
   .start { display: grid; gap: var(--gap-inside); justify-items: start; }
   .start :global(.shimpz-field) { width: 100%; }
 </style>

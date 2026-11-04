@@ -1,7 +1,7 @@
 //! A Browser task's screen for the watching Supervisor: one binary `WebSocket` Admin relays to Team (ADR-0117).
 //!
 //! `GET /api/teams/{team_id}/browser/views/{view_id}/stream` is admitted exactly as the session socket is: one admitted
-//! Origin, Fetch Metadata saying Admin's own page opened it, the exact subprotocol (`binary`), and a current Supervisor
+//! Origin, Fetch Metadata saying Admin's own page opened it, no subprotocol, and a current Supervisor
 //! session; it stays bound to that Origin and session, checked again every few seconds. Admin then reaches Team over a
 //! connection of its own with the Supervisor's assertion for that exact path, and relays binary messages both ways with
 //! send deadlines. The screen's bytes are never read, stored, or logged. At most [`MAX_STREAMS`] streams run at once,
@@ -17,7 +17,7 @@ use axum::{
         FromRequestParts, Path, Request, State,
         ws::{CloseFrame, Message, WebSocket, WebSocketUpgrade},
     },
-    http::HeaderMap,
+    http::{HeaderMap, header},
     response::{IntoResponse, Response},
 };
 use futures_util::{SinkExt, StreamExt};
@@ -86,7 +86,8 @@ fn admit(app: &App, headers: &HeaderMap) -> Option<(String, String)> {
         return None;
     };
     let origin = socket::admitted_origin(headers, &origins)?;
-    if socket::offered_protocols(headers) != [view_contract::SUBPROTOCOL] {
+    // easi.run's viewer offers no subprotocol.
+    if !socket::offered_protocols(headers).is_empty() {
         return None;
     }
     let cookie = browser::cookie(headers, COOKIE).unwrap_or_default();
@@ -120,9 +121,32 @@ async fn upgrade(
         cookie,
     };
     upgrade
-        .protocols([view_contract::SUBPROTOCOL])
         .max_message_size(MAX_MESSAGE_BYTES)
         .on_upgrade(move |page| serve(bound, page, target))
+        .into_response()
+}
+
+/// `GET /api/browser/viewer.js`: easi.run's viewer, which a current Supervisor's page draws every screen with.
+pub async fn viewer(State(app): State<Arc<App>>, request: Request) -> Response {
+    let cookie = browser::cookie(request.headers(), COOKIE).unwrap_or_default();
+    if session_status(&app, &cookie, false) != SessionStatus::Active {
+        return respond::json_response(403, &json::detail("Forbidden"));
+    }
+    let unavailable = || respond::json_response(503, &json::detail("The Browser is unavailable"));
+    let Ok(team) = app.session_team(&cookie) else {
+        return unavailable();
+    };
+    let Some(contents) = team.call_content("/v1/browser/viewer").await.contents else {
+        return unavailable();
+    };
+    (
+        [
+            (header::CONTENT_TYPE, "text/javascript"),
+            (header::CACHE_CONTROL, "no-store"),
+            (header::X_CONTENT_TYPE_OPTIONS, "nosniff"),
+        ],
+        contents,
+    )
         .into_response()
 }
 

@@ -41,13 +41,21 @@ async fn display() -> String {
     url
 }
 
+/// What easi.run's viewer sends from Admin's page: no subprotocol.
+fn viewer_headers(cookie: &str) -> Vec<(&'static str, String)> {
+    page_headers(cookie, "")
+        .into_iter()
+        .filter(|(name, _)| *name != "sec-websocket-protocol")
+        .collect()
+}
+
 #[tokio::test]
 async fn a_page_s_stream_is_relayed_to_team_and_back_as_binary() {
     let team = display().await;
     let admin = Admin::start_with(move |config| config.team_url = team).await;
     let cookie = admin.signed_in();
     let path = format!("/api/teams/sales/browser/views/{VIEW}/stream");
-    let headers = page_headers(&cookie, "binary");
+    let headers = viewer_headers(&cookie);
     let mut stream = connect(&admin.url, &path, &borrowed(&headers))
         .await
         .unwrap();
@@ -69,25 +77,25 @@ async fn a_stream_outside_admin_s_page_or_protocol_is_refused_before_it_is_accep
     let admin = Admin::start().await;
     let cookie = admin.signed_in();
     let path = format!("/api/teams/sales/browser/views/{VIEW}/stream");
-    let mut foreign = page_headers(&cookie, "binary");
+    let mut foreign = viewer_headers(&cookie);
     foreign[0].1 = "https://evil.example".to_owned();
     assert_eq!(
         connect(&admin.url, &path, &borrowed(&foreign)).await.err(),
         Some(403)
     );
-    let other = page_headers(&cookie, "shimpz.admin.v1");
+    let other = page_headers(&cookie, "binary");
     assert_eq!(
         connect(&admin.url, &path, &borrowed(&other)).await.err(),
         Some(403)
     );
-    let signed_out = page_headers("v3:1:x:totp:y", "binary");
+    let signed_out = viewer_headers("v3:1:x:totp:y");
     assert_eq!(
         connect(&admin.url, &path, &borrowed(&signed_out))
             .await
             .err(),
         Some(403)
     );
-    let invalid = page_headers(&cookie, "binary");
+    let invalid = viewer_headers(&cookie);
     let mut ended = connect(
         &admin.url,
         "/api/teams/sales/browser/views/nope/stream",

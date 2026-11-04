@@ -69,6 +69,12 @@ export function adminPreview() {
       server.middlewares.use((request, response, next) => {
         const path = apiPath(request.url);
         if (!path) return next();
+        if (path === '/api/browser/viewer.js') {
+          response.setHeader('content-type', 'text/javascript');
+          response.setHeader('cache-control', 'no-store');
+          response.end(readFileSync(new URL('../e2e/viewerStub.js', import.meta.url)));
+          return;
+        }
         const preview = request.method === 'GET' ? PREVIEW_RE.exec(path) : null;
         const image = preview ? rendition(preview[1]) : null;
         if (image) {

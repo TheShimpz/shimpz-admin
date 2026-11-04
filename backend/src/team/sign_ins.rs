@@ -50,16 +50,7 @@ const REFUSALS: [(u16, &[&str]); 4] = [
         404,
         &[contract::NOT_RUNNING, contract::ABSENT, "team-not-found"],
     ),
-    (
-        409,
-        &[
-            contract::WINDOWS,
-            contract::IDENTITY_PROVIDER,
-            contract::BUSY,
-            contract::CHANGED,
-            "browser-busy",
-        ],
-    ),
+    (409, &[contract::BUSY, contract::CHANGED, "browser-busy"]),
     (
         503,
         &[

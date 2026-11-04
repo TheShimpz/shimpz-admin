@@ -322,7 +322,7 @@ const STARTS = {
     teams: [TEAM],
     routines: [],
     runs: [],
-    signIn: signInRecord(1, ['mail.example.com', 'shop.example.org'], '2026-10-02T09:15:00Z'),
+    signIn: signInRecord(1, '2026-10-02T09:15:00Z'),
   }),
   // More sent images than the session keeps thumbnails of, one per message down a long chat.
   'attachment-many-images': () => ({
@@ -870,15 +870,13 @@ export const SIGN_IN_INCARNATION = 'c'.repeat(64);
 export const SIGN_IN_PASSWORD = 'correct supervisor passphrase';
 export const SIGN_IN_CODE = '123456';
 
-function signInRecord(generation, sites, savedAt, state = 'ready') {
+function signInRecord(generation, savedAt, state = 'ready') {
   const expires = new Date(Date.parse(savedAt) + SIGN_IN_DAYS * 86_400_000).toISOString().replace(/\.\d{3}Z$/u, 'Z');
   return {
     sign_in_id: SIGN_IN_ID,
     state,
     generation,
     team_incarnation: SIGN_IN_INCARNATION,
-    sites: [...sites].sort(),
-    sites_truncated: false,
     created_at: '2026-10-01T08:00:00Z',
     saved_at: savedAt,
     last_used_at: savedAt,
@@ -916,8 +914,7 @@ function saveSignIn(state, params) {
   if (!running(state, params)) return refused(404, 'sign-in-not-running');
   const site = state.signInSession.split('.').slice(-2).join('.');
   const now = new Date().toISOString().replace(/\.\d{3}Z$/u, 'Z');
-  const sites = [...new Set([...(state.signIn?.sites ?? []), site])];
-  state.signIn = signInRecord((state.signIn?.generation ?? 0) + 1, sites, now);
+  state.signIn = signInRecord((state.signIn?.generation ?? 0) + 1, now);
   state.signInSession = '';
   return ok({ sign_in: state.signIn, recorded: true });
 }

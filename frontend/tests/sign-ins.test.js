@@ -11,7 +11,6 @@ import {
   startUrl,
   teamSignIn,
 } from '../src/lib/chat/browser/signIns.js';
-import { BrowserViewEndedError, controlBrowser, streamUrl } from '../src/lib/chat/browser/view.js';
 import { socketReads } from '../src/lib/session/socket.js';
 import { recorder, response } from './socketStub.js';
 
@@ -19,14 +18,11 @@ import { recorder, response } from './socketStub.js';
 // the code of, its confirmed deletion, and the driven Browser of a sign-in session.
 const SESSION = 'a'.repeat(32);
 const VIEW = 'b'.repeat(32);
-const LOCATION = { protocol: 'https:', host: 'local.example' };
 const SIGN_IN = {
   sign_in_id: 'c'.repeat(32),
   state: 'ready',
   generation: 2,
   team_incarnation: 'd'.repeat(64),
-  sites: ['example.org', 'mail.example.com'],
-  sites_truncated: false,
   created_at: '2026-10-19T10:00:00Z',
   saved_at: '2026-10-19T10:00:00Z',
   last_used_at: '2026-10-19T10:00:00Z',
@@ -54,12 +50,9 @@ test('the session read admits only its exact form, or none', async () => {
     { sign_in: { ...SIGN_IN, capsule: 'x' } },
     { sign_in: { ...SIGN_IN, state: 'checked-out' } },
     { sign_in: { ...SIGN_IN, generation: 0 } },
-    { sign_in: { ...SIGN_IN, sites: ['mail.example.com', 'example.org'] } },
-    { sign_in: { ...SIGN_IN, sites: ['Example.org'] } },
     { sign_in: { ...SIGN_IN, team_incarnation: 'd'.repeat(63) } },
     { sign_in: { ...SIGN_IN, expires_at: SIGN_IN.saved_at } },
     { sign_in: { ...SIGN_IN, last_used_at: '2026-10-18T10:00:00Z' } },
-    { sign_in: { ...SIGN_IN, sites_truncated: 0 } },
     { sign_in: SIGN_IN, trace_id: 'f'.repeat(32) },
   ]) {
     await assert.rejects(readSignIn('team_1', recorder(200, body).call), /invalid/);
@@ -124,8 +117,8 @@ test('save and cancel send the session alone, and answer exactly', async () => {
   await assert.rejects(saveSignIn('team_1', SESSION, recorder(200, { sign_in: SIGN_IN }).call), /invalid/);
   await assert.rejects(saveSignIn('team_1', SESSION, recorder(200, { sign_in: { ...SIGN_IN, state: 'x' }, recorded: true }).call), /invalid/);
   await assert.rejects(
-    saveSignIn('team_1', SESSION, recorder(409, { detail: 'x', code: 'sign-in-identity-provider' }).call),
-    (error) => error.status === 409 && error.code === 'sign-in-identity-provider',
+    saveSignIn('team_1', SESSION, recorder(409, { detail: 'x', code: 'sign-in-busy' }).call),
+    (error) => error.status === 409 && error.code === 'sign-in-busy',
   );
   const cancelled = recorder(200, { cancelled: true });
   assert.equal(await cancelSignIn('team_1', SESSION, cancelled.call), true);
@@ -159,63 +152,3 @@ test('deleting starts with the password and spends one second factor on exactly 
   ));
 });
 
-// noVNC's client as controlBrowser drives it.
-class RFB extends EventTarget {
-  static made = [];
-
-  static messages = {};
-
-  constructor(target, url, options) {
-    super();
-    Object.assign(this, { target, url, options, focused: 0, disconnected: 0 });
-    RFB.made.push(this);
-  }
-
-  focus() {
-    this.focused += 1;
-  }
-
-  disconnect() {
-    this.disconnected += 1;
-    this.dispatchEvent(new Event('disconnect'));
-  }
-}
-
-test('a sign-in session\'s Browser is driven over its control stream until it ends', async () => {
-  let connected = 0;
-  const driving = controlBrowser('team_1', VIEW, {
-    signal: new AbortController().signal, target: {}, RFB, location: LOCATION, onconnect: () => { connected += 1; },
-  });
-  const rfb = RFB.made.at(-1);
-  assert.equal(rfb.url, streamUrl('team_1', VIEW, LOCATION, 'control'));
-  assert.match(rfb.url, /\/browser\/views\/b{32}\/control$/);
-  assert.equal(rfb.viewOnly, false);
-  assert.equal(rfb.focusOnClick, true);
-  rfb.dispatchEvent(new Event('connect'));
-  assert.deepEqual([connected, rfb.focused], [1, 1]);
-  // The person's pointer reaches KasmVNC in its own 11-byte form: type, 16-bit mask, position, and two scroll deltas.
-  const pushed = [];
-  const sock = {
-    sQpush8: (value) => pushed.push(['8', value]),
-    sQpush16: (value) => pushed.push(['16', value]),
-    flush: () => pushed.push(['flush']),
-  };
-  RFB.messages.pointerEvent(sock, 640, 400, 0x101);
-  assert.deepEqual(pushed, [['8', 5], ['16', 0x101], ['16', 640], ['16', 400], ['16', 0], ['16', 0], ['flush']]);
-  rfb.dispatchEvent(new Event('disconnect'));
-  await assert.rejects(driving, BrowserViewEndedError);
-  // Without an `onconnect`, the screen still shows and takes the person's keys.
-  const quiet = controlBrowser('team_1', VIEW, { signal: new AbortController().signal, target: {}, RFB, location: LOCATION });
-  await Promise.resolve();
-  RFB.made.at(-1).dispatchEvent(new Event('connect'));
-  assert.equal(RFB.made.at(-1).focused, 1);
-  RFB.made.at(-1).dispatchEvent(new Event('disconnect'));
-  await assert.rejects(quiet, BrowserViewEndedError);
-
-  const closing = new AbortController();
-  const closed = controlBrowser('team_1', VIEW, { signal: closing.signal, target: {}, RFB, location: LOCATION });
-  closing.abort(new Error('closed'));
-  await assert.rejects(closed, /closed/);
-  assert.equal(RFB.made.at(-1).disconnected, 1);
-  await assert.rejects(controlBrowser('team_1', 'x', { signal: closing.signal, target: {}, RFB }), /invalid/);
-});

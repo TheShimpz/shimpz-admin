@@ -3,37 +3,37 @@ import test from 'node:test';
 
 import {
   BrowserViewEndedError,
+  controlBrowser,
   openBrowserView,
   streamUrl,
   watchBrowser,
 } from '../src/lib/chat/browser/view.js';
 import { recorder } from './socketStub.js';
 
-// Watching a Browser task's screen (ADR-0117, over KasmVNC): the view opened over the socket and its display streamed
-// to noVNC over one WebSocket.
+// Watching a Browser task's screen (ADR-0117, ADR-0126): the view opened over the socket and its stream handed to
+// easi.run's viewer.
 const VIEW = 'a'.repeat(32);
 const LOCATION = { protocol: 'https:', host: 'local.example' };
 
-// noVNC's client as watchBrowser drives it: it records how it was made and set, and the test says when it connects or
-// disconnects.
-function fakeRFB() {
+// easi.run's viewer as watchBrowser drives it: it records how it was mounted, and the test says when its stream ends.
+function fakeViewer() {
   const made = [];
-  class RFB extends EventTarget {
-    constructor(target, url, options) {
-      super();
-      this.target = target;
-      this.url = url;
-      this.options = options;
-      this.disconnected = 0;
-      made.push(this);
-    }
-
-    disconnect() {
-      this.disconnected += 1;
-      this.dispatchEvent(new Event('disconnect'));
-    }
-  }
-  return { RFB, made };
+  const sdk = {
+    LeaseHolder: { You: 2 },
+    mountViewer(target, options) {
+      const viewer = {
+        target,
+        options,
+        closed: 0,
+        controls: [],
+        setControl(enabled) { viewer.controls.push(enabled); },
+        close() { viewer.closed += 1; },
+      };
+      made.push(viewer);
+      return viewer;
+    },
+  };
+  return { load: async () => sdk, made };
 }
 
 const settled = () => new Promise((resolve) => setImmediate(resolve));
@@ -69,8 +69,8 @@ test('the stream is on the page\'s own origin, secure when the page is', () => {
   );
 });
 
-test('watching draws the display view-only on the target and ends with the task', async () => {
-  const { RFB, made } = fakeRFB();
+test('watching draws the screen with no control on the target and ends with the task', async () => {
+  const { load, made } = fakeViewer();
   const target = {};
   let connected = 0;
   const answers = [[200, { view_id: VIEW }], [404, { code: 'browser-not-running' }]];
@@ -81,40 +81,39 @@ test('watching draws the display view-only on the target and ends with the task'
     return recorder(status, body).call(method, params);
   };
   const watching = watchBrowser('team_1', {
-    signal: new AbortController().signal, target, RFB, call, location: LOCATION, onconnect: () => { connected += 1; },
+    signal: new AbortController().signal, target, load, call, location: LOCATION, onconnect: () => { connected += 1; },
   });
   await settled();
   assert.equal(made.length, 1);
-  const [rfb] = made;
-  assert.equal(rfb.target, target);
-  assert.equal(rfb.url, streamUrl('team_1', VIEW, LOCATION));
-  assert.deepEqual(rfb.options, { wsProtocols: ['binary'] });
-  assert.equal(rfb.viewOnly, true);
-  assert.equal(rfb.focusOnClick, false);
-  assert.equal(rfb.resizeSession, false);
-  assert.equal(rfb.scaleViewport, true);
-  assert.equal(rfb.background, 'transparent');
-  assert.equal(rfb.qualityLevel, 9);
-  rfb.dispatchEvent(new Event('connect'));
+  const [viewer] = made;
+  assert.equal(viewer.target, target);
+  assert.equal(viewer.options.url, streamUrl('team_1', VIEW, LOCATION));
+  assert.equal(viewer.options.features.keyboard_pointer, false);
+  // Whoever watches never asks for control, even when it is offered.
+  viewer.options.onLease({ holder: 2 });
+  assert.deepEqual(viewer.controls, []);
+  viewer.options.onPicture();
   assert.equal(connected, 1);
+  // An error the viewer recovered from ends nothing.
+  viewer.options.onError(new Error('recovered'), false);
   // The stream ended and the task's view is gone: the task ended.
-  rfb.dispatchEvent(new Event('disconnect'));
+  viewer.options.onError(new Error('ended'), true);
   await assert.rejects(watching, BrowserViewEndedError);
   assert.deepEqual(asked, ['browser.view', 'browser.view']);
 });
 
 test('a stream that ends while the task still runs is unavailable, not a task that ended', async () => {
-  const { RFB, made } = fakeRFB();
+  const { load, made } = fakeViewer();
   const watching = watchBrowser('team_1', {
-    signal: new AbortController().signal, target: {}, RFB, call: recorder(200, { view_id: VIEW }).call, location: LOCATION,
+    signal: new AbortController().signal, target: {}, load, call: recorder(200, { view_id: VIEW }).call, location: LOCATION,
   });
   await settled();
-  made[0].dispatchEvent(new Event('disconnect'));
+  made[0].options.onError(new Error('ended'), true);
   await assert.rejects(watching, (error) => !(error instanceof BrowserViewEndedError) && /unavailable/.test(error.message));
 });
 
 test('the check after a stream ended still settles when the view closes, and in time when unanswered', async (t) => {
-  const { RFB, made } = fakeRFB();
+  const { load, made } = fakeViewer();
   let first = true;
   const call = async (method, params) => {
     if (first) {
@@ -124,41 +123,41 @@ test('the check after a stream ended still settles when the view closes, and in 
     return new Promise(() => {});
   };
   const closing = new AbortController();
-  const closed = watchBrowser('team_1', { signal: closing.signal, target: {}, RFB, call, location: LOCATION });
+  const closed = watchBrowser('team_1', { signal: closing.signal, target: {}, load, call, location: LOCATION });
   await settled();
-  made[0].dispatchEvent(new Event('disconnect'));
+  made[0].options.onError(new Error('ended'), true);
   closing.abort(new Error('closed during the check'));
   await assert.rejects(closed, /closed during the check/);
-  assert.equal(made[0].disconnected, 0);
+  assert.equal(made[0].closed, 1);
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   first = true;
   const waiting = watchBrowser('team_1', {
-    signal: new AbortController().signal, target: {}, RFB, call, location: LOCATION,
+    signal: new AbortController().signal, target: {}, load, call, location: LOCATION,
   });
   await settled();
-  made[1].dispatchEvent(new Event('disconnect'));
+  made[1].options.onError(new Error('ended'), true);
   const outcome = assert.rejects(waiting, (error) => !(error instanceof BrowserViewEndedError));
   await settled();
   t.mock.timers.tick(10_000);
   await outcome;
 });
 
-test('closing the view disconnects the stream at once and asks for nothing more', async () => {
-  const { RFB, made } = fakeRFB();
+test('closing the view closes the stream at once and asks for nothing more', async () => {
+  const { load, made } = fakeViewer();
   const opened = recorder(200, { view_id: VIEW });
   const controller = new AbortController();
-  const watching = watchBrowser('team_1', { signal: controller.signal, target: {}, RFB, call: opened.call, location: LOCATION });
+  const watching = watchBrowser('team_1', { signal: controller.signal, target: {}, load, call: opened.call, location: LOCATION });
   await settled();
   controller.abort(new Error('closed'));
   await assert.rejects(watching, /closed/);
-  assert.equal(made[0].disconnected, 1);
+  assert.equal(made[0].closed, 1);
   await settled();
   assert.equal(opened.calls.length, 1);
   const closed = new AbortController();
   closed.abort(new Error('closed before'));
   const untouched = recorder(200, { view_id: VIEW });
   await assert.rejects(
-    watchBrowser('team_1', { signal: closed.signal, target: {}, RFB, call: untouched.call, location: LOCATION }),
+    watchBrowser('team_1', { signal: closed.signal, target: {}, load, call: untouched.call, location: LOCATION }),
     /closed before/,
   );
   assert.deepEqual(untouched.calls, []);
@@ -174,9 +173,9 @@ test('a view asked for before Team holds the Browser is asked for again until it
     const [status, body] = answers.shift();
     return recorder(status, body).call(method, params);
   };
-  const { RFB, made } = fakeRFB();
+  const { load, made } = fakeViewer();
   const controller = new AbortController();
-  const watching = watchBrowser('team_1', { signal: controller.signal, target: {}, RFB, call, location: LOCATION });
+  const watching = watchBrowser('team_1', { signal: controller.signal, target: {}, load, call, location: LOCATION });
   const outcome = assert.rejects(watching, /seen/);
   for (let tick = 0; tick < 4; tick += 1) {
     await settled();
@@ -189,15 +188,15 @@ test('a view asked for before Team holds the Browser is asked for again until it
 });
 
 test('a view whose opening Admin never answers stops at once when closed, and is unavailable in time', async (t) => {
-  const { RFB, made } = fakeRFB();
+  const { load, made } = fakeViewer();
   const closing = new AbortController();
   const silent = async () => new Promise(() => {});
-  const closed = watchBrowser('team_1', { signal: closing.signal, target: {}, RFB, call: silent, location: LOCATION });
+  const closed = watchBrowser('team_1', { signal: closing.signal, target: {}, load, call: silent, location: LOCATION });
   closing.abort(new Error('closed while opening'));
   await assert.rejects(closed, /closed while opening/);
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   const waiting = watchBrowser('team_1', {
-    signal: new AbortController().signal, target: {}, RFB, call: silent, location: LOCATION,
+    signal: new AbortController().signal, target: {}, load, call: silent, location: LOCATION,
   });
   const outcome = assert.rejects(waiting, (error) => !(error instanceof BrowserViewEndedError) && /did not open/.test(error.message));
   await settled();
@@ -208,9 +207,9 @@ test('a view whose opening Admin never answers stops at once when closed, and is
 
 test('a view that never opens is unavailable, not a task that ended', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
-  const { RFB, made } = fakeRFB();
+  const { load, made } = fakeViewer();
   const watching = watchBrowser('team_1', {
-    signal: new AbortController().signal, target: {}, RFB, call: recorder(404, { code: 'browser-not-running' }).call,
+    signal: new AbortController().signal, target: {}, load, call: recorder(404, { code: 'browser-not-running' }).call,
     location: LOCATION,
   });
   const outcome = assert.rejects(watching, (error) => !(error instanceof BrowserViewEndedError) && /did not open/.test(error.message));
@@ -223,12 +222,29 @@ test('a view that never opens is unavailable, not a task that ended', async (t) 
 });
 
 test('closing the view during a pause between asks stops at once', async () => {
-  const { RFB, made } = fakeRFB();
+  const { load, made } = fakeViewer();
   const controller = new AbortController();
   const watching = watchBrowser('team_1', {
-    signal: controller.signal, target: {}, RFB, call: recorder(404, { code: 'browser-not-running' }).call, location: LOCATION,
+    signal: controller.signal, target: {}, load, call: recorder(404, { code: 'browser-not-running' }).call, location: LOCATION,
   });
   setTimeout(() => controller.abort(new Error('closed')), 10);
   await assert.rejects(watching, /closed/);
   assert.equal(made.length, 0);
+});
+
+test('driving asks for control only while the far end grants it, and ends with the stream', async () => {
+  const { load, made } = fakeViewer();
+  const closing = new AbortController();
+  const driving = controlBrowser('team_1', VIEW, { signal: closing.signal, target: {}, load, location: LOCATION });
+  await settled();
+  const [viewer] = made;
+  assert.equal(viewer.options.url, streamUrl('team_1', VIEW, LOCATION, 'control'));
+  assert.equal(viewer.options.features.keyboard_pointer, true);
+  assert.equal(viewer.options.features.downloads, false);
+  viewer.options.onLease({ holder: 2 });
+  viewer.options.onLease({ holder: 1 });
+  assert.deepEqual(viewer.controls, [true, false]);
+  viewer.options.onError(new Error('ended'), true);
+  await assert.rejects(driving, BrowserViewEndedError);
+  await assert.rejects(controlBrowser('bad id', VIEW, { signal: closing.signal, target: {}, load }), /invalid/);
 });

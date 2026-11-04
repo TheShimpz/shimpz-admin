@@ -141,6 +141,10 @@ fn resource_routes() -> Router<Arc<App>> {
         )
         .route(session::frames::PATH, route(get(session::socket::upgrade)))
         .route(
+            "/api/browser/viewer.js",
+            route(get(team::browser_view::viewer)),
+        )
+        .route(
             "/api/teams/{team_id}/browser/views/{view_id}/stream",
             route(get(team::browser_view::stream)),
         )

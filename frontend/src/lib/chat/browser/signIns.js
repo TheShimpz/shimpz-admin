@@ -15,10 +15,9 @@ const INCARNATION_RE = /^[0-9a-f]{64}$/;
 const SITE_RE = /^(?=.{4,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
 const TIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/;
 const STATES = new Set(['ready', 'needs-person']);
-const MAX_SITES = 64;
 const MAX_URL_CHARS = 2_048;
 const SIGN_IN_KEYS = [
-  'sign_in_id', 'state', 'generation', 'team_incarnation', 'sites', 'sites_truncated', 'created_at', 'saved_at',
+  'sign_in_id', 'state', 'generation', 'team_incarnation', 'created_at', 'saved_at',
   'last_used_at', 'expires_at',
 ];
 
@@ -45,13 +44,9 @@ export function startUrl(value) {
 
 function signIn(value) {
   if (!exactKeys(value, SIGN_IN_KEYS)) return null;
-  const sites = value.sites;
   const valid = ID_RE.test(value.sign_in_id) && STATES.has(value.state) &&
     Number.isSafeInteger(value.generation) && value.generation >= 1 &&
     typeof value.team_incarnation === 'string' && INCARNATION_RE.test(value.team_incarnation) &&
-    Array.isArray(sites) && sites.length <= MAX_SITES &&
-    sites.every((site, index) => typeof site === 'string' && SITE_RE.test(site) && (index === 0 || sites[index - 1] < site)) &&
-    typeof value.sites_truncated === 'boolean' &&
     [value.created_at, value.saved_at, value.last_used_at, value.expires_at]
       .every((moment) => typeof moment === 'string' && TIME_RE.test(moment)) &&
     value.created_at <= value.saved_at && value.saved_at < value.expires_at && value.created_at <= value.last_used_at;

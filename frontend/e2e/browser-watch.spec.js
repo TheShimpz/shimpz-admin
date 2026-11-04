@@ -1,9 +1,10 @@
 // A running Browser task's screen in the built Admin (ADR-0117, over KasmVNC): while the turn's current step is the
 // Browser, its display shows by itself under the progress, beside a full-screen toggle; the view only shows and sends the
 // display no key, pointer, or clipboard, full screen shows it alone and returns it, and a task that ended says so.
+import { readFileSync } from 'node:fs';
+
 import { expect, test } from '@playwright/test';
 
-import { CLIENT_MESSAGES, rfbServer, solid } from './rfbServer.js';
 import { BROWSER_VIEW } from './scenarios.js';
 import { routeRead, routeScenario, sessionCalls } from './scenarioRoutes.js';
 import { messages } from '../src/lib/i18n/catalogs.js';
@@ -12,7 +13,6 @@ const EN = messages.en.chatPage;
 const WATCH = EN.progress.watch;
 const STREAM = `**/api/teams/marketing/browser/views/${BROWSER_VIEW}/stream`;
 const PAGE = [40, 120, 200];
-const INPUT = new Set(Object.values(CLIENT_MESSAGES));
 
 // Start a turn whose Browser task keeps running; its display draws one screen of PAGE and records what the page sends,
 // until the test ends the task.
@@ -22,25 +22,18 @@ async function startTask(page, message = 'Open example.com and tell me its title
   await routeRead(page, 'browser.view', () => (display.ended
     ? { status: 404, json: { detail: 'browser view unavailable', code: 'browser-not-running' } }
     : undefined));
+  await page.route('**/api/browser/viewer.js', (route) => route.fulfill({
+    contentType: 'text/javascript',
+    body: readFileSync(new URL('./viewerStub.js', import.meta.url)),
+  }));
   await page.routeWebSocket(STREAM, (socket) => {
-    const server = rfbServer({ screen: ({ incremental }) => (incremental ? null : [solid(1280, 800, PAGE)]) });
-    display.streams.push({ socket, server });
-    socket.onMessage((message) => {
-      for (const answer of server.receive(new Uint8Array(message))) socket.send(Buffer.from(answer));
-    });
+    const stream = { socket, received: [] };
+    display.streams.push(stream);
+    socket.onMessage((message) => { stream.received.push(message); });
     socket.onClose(() => { display.closed += 1; });
-    socket.send(Buffer.from(server.greeting));
+    socket.send('picture');
   });
   await page.goto('/chat/?team=marketing');
-  // noVNC admits a socket only when its own class names its methods and handlers, as the browser's WebSocket does;
-  // Playwright's routed socket inherits them from a base class, so they are named on its own class too.
-  await page.evaluate(() => {
-    const own = window.WebSocket.prototype;
-    const base = Object.getPrototypeOf(own);
-    for (const [name, property] of Object.entries(Object.getOwnPropertyDescriptors(base))) {
-      if (!Object.hasOwn(own, name)) Object.defineProperty(own, name, property);
-    }
-  });
   const composer = page.getByRole('textbox', { name: EN.send, exact: true });
   await expect(composer).toBeEnabled({ timeout: 20_000 });
   await composer.fill(message);
@@ -57,7 +50,7 @@ async function startTask(page, message = 'Open example.com and tell me its title
   };
 }
 
-// The colour noVNC drew at the middle of the view's screen.
+// The colour the viewer drew at the middle of the view's screen.
 function middlePixel(page) {
   return page.getByRole('img', { name: WATCH.alt }).locator('canvas').evaluate((canvas) => {
     const { data } = canvas.getContext('2d').getImageData(canvas.width / 2, canvas.height / 2, 1, 1);
@@ -82,7 +75,7 @@ test('the running task\'s screen shows by itself and is sent no input @browser-s
   await page.keyboard.press('Control+V');
   await page.waitForTimeout(300);
   expect(display.streams).toHaveLength(1);
-  expect(display.streams[0].server.received.filter((type) => INPUT.has(type))).toEqual([]);
+  expect(display.streams[0].received).toEqual([]);
   await expect(view.getByRole('button')).toHaveCount(0);
   await expect(view.getByRole('textbox')).toHaveCount(0);
   await expect(page.getByRole('button', { name: EN.stop, exact: true })).toBeEnabled();
