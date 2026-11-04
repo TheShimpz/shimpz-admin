@@ -90,7 +90,7 @@ test('a sign-in session is driven by the person and saved as the next generation
     { team_id: 'marketing', body: { sign_in_session_id: SIGN_IN_SESSION } },
   ]);
   const panel = await openPanel(page);
-  await expect(panel.getByRole('region', { name: COPY.label }).getByRole('listitem')).toContainText(['example.net']);
+  await expect(panel.getByRole('region', { name: COPY.label })).toContainText(COPY.ready);
 });
 
 test('a refused save says what to do and keeps the session; Cancel leaves it needing the person', async ({ page }) => {
