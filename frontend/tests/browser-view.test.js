@@ -128,7 +128,7 @@ test('the check after a stream ended still settles when the view closes, and in 
   made[0].options.onError(new Error('ended'), true);
   closing.abort(new Error('closed during the check'));
   await assert.rejects(closed, /closed during the check/);
-  assert.equal(made[0].closed, 1);
+  assert.equal(made[0].closed, 2);
   t.mock.timers.enable({ apis: ['setTimeout', 'Date'] });
   first = true;
   const waiting = watchBrowser('team_1', {

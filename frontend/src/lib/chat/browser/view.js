@@ -91,6 +91,7 @@ export async function controlBrowser(
       onconnect,
       onended() {
         signal.removeEventListener('abort', abort);
+        viewer?.close();
         if (!signal.aborted) reject(new BrowserViewEndedError());
       },
     });
@@ -120,6 +121,7 @@ export async function watchBrowser(
       onconnect,
       onended() {
         if (signal.aborted) return;
+        viewer?.close();
         // The stream ended: the task's view answering again means the stream failed, its absence that the task ended.
         // Closing the view still settles at once, and an answer that never comes is unavailable in time.
         bounded(openBrowserView(teamId, call), CHECK_WAIT_MS, signal)
